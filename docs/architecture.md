@@ -7,6 +7,7 @@ This is not an implementation checklist. Codex should use this as architectural 
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
+- `docs/v1.md`
 - `docs/mvp.md`
 - `AGENTS.md`
 

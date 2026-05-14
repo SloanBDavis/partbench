@@ -11,6 +11,7 @@ The long-term architecture is in:
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
+- `docs/v1.md`
 - `docs/mvp.md`
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
