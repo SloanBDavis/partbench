@@ -49,6 +49,8 @@ packages:
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
 - `scripts/smoke-occt-browser.mjs` - non-gating browser smoke/metrics runner for
   the OCCT worker path, including structured success/failure diagnostics.
+- `scripts/occt-smoke` - helper modules for OCCT smoke browser/server plumbing,
+  asset metrics, and structured result records.
 
 ## Completed Milestones
 

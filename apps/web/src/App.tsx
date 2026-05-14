@@ -28,10 +28,11 @@ import {
 import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { BatchPanel } from "./components/BatchPanel";
 import { Inspector } from "./components/Inspector";
+import { OcctMeshDevPanel } from "./components/OcctMeshDevPanel";
+import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import {
   createOcctMeshDevErrorDetails,
-  formatMetricMs,
   formatOcctMeshDevError,
   type OcctMeshDevErrorDetails,
   type OcctMeshDevMetrics,
@@ -433,116 +434,29 @@ export function App() {
             onClear={clearBatch}
           />
 
-          <section className="project-panel" aria-label="Project JSON">
-            <h2>Project JSON</h2>
-            <div className="button-row">
-              <button
-                type="button"
-                onClick={exportProjectJson}
-                disabled={commandPending}
-              >
-                Export JSON
-              </button>
-              <button
-                type="button"
-                onClick={importProjectJson}
-                disabled={commandPending || projectJson.trim().length === 0}
-              >
-                Import JSON
-              </button>
-            </div>
-            <textarea
-              value={projectJson}
-              onChange={(event) => setProjectJson(event.currentTarget.value)}
-              placeholder="Export or paste Web CAD project JSON"
-              spellCheck={false}
-            />
-            {projectMessage && (
-              <p className="project-message">{projectMessage}</p>
-            )}
-          </section>
+          <ProjectJsonPanel
+            disabled={commandPending}
+            projectJson={projectJson}
+            message={projectMessage}
+            onProjectJsonChange={setProjectJson}
+            onExport={exportProjectJson}
+            onImport={importProjectJson}
+          />
 
           {occtMeshDevEnabled && (
-            <section className="occt-panel" aria-label="OCCT mesh dev tools">
-              <h2>OCCT Mesh Dev</h2>
-              <div className="button-row">
-                <button
-                  type="button"
-                  onClick={() => void tessellateSelectedBoxWithOcct()}
-                  disabled={
-                    commandPending || occtPending || !canTessellateSelectedBox
-                  }
-                >
-                  {occtPending ? "Tessellating" : "Tessellate selected box"}
-                </button>
-                <button
-                  type="button"
-                  onClick={clearOcctDerivedMesh}
-                  disabled={occtPending || occtMeshes.length === 0}
-                >
-                  Clear mesh
-                </button>
-              </div>
-              {occtMessage && <p className="project-message">{occtMessage}</p>}
-              {occtError && (
-                <dl className="occt-error">
-                  <div>
-                    <dt>Code</dt>
-                    <dd>{occtError.code}</dd>
-                  </div>
-                  <div>
-                    <dt>Stage</dt>
-                    <dd>{occtError.stage}</dd>
-                  </div>
-                  <div>
-                    <dt>WASM</dt>
-                    <dd>{occtError.wasmLoadStatus}</dd>
-                  </div>
-                  <div>
-                    <dt>Worker</dt>
-                    <dd>
-                      {occtError.workerStarted ? "started" : "not started"}
-                    </dd>
-                  </div>
-                </dl>
-              )}
-              {occtMetrics && (
-                <dl className="metrics-list">
-                  <div>
-                    <dt>Object</dt>
-                    <dd>{occtMetrics.objectId}</dd>
-                  </div>
-                  <div>
-                    <dt>OCCT load</dt>
-                    <dd>{formatMetricMs(occtMetrics.occtLoadMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Tessellation</dt>
-                    <dd>{formatMetricMs(occtMetrics.tessellationMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Kernel total</dt>
-                    <dd>{formatMetricMs(occtMetrics.geometryKernelMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Worker total</dt>
-                    <dd>{formatMetricMs(occtMetrics.workerExecutionMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Round trip</dt>
-                    <dd>{formatMetricMs(occtMetrics.roundTripMs)}</dd>
-                  </div>
-                  <div>
-                    <dt>Vertices</dt>
-                    <dd>{occtMetrics.vertexCount}</dd>
-                  </div>
-                  <div>
-                    <dt>Triangles</dt>
-                    <dd>{occtMetrics.triangleCount}</dd>
-                  </div>
-                </dl>
-              )}
-            </section>
+            <OcctMeshDevPanel
+              commandPending={commandPending}
+              canTessellateSelectedBox={canTessellateSelectedBox}
+              meshCount={occtMeshes.length}
+              pending={occtPending}
+              message={occtMessage}
+              error={occtError}
+              metrics={occtMetrics}
+              onTessellateSelectedBox={() =>
+                void tessellateSelectedBoxWithOcct()
+              }
+              onClearMesh={clearOcctDerivedMesh}
+            />
           )}
         </aside>
 
