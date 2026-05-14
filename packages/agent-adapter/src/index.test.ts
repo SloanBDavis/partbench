@@ -2,7 +2,9 @@ import { CadEngine } from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
   CadOpsAgentAdapter,
+  executeCadOpsAgentQueryRequest,
   executeCadOpsAgentRequest,
+  parseCadOpsAgentQueryRequestJson,
   parseCadOpsAgentRequestJson
 } from "./index";
 
@@ -168,6 +170,142 @@ describe("agent-adapter", () => {
     ).toEqual([1, 2, 3]);
   });
 
+  it("returns project summary queries through the adapter", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "summary_box",
+          dimensions: { width: 1, height: 2, depth: 3 },
+          transform: { translation: [3, 2, 1] }
+        },
+        {
+          op: "scene.createCylinder",
+          id: "summary_cylinder",
+          dimensions: { radius: 2, height: 8 }
+        }
+      ]
+    });
+
+    const response = executeCadOpsAgentQueryRequest(engine, {
+      requestId: "agent_query_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.summary" }
+      }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      requestId: "agent_query_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.summary",
+      objectCount: 2,
+      objects: [
+        {
+          id: "summary_box",
+          kind: "box",
+          dimensions: { width: 1, height: 2, depth: 3 },
+          transform: {
+            translation: [3, 2, 1],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        {
+          id: "summary_cylinder",
+          kind: "cylinder",
+          dimensions: { radius: 2, height: 8 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ]
+    });
+  });
+
+  it("returns one object through adapter query JSON", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_req_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "query_box",
+            name: "Query box",
+            dimensions: { width: 4, height: 5, depth: 6 }
+          }
+        ]
+      }
+    });
+
+    const request = parseCadOpsAgentQueryRequestJson(
+      JSON.stringify({
+        requestId: "agent_query_json",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "object.get", id: "query_box" }
+        }
+      })
+    );
+    const response = JSON.parse(adapter.queryJson(JSON.stringify(request))) as {
+      readonly ok: boolean;
+      readonly requestId: string;
+      readonly query: string;
+      readonly object: { readonly id: string; readonly kind: string };
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_query_json",
+      query: "object.get",
+      object: {
+        id: "query_box",
+        kind: "box"
+      }
+    });
+  });
+
+  it("returns structured adapter query errors", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.query({
+      requestId: "agent_query_3",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "object.get", id: "missing_object" }
+      }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      requestId: "agent_query_3",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "object.get",
+      error: {
+        code: "OBJECT_NOT_FOUND",
+        message: "Object does not exist: missing_object",
+        objectId: "missing_object"
+      }
+    });
+  });
+
   it("rejects non-CADOps adapter payloads", () => {
     expect(() =>
       parseCadOpsAgentRequestJson(
@@ -178,5 +316,17 @@ describe("agent-adapter", () => {
         })
       )
     ).toThrow("Invalid CADOps agent adapter request.");
+  });
+
+  it("rejects non-CADOps adapter query payloads", () => {
+    expect(() =>
+      parseCadOpsAgentQueryRequestJson(
+        JSON.stringify({
+          requestId: "bad_query_request",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          prompt: "what objects are in this model?"
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter query request.");
   });
 });

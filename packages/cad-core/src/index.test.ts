@@ -380,6 +380,113 @@ describe("cad-core", () => {
     expect(engine.getRedoStack()).toHaveLength(1);
   });
 
+  it("returns a read-only project summary query", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      name: "Base box",
+      dimensions: { width: 1, height: 2, depth: 3 },
+      transform: { translation: [4, 5, 6] }
+    });
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 2, height: 8 }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.summary" }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      query: "project.summary",
+      cadOpsVersion: "cadops.v1",
+      objectCount: 2,
+      objects: [
+        {
+          id: "box_1",
+          kind: "box",
+          name: "Base box",
+          dimensions: { width: 1, height: 2, depth: 3 },
+          transform: {
+            translation: [4, 5, 6],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        },
+        {
+          id: "cylinder_1",
+          kind: "cylinder",
+          dimensions: { radius: 2, height: 8 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ]
+    });
+    expect(engine.getTransactions()).toHaveLength(2);
+  });
+
+  it("returns one object by ID through a read query", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "fixture",
+      name: "Fixture",
+      dimensions: { radius: 1.5, height: 6 },
+      transform: { rotation: [0, 0, 1.25] }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.get", id: "fixture" }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      query: "object.get",
+      cadOpsVersion: "cadops.v1",
+      object: {
+        id: "fixture",
+        kind: "cylinder",
+        name: "Fixture",
+        dimensions: { radius: 1.5, height: 6 },
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, 1.25],
+          scale: [1, 1, 1]
+        }
+      }
+    });
+  });
+
+  it("returns a structured query error for a missing object", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.get", id: "missing_object" }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      query: "object.get",
+      cadOpsVersion: "cadops.v1",
+      error: {
+        code: "OBJECT_NOT_FOUND",
+        message: "Object does not exist: missing_object",
+        objectId: "missing_object"
+      }
+    });
+  });
+
   it("executes a batch through the mock worker interface", async () => {
     const engine = new CadEngine();
     const worker = new MockCadCommandWorker();

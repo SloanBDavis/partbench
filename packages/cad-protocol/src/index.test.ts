@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CadBatch, CadOp } from "./index";
+import type { CadBatch, CadOp, CadQueryRequest } from "./index";
 import { protocolPackage } from "./index";
 
 describe("cad-protocol", () => {
@@ -56,5 +56,23 @@ describe("cad-protocol", () => {
     expect(batch.version).toBe("cadops.v1");
     expect(batch.mode).toBe("dryRun");
     expect(batch.ops).toHaveLength(1);
+  });
+
+  it("types CADOps read queries", () => {
+    const queries: CadQueryRequest[] = [
+      {
+        version: "cadops.v1",
+        query: { query: "project.summary" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "object.get", id: "box_1" }
+      }
+    ];
+
+    expect(queries.map((request) => request.query.query)).toEqual([
+      "project.summary",
+      "object.get"
+    ]);
   });
 });

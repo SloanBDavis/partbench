@@ -1,8 +1,8 @@
 # Agent Adapter Spike
 
 This package is the Milestone 5 AI/MCP adapter spike. It exposes the existing
-CADOps batch interface through a small JSON-callable adapter without changing the
-internal CAD architecture.
+CADOps batch and read/query interfaces through a small JSON-callable adapter
+without changing the internal CAD architecture.
 
 It depends on:
 
@@ -14,7 +14,7 @@ WebGPU, or natural-language parsing.
 
 ## Boundary
 
-External callers send a `CadOpsAgentRequest`:
+External callers submit mutations with a `CadOpsAgentRequest`:
 
 ```json
 {
@@ -34,9 +34,36 @@ External callers send a `CadOpsAgentRequest`:
 }
 ```
 
-The adapter delegates the `batch` directly to `CadEngine.executeBatch()`.
-CADOps remains the internal API; MCP, SDKs, scripts, and future agent tools
-should wrap this adapter rather than define their own CAD operation model.
+External callers inspect the current model with a `CadOpsAgentQueryRequest`:
+
+```json
+{
+  "requestId": "agent_query_001",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "project.summary" }
+  }
+}
+```
+
+Object lookup uses the same envelope:
+
+```json
+{
+  "requestId": "agent_query_002",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "object.get", "id": "box_from_agent" }
+  }
+}
+```
+
+The adapter delegates batches directly to `CadEngine.executeBatch()` and queries
+directly to `CadEngine.executeQuery()`. CADOps remains the internal API; MCP,
+SDKs, scripts, and future agent tools should wrap this adapter rather than define
+their own CAD operation model.
 
 ## Responses
 
@@ -60,14 +87,48 @@ Commit responses include `transactionId` when the batch commits.
 
 Validation failures keep the same shape and include `error` plus `errors`.
 
+Project summary queries return a serializable object list:
+
+```json
+{
+  "ok": true,
+  "requestId": "agent_query_001",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "cadOpsVersion": "cadops.v1",
+  "query": "project.summary",
+  "objectCount": 1,
+  "objects": [
+    {
+      "id": "box_from_agent",
+      "kind": "box",
+      "dimensions": { "width": 10, "height": 20, "depth": 30 },
+      "transform": {
+        "translation": [0, 0, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      }
+    }
+  ]
+}
+```
+
+Missing object lookups return `ok: false` with a structured `OBJECT_NOT_FOUND`
+error.
+
 ## Example Usage
 
 ```ts
 import { CadOpsAgentAdapter } from "@web-cad/agent-adapter";
 
 const adapter = new CadOpsAgentAdapter();
-const responseJson = adapter.executeJson(JSON.stringify(request));
+const summaryJson = adapter.queryJson(JSON.stringify(summaryRequest));
+const previewJson = adapter.executeJson(JSON.stringify(dryRunBatchRequest));
+const commitJson = adapter.executeJson(JSON.stringify(commitBatchRequest));
 ```
+
+An external agent should query before submitting a batch, run the proposed batch
+in `dryRun`, inspect the returned IDs and warnings, and only then submit the same
+operation set in `commit` mode when allowed.
 
 An MCP server can later expose this as a tool by accepting the same JSON request
 and returning the same JSON response. That server should remain a transport

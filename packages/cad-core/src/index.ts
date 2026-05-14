@@ -4,8 +4,11 @@ import type {
   CadBatchResponse,
   CadBatchValidationError,
   CadBatchValidationResult,
+  CadObjectSnapshot,
   CadObjectRef,
   CadOp,
+  CadQueryRequest,
+  CadQueryResponse,
   CylinderDimensions,
   ObjectId,
   SemanticDiff,
@@ -19,8 +22,11 @@ export type {
   CadBatchResponse,
   CadBatchValidationError,
   CadBatchValidationResult,
+  CadObjectSnapshot,
   CadObjectRef,
   CadOp,
+  CadQueryRequest,
+  CadQueryResponse,
   CylinderDimensions,
   ObjectId,
   SemanticDiff,
@@ -261,6 +267,48 @@ export class CadEngine {
       warnings: validation.warnings,
       transactionId: result.transaction.id
     };
+  }
+
+  executeQuery(request: CadQueryRequest): CadQueryResponse {
+    switch (request.query.query) {
+      case "project.summary": {
+        const objects = [...this.#document.objects.values()].map(
+          createCadObjectSnapshot
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          objectCount: objects.length,
+          objects
+        };
+      }
+
+      case "object.get": {
+        const object = this.#document.objects.get(request.query.id);
+
+        if (!object) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "OBJECT_NOT_FOUND",
+              message: `Object does not exist: ${request.query.id}`,
+              objectId: request.query.id
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          object: createCadObjectSnapshot(object)
+        };
+      }
+    }
   }
 
   validateBatch(batch: CadBatch): CadBatchValidationResult {
@@ -527,6 +575,14 @@ function mergeTransform(
   };
 }
 
+function cloneTransform(transform: Transform): Transform {
+  return {
+    translation: [...transform.translation],
+    rotation: [...transform.rotation],
+    scale: [...transform.scale]
+  };
+}
+
 function objectRef(object: SceneObject): CadObjectRef {
   return {
     id: object.id,
@@ -554,6 +610,26 @@ export function createCadDocumentFromSnapshot(
   return createCadDocument(
     snapshot.objects.map((object) => [object.id, object] as const)
   );
+}
+
+function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
+  if (object.kind === "box") {
+    return {
+      id: object.id,
+      kind: object.kind,
+      name: object.name,
+      dimensions: { ...object.dimensions },
+      transform: cloneTransform(object.transform)
+    };
+  }
+
+  return {
+    id: object.id,
+    kind: object.kind,
+    name: object.name,
+    dimensions: { ...object.dimensions },
+    transform: cloneTransform(object.transform)
+  };
 }
 
 function runOperations(

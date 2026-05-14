@@ -28,6 +28,8 @@ export interface CylinderDimensions {
   readonly height: number;
 }
 
+export type CadObjectKind = "box" | "cylinder";
+
 export type CadOp =
   | SceneCreateBoxOp
   | SceneCreateCylinderOp
@@ -63,7 +65,7 @@ export interface SceneUpdateTransformOp {
 
 export interface CadObjectRef {
   readonly id: ObjectId;
-  readonly kind: "box" | "cylinder";
+  readonly kind: CadObjectKind;
 }
 
 export interface SemanticDiff {
@@ -117,6 +119,77 @@ export interface CadBatchErrorResponse {
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
   readonly warnings: readonly string[];
+}
+
+export type CadQueryKind = "project.summary" | "object.get";
+
+export type CadQuery = ProjectSummaryQuery | ObjectGetQuery;
+
+export interface ProjectSummaryQuery {
+  readonly query: "project.summary";
+}
+
+export interface ObjectGetQuery {
+  readonly query: "object.get";
+  readonly id: ObjectId;
+}
+
+export interface CadQueryRequest {
+  readonly version: CadOpsVersion;
+  readonly query: CadQuery;
+}
+
+export type CadObjectSnapshot = BoxObjectSnapshot | CylinderObjectSnapshot;
+
+export interface BoxObjectSnapshot {
+  readonly id: ObjectId;
+  readonly kind: "box";
+  readonly name?: string;
+  readonly dimensions: BoxDimensions;
+  readonly transform: Transform;
+}
+
+export interface CylinderObjectSnapshot {
+  readonly id: ObjectId;
+  readonly kind: "cylinder";
+  readonly name?: string;
+  readonly dimensions: CylinderDimensions;
+  readonly transform: Transform;
+}
+
+export type CadQueryErrorCode = "OBJECT_NOT_FOUND";
+
+export interface CadQueryError {
+  readonly code: CadQueryErrorCode;
+  readonly message: string;
+  readonly objectId?: ObjectId;
+}
+
+export type CadQueryResponse =
+  | ProjectSummaryQueryResponse
+  | ObjectGetQueryResponse
+  | CadQueryErrorResponse;
+
+export interface ProjectSummaryQueryResponse {
+  readonly ok: true;
+  readonly query: "project.summary";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly objectCount: number;
+  readonly objects: readonly CadObjectSnapshot[];
+}
+
+export interface ObjectGetQueryResponse {
+  readonly ok: true;
+  readonly query: "object.get";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly object: CadObjectSnapshot;
+}
+
+export interface CadQueryErrorResponse {
+  readonly ok: false;
+  readonly query: CadQueryKind;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly error: CadQueryError;
 }
 
 export const protocolPackage: PackageInfo = {

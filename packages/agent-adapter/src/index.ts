@@ -4,8 +4,12 @@ import type {
   CadBatchMode,
   CadBatchResponse,
   CadBatchValidationError,
+  CadObjectSnapshot,
   CadOp,
   CadOpsVersion,
+  CadQueryError,
+  CadQueryRequest,
+  CadQueryResponse,
   ObjectId,
   Transform,
   Vec3
@@ -17,6 +21,12 @@ export interface CadOpsAgentRequest {
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly batch: CadBatch;
+}
+
+export interface CadOpsAgentQueryRequest {
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly query: CadQueryRequest;
 }
 
 export type CadOpsAgentResponse =
@@ -50,6 +60,39 @@ export interface CadOpsAgentErrorResponse {
   readonly warnings: readonly string[];
 }
 
+export type CadOpsAgentQueryResponse =
+  | CadOpsAgentProjectSummaryQueryResponse
+  | CadOpsAgentObjectGetQueryResponse
+  | CadOpsAgentQueryErrorResponse;
+
+export interface CadOpsAgentProjectSummaryQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.summary";
+  readonly objectCount: number;
+  readonly objects: readonly CadObjectSnapshot[];
+}
+
+export interface CadOpsAgentObjectGetQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "object.get";
+  readonly object: CadObjectSnapshot;
+}
+
+export interface CadOpsAgentQueryErrorResponse {
+  readonly ok: false;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.summary" | "object.get";
+  readonly error: CadQueryError;
+}
+
 export class CadOpsAgentAdapter {
   constructor(private readonly engine: CadEngine = new CadEngine()) {}
 
@@ -57,9 +100,24 @@ export class CadOpsAgentAdapter {
     return toAgentResponse(request, this.engine.executeBatch(request.batch));
   }
 
+  query(request: CadOpsAgentQueryRequest): CadOpsAgentQueryResponse {
+    return toAgentQueryResponse(
+      request,
+      this.engine.executeQuery(request.query)
+    );
+  }
+
   executeJson(json: string): string {
     return JSON.stringify(
       this.execute(parseCadOpsAgentRequestJson(json)),
+      null,
+      2
+    );
+  }
+
+  queryJson(json: string): string {
+    return JSON.stringify(
+      this.query(parseCadOpsAgentQueryRequestJson(json)),
       null,
       2
     );
@@ -83,13 +141,36 @@ export function executeCadOpsAgentRequest(
   return new CadOpsAgentAdapter(engine).execute(request);
 }
 
+export function executeCadOpsAgentQueryRequest(
+  engine: CadEngine,
+  request: CadOpsAgentQueryRequest
+): CadOpsAgentQueryResponse {
+  return new CadOpsAgentAdapter(engine).query(request);
+}
+
 export function parseCadOpsAgentRequestJson(json: string): CadOpsAgentRequest {
   return parseCadOpsAgentRequest(JSON.parse(json));
+}
+
+export function parseCadOpsAgentQueryRequestJson(
+  json: string
+): CadOpsAgentQueryRequest {
+  return parseCadOpsAgentQueryRequest(JSON.parse(json));
 }
 
 export function parseCadOpsAgentRequest(value: unknown): CadOpsAgentRequest {
   if (!isCadOpsAgentRequest(value)) {
     throw new Error("Invalid CADOps agent adapter request.");
+  }
+
+  return value;
+}
+
+export function parseCadOpsAgentQueryRequest(
+  value: unknown
+): CadOpsAgentQueryRequest {
+  if (!isCadOpsAgentQueryRequest(value)) {
+    throw new Error("Invalid CADOps agent adapter query request.");
   }
 
   return value;
@@ -129,6 +210,43 @@ function toAgentResponse(
   };
 }
 
+function toAgentQueryResponse(
+  request: CadOpsAgentQueryRequest,
+  response: CadQueryResponse
+): CadOpsAgentQueryResponse {
+  if (!response.ok) {
+    return {
+      ok: false,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      error: response.error
+    };
+  }
+
+  if (response.query === "project.summary") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      objectCount: response.objectCount,
+      objects: response.objects
+    };
+  }
+
+  return {
+    ok: true,
+    requestId: request.requestId,
+    adapterVersion: request.adapterVersion,
+    cadOpsVersion: response.cadOpsVersion,
+    query: response.query,
+    object: response.object
+  };
+}
+
 function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
   return (
     isRecord(value) &&
@@ -139,6 +257,18 @@ function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
   );
 }
 
+function isCadOpsAgentQueryRequest(
+  value: unknown
+): value is CadOpsAgentQueryRequest {
+  return (
+    isRecord(value) &&
+    value.requestId !== "" &&
+    typeof value.requestId === "string" &&
+    value.adapterVersion === "web-cad.agent-adapter.v1" &&
+    isCadQueryRequest(value.query)
+  );
+}
+
 function isCadBatch(value: unknown): value is CadBatch {
   return (
     isRecord(value) &&
@@ -146,6 +276,18 @@ function isCadBatch(value: unknown): value is CadBatch {
     (value.mode === "dryRun" || value.mode === "commit") &&
     Array.isArray(value.ops) &&
     value.ops.every(isCadOp)
+  );
+}
+
+function isCadQueryRequest(value: unknown): value is CadQueryRequest {
+  return (
+    isRecord(value) &&
+    value.version === "cadops.v1" &&
+    isRecord(value.query) &&
+    ((value.query.query === "project.summary" &&
+      Object.keys(value.query).length === 1) ||
+      (value.query.query === "object.get" &&
+        typeof value.query.id === "string"))
   );
 }
 
