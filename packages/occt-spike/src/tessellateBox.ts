@@ -30,6 +30,14 @@ export async function createOcctBoxMeshWithLoader(
   input: OcctBoxInput
 ): Promise<OcctSpikeMesh> {
   const oc = await loadOcct();
+
+  return createOcctBoxMeshWithInstance(oc, input);
+}
+
+export function createOcctBoxMeshWithInstance(
+  oc: OpenCascadeInstance,
+  input: OcctBoxInput
+): OcctSpikeMesh {
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
   const makeBox = new oc.BRepPrimAPI_MakeBox_2(

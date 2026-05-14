@@ -4,12 +4,14 @@ import ocFullJS from "opencascade.js/dist/opencascade.full.js";
 import ocFullWasmUrl from "opencascade.js/dist/opencascade.full.wasm?url";
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
+  createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
   type OcctBoxInput,
   type OcctSpikeMesh
 } from "./tessellateBox";
 
 export type { OcctBoxInput, OcctSpikeMesh };
+export { createOcctBoxMeshWithInstance, createOcctBoxMeshWithLoader };
 
 type OpenCascadeModuleObject = Record<string, unknown>;
 type LoadDynamicLibrary = (

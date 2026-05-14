@@ -1,8 +1,9 @@
 # Web CAD
 
-An open-source, browser-native, AI-native CAD application. Milestone 0 sets up
-the TypeScript monorepo foundation only; CAD geometry and command execution come
-in later milestones.
+An open-source, browser-native, AI-native CAD application. The current MVP
+prototype has a typed CADOps command layer, in-memory document model, primitive
+viewport, project JSON serialization, agent/MCP adapter spikes, and isolated
+OCCT/WASM geometry experiments.
 
 ## Requirements
 
@@ -24,6 +25,17 @@ Run the browser app:
 ```sh
 pnpm dev
 ```
+
+Run the app with the explicit OCCT mesh dev path enabled:
+
+```sh
+VITE_ENABLE_OCCT_MESH_DEV=true pnpm dev
+```
+
+With that flag enabled, create or select a box and use the `OCCT Mesh Dev`
+panel to tessellate it asynchronously in the browser Worker. The returned mesh
+is displayed as a derived renderer overlay and does not update the authoritative
+CAD document.
 
 Run the full build:
 
@@ -50,16 +62,41 @@ Run TypeScript checks:
 pnpm typecheck
 ```
 
+Run the isolated geometry-worker bundle check:
+
+```sh
+pnpm build:geometry-worker
+```
+
+Run the non-gating OCCT browser smoke and append timing metrics:
+
+```sh
+pnpm smoke:occt-browser
+```
+
+This builds the isolated smoke page, launches a local Chromium-compatible
+browser, verifies box tessellation, and appends JSONL metrics to
+`.metrics/occt-browser.jsonl`. Timing values are recorded for tracking, but the
+smoke fails only when the path breaks or required metrics are missing. Set
+`WEB_CAD_SMOKE_BROWSER=/path/to/chrome` if the script cannot find a browser.
+
 ## Workspace Layout
 
-- `apps/web` - Vite browser shell
-- `packages/cad-protocol` - shared protocol package placeholder
-- `packages/cad-core` - core document and transaction package placeholder
-- `packages/renderer` - renderer abstraction package placeholder
+- `apps/web` - Vite browser app and explicit worker entrypoints
+- `packages/cad-protocol` - typed CADOps command and query protocol
+- `packages/cad-core` - document model, transactions, undo/redo, project JSON
+- `packages/renderer` - simple renderer abstraction and canvas viewport support
+- `packages/geometry-kernel` - isolated primitive tessellation facade
+- `packages/geometry-worker-spike` - async worker boundary for tessellation
+- `packages/renderer-mesh-bridge` - mesh data adapter for the current renderer
+- `packages/agent-adapter` - CADOps adapter for external structured callers
+- `packages/mcp-adapter` - MCP tool wrapper over the structured adapter
 
 ## Current Limitations
 
-- No CAD geometry is implemented yet.
-- No command protocol or transaction engine is implemented yet.
-- No Open CASCADE, WASM, MCP, OPFS, STEP import/export, or WebGPU integration is
-  included in this milestone.
+- The production renderer still uses simple primitive drawing; OCCT mesh display
+  is feature-flagged dev tooling.
+- OCCT/WASM is intentionally off the normal startup path and currently proves box
+  tessellation only.
+- No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
+  natural-language command parsing is implemented.

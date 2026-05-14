@@ -11,8 +11,9 @@ import type {
   CadBatchResponse,
   CadOp
 } from "@web-cad/cad-protocol";
-import type { RenderPrimitive } from "@web-cad/renderer";
-import { useMemo, useState } from "react";
+import { createOcctMeshDevRuntime } from "@web-cad/occt-mesh-dev-runtime";
+import type { RenderPrimitive, RenderTriangleMesh } from "@web-cad/renderer";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
   buildCreateBoxOp,
@@ -28,6 +29,11 @@ import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { BatchPanel } from "./components/BatchPanel";
 import { Inspector } from "./components/Inspector";
 import { ViewportCanvas } from "./components/ViewportCanvas";
+import {
+  formatMetricMs,
+  type OcctMeshDevMetrics,
+  type OcctMeshDevRuntime
+} from "./occtMeshDev";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -35,6 +41,7 @@ const commandExecutor = new AsyncCadCommandExecutor(
   engine,
   new BrowserCadCommandWorker()
 );
+const occtMeshDevEnabled = __WEB_CAD_OCCT_MESH_DEV__;
 
 const quickBoxForm: PrimitiveCommandForm = {
   id: "",
@@ -78,6 +85,9 @@ const initialBatchForm: BatchOperationForm = {
 };
 
 export function App() {
+  const occtMeshDevRuntimeRef = useRef<OcctMeshDevRuntime | undefined>(
+    undefined
+  );
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -93,6 +103,14 @@ export function App() {
   const [commandPending, setCommandPending] = useState(false);
   const [projectJson, setProjectJson] = useState("");
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
+  const [occtMeshes, setOcctMeshes] = useState<readonly RenderTriangleMesh[]>(
+    []
+  );
+  const [occtPending, setOcctPending] = useState(false);
+  const [occtMessage, setOcctMessage] = useState<string | undefined>();
+  const [occtMetrics, setOcctMetrics] = useState<
+    OcctMeshDevMetrics | undefined
+  >();
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -105,15 +123,88 @@ export function App() {
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
     : undefined;
+  const canTessellateSelectedBox =
+    Boolean(selectedObject) && selectedObject?.kind === "box";
+
+  useEffect(() => {
+    return () => {
+      occtMeshDevRuntimeRef.current?.dispose();
+      occtMeshDevRuntimeRef.current = undefined;
+    };
+  }, []);
 
   function syncDocument(nextSelectedId = selectedId) {
     const nextDocument = engine.getDocument();
+    resetOcctDerivedMesh();
     setDocument(nextDocument);
     setSelectedId(
       nextSelectedId && nextDocument.objects.has(nextSelectedId)
         ? nextSelectedId
         : undefined
     );
+  }
+
+  function resetOcctDerivedMesh() {
+    setOcctMeshes([]);
+    setOcctMetrics(undefined);
+    setOcctMessage(undefined);
+  }
+
+  function clearOcctDerivedMesh() {
+    setOcctMeshes([]);
+    setOcctMetrics(undefined);
+    setOcctMessage("Cleared derived OCCT mesh.");
+  }
+
+  function selectObject(objectId: string | undefined) {
+    if (objectId !== selectedId) {
+      resetOcctDerivedMesh();
+    }
+
+    setSelectedId(objectId);
+  }
+
+  function getOcctMeshDevRuntime(): OcctMeshDevRuntime {
+    if (!occtMeshDevRuntimeRef.current) {
+      occtMeshDevRuntimeRef.current = createOcctMeshDevRuntime();
+    }
+
+    return occtMeshDevRuntimeRef.current;
+  }
+
+  async function tessellateSelectedBoxWithOcct() {
+    if (!selectedObject) {
+      setOcctMessage("Select a box before running OCCT tessellation.");
+      return;
+    }
+
+    if (selectedObject.kind !== "box") {
+      setOcctMessage("OCCT tessellation is currently wired for boxes only.");
+      return;
+    }
+
+    setOcctPending(true);
+    setOcctMessage(undefined);
+
+    try {
+      const result = await getOcctMeshDevRuntime().tessellateBox({
+        id: selectedObject.id,
+        dimensions: selectedObject.dimensions,
+        transform: selectedObject.transform
+      });
+
+      setOcctMeshes([result.mesh]);
+      setOcctMetrics(result.metrics);
+      setOcctMessage(result.message);
+    } catch (error) {
+      setOcctMeshes([]);
+      setOcctMetrics(undefined);
+      setOcctMessage(
+        error instanceof Error ? error.message : "OCCT tessellation failed."
+      );
+    } finally {
+      setOcctPending(false);
+    }
   }
 
   async function commitOps(
@@ -308,7 +399,7 @@ export function App() {
                     <button
                       type="button"
                       className={object.id === selectedId ? "selected" : ""}
-                      onClick={() => setSelectedId(object.id)}
+                      onClick={() => selectObject(object.id)}
                     >
                       <span>{object.id}</span>
                       <strong>{object.kind}</strong>
@@ -360,12 +451,74 @@ export function App() {
               <p className="project-message">{projectMessage}</p>
             )}
           </section>
+
+          {occtMeshDevEnabled && (
+            <section className="occt-panel" aria-label="OCCT mesh dev tools">
+              <h2>OCCT Mesh Dev</h2>
+              <div className="button-row">
+                <button
+                  type="button"
+                  onClick={() => void tessellateSelectedBoxWithOcct()}
+                  disabled={
+                    commandPending || occtPending || !canTessellateSelectedBox
+                  }
+                >
+                  {occtPending ? "Tessellating" : "Tessellate selected box"}
+                </button>
+                <button
+                  type="button"
+                  onClick={clearOcctDerivedMesh}
+                  disabled={occtPending || occtMeshes.length === 0}
+                >
+                  Clear mesh
+                </button>
+              </div>
+              {occtMessage && <p className="project-message">{occtMessage}</p>}
+              {occtMetrics && (
+                <dl className="metrics-list">
+                  <div>
+                    <dt>Object</dt>
+                    <dd>{occtMetrics.objectId}</dd>
+                  </div>
+                  <div>
+                    <dt>OCCT load</dt>
+                    <dd>{formatMetricMs(occtMetrics.occtLoadMs)}</dd>
+                  </div>
+                  <div>
+                    <dt>Tessellation</dt>
+                    <dd>{formatMetricMs(occtMetrics.tessellationMs)}</dd>
+                  </div>
+                  <div>
+                    <dt>Kernel total</dt>
+                    <dd>{formatMetricMs(occtMetrics.geometryKernelMs)}</dd>
+                  </div>
+                  <div>
+                    <dt>Worker total</dt>
+                    <dd>{formatMetricMs(occtMetrics.workerExecutionMs)}</dd>
+                  </div>
+                  <div>
+                    <dt>Round trip</dt>
+                    <dd>{formatMetricMs(occtMetrics.roundTripMs)}</dd>
+                  </div>
+                  <div>
+                    <dt>Vertices</dt>
+                    <dd>{occtMetrics.vertexCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Triangles</dt>
+                    <dd>{occtMetrics.triangleCount}</dd>
+                  </div>
+                </dl>
+              )}
+            </section>
+          )}
         </aside>
 
         <ViewportCanvas
           primitives={primitives}
+          meshes={occtMeshes}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={selectObject}
         />
 
         <Inspector

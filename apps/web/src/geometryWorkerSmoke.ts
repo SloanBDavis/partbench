@@ -10,6 +10,7 @@ async function runGeometryWorkerSmoke(): Promise<void> {
   const worker = new BrowserGeometryWorker();
 
   try {
+    const roundTripStart = performance.now();
     const response = await worker.execute(
       createBoxTessellationWorkerRequest({
         id: "browser_occt_smoke",
@@ -19,6 +20,7 @@ async function runGeometryWorkerSmoke(): Promise<void> {
         depth: 4
       })
     );
+    const roundTripMs = performance.now() - roundTripStart;
     const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {
       id: "browser_occt_smoke_mesh",
       alignment: "boundsCenter"
@@ -27,7 +29,14 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       ok: response.response.ok,
       vertexCount: renderMesh.vertexCount,
       triangleCount: renderMesh.triangleCount,
-      bounds: renderMesh.bounds
+      bounds: renderMesh.bounds,
+      timings: {
+        occtLoadMs: response.timings?.occtLoadMs,
+        tessellationMs: response.timings?.tessellationMs,
+        geometryKernelMs: response.timings?.geometryKernelMs,
+        workerExecutionMs: response.timings?.workerExecutionMs,
+        roundTripMs
+      }
     };
 
     document.body.dataset.geometryWorkerSmoke = "ok";

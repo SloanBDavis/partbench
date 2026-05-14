@@ -263,7 +263,8 @@ h2 {
 }
 
 .batch-panel,
-.project-panel {
+.project-panel,
+.occt-panel {
   display: grid;
   gap: 12px;
   margin-top: 20px;
@@ -368,6 +369,37 @@ h2 {
   color: #4f5f70;
   font-size: 0.84rem;
   line-height: 1.4;
+}
+
+.metrics-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.metrics-list div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.metrics-list dt {
+  color: #6c7a89;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.metrics-list dd {
+  min-width: 0;
+  margin: 0;
+  color: #1f2933;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .viewport-panel {

@@ -1,5 +1,5 @@
 import {
-  executeGeometryKernelRequest,
+  executeTimedBrowserGeometryKernelRequest,
   getGeometryResponseTransferables,
   type GeometryKernelErrorResponse,
   type GeometryKernelResponse
@@ -21,6 +21,7 @@ export {
   type GeometryWorkerSpikeRequest,
   type GeometryWorkerSpikeRequestKind,
   type GeometryWorkerSpikeResponse,
+  type GeometryWorkerSpikeTimings,
   type GeometryWorkerSpikeVersion
 } from "./protocol";
 
@@ -39,12 +40,21 @@ export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
     }
 
     try {
-      const response = await executeGeometryKernelRequest(request.payload);
+      const workerExecutionStart = performance.now();
+      const { response, timings } =
+        await executeTimedBrowserGeometryKernelRequest(request.payload);
+      const workerExecutionMs = performance.now() - workerExecutionStart;
 
       return createWorkerSpikeResponse(
         request,
         response as GeometryKernelResponse,
-        getGeometryResponseTransferables(response)
+        getGeometryResponseTransferables(response),
+        {
+          occtLoadMs: timings.occtLoadMs,
+          tessellationMs: timings.tessellationMs,
+          geometryKernelMs: timings.geometryKernelMs,
+          workerExecutionMs
+        }
       );
     } catch (error) {
       return createWorkerSpikeResponse(

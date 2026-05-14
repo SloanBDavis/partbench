@@ -22,6 +22,14 @@ export interface GeometryWorkerSpikeResponse {
   readonly payloadId: string;
   readonly response: GeometryKernelResponse;
   readonly transferables: readonly ArrayBuffer[];
+  readonly timings?: GeometryWorkerSpikeTimings;
+}
+
+export interface GeometryWorkerSpikeTimings {
+  readonly occtLoadMs?: number;
+  readonly tessellationMs?: number;
+  readonly workerExecutionMs?: number;
+  readonly geometryKernelMs?: number;
 }
 
 export interface GeometryWorkerSpike {
@@ -37,7 +45,8 @@ export interface GeometryWorkerSpikeOptions {
 export function createWorkerSpikeResponse(
   request: GeometryWorkerSpikeRequest,
   response: GeometryKernelResponse,
-  transferables: readonly ArrayBuffer[]
+  transferables: readonly ArrayBuffer[],
+  timings?: GeometryWorkerSpikeTimings
 ): GeometryWorkerSpikeResponse {
   return {
     id: request.id,
@@ -45,7 +54,8 @@ export function createWorkerSpikeResponse(
     kind: request.kind,
     payloadId: request.payload.id,
     response,
-    transferables
+    transferables,
+    ...(timings ? { timings } : {})
   };
 }
 

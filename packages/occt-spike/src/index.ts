@@ -1,12 +1,14 @@
 import initOpenCascade from "opencascade.js/dist/node.js";
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
+  createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
   type OcctBoxInput,
   type OcctSpikeMesh
 } from "./tessellateBox";
 
 export type { OcctBoxInput, OcctSpikeMesh };
+export { createOcctBoxMeshWithInstance, createOcctBoxMeshWithLoader };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
 

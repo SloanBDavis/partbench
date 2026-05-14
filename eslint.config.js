@@ -12,6 +12,20 @@ export default tseslint.config(
       "**/coverage/**"
     ]
   },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        Buffer: "readonly",
+        URL: "readonly",
+        WebSocket: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+        setTimeout: "readonly"
+      }
+    }
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -1,4 +1,7 @@
-import { createOcctBoxMeshSpike } from "@web-cad/occt-spike/browser";
+import {
+  createOcctBoxMeshWithInstance,
+  loadBrowserOcct
+} from "@web-cad/occt-spike/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
@@ -34,11 +37,52 @@ export type {
 };
 export { getGeometryResponseTransferables };
 
+export interface BrowserGeometryKernelTimings {
+  readonly occtLoadMs: number;
+  readonly tessellationMs: number;
+  readonly geometryKernelMs: number;
+}
+
+export interface TimedBrowserGeometryKernelResponse {
+  readonly response: GeometryKernelResponse;
+  readonly timings: BrowserGeometryKernelTimings;
+}
+
 export async function executeGeometryKernelRequest(
   request: GeometryKernelRequest
 ): Promise<GeometryKernelResponse> {
-  return executeGeometryKernelRequestWithMeshFactory(
-    createOcctBoxMeshSpike,
+  return (await executeTimedBrowserGeometryKernelRequest(request)).response;
+}
+
+export async function executeTimedBrowserGeometryKernelRequest(
+  request: GeometryKernelRequest
+): Promise<TimedBrowserGeometryKernelResponse> {
+  let occtLoadMs = 0;
+  let tessellationMs = 0;
+  const geometryKernelStart = performance.now();
+  const response = await executeGeometryKernelRequestWithMeshFactory(
+    async (input) => {
+      const occtLoadStart = performance.now();
+      const oc = await loadBrowserOcct();
+      occtLoadMs = performance.now() - occtLoadStart;
+
+      const tessellationStart = performance.now();
+
+      try {
+        return createOcctBoxMeshWithInstance(oc, input);
+      } finally {
+        tessellationMs = performance.now() - tessellationStart;
+      }
+    },
     request
   );
+
+  return {
+    response,
+    timings: {
+      occtLoadMs,
+      tessellationMs,
+      geometryKernelMs: performance.now() - geometryKernelStart
+    }
+  };
 }

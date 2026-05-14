@@ -19,6 +19,7 @@ export {
   type GeometryWorkerSpikeRequest,
   type GeometryWorkerSpikeRequestKind,
   type GeometryWorkerSpikeResponse,
+  type GeometryWorkerSpikeTimings,
   type GeometryWorkerSpikeVersion
 } from "./protocol";
 
