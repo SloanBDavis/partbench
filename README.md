@@ -32,10 +32,10 @@ Run the app with the explicit OCCT mesh dev path enabled:
 VITE_ENABLE_OCCT_MESH_DEV=true pnpm dev
 ```
 
-With that flag enabled, create or select a box and use the `OCCT Mesh Dev`
-panel to tessellate it asynchronously in the browser Worker. The returned mesh
-is displayed as a derived renderer overlay and does not update the authoritative
-CAD document.
+With that flag enabled, boxes are automatically submitted to the derived mesh
+service and tessellated asynchronously in the browser Worker. The returned mesh
+is displayed as a derived renderer overlay, the panel shows per-object geometry
+status, and the authoritative CAD document is not updated by mesh generation.
 
 Run the full build:
 
@@ -97,8 +97,8 @@ cannot find a browser.
 
 ## Current Limitations
 
-- The production renderer still uses simple primitive drawing; OCCT mesh display
-  is feature-flagged dev tooling.
+- The production renderer still uses simple primitive drawing as fallback; OCCT
+  mesh display is feature-flagged and box-only.
 - OCCT/WASM is intentionally off the normal startup path and currently proves box
   tessellation only.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or

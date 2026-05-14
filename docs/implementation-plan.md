@@ -30,7 +30,7 @@ The current repo is a TypeScript pnpm workspace with a Vite React app and focuse
 packages:
 
 - `apps/web` - browser UI, command-worker entrypoint, geometry-worker entrypoint,
-  feature-flagged OCCT mesh dev path, and smoke page.
+  feature-flagged derived mesh service for OCCT box meshes, and smoke page.
 - `packages/cad-protocol` - typed CADOps command, batch, and query shapes.
 - `packages/cad-core` - in-memory document model, command application,
   transactions, semantic diffs, undo/redo, CADOps query path, and project JSON
@@ -159,9 +159,8 @@ Delivered:
 - Geometry-kernel facade around the OCCT spike.
 - Browser geometry worker entrypoint.
 - Renderer mesh bridge.
-- Feature-flagged app UI path for selecting a box, tessellating asynchronously
-  through the browser Worker, and displaying the returned mesh as a derived
-  overlay.
+- Feature-flagged app UI path for deriving box meshes asynchronously through the
+  browser Worker and displaying returned meshes as derived overlays.
 - Lightweight instrumentation for:
   - OCCT/WASM first-load time.
   - Tessellation request time.
@@ -255,7 +254,8 @@ Current limitations:
 - OCCT currently proves box tessellation only.
 - Cylinders still render through the simple primitive renderer path.
 - The OCCT mesh UI is dev-flagged and not a production geometry pipeline.
-- No production mesh cache or invalidation model exists yet.
+- The first feature-flagged derived mesh cache/invalidation path exists for
+  boxes, but there is no full production geometry cache yet.
 - No stable topological naming system exists yet.
 - No sketch solver exists yet.
 - No exact measurement API exists yet.
@@ -311,6 +311,19 @@ Deliverables:
 - Keep derived mesh state outside the authoritative document.
 - Continue rendering simple primitives as fallback while geometry is loading or
   unavailable.
+
+Current slice delivered:
+
+- A feature-flagged app-layer derived geometry service consumes current document
+  objects and derives renderer meshes for boxes through the existing browser
+  geometry worker path.
+- Per-object derived geometry status is tracked as unsupported, pending, ready,
+  or error.
+- Cache keys include current MVP dimensions and transforms, and stale async
+  worker results are ignored after invalidation.
+- Derived mesh entries are reconciled after create, transform update, delete,
+  undo, redo, and project import/load because those paths update the current
+  document snapshot.
 
 Exit criteria:
 

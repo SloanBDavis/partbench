@@ -12,8 +12,8 @@ import type {
   CadOp
 } from "@web-cad/cad-protocol";
 import { createOcctMeshDevRuntime } from "@web-cad/occt-mesh-dev-runtime";
-import type { RenderPrimitive, RenderTriangleMesh } from "@web-cad/renderer";
-import { useEffect, useMemo, useRef, useState } from "react";
+import type { RenderPrimitive } from "@web-cad/renderer";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
   buildCreateBoxOp,
@@ -31,13 +31,13 @@ import { Inspector } from "./components/Inspector";
 import { OcctMeshDevPanel } from "./components/OcctMeshDevPanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
+import type { OcctMeshDevRuntime } from "./occtMeshDev";
 import {
-  createOcctMeshDevErrorDetails,
-  formatOcctMeshDevError,
-  type OcctMeshDevErrorDetails,
-  type OcctMeshDevMetrics,
-  type OcctMeshDevRuntime
-} from "./occtMeshDev";
+  createEmptyDerivedGeometrySnapshot,
+  DerivedGeometryService,
+  getDerivedGeometryStatusLabel,
+  type DerivedGeometrySnapshot
+} from "./derivedGeometry";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -92,6 +92,9 @@ export function App() {
   const occtMeshDevRuntimeRef = useRef<OcctMeshDevRuntime | undefined>(
     undefined
   );
+  const derivedGeometryServiceRef = useRef<DerivedGeometryService | undefined>(
+    undefined
+  );
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -107,17 +110,27 @@ export function App() {
   const [commandPending, setCommandPending] = useState(false);
   const [projectJson, setProjectJson] = useState("");
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
-  const [occtMeshes, setOcctMeshes] = useState<readonly RenderTriangleMesh[]>(
-    []
-  );
-  const [occtPending, setOcctPending] = useState(false);
-  const [occtMessage, setOcctMessage] = useState<string | undefined>();
-  const [occtError, setOcctError] = useState<
-    OcctMeshDevErrorDetails | undefined
-  >();
-  const [occtMetrics, setOcctMetrics] = useState<
-    OcctMeshDevMetrics | undefined
-  >();
+  const [derivedGeometry, setDerivedGeometry] =
+    useState<DerivedGeometrySnapshot>(() =>
+      createEmptyDerivedGeometrySnapshot()
+    );
+  const getOcctMeshDevRuntime = useCallback((): OcctMeshDevRuntime => {
+    if (!occtMeshDevRuntimeRef.current) {
+      occtMeshDevRuntimeRef.current = createOcctMeshDevRuntime();
+    }
+
+    return occtMeshDevRuntimeRef.current;
+  }, []);
+  const getDerivedGeometryService = useCallback((): DerivedGeometryService => {
+    if (!derivedGeometryServiceRef.current) {
+      derivedGeometryServiceRef.current = new DerivedGeometryService({
+        runtime: getOcctMeshDevRuntime(),
+        onChange: setDerivedGeometry
+      });
+    }
+
+    return derivedGeometryServiceRef.current;
+  }, [getOcctMeshDevRuntime]);
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -130,19 +143,31 @@ export function App() {
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
     : undefined;
-  const canTessellateSelectedBox =
-    Boolean(selectedObject) && selectedObject?.kind === "box";
+  const derivedGeometryByObjectId = useMemo(
+    () =>
+      new Map(derivedGeometry.entries.map((entry) => [entry.objectId, entry])),
+    [derivedGeometry]
+  );
 
   useEffect(() => {
     return () => {
-      occtMeshDevRuntimeRef.current?.dispose();
+      derivedGeometryServiceRef.current?.dispose();
+      derivedGeometryServiceRef.current = undefined;
       occtMeshDevRuntimeRef.current = undefined;
     };
   }, []);
 
+  useEffect(() => {
+    if (!occtMeshDevEnabled) {
+      return;
+    }
+
+    getDerivedGeometryService().reconcile(sceneObjects);
+  }, [getDerivedGeometryService, sceneObjects]);
+
   function syncDocument(nextSelectedId = selectedId) {
     const nextDocument = engine.getDocument();
-    resetOcctDerivedMesh();
+    reconcileDerivedGeometry(nextDocument);
     setDocument(nextDocument);
     setSelectedId(
       nextSelectedId && nextDocument.objects.has(nextSelectedId)
@@ -151,71 +176,24 @@ export function App() {
     );
   }
 
-  function resetOcctDerivedMesh() {
-    setOcctMeshes([]);
-    setOcctMetrics(undefined);
-    setOcctMessage(undefined);
-    setOcctError(undefined);
-  }
-
-  function clearOcctDerivedMesh() {
-    setOcctMeshes([]);
-    setOcctMetrics(undefined);
-    setOcctError(undefined);
-    setOcctMessage("Cleared derived OCCT mesh.");
-  }
-
   function selectObject(objectId: string | undefined) {
-    if (objectId !== selectedId) {
-      resetOcctDerivedMesh();
-    }
-
     setSelectedId(objectId);
   }
 
-  function getOcctMeshDevRuntime(): OcctMeshDevRuntime {
-    if (!occtMeshDevRuntimeRef.current) {
-      occtMeshDevRuntimeRef.current = createOcctMeshDevRuntime();
+  function reconcileDerivedGeometry(nextDocument: CadDocument) {
+    if (!occtMeshDevEnabled) {
+      return;
     }
 
-    return occtMeshDevRuntimeRef.current;
+    getDerivedGeometryService().reconcile([...nextDocument.objects.values()]);
   }
 
-  async function tessellateSelectedBoxWithOcct() {
-    if (!selectedObject) {
-      setOcctMessage("Select a box before running OCCT tessellation.");
+  function refreshDerivedGeometry() {
+    if (!occtMeshDevEnabled) {
       return;
     }
 
-    if (selectedObject.kind !== "box") {
-      setOcctMessage("OCCT tessellation is currently wired for boxes only.");
-      return;
-    }
-
-    setOcctPending(true);
-    setOcctMessage(undefined);
-    setOcctError(undefined);
-
-    try {
-      const result = await getOcctMeshDevRuntime().tessellateBox({
-        id: selectedObject.id,
-        dimensions: selectedObject.dimensions,
-        transform: selectedObject.transform
-      });
-
-      setOcctMeshes([result.mesh]);
-      setOcctMetrics(result.metrics);
-      setOcctMessage(result.message);
-    } catch (error) {
-      const details = createOcctMeshDevErrorDetails(error);
-
-      setOcctMeshes([]);
-      setOcctMetrics(undefined);
-      setOcctError(details);
-      setOcctMessage(formatOcctMeshDevError(details));
-    } finally {
-      setOcctPending(false);
-    }
+    getDerivedGeometryService().refresh(sceneObjects);
   }
 
   async function commitOps(
@@ -414,6 +392,13 @@ export function App() {
                     >
                       <span>{object.id}</span>
                       <strong>{object.kind}</strong>
+                      {occtMeshDevEnabled && (
+                        <small>
+                          {getDerivedGeometryStatusLabel(
+                            derivedGeometryByObjectId.get(object.id)
+                          )}
+                        </small>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -445,24 +430,16 @@ export function App() {
 
           {occtMeshDevEnabled && (
             <OcctMeshDevPanel
-              commandPending={commandPending}
-              canTessellateSelectedBox={canTessellateSelectedBox}
-              meshCount={occtMeshes.length}
-              pending={occtPending}
-              message={occtMessage}
-              error={occtError}
-              metrics={occtMetrics}
-              onTessellateSelectedBox={() =>
-                void tessellateSelectedBoxWithOcct()
-              }
-              onClearMesh={clearOcctDerivedMesh}
+              disabled={commandPending}
+              snapshot={derivedGeometry}
+              onRefresh={refreshDerivedGeometry}
             />
           )}
         </aside>
 
         <ViewportCanvas
           primitives={primitives}
-          meshes={occtMeshes}
+          meshes={derivedGeometry.meshes}
           selectedId={selectedId}
           onSelect={selectObject}
         />

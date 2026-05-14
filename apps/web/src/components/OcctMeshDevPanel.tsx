@@ -1,105 +1,112 @@
 import {
-  formatMetricMs,
-  type OcctMeshDevErrorDetails,
-  type OcctMeshDevMetrics
-} from "../occtMeshDev";
+  getDerivedGeometryStatusLabel,
+  type DerivedGeometrySnapshot
+} from "../derivedGeometry";
+import { formatMetricMs } from "../occtMeshDev";
 
 export interface OcctMeshDevPanelProps {
-  readonly commandPending: boolean;
-  readonly canTessellateSelectedBox: boolean;
-  readonly meshCount: number;
-  readonly pending: boolean;
-  readonly message?: string;
-  readonly error?: OcctMeshDevErrorDetails;
-  readonly metrics?: OcctMeshDevMetrics;
-  readonly onTessellateSelectedBox: () => void;
-  readonly onClearMesh: () => void;
+  readonly disabled: boolean;
+  readonly snapshot: DerivedGeometrySnapshot;
+  readonly onRefresh: () => void;
 }
 
 export function OcctMeshDevPanel({
-  commandPending,
-  canTessellateSelectedBox,
-  meshCount,
-  pending,
-  message,
-  error,
-  metrics,
-  onTessellateSelectedBox,
-  onClearMesh
+  disabled,
+  snapshot,
+  onRefresh
 }: OcctMeshDevPanelProps) {
+  const hasSupportedObjects = snapshot.supportedCount > 0;
+  const hasPendingWork = snapshot.pendingCount > 0;
+  const firstError = snapshot.entries.find((entry) => entry.status === "error");
+
   return (
     <section className="occt-panel" aria-label="OCCT mesh dev tools">
       <h2>OCCT Mesh Dev</h2>
       <div className="button-row">
         <button
           type="button"
-          onClick={onTessellateSelectedBox}
-          disabled={commandPending || pending || !canTessellateSelectedBox}
+          onClick={onRefresh}
+          disabled={disabled || hasPendingWork || !hasSupportedObjects}
         >
-          {pending ? "Tessellating" : "Tessellate selected box"}
-        </button>
-        <button
-          type="button"
-          onClick={onClearMesh}
-          disabled={pending || meshCount === 0}
-        >
-          Clear mesh
+          {hasPendingWork ? "Deriving meshes" : "Refresh derived meshes"}
         </button>
       </div>
-      {message && <p className="project-message">{message}</p>}
-      {error && (
+
+      {snapshot.entries.length === 0 ? (
+        <p className="project-message">No objects to derive.</p>
+      ) : (
+        <ul className="geometry-status-list">
+          {snapshot.entries.map((entry) => (
+            <li key={entry.objectId} className={`geometry-${entry.status}`}>
+              <div className="geometry-status-heading">
+                <span>{entry.objectId}</span>
+                <strong>{getDerivedGeometryStatusLabel(entry)}</strong>
+              </div>
+              {entry.status === "unsupported" && <p>{entry.message}</p>}
+              {entry.status === "error" && (
+                <p>
+                  {entry.error.code} at {entry.error.stage}:{" "}
+                  {entry.error.message}
+                </p>
+              )}
+              {entry.status === "ready" && (
+                <dl className="metrics-list">
+                  <div>
+                    <dt>Round trip</dt>
+                    <dd>{formatMetricMs(entry.metrics.roundTripMs)}</dd>
+                  </div>
+                  <div>
+                    <dt>Vertices</dt>
+                    <dd>{entry.metrics.vertexCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Triangles</dt>
+                    <dd>{entry.metrics.triangleCount}</dd>
+                  </div>
+                </dl>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <dl className="metrics-list">
+        <div>
+          <dt>Supported</dt>
+          <dd>{snapshot.supportedCount}</dd>
+        </div>
+        <div>
+          <dt>Pending</dt>
+          <dd>{snapshot.pendingCount}</dd>
+        </div>
+        <div>
+          <dt>Ready</dt>
+          <dd>{snapshot.readyCount}</dd>
+        </div>
+        <div>
+          <dt>Errors</dt>
+          <dd>{snapshot.errorCount}</dd>
+        </div>
+      </dl>
+      {firstError?.status === "error" && (
         <dl className="occt-error">
           <div>
             <dt>Code</dt>
-            <dd>{error.code}</dd>
+            <dd>{firstError.error.code}</dd>
           </div>
           <div>
             <dt>Stage</dt>
-            <dd>{error.stage}</dd>
+            <dd>{firstError.error.stage}</dd>
           </div>
           <div>
             <dt>WASM</dt>
-            <dd>{error.wasmLoadStatus}</dd>
+            <dd>{firstError.error.wasmLoadStatus}</dd>
           </div>
           <div>
             <dt>Worker</dt>
-            <dd>{error.workerStarted ? "started" : "not started"}</dd>
-          </div>
-        </dl>
-      )}
-      {metrics && (
-        <dl className="metrics-list">
-          <div>
-            <dt>Object</dt>
-            <dd>{metrics.objectId}</dd>
-          </div>
-          <div>
-            <dt>OCCT load</dt>
-            <dd>{formatMetricMs(metrics.occtLoadMs)}</dd>
-          </div>
-          <div>
-            <dt>Tessellation</dt>
-            <dd>{formatMetricMs(metrics.tessellationMs)}</dd>
-          </div>
-          <div>
-            <dt>Kernel total</dt>
-            <dd>{formatMetricMs(metrics.geometryKernelMs)}</dd>
-          </div>
-          <div>
-            <dt>Worker total</dt>
-            <dd>{formatMetricMs(metrics.workerExecutionMs)}</dd>
-          </div>
-          <div>
-            <dt>Round trip</dt>
-            <dd>{formatMetricMs(metrics.roundTripMs)}</dd>
-          </div>
-          <div>
-            <dt>Vertices</dt>
-            <dd>{metrics.vertexCount}</dd>
-          </div>
-          <div>
-            <dt>Triangles</dt>
-            <dd>{metrics.triangleCount}</dd>
+            <dd>
+              {firstError.error.workerStarted ? "started" : "not started"}
+            </dd>
           </div>
         </dl>
       )}
