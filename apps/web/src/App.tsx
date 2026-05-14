@@ -1,7 +1,6 @@
 import {
   AsyncCadCommandExecutor,
   CadEngine,
-  MockCadCommandWorker,
   exportCadProjectJson,
   parseCadProjectJson,
   type CadDocument,
@@ -25,6 +24,7 @@ import {
   type PrimitiveCommandForm,
   type TransformCommandForm
 } from "./cadCommands";
+import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { BatchPanel } from "./components/BatchPanel";
 import { Inspector } from "./components/Inspector";
 import { ViewportCanvas } from "./components/ViewportCanvas";
@@ -33,7 +33,7 @@ import "./styles.css";
 const engine = new CadEngine();
 const commandExecutor = new AsyncCadCommandExecutor(
   engine,
-  new MockCadCommandWorker({ delayMs: 75 })
+  new BrowserCadCommandWorker()
 );
 
 const quickBoxForm: PrimitiveCommandForm = {
