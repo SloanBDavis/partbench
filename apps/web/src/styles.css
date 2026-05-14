@@ -27,6 +27,51 @@ button {
   font: inherit;
 }
 
+input,
+select {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #bac5d1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2933;
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+input {
+  padding: 0 8px;
+}
+
+select {
+  padding: 0 6px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  color: #566575;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #d4dbe4;
+  border-radius: 6px;
+}
+
+legend {
+  padding: 0 4px;
+  color: #687789;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .app-shell {
   display: grid;
   min-height: 100vh;
@@ -78,7 +123,8 @@ h2 {
 }
 
 .toolbar-actions button,
-.object-tree button {
+.object-tree button,
+.button-row button {
   min-height: 36px;
   border: 1px solid #b9c3cf;
   border-radius: 6px;
@@ -92,22 +138,29 @@ h2 {
 }
 
 .toolbar-actions button:hover,
-.object-tree button:hover {
+.object-tree button:hover,
+.button-row button:hover {
   border-color: #6c7f93;
 }
 
-.toolbar-actions button:disabled {
+.toolbar-actions button:disabled,
+.button-row button:disabled {
   border-color: #d5dbe3;
   color: #8794a3;
   cursor: not-allowed;
 }
 
+.button-row button.danger {
+  border-color: #c78686;
+  color: #8f2d2d;
+}
+
 .workspace {
   display: grid;
   min-height: 0;
-  grid-template-columns: minmax(180px, 240px) minmax(360px, 1fr) minmax(
+  grid-template-columns: minmax(240px, 320px) minmax(360px, 1fr) minmax(
       220px,
-      280px
+      300px
     );
 }
 
@@ -117,6 +170,7 @@ h2 {
   padding: 16px;
   border-color: #c8d0da;
   background: #f8fafc;
+  overflow: auto;
 }
 
 .object-tree {
@@ -167,6 +221,106 @@ h2 {
   font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.batch-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #d8dee7;
+}
+
+.field-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.field-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.transform-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.transform-fields.compact {
+  gap: 8px;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.button-row button {
+  padding: 0 10px;
+  background: #ffffff;
+  color: #1f2933;
+  cursor: pointer;
+}
+
+.batch-list {
+  display: grid;
+  gap: 6px;
+  max-height: 150px;
+  margin: 0;
+  padding-left: 20px;
+  overflow: auto;
+}
+
+.batch-list:empty {
+  display: none;
+}
+
+.batch-list code,
+.batch-response code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+}
+
+.batch-response {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #c9d7ca;
+  border-radius: 6px;
+  background: #f2f8f2;
+}
+
+.batch-response.error-response {
+  border-color: #e2bcbc;
+  background: #fff4f4;
+}
+
+.batch-response h3 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.batch-response p {
+  margin: 0;
+  color: #4f5f70;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.batch-response span {
+  color: #1f2933;
+  font-weight: 700;
+}
+
+.error-text {
+  margin: 0;
+  color: #a13232;
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .viewport-panel {
@@ -230,6 +384,19 @@ canvas:active {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.88rem;
   overflow-wrap: anywhere;
+}
+
+.command-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #d8dee7;
+}
+
+.command-card h3 {
+  margin: 0;
+  font-size: 0.88rem;
 }
 
 @media (max-width: 900px) {
