@@ -72,6 +72,12 @@ importers:
 
   packages/cad-protocol: {}
 
+  packages/geometry-kernel:
+    dependencies:
+      '@web-cad/occt-spike':
+        specifier: workspace:*
+        version: link:../occt-spike
+
   packages/occt-spike:
     dependencies:
       opencascade.js:
