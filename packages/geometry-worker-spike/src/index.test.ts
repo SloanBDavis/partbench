@@ -1,0 +1,117 @@
+import { describe, expect, it } from "vitest";
+import {
+  GeometryKernelWorkerSpike,
+  createBoxTessellationWorkerRequest,
+  createGeometryKernelWorkerSpike
+} from "./index";
+
+describe("geometry-worker-spike", () => {
+  it("creates a typed box tessellation worker request", () => {
+    const request = createBoxTessellationWorkerRequest({
+      id: "worker_req_1",
+      width: 10,
+      height: 20,
+      depth: 30,
+      linearDeflection: 0.25
+    });
+
+    expect(request).toEqual({
+      id: "worker_req_1",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payload: {
+        id: "worker_req_1:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateBox",
+        dimensions: {
+          width: 10,
+          height: 20,
+          depth: 30
+        },
+        tessellation: {
+          linearDeflection: 0.25
+        }
+      }
+    });
+  });
+
+  it("tessellates one box asynchronously through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorkerSpike({ delayMs: 1 });
+    const responsePromise = worker.execute(
+      createBoxTessellationWorkerRequest({
+        id: "worker_req_box",
+        payloadId: "geometry_req_box",
+        width: 10,
+        height: 20,
+        depth: 30
+      })
+    );
+    let isSettled = false;
+    void responsePromise.then(() => {
+      isSettled = true;
+    });
+
+    expect(isSettled).toBe(false);
+
+    const response = await responsePromise;
+
+    expect(response).toMatchObject({
+      id: "worker_req_box",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payloadId: "geometry_req_box",
+      response: {
+        ok: true,
+        id: "geometry_req_box",
+        op: "geometry.tessellateBox",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("box");
+    expect(response.response.mesh.faceCount).toBe(6);
+    expect(response.response.mesh.vertexCount).toBe(24);
+    expect(response.response.mesh.triangleCount).toBe(12);
+    expect(response.response.mesh.positions).toBeInstanceOf(Float32Array);
+    expect(response.response.mesh.indices).toBeInstanceOf(Uint32Array);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
+  it("returns structured kernel validation errors without transferables", async () => {
+    const worker = new GeometryKernelWorkerSpike();
+
+    const response = await worker.execute(
+      createBoxTessellationWorkerRequest({
+        id: "worker_req_bad_dimensions",
+        width: 0,
+        height: 20,
+        depth: 30
+      })
+    );
+
+    expect(response).toEqual({
+      id: "worker_req_bad_dimensions",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payloadId: "worker_req_bad_dimensions:payload",
+      response: {
+        ok: false,
+        id: "worker_req_bad_dimensions:payload",
+        op: "geometry.tessellateBox",
+        error: {
+          code: "INVALID_DIMENSIONS",
+          message: "Box dimensions must be finite numbers greater than zero."
+        },
+        warnings: []
+      },
+      transferables: []
+    });
+  });
+});

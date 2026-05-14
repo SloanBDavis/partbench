@@ -87,6 +87,12 @@ importers:
         specifier: workspace:*
         version: link:../occt-spike
 
+  packages/geometry-worker-spike:
+    dependencies:
+      '@web-cad/geometry-kernel':
+        specifier: workspace:*
+        version: link:../geometry-kernel
+
   packages/mcp-adapter:
     dependencies:
       '@web-cad/agent-adapter':
