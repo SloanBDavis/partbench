@@ -1,11 +1,70 @@
 import { describe, expect, it } from "vitest";
-import { rendererPackage } from "./index";
+import {
+  createDefaultCamera,
+  orbitCamera,
+  panCamera,
+  pickPrimitive,
+  projectPoint,
+  rendererPackage,
+  zoomCamera
+} from "./index";
 
-describe("renderer placeholder", () => {
+describe("renderer", () => {
   it("exports package status", () => {
     expect(rendererPackage).toEqual({
       name: "@web-cad/renderer",
       status: "ready"
     });
+  });
+
+  it("projects a world point into viewport space", () => {
+    const projected = projectPoint([0, 0, 0], createDefaultCamera(), {
+      width: 800,
+      height: 600
+    });
+
+    expect(projected?.x).toBeGreaterThan(0);
+    expect(projected?.x).toBeLessThan(800);
+    expect(projected?.y).toBeGreaterThan(0);
+    expect(projected?.y).toBeLessThan(600);
+    expect(projected?.depth).toBeGreaterThan(0);
+  });
+
+  it("updates orbit, pan, and zoom camera state", () => {
+    const camera = createDefaultCamera();
+    const orbited = orbitCamera(camera, { x: 20, y: -10 });
+    const panned = panCamera(
+      orbited,
+      { x: 12, y: -8 },
+      { width: 800, height: 600 }
+    );
+    const zoomed = zoomCamera(panned, -120);
+
+    expect(orbited.yaw).not.toBe(camera.yaw);
+    expect(orbited.pitch).not.toBe(camera.pitch);
+    expect(panned.target).not.toEqual(orbited.target);
+    expect(zoomed.distance).toBeLessThan(panned.distance);
+  });
+
+  it("picks a primitive by projected bounds", () => {
+    const selectedId = pickPrimitive(
+      [
+        {
+          id: "box_1",
+          kind: "box",
+          dimensions: { width: 4, height: 4, depth: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      createDefaultCamera(),
+      { width: 800, height: 600 },
+      { x: 400, y: 300 }
+    );
+
+    expect(selectedId).toBe("box_1");
   });
 });
