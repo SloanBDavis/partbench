@@ -23,6 +23,7 @@ export interface GeometryWorkerSpikeResponse {
   readonly response: GeometryKernelResponse;
   readonly transferables: readonly ArrayBuffer[];
   readonly timings?: GeometryWorkerSpikeTimings;
+  readonly diagnostics?: GeometryWorkerSpikeDiagnostics;
 }
 
 export interface GeometryWorkerSpikeTimings {
@@ -30,6 +31,37 @@ export interface GeometryWorkerSpikeTimings {
   readonly tessellationMs?: number;
   readonly workerExecutionMs?: number;
   readonly geometryKernelMs?: number;
+}
+
+export type GeometryWorkerSpikeStage =
+  | "requestValidation"
+  | "wasmLoad"
+  | "tessellation"
+  | "worker"
+  | "transport"
+  | "complete";
+
+export type GeometryWorkerSpikeErrorCode =
+  | "WASM_LOAD_FAILED"
+  | "UNSUPPORTED_PRIMITIVE"
+  | "KERNEL_TESSELLATION_FAILED"
+  | "WORKER_TRANSPORT_FAILED"
+  | "WORKER_RUNTIME_FAILED";
+
+export type GeometryWorkerWasmLoadStatus = "notRequested" | "loaded" | "failed";
+
+export interface GeometryWorkerSpikeErrorDetails {
+  readonly code: GeometryWorkerSpikeErrorCode;
+  readonly message: string;
+  readonly cause?: string;
+}
+
+export interface GeometryWorkerSpikeDiagnostics {
+  readonly ok: boolean;
+  readonly stage: GeometryWorkerSpikeStage;
+  readonly workerStarted: boolean;
+  readonly wasmLoadStatus: GeometryWorkerWasmLoadStatus;
+  readonly error?: GeometryWorkerSpikeErrorDetails;
 }
 
 export interface GeometryWorkerSpike {
@@ -46,7 +78,8 @@ export function createWorkerSpikeResponse(
   request: GeometryWorkerSpikeRequest,
   response: GeometryKernelResponse,
   transferables: readonly ArrayBuffer[],
-  timings?: GeometryWorkerSpikeTimings
+  timings?: GeometryWorkerSpikeTimings,
+  diagnostics?: GeometryWorkerSpikeDiagnostics
 ): GeometryWorkerSpikeResponse {
   return {
     id: request.id,
@@ -55,7 +88,40 @@ export function createWorkerSpikeResponse(
     payloadId: request.payload.id,
     response,
     transferables,
-    ...(timings ? { timings } : {})
+    ...(timings ? { timings } : {}),
+    ...(diagnostics ? { diagnostics } : {})
+  };
+}
+
+export function createWorkerSuccessDiagnostics(input: {
+  readonly wasmLoadStatus: GeometryWorkerWasmLoadStatus;
+}): GeometryWorkerSpikeDiagnostics {
+  return {
+    ok: true,
+    stage: "complete",
+    workerStarted: true,
+    wasmLoadStatus: input.wasmLoadStatus
+  };
+}
+
+export function createWorkerErrorDiagnostics(input: {
+  readonly stage: GeometryWorkerSpikeStage;
+  readonly code: GeometryWorkerSpikeErrorCode;
+  readonly message: string;
+  readonly wasmLoadStatus?: GeometryWorkerWasmLoadStatus;
+  readonly workerStarted?: boolean;
+  readonly cause?: string;
+}): GeometryWorkerSpikeDiagnostics {
+  return {
+    ok: false,
+    stage: input.stage,
+    workerStarted: input.workerStarted ?? true,
+    wasmLoadStatus: input.wasmLoadStatus ?? "notRequested",
+    error: {
+      code: input.code,
+      message: input.message,
+      ...(input.cause ? { cause: input.cause } : {})
+    }
   };
 }
 

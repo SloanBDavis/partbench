@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   GeometryKernelWorkerSpike,
   createBoxTessellationWorkerRequest,
+  createWorkerErrorDiagnostics,
+  createWorkerSuccessDiagnostics,
   createGeometryKernelWorkerSpike
 } from "./index";
 
@@ -112,6 +114,38 @@ describe("geometry-worker-spike", () => {
         warnings: []
       },
       transferables: []
+    });
+  });
+
+  it("creates structured worker diagnostics for success and failure", () => {
+    expect(
+      createWorkerSuccessDiagnostics({
+        wasmLoadStatus: "loaded"
+      })
+    ).toEqual({
+      ok: true,
+      stage: "complete",
+      workerStarted: true,
+      wasmLoadStatus: "loaded"
+    });
+
+    expect(
+      createWorkerErrorDiagnostics({
+        stage: "wasmLoad",
+        code: "WASM_LOAD_FAILED",
+        message: "OCCT WASM could not be loaded.",
+        cause: "network error"
+      })
+    ).toEqual({
+      ok: false,
+      stage: "wasmLoad",
+      workerStarted: true,
+      wasmLoadStatus: "notRequested",
+      error: {
+        code: "WASM_LOAD_FAILED",
+        message: "OCCT WASM could not be loaded.",
+        cause: "network error"
+      }
     });
   });
 });

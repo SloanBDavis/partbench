@@ -1,12 +1,12 @@
 import {
   GeometryKernelWorkerSpike,
   createBoxTessellationWorkerRequest,
-  type GeometryWorkerSpikeRequest,
-  type GeometryWorkerSpikeResponse
+  type GeometryWorkerSpikeRequest
 } from "@web-cad/geometry-worker-spike";
 import { describe, expect, it } from "vitest";
 import {
   BrowserGeometryWorker,
+  BrowserGeometryWorkerError,
   type GeometryWorkerMessage,
   type GeometryWorkerTransport
 } from "./browserGeometryWorker";
@@ -29,14 +29,14 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   readonly requests: GeometryWorkerSpikeRequest[] = [];
   readonly #handler: (
     request: GeometryWorkerSpikeRequest
-  ) => Promise<GeometryWorkerSpikeResponse>;
+  ) => Promise<GeometryWorkerMessage>;
   readonly #messageListeners = new Set<MessageListener>();
   readonly #errorListeners = new Set<ErrorListener>();
 
   constructor(
     handler: (
       request: GeometryWorkerSpikeRequest
-    ) => Promise<GeometryWorkerSpikeResponse>
+    ) => Promise<GeometryWorkerMessage>
   ) {
     this.#handler = handler;
   }
@@ -194,15 +194,71 @@ describe("BrowserGeometryWorker", () => {
     });
     const worker = new BrowserGeometryWorker(transport);
 
-    await expect(
-      worker.execute(
+    try {
+      await worker.execute(
         createBoxTessellationWorkerRequest({
           id: "browser_geometry_req_failure",
           width: 1,
           height: 1,
           depth: 1
         })
-      )
-    ).rejects.toThrow("geometry worker transport failed");
+      );
+      throw new Error("Expected the geometry worker request to fail.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrowserGeometryWorkerError);
+      expect((error as BrowserGeometryWorkerError).diagnostics).toMatchObject({
+        ok: false,
+        stage: "transport",
+        workerStarted: false,
+        wasmLoadStatus: "notRequested",
+        error: {
+          code: "WORKER_TRANSPORT_FAILED",
+          message: "geometry worker transport failed"
+        }
+      });
+    }
+  });
+
+  it("rejects structured worker message errors with diagnostics", async () => {
+    const transport = new FakeGeometryWorkerTransport(async (request) => ({
+      id: request.id,
+      error:
+        "Unsupported geometry kernel operation: geometry.tessellateSphere.",
+      diagnostics: {
+        ok: false,
+        stage: "requestValidation",
+        workerStarted: true,
+        wasmLoadStatus: "notRequested",
+        error: {
+          code: "UNSUPPORTED_PRIMITIVE",
+          message:
+            "Unsupported geometry kernel operation: geometry.tessellateSphere."
+        }
+      }
+    }));
+    const worker = new BrowserGeometryWorker(transport);
+
+    try {
+      await worker.execute(
+        createBoxTessellationWorkerRequest({
+          id: "browser_geometry_req_unsupported",
+          width: 1,
+          height: 1,
+          depth: 1
+        })
+      );
+      throw new Error("Expected the geometry worker request to fail.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrowserGeometryWorkerError);
+      expect((error as BrowserGeometryWorkerError).diagnostics).toMatchObject({
+        ok: false,
+        stage: "requestValidation",
+        workerStarted: true,
+        wasmLoadStatus: "notRequested",
+        error: {
+          code: "UNSUPPORTED_PRIMITIVE"
+        }
+      });
+    }
   });
 });

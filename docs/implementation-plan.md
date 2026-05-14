@@ -48,7 +48,7 @@ packages:
 - `packages/mcp-adapter` - tool wrapper exposing CADOps-oriented MCP tools.
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
 - `scripts/smoke-occt-browser.mjs` - non-gating browser smoke/metrics runner for
-  the OCCT worker path.
+  the OCCT worker path, including structured success/failure diagnostics.
 
 ## Completed Milestones
 
@@ -168,6 +168,11 @@ Delivered:
   - Main-thread round-trip time.
   - Vertex and triangle counts.
 - `pnpm smoke:occt-browser` for non-gating timing telemetry.
+- Structured worker diagnostics for WASM load failure, unsupported primitive
+  requests, kernel/tessellation failure, worker runtime failure, and transport
+  failure.
+- Dev UI surfacing for OCCT worker error code, stage, worker startup, and WASM
+  load status.
 
 Current measured smoke example:
 
@@ -232,7 +237,10 @@ This writes JSONL telemetry to:
 .metrics/occt-browser.jsonl
 ```
 
-The metrics file is intentionally ignored by git.
+Each smoke record includes the scenario name, browser metadata where available,
+worker startup/WASM load outcome, timing metrics, asset-size metrics, and
+structured error details on failure. The metrics file is intentionally ignored
+by git.
 
 ## Current Limitations
 
@@ -268,8 +276,11 @@ Deliverables:
 - Keep `pnpm smoke:occt-browser` as a regular validation command.
 - Append timing and asset-size telemetry for every smoke run.
 - Add more smoke scenarios as geometry coverage grows.
-- Improve worker error reporting and lifecycle handling.
-- Make WASM loading diagnostics visible in the dev UI.
+- Improve worker error reporting and lifecycle handling. The current diagnostic
+  shape covers WASM load, unsupported primitive, kernel/tessellation, worker
+  runtime, and transport failures.
+- Make WASM loading diagnostics visible in the dev UI. The current dev-flagged
+  panel shows error code, stage, worker startup, and WASM load status.
 - Track OCCT asset size over time.
 - Investigate smaller/custom OCCT builds.
 - Decide whether the first V1 geometry path can use the current OCCT build

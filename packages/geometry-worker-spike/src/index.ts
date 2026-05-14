@@ -14,13 +14,20 @@ import {
 
 export {
   createBoxTessellationWorkerRequest,
+  createWorkerErrorDiagnostics,
+  createWorkerSuccessDiagnostics,
   type GeometryWorkerSpike,
+  type GeometryWorkerSpikeDiagnostics,
+  type GeometryWorkerSpikeErrorCode,
+  type GeometryWorkerSpikeErrorDetails,
   type GeometryWorkerSpikeOptions,
   type GeometryWorkerSpikeRequest,
   type GeometryWorkerSpikeRequestKind,
   type GeometryWorkerSpikeResponse,
+  type GeometryWorkerSpikeStage,
   type GeometryWorkerSpikeTimings,
-  type GeometryWorkerSpikeVersion
+  type GeometryWorkerSpikeVersion,
+  type GeometryWorkerWasmLoadStatus
 } from "./protocol";
 
 export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {

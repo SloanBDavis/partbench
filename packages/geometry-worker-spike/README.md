@@ -82,7 +82,11 @@ and transferables for a real Worker transport:
 
 Validation and kernel failures return structured errors and no transferables.
 Timing fields are best-effort browser-worker measurements for diagnostics, not
-part of the authoritative document model.
+part of the authoritative document model. Browser-worker responses may also
+include diagnostics with a stage, worker startup status, WASM load status, and a
+structured error code/message. The current browser path uses those diagnostics
+for WASM load failure, unsupported primitive requests, kernel/tessellation
+failure, worker runtime failure, and worker transport failure.
 
 ## Browser Worker Entry Point
 
@@ -119,7 +123,7 @@ loading fails, it affects only that explicit dev workflow.
   `opencascade.full.wasm` as a browser asset through the explicit smoke
   entrypoint.
 - Browser production integration still needs cross-origin isolation decisions,
-  deeper worker lifecycle/error reporting, and a smaller custom OCCT build.
+  lifecycle cleanup policy, and a smaller custom OCCT build.
 - Typed arrays are ready for structured clone/transfer, but no production mesh
   cache or invalidation strategy is implemented here.
 - Only one primitive path is proven: box tessellation.
@@ -130,5 +134,7 @@ loading fails, it affects only that explicit dev workflow.
   bundle, and `apps/web/geometry-worker-smoke.html` is the browser runtime smoke
   page.
 - `pnpm smoke:occt-browser` runs that smoke page in a local browser and appends
-  timing/asset-size telemetry to `.metrics/occt-browser.jsonl`. The smoke
+  structured timing/asset-size telemetry to `.metrics/occt-browser.jsonl`. Each
+  record includes the scenario, browser metadata where available, worker
+  startup/WASM load outcome, and structured error details on failure. The smoke
   validates that metrics exist, but it does not fail based on timing magnitude.

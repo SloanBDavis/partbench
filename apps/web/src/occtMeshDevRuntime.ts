@@ -1,5 +1,6 @@
 import type { GeometryWorkerSpike } from "@web-cad/geometry-worker-spike";
 import {
+  createOcctMeshDevErrorFromWorkerResponse,
   createOcctMeshDevMetrics,
   type OcctMeshDevBoxInput,
   type OcctMeshDevRuntime
@@ -45,6 +46,11 @@ export function createOcctMeshDevRuntime(): OcctMeshDevRuntime {
         })
       );
       const roundTripMs = performance.now() - roundTripStart;
+
+      if (!response.response.ok) {
+        throw createOcctMeshDevErrorFromWorkerResponse(response);
+      }
+
       const bridgeResult = createRenderMeshFromGeometryWorkerResponse(
         response,
         {

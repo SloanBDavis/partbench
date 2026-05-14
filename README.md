@@ -75,10 +75,13 @@ pnpm smoke:occt-browser
 ```
 
 This builds the isolated smoke page, launches a local Chromium-compatible
-browser, verifies box tessellation, and appends JSONL metrics to
-`.metrics/occt-browser.jsonl`. Timing values are recorded for tracking, but the
-smoke fails only when the path breaks or required metrics are missing. Set
-`WEB_CAD_SMOKE_BROWSER=/path/to/chrome` if the script cannot find a browser.
+browser, verifies box tessellation, and appends JSONL records to
+`.metrics/occt-browser.jsonl`. Each record includes the scenario, browser
+metadata where available, worker startup/WASM load outcome, timing metrics,
+asset-size metrics, and structured error details on failure. Timing values are
+recorded for tracking, but the smoke fails only when the path breaks or required
+metrics are missing. Set `WEB_CAD_SMOKE_BROWSER=/path/to/chrome` if the script
+cannot find a browser.
 
 ## Workspace Layout
 

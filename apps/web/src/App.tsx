@@ -30,7 +30,10 @@ import { BatchPanel } from "./components/BatchPanel";
 import { Inspector } from "./components/Inspector";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import {
+  createOcctMeshDevErrorDetails,
   formatMetricMs,
+  formatOcctMeshDevError,
+  type OcctMeshDevErrorDetails,
   type OcctMeshDevMetrics,
   type OcctMeshDevRuntime
 } from "./occtMeshDev";
@@ -108,6 +111,9 @@ export function App() {
   );
   const [occtPending, setOcctPending] = useState(false);
   const [occtMessage, setOcctMessage] = useState<string | undefined>();
+  const [occtError, setOcctError] = useState<
+    OcctMeshDevErrorDetails | undefined
+  >();
   const [occtMetrics, setOcctMetrics] = useState<
     OcctMeshDevMetrics | undefined
   >();
@@ -148,11 +154,13 @@ export function App() {
     setOcctMeshes([]);
     setOcctMetrics(undefined);
     setOcctMessage(undefined);
+    setOcctError(undefined);
   }
 
   function clearOcctDerivedMesh() {
     setOcctMeshes([]);
     setOcctMetrics(undefined);
+    setOcctError(undefined);
     setOcctMessage("Cleared derived OCCT mesh.");
   }
 
@@ -185,6 +193,7 @@ export function App() {
 
     setOcctPending(true);
     setOcctMessage(undefined);
+    setOcctError(undefined);
 
     try {
       const result = await getOcctMeshDevRuntime().tessellateBox({
@@ -197,11 +206,12 @@ export function App() {
       setOcctMetrics(result.metrics);
       setOcctMessage(result.message);
     } catch (error) {
+      const details = createOcctMeshDevErrorDetails(error);
+
       setOcctMeshes([]);
       setOcctMetrics(undefined);
-      setOcctMessage(
-        error instanceof Error ? error.message : "OCCT tessellation failed."
-      );
+      setOcctError(details);
+      setOcctMessage(formatOcctMeshDevError(details));
     } finally {
       setOcctPending(false);
     }
@@ -474,6 +484,28 @@ export function App() {
                 </button>
               </div>
               {occtMessage && <p className="project-message">{occtMessage}</p>}
+              {occtError && (
+                <dl className="occt-error">
+                  <div>
+                    <dt>Code</dt>
+                    <dd>{occtError.code}</dd>
+                  </div>
+                  <div>
+                    <dt>Stage</dt>
+                    <dd>{occtError.stage}</dd>
+                  </div>
+                  <div>
+                    <dt>WASM</dt>
+                    <dd>{occtError.wasmLoadStatus}</dd>
+                  </div>
+                  <div>
+                    <dt>Worker</dt>
+                    <dd>
+                      {occtError.workerStarted ? "started" : "not started"}
+                    </dd>
+                  </div>
+                </dl>
+              )}
               {occtMetrics && (
                 <dl className="metrics-list">
                   <div>

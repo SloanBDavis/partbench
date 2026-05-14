@@ -41,7 +41,10 @@ export interface BrowserGeometryKernelTimings {
   readonly occtLoadMs: number;
   readonly tessellationMs: number;
   readonly geometryKernelMs: number;
+  readonly failureStage?: BrowserGeometryKernelFailureStage;
 }
+
+export type BrowserGeometryKernelFailureStage = "wasmLoad" | "tessellation";
 
 export interface TimedBrowserGeometryKernelResponse {
   readonly response: GeometryKernelResponse;
@@ -59,17 +62,30 @@ export async function executeTimedBrowserGeometryKernelRequest(
 ): Promise<TimedBrowserGeometryKernelResponse> {
   let occtLoadMs = 0;
   let tessellationMs = 0;
+  let failureStage: BrowserGeometryKernelFailureStage | undefined;
   const geometryKernelStart = performance.now();
   const response = await executeGeometryKernelRequestWithMeshFactory(
     async (input) => {
       const occtLoadStart = performance.now();
-      const oc = await loadBrowserOcct();
+      let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+      try {
+        oc = await loadBrowserOcct();
+      } catch (error) {
+        occtLoadMs = performance.now() - occtLoadStart;
+        failureStage = "wasmLoad";
+        throw error;
+      }
+
       occtLoadMs = performance.now() - occtLoadStart;
 
       const tessellationStart = performance.now();
 
       try {
         return createOcctBoxMeshWithInstance(oc, input);
+      } catch (error) {
+        failureStage = "tessellation";
+        throw error;
       } finally {
         tessellationMs = performance.now() - tessellationStart;
       }
@@ -82,7 +98,8 @@ export async function executeTimedBrowserGeometryKernelRequest(
     timings: {
       occtLoadMs,
       tessellationMs,
-      geometryKernelMs: performance.now() - geometryKernelStart
+      geometryKernelMs: performance.now() - geometryKernelStart,
+      ...(failureStage ? { failureStage } : {})
     }
   };
 }

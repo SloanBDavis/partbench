@@ -13,74 +13,105 @@ const smokeHtmlPath = join(smokeDistDir, "geometry-worker-smoke.html");
 const metricsDir = join(repoRoot, ".metrics");
 const metricsPath = join(metricsDir, "occt-browser.jsonl");
 const smokeTimeoutMs = 60_000;
+const scenarioName = "box-2x3x4";
 
+class SmokePageError extends Error {
+  details;
+
+  constructor(details) {
+    super(details.message);
+    this.name = "SmokePageError";
+    this.details = details;
+  }
+}
+
+await mkdir(metricsDir, { recursive: true });
 const browserExecutable = findBrowserExecutable();
 
 if (!browserExecutable) {
-  throw new Error(
+  const error = new Error(
     "No Chromium-compatible browser was found. Set WEB_CAD_SMOKE_BROWSER to a Chrome/Chromium executable path."
   );
+  const record = createFailureRecord({
+    error,
+    browserExecutable,
+    appUrl: undefined,
+    remoteDebuggingPort: undefined
+  });
+
+  await appendMetrics(record);
+  printFailureSummary(record);
+  throw error;
 }
 
 await assertSmokeBuildExists();
-await mkdir(metricsDir, { recursive: true });
 
-const appServer = await startStaticServer(smokeDistDir);
-const appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html`;
-const remoteDebuggingPort = await getAvailablePort();
+let assetMetrics;
+let appServer;
+let appUrl;
+let remoteDebuggingPort;
+let browserVersion;
+let browserProcess;
+let client;
+
 const profileDir = join(
   repoRoot,
   ".metrics",
   `chrome-profile-${process.pid}-${Date.now()}`
 );
-const browserProcess = spawn(browserExecutable, [
-  "--headless=new",
-  "--disable-gpu",
-  "--disable-dev-shm-usage",
-  "--no-default-browser-check",
-  "--no-first-run",
-  `--remote-debugging-port=${remoteDebuggingPort}`,
-  `--user-data-dir=${profileDir}`,
-  "about:blank"
-]);
-
-let client;
 
 try {
-  client = await connectToBrowser(remoteDebuggingPort);
+  assetMetrics = await getAssetMetrics(smokeDistDir);
+  appServer = await startStaticServer(smokeDistDir);
+  appUrl = `http://127.0.0.1:${appServer.port}/geometry-worker-smoke.html`;
+  remoteDebuggingPort = await getAvailablePort();
+  browserProcess = spawn(browserExecutable, [
+    "--headless=new",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--no-default-browser-check",
+    "--no-first-run",
+    `--remote-debugging-port=${remoteDebuggingPort}`,
+    `--user-data-dir=${profileDir}`,
+    "about:blank"
+  ]);
+
+  const connection = await connectToBrowser(remoteDebuggingPort);
+  client = connection.client;
+  browserVersion = connection.version;
+
   const smokeResult = await runSmokePage(client, appUrl);
-  const assetMetrics = await getAssetMetrics(smokeDistDir);
   const gitSha = await getGitSha();
-  const record = {
-    schemaVersion: 1,
-    timestamp: new Date().toISOString(),
+  const record = createSuccessRecord({
+    assetMetrics,
+    appUrl,
+    browserExecutable,
+    browserVersion,
     gitSha,
-    nodeVersion: process.version,
-    browser: {
-      executable: browserExecutable,
-      remoteDebuggingPort
-    },
-    url: appUrl,
-    scenario: "box-2x3x4",
-    status: "ok",
-    metrics: {
-      ...smokeResult.timings,
-      vertexCount: smokeResult.vertexCount,
-      triangleCount: smokeResult.triangleCount,
-      occtWasmBytes: assetMetrics.occtWasmBytes,
-      occtWasmGzipBytes: assetMetrics.occtWasmGzipBytes,
-      geometryWorkerBytes: assetMetrics.geometryWorkerBytes,
-      smokeBundleBytes: assetMetrics.smokeBundleBytes
-    }
-  };
+    remoteDebuggingPort,
+    smokeResult
+  });
 
   assertSmokeResult(record);
   await appendMetrics(record);
   printSummary(record);
+} catch (error) {
+  const record = createFailureRecord({
+    error,
+    assetMetrics,
+    appUrl,
+    browserExecutable,
+    browserVersion,
+    remoteDebuggingPort
+  });
+
+  await appendMetrics(record).catch(() => {});
+  printFailureSummary(record);
+  throw error;
 } finally {
   await client?.close().catch(() => {});
-  browserProcess.kill();
-  appServer.close();
+  browserProcess?.kill();
+  appServer?.close();
   await rm(profileDir, { force: true, recursive: true }).catch(() => {});
 }
 
@@ -198,7 +229,10 @@ async function connectToBrowser(port) {
     throw new Error("Timed out waiting for browser remote debugging.");
   }
 
-  return createCdpClient(version.webSocketDebuggerUrl);
+  return {
+    client: await createCdpClient(version.webSocketDebuggerUrl),
+    version
+  };
 }
 
 function createCdpClient(webSocketUrl) {
@@ -316,17 +350,64 @@ async function runSmokePage(client, url) {
     const state = await evaluateSmokeState(client, sessionId);
 
     if (state.status === "ok") {
-      return JSON.parse(state.text);
+      return parseSmokePageResult(state.text);
     }
 
     if (state.status === "error") {
-      throw new Error(state.text || "Geometry worker smoke page failed.");
+      throw new SmokePageError(parseSmokePageError(state.text));
     }
 
     await delay(250);
   }
 
   throw new Error("Timed out waiting for geometry worker smoke result.");
+}
+
+function parseSmokePageResult(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new SmokePageError({
+      code: "SMOKE_PAGE_RESULT_PARSE_FAILED",
+      stage: "page",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to parse geometry worker smoke page result.",
+      workerStarted: false,
+      wasmLoadStatus: "unknown"
+    });
+  }
+}
+
+function parseSmokePageError(text) {
+  if (!text) {
+    return {
+      code: "SMOKE_PAGE_FAILED",
+      stage: "page",
+      message: "Geometry worker smoke page failed.",
+      workerStarted: false,
+      wasmLoadStatus: "unknown"
+    };
+  }
+
+  try {
+    const result = JSON.parse(text);
+
+    if (result?.error) {
+      return result.error;
+    }
+  } catch {
+    // Fall through to the text-shaped error below.
+  }
+
+  return {
+    code: "SMOKE_PAGE_FAILED",
+    stage: "page",
+    message: text,
+    workerStarted: false,
+    wasmLoadStatus: "unknown"
+  };
 }
 
 async function evaluateSmokeState(client, sessionId) {
@@ -390,6 +471,16 @@ function assertSmokeResult(record) {
     "roundTripMs"
   ];
 
+  if (record.status !== "ok") {
+    throw new Error(record.error?.message ?? "OCCT browser smoke failed.");
+  }
+
+  if (record.worker.wasmLoadStatus !== "loaded") {
+    throw new Error(
+      `Unexpected worker WASM load status: ${record.worker.wasmLoadStatus}.`
+    );
+  }
+
   if (metrics.vertexCount !== 24 || metrics.triangleCount !== 12) {
     throw new Error(
       `Unexpected mesh size: ${metrics.vertexCount} vertices, ${metrics.triangleCount} triangles.`
@@ -403,6 +494,82 @@ function assertSmokeResult(record) {
   }
 }
 
+function createSuccessRecord(input) {
+  const diagnostics = input.smokeResult.diagnostics;
+
+  return {
+    schemaVersion: 1,
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    gitSha: input.gitSha,
+    nodeVersion: process.version,
+    scenario: scenarioName,
+    appUrl: input.appUrl,
+    browser: createBrowserRecord(input),
+    worker: {
+      startup: diagnostics?.workerStarted ? "started" : "unknown",
+      wasmLoadStatus: diagnostics?.wasmLoadStatus ?? "unknown",
+      diagnostics
+    },
+    metrics: {
+      ...input.assetMetrics,
+      occtLoadMs: input.smokeResult.timings.occtLoadMs,
+      tessellationMs: input.smokeResult.timings.tessellationMs,
+      geometryKernelMs: input.smokeResult.timings.geometryKernelMs,
+      workerExecutionMs: input.smokeResult.timings.workerExecutionMs,
+      roundTripMs: input.smokeResult.timings.roundTripMs,
+      vertexCount: input.smokeResult.vertexCount,
+      triangleCount: input.smokeResult.triangleCount
+    }
+  };
+}
+
+function createFailureRecord(input) {
+  const error = createSmokeErrorDetails(input.error);
+
+  return {
+    schemaVersion: 1,
+    status: "error",
+    timestamp: new Date().toISOString(),
+    gitSha: undefined,
+    nodeVersion: process.version,
+    scenario: scenarioName,
+    appUrl: input.appUrl,
+    browser: createBrowserRecord(input),
+    worker: {
+      startup: error.workerStarted ? "started" : "notStarted",
+      wasmLoadStatus: error.wasmLoadStatus,
+      diagnostics: undefined
+    },
+    ...(input.assetMetrics ? { metrics: input.assetMetrics } : {}),
+    error
+  };
+}
+
+function createSmokeErrorDetails(error) {
+  if (error instanceof SmokePageError) {
+    return error.details;
+  }
+
+  return {
+    code: "SMOKE_RUNNER_FAILURE",
+    stage: "runner",
+    message: error instanceof Error ? error.message : "OCCT smoke failed.",
+    workerStarted: false,
+    wasmLoadStatus: "unknown"
+  };
+}
+
+function createBrowserRecord(input) {
+  return {
+    executable: input.browserExecutable,
+    remoteDebuggingPort: input.remoteDebuggingPort,
+    name: input.browserVersion?.Browser,
+    userAgent: input.browserVersion?.["User-Agent"],
+    protocolVersion: input.browserVersion?.["Protocol-Version"]
+  };
+}
+
 async function appendMetrics(record) {
   await mkdir(metricsDir, { recursive: true });
   await writeFile(metricsPath, `${JSON.stringify(record)}\n`, { flag: "a" });
@@ -414,6 +581,10 @@ function printSummary(record) {
   console.log("OCCT browser smoke passed");
   console.log(`metrics: ${metricsPath}`);
   console.log(`scenario: ${record.scenario}`);
+  console.log(`browser: ${record.browser.name ?? record.browser.executable}`);
+  console.log(
+    `worker: ${record.worker.startup}, wasm ${record.worker.wasmLoadStatus}`
+  );
   console.log(`OCCT load: ${formatMs(metrics.occtLoadMs)}`);
   console.log(`tessellation: ${formatMs(metrics.tessellationMs)}`);
   console.log(`worker total: ${formatMs(metrics.workerExecutionMs)}`);
@@ -426,6 +597,26 @@ function printSummary(record) {
       metrics.occtWasmGzipBytes
     )} gzip`
   );
+}
+
+function printFailureSummary(record) {
+  console.error("OCCT browser smoke failed");
+  console.error(`metrics: ${metricsPath}`);
+  console.error(`scenario: ${record.scenario}`);
+  console.error(`browser: ${record.browser.name ?? record.browser.executable}`);
+  console.error(
+    `worker: ${record.worker.startup}, wasm ${record.worker.wasmLoadStatus}`
+  );
+  console.error(`error: ${record.error.code} at ${record.error.stage}`);
+  console.error(record.error.message);
+
+  if (record.metrics?.occtWasmBytes) {
+    console.error(
+      `OCCT WASM: ${formatBytes(record.metrics.occtWasmBytes)} raw, ${formatBytes(
+        record.metrics.occtWasmGzipBytes
+      )} gzip`
+    );
+  }
 }
 
 async function getGitSha() {

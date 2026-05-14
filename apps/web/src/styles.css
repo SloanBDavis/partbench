@@ -371,13 +371,22 @@ h2 {
   line-height: 1.4;
 }
 
-.metrics-list {
+.metrics-list,
+.occt-error {
   display: grid;
   gap: 6px;
   margin: 0;
 }
 
-.metrics-list div {
+.occt-error {
+  padding: 10px;
+  border: 1px solid #e2bcbc;
+  border-radius: 6px;
+  background: #fff4f4;
+}
+
+.metrics-list div,
+.occt-error div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -385,14 +394,16 @@ h2 {
   min-width: 0;
 }
 
-.metrics-list dt {
+.metrics-list dt,
+.occt-error dt {
   color: #6c7a89;
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.metrics-list dd {
+.metrics-list dd,
+.occt-error dd {
   min-width: 0;
   margin: 0;
   color: #1f2933;

@@ -1,8 +1,10 @@
 import type {
   GeometryWorkerSpike,
+  GeometryWorkerSpikeDiagnostics,
   GeometryWorkerSpikeRequest,
   GeometryWorkerSpikeResponse
 } from "@web-cad/geometry-worker-spike";
+import { createWorkerErrorDiagnostics } from "@web-cad/geometry-worker-spike/browser";
 
 export type GeometryWorkerMessage =
   | GeometryWorkerSpikeResponse
@@ -11,6 +13,7 @@ export type GeometryWorkerMessage =
 export interface GeometryWorkerErrorResponse {
   readonly id: string;
   readonly error: string;
+  readonly diagnostics?: GeometryWorkerSpikeDiagnostics;
 }
 
 interface WorkerMessageEvent<T> {
@@ -45,7 +48,17 @@ export interface GeometryWorkerTransport {
 
 interface PendingRequest {
   readonly resolve: (response: GeometryWorkerSpikeResponse) => void;
-  readonly reject: (error: Error) => void;
+  readonly reject: (error: BrowserGeometryWorkerError) => void;
+}
+
+export class BrowserGeometryWorkerError extends Error {
+  readonly diagnostics: GeometryWorkerSpikeDiagnostics;
+
+  constructor(diagnostics: GeometryWorkerSpikeDiagnostics) {
+    super(diagnostics.error?.message ?? "Geometry worker failed.");
+    this.name = "BrowserGeometryWorkerError";
+    this.diagnostics = diagnostics;
+  }
 }
 
 export class BrowserGeometryWorker implements GeometryWorkerSpike {
@@ -63,17 +76,33 @@ export class BrowserGeometryWorker implements GeometryWorkerSpike {
     this.#pendingRequests.delete(event.data.id);
 
     if ("error" in event.data) {
-      pending.reject(new Error(event.data.error));
+      pending.reject(
+        new BrowserGeometryWorkerError(
+          event.data.diagnostics ??
+            createWorkerErrorDiagnostics({
+              stage: "worker",
+              code: "WORKER_RUNTIME_FAILED",
+              message: event.data.error
+            })
+        )
+      );
       return;
     }
 
     pending.resolve(event.data);
   };
   readonly #handleError = (event: WorkerErrorEvent) => {
-    const error =
-      event.error instanceof Error
-        ? event.error
-        : new Error(event.message ?? "Geometry worker failed.");
+    const error = new BrowserGeometryWorkerError(
+      createWorkerErrorDiagnostics({
+        stage: "transport",
+        code: "WORKER_TRANSPORT_FAILED",
+        message:
+          event.error instanceof Error
+            ? event.error.message
+            : (event.message ?? "Geometry worker transport failed."),
+        workerStarted: false
+      })
+    );
 
     for (const pending of this.#pendingRequests.values()) {
       pending.reject(error);
@@ -93,7 +122,25 @@ export class BrowserGeometryWorker implements GeometryWorkerSpike {
   ): Promise<GeometryWorkerSpikeResponse> {
     return new Promise((resolve, reject) => {
       this.#pendingRequests.set(request.id, { resolve, reject });
-      this.#transport.postMessage(request);
+
+      try {
+        this.#transport.postMessage(request);
+      } catch (error) {
+        this.#pendingRequests.delete(request.id);
+        reject(
+          new BrowserGeometryWorkerError(
+            createWorkerErrorDiagnostics({
+              stage: "transport",
+              code: "WORKER_TRANSPORT_FAILED",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Geometry worker transport failed to post a request.",
+              workerStarted: false
+            })
+          )
+        );
+      }
     });
   }
 

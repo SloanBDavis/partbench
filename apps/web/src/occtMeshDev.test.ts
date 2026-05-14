@@ -1,7 +1,13 @@
 import type { GeometryWorkerSpikeResponse } from "@web-cad/geometry-worker-spike";
 import type { MeshRendererBridgeResult } from "@web-cad/renderer-mesh-bridge";
 import { describe, expect, it } from "vitest";
-import { createOcctMeshDevMetrics, formatMetricMs } from "./occtMeshDev";
+import {
+  createOcctMeshDevErrorDetails,
+  createOcctMeshDevErrorFromWorkerResponse,
+  createOcctMeshDevMetrics,
+  formatMetricMs,
+  formatOcctMeshDevError
+} from "./occtMeshDev";
 
 describe("occtMeshDev", () => {
   it("creates display metrics from a geometry worker response", () => {
@@ -76,5 +82,71 @@ describe("occtMeshDev", () => {
     expect(formatMetricMs(undefined)).toBe("n/a");
     expect(formatMetricMs(7.1234)).toBe("7.12 ms");
     expect(formatMetricMs(12.34)).toBe("12.3 ms");
+  });
+
+  it("creates structured UI errors from failed worker responses", () => {
+    const response: GeometryWorkerSpikeResponse = {
+      id: "worker_req_failure",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payloadId: "kernel_req_failure",
+      response: {
+        ok: false,
+        id: "kernel_req_failure",
+        op: "geometry.tessellateBox",
+        error: {
+          code: "KERNEL_FAILURE",
+          message: "Failed to load OCCT WASM."
+        },
+        warnings: []
+      },
+      transferables: [],
+      diagnostics: {
+        ok: false,
+        stage: "wasmLoad",
+        workerStarted: true,
+        wasmLoadStatus: "failed",
+        error: {
+          code: "WASM_LOAD_FAILED",
+          message: "Failed to load OCCT WASM."
+        }
+      }
+    };
+
+    const error = createOcctMeshDevErrorFromWorkerResponse(response);
+
+    expect(error.details).toEqual({
+      code: "WASM_LOAD_FAILED",
+      stage: "wasmLoad",
+      message: "Failed to load OCCT WASM.",
+      workerStarted: true,
+      wasmLoadStatus: "failed"
+    });
+    expect(formatOcctMeshDevError(error.details)).toBe(
+      "WASM_LOAD_FAILED at wasmLoad: Failed to load OCCT WASM."
+    );
+  });
+
+  it("creates structured UI errors from transport diagnostics", () => {
+    expect(
+      createOcctMeshDevErrorDetails({
+        diagnostics: {
+          ok: false,
+          stage: "transport",
+          workerStarted: false,
+          wasmLoadStatus: "notRequested",
+          error: {
+            code: "WORKER_TRANSPORT_FAILED",
+            message: "Worker postMessage failed."
+          }
+        }
+      })
+    ).toEqual({
+      code: "WORKER_TRANSPORT_FAILED",
+      stage: "transport",
+      message: "Worker postMessage failed.",
+      workerStarted: false,
+      wasmLoadStatus: "notRequested"
+    });
   });
 });

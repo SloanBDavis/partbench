@@ -1,6 +1,10 @@
 import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker-spike/browser";
 import { createRenderMeshFromGeometryWorkerResponse } from "@web-cad/renderer-mesh-bridge";
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
+import {
+  createOcctMeshDevErrorDetails,
+  createOcctMeshDevErrorFromWorkerResponse
+} from "./occtMeshDev";
 
 const output = document.getElementById("geometry-worker-smoke");
 
@@ -21,6 +25,11 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       })
     );
     const roundTripMs = performance.now() - roundTripStart;
+
+    if (!response.response.ok) {
+      throw createOcctMeshDevErrorFromWorkerResponse(response);
+    }
+
     const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {
       id: "browser_occt_smoke_mesh",
       alignment: "boundsCenter"
@@ -30,6 +39,7 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       vertexCount: renderMesh.vertexCount,
       triangleCount: renderMesh.triangleCount,
       bounds: renderMesh.bounds,
+      diagnostics: response.diagnostics,
       timings: {
         occtLoadMs: response.timings?.occtLoadMs,
         tessellationMs: response.timings?.tessellationMs,
@@ -42,8 +52,19 @@ async function runGeometryWorkerSmoke(): Promise<void> {
     document.body.dataset.geometryWorkerSmoke = "ok";
     writeOutput(JSON.stringify(result, null, 2));
   } catch (error) {
+    const details = createOcctMeshDevErrorDetails(error);
+
     document.body.dataset.geometryWorkerSmoke = "error";
-    writeOutput(error instanceof Error ? error.message : "Unknown smoke error");
+    writeOutput(
+      JSON.stringify(
+        {
+          ok: false,
+          error: details
+        },
+        null,
+        2
+      )
+    );
   } finally {
     worker.dispose();
   }

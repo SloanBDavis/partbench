@@ -1,4 +1,5 @@
 import {
+  createWorkerErrorDiagnostics,
   GeometryKernelBrowserWorkerSpike,
   type GeometryWorkerSpikeRequest
 } from "@web-cad/geometry-worker-spike/browser";
@@ -35,7 +36,15 @@ async function executeGeometryRequest(
         error:
           error instanceof Error
             ? error.message
-            : "Geometry worker failed to execute a request."
+            : "Geometry worker failed to execute a request.",
+        diagnostics: createWorkerErrorDiagnostics({
+          stage: "worker",
+          code: "WORKER_RUNTIME_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Geometry worker failed to execute a request."
+        })
       },
       []
     );
