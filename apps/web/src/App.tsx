@@ -1,5 +1,7 @@
 import {
+  AsyncCadCommandExecutor,
   CadEngine,
+  MockCadCommandWorker,
   type CadDocument,
   type SceneObject
 } from "@web-cad/cad-core";
@@ -27,6 +29,10 @@ import { ViewportCanvas } from "./components/ViewportCanvas";
 import "./styles.css";
 
 const engine = new CadEngine();
+const commandExecutor = new AsyncCadCommandExecutor(
+  engine,
+  new MockCadCommandWorker({ delayMs: 75 })
+);
 
 const quickBoxForm: PrimitiveCommandForm = {
   id: "",
@@ -81,6 +87,8 @@ export function App() {
     CadBatchResponse | undefined
   >();
   const [batchError, setBatchError] = useState<string | undefined>();
+  const [commandError, setCommandError] = useState<string | undefined>();
+  const [commandPending, setCommandPending] = useState(false);
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -104,44 +112,70 @@ export function App() {
     );
   }
 
-  function createBox() {
-    const offset = document.objects.size * 2.8;
-    const result = engine.apply(
-      buildCreateBoxOp({
-        ...quickBoxForm,
-        translationX: offset
-      })
-    );
-    syncDocument(result.transaction.diff.created[0]?.id);
+  async function commitOps(
+    ops: readonly CadOp[],
+    getNextSelectedId: (response: CadBatchResponse) => string | undefined
+  ) {
+    setCommandPending(true);
+    setCommandError(undefined);
+
+    try {
+      const response = await commandExecutor.executeBatch(
+        buildBatch("commit", ops)
+      );
+
+      if (!response.ok) {
+        setCommandError(response.error.message);
+        return;
+      }
+
+      syncDocument(getNextSelectedId(response));
+    } finally {
+      setCommandPending(false);
+    }
   }
 
-  function createCylinder() {
+  async function createBox() {
     const offset = document.objects.size * 2.8;
-    const result = engine.apply(
-      buildCreateCylinderOp({
-        ...quickCylinderForm,
-        translationX: offset
-      })
+    await commitOps(
+      [
+        buildCreateBoxOp({
+          ...quickBoxForm,
+          translationX: offset
+        })
+      ],
+      (response) => response.createdIds[0]
     );
-    syncDocument(result.transaction.diff.created[0]?.id);
   }
 
-  function updateSelectedTransform(form: TransformCommandForm) {
+  async function createCylinder() {
+    const offset = document.objects.size * 2.8;
+    await commitOps(
+      [
+        buildCreateCylinderOp({
+          ...quickCylinderForm,
+          translationX: offset
+        })
+      ],
+      (response) => response.createdIds[0]
+    );
+  }
+
+  async function updateSelectedTransform(form: TransformCommandForm) {
     if (!selectedObject) {
       return;
     }
 
-    engine.apply(buildUpdateTransformOp(selectedObject.id, form));
-    syncDocument(selectedObject.id);
+    const objectId = selectedObject.id;
+    await commitOps([buildUpdateTransformOp(objectId, form)], () => objectId);
   }
 
-  function deleteSelectedObject() {
+  async function deleteSelectedObject() {
     if (!selectedObject) {
       return;
     }
 
-    engine.apply(buildDeleteObjectOp(selectedObject.id));
-    syncDocument(undefined);
+    await commitOps([buildDeleteObjectOp(selectedObject.id)], () => undefined);
   }
 
   function undo() {
@@ -167,13 +201,21 @@ export function App() {
     }
   }
 
-  function runBatch(mode: CadBatchMode) {
-    const response = engine.executeBatch(buildBatch(mode, queuedOps));
-    setBatchResponse(response);
-    setBatchError(undefined);
+  async function runBatch(mode: CadBatchMode) {
+    setCommandPending(true);
 
-    if (response.ok && mode === "commit") {
-      syncDocument(response.createdIds[0] ?? selectedId);
+    try {
+      const response = await commandExecutor.executeBatch(
+        buildBatch(mode, queuedOps)
+      );
+      setBatchResponse(response);
+      setBatchError(undefined);
+
+      if (response.ok && mode === "commit") {
+        syncDocument(response.createdIds[0] ?? selectedId);
+      }
+    } finally {
+      setCommandPending(false);
     }
   }
 
@@ -187,31 +229,45 @@ export function App() {
     <main className="app-shell">
       <header className="app-toolbar">
         <div>
-          <p className="eyebrow">Milestone 2</p>
+          <p className="eyebrow">Milestone 3</p>
           <h1>Web CAD</h1>
         </div>
         <div className="toolbar-actions" aria-label="Command controls">
-          <button type="button" onClick={createBox}>
+          {commandPending && (
+            <span className="pending-status" role="status">
+              Worker running
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => void createBox()}
+            disabled={commandPending}
+          >
             Create box
           </button>
-          <button type="button" onClick={createCylinder}>
+          <button
+            type="button"
+            onClick={() => void createCylinder()}
+            disabled={commandPending}
+          >
             Create cylinder
           </button>
           <button
             type="button"
             onClick={undo}
-            disabled={engine.getTransactions().length === 0}
+            disabled={commandPending || engine.getTransactions().length === 0}
           >
             Undo
           </button>
           <button
             type="button"
             onClick={redo}
-            disabled={engine.getRedoStack().length === 0}
+            disabled={commandPending || engine.getRedoStack().length === 0}
           >
             Redo
           </button>
         </div>
+        {commandError && <p className="toolbar-error">{commandError}</p>}
       </header>
 
       <section className="workspace" aria-label="CAD workspace">
@@ -239,14 +295,15 @@ export function App() {
           </section>
 
           <BatchPanel
+            disabled={commandPending}
             form={batchForm}
             onChange={setBatchForm}
             queuedOps={queuedOps}
             response={batchResponse}
             error={batchError}
             onAddOperation={addBatchOperation}
-            onDryRun={() => runBatch("dryRun")}
-            onCommit={() => runBatch("commit")}
+            onDryRun={() => void runBatch("dryRun")}
+            onCommit={() => void runBatch("commit")}
             onClear={clearBatch}
           />
         </aside>
@@ -258,9 +315,10 @@ export function App() {
         />
 
         <Inspector
+          disabled={commandPending}
           object={selectedObject}
-          onApplyTransform={updateSelectedTransform}
-          onDelete={deleteSelectedObject}
+          onApplyTransform={(form) => void updateSelectedTransform(form)}
+          onDelete={() => void deleteSelectedObject()}
         />
       </section>
     </main>

@@ -3,6 +3,7 @@ import type { BatchOperationForm, BatchOperationKind } from "../cadCommands";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function BatchPanel({
+  disabled = false,
   error,
   form,
   onAddOperation,
@@ -13,6 +14,7 @@ export function BatchPanel({
   queuedOps,
   response
 }: {
+  readonly disabled?: boolean;
   readonly error?: string;
   readonly form: BatchOperationForm;
   readonly onAddOperation: () => void;
@@ -30,6 +32,7 @@ export function BatchPanel({
         Operation
         <select
           value={form.op}
+          disabled={disabled}
           onChange={(event) =>
             onChange({
               ...form,
@@ -84,13 +87,13 @@ export function BatchPanel({
       )}
 
       <div className="button-row">
-        <button type="button" onClick={onAddOperation}>
+        <button type="button" onClick={onAddOperation} disabled={disabled}>
           Add operation
         </button>
         <button
           type="button"
           onClick={onClear}
-          disabled={queuedOps.length === 0}
+          disabled={disabled || queuedOps.length === 0}
         >
           Clear
         </button>
@@ -108,14 +111,14 @@ export function BatchPanel({
         <button
           type="button"
           onClick={onDryRun}
-          disabled={queuedOps.length === 0}
+          disabled={disabled || queuedOps.length === 0}
         >
           Dry run
         </button>
         <button
           type="button"
           onClick={onCommit}
-          disabled={queuedOps.length === 0}
+          disabled={disabled || queuedOps.length === 0}
         >
           Commit batch
         </button>

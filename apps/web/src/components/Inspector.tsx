@@ -4,10 +4,12 @@ import { transformToForm, type TransformCommandForm } from "../cadCommands";
 import { TransformFields } from "./FormFields";
 
 export function Inspector({
+  disabled = false,
   object,
   onApplyTransform,
   onDelete
 }: {
+  readonly disabled?: boolean;
   readonly object?: SceneObject;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
@@ -48,6 +50,7 @@ export function Inspector({
           <TransformEditor
             key={`${object.id}-${object.transform.translation.join(",")}-${object.transform.rotation.join(",")}-${object.transform.scale.join(",")}`}
             object={object}
+            disabled={disabled}
             onApply={onApplyTransform}
             onDelete={onDelete}
           />
@@ -58,10 +61,12 @@ export function Inspector({
 }
 
 function TransformEditor({
+  disabled,
   object,
   onApply,
   onDelete
 }: {
+  readonly disabled: boolean;
   readonly object: SceneObject;
   readonly onApply: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
@@ -75,10 +80,15 @@ function TransformEditor({
       <h3>Selected commands</h3>
       <TransformFields form={form} onChange={setForm} />
       <div className="button-row">
-        <button type="button" onClick={() => onApply(form)}>
+        <button type="button" onClick={() => onApply(form)} disabled={disabled}>
           Apply transform
         </button>
-        <button type="button" className="danger" onClick={onDelete}>
+        <button
+          type="button"
+          className="danger"
+          onClick={onDelete}
+          disabled={disabled}
+        >
           Delete object
         </button>
       </div>

@@ -67,6 +67,34 @@ export interface ApplyResult {
   readonly document: CadDocument;
 }
 
+export interface CadEngineOptions {
+  readonly nextObjectNumber?: number;
+}
+
+export interface CadDocumentSnapshot {
+  readonly objects: readonly SceneObject[];
+  readonly nextObjectNumber: number;
+}
+
+export interface CadWorkerRequest {
+  readonly id: string;
+  readonly batch: CadBatch;
+  readonly document: CadDocumentSnapshot;
+}
+
+export interface CadWorkerResponse {
+  readonly id: string;
+  readonly response: CadBatchResponse;
+}
+
+export interface CadCommandWorker {
+  execute(request: CadWorkerRequest): Promise<CadWorkerResponse>;
+}
+
+export interface MockCadCommandWorkerOptions {
+  readonly delayMs?: number;
+}
+
 interface TransactionEntry {
   transaction: Transaction;
   before: CadDocument;
@@ -107,8 +135,13 @@ export class CadEngine {
   #nextObjectNumber = 1;
   #nextTransactionNumber = 1;
 
-  constructor(document: CadDocument = createCadDocument()) {
+  constructor(
+    document: CadDocument = createCadDocument(),
+    options: CadEngineOptions = {}
+  ) {
     this.#document = cloneDocument(document);
+    this.#nextObjectNumber =
+      options.nextObjectNumber ?? inferNextObjectNumber(document);
   }
 
   getDocument(): CadDocument {
@@ -121,6 +154,10 @@ export class CadEngine {
 
   getRedoStack(): readonly Transaction[] {
     return this.#redoStack.map((entry) => entry.transaction);
+  }
+
+  createSnapshot(): CadDocumentSnapshot {
+    return createCadDocumentSnapshot(this.#document, this.#nextObjectNumber);
   }
 
   apply(op: CadOp): ApplyResult {
@@ -268,6 +305,61 @@ export class CadEngine {
   }
 }
 
+export class MockCadCommandWorker implements CadCommandWorker {
+  readonly #delayMs: number;
+
+  constructor(options: MockCadCommandWorkerOptions = {}) {
+    this.#delayMs = options.delayMs ?? 0;
+  }
+
+  async execute(request: CadWorkerRequest): Promise<CadWorkerResponse> {
+    if (this.#delayMs > 0) {
+      await delay(this.#delayMs);
+    }
+
+    const engine = new CadEngine(
+      createCadDocumentFromSnapshot(request.document),
+      {
+        nextObjectNumber: request.document.nextObjectNumber
+      }
+    );
+
+    return {
+      id: request.id,
+      response: engine.executeBatch(request.batch)
+    };
+  }
+}
+
+export class AsyncCadCommandExecutor {
+  #nextRequestNumber = 1;
+
+  constructor(
+    private readonly engine: CadEngine,
+    private readonly worker: CadCommandWorker
+  ) {}
+
+  async executeBatch(batch: CadBatch): Promise<CadBatchResponse> {
+    const workerResponse = await this.worker.execute({
+      id: this.#createRequestId(),
+      batch,
+      document: this.engine.createSnapshot()
+    });
+
+    if (!workerResponse.response.ok || batch.mode === "dryRun") {
+      return workerResponse.response;
+    }
+
+    return this.engine.executeBatch(batch);
+  }
+
+  #createRequestId(): string {
+    const id = `worker_req_${this.#nextRequestNumber}`;
+    this.#nextRequestNumber += 1;
+    return id;
+  }
+}
+
 type MutableSemanticDiff = {
   created: CadObjectRef[];
   modified: CadObjectRef[];
@@ -389,6 +481,24 @@ function cloneDocument(document: CadDocument): CadDocument {
   return createCadDocument(document.objects);
 }
 
+export function createCadDocumentSnapshot(
+  document: CadDocument,
+  nextObjectNumber = inferNextObjectNumber(document)
+): CadDocumentSnapshot {
+  return {
+    objects: [...document.objects.values()],
+    nextObjectNumber
+  };
+}
+
+export function createCadDocumentFromSnapshot(
+  snapshot: CadDocumentSnapshot
+): CadDocument {
+  return createCadDocument(
+    snapshot.objects.map((object) => [object.id, object] as const)
+  );
+}
+
 function runOperations(
   ops: readonly CadOp[],
   document: CadDocument,
@@ -468,4 +578,25 @@ class BatchValidationFailure extends Error {
   constructor(readonly validationError: CadBatchValidationError) {
     super(validationError.message);
   }
+}
+
+function inferNextObjectNumber(document: CadDocument): number {
+  let maxObjectNumber = 0;
+
+  for (const id of document.objects.keys()) {
+    maxObjectNumber = Math.max(maxObjectNumber, parseObjectNumber(id));
+  }
+
+  return maxObjectNumber + 1;
+}
+
+function parseObjectNumber(id: ObjectId): number {
+  const match = /^obj_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }

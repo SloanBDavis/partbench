@@ -39,6 +39,13 @@ select {
   font-size: 0.86rem;
 }
 
+input:disabled,
+select:disabled {
+  background: #eef2f6;
+  color: #8290a0;
+  cursor: not-allowed;
+}
+
 input {
   padding: 0 8px;
 }
@@ -118,8 +125,26 @@ h2 {
 .toolbar-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.pending-status,
+.toolbar-error {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.pending-status {
+  color: #596879;
+}
+
+.toolbar-error {
+  flex-basis: 100%;
+  color: #a13232;
+  text-align: right;
 }
 
 .toolbar-actions button,

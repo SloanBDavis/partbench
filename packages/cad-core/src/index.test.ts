@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { CadEngine, corePackage } from "./index";
+import {
+  AsyncCadCommandExecutor,
+  CadEngine,
+  MockCadCommandWorker,
+  corePackage
+} from "./index";
 
 describe("cad-core", () => {
   it("exports package status", () => {
@@ -370,5 +375,135 @@ describe("cad-core", () => {
     ]);
     expect(engine.getDocument().objects.size).toBe(0);
     expect(engine.getRedoStack()).toHaveLength(1);
+  });
+
+  it("executes a batch through the mock worker interface", async () => {
+    const engine = new CadEngine();
+    const worker = new MockCadCommandWorker();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const response = await worker.execute({
+      id: "request_1",
+      document: engine.createSnapshot(),
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "scene.updateTransform",
+            id: "box_1",
+            transform: { translation: [9, 0, 0] }
+          }
+        ]
+      }
+    });
+
+    expect(response).toEqual({
+      id: "request_1",
+      response: {
+        ok: true,
+        mode: "dryRun",
+        createdIds: [],
+        modifiedIds: ["box_1"],
+        deletedIds: [],
+        warnings: []
+      }
+    });
+    expect(
+      engine.getDocument().objects.get("box_1")?.transform.translation
+    ).toEqual([0, 0, 0]);
+  });
+
+  it("runs dry-run batches asynchronously without mutating the authoritative engine", async () => {
+    const engine = new CadEngine();
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new MockCadCommandWorker()
+    );
+
+    const response = await executor.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "scene.createCylinder",
+          dimensions: { radius: 1, height: 4 }
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      mode: "dryRun",
+      createdIds: ["obj_1"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+    expect(engine.getTransactions()).toEqual([]);
+  });
+
+  it("commits async batches through the authoritative engine after worker validation", async () => {
+    const engine = new CadEngine();
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new MockCadCommandWorker({ delayMs: 5 })
+    );
+
+    const pendingResponse = executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          dimensions: { width: 2, height: 2, depth: 2 }
+        }
+      ]
+    });
+
+    expect(engine.getDocument().objects.size).toBe(0);
+
+    const response = await pendingResponse;
+
+    expect(response).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: ["obj_1"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_1"
+    });
+    expect(engine.getDocument().objects.get("obj_1")?.kind).toBe("box");
+    expect(engine.getTransactions()).toHaveLength(1);
+  });
+
+  it("does not mutate the authoritative engine when async validation fails", async () => {
+    const engine = new CadEngine();
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new MockCadCommandWorker()
+    );
+
+    const response = await executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.deleteObject",
+          id: "missing_object"
+        }
+      ]
+    });
+
+    expect(response.ok).toBe(false);
+    expect(engine.getDocument().objects.size).toBe(0);
+    expect(engine.getTransactions()).toEqual([]);
   });
 });
