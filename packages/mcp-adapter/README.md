@@ -31,9 +31,9 @@ only package that owns document mutation.
 
 ## Local Client Shape
 
-This spike provides an in-process JSON-RPC handler for the MCP methods
-`tools/list` and `tools/call`. A future stdio or HTTP transport can pass decoded
-JSON-RPC messages into the same handler.
+This package provides an in-process JSON-RPC handler for the MCP methods
+`tools/list` and `tools/call`. The separate `@web-cad/mcp-stdio-server` package
+passes stdio JSON-RPC messages into this handler.
 
 List tools:
 

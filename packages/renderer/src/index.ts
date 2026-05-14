@@ -35,6 +35,16 @@ export interface RenderCylinderPrimitive {
 
 export type RenderPrimitive = RenderBoxPrimitive | RenderCylinderPrimitive;
 
+export interface RenderTriangleMesh {
+  readonly id: string;
+  readonly kind: "mesh";
+  readonly vertices: readonly Vec3[];
+  readonly indices: readonly number[];
+  readonly transform: RenderTransform;
+  readonly source?: string;
+  readonly label?: string;
+}
+
 export interface RenderCamera {
   readonly target: Vec3;
   readonly yaw: number;
@@ -60,6 +70,7 @@ export interface ProjectedPoint {
 
 export interface RenderSceneOptions {
   readonly primitives: readonly RenderPrimitive[];
+  readonly meshes?: readonly RenderTriangleMesh[];
   readonly camera: RenderCamera;
   readonly size: ViewportSize;
   readonly selectedId?: string;
@@ -178,6 +189,7 @@ export function renderCanvasScene(
   options: RenderSceneOptions
 ): void {
   const { camera, primitives, selectedId, size } = options;
+  const meshes = options.meshes ?? [];
   context.clearRect(0, 0, size.width, size.height);
   drawGrid(context, camera, size);
 
@@ -200,6 +212,10 @@ export function renderCanvasScene(
         primitive.id === selectedId
       );
     }
+  }
+
+  for (const mesh of meshes) {
+    drawTriangleMesh(context, mesh, camera, size, mesh.id === selectedId);
   }
 }
 
@@ -305,6 +321,29 @@ function drawCylinder(
         segments.bottom[index]
       );
     }
+  }
+
+  context.restore();
+}
+
+function drawTriangleMesh(
+  context: CanvasRenderingContext2D,
+  mesh: RenderTriangleMesh,
+  camera: RenderCamera,
+  size: ViewportSize,
+  selected: boolean
+): void {
+  const vertices = mesh.vertices.map((vertex) =>
+    transformPoint(vertex, mesh.transform)
+  );
+  const edges = getMeshEdges(mesh.indices);
+
+  context.save();
+  context.strokeStyle = selected ? "#f2a541" : "#8a5a16";
+  context.lineWidth = selected ? 2 : 1.5;
+
+  for (const [start, end] of edges) {
+    strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
   }
 
   context.restore();
@@ -462,6 +501,34 @@ function getCylinderSegments(primitive: RenderCylinderPrimitive): {
   }
 
   return { top, bottom };
+}
+
+function getMeshEdges(
+  indices: readonly number[]
+): readonly (readonly [number, number])[] {
+  const edges = new Map<string, readonly [number, number]>();
+
+  for (let index = 0; index + 2 < indices.length; index += 3) {
+    addMeshEdge(edges, indices[index], indices[index + 1]);
+    addMeshEdge(edges, indices[index + 1], indices[index + 2]);
+    addMeshEdge(edges, indices[index + 2], indices[index]);
+  }
+
+  return [...edges.values()];
+}
+
+function addMeshEdge(
+  edges: Map<string, readonly [number, number]>,
+  start: number,
+  end: number
+): void {
+  const min = Math.min(start, end);
+  const max = Math.max(start, end);
+  const key = `${min}:${max}`;
+
+  if (!edges.has(key)) {
+    edges.set(key, [min, max]);
+  }
 }
 
 function transformPoint(

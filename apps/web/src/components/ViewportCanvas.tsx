@@ -5,16 +5,19 @@ import {
   pickPrimitive,
   renderCanvasScene,
   type RenderCamera,
+  type RenderTriangleMesh,
   type RenderPrimitive,
   zoomCamera
 } from "@web-cad/renderer";
 import { useEffect, useRef, useState } from "react";
 
 export function ViewportCanvas({
+  meshes,
   onSelect,
   primitives,
   selectedId
 }: {
+  readonly meshes?: readonly RenderTriangleMesh[];
   readonly onSelect: (id: string | undefined) => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
@@ -77,10 +80,11 @@ export function ViewportCanvas({
     renderCanvasScene(context, {
       primitives,
       camera,
+      meshes,
       size,
       selectedId
     });
-  }, [camera, primitives, selectedId, size]);
+  }, [camera, meshes, primitives, selectedId, size]);
 
   return (
     <section className="viewport-panel" aria-label="3D viewport">

@@ -1,0 +1,24 @@
+{
+  "name": "@web-cad/renderer-mesh-bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@web-cad/geometry-kernel": "workspace:*",
+    "@web-cad/geometry-worker-spike": "workspace:*",
+    "@web-cad/renderer": "workspace:*"
+  }
+}

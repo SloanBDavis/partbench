@@ -105,6 +105,12 @@ importers:
         specifier: workspace:*
         version: link:../cad-protocol
 
+  packages/mcp-stdio-server:
+    dependencies:
+      '@web-cad/mcp-adapter':
+        specifier: workspace:*
+        version: link:../mcp-adapter
+
   packages/occt-spike:
     dependencies:
       opencascade.js:
@@ -112,6 +118,18 @@ importers:
         version: 2.0.0-beta.b5ff984(ws@8.20.1)
 
   packages/renderer: {}
+
+  packages/renderer-mesh-bridge:
+    dependencies:
+      '@web-cad/geometry-kernel':
+        specifier: workspace:*
+        version: link:../geometry-kernel
+      '@web-cad/geometry-worker-spike':
+        specifier: workspace:*
+        version: link:../geometry-worker-spike
+      '@web-cad/renderer':
+        specifier: workspace:*
+        version: link:../renderer
 
 packages:
 
