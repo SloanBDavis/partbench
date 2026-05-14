@@ -200,4 +200,175 @@ describe("cad-core", () => {
     ]);
     expect(result.document.objects.has("cylinder_1")).toBe(false);
   });
+
+  it("executes a successful dry-run batch without committing", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "box_1",
+          dimensions: { width: 1, height: 2, depth: 3 }
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      mode: "dryRun",
+      createdIds: ["box_1"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+    expect(engine.getTransactions()).toEqual([]);
+  });
+
+  it("executes a successful commit batch", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createCylinder",
+          id: "cylinder_1",
+          dimensions: { radius: 2, height: 8 }
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: ["cylinder_1"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_1"
+    });
+    expect(engine.getDocument().objects.get("cylinder_1")?.kind).toBe(
+      "cylinder"
+    );
+    expect(engine.getTransactions()).toHaveLength(1);
+  });
+
+  it("returns validation errors for a failed batch", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.deleteObject",
+          id: "missing_object"
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "OBJECT_NOT_FOUND",
+        message: "Object does not exist: missing_object",
+        opIndex: 0,
+        objectId: "missing_object"
+      },
+      errors: [
+        {
+          code: "OBJECT_NOT_FOUND",
+          message: "Object does not exist: missing_object",
+          opIndex: 0,
+          objectId: "missing_object"
+        }
+      ],
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+    expect(engine.getTransactions()).toEqual([]);
+  });
+
+  it("returns structured IDs for a mixed operation batch", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "box_1",
+          dimensions: { width: 1, height: 2, depth: 3 }
+        },
+        {
+          op: "scene.createCylinder",
+          id: "cylinder_1",
+          dimensions: { radius: 1, height: 2 }
+        },
+        {
+          op: "scene.updateTransform",
+          id: "box_1",
+          transform: { translation: [2, 0, 0] }
+        },
+        {
+          op: "scene.deleteObject",
+          id: "cylinder_1"
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: ["box_1", "cylinder_1"],
+      modifiedIds: ["box_1"],
+      deletedIds: ["cylinder_1"],
+      warnings: [],
+      transactionId: "txn_1"
+    });
+    expect(
+      engine.getDocument().objects.get("box_1")?.transform.translation
+    ).toEqual([2, 0, 0]);
+    expect(engine.getDocument().objects.has("cylinder_1")).toBe(false);
+  });
+
+  it("undoes a committed CADOps batch", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "box_1",
+          dimensions: { width: 1, height: 2, depth: 3 }
+        },
+        {
+          op: "scene.createCylinder",
+          id: "cylinder_1",
+          dimensions: { radius: 1, height: 2 }
+        }
+      ]
+    });
+
+    const undo = engine.undo();
+
+    expect(undo?.transaction.diff.created).toEqual([
+      { id: "box_1", kind: "box" },
+      { id: "cylinder_1", kind: "cylinder" }
+    ]);
+    expect(engine.getDocument().objects.size).toBe(0);
+    expect(engine.getRedoStack()).toHaveLength(1);
+  });
 });

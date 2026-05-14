@@ -4,6 +4,7 @@ export interface PackageInfo {
 }
 
 export type CadOpsVersion = "cadops.v1";
+export type CadBatchMode = "dryRun" | "commit";
 
 export type ObjectId = string;
 export type TransactionId = string;
@@ -69,6 +70,53 @@ export interface SemanticDiff {
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
   readonly deleted: readonly CadObjectRef[];
+}
+
+export interface CadBatch {
+  readonly version: CadOpsVersion;
+  readonly mode: CadBatchMode;
+  readonly ops: readonly CadOp[];
+}
+
+export type CadBatchValidationErrorCode =
+  | "EMPTY_BATCH"
+  | "OBJECT_ALREADY_EXISTS"
+  | "OBJECT_NOT_FOUND";
+
+export interface CadBatchValidationError {
+  readonly code: CadBatchValidationErrorCode;
+  readonly message: string;
+  readonly opIndex?: number;
+  readonly objectId?: ObjectId;
+}
+
+export interface CadBatchValidationResult {
+  readonly ok: boolean;
+  readonly errors: readonly CadBatchValidationError[];
+  readonly warnings: readonly string[];
+}
+
+export type CadBatchResponse = CadBatchSuccessResponse | CadBatchErrorResponse;
+
+export interface CadBatchSuccessResponse {
+  readonly ok: true;
+  readonly mode: CadBatchMode;
+  readonly createdIds: readonly ObjectId[];
+  readonly modifiedIds: readonly ObjectId[];
+  readonly deletedIds: readonly ObjectId[];
+  readonly warnings: readonly string[];
+  readonly transactionId?: TransactionId;
+}
+
+export interface CadBatchErrorResponse {
+  readonly ok: false;
+  readonly mode: CadBatchMode;
+  readonly error: CadBatchValidationError;
+  readonly errors: readonly CadBatchValidationError[];
+  readonly createdIds: readonly ObjectId[];
+  readonly modifiedIds: readonly ObjectId[];
+  readonly deletedIds: readonly ObjectId[];
+  readonly warnings: readonly string[];
 }
 
 export const protocolPackage: PackageInfo = {

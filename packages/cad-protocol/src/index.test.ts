@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CadOp } from "./index";
+import type { CadBatch, CadOp } from "./index";
 import { protocolPackage } from "./index";
 
 describe("cad-protocol", () => {
@@ -39,5 +39,22 @@ describe("cad-protocol", () => {
       "scene.updateTransform",
       "scene.deleteObject"
     ]);
+  });
+
+  it("types CADOps batches", () => {
+    const batch: CadBatch = {
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "scene.createBox",
+          dimensions: { width: 4, height: 5, depth: 6 }
+        }
+      ]
+    };
+
+    expect(batch.version).toBe("cadops.v1");
+    expect(batch.mode).toBe("dryRun");
+    expect(batch.ops).toHaveLength(1);
   });
 });

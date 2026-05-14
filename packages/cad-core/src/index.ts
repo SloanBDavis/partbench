@@ -1,5 +1,9 @@
 import type {
   BoxDimensions,
+  CadBatch,
+  CadBatchResponse,
+  CadBatchValidationError,
+  CadBatchValidationResult,
   CadObjectRef,
   CadOp,
   CylinderDimensions,
@@ -11,6 +15,10 @@ import type {
 
 export type {
   BoxDimensions,
+  CadBatch,
+  CadBatchResponse,
+  CadBatchValidationError,
+  CadBatchValidationResult,
   CadObjectRef,
   CadOp,
   CylinderDimensions,
@@ -65,6 +73,12 @@ interface TransactionEntry {
   after: CadDocument;
 }
 
+interface OperationRunResult {
+  readonly document: CadDocument;
+  readonly diff: SemanticDiff;
+  readonly nextObjectNumber: number;
+}
+
 export const corePackage: PackageInfo = {
   name: "@web-cad/cad-core",
   status: "ready"
@@ -114,39 +128,24 @@ export class CadEngine {
   }
 
   applyBatch(ops: readonly CadOp[]): ApplyResult {
-    if (ops.length === 0) {
-      throw new Error("Cannot apply an empty transaction.");
-    }
-
     const before = cloneDocument(this.#document);
-    const nextObjects = new Map(this.#document.objects);
-    const diff: MutableSemanticDiff = {
-      created: [],
-      modified: [],
-      deleted: []
-    };
-
-    for (const op of ops) {
-      applyOperation(op, nextObjects, diff, () =>
-        this.#createObjectId(nextObjects)
-      );
-    }
+    const run = this.#runOperations(ops);
 
     const transaction: Transaction = {
       id: this.#createTransactionId(),
       ops: [...ops],
       status: "committed",
-      diff
+      diff: run.diff
     };
 
-    const after = createCadDocument(nextObjects);
     const entry: TransactionEntry = {
       transaction,
       before,
-      after: cloneDocument(after)
+      after: cloneDocument(run.document)
     };
 
-    this.#document = after;
+    this.#document = run.document;
+    this.#nextObjectNumber = run.nextObjectNumber;
     this.#history.push(entry);
     this.#redoStack = [];
 
@@ -154,6 +153,66 @@ export class CadEngine {
       transaction,
       document: this.#document
     };
+  }
+
+  executeBatch(batch: CadBatch): CadBatchResponse {
+    const validation = this.validateBatch(batch);
+
+    if (!validation.ok) {
+      return {
+        ok: false,
+        mode: batch.mode,
+        error: validation.errors[0],
+        errors: validation.errors,
+        createdIds: [],
+        modifiedIds: [],
+        deletedIds: [],
+        warnings: validation.warnings
+      };
+    }
+
+    const run = this.#runOperations(batch.ops);
+    const diffIds = toDiffIds(run.diff);
+
+    if (batch.mode === "dryRun") {
+      return {
+        ok: true,
+        mode: batch.mode,
+        ...diffIds,
+        warnings: validation.warnings
+      };
+    }
+
+    const result = this.applyBatch(batch.ops);
+
+    return {
+      ok: true,
+      mode: batch.mode,
+      ...diffIds,
+      warnings: validation.warnings,
+      transactionId: result.transaction.id
+    };
+  }
+
+  validateBatch(batch: CadBatch): CadBatchValidationResult {
+    try {
+      this.#runOperations(batch.ops);
+      return {
+        ok: true,
+        errors: [],
+        warnings: []
+      };
+    } catch (error) {
+      if (error instanceof BatchValidationFailure) {
+        return {
+          ok: false,
+          errors: [error.validationError],
+          warnings: []
+        };
+      }
+
+      throw error;
+    }
   }
 
   undo(): ApplyResult | undefined {
@@ -198,22 +257,14 @@ export class CadEngine {
     };
   }
 
-  #createObjectId(objects: ReadonlyMap<ObjectId, SceneObject>): ObjectId {
-    let id = `obj_${this.#nextObjectNumber}`;
-
-    while (objects.has(id)) {
-      this.#nextObjectNumber += 1;
-      id = `obj_${this.#nextObjectNumber}`;
-    }
-
-    this.#nextObjectNumber += 1;
-    return id;
-  }
-
   #createTransactionId(): TransactionId {
     const id = `txn_${this.#nextTransactionNumber}`;
     this.#nextTransactionNumber += 1;
     return id;
+  }
+
+  #runOperations(ops: readonly CadOp[]): OperationRunResult {
+    return runOperations(ops, this.#document, this.#nextObjectNumber);
   }
 }
 
@@ -227,7 +278,8 @@ function applyOperation(
   op: CadOp,
   objects: Map<ObjectId, SceneObject>,
   diff: MutableSemanticDiff,
-  createObjectId: () => ObjectId
+  createObjectId: () => ObjectId,
+  opIndex: number
 ): void {
   switch (op.op) {
     case "scene.createBox": {
@@ -239,7 +291,7 @@ function applyOperation(
         transform: mergeTransform(op.transform)
       };
 
-      addObject(objects, object, diff);
+      addObject(objects, object, diff, opIndex);
       return;
     }
 
@@ -252,19 +304,19 @@ function applyOperation(
         transform: mergeTransform(op.transform)
       };
 
-      addObject(objects, object, diff);
+      addObject(objects, object, diff, opIndex);
       return;
     }
 
     case "scene.deleteObject": {
-      const existing = getObjectOrThrow(objects, op.id);
+      const existing = getObjectOrThrow(objects, op.id, opIndex);
       objects.delete(op.id);
       diff.deleted.push(objectRef(existing));
       return;
     }
 
     case "scene.updateTransform": {
-      const existing = getObjectOrThrow(objects, op.id);
+      const existing = getObjectOrThrow(objects, op.id, opIndex);
       const updated: SceneObject = {
         ...existing,
         transform: mergeTransform(op.transform, existing.transform)
@@ -280,10 +332,16 @@ function applyOperation(
 function addObject(
   objects: Map<ObjectId, SceneObject>,
   object: SceneObject,
-  diff: MutableSemanticDiff
+  diff: MutableSemanticDiff,
+  opIndex?: number
 ): void {
   if (objects.has(object.id)) {
-    throw new Error(`Object already exists: ${object.id}`);
+    throwValidationError({
+      code: "OBJECT_ALREADY_EXISTS",
+      message: `Object already exists: ${object.id}`,
+      opIndex,
+      objectId: object.id
+    });
   }
 
   objects.set(object.id, object);
@@ -292,12 +350,18 @@ function addObject(
 
 function getObjectOrThrow(
   objects: ReadonlyMap<ObjectId, SceneObject>,
-  id: ObjectId
+  id: ObjectId,
+  opIndex?: number
 ): SceneObject {
   const object = objects.get(id);
 
   if (!object) {
-    throw new Error(`Object does not exist: ${id}`);
+    throwValidationError({
+      code: "OBJECT_NOT_FOUND",
+      message: `Object does not exist: ${id}`,
+      opIndex,
+      objectId: id
+    });
   }
 
   return object;
@@ -323,4 +387,85 @@ function objectRef(object: SceneObject): CadObjectRef {
 
 function cloneDocument(document: CadDocument): CadDocument {
   return createCadDocument(document.objects);
+}
+
+function runOperations(
+  ops: readonly CadOp[],
+  document: CadDocument,
+  initialObjectNumber: number
+): OperationRunResult {
+  if (ops.length === 0) {
+    throwValidationError({
+      code: "EMPTY_BATCH",
+      message: "Cannot execute an empty batch."
+    });
+  }
+
+  const nextObjects = new Map(document.objects);
+  let nextObjectNumber = initialObjectNumber;
+  const diff: MutableSemanticDiff = {
+    created: [],
+    modified: [],
+    deleted: []
+  };
+
+  for (const [opIndex, op] of ops.entries()) {
+    applyOperation(
+      op,
+      nextObjects,
+      diff,
+      () => {
+        const result = createObjectId(nextObjects, nextObjectNumber);
+        nextObjectNumber = result.nextObjectNumber;
+        return result.id;
+      },
+      opIndex
+    );
+  }
+
+  return {
+    document: createCadDocument(nextObjects),
+    diff,
+    nextObjectNumber
+  };
+}
+
+function createObjectId(
+  objects: ReadonlyMap<ObjectId, SceneObject>,
+  initialObjectNumber: number
+): { id: ObjectId; nextObjectNumber: number } {
+  let nextObjectNumber = initialObjectNumber;
+  let id = `obj_${nextObjectNumber}`;
+
+  while (objects.has(id)) {
+    nextObjectNumber += 1;
+    id = `obj_${nextObjectNumber}`;
+  }
+
+  return {
+    id,
+    nextObjectNumber: nextObjectNumber + 1
+  };
+}
+
+function toDiffIds(diff: SemanticDiff): {
+  createdIds: readonly ObjectId[];
+  modifiedIds: readonly ObjectId[];
+  deletedIds: readonly ObjectId[];
+} {
+  return {
+    createdIds: diff.created.map((object) => object.id),
+    modifiedIds: diff.modified.map((object) => object.id),
+    deletedIds: diff.deleted.map((object) => object.id)
+  };
+}
+
+function throwValidationError(error: CadBatchValidationError): never {
+  throw new BatchValidationFailure(error);
+}
+
+class BatchValidationFailure extends Error {
+  constructor(readonly validationError: CadBatchValidationError) {
+    super(validationError.message);
+  }
 }
