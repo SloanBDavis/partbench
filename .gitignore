@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-geometry-worker-smoke/
 .turbo/
 .vite/
 coverage/

@@ -4,8 +4,9 @@ This package is an isolated Milestone 4 spike. It proves that the repo can load
 an Open CASCADE-compatible WASM package, create one primitive shape, run OCCT
 tessellation, and return mesh-like typed arrays.
 
-It is not imported by `apps/web`, `packages/cad-core`, or `packages/renderer`.
-Normal app startup does not depend on this package.
+It is not imported by `packages/cad-core` or `packages/renderer`. Normal app
+startup does not depend on this package. The web app can bundle it only through
+the explicit geometry-worker smoke entrypoint.
 
 ## Dependency
 
@@ -49,12 +50,31 @@ pnpm typecheck
 pnpm build
 ```
 
+## Browser Worker Bundle Path
+
+The package now exposes two loaders:
+
+- `@web-cad/occt-spike` uses `opencascade.js/dist/node.js` for Node tests.
+- `@web-cad/occt-spike/browser` uses `opencascade.full.js` plus
+  `opencascade.full.wasm?url` so Vite treats the WASM as a browser asset.
+
+The browser path is proven by:
+
+```sh
+pnpm build:geometry-worker
+```
+
+and by opening `apps/web/geometry-worker-smoke.html` through Vite. The smoke page
+starts the browser Worker, loads OCCT WASM, tessellates one box, and adapts the
+mesh into renderer data.
+
 ## Runtime And Bundle Risks
 
 - The full beta OpenCascade.js package is large and should not be added to the
   production web app bundle without a custom build strategy.
-- The Node smoke path uses `opencascade.js/dist/node.js`; a browser integration
-  will need explicit WASM asset handling through Vite or a worker bundle.
+- The current browser smoke emits a roughly 50 MB raw WASM asset before gzip.
+  A custom OpenCascade.js build is still needed before this becomes production
+  startup behavior.
 - Multi-threaded OCCT/WASM would require worker setup and cross-origin isolation
   headers for `SharedArrayBuffer`.
 - Embind objects need explicit `delete()` calls. A production wrapper should own
@@ -67,8 +87,8 @@ pnpm build
 
 - Keep OCCT behind a geometry-worker boundary. The command engine should remain
   authoritative for document state and should not import OCCT directly.
-- Add a small geometry-kernel facade before production use. It should accept
-  typed requests and return serializable mesh/checkpoint data.
+- Keep the current geometry-kernel facade as the production-facing shape. It
+  accepts typed requests and returns serializable mesh/checkpoint data.
 - Decide licensing policy before shipping OCCT in distributed builds. Open
   CASCADE and OpenCascade.js are LGPL-family dependencies, which is workable but
   requires deliberate compliance.

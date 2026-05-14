@@ -1,7 +1,7 @@
 # Geometry Kernel Facade
 
 This package is the typed boundary in front of the isolated OCCT spike. It is
-not imported by `apps/web`, `packages/cad-core`, or `packages/renderer`.
+not imported by `packages/cad-core` or `packages/renderer`.
 
 The goal is to make the future geometry worker contract explicit without moving
 document authority out of `cad-core` and without making normal app startup load
@@ -28,7 +28,7 @@ Typed arrays are structured-clone compatible, so this response shape can cross a
 browser Worker boundary. `getGeometryResponseTransferables()` exposes the mesh
 buffers that a later Worker transport can transfer instead of clone.
 
-## Future Worker Integration
+## Worker Integration
 
 The intended production flow is:
 
@@ -45,8 +45,13 @@ apps/web main thread
 redo, and semantic diffs. Geometry output is a derived cache/view and should be
 rebuildable from the document and command history.
 
-## Current Limitation
+## Browser And Node Entrypoints
 
-This facade still calls the Node-oriented OCCT spike path. It proves the request
-and response contract, but it is not yet loaded from the browser Worker and does
-not replace the existing placeholder renderer.
+- `@web-cad/geometry-kernel` calls the Node-oriented OCCT loader for package
+  tests.
+- `@web-cad/geometry-kernel/browser` calls the browser OCCT loader for Vite
+  Worker bundles.
+
+The two entrypoints share the same request validation, response shape, and
+transferable buffer handling. Neither entrypoint changes document authority or
+replaces the current primitive renderer.

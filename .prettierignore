@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-geometry-worker-smoke
 coverage
 pnpm-lock.yaml
 AGENTS.md

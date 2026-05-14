@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
+    "build:geometry-worker": "tsc -p tsconfig.json && vite build --config vite.geometry-worker.config.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -14,6 +15,7 @@
     "@web-cad/cad-protocol": "workspace:*",
     "@web-cad/geometry-worker-spike": "workspace:*",
     "@web-cad/renderer": "workspace:*",
+    "@web-cad/renderer-mesh-bridge": "workspace:*",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"
   },

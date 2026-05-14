@@ -1,4 +1,4 @@
-import { createOcctBoxMeshSpike } from "@web-cad/occt-spike";
+import { createOcctBoxMeshSpike } from "@web-cad/occt-spike/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,

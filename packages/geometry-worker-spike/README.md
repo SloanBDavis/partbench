@@ -88,7 +88,7 @@ Worker:
 
 ```ts
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
-import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker-spike";
+import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker-spike/browser";
 
 const worker = new BrowserGeometryWorker();
 const response = await worker.execute(
@@ -106,14 +106,17 @@ WASM loading fails, it affects only this explicit spike path.
 
 ## Production Risks
 
-- The underlying OCCT path still uses the current `opencascade.js` spike.
-- Browser production integration still needs bundling validation, WASM asset
-  loading, cross-origin isolation decisions, and worker error reporting.
+- The browser Worker path now bundles through Vite and loads
+  `opencascade.full.wasm` as a browser asset through the explicit smoke
+  entrypoint.
+- Browser production integration still needs cross-origin isolation decisions,
+  deeper worker lifecycle/error reporting, and a smaller custom OCCT build.
 - Typed arrays are ready for structured clone/transfer, but no mesh cache,
   invalidation strategy, or renderer bridge is implemented here.
 - Only one primitive path is proven: box tessellation.
 - The browser Worker path is still a spike path, not a production feature flag or
   user-facing workflow.
 - Tests cover the browser transport wrapper and an in-process worker-backed
-  tessellation path; they do not yet launch a real browser Worker in a browser
-  runtime.
+  tessellation path. `pnpm build:geometry-worker` covers the real Vite Worker
+  bundle, and `apps/web/geometry-worker-smoke.html` is the browser runtime smoke
+  page.

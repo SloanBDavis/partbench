@@ -1,7 +1,9 @@
-import type {
-  GeometryKernelErrorResponse,
-  GeometryKernelResponse
-} from "@web-cad/geometry-kernel";
+import {
+  executeGeometryKernelRequest,
+  getGeometryResponseTransferables,
+  type GeometryKernelErrorResponse,
+  type GeometryKernelResponse
+} from "@web-cad/geometry-kernel/browser";
 import {
   createKernelFailureResponse,
   createWorkerSpikeResponse,
@@ -22,7 +24,7 @@ export {
   type GeometryWorkerSpikeVersion
 } from "./protocol";
 
-export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {
+export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
   readonly #delayMs: number;
 
   constructor(options: GeometryWorkerSpikeOptions = {}) {
@@ -37,15 +39,12 @@ export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {
     }
 
     try {
-      const geometryKernel = await import("@web-cad/geometry-kernel");
-      const response = await geometryKernel.executeGeometryKernelRequest(
-        request.payload
-      );
+      const response = await executeGeometryKernelRequest(request.payload);
 
       return createWorkerSpikeResponse(
         request,
         response as GeometryKernelResponse,
-        geometryKernel.getGeometryResponseTransferables(response)
+        getGeometryResponseTransferables(response)
       );
     } catch (error) {
       return createWorkerSpikeResponse(
@@ -60,8 +59,8 @@ export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {
   }
 }
 
-export function createGeometryKernelWorkerSpike(
+export function createGeometryKernelBrowserWorkerSpike(
   options: GeometryWorkerSpikeOptions = {}
-): GeometryKernelWorkerSpike {
-  return new GeometryKernelWorkerSpike(options);
+): GeometryKernelBrowserWorkerSpike {
+  return new GeometryKernelBrowserWorkerSpike(options);
 }

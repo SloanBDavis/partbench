@@ -1,7 +1,7 @@
 import {
-  GeometryKernelWorkerSpike,
+  GeometryKernelBrowserWorkerSpike,
   type GeometryWorkerSpikeRequest
-} from "@web-cad/geometry-worker-spike";
+} from "@web-cad/geometry-worker-spike/browser";
 
 interface GeometryWorkerGlobalScope {
   addEventListener(
@@ -12,7 +12,7 @@ interface GeometryWorkerGlobalScope {
 }
 
 const workerScope = self as unknown as GeometryWorkerGlobalScope;
-const geometryWorker = new GeometryKernelWorkerSpike();
+const geometryWorker = new GeometryKernelBrowserWorkerSpike();
 
 workerScope.addEventListener(
   "message",

@@ -5,7 +5,12 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "**/coverage/**"]
+    ignores: [
+      "**/dist/**",
+      "**/dist-geometry-worker-smoke/**",
+      "**/node_modules/**",
+      "**/coverage/**"
+    ]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -21,6 +26,12 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true }
       ]
+    }
+  },
+  {
+    files: ["packages/occt-spike/src/browser.ts"],
+    rules: {
+      "@typescript-eslint/triple-slash-reference": "off"
     }
   }
 );
