@@ -11,6 +11,9 @@
       "default": "./src/index.ts"
     }
   },
+  "dependencies": {
+    "@web-cad/cad-protocol": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
