@@ -2,6 +2,8 @@ import {
   AsyncCadCommandExecutor,
   CadEngine,
   MockCadCommandWorker,
+  exportCadProjectJson,
+  parseCadProjectJson,
   type CadDocument,
   type SceneObject
 } from "@web-cad/cad-core";
@@ -89,6 +91,8 @@ export function App() {
   const [batchError, setBatchError] = useState<string | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
+  const [projectJson, setProjectJson] = useState("");
+  const [projectMessage, setProjectMessage] = useState<string | undefined>();
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -225,6 +229,27 @@ export function App() {
     setBatchError(undefined);
   }
 
+  function exportProjectJson() {
+    setProjectJson(exportCadProjectJson(engine));
+    setProjectMessage("Exported current project JSON.");
+  }
+
+  function importProjectJson() {
+    try {
+      engine.loadProject(parseCadProjectJson(projectJson));
+      setQueuedOps([]);
+      setBatchResponse(undefined);
+      setBatchError(undefined);
+      setCommandError(undefined);
+      setProjectMessage("Imported project JSON.");
+      syncDocument(undefined);
+    } catch (error) {
+      setProjectMessage(
+        error instanceof Error ? error.message : "Invalid project JSON."
+      );
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="app-toolbar">
@@ -306,6 +331,35 @@ export function App() {
             onCommit={() => void runBatch("commit")}
             onClear={clearBatch}
           />
+
+          <section className="project-panel" aria-label="Project JSON">
+            <h2>Project JSON</h2>
+            <div className="button-row">
+              <button
+                type="button"
+                onClick={exportProjectJson}
+                disabled={commandPending}
+              >
+                Export JSON
+              </button>
+              <button
+                type="button"
+                onClick={importProjectJson}
+                disabled={commandPending || projectJson.trim().length === 0}
+              >
+                Import JSON
+              </button>
+            </div>
+            <textarea
+              value={projectJson}
+              onChange={(event) => setProjectJson(event.currentTarget.value)}
+              placeholder="Export or paste Web CAD project JSON"
+              spellCheck={false}
+            />
+            {projectMessage && (
+              <p className="project-message">{projectMessage}</p>
+            )}
+          </section>
         </aside>
 
         <ViewportCanvas

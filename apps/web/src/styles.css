@@ -28,9 +28,9 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
-  min-height: 32px;
   border: 1px solid #bac5d1;
   border-radius: 6px;
   background: #ffffff;
@@ -39,8 +39,22 @@ select {
   font-size: 0.86rem;
 }
 
+input,
+select {
+  min-height: 32px;
+}
+
+textarea {
+  min-height: 170px;
+  padding: 8px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 input:disabled,
-select:disabled {
+select:disabled,
+textarea:disabled {
   background: #eef2f6;
   color: #8290a0;
   cursor: not-allowed;
@@ -248,7 +262,8 @@ h2 {
   text-transform: uppercase;
 }
 
-.batch-panel {
+.batch-panel,
+.project-panel {
   display: grid;
   gap: 12px;
   margin-top: 20px;
@@ -344,6 +359,13 @@ h2 {
 .error-text {
   margin: 0;
   color: #a13232;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.project-message {
+  margin: 0;
+  color: #4f5f70;
   font-size: 0.84rem;
   line-height: 1.4;
 }

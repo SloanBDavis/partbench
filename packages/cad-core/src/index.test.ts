@@ -3,7 +3,10 @@ import {
   AsyncCadCommandExecutor,
   CadEngine,
   MockCadCommandWorker,
-  corePackage
+  corePackage,
+  exportCadProjectJson,
+  importCadProjectJson,
+  parseCadProjectJson
 } from "./index";
 
 describe("cad-core", () => {
@@ -505,5 +508,67 @@ describe("cad-core", () => {
     expect(response.ok).toBe(false);
     expect(engine.getDocument().objects.size).toBe(0);
     expect(engine.getTransactions()).toEqual([]);
+  });
+
+  it("round-trips a project with objects, transforms, dimensions, and history", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      dimensions: { width: 2, height: 3, depth: 4 },
+      transform: { translation: [1, 2, 3] }
+    });
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "fixture",
+      dimensions: { radius: 1.5, height: 6 },
+      transform: { translation: [4, 0, 3] }
+    });
+    engine.apply({
+      op: "scene.updateTransform",
+      id: "fixture",
+      transform: { rotation: [0, 0, 1.25], scale: [2, 2, 1] }
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const restoredObjects = restored.getDocument().objects;
+
+    expect([...restoredObjects.keys()]).toEqual(["obj_1", "fixture"]);
+    expect(restoredObjects.get("obj_1")).toEqual(
+      engine.getDocument().objects.get("obj_1")
+    );
+    expect(restoredObjects.get("fixture")).toEqual(
+      engine.getDocument().objects.get("fixture")
+    );
+    expect(restored.getTransactions()).toEqual(engine.getTransactions());
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("fixture")?.transform).toEqual({
+      translation: [4, 0, 3],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    });
+  });
+
+  it("round-trips redo history for an undone generated-ID transaction", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      dimensions: { width: 2, height: 2, depth: 2 }
+    });
+    engine.undo();
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const restored = importCadProjectJson(JSON.stringify(project));
+
+    expect(restored.getDocument().objects.size).toBe(0);
+    expect(restored.getRedoStack()).toHaveLength(1);
+
+    restored.redo();
+
+    expect(restored.getDocument().objects.get("obj_1")?.kind).toBe("box");
+    expect(restored.getTransactions()[0]?.id).toBe("txn_1");
   });
 });

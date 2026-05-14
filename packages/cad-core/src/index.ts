@@ -95,6 +95,15 @@ export interface MockCadCommandWorkerOptions {
   readonly delayMs?: number;
 }
 
+export type CadProjectFormatVersion = "web-cad.project.v1";
+
+export interface CadProject {
+  readonly schemaVersion: CadProjectFormatVersion;
+  readonly document: CadDocumentSnapshot;
+  readonly history: readonly Transaction[];
+  readonly redoStack: readonly Transaction[];
+}
+
 interface TransactionEntry {
   transaction: Transaction;
   before: CadDocument;
@@ -154,6 +163,29 @@ export class CadEngine {
 
   getRedoStack(): readonly Transaction[] {
     return this.#redoStack.map((entry) => entry.transaction);
+  }
+
+  exportProject(): CadProject {
+    return exportCadProject(this);
+  }
+
+  loadProject(project: CadProject): void {
+    const state = createProjectState(project);
+
+    this.#document = state.document;
+    this.#history = state.history;
+    this.#redoStack = state.redoStack;
+    this.#nextObjectNumber = project.document.nextObjectNumber;
+    this.#nextTransactionNumber = inferNextTransactionNumber([
+      ...project.history,
+      ...project.redoStack
+    ]);
+  }
+
+  static fromProject(project: CadProject): CadEngine {
+    const engine = new CadEngine();
+    engine.loadProject(project);
+    return engine;
   }
 
   createSnapshot(): CadDocumentSnapshot {
@@ -358,6 +390,31 @@ export class AsyncCadCommandExecutor {
     this.#nextRequestNumber += 1;
     return id;
   }
+}
+
+export function exportCadProject(engine: CadEngine): CadProject {
+  return {
+    schemaVersion: "web-cad.project.v1",
+    document: engine.createSnapshot(),
+    history: engine.getTransactions(),
+    redoStack: engine.getRedoStack()
+  };
+}
+
+export function exportCadProjectJson(engine: CadEngine): string {
+  return JSON.stringify(exportCadProject(engine), null, 2);
+}
+
+export function parseCadProjectJson(json: string): CadProject {
+  return parseCadProject(JSON.parse(json));
+}
+
+export function importCadProject(project: CadProject): CadEngine {
+  return CadEngine.fromProject(project);
+}
+
+export function importCadProjectJson(json: string): CadEngine {
+  return importCadProject(parseCadProjectJson(json));
 }
 
 type MutableSemanticDiff = {
@@ -599,4 +656,288 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
   });
+}
+
+function createProjectState(project: CadProject): {
+  readonly document: CadDocument;
+  readonly history: TransactionEntry[];
+  readonly redoStack: TransactionEntry[];
+} {
+  assertSupportedProject(project);
+
+  const historyState = createTransactionEntries(project.history);
+  const redoEntriesInApplyOrder = createTransactionEntries(
+    [...project.redoStack].reverse(),
+    historyState.document,
+    project.document.nextObjectNumber
+  );
+
+  return {
+    document: createCadDocumentFromSnapshot(project.document),
+    history: historyState.entries,
+    redoStack: [...redoEntriesInApplyOrder.entries].reverse()
+  };
+}
+
+function createTransactionEntries(
+  transactions: readonly Transaction[],
+  initialDocument: CadDocument = createCadDocument(),
+  initialObjectNumber = inferNextObjectNumber(initialDocument)
+): {
+  readonly document: CadDocument;
+  readonly entries: TransactionEntry[];
+} {
+  let document = cloneDocument(initialDocument);
+  let nextObjectNumber = initialObjectNumber;
+  const entries: TransactionEntry[] = [];
+
+  for (const transaction of transactions) {
+    const before = cloneDocument(document);
+    const run = runOperations(
+      materializeGeneratedObjectIds(transaction),
+      document,
+      nextObjectNumber
+    );
+    document = run.document;
+    nextObjectNumber = run.nextObjectNumber;
+    entries.push({
+      transaction: { ...transaction },
+      before,
+      after: cloneDocument(document)
+    });
+  }
+
+  return {
+    document,
+    entries
+  };
+}
+
+function parseCadProject(value: unknown): CadProject {
+  if (!isCadProject(value)) {
+    throw new Error("Invalid Web CAD project JSON.");
+  }
+
+  return value;
+}
+
+function assertSupportedProject(project: CadProject): void {
+  if (project.schemaVersion !== "web-cad.project.v1") {
+    throw new Error(`Unsupported project schema: ${project.schemaVersion}`);
+  }
+}
+
+function materializeGeneratedObjectIds(
+  transaction: Transaction
+): readonly CadOp[] {
+  let createdIndex = 0;
+
+  return transaction.ops.map((op) => {
+    if (op.op !== "scene.createBox" && op.op !== "scene.createCylinder") {
+      return op;
+    }
+
+    if (op.id) {
+      return op;
+    }
+
+    const createdRef = transaction.diff.created[createdIndex];
+    createdIndex += 1;
+
+    return createdRef ? { ...op, id: createdRef.id } : op;
+  });
+}
+
+function isCadProject(value: unknown): value is CadProject {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.schemaVersion === "web-cad.project.v1" &&
+    isCadDocumentSnapshot(value.document) &&
+    Array.isArray(value.history) &&
+    value.history.every(isTransaction) &&
+    Array.isArray(value.redoStack) &&
+    value.redoStack.every(isTransaction)
+  );
+}
+
+function isCadDocumentSnapshot(value: unknown): value is CadDocumentSnapshot {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.objects) &&
+    value.objects.every(isSceneObject) &&
+    typeof value.nextObjectNumber === "number" &&
+    Number.isInteger(value.nextObjectNumber) &&
+    value.nextObjectNumber > 0
+  );
+}
+
+function isTransaction(value: unknown): value is Transaction {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    Array.isArray(value.ops) &&
+    value.ops.every(isCadOp) &&
+    (value.status === "committed" || value.status === "undone") &&
+    isSemanticDiff(value.diff)
+  );
+}
+
+function isSceneObject(value: unknown): value is SceneObject {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    return false;
+  }
+
+  if (value.kind === "box") {
+    return (
+      isBoxDimensions(value.dimensions) &&
+      isTransform(value.transform) &&
+      isOptionalString(value.name)
+    );
+  }
+
+  if (value.kind === "cylinder") {
+    return (
+      isCylinderDimensions(value.dimensions) &&
+      isTransform(value.transform) &&
+      isOptionalString(value.name)
+    );
+  }
+
+  return false;
+}
+
+function isCadOp(value: unknown): value is CadOp {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.op === "scene.createBox") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isBoxDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
+  if (value.op === "scene.createCylinder") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isCylinderDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
+  if (value.op === "scene.deleteObject") {
+    return typeof value.id === "string";
+  }
+
+  if (value.op === "scene.updateTransform") {
+    return (
+      typeof value.id === "string" &&
+      value.transform !== undefined &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
+  return false;
+}
+
+function isSemanticDiff(value: unknown): value is SemanticDiff {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.created) &&
+    value.created.every(isCadObjectRef) &&
+    Array.isArray(value.modified) &&
+    value.modified.every(isCadObjectRef) &&
+    Array.isArray(value.deleted) &&
+    value.deleted.every(isCadObjectRef)
+  );
+}
+
+function isCadObjectRef(value: unknown): value is CadObjectRef {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    (value.kind === "box" || value.kind === "cylinder")
+  );
+}
+
+function isBoxDimensions(value: unknown): value is BoxDimensions {
+  return (
+    isRecord(value) &&
+    typeof value.width === "number" &&
+    typeof value.height === "number" &&
+    typeof value.depth === "number"
+  );
+}
+
+function isCylinderDimensions(value: unknown): value is CylinderDimensions {
+  return (
+    isRecord(value) &&
+    typeof value.radius === "number" &&
+    typeof value.height === "number"
+  );
+}
+
+function isOptionalTransform(value: unknown): value is Partial<Transform> {
+  if (value === undefined) {
+    return true;
+  }
+
+  return (
+    isRecord(value) &&
+    (value.translation === undefined || isVec3(value.translation)) &&
+    (value.rotation === undefined || isVec3(value.rotation)) &&
+    (value.scale === undefined || isVec3(value.scale))
+  );
+}
+
+function isTransform(value: unknown): value is Transform {
+  return (
+    isRecord(value) &&
+    isVec3(value.translation) &&
+    isVec3(value.rotation) &&
+    isVec3(value.scale)
+  );
+}
+
+function isVec3(value: unknown): value is readonly [number, number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((item) => typeof item === "number")
+  );
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function inferNextTransactionNumber(
+  transactions: readonly Transaction[]
+): number {
+  let maxTransactionNumber = 0;
+
+  for (const transaction of transactions) {
+    maxTransactionNumber = Math.max(
+      maxTransactionNumber,
+      parseTransactionNumber(transaction.id)
+    );
+  }
+
+  return maxTransactionNumber + 1;
+}
+
+function parseTransactionNumber(id: TransactionId): number {
+  const match = /^txn_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
 }
