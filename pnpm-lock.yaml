@@ -41,6 +41,9 @@ importers:
       '@web-cad/cad-protocol':
         specifier: workspace:*
         version: link:../../packages/cad-protocol
+      '@web-cad/geometry-worker-spike':
+        specifier: workspace:*
+        version: link:../../packages/geometry-worker-spike
       '@web-cad/renderer':
         specifier: workspace:*
         version: link:../../packages/renderer

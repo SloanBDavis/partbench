@@ -12,6 +12,7 @@
   "dependencies": {
     "@web-cad/cad-core": "workspace:*",
     "@web-cad/cad-protocol": "workspace:*",
+    "@web-cad/geometry-worker-spike": "workspace:*",
     "@web-cad/renderer": "workspace:*",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"

@@ -75,13 +75,45 @@ future real Worker transport:
 
 Validation and kernel failures return structured errors and no transferables.
 
+## Browser Worker Entry Point
+
+`apps/web` now has an explicit browser Worker spike path:
+
+- `apps/web/src/geometryTessellation.worker.ts`
+- `apps/web/src/browserGeometryWorker.ts`
+
+The entrypoint is not imported by `main.tsx`, `App.tsx`, the renderer, or
+`cad-core`. A caller must explicitly create `BrowserGeometryWorker` to start the
+Worker:
+
+```ts
+import { BrowserGeometryWorker } from "./browserGeometryWorker";
+import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker-spike";
+
+const worker = new BrowserGeometryWorker();
+const response = await worker.execute(
+  createBoxTessellationWorkerRequest({
+    id: "browser_geometry_req_box",
+    width: 10,
+    height: 20,
+    depth: 30
+  })
+);
+```
+
+That keeps normal app startup on the existing primitive renderer path. If OCCT or
+WASM loading fails, it affects only this explicit spike path.
+
 ## Production Risks
 
-- This is a transport-independent worker boundary, not a packaged browser Worker
-  entrypoint yet.
 - The underlying OCCT path still uses the current `opencascade.js` spike.
 - Browser production integration still needs bundling validation, WASM asset
   loading, cross-origin isolation decisions, and worker error reporting.
 - Typed arrays are ready for structured clone/transfer, but no mesh cache,
   invalidation strategy, or renderer bridge is implemented here.
 - Only one primitive path is proven: box tessellation.
+- The browser Worker path is still a spike path, not a production feature flag or
+  user-facing workflow.
+- Tests cover the browser transport wrapper and an in-process worker-backed
+  tessellation path; they do not yet launch a real browser Worker in a browser
+  runtime.
