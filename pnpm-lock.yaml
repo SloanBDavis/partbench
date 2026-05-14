@@ -87,6 +87,15 @@ importers:
         specifier: workspace:*
         version: link:../occt-spike
 
+  packages/mcp-adapter:
+    dependencies:
+      '@web-cad/agent-adapter':
+        specifier: workspace:*
+        version: link:../agent-adapter
+      '@web-cad/cad-protocol':
+        specifier: workspace:*
+        version: link:../cad-protocol
+
   packages/occt-spike:
     dependencies:
       opencascade.js:

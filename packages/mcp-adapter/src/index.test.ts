@@ -1,0 +1,229 @@
+import { describe, expect, it } from "vitest";
+import { CadMcpServer, createCadMcpServer } from "./index";
+
+describe("mcp-adapter", () => {
+  it("lists only the supported CAD tools", () => {
+    const server = createCadMcpServer();
+
+    expect(server.listTools().tools.map((tool) => tool.name)).toEqual([
+      "cad.project_summary",
+      "cad.batch"
+    ]);
+  });
+
+  it("runs cad.batch dry-run without mutating the document", () => {
+    const server = new CadMcpServer();
+
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_dry_run",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "preview_box",
+              dimensions: { width: 1, height: 2, depth: 3 }
+            }
+          ]
+        }
+      }
+    });
+    const summary = server.callTool({
+      name: "cad.project_summary",
+      requestId: "mcp_req_summary"
+    });
+
+    expect(dryRun).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_dry_run",
+        cadOpsVersion: "cadops.v1",
+        mode: "dryRun",
+        createdIds: ["preview_box"],
+        modifiedIds: [],
+        deletedIds: []
+      }
+    });
+    expect(summary.structuredContent).toMatchObject({
+      ok: true,
+      requestId: "mcp_req_summary",
+      query: "project.summary",
+      objectCount: 0,
+      objects: []
+    });
+  });
+
+  it("runs cad.batch commit and reports the object through cad.project_summary", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_commit",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createCylinder",
+              id: "committed_cylinder",
+              dimensions: { radius: 2, height: 8 }
+            }
+          ]
+        }
+      }
+    });
+    const summary = server.callTool({
+      name: "cad.project_summary",
+      requestId: "mcp_req_summary"
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_commit",
+        cadOpsVersion: "cadops.v1",
+        mode: "commit",
+        createdIds: ["committed_cylinder"],
+        transactionId: "txn_1"
+      }
+    });
+    expect(summary.structuredContent).toMatchObject({
+      ok: true,
+      query: "project.summary",
+      objectCount: 1,
+      objects: [
+        {
+          id: "committed_cylinder",
+          kind: "cylinder",
+          dimensions: { radius: 2, height: 8 }
+        }
+      ]
+    });
+  });
+
+  it("returns structured CADOps errors from cad.batch", () => {
+    const server = new CadMcpServer();
+
+    const result = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_error",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.deleteObject",
+              id: "missing_object"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        requestId: "mcp_req_error",
+        cadOpsVersion: "cadops.v1",
+        mode: "commit",
+        error: {
+          code: "OBJECT_NOT_FOUND",
+          objectId: "missing_object"
+        }
+      }
+    });
+  });
+
+  it("handles minimal JSON-RPC tools/list and tools/call requests", () => {
+    const server = new CadMcpServer();
+
+    const tools = server.handleJsonRpc({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list"
+    });
+    const call = server.handleJsonRpc({
+      jsonrpc: "2.0",
+      id: "create-box",
+      method: "tools/call",
+      params: {
+        name: "cad.batch",
+        arguments: {
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "scene.createBox",
+                id: "jsonrpc_box",
+                dimensions: { width: 4, height: 5, depth: 6 }
+              }
+            ]
+          }
+        }
+      }
+    });
+
+    expect(tools).toMatchObject({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        tools: [{ name: "cad.project_summary" }, { name: "cad.batch" }]
+      }
+    });
+    expect(call).toMatchObject({
+      jsonrpc: "2.0",
+      id: "create-box",
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          requestId: "mcp_jsonrpc_create-box",
+          createdIds: ["jsonrpc_box"]
+        }
+      }
+    });
+  });
+
+  it("returns tool-level errors for unknown tools and invalid arguments", () => {
+    const server = new CadMcpServer();
+
+    expect(
+      server.callTool({
+        name: "cad.measure"
+      })
+    ).toMatchObject({
+      toolName: "cad.measure",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "UNKNOWN_TOOL" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.batch",
+        arguments: { prompt: "make a box" }
+      })
+    ).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+  });
+});
