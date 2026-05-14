@@ -1,0 +1,182 @@
+import { CadEngine } from "@web-cad/cad-core";
+import { describe, expect, it } from "vitest";
+import {
+  CadOpsAgentAdapter,
+  executeCadOpsAgentRequest,
+  parseCadOpsAgentRequestJson
+} from "./index";
+
+describe("agent-adapter", () => {
+  it("runs a CADOps dry-run batch without mutating the engine", () => {
+    const engine = new CadEngine();
+    const response = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "preview_box",
+            dimensions: { width: 1, height: 2, depth: 3 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      requestId: "agent_req_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      mode: "dryRun",
+      createdIds: ["preview_box"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: [],
+      transactionId: undefined
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+  });
+
+  it("runs a CADOps commit batch and returns the transaction ID", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_2",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createCylinder",
+            id: "committed_cylinder",
+            dimensions: { radius: 2, height: 8 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      requestId: "agent_req_2",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      mode: "commit",
+      createdIds: ["committed_cylinder"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_1"
+    });
+    expect(
+      adapter.getEngine().getDocument().objects.get("committed_cylinder")?.kind
+    ).toBe("cylinder");
+  });
+
+  it("returns structured CADOps validation errors", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_3",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.deleteObject",
+            id: "missing_object"
+          }
+        ]
+      }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      requestId: "agent_req_3",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      mode: "commit",
+      error: {
+        code: "OBJECT_NOT_FOUND",
+        message: "Object does not exist: missing_object",
+        opIndex: 0,
+        objectId: "missing_object"
+      },
+      errors: [
+        {
+          code: "OBJECT_NOT_FOUND",
+          message: "Object does not exist: missing_object",
+          opIndex: 0,
+          objectId: "missing_object"
+        }
+      ],
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+  });
+
+  it("supports JSON request parsing for external callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = parseCadOpsAgentRequestJson(
+      JSON.stringify({
+        requestId: "agent_req_json",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "json_box",
+              dimensions: { width: 4, height: 5, depth: 6 }
+            },
+            {
+              op: "scene.updateTransform",
+              id: "json_box",
+              transform: { translation: [1, 2, 3] }
+            }
+          ]
+        }
+      })
+    );
+
+    const responseJson = adapter.executeJson(JSON.stringify(request));
+    const response = JSON.parse(responseJson) as {
+      readonly ok: boolean;
+      readonly requestId: string;
+      readonly createdIds: readonly string[];
+      readonly modifiedIds: readonly string[];
+      readonly transactionId?: string;
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_req_json",
+      createdIds: ["json_box"],
+      modifiedIds: ["json_box"],
+      transactionId: "txn_1"
+    });
+    expect(
+      adapter.getEngine().getDocument().objects.get("json_box")?.transform
+        .translation
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("rejects non-CADOps adapter payloads", () => {
+    expect(() =>
+      parseCadOpsAgentRequestJson(
+        JSON.stringify({
+          requestId: "bad_request",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          prompt: "make me a box"
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter request.");
+  });
+});

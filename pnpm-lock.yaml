@@ -64,6 +64,15 @@ importers:
         specifier: ^7.2.4
         version: 7.3.3
 
+  packages/agent-adapter:
+    dependencies:
+      '@web-cad/cad-core':
+        specifier: workspace:*
+        version: link:../cad-core
+      '@web-cad/cad-protocol':
+        specifier: workspace:*
+        version: link:../cad-protocol
+
   packages/cad-core:
     dependencies:
       '@web-cad/cad-protocol':
