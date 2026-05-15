@@ -41,6 +41,25 @@ ProjectV1 {
 }
 ```
 
+Transactions may include optional actor metadata:
+
+```ts
+Transaction {
+  id: string
+  status: "committed" | "undone"
+  actor?: {
+    type: "human" | "agent" | "script" | "system"
+    id?: string
+    name?: string
+  }
+  ops: CadOp[]
+  diff: SemanticDiff
+}
+```
+
+The actor records where the committed mutation came from. It is audit metadata,
+not an authorization system.
+
 Current scene objects are:
 
 ```ts
@@ -95,6 +114,7 @@ The source of truth is:
 - `document.nextObjectNumber`
 - committed transaction history
 - redo transaction history where practical
+- optional transaction actor metadata
 
 Transactions are preserved so undo/redo, command auditability, and future
 rebuild/migration work have a stable record of how the current document was
@@ -130,6 +150,7 @@ authoritative document and geometry pipeline after load.
 - transforms
 - object names
 - transaction and semantic diff shape
+- optional transaction actor metadata
 - transaction replay where practical
 
 Invalid imports throw `CadProjectImportError` with structured issues:

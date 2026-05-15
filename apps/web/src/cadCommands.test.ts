@@ -17,7 +17,8 @@ import {
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
-  transformToForm
+  transformToForm,
+  WEB_UI_ACTOR
 } from "./cadCommands";
 
 describe("cad command builders", () => {
@@ -137,6 +138,13 @@ describe("cad command builders", () => {
       version: "cadops.v1",
       mode: "dryRun",
       ops
+    });
+
+    expect(buildBatch("commit", ops, WEB_UI_ACTOR)).toEqual({
+      version: "cadops.v1",
+      mode: "commit",
+      ops,
+      actor: WEB_UI_ACTOR
     });
   });
 

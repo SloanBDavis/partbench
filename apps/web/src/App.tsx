@@ -25,6 +25,7 @@ import {
   buildUpdateCylinderDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
+  WEB_UI_ACTOR,
   type BatchOperationForm,
   type DimensionCommandForm,
   type PrimitiveCommandForm,
@@ -223,7 +224,7 @@ export function App() {
 
     try {
       const response = await commandExecutor.executeBatch(
-        buildBatch("commit", ops)
+        buildBatch("commit", ops, WEB_UI_ACTOR)
       );
 
       if (!response.ok) {
@@ -339,7 +340,7 @@ export function App() {
 
     try {
       const response = await commandExecutor.executeBatch(
-        buildBatch(mode, queuedOps)
+        buildBatch(mode, queuedOps, WEB_UI_ACTOR)
       );
       setBatchResponse(response);
       setBatchError(undefined);

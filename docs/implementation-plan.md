@@ -32,11 +32,12 @@ packages:
 - `apps/web` - browser UI, command-worker entrypoint, geometry-worker entrypoint,
   local-serve default derived mesh service for OCCT box and cylinder meshes,
   primitive-rendering fallback, and smoke page.
-- `packages/cad-protocol` - typed CADOps command, batch, and query shapes.
+- `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
+  and validation error shapes.
 - `packages/cad-core` - in-memory document model, command application,
-  transactions, semantic diffs, undo/redo, CADOps query path, and project JSON
-  serialization for current scene objects, display names, document units, and
-  transaction history.
+  transactions with optional actor metadata, semantic diffs, undo/redo, CADOps
+  query path, and project JSON serialization for current scene objects, display
+  names, document units, and transaction history.
 - `packages/renderer` - simple renderer-facing primitive and mesh types plus
   canvas viewport rendering.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -299,7 +300,8 @@ Current limitations:
 - No STEP import/export exists yet.
 - No WebGPU renderer exists yet.
 - No large-assembly LOD or instancing pipeline exists yet.
-- MCP is local structured tooling only; no permissions/audit system exists yet.
+- MCP is local structured tooling only. Commits can now carry transaction actor
+  metadata, but no permissions/auth system or full audit event log exists yet.
 
 ## Roadmap
 
@@ -438,6 +440,9 @@ Current slice delivered:
 - Units and object names validate, produce semantic diffs, participate in batch
   dry-run/commit, and work with undo/redo.
 - Project JSON preserves document units and object names.
+- CADOps batch validation errors now include machine-readable context where
+  practical: operation name, JSON-style path, expected value shape, received
+  value, operation index, and affected object ID.
 
 Exit criteria:
 
@@ -467,8 +472,8 @@ Current slice delivered:
 - Project export strips rebuildable mesh/cache-like fields and saves only the
   authoritative document snapshot plus transaction/redo history.
 - Project import validates schema version, document shape, units, object names,
-  dimensions, transforms, transaction shape, and transaction replay where
-  practical.
+  dimensions, transforms, transaction shape, optional transaction actor
+  metadata, and transaction replay where practical.
 - Invalid imports return structured `CadProjectImportError` issues with codes,
   JSON-style paths, and messages.
 - The UI displays formatted project import errors.
@@ -492,6 +497,23 @@ Deliverables:
 - Add actor metadata to transactions.
 - Add audit records for agent-originated commits.
 - Add permission defaults: read/query plus dry-run before commit.
+
+Current slice delivered:
+
+- CADOps batches can carry optional actor metadata:
+  `human | agent | script | system`, plus optional `id` and `name`.
+- `cad-core` normalizes actor metadata and stores it on committed transactions.
+- Undo/redo and project JSON preserve transaction actor metadata.
+- The web UI tags command commits as a human Web UI actor.
+- The agent adapter and MCP batch wrapper pass actor metadata through to CADOps
+  and default structured commits to agent actors when no caller-provided actor is
+  present.
+- Actor validation failures return structured CADOps validation errors.
+
+Still pending:
+
+- Full audit event records with tool input/output hashes.
+- Permission policy defaults and approval flows for destructive agent commits.
 
 Exit criteria:
 

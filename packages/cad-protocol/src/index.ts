@@ -9,8 +9,15 @@ export type CadBatchMode = "dryRun" | "commit";
 export type ObjectId = string;
 export type TransactionId = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
+export type CadActorType = "human" | "agent" | "script" | "system";
 
 export type Vec3 = readonly [number, number, number];
+
+export interface CadActorMetadata {
+  readonly type: CadActorType;
+  readonly id?: string;
+  readonly name?: string;
+}
 
 export interface Transform {
   readonly translation: Vec3;
@@ -114,6 +121,7 @@ export interface CadBatch {
   readonly version: CadOpsVersion;
   readonly mode: CadBatchMode;
   readonly ops: readonly CadOp[];
+  readonly actor?: CadActorMetadata;
 }
 
 export type CadBatchValidationErrorCode =
@@ -123,13 +131,18 @@ export type CadBatchValidationErrorCode =
   | "OBJECT_KIND_MISMATCH"
   | "INVALID_DIMENSIONS"
   | "INVALID_UNITS"
-  | "INVALID_OBJECT_NAME";
+  | "INVALID_OBJECT_NAME"
+  | "INVALID_ACTOR";
 
 export interface CadBatchValidationError {
   readonly code: CadBatchValidationErrorCode;
   readonly message: string;
   readonly opIndex?: number;
+  readonly op?: CadOp["op"];
   readonly objectId?: ObjectId;
+  readonly path?: string;
+  readonly expected?: string;
+  readonly received?: string;
 }
 
 export interface CadBatchValidationResult {
@@ -148,6 +161,7 @@ export interface CadBatchSuccessResponse {
   readonly deletedIds: readonly ObjectId[];
   readonly warnings: readonly string[];
   readonly transactionId?: TransactionId;
+  readonly actor?: CadActorMetadata;
 }
 
 export interface CadBatchErrorResponse {

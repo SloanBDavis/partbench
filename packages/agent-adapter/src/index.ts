@@ -1,5 +1,6 @@
 import { CadEngine } from "@web-cad/cad-core";
 import type {
+  CadActorMetadata,
   CadBatch,
   CadBatchMode,
   CadBatchResponse,
@@ -22,6 +23,7 @@ export interface CadOpsAgentRequest {
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly batch: CadBatch;
+  readonly actor?: CadActorMetadata;
 }
 
 export interface CadOpsAgentQueryRequest {
@@ -45,6 +47,7 @@ export interface CadOpsAgentSuccessResponse {
   readonly deletedIds: readonly ObjectId[];
   readonly warnings: readonly string[];
   readonly transactionId?: string;
+  readonly actor?: CadActorMetadata;
 }
 
 export interface CadOpsAgentErrorResponse {
@@ -99,7 +102,12 @@ export class CadOpsAgentAdapter {
   constructor(private readonly engine: CadEngine = new CadEngine()) {}
 
   execute(request: CadOpsAgentRequest): CadOpsAgentResponse {
-    return toAgentResponse(request, this.engine.executeBatch(request.batch));
+    const effectiveRequest = applyAgentActor(request);
+
+    return toAgentResponse(
+      effectiveRequest,
+      this.engine.executeBatch(effectiveRequest.batch)
+    );
   }
 
   query(request: CadOpsAgentQueryRequest): CadOpsAgentQueryResponse {
@@ -208,7 +216,26 @@ function toAgentResponse(
     modifiedIds: response.modifiedIds,
     deletedIds: response.deletedIds,
     warnings: response.warnings,
-    transactionId: response.transactionId
+    transactionId: response.transactionId,
+    ...(response.actor ? { actor: response.actor } : {})
+  };
+}
+
+const DEFAULT_AGENT_ACTOR: CadActorMetadata = {
+  type: "agent",
+  id: "agent-adapter",
+  name: "Agent Adapter"
+};
+
+function applyAgentActor(request: CadOpsAgentRequest): CadOpsAgentRequest {
+  const actor = request.actor ?? request.batch.actor ?? DEFAULT_AGENT_ACTOR;
+
+  return {
+    ...request,
+    batch: {
+      ...request.batch,
+      actor
+    }
   };
 }
 
@@ -256,7 +283,8 @@ function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
     value.requestId !== "" &&
     typeof value.requestId === "string" &&
     value.adapterVersion === "web-cad.agent-adapter.v1" &&
-    isCadBatch(value.batch)
+    isCadBatch(value.batch) &&
+    (value.actor === undefined || isCadActorMetadataShape(value.actor))
   );
 }
 
@@ -278,7 +306,17 @@ function isCadBatch(value: unknown): value is CadBatch {
     value.version === "cadops.v1" &&
     (value.mode === "dryRun" || value.mode === "commit") &&
     Array.isArray(value.ops) &&
-    value.ops.every(isCadOp)
+    value.ops.every(isCadOp) &&
+    (value.actor === undefined || isCadActorMetadataShape(value.actor))
+  );
+}
+
+function isCadActorMetadataShape(value: unknown): value is CadActorMetadata {
+  return (
+    isRecord(value) &&
+    typeof value.type === "string" &&
+    (value.id === undefined || typeof value.id === "string") &&
+    (value.name === undefined || typeof value.name === "string")
   );
 }
 

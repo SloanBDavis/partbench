@@ -92,7 +92,12 @@ describe("mcp-adapter", () => {
         cadOpsVersion: "cadops.v1",
         mode: "commit",
         createdIds: ["committed_cylinder"],
-        transactionId: "txn_1"
+        transactionId: "txn_1",
+        actor: {
+          type: "agent",
+          id: "mcp",
+          name: "MCP Client"
+        }
       }
     });
     expect(summary.structuredContent).toMatchObject({
@@ -106,6 +111,48 @@ describe("mcp-adapter", () => {
           dimensions: { radius: 2, height: 8 }
         }
       ]
+    });
+  });
+
+  it("passes actor metadata through cad.batch commits", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_actor",
+      arguments: {
+        actor: {
+          type: "agent",
+          id: "external-agent",
+          name: "External Agent"
+        },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "actor_box",
+              dimensions: { width: 1, height: 1, depth: 1 }
+            }
+          ]
+        }
+      }
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_actor",
+        transactionId: "txn_1",
+        actor: {
+          type: "agent",
+          id: "external-agent",
+          name: "External Agent"
+        }
+      }
     });
   });
 

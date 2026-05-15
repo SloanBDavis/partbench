@@ -229,20 +229,26 @@ describe("cad-core", () => {
       ]
     });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: false,
       mode: "commit",
       error: {
         code: "INVALID_UNITS",
         message: "Unsupported document units: ft.",
-        opIndex: 0
+        opIndex: 0,
+        op: "document.updateUnits",
+        path: "$.ops[0].units",
+        expected: "mm, cm, m, or in",
+        received: "ft"
       },
       errors: [
-        {
+        expect.objectContaining({
           code: "INVALID_UNITS",
           message: "Unsupported document units: ft.",
-          opIndex: 0
-        }
+          opIndex: 0,
+          op: "document.updateUnits",
+          path: "$.ops[0].units"
+        })
       ],
       createdIds: [],
       modifiedIds: [],
@@ -275,11 +281,15 @@ describe("cad-core", () => {
 
     expect(response.ok).toBe(false);
     if (!response.ok) {
-      expect(response.error).toEqual({
+      expect(response.error).toMatchObject({
         code: "INVALID_OBJECT_NAME",
         message: "Object name must be non-empty.",
         opIndex: 0,
-        objectId: "cylinder_1"
+        op: "scene.renameObject",
+        objectId: "cylinder_1",
+        path: "$.ops[0].name",
+        expected: "non-empty string",
+        received: "   "
       });
     }
     expect(
@@ -308,22 +318,28 @@ describe("cad-core", () => {
       ]
     });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: false,
       mode: "commit",
       error: {
         code: "INVALID_DIMENSIONS",
         message: "Box dimensions must be positive finite numbers.",
         opIndex: 0,
-        objectId: "box_1"
+        op: "scene.updateBoxDimensions",
+        objectId: "box_1",
+        path: "$.ops[0].dimensions",
+        expected: "positive finite width, height, and depth",
+        received: '{"width":0,"height":2,"depth":3}'
       },
       errors: [
-        {
+        expect.objectContaining({
           code: "INVALID_DIMENSIONS",
           message: "Box dimensions must be positive finite numbers.",
           opIndex: 0,
-          objectId: "box_1"
-        }
+          op: "scene.updateBoxDimensions",
+          objectId: "box_1",
+          path: "$.ops[0].dimensions"
+        })
       ],
       createdIds: [],
       modifiedIds: [],
@@ -363,11 +379,15 @@ describe("cad-core", () => {
     expect(response.modifiedIds).toEqual([]);
     expect(response.deletedIds).toEqual([]);
     if (!response.ok) {
-      expect(response.error).toEqual({
+      expect(response.error).toMatchObject({
         code: "OBJECT_KIND_MISMATCH",
         message: "Object cylinder_1 is a cylinder, not a box.",
         opIndex: 0,
-        objectId: "cylinder_1"
+        op: "scene.updateBoxDimensions",
+        objectId: "cylinder_1",
+        path: "$.ops[0].id",
+        expected: "box",
+        received: "cylinder"
       });
     }
   });
@@ -593,6 +613,144 @@ describe("cad-core", () => {
     expect(engine.getTransactions()).toHaveLength(1);
   });
 
+  it("records actor metadata for direct command execution", () => {
+    const engine = new CadEngine();
+
+    const result = engine.apply(
+      {
+        op: "scene.createBox",
+        id: "human_box",
+        dimensions: { width: 1, height: 1, depth: 1 }
+      },
+      {
+        actor: {
+          type: "human",
+          id: "user-1",
+          name: "Test User"
+        }
+      }
+    );
+
+    expect(result.transaction.actor).toEqual({
+      type: "human",
+      id: "user-1",
+      name: "Test User"
+    });
+    expect(engine.getTransactions()[0]?.actor).toEqual(
+      result.transaction.actor
+    );
+  });
+
+  it("records actor metadata for committed batches", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "script",
+        id: "seed-script",
+        name: "Seed Script"
+      },
+      ops: [
+        {
+          op: "scene.createCylinder",
+          id: "script_cylinder",
+          dimensions: { radius: 1, height: 2 }
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: ["script_cylinder"],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_1",
+      actor: {
+        type: "script",
+        id: "seed-script",
+        name: "Seed Script"
+      }
+    });
+    expect(engine.getTransactions()[0]?.actor).toEqual({
+      type: "script",
+      id: "seed-script",
+      name: "Seed Script"
+    });
+  });
+
+  it("preserves transaction actor metadata through undo and redo", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "agent",
+        id: "agent-1",
+        name: "Fixture Agent"
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "agent_box",
+          dimensions: { width: 2, height: 2, depth: 2 }
+        }
+      ]
+    });
+
+    const undo = engine.undo();
+    const redo = engine.redo();
+
+    expect(undo?.transaction.actor).toEqual({
+      type: "agent",
+      id: "agent-1",
+      name: "Fixture Agent"
+    });
+    expect(redo?.transaction.actor).toEqual(undo?.transaction.actor);
+    expect(engine.getTransactions()[0]?.actor).toEqual(undo?.transaction.actor);
+  });
+
+  it("returns structured validation errors for invalid actor metadata", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "robot" as never
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "box_1",
+          dimensions: { width: 1, height: 1, depth: 1 }
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "INVALID_ACTOR",
+        message:
+          "Transaction actor type must be human, agent, script, or system.",
+        path: "$.actor.type",
+        expected: "human, agent, script, or system",
+        received: "robot"
+      },
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getTransactions()).toEqual([]);
+  });
+
   it("returns validation errors for a failed batch", () => {
     const engine = new CadEngine();
 
@@ -607,22 +765,28 @@ describe("cad-core", () => {
       ]
     });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: false,
       mode: "commit",
       error: {
         code: "OBJECT_NOT_FOUND",
         message: "Object does not exist: missing_object",
         opIndex: 0,
-        objectId: "missing_object"
+        op: "scene.deleteObject",
+        objectId: "missing_object",
+        path: "$.ops[0].id",
+        expected: "existing object id",
+        received: "missing_object"
       },
       errors: [
-        {
+        expect.objectContaining({
           code: "OBJECT_NOT_FOUND",
           message: "Object does not exist: missing_object",
           opIndex: 0,
-          objectId: "missing_object"
-        }
+          op: "scene.deleteObject",
+          objectId: "missing_object",
+          path: "$.ops[0].id"
+        })
       ],
       createdIds: [],
       modifiedIds: [],
@@ -1159,6 +1323,37 @@ describe("cad-core", () => {
     expect(restored.getTransactions()[0]?.id).toBe("txn_1");
   });
 
+  it("round-trips transaction actor metadata through project JSON", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "agent",
+        id: "round-trip-agent",
+        name: "Round Trip Agent"
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          dimensions: { width: 2, height: 3, depth: 4 }
+        }
+      ]
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(restored.getTransactions()[0]?.actor).toEqual({
+      type: "agent",
+      id: "round-trip-agent",
+      name: "Round Trip Agent"
+    });
+    expect(restored.undo()?.transaction.actor).toEqual(
+      engine.getTransactions()[0]?.actor
+    );
+  });
+
   it("exports the current deliberate project format version", () => {
     const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
 
@@ -1365,6 +1560,37 @@ describe("cad-core", () => {
       {
         code: "INVALID_TRANSACTION_HISTORY",
         path: "$.history"
+      }
+    );
+  });
+
+  it("rejects malformed transaction actor metadata in project JSON", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [
+              {
+                ...project.history[0],
+                actor: {
+                  type: "robot"
+                }
+              }
+            ]
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION",
+        path: "$.history[0].actor.type"
       }
     );
   });

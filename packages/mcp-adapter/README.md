@@ -90,7 +90,37 @@ Call `cad.batch` in dry-run mode:
 }
 ```
 
-Commit uses the same `cad.batch` tool with `"mode": "commit"`.
+Commit uses the same `cad.batch` tool with `"mode": "commit"`. Callers can
+provide optional actor metadata either inside the batch or as a top-level tool
+argument:
+
+```json
+{
+  "name": "cad.batch",
+  "arguments": {
+    "actor": {
+      "type": "agent",
+      "id": "local-agent",
+      "name": "Local Agent"
+    },
+    "batch": {
+      "version": "cadops.v1",
+      "mode": "commit",
+      "ops": [
+        {
+          "op": "scene.createBox",
+          "id": "agent_box",
+          "dimensions": { "width": 10, "height": 20, "depth": 30 }
+        }
+      ]
+    }
+  }
+}
+```
+
+When no actor is provided, the MCP wrapper marks committed transactions as an
+agent-originated MCP commit. Actor metadata is audit context only; it is not an
+authorization or permission system.
 
 ## Response Shape
 
@@ -111,7 +141,13 @@ agent adapter response:
     "createdIds": ["preview_box"],
     "modifiedIds": [],
     "deletedIds": [],
-    "warnings": []
+    "warnings": [],
+    "transactionId": "txn_1",
+    "actor": {
+      "type": "agent",
+      "id": "mcp",
+      "name": "MCP Client"
+    }
   },
   "content": [
     {

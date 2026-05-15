@@ -1,4 +1,5 @@
 import type {
+  CadActorMetadata,
   CadBatch,
   CadBatchMode,
   CadOp,
@@ -15,6 +16,12 @@ import type {
   Transform,
   Vec3
 } from "@web-cad/cad-protocol";
+
+export const WEB_UI_ACTOR: CadActorMetadata = {
+  type: "human",
+  id: "web-ui",
+  name: "Web UI"
+};
 
 export type BatchOperationKind =
   | "document.updateUnits"
@@ -160,12 +167,14 @@ export function buildDeleteObjectOp(id: ObjectId): SceneDeleteObjectOp {
 
 export function buildBatch(
   mode: CadBatchMode,
-  ops: readonly CadOp[]
+  ops: readonly CadOp[],
+  actor?: CadActorMetadata
 ): CadBatch {
   return {
     version: "cadops.v1",
     mode,
-    ops
+    ops,
+    ...(actor ? { actor } : {})
   };
 }
 

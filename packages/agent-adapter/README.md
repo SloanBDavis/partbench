@@ -19,6 +19,11 @@ External callers submit mutations with a `CadOpsAgentRequest`:
 {
   "requestId": "agent_req_001",
   "adapterVersion": "web-cad.agent-adapter.v1",
+  "actor": {
+    "type": "agent",
+    "id": "local-agent",
+    "name": "Local Agent"
+  },
   "batch": {
     "version": "cadops.v1",
     "mode": "dryRun",
@@ -37,6 +42,11 @@ External callers submit mutations with a `CadOpsAgentRequest`:
   }
 }
 ```
+
+`actor` is optional. If neither the request nor the batch supplies actor
+metadata, the adapter marks committed transactions as an agent-adapter commit.
+Actor metadata is stored on committed `cad-core` transactions for auditability;
+it is not an authorization system.
 
 External callers inspect the current model with a `CadOpsAgentQueryRequest`:
 
@@ -88,8 +98,13 @@ Dry-run and commit both return structured fields suitable for agents:
 ```
 
 Commit responses include `transactionId` when the batch commits.
+When actor metadata is present on a committed transaction, commit responses also
+include the committed `actor`.
 
 Validation failures keep the same shape and include `error` plus `errors`.
+CADOps validation errors include stable codes plus structured context such as
+operation name, JSON-style path, expected value shape, received value, operation
+index, and affected object ID where practical.
 
 Project summary queries return a serializable object list:
 

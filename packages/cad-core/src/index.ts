@@ -1,4 +1,5 @@
 import type {
+  CadActorMetadata,
   BoxDimensions,
   CadBatch,
   CadBatchResponse,
@@ -19,6 +20,7 @@ import type {
 } from "@web-cad/cad-protocol";
 
 export type {
+  CadActorMetadata,
   BoxDimensions,
   CadBatch,
   CadBatchResponse,
@@ -71,6 +73,7 @@ export interface Transaction {
   readonly ops: readonly CadOp[];
   readonly status: "committed" | "undone";
   readonly diff: SemanticDiff;
+  readonly actor?: CadActorMetadata;
 }
 
 export interface ApplyResult {
@@ -80,6 +83,10 @@ export interface ApplyResult {
 
 export interface CadEngineOptions {
   readonly nextObjectNumber?: number;
+}
+
+export interface CadExecutionOptions {
+  readonly actor?: CadActorMetadata;
 }
 
 export interface CadDocumentSnapshot {
@@ -239,11 +246,15 @@ export class CadEngine {
     return createCadDocumentSnapshot(this.#document, this.#nextObjectNumber);
   }
 
-  apply(op: CadOp): ApplyResult {
-    return this.applyBatch([op]);
+  apply(op: CadOp, options: CadExecutionOptions = {}): ApplyResult {
+    return this.applyBatch([op], options);
   }
 
-  applyBatch(ops: readonly CadOp[]): ApplyResult {
+  applyBatch(
+    ops: readonly CadOp[],
+    options: CadExecutionOptions = {}
+  ): ApplyResult {
+    const actor = normalizeActorMetadata(options.actor);
     const before = cloneDocument(this.#document);
     const run = this.#runOperations(ops);
 
@@ -251,7 +262,8 @@ export class CadEngine {
       id: this.#createTransactionId(),
       ops: [...ops],
       status: "committed",
-      diff: run.diff
+      diff: run.diff,
+      ...(actor ? { actor } : {})
     };
 
     const entry: TransactionEntry = {
@@ -299,14 +311,16 @@ export class CadEngine {
       };
     }
 
-    const result = this.applyBatch(batch.ops);
+    const actor = normalizeActorMetadata(batch.actor);
+    const result = this.applyBatch(batch.ops, { actor });
 
     return {
       ok: true,
       mode: batch.mode,
       ...diffIds,
       warnings: validation.warnings,
-      transactionId: result.transaction.id
+      transactionId: result.transaction.id,
+      ...(result.transaction.actor ? { actor: result.transaction.actor } : {})
     };
   }
 
@@ -355,6 +369,7 @@ export class CadEngine {
 
   validateBatch(batch: CadBatch): CadBatchValidationResult {
     try {
+      normalizeActorMetadata(batch.actor);
       this.#runOperations(batch.ops);
       return {
         ok: true,
@@ -679,7 +694,10 @@ function addObject(
       code: "OBJECT_ALREADY_EXISTS",
       message: `Object already exists: ${object.id}`,
       opIndex,
-      objectId: object.id
+      objectId: object.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique object id",
+      received: object.id
     });
   }
 
@@ -699,7 +717,10 @@ function getObjectOrThrow(
       code: "OBJECT_NOT_FOUND",
       message: `Object does not exist: ${id}`,
       opIndex,
-      objectId: id
+      objectId: id,
+      path: operationPath(opIndex, "id"),
+      expected: "existing object id",
+      received: id
     });
   }
 
@@ -719,7 +740,10 @@ function assertObjectKind<TKind extends SceneObject["kind"]>(
     code: "OBJECT_KIND_MISMATCH",
     message: `Object ${object.id} is a ${object.kind}, not a ${expectedKind}.`,
     opIndex,
-    objectId: object.id
+    objectId: object.id,
+    path: operationPath(opIndex, "id"),
+    expected: expectedKind,
+    received: object.kind
   });
 }
 
@@ -740,7 +764,10 @@ function validateBoxDimensions(
     code: "INVALID_DIMENSIONS",
     message: "Box dimensions must be positive finite numbers.",
     opIndex,
-    objectId
+    objectId,
+    path: operationPath(opIndex, "dimensions"),
+    expected: "positive finite width, height, and depth",
+    received: describeReceived(dimensions)
   });
 }
 
@@ -760,7 +787,10 @@ function validateCylinderDimensions(
     code: "INVALID_DIMENSIONS",
     message: "Cylinder dimensions must be positive finite numbers.",
     opIndex,
-    objectId
+    objectId,
+    path: operationPath(opIndex, "dimensions"),
+    expected: "positive finite radius and height",
+    received: describeReceived(dimensions)
   });
 }
 
@@ -772,7 +802,10 @@ function validateDocumentUnits(units: DocumentUnits, opIndex?: number): void {
   throwValidationError({
     code: "INVALID_UNITS",
     message: `Unsupported document units: ${String(units)}.`,
-    opIndex
+    opIndex,
+    path: operationPath(opIndex, "units"),
+    expected: "mm, cm, m, or in",
+    received: describeReceived(units)
   });
 }
 
@@ -801,7 +834,10 @@ function normalizeObjectName(
     code: "INVALID_OBJECT_NAME",
     message: "Object name must be non-empty.",
     opIndex,
-    objectId
+    objectId,
+    path: operationPath(opIndex, "name"),
+    expected: "non-empty string",
+    received: describeReceived(name)
   });
 }
 
@@ -889,7 +925,10 @@ function runOperations(
   if (ops.length === 0) {
     throwValidationError({
       code: "EMPTY_BATCH",
-      message: "Cannot execute an empty batch."
+      message: "Cannot execute an empty batch.",
+      path: "$.ops",
+      expected: "at least one operation",
+      received: "[]"
     });
   }
 
@@ -905,17 +944,30 @@ function runOperations(
   };
 
   for (const [opIndex, op] of ops.entries()) {
-    applyOperation(
-      op,
-      state,
-      diff,
-      () => {
-        const result = createObjectId(state.objects, nextObjectNumber);
-        nextObjectNumber = result.nextObjectNumber;
-        return result.id;
-      },
-      opIndex
-    );
+    try {
+      applyOperation(
+        op,
+        state,
+        diff,
+        () => {
+          const result = createObjectId(state.objects, nextObjectNumber);
+          nextObjectNumber = result.nextObjectNumber;
+          return result.id;
+        },
+        opIndex
+      );
+    } catch (error) {
+      if (error instanceof BatchValidationFailure) {
+        throwValidationError({
+          ...error.validationError,
+          opIndex: error.validationError.opIndex ?? opIndex,
+          op: error.validationError.op ?? op.op,
+          path: error.validationError.path ?? operationPath(opIndex)
+        });
+      }
+
+      throw error;
+    }
   }
 
   return {
@@ -959,6 +1011,96 @@ function uniqueObjectIds(
   objects: readonly CadObjectRef[]
 ): readonly ObjectId[] {
   return [...new Set(objects.map((object) => object.id))];
+}
+
+function normalizeActorMetadata(actor: unknown): CadActorMetadata | undefined {
+  if (actor === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(actor)) {
+    throwValidationError({
+      code: "INVALID_ACTOR",
+      message: "Transaction actor metadata must be an object.",
+      path: "$.actor",
+      expected: "actor metadata object",
+      received: describeReceived(actor)
+    });
+  }
+
+  if (!isCadActorType(actor.type)) {
+    throwValidationError({
+      code: "INVALID_ACTOR",
+      message:
+        "Transaction actor type must be human, agent, script, or system.",
+      path: "$.actor.type",
+      expected: "human, agent, script, or system",
+      received: describeReceived(actor.type)
+    });
+  }
+
+  const normalized: CadActorMetadata = { type: actor.type };
+
+  if (actor.id !== undefined) {
+    if (typeof actor.id !== "string" || actor.id.trim().length === 0) {
+      throwValidationError({
+        code: "INVALID_ACTOR",
+        message:
+          "Transaction actor id must be a non-empty string when provided.",
+        path: "$.actor.id",
+        expected: "non-empty string",
+        received: describeReceived(actor.id)
+      });
+    }
+
+    Object.assign(normalized, { id: actor.id.trim() });
+  }
+
+  if (actor.name !== undefined) {
+    if (typeof actor.name !== "string" || actor.name.trim().length === 0) {
+      throwValidationError({
+        code: "INVALID_ACTOR",
+        message:
+          "Transaction actor name must be a non-empty string when provided.",
+        path: "$.actor.name",
+        expected: "non-empty string",
+        received: describeReceived(actor.name)
+      });
+    }
+
+    Object.assign(normalized, { name: actor.name.trim() });
+  }
+
+  return normalized;
+}
+
+function operationPath(opIndex?: number, field?: string): string | undefined {
+  if (opIndex === undefined) {
+    return field ? `$.${field}` : undefined;
+  }
+
+  return field ? `$.ops[${opIndex}].${field}` : `$.ops[${opIndex}]`;
+}
+
+function describeReceived(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (
+    value === undefined ||
+    value === null ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function throwValidationError(error: CadBatchValidationError): never {
@@ -1435,12 +1577,72 @@ function validateTransactionShape(
     );
   }
 
+  validateOptionalTransactionActor(value.actor, `${path}.actor`, issues);
+
   if (!isSemanticDiff(value.diff)) {
     addProjectIssue(
       issues,
       "INVALID_TRANSACTION",
       `${path}.diff`,
       "Transaction diff must be a valid semantic diff."
+    );
+  }
+}
+
+function validateOptionalTransactionActor(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      path,
+      "Transaction actor must be an object when present."
+    );
+    return;
+  }
+
+  if (!isCadActorType(value.type)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.type`,
+      "Transaction actor type must be human, agent, script, or system."
+    );
+  }
+
+  if (value.id !== undefined) {
+    validateNonEmptyStringField(value.id, `${path}.id`, "actor id", issues);
+  }
+
+  if (value.name !== undefined) {
+    validateNonEmptyStringField(
+      value.name,
+      `${path}.name`,
+      "actor name",
+      issues
+    );
+  }
+}
+
+function validateNonEmptyStringField(
+  value: unknown,
+  path: string,
+  label: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (typeof value !== "string" || value.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      path,
+      `Transaction ${label} must be a non-empty string when present.`
     );
   }
 }
@@ -1644,6 +1846,15 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isDocumentUnits(value: unknown): value is DocumentUnits {
   return value === "mm" || value === "cm" || value === "m" || value === "in";
+}
+
+function isCadActorType(value: unknown): value is CadActorMetadata["type"] {
+  return (
+    value === "human" ||
+    value === "agent" ||
+    value === "script" ||
+    value === "system"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

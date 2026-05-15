@@ -7,7 +7,7 @@ import {
   type CadOpsAgentQueryResponse,
   type CadOpsAgentResponse
 } from "@web-cad/agent-adapter";
-import type { CadBatch } from "@web-cad/cad-protocol";
+import type { CadActorMetadata, CadBatch } from "@web-cad/cad-protocol";
 
 export type CadMcpToolName = "cad.project_summary" | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -80,6 +80,11 @@ export interface CadMcpServerOptions {
 }
 
 const ADAPTER_VERSION: AgentAdapterVersion = "web-cad.agent-adapter.v1";
+const DEFAULT_MCP_ACTOR: CadActorMetadata = {
+  type: "agent",
+  id: "mcp",
+  name: "MCP Client"
+};
 
 export class CadMcpServer {
   #nextRequestNumber = 1;
@@ -190,7 +195,11 @@ export class CadMcpServer {
         parseCadOpsAgentRequest({
           requestId: request.requestId ?? this.#createRequestId(),
           adapterVersion: ADAPTER_VERSION,
-          batch: request.arguments.batch
+          batch: request.arguments.batch,
+          actor:
+            request.arguments.actor ??
+            request.arguments.batch.actor ??
+            DEFAULT_MCP_ACTOR
         })
       );
 
@@ -235,6 +244,10 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         batch: {
           type: "object",
           description: "A CadBatch with version, mode, and ops fields."
+        },
+        actor: {
+          type: "object",
+          description: "Optional actor metadata for the committed transaction."
         }
       }
     }
@@ -274,7 +287,7 @@ function createInvalidArgumentsResult(
 
 function isBatchToolArguments(
   value: unknown
-): value is { readonly batch: CadBatch } {
+): value is { readonly batch: CadBatch; readonly actor?: CadActorMetadata } {
   return isRecord(value) && value.batch !== undefined;
 }
 

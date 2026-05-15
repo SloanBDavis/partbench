@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CadBatch, CadOp, CadQueryRequest } from "./index";
+import type {
+  CadBatch,
+  CadBatchValidationError,
+  CadOp,
+  CadQueryRequest
+} from "./index";
 import { protocolPackage } from "./index";
 
 describe("cad-protocol", () => {
@@ -68,6 +73,11 @@ describe("cad-protocol", () => {
     const batch: CadBatch = {
       version: "cadops.v1",
       mode: "dryRun",
+      actor: {
+        type: "script",
+        id: "test-script",
+        name: "Test Script"
+      },
       ops: [
         {
           op: "scene.createBox",
@@ -78,7 +88,26 @@ describe("cad-protocol", () => {
 
     expect(batch.version).toBe("cadops.v1");
     expect(batch.mode).toBe("dryRun");
+    expect(batch.actor?.type).toBe("script");
     expect(batch.ops).toHaveLength(1);
+  });
+
+  it("types structured validation errors", () => {
+    const error: CadBatchValidationError = {
+      code: "INVALID_DIMENSIONS",
+      message: "Box dimensions must be positive finite numbers.",
+      opIndex: 0,
+      op: "scene.createBox",
+      path: "$.ops[0].dimensions",
+      expected: "positive finite width, height, and depth",
+      received: '{"width":0,"height":1,"depth":1}'
+    };
+
+    expect(error).toMatchObject({
+      code: "INVALID_DIMENSIONS",
+      op: "scene.createBox",
+      path: "$.ops[0].dimensions"
+    });
   });
 
   it("types CADOps read queries", () => {

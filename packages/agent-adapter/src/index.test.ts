@@ -48,6 +48,11 @@ describe("agent-adapter", () => {
     const response = adapter.execute({
       requestId: "agent_req_2",
       adapterVersion: "web-cad.agent-adapter.v1",
+      actor: {
+        type: "agent",
+        id: "fixture-agent",
+        name: "Fixture Agent"
+      },
       batch: {
         version: "cadops.v1",
         mode: "commit",
@@ -71,7 +76,17 @@ describe("agent-adapter", () => {
       modifiedIds: [],
       deletedIds: [],
       warnings: [],
-      transactionId: "txn_1"
+      transactionId: "txn_1",
+      actor: {
+        type: "agent",
+        id: "fixture-agent",
+        name: "Fixture Agent"
+      }
+    });
+    expect(adapter.getEngine().getTransactions()[0]?.actor).toEqual({
+      type: "agent",
+      id: "fixture-agent",
+      name: "Fixture Agent"
     });
     expect(
       adapter.getEngine().getDocument().objects.get("committed_cylinder")?.kind
@@ -96,7 +111,7 @@ describe("agent-adapter", () => {
       }
     });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: false,
       requestId: "agent_req_3",
       adapterVersion: "web-cad.agent-adapter.v1",
@@ -106,21 +121,60 @@ describe("agent-adapter", () => {
         code: "OBJECT_NOT_FOUND",
         message: "Object does not exist: missing_object",
         opIndex: 0,
-        objectId: "missing_object"
+        op: "scene.deleteObject",
+        objectId: "missing_object",
+        path: "$.ops[0].id"
       },
       errors: [
-        {
+        expect.objectContaining({
           code: "OBJECT_NOT_FOUND",
           message: "Object does not exist: missing_object",
           opIndex: 0,
-          objectId: "missing_object"
-        }
+          op: "scene.deleteObject",
+          objectId: "missing_object",
+          path: "$.ops[0].id"
+        })
       ],
       createdIds: [],
       modifiedIds: [],
       deletedIds: [],
       warnings: []
     });
+  });
+
+  it("returns structured actor validation errors from CADOps", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_bad_actor",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      actor: {
+        type: "robot" as never
+      },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "box_1",
+            dimensions: { width: 1, height: 1, depth: 1 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      requestId: "agent_req_bad_actor",
+      error: {
+        code: "INVALID_ACTOR",
+        path: "$.actor.type",
+        expected: "human, agent, script, or system",
+        received: "robot"
+      }
+    });
+    expect(adapter.getEngine().getTransactions()).toEqual([]);
   });
 
   it("supports JSON request parsing for external callers", () => {
