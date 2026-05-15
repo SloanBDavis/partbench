@@ -12,7 +12,6 @@ import type {
   CadOp
 } from "@web-cad/cad-protocol";
 import { createOcctMeshDevRuntime } from "@web-cad/occt-mesh-dev-runtime";
-import type { RenderPrimitive } from "@web-cad/renderer";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
@@ -44,6 +43,7 @@ import {
   formatObjectPosition,
   formatObjectScale
 } from "./sceneObjectDisplay";
+import { createRenderSceneInputs } from "./renderScene";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -142,10 +142,6 @@ export function App() {
     () => [...document.objects.values()],
     [document]
   );
-  const primitives = useMemo(
-    () => sceneObjects.map(toRenderPrimitive),
-    [sceneObjects]
-  );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
     : undefined;
@@ -153,6 +149,10 @@ export function App() {
     () =>
       new Map(derivedGeometry.entries.map((entry) => [entry.objectId, entry])),
     [derivedGeometry]
+  );
+  const renderScene = useMemo(
+    () => createRenderSceneInputs(sceneObjects, derivedGeometryByObjectId),
+    [derivedGeometryByObjectId, sceneObjects]
   );
 
   useEffect(() => {
@@ -458,8 +458,8 @@ export function App() {
         </aside>
 
         <ViewportCanvas
-          primitives={primitives}
-          meshes={derivedGeometry.meshes}
+          primitives={renderScene.primitives}
+          meshes={renderScene.meshes}
           selectedId={selectedId}
           onSelect={selectObject}
         />
@@ -473,22 +473,4 @@ export function App() {
       </section>
     </main>
   );
-}
-
-function toRenderPrimitive(object: SceneObject): RenderPrimitive {
-  if (object.kind === "box") {
-    return {
-      id: object.id,
-      kind: "box",
-      dimensions: object.dimensions,
-      transform: object.transform
-    };
-  }
-
-  return {
-    id: object.id,
-    kind: "cylinder",
-    dimensions: object.dimensions,
-    transform: object.transform
-  };
 }

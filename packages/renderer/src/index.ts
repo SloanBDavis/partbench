@@ -163,19 +163,32 @@ export function pickPrimitive(
   size: ViewportSize,
   point: ViewportPoint
 ): string | undefined {
-  const candidates = primitives
-    .map((primitive) => {
-      const bounds = getProjectedBounds(primitive, camera, size);
+  return pickRenderScene(primitives, [], camera, size, point);
+}
 
-      if (!bounds || !containsPoint(bounds, point)) {
-        return undefined;
-      }
+export function pickRenderScene(
+  primitives: readonly RenderPrimitive[],
+  meshes: readonly RenderTriangleMesh[],
+  camera: RenderCamera,
+  size: ViewportSize,
+  point: ViewportPoint
+): string | undefined {
+  const primitiveCandidates = primitives.map((primitive) =>
+    createPickCandidate(
+      primitive.id,
+      getProjectedPrimitiveBounds(primitive, camera, size),
+      point
+    )
+  );
+  const meshCandidates = meshes.map((mesh) =>
+    createPickCandidate(
+      mesh.id,
+      getProjectedMeshBounds(mesh, camera, size),
+      point
+    )
+  );
 
-      return {
-        id: primitive.id,
-        depth: bounds.depth
-      };
-    })
+  const candidates = [...primitiveCandidates, ...meshCandidates]
     .filter((candidate): candidate is { id: string; depth: number } =>
       Boolean(candidate)
     )
@@ -394,7 +407,30 @@ function fillProjectedFace(
   context.fill();
 }
 
-function getProjectedBounds(
+function createPickCandidate(
+  id: string,
+  bounds:
+    | {
+        minX: number;
+        maxX: number;
+        minY: number;
+        maxY: number;
+        depth: number;
+      }
+    | undefined,
+  point: ViewportPoint
+): { id: string; depth: number } | undefined {
+  if (!bounds || !containsPoint(bounds, point)) {
+    return undefined;
+  }
+
+  return {
+    id,
+    depth: bounds.depth
+  };
+}
+
+function getProjectedPrimitiveBounds(
   primitive: RenderPrimitive,
   camera: RenderCamera,
   size: ViewportSize
@@ -416,6 +452,42 @@ function getProjectedBounds(
         ];
   const projected = points
     .map((point) => projectPoint(point, camera, size))
+    .filter((point): point is ProjectedPoint => Boolean(point));
+
+  if (projected.length === 0) {
+    return undefined;
+  }
+
+  const xs = projected.map((point) => point.x);
+  const ys = projected.map((point) => point.y);
+  const depths = projected.map((point) => point.depth);
+
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+    depth: Math.min(...depths)
+  };
+}
+
+function getProjectedMeshBounds(
+  mesh: RenderTriangleMesh,
+  camera: RenderCamera,
+  size: ViewportSize
+):
+  | {
+      minX: number;
+      maxX: number;
+      minY: number;
+      maxY: number;
+      depth: number;
+    }
+  | undefined {
+  const projected = mesh.vertices
+    .map((point) =>
+      projectPoint(transformPoint(point, mesh.transform), camera, size)
+    )
     .filter((point): point is ProjectedPoint => Boolean(point));
 
   if (projected.length === 0) {

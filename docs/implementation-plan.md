@@ -279,6 +279,8 @@ Current limitations:
   loading, or failed.
 - The Geometry panel reports whether each object is using an OCCT-derived mesh,
   is still deriving one, or is on primitive fallback.
+- The viewport uses ready derived meshes as the preferred display input and keeps
+  primitive rendering as fallback instead of drawing both for the same object.
 - Derived geometry is default-enabled for development builds and still disabled
   by default for production builds, so there is no full production geometry cache
   yet.
@@ -358,6 +360,9 @@ Current slice delivered:
 - Cylinder tessellation now runs through the same OCCT spike, geometry-kernel
   facade, browser worker, renderer mesh bridge, and derived geometry status path
   as box tessellation.
+- The app-layer render scene preparation prefers ready derived meshes and omits
+  duplicate primitive fallback for those objects, while pending, failed,
+  unsupported, or disabled derived geometry still displays primitives.
 
 Exit criteria:
 
@@ -390,6 +395,8 @@ Exit criteria:
 - Box and cylinder display can use worker-derived meshes when the geometry path
   is enabled.
 - Primitive rendering remains available as fallback.
+- Ready derived meshes are displayed instead of duplicate primitives for the
+  same object.
 
 ### Phase D: V1 Document and Command Model
 

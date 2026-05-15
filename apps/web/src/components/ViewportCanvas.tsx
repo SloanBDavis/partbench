@@ -2,7 +2,7 @@ import {
   createDefaultCamera,
   orbitCamera,
   panCamera,
-  pickPrimitive,
+  pickRenderScene,
   renderCanvasScene,
   type RenderCamera,
   type RenderTriangleMesh,
@@ -186,7 +186,7 @@ export function ViewportCanvas({
             }
 
             const rect = event.currentTarget.getBoundingClientRect();
-            const id = pickPrimitive(primitives, camera, size, {
+            const id = pickRenderScene(primitives, meshes ?? [], camera, size, {
               x: event.clientX - rect.left,
               y: event.clientY - rect.top
             });
