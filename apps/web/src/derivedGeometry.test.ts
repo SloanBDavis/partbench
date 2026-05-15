@@ -68,6 +68,55 @@ describe("derivedGeometry", () => {
     );
   });
 
+  it("does not duplicate requests for unchanged pending or ready objects", async () => {
+    const deferred = createDeferred<OcctMeshDevResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const object = createBoxObject("box_1", 2);
+    const runtime = createRuntime(() => deferred.promise);
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([object]);
+    service.reconcile([object]);
+
+    expect(runtime.inputs.map((input) => input.id)).toEqual(["box_1"]);
+
+    deferred.resolve(createResult("box_1", createMesh("box_1")));
+    await flushPromises();
+    service.reconcile([object]);
+
+    expect(runtime.inputs.map((input) => input.id)).toEqual(["box_1"]);
+    expect(snapshots.at(-1)?.entries[0]?.status).toBe("ready");
+  });
+
+  it("emits reordered snapshots without re-requesting unchanged meshes", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const box = createBoxObject("box_1", 2);
+    const cylinder = createCylinderObject("cylinder_1");
+
+    service.reconcile([box, cylinder]);
+    await flushPromises();
+    service.reconcile([cylinder, box]);
+
+    expect(runtime.inputs.map((input) => input.id)).toEqual([
+      "box_1",
+      "cylinder_1"
+    ]);
+    expect(snapshots.at(-1)?.entries.map((entry) => entry.objectId)).toEqual([
+      "cylinder_1",
+      "box_1"
+    ]);
+  });
+
   it("invalidates deleted objects and removes derived meshes", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
@@ -80,6 +129,24 @@ describe("derivedGeometry", () => {
     service.reconcile([createBoxObject("box_1", 2)]);
     await flushPromises();
     service.reconcile([]);
+
+    const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
+    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.meshes).toEqual([]);
+  });
+
+  it("ignores stale worker results after object deletion", async () => {
+    const pending = createDeferred<OcctMeshDevResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(() => pending.promise),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([createBoxObject("box_1", 2)]);
+    service.reconcile([]);
+    pending.resolve(createResult("box_1", createMesh("stale_mesh")));
+    await flushPromises();
 
     const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
     expect(snapshot.entries).toEqual([]);
@@ -166,6 +233,31 @@ describe("derivedGeometry", () => {
       }
     });
   });
+
+  it("disposes runtime and ignores pending work after disposal", async () => {
+    const pending = createDeferred<OcctMeshDevResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(() => pending.promise);
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([createBoxObject("box_1", 2)]);
+    service.dispose();
+    service.reconcile([createBoxObject("box_2", 4)]);
+    service.refresh([createBoxObject("box_2", 4)]);
+
+    pending.resolve(createResult("box_1", createMesh("stale_mesh")));
+    await flushPromises();
+
+    expect(runtime.disposeCount).toBe(1);
+    expect(runtime.inputs.map((input) => input.id)).toEqual(["box_1"]);
+    expect(service.getSnapshot()).toEqual(createEmptyDerivedGeometrySnapshot());
+    expect(snapshots.at(-1)?.entries.map((entry) => entry.status)).toEqual([
+      "pending"
+    ]);
+  });
 });
 
 function createBoxObject(id: string, width: number): BoxObject {
@@ -185,9 +277,9 @@ function createBoxObject(id: string, width: number): BoxObject {
   };
 }
 
-function createCylinderObject(): CylinderObject {
+function createCylinderObject(id = "cylinder_1"): CylinderObject {
   return {
-    id: "cylinder_1",
+    id,
     kind: "cylinder",
     dimensions: {
       radius: 1,
@@ -207,11 +299,16 @@ function createRuntime(
   ) => Promise<OcctMeshDevResult>
 ): OcctMeshDevRuntime & {
   readonly inputs: readonly (OcctMeshDevBoxInput | OcctMeshDevCylinderInput)[];
+  readonly disposeCount: number;
 } {
   const inputs: (OcctMeshDevBoxInput | OcctMeshDevCylinderInput)[] = [];
+  let disposeCount = 0;
 
   return {
     inputs,
+    get disposeCount() {
+      return disposeCount;
+    },
     tessellateBox(input) {
       inputs.push(input);
       return handler(input);
@@ -220,7 +317,9 @@ function createRuntime(
       inputs.push(input);
       return handler(input);
     },
-    dispose() {}
+    dispose() {
+      disposeCount += 1;
+    }
   };
 }
 

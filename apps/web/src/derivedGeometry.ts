@@ -63,6 +63,12 @@ export interface DerivedGeometryServiceOptions {
 
 type SupportedDerivedGeometryObject = BoxObject | CylinderObject;
 
+interface ActiveDerivedGeometryRequest {
+  readonly objectId: string;
+  readonly cacheKey: string;
+  readonly version: number;
+}
+
 export class DerivedGeometryService {
   readonly #runtime: OcctMeshDevRuntime;
   readonly #onChange: (snapshot: DerivedGeometrySnapshot) => void;
@@ -86,9 +92,10 @@ export class DerivedGeometryService {
       return;
     }
 
-    let changed = false;
+    const nextObjectOrder = objects.map((object) => object.id);
+    let changed = !isSameStringArray(this.#objectOrder, nextObjectOrder);
     const nextIds = new Set<string>();
-    this.#objectOrder = objects.map((object) => object.id);
+    this.#objectOrder = nextObjectOrder;
 
     for (const object of objects) {
       nextIds.add(object.id);
@@ -119,18 +126,12 @@ export class DerivedGeometryService {
       }
 
       const supportedObject = object as SupportedDerivedGeometryObject;
-      this.#nextRequestVersion += 1;
-      const requestVersion = this.#nextRequestVersion;
-      this.#requestVersions.set(object.id, requestVersion);
-      const pending: DerivedGeometryPendingEntry = {
-        objectId: object.id,
-        objectKind: object.kind,
-        cacheKey,
-        status: "pending"
-      };
+      const request = this.#beginRequest(supportedObject);
+      const pending = createPendingEntry(supportedObject, cacheKey);
+
       this.#entries.set(object.id, pending);
       changed = true;
-      void this.#deriveObject(supportedObject, cacheKey, requestVersion);
+      void this.#deriveObject(supportedObject, request);
     }
 
     for (const objectId of this.#entries.keys()) {
@@ -147,25 +148,39 @@ export class DerivedGeometryService {
   }
 
   refresh(objects: readonly SceneObject[]): void {
-    this.#entries.clear();
-    this.#requestVersions.clear();
-    this.#objectOrder = [];
+    if (this.#disposed) {
+      return;
+    }
+
+    this.#clearState();
     this.#emitChange();
     this.reconcile(objects);
   }
 
   dispose(): void {
     this.#disposed = true;
-    this.#entries.clear();
-    this.#requestVersions.clear();
-    this.#objectOrder = [];
+    this.#clearState();
     this.#runtime.dispose();
+  }
+
+  #beginRequest(
+    object: SupportedDerivedGeometryObject
+  ): ActiveDerivedGeometryRequest {
+    this.#nextRequestVersion += 1;
+    const request = {
+      objectId: object.id,
+      cacheKey: createDerivedGeometryCacheKey(object),
+      version: this.#nextRequestVersion
+    };
+
+    this.#requestVersions.set(request.objectId, request.version);
+
+    return request;
   }
 
   async #deriveObject(
     object: SupportedDerivedGeometryObject,
-    cacheKey: string,
-    requestVersion: number
+    request: ActiveDerivedGeometryRequest
   ): Promise<void> {
     try {
       const result =
@@ -181,50 +196,82 @@ export class DerivedGeometryService {
               transform: object.transform
             });
 
-      if (!this.#canApplyResult(object.id, cacheKey, requestVersion)) {
-        return;
-      }
-
-      this.#entries.set(object.id, {
-        objectId: object.id,
-        objectKind: object.kind,
-        cacheKey,
-        status: "ready",
-        mesh: result.mesh,
-        metrics: result.metrics
-      });
-      this.#emitChange();
+      this.#applyReadyResult(object, request, result);
     } catch (error) {
-      if (!this.#canApplyResult(object.id, cacheKey, requestVersion)) {
-        return;
-      }
-
-      this.#entries.set(object.id, {
-        objectId: object.id,
-        objectKind: object.kind,
-        cacheKey,
-        status: "error",
-        error: createOcctMeshDevErrorDetails(error)
-      });
-      this.#emitChange();
+      this.#applyErrorResult(object, request, error);
     }
   }
 
-  #canApplyResult(
-    objectId: string,
-    cacheKey: string,
-    requestVersion: number
-  ): boolean {
+  #applyReadyResult(
+    object: SupportedDerivedGeometryObject,
+    request: ActiveDerivedGeometryRequest,
+    result: OcctMeshDevResult
+  ): void {
+    if (!this.#canApplyResult(request)) {
+      return;
+    }
+
+    this.#entries.set(object.id, {
+      objectId: object.id,
+      objectKind: object.kind,
+      cacheKey: request.cacheKey,
+      status: "ready",
+      mesh: result.mesh,
+      metrics: result.metrics
+    });
+    this.#requestVersions.delete(object.id);
+    this.#emitChange();
+  }
+
+  #applyErrorResult(
+    object: SupportedDerivedGeometryObject,
+    request: ActiveDerivedGeometryRequest,
+    error: unknown
+  ): void {
+    if (!this.#canApplyResult(request)) {
+      return;
+    }
+
+    this.#entries.set(object.id, {
+      objectId: object.id,
+      objectKind: object.kind,
+      cacheKey: request.cacheKey,
+      status: "error",
+      error: createOcctMeshDevErrorDetails(error)
+    });
+    this.#requestVersions.delete(object.id);
+    this.#emitChange();
+  }
+
+  #canApplyResult(request: ActiveDerivedGeometryRequest): boolean {
     return (
       !this.#disposed &&
-      this.#entries.get(objectId)?.cacheKey === cacheKey &&
-      this.#requestVersions.get(objectId) === requestVersion
+      this.#entries.get(request.objectId)?.cacheKey === request.cacheKey &&
+      this.#requestVersions.get(request.objectId) === request.version
     );
+  }
+
+  #clearState(): void {
+    this.#entries.clear();
+    this.#requestVersions.clear();
+    this.#objectOrder = [];
   }
 
   #emitChange(): void {
     this.#onChange(this.getSnapshot());
   }
+}
+
+function createPendingEntry(
+  object: SupportedDerivedGeometryObject,
+  cacheKey: string
+): DerivedGeometryPendingEntry {
+  return {
+    objectId: object.id,
+    objectKind: object.kind,
+    cacheKey,
+    status: "pending"
+  };
 }
 
 function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
@@ -307,6 +354,16 @@ function isSameEntry(
     left.objectKind === right.objectKind &&
     left.cacheKey === right.cacheKey &&
     left.status === right.status
+  );
+}
+
+function isSameStringArray(
+  left: readonly string[],
+  right: readonly string[]
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
   );
 }
 
