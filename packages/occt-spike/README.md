@@ -73,9 +73,11 @@ request, and adapts the mesh into renderer data.
 
 - The full beta OpenCascade.js package is large and should not be added to the
   production web app bundle without a custom build strategy.
-- The current browser smoke emits a roughly 50 MB raw WASM asset before gzip.
-  A custom OpenCascade.js build is still needed before this becomes production
-  startup behavior.
+- The current browser smoke emits a roughly 50 MB raw WASM asset. The smoke
+  server now precompresses and serves that asset as Brotli when supported,
+  currently about 11.19 MB served via `br`. A custom OpenCascade.js build is
+  still needed for real binary shrinkage before this becomes production startup
+  behavior.
 - Multi-threaded OCCT/WASM would require worker setup and cross-origin isolation
   headers for `SharedArrayBuffer`.
 - Embind objects need explicit `delete()` calls. A production wrapper should own

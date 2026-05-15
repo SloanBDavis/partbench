@@ -10,6 +10,7 @@ import {
 } from "./errors.mjs";
 
 export async function startStaticServer(rootDir) {
+  const metrics = {};
   const server = createServer(async (request, response) => {
     try {
       const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
@@ -25,10 +26,23 @@ export async function startStaticServer(rootDir) {
       }
 
       await stat(filePath);
+      const encodedAsset = await getEncodedAsset(filePath, request);
+      if (
+        filePath.includes("opencascade.full-") &&
+        filePath.endsWith(".wasm")
+      ) {
+        metrics.occtWasmServedBytes = encodedAsset.size;
+        metrics.occtWasmServedEncoding = encodedAsset.encoding ?? "identity";
+      }
       response.writeHead(200, {
-        "Content-Type": getContentType(filePath)
+        "Content-Type": getContentType(filePath),
+        Vary: "Accept-Encoding",
+        ...(encodedAsset.encoding
+          ? { "Content-Encoding": encodedAsset.encoding }
+          : {}),
+        "Content-Length": encodedAsset.size
       });
-      createReadStream(filePath)
+      createReadStream(encodedAsset.filePath)
         .on("error", () => {
           response.destroy();
         })
@@ -51,6 +65,9 @@ export async function startStaticServer(rootDir) {
 
   return {
     port,
+    getMetrics() {
+      return { ...metrics };
+    },
     close() {
       server.close();
     }
@@ -135,6 +152,34 @@ export async function runSmokePage(client, url, timeoutMs) {
   }
 
   throw new Error("Timed out waiting for geometry worker smoke result.");
+}
+
+async function getEncodedAsset(filePath, request) {
+  const acceptEncoding = request.headers["accept-encoding"] ?? "";
+
+  for (const candidate of [
+    { encoding: "br", filePath: `${filePath}.br` },
+    { encoding: "gzip", filePath: `${filePath}.gz` }
+  ]) {
+    if (!acceptEncoding.includes(candidate.encoding)) {
+      continue;
+    }
+
+    try {
+      return {
+        ...candidate,
+        size: (await stat(candidate.filePath)).size
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    encoding: undefined,
+    filePath,
+    size: (await stat(filePath)).size
+  };
 }
 
 export function findBrowserExecutable() {

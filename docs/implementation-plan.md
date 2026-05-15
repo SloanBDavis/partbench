@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the actual repo state and a
 near-term roadmap.
 
-Last updated: 2026-05-14.
+Last updated: 2026-05-15.
 
 The project should continue to move in small, testable milestones. Do not skip
 ahead to a future architecture layer unless the requested milestone calls for it.
@@ -52,6 +52,8 @@ packages:
   the OCCT worker path, including structured success/failure diagnostics.
 - `scripts/occt-smoke` - helper modules for OCCT smoke browser/server plumbing,
   asset metrics, and structured result records.
+- `docs/occt-wasm-size.md` - current OCCT/WASM load-size findings,
+  tradeoffs, and recommendation.
 
 ## Completed Milestones
 
@@ -184,10 +186,17 @@ OCCT load: ~1.2-1.4 s on the current local machine
 tessellation: ~15-20 ms
 round trip: ~1.3-1.4 s on first load
 meshes: box 24 vertices / 12 triangles, cylinder ~100 vertices / ~100 triangles
-OCCT WASM: ~50.31 MB raw, ~13.96 MB gzip
+OCCT WASM: ~50.31 MB raw, ~13.96 MB gzip, ~11.19 MB Brotli
+served OCCT WASM in smoke: ~11.19 MB via br
 ```
 
 Timing magnitude is tracked, not used as a pass/fail budget.
+
+The current load-size investigation is documented in
+`docs/occt-wasm-size.md`. The immediate low-risk improvement is Brotli serving
+for the smoke/hosting path. Real binary shrinkage still requires a custom
+OpenCascade.js build experiment; the installed package only ships the full
+prebuilt WASM.
 
 ### Milestone 5: AI/MCP Adapter Spike
 
@@ -286,9 +295,13 @@ Deliverables:
 - Make WASM loading diagnostics visible in the dev UI. The current dev-flagged
   panel shows error code, stage, worker startup, and WASM load status.
 - Track OCCT asset size over time.
-- Investigate smaller/custom OCCT builds.
-- Decide whether the first V1 geometry path can use the current OCCT build
-  lazily, or whether shrinking/splitting OCCT is required first.
+- Keep Brotli/gzip delivery metrics in the smoke pipeline.
+- Investigate a smaller custom OCCT build as the next meaningful binary-size
+  reduction. App-layer compression now reduces delivered bytes, but it does not
+  shrink the underlying full WASM module.
+- Decide whether the first V1 geometry path can use the current full OCCT build
+  lazily with Brotli delivery, or whether a custom build is required before
+  broader geometry work.
 
 Exit criteria:
 

@@ -15,6 +15,10 @@ import {
 const assetMetrics = {
   occtWasmBytes: 50_305_130,
   occtWasmGzipBytes: 13_955_447,
+  occtWasmBrotliBytes: 11_193_695,
+  occtWasmBrotliQuality: 9,
+  occtWasmServedBytes: 11_193_695,
+  occtWasmServedEncoding: "br",
   geometryWorkerBytes: 234_793,
   smokeBundleBytes: 235_030
 };

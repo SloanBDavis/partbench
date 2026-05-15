@@ -9,6 +9,13 @@ export function assertSmokeResult(record) {
     "workerExecutionMs",
     "roundTripMs"
   ];
+  const sizeKeys = [
+    "occtWasmBytes",
+    "occtWasmGzipBytes",
+    "occtWasmBrotliBytes",
+    "occtWasmBrotliQuality",
+    "occtWasmServedBytes"
+  ];
 
   if (record.status !== "ok") {
     throw new Error(record.error?.message ?? "OCCT browser smoke failed.");
@@ -44,6 +51,22 @@ export function assertSmokeResult(record) {
     if (!Number.isFinite(metrics[key])) {
       throw new Error(`Missing or invalid timing metric: ${key}.`);
     }
+  }
+
+  for (const key of sizeKeys) {
+    if (!Number.isFinite(metrics[key])) {
+      throw new Error(`Missing or invalid OCCT size metric: ${key}.`);
+    }
+  }
+
+  if (metrics.occtWasmServedEncoding !== "br") {
+    throw new Error(
+      `Unexpected OCCT WASM served encoding: ${metrics.occtWasmServedEncoding}.`
+    );
+  }
+
+  if (metrics.occtWasmServedBytes > metrics.occtWasmGzipBytes) {
+    throw new Error("OCCT WASM served bytes exceeded gzip size.");
   }
 }
 
@@ -131,8 +154,22 @@ export function printSummary(record, metricsPath) {
   console.log(
     `OCCT WASM: ${formatBytes(metrics.occtWasmBytes)} raw, ${formatBytes(
       metrics.occtWasmGzipBytes
-    )} gzip`
+    )} gzip, ${formatBytes(metrics.occtWasmBrotliBytes)} br`
   );
+  if (metrics.occtWasmTransferredBytes) {
+    console.log(
+      `OCCT transfer: ${formatBytes(metrics.occtWasmTransferredBytes)} via ${
+        metrics.occtWasmTransferEncoding ?? "unknown"
+      }`
+    );
+  }
+  if (metrics.occtWasmServedBytes) {
+    console.log(
+      `OCCT served: ${formatBytes(metrics.occtWasmServedBytes)} via ${
+        metrics.occtWasmServedEncoding ?? "unknown"
+      }`
+    );
+  }
 }
 
 export function printFailureSummary(record, metricsPath) {
@@ -150,7 +187,7 @@ export function printFailureSummary(record, metricsPath) {
     console.error(
       `OCCT WASM: ${formatBytes(record.metrics.occtWasmBytes)} raw, ${formatBytes(
         record.metrics.occtWasmGzipBytes
-      )} gzip`
+      )} gzip, ${formatBytes(record.metrics.occtWasmBrotliBytes)} br`
     );
   }
 }

@@ -138,5 +138,6 @@ loading fails, it affects only that explicit dev workflow.
 - `pnpm smoke:occt-browser` runs that smoke page in a local browser and appends
   structured timing/asset-size telemetry to `.metrics/occt-browser.jsonl`. Each
   record includes the scenario, browser metadata where available, worker
-  startup/WASM load outcome, and structured error details on failure. The smoke
-  validates that metrics exist, but it does not fail based on timing magnitude.
+  startup/WASM load outcome, raw/gzip/Brotli WASM size, served WASM encoding and
+  byte count, and structured error details on failure. The smoke validates that
+  metrics exist, but it does not fail based on timing magnitude.

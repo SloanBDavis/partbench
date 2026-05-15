@@ -85,7 +85,10 @@ try {
   const smokeResult = await runSmokePage(client, appUrl, smokeTimeoutMs);
   const gitSha = await getGitSha();
   const record = createSuccessRecord({
-    assetMetrics,
+    assetMetrics: {
+      ...assetMetrics,
+      ...appServer.getMetrics()
+    },
     appUrl,
     browserExecutable,
     browserVersion,
@@ -101,7 +104,12 @@ try {
 } catch (error) {
   const record = createFailureRecord({
     error,
-    assetMetrics,
+    assetMetrics: assetMetrics
+      ? {
+          ...assetMetrics,
+          ...appServer?.getMetrics()
+        }
+      : undefined,
     appUrl,
     browserExecutable,
     browserVersion,
