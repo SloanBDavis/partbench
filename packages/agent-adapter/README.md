@@ -189,9 +189,10 @@ Project summary queries return a serializable object list:
 Missing object lookups return `ok: false` with a structured `OBJECT_NOT_FOUND`
 error.
 
-Document units are current-model metadata. The adapter does not perform unit
-conversion; callers should treat dimensions as authored in the document's
-reported units.
+Document unit changes are handled by CADOps in `cad-core`, not by the adapter.
+Callers can use `document.updateUnits` with `mode: "metadataOnly"` to relabel
+numeric values or `mode: "preservePhysicalSize"` to scale current dimensions and
+transform translations.
 
 Measurement queries are derived from the authoritative document, not renderer
 meshes. Current measurements support boxes and cylinders and include local

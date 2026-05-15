@@ -60,8 +60,12 @@ export function formatTransactionDiffSummary(
   }
 
   if (diff.document?.units) {
+    const mode =
+      diff.document.units.mode === "preservePhysicalSize"
+        ? "converted"
+        : "relabelled";
     parts.push(
-      `units ${diff.document.units.before} -> ${diff.document.units.after}`
+      `units ${diff.document.units.before} -> ${diff.document.units.after} (${mode})`
     );
   }
 

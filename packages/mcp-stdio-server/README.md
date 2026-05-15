@@ -76,7 +76,9 @@ document.
 `cad.project_features` returns read-only primitive feature summaries derived
 from the current scene objects and transaction history.
 `cad.object_measurements` and `cad.project_extents` return read-only derived
-bounds and approximate volumes from the authoritative document. Units are
-current-model metadata only; the server does not perform unit conversion.
+bounds and approximate volumes from the authoritative document. Unit changes go
+through CADOps: `metadataOnly` relabels numeric values, while
+`preservePhysicalSize` scales current dimensions and transform translations in
+`cad-core`.
 `cad.transaction_history` returns read-only summaries of the in-memory
 transaction and redo history, including actor metadata when present.

@@ -10,6 +10,7 @@ export type ObjectId = string;
 export type FeatureId = string;
 export type TransactionId = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
+export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
 export type CadActorType = "human" | "agent" | "script" | "system";
 
 export type Vec3 = readonly [number, number, number];
@@ -52,6 +53,7 @@ export type CadOp =
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
   readonly units: DocumentUnits;
+  readonly mode?: DocumentUnitUpdateMode;
 }
 
 export interface SceneCreateBoxOp {
@@ -108,6 +110,8 @@ export interface DocumentSemanticDiff {
   readonly units?: {
     readonly before: DocumentUnits;
     readonly after: DocumentUnits;
+    readonly mode?: DocumentUnitUpdateMode;
+    readonly scaleFactor?: number;
   };
 }
 
@@ -134,6 +138,7 @@ export type CadBatchValidationErrorCode =
   | "OBJECT_KIND_MISMATCH"
   | "INVALID_DIMENSIONS"
   | "INVALID_UNITS"
+  | "INVALID_UNIT_UPDATE_MODE"
   | "INVALID_OBJECT_NAME"
   | "INVALID_ACTOR";
 

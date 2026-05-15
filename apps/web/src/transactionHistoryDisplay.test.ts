@@ -50,11 +50,13 @@ describe("transaction history display helpers", () => {
         document: {
           units: {
             before: "mm",
-            after: "in"
+            after: "in",
+            mode: "metadataOnly",
+            scaleFactor: 1
           }
         }
       })
-    ).toBe("1 created, units mm -> in");
+    ).toBe("1 created, units mm -> in (relabelled)");
   });
 
   it("returns recent transactions newest first", () => {

@@ -217,8 +217,9 @@ Unknown tools or malformed wrapper arguments return tool-level errors with
 `UNKNOWN_TOOL` or `INVALID_ARGUMENTS`.
 
 Project summary responses include the document units and object display names
-when present. Units are metadata-only in the current model; changing units does
-not convert stored dimensions.
+when present. Unit changes remain CADOps mutations: `metadataOnly` relabels
+current numeric values, while `preservePhysicalSize` scales current dimensions
+and transform translations in `cad-core`.
 
 Measurement responses are read-only derived data from the authoritative
 document, not renderer meshes. Current measurements support boxes and cylinders

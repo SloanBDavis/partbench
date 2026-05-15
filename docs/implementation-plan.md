@@ -278,8 +278,9 @@ The project is past the first MVP, but it is not yet a real CAD system.
 Current limitations:
 
 - `cad-core` stores scene objects, not a true feature graph.
-- Document units are stored as model metadata only; unit conversion is not
-  implemented yet.
+- Document units support explicit metadata-only relabeling or preserve-physical
+  size conversion for current primitive dimensions and transform translations.
+  This is not a full unit system yet.
 - Scene objects can have optional display names, but names are not required to
   be unique yet.
 - There is no real B-rep topology in the authoritative document.
@@ -438,6 +439,9 @@ Current slice delivered:
   renderer meshes as derived views.
 - Document units can be updated through the typed CADOps command
   `document.updateUnits`.
+- Unit updates now make behavior explicit: metadata-only changes relabel the
+  existing numeric model values, while preserve-physical-size conversion scales
+  current box/cylinder dimensions and transform translations.
 - Scene objects can be renamed through the typed CADOps command
   `scene.renameObject`.
 - Units and object names validate, produce semantic diffs, participate in batch

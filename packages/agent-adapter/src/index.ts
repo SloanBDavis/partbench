@@ -497,7 +497,10 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "document.updateUnits") {
-    return typeof value.units === "string";
+    return (
+      typeof value.units === "string" &&
+      (value.mode === undefined || typeof value.mode === "string")
+    );
   }
 
   return false;

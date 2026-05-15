@@ -186,7 +186,73 @@ describe("cad-core", () => {
       document: {
         units: {
           before: "mm",
-          after: "in"
+          after: "in",
+          mode: "metadataOnly",
+          scaleFactor: 1
+        }
+      }
+    });
+  });
+
+  it("converts document length values when unit updates preserve physical size", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 10, height: 20, depth: 30 },
+      transform: { translation: [10, 20, 30] }
+    });
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 5, height: 10 },
+      transform: { translation: [25.4, 0, 10] }
+    });
+
+    const result = engine.apply({
+      op: "document.updateUnits",
+      units: "in",
+      mode: "preservePhysicalSize"
+    });
+
+    const box = result.document.objects.get("box_1");
+    const cylinder = result.document.objects.get("cylinder_1");
+
+    expect(result.document.units).toBe("in");
+    expect(box?.kind).toBe("box");
+    expect(cylinder?.kind).toBe("cylinder");
+
+    if (box?.kind !== "box" || cylinder?.kind !== "cylinder") {
+      throw new Error("Expected converted box and cylinder objects.");
+    }
+
+    expect(box.dimensions.width).toBeCloseTo(10 / 25.4, 10);
+    expect(box.dimensions.height).toBeCloseTo(20 / 25.4, 10);
+    expect(box.dimensions.depth).toBeCloseTo(30 / 25.4, 10);
+    expect(box.transform.translation[0]).toBeCloseTo(10 / 25.4, 10);
+    expect(box.transform.translation[1]).toBeCloseTo(20 / 25.4, 10);
+    expect(box.transform.translation[2]).toBeCloseTo(30 / 25.4, 10);
+
+    expect(cylinder.dimensions.radius).toBeCloseTo(5 / 25.4, 10);
+    expect(cylinder.dimensions.height).toBeCloseTo(10 / 25.4, 10);
+    expect(cylinder.transform.translation[0]).toBeCloseTo(1, 10);
+    expect(cylinder.transform.translation[1]).toBeCloseTo(0, 10);
+    expect(cylinder.transform.translation[2]).toBeCloseTo(10 / 25.4, 10);
+
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [
+        { id: "box_1", kind: "box" },
+        { id: "cylinder_1", kind: "cylinder" }
+      ],
+      deleted: [],
+      document: {
+        units: {
+          before: "mm",
+          after: "in",
+          mode: "preservePhysicalSize",
+          scaleFactor: 0.03937007874
         }
       }
     });
@@ -250,6 +316,41 @@ describe("cad-core", () => {
           path: "$.ops[0].units"
         })
       ],
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().units).toBe("mm");
+  });
+
+  it("validates document unit update mode", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "document.updateUnits",
+          units: "in",
+          mode: "reinterpret" as never
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "INVALID_UNIT_UPDATE_MODE",
+        message: "Unsupported document unit update mode: reinterpret.",
+        opIndex: 0,
+        op: "document.updateUnits",
+        path: "$.ops[0].mode",
+        expected: "metadataOnly or preservePhysicalSize",
+        received: "reinterpret"
+      },
       createdIds: [],
       modifiedIds: [],
       deletedIds: [],
@@ -515,6 +616,44 @@ describe("cad-core", () => {
 
     expect(engine.getDocument().units).toBe("cm");
     expect(engine.getDocument().objects.get("box_1")?.name).toBe("Box renamed");
+  });
+
+  it("undoes and redoes document unit conversion", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 10, height: 20, depth: 30 },
+      transform: { translation: [40, 50, 60] }
+    });
+    engine.apply({
+      op: "document.updateUnits",
+      units: "cm",
+      mode: "preservePhysicalSize"
+    });
+
+    expect(engine.getDocument().units).toBe("cm");
+    expect(engine.getDocument().objects.get("box_1")).toMatchObject({
+      dimensions: { width: 1, height: 2, depth: 3 },
+      transform: { translation: [4, 5, 6] }
+    });
+
+    engine.undo();
+
+    expect(engine.getDocument().units).toBe("mm");
+    expect(engine.getDocument().objects.get("box_1")).toMatchObject({
+      dimensions: { width: 10, height: 20, depth: 30 },
+      transform: { translation: [40, 50, 60] }
+    });
+
+    engine.redo();
+
+    expect(engine.getDocument().units).toBe("cm");
+    expect(engine.getDocument().objects.get("box_1")).toMatchObject({
+      dimensions: { width: 1, height: 2, depth: 3 },
+      transform: { translation: [4, 5, 6] }
+    });
   });
 
   it("returns combined transaction diff contents for a batch", () => {
@@ -947,6 +1086,58 @@ describe("cad-core", () => {
     });
     expect(engine.getDocument().units).toBe("in");
     expect(engine.getDocument().objects.get("box_1")?.name).toBe("Named box");
+  });
+
+  it("dry-runs and commits unit conversion through batches", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 10, height: 20, depth: 30 },
+      transform: { translation: [40, 50, 60] }
+    });
+
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "document.updateUnits" as const,
+          units: "cm" as const,
+          mode: "preservePhysicalSize" as const
+        }
+      ]
+    };
+
+    expect(engine.executeBatch(batch)).toEqual({
+      ok: true,
+      mode: "dryRun",
+      createdIds: [],
+      modifiedIds: ["box_1"],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().units).toBe("mm");
+    expect(engine.getDocument().objects.get("box_1")).toMatchObject({
+      dimensions: { width: 10, height: 20, depth: 30 },
+      transform: { translation: [40, 50, 60] }
+    });
+
+    expect(engine.executeBatch({ ...batch, mode: "commit" })).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: [],
+      modifiedIds: ["box_1"],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_2"
+    });
+    expect(engine.getDocument().units).toBe("cm");
+    expect(engine.getDocument().objects.get("box_1")).toMatchObject({
+      dimensions: { width: 1, height: 2, depth: 3 },
+      transform: { translation: [4, 5, 6] }
+    });
   });
 
   it("undoes a committed CADOps batch", () => {
@@ -1455,7 +1646,7 @@ describe("cad-core", () => {
             },
             {
               op: "document.updateUnits",
-              label: "Set document units to in"
+              label: "Set document units to in (relabel values)"
             }
           ],
           diff: {
@@ -1468,7 +1659,9 @@ describe("cad-core", () => {
             document: {
               units: {
                 before: "mm",
-                after: "in"
+                after: "in",
+                mode: "metadataOnly",
+                scaleFactor: 1
               }
             }
           }
@@ -1795,6 +1988,62 @@ describe("cad-core", () => {
       rotation: [0, 0, 0],
       scale: [1, 1, 1]
     });
+  });
+
+  it("round-trips converted unit values and undo history", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 10, height: 20, depth: 30 },
+      transform: { translation: [40, 50, 60] }
+    });
+    engine.apply({
+      op: "document.updateUnits",
+      units: "cm",
+      mode: "preservePhysicalSize"
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const restoredBox = restored.getDocument().objects.get("box_1");
+
+    expect(restored.getDocument().units).toBe("cm");
+    expect(restoredBox?.kind).toBe("box");
+
+    if (restoredBox?.kind !== "box") {
+      throw new Error("Expected restored box object.");
+    }
+
+    expect(restoredBox.dimensions).toEqual({
+      width: 1,
+      height: 2,
+      depth: 3
+    });
+    expect(restoredBox.transform.translation).toEqual([4, 5, 6]);
+    expect(restored.getTransactions()[1]?.diff.document?.units).toEqual({
+      before: "mm",
+      after: "cm",
+      mode: "preservePhysicalSize",
+      scaleFactor: 0.1
+    });
+
+    restored.undo();
+
+    const undoneBox = restored.getDocument().objects.get("box_1");
+    expect(restored.getDocument().units).toBe("mm");
+    expect(undoneBox?.kind).toBe("box");
+
+    if (undoneBox?.kind !== "box") {
+      throw new Error("Expected restored box after undo.");
+    }
+
+    expect(undoneBox.dimensions).toEqual({
+      width: 10,
+      height: 20,
+      depth: 30
+    });
+    expect(undoneBox.transform.translation).toEqual([40, 50, 60]);
   });
 
   it("round-trips redo history for an undone generated-ID transaction", () => {

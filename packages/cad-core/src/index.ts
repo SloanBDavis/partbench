@@ -19,6 +19,7 @@ import type {
   CadTransactionStatus,
   CylinderDimensions,
   DocumentSemanticDiff,
+  DocumentUnitUpdateMode,
   DocumentUnits,
   ObjectMeasurementsSnapshot,
   ObjectId,
@@ -49,6 +50,7 @@ export type {
   CadTransactionStatus,
   CylinderDimensions,
   DocumentSemanticDiff,
+  DocumentUnitUpdateMode,
   DocumentUnits,
   ObjectMeasurementsSnapshot,
   ObjectId,
@@ -656,6 +658,8 @@ type MutableDocumentSemanticDiff = {
   units?: {
     before: DocumentUnits;
     after: DocumentUnits;
+    mode: DocumentUnitUpdateMode;
+    scaleFactor: number;
   };
 };
 
@@ -674,14 +678,35 @@ function applyOperation(
   switch (op.op) {
     case "document.updateUnits": {
       validateDocumentUnits(op.units, opIndex);
+      const unitUpdateMode = validateDocumentUnitUpdateMode(op.mode, opIndex);
 
       if (state.units !== op.units) {
-        const before = diff.document?.units?.before ?? state.units;
+        const previousUnitDiff = diff.document?.units;
+        const before = previousUnitDiff?.before ?? state.units;
+        const operationScaleFactor =
+          unitUpdateMode === "preservePhysicalSize"
+            ? getUnitConversionScaleFactor(state.units, op.units)
+            : 1;
+        const scaleFactor = cleanMeasurementNumber(
+          (previousUnitDiff?.scaleFactor ?? 1) * operationScaleFactor
+        );
+        const diffMode =
+          previousUnitDiff?.mode === "preservePhysicalSize" ||
+          unitUpdateMode === "preservePhysicalSize"
+            ? "preservePhysicalSize"
+            : "metadataOnly";
+
+        if (unitUpdateMode === "preservePhysicalSize") {
+          scaleDocumentLengthValues(state, operationScaleFactor, diff);
+        }
+
         diff.document = {
           ...diff.document,
           units: {
             before,
-            after: op.units
+            after: op.units,
+            mode: diffMode,
+            scaleFactor
           }
         };
         state.units = op.units;
@@ -910,6 +935,28 @@ function validateDocumentUnits(units: DocumentUnits, opIndex?: number): void {
   });
 }
 
+function validateDocumentUnitUpdateMode(
+  mode: DocumentUnitUpdateMode | undefined,
+  opIndex?: number
+): DocumentUnitUpdateMode {
+  if (mode === undefined || mode === "metadataOnly") {
+    return "metadataOnly";
+  }
+
+  if (mode === "preservePhysicalSize") {
+    return mode;
+  }
+
+  throwValidationError({
+    code: "INVALID_UNIT_UPDATE_MODE",
+    message: `Unsupported document unit update mode: ${String(mode)}.`,
+    opIndex,
+    path: operationPath(opIndex, "mode"),
+    expected: "metadataOnly or preservePhysicalSize",
+    received: describeReceived(mode)
+  });
+}
+
 function normalizeOptionalObjectName(
   name: string | undefined,
   opIndex?: number,
@@ -970,6 +1017,90 @@ function objectRef(object: SceneObject): CadObjectRef {
     id: object.id,
     kind: object.kind
   };
+}
+
+function getUnitConversionScaleFactor(
+  from: DocumentUnits,
+  to: DocumentUnits
+): number {
+  return cleanMeasurementNumber(
+    getMillimetersPerUnit(from) / getMillimetersPerUnit(to)
+  );
+}
+
+function getMillimetersPerUnit(units: DocumentUnits): number {
+  switch (units) {
+    case "mm":
+      return 1;
+    case "cm":
+      return 10;
+    case "m":
+      return 1000;
+    case "in":
+      return 25.4;
+  }
+}
+
+function scaleDocumentLengthValues(
+  state: MutableDocumentState,
+  scaleFactor: number,
+  diff: MutableSemanticDiff
+): void {
+  for (const object of state.objects.values()) {
+    const scaled = scaleSceneObjectLengthValues(object, scaleFactor);
+    state.objects.set(object.id, scaled);
+    diff.modified.push(objectRef(scaled));
+  }
+}
+
+function scaleSceneObjectLengthValues(
+  object: SceneObject,
+  scaleFactor: number
+): SceneObject {
+  const transform = scaleTransformTranslation(object.transform, scaleFactor);
+
+  if (object.kind === "box") {
+    return {
+      ...object,
+      dimensions: {
+        width: scaleLength(object.dimensions.width, scaleFactor),
+        height: scaleLength(object.dimensions.height, scaleFactor),
+        depth: scaleLength(object.dimensions.depth, scaleFactor)
+      },
+      transform
+    };
+  }
+
+  return {
+    ...object,
+    dimensions: {
+      radius: scaleLength(object.dimensions.radius, scaleFactor),
+      height: scaleLength(object.dimensions.height, scaleFactor)
+    },
+    transform
+  };
+}
+
+function scaleTransformTranslation(
+  transform: Transform,
+  scaleFactor: number
+): Transform {
+  return {
+    ...transform,
+    translation: scaleVec3(transform.translation, scaleFactor)
+  };
+}
+
+function scaleVec3(vector: Vec3, scaleFactor: number): Vec3 {
+  return [
+    scaleLength(vector[0], scaleFactor),
+    scaleLength(vector[1], scaleFactor),
+    scaleLength(vector[2], scaleFactor)
+  ];
+}
+
+function scaleLength(value: number, scaleFactor: number): number {
+  return cleanMeasurementNumber(value * scaleFactor);
 }
 
 function cloneDocument(document: CadDocument): CadDocument {
@@ -1117,7 +1248,7 @@ function createOperationSummaries(
       case "document.updateUnits":
         return {
           op: op.op,
-          label: `Set document units to ${op.units}`
+          label: `Set document units to ${op.units} (${formatUnitUpdateModeLabel(op.mode)})`
         };
 
       case "scene.createBox": {
@@ -1185,6 +1316,12 @@ function createOperationSummaries(
   });
 }
 
+function formatUnitUpdateModeLabel(
+  mode: DocumentUnitUpdateMode | undefined
+): string {
+  return mode === "preservePhysicalSize" ? "convert size" : "relabel values";
+}
+
 function createObjectOperationSummary(
   summary: CadOperationSummary
 ): CadOperationSummary {
@@ -1218,7 +1355,13 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
               ? {
                   units: {
                     before: diff.document.units.before,
-                    after: diff.document.units.after
+                    after: diff.document.units.after,
+                    ...(diff.document.units.mode
+                      ? { mode: diff.document.units.mode }
+                      : {}),
+                    ...(diff.document.units.scaleFactor !== undefined
+                      ? { scaleFactor: diff.document.units.scaleFactor }
+                      : {})
                   }
                 }
               : {})
@@ -2237,7 +2380,10 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "document.updateUnits") {
-    return isDocumentUnits(value.units);
+    return (
+      isDocumentUnits(value.units) &&
+      (value.mode === undefined || isDocumentUnitUpdateMode(value.mode))
+    );
   }
 
   return false;
@@ -2262,7 +2408,13 @@ function isDocumentSemanticDiff(value: unknown): value is DocumentSemanticDiff {
     (value.units === undefined ||
       (isRecord(value.units) &&
         isDocumentUnits(value.units.before) &&
-        isDocumentUnits(value.units.after)))
+        isDocumentUnits(value.units.after) &&
+        (value.units.mode === undefined ||
+          isDocumentUnitUpdateMode(value.units.mode)) &&
+        (value.units.scaleFactor === undefined ||
+          (typeof value.units.scaleFactor === "number" &&
+            Number.isFinite(value.units.scaleFactor) &&
+            value.units.scaleFactor > 0))))
   );
 }
 
@@ -2323,6 +2475,12 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isDocumentUnits(value: unknown): value is DocumentUnits {
   return value === "mm" || value === "cm" || value === "m" || value === "in";
+}
+
+function isDocumentUnitUpdateMode(
+  value: unknown
+): value is DocumentUnitUpdateMode {
+  return value === "metadataOnly" || value === "preservePhysicalSize";
 }
 
 function isCadActorType(value: unknown): value is CadActorMetadata["type"] {

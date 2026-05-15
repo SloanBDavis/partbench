@@ -62,24 +62,44 @@ export function BatchPanel({
       </label>
 
       {form.op === "document.updateUnits" && (
-        <label>
-          Units
-          <select
-            value={form.units}
-            disabled={disabled}
-            onChange={(event) =>
-              onChange({
-                ...form,
-                units: event.currentTarget.value as DocumentUnits
-              })
-            }
-          >
-            <option value="mm">mm</option>
-            <option value="cm">cm</option>
-            <option value="m">m</option>
-            <option value="in">in</option>
-          </select>
-        </label>
+        <div className="field-grid two">
+          <label>
+            Units
+            <select
+              value={form.units}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange({
+                  ...form,
+                  units: event.currentTarget.value as DocumentUnits
+                })
+              }
+            >
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+              <option value="in">in</option>
+            </select>
+          </label>
+          <label>
+            Unit change
+            <select
+              value={form.unitUpdateMode ?? "metadataOnly"}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange({
+                  ...form,
+                  unitUpdateMode: event.currentTarget.value as NonNullable<
+                    BatchOperationForm["unitUpdateMode"]
+                  >
+                })
+              }
+            >
+              <option value="metadataOnly">Relabel values</option>
+              <option value="preservePhysicalSize">Convert size</option>
+            </select>
+          </label>
+        </div>
       )}
 
       {(form.op === "scene.createBox" ||
@@ -229,7 +249,7 @@ function summarizeOp(op: CadOp): string {
   }
 
   if (op.op === "document.updateUnits") {
-    return `${op.op} ${op.units}`;
+    return `${op.op} ${op.units} (${op.mode ?? "metadataOnly"})`;
   }
 
   return `${op.op} ${op.id}`;

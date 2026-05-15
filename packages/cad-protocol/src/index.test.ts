@@ -21,7 +21,8 @@ describe("cad-protocol", () => {
     const ops: CadOp[] = [
       {
         op: "document.updateUnits",
-        units: "in"
+        units: "in",
+        mode: "preservePhysicalSize"
       },
       {
         op: "scene.createBox",
@@ -69,6 +70,10 @@ describe("cad-protocol", () => {
       "scene.renameObject",
       "scene.deleteObject"
     ]);
+    expect(ops[0]).toMatchObject({
+      op: "document.updateUnits",
+      mode: "preservePhysicalSize"
+    });
   });
 
   it("types CADOps batches", () => {

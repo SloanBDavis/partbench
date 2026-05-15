@@ -12,7 +12,8 @@ import {
 import type {
   CadBatchMode,
   CadBatchResponse,
-  CadOp
+  CadOp,
+  DocumentUnitUpdateMode
 } from "@web-cad/cad-protocol";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -104,7 +105,8 @@ const initialBatchForm: BatchOperationForm = {
   scaleY: 1,
   scaleZ: 1,
   name: "",
-  units: "mm"
+  units: "mm",
+  unitUpdateMode: "metadataOnly"
 };
 
 function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
@@ -138,6 +140,8 @@ export function App() {
   const [batchError, setBatchError] = useState<string | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
+  const [unitUpdateMode, setUnitUpdateMode] =
+    useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
   const [projectMessageTone, setProjectMessageTone] = useState<
@@ -300,7 +304,10 @@ export function App() {
       return;
     }
 
-    await commitOps([buildUpdateUnitsOp(units)], () => selectedId);
+    await commitOps(
+      [buildUpdateUnitsOp(units, unitUpdateMode)],
+      () => selectedId
+    );
   }
 
   async function renameSelectedObject(name: string) {
@@ -470,6 +477,21 @@ export function App() {
               <option value="cm">cm</option>
               <option value="m">m</option>
               <option value="in">in</option>
+            </select>
+          </label>
+          <label className="toolbar-field wide">
+            Unit change
+            <select
+              value={unitUpdateMode}
+              disabled={commandPending}
+              onChange={(event) =>
+                setUnitUpdateMode(
+                  event.currentTarget.value as DocumentUnitUpdateMode
+                )
+              }
+            >
+              <option value="metadataOnly">Relabel values</option>
+              <option value="preservePhysicalSize">Convert size</option>
             </select>
           </label>
           <button

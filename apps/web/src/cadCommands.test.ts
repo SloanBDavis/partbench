@@ -101,7 +101,13 @@ describe("cad command builders", () => {
   it("builds units and rename commands", () => {
     expect(buildUpdateUnitsOp("in")).toEqual({
       op: "document.updateUnits",
-      units: "in"
+      units: "in",
+      mode: "metadataOnly"
+    });
+    expect(buildUpdateUnitsOp("cm", "preservePhysicalSize")).toEqual({
+      op: "document.updateUnits",
+      units: "cm",
+      mode: "preservePhysicalSize"
     });
     expect(buildRenameObjectOp("box_1", "  Base plate  ")).toEqual({
       op: "scene.renameObject",
@@ -249,11 +255,13 @@ describe("cad command builders", () => {
         scaleY: 1,
         scaleZ: 1,
         name: "",
-        units: "cm"
+        units: "cm",
+        unitUpdateMode: "preservePhysicalSize"
       })
     ).toEqual({
       op: "document.updateUnits",
-      units: "cm"
+      units: "cm",
+      mode: "preservePhysicalSize"
     });
   });
 

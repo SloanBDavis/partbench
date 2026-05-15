@@ -3,6 +3,7 @@ import type {
   CadBatch,
   CadBatchMode,
   CadOp,
+  DocumentUnitUpdateMode,
   DocumentUnits,
   DocumentUpdateUnitsOp,
   ObjectId,
@@ -65,6 +66,7 @@ export interface BatchOperationForm
   readonly targetId: string;
   readonly name: string;
   readonly units: DocumentUnits;
+  readonly unitUpdateMode?: DocumentUnitUpdateMode;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -99,11 +101,13 @@ export function buildCreateCylinderOp(
 }
 
 export function buildUpdateUnitsOp(
-  units: DocumentUnits
+  units: DocumentUnits,
+  mode: DocumentUnitUpdateMode = "metadataOnly"
 ): DocumentUpdateUnitsOp {
   return {
     op: "document.updateUnits",
-    units
+    units,
+    mode
   };
 }
 
@@ -181,7 +185,7 @@ export function buildBatch(
 export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
   switch (form.op) {
     case "document.updateUnits":
-      return buildUpdateUnitsOp(form.units);
+      return buildUpdateUnitsOp(form.units, form.unitUpdateMode);
     case "scene.createBox":
       return buildCreateBoxOp(form);
     case "scene.createCylinder":

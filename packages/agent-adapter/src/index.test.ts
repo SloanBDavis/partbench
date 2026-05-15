@@ -142,6 +142,42 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns structured unit update mode validation errors", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_bad_unit_mode",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "document.updateUnits",
+            units: "in",
+            mode: "reinterpret" as never
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      requestId: "agent_req_bad_unit_mode",
+      error: {
+        code: "INVALID_UNIT_UPDATE_MODE",
+        path: "$.ops[0].mode",
+        expected: "metadataOnly or preservePhysicalSize",
+        received: "reinterpret"
+      },
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(adapter.getEngine().getTransactions()).toEqual([]);
+  });
+
   it("returns structured actor validation errors from CADOps", () => {
     const adapter = new CadOpsAgentAdapter();
 

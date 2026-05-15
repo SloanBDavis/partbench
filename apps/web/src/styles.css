@@ -150,6 +150,10 @@ h2 {
   width: 76px;
 }
 
+.toolbar-field.wide {
+  width: 136px;
+}
+
 .toolbar-field select {
   min-height: 36px;
 }

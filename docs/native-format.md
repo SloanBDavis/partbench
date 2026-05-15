@@ -60,6 +60,18 @@ Transaction {
 The actor records where the committed mutation came from. It is audit metadata,
 not an authorization system.
 
+Unit-change semantic diffs record the old unit, new unit, update mode, and net
+numeric scale applied in that transaction:
+
+```ts
+SemanticDiff.document.units {
+  before: "mm" | "cm" | "m" | "in"
+  after: "mm" | "cm" | "m" | "in"
+  mode: "metadataOnly" | "preservePhysicalSize"
+  scaleFactor: number
+}
+```
+
 Current scene objects are:
 
 ```ts
@@ -97,8 +109,17 @@ Numbers in dimensions must be positive and finite. Transform vectors must have
 exactly three finite numbers. Object names are optional, but if present they
 must be non-empty after trimming. Duplicate object names are allowed for now.
 
-Document units are metadata only in the current model. Changing units does not
-convert existing dimensions.
+Document units are explicit but still simple. `document.updateUnits` supports
+two modes:
+
+- `metadataOnly`: changes `document.units` while leaving existing numeric
+  dimensions and transform translations unchanged.
+- `preservePhysicalSize`: changes `document.units` and scales current
+  box/cylinder dimensions plus transform translations so physical size is
+  preserved.
+
+The project file stores the resulting authoritative document values and the
+transaction diff that explains how the unit change happened.
 
 ## Source Of Truth
 
