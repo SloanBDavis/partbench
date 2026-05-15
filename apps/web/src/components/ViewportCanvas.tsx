@@ -10,6 +10,7 @@ import {
   zoomCamera
 } from "@web-cad/renderer";
 import { useEffect, useRef, useState } from "react";
+import { fitCameraToRenderScene } from "../viewportCamera";
 
 export function ViewportCanvas({
   meshes,
@@ -86,6 +87,24 @@ export function ViewportCanvas({
     });
   }, [camera, meshes, primitives, selectedId, size]);
 
+  function fitView() {
+    setCamera((current) =>
+      fitCameraToRenderScene(current, primitives, meshes ?? [])
+    );
+  }
+
+  function resetView() {
+    setCamera(createDefaultCamera());
+  }
+
+  function zoomIn() {
+    setCamera((current) => zoomCamera(current, -220));
+  }
+
+  function zoomOut() {
+    setCamera((current) => zoomCamera(current, 220));
+  }
+
   return (
     <section className="viewport-panel" aria-label="3D viewport">
       <div
@@ -93,9 +112,26 @@ export function ViewportCanvas({
         className="viewport-frame"
         onContextMenu={(event) => event.preventDefault()}
       >
+        <div className="viewport-head">
+          <div className="viewport-actions" aria-label="Viewport controls">
+            <button type="button" onClick={fitView} title="Fit view">
+              Fit
+            </button>
+            <button type="button" onClick={resetView} title="Reset view">
+              Reset
+            </button>
+            <button type="button" onClick={zoomIn} title="Zoom in">
+              +
+            </button>
+            <button type="button" onClick={zoomOut} title="Zoom out">
+              -
+            </button>
+          </div>
+        </div>
         <canvas
           ref={canvasRef}
           aria-label="3D scene viewport"
+          tabIndex={0}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
             pointerRef.current = {
@@ -156,9 +192,36 @@ export function ViewportCanvas({
             });
             onSelect(id);
           }}
+          onPointerCancel={(event) => {
+            const pointer = pointerRef.current;
+
+            if (pointer?.id === event.pointerId) {
+              pointerRef.current = undefined;
+            }
+          }}
           onWheel={(event) => {
             event.preventDefault();
-            setCamera((current) => zoomCamera(current, event.deltaY));
+            const deltaY =
+              event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+            setCamera((current) => zoomCamera(current, deltaY));
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "+" || event.key === "=") {
+              event.preventDefault();
+              zoomIn();
+              return;
+            }
+
+            if (event.key === "-") {
+              event.preventDefault();
+              zoomOut();
+              return;
+            }
+
+            if (event.key === "0") {
+              event.preventDefault();
+              resetView();
+            }
           }}
         />
       </div>

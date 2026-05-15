@@ -1,6 +1,6 @@
 :root {
   color: #1f2933;
-  background: #e8edf2;
+  background: #e7ecf1;
   font-family:
     Inter,
     ui-sans-serif,
@@ -13,14 +13,21 @@
   text-rendering: optimizeLegibility;
 }
 
+html,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   min-width: 320px;
-  min-height: 100vh;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 button {
@@ -45,7 +52,8 @@ select {
 }
 
 textarea {
-  min-height: 170px;
+  min-height: 118px;
+  max-height: 220px;
   padding: 8px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   line-height: 1.45;
@@ -95,29 +103,23 @@ legend {
 
 .app-shell {
   display: grid;
-  min-height: 100vh;
-  grid-template-rows: auto 1fr;
+  height: 100dvh;
+  min-height: 560px;
+  grid-template-rows: auto minmax(0, 1fr);
   color: #1f2933;
+  overflow: hidden;
 }
 
 .app-toolbar {
   display: flex;
-  min-height: 76px;
+  min-height: 58px;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 14px 20px;
-  border-bottom: 1px solid #c8d0da;
-  background: #f8fafc;
-}
-
-.eyebrow {
-  margin: 0 0 4px;
-  color: #5d6b7a;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #c2ccd7;
+  background: #fbfcfd;
+  box-shadow: 0 1px 0 rgba(31, 41, 51, 0.04);
 }
 
 h1,
@@ -127,7 +129,7 @@ h2 {
 }
 
 h1 {
-  font-size: 1.6rem;
+  font-size: 1.22rem;
   line-height: 1;
 }
 
@@ -162,10 +164,11 @@ h2 {
 }
 
 .toolbar-actions button,
-.object-tree button,
-.button-row button {
+.object-tree ul button,
+.button-row button,
+.viewport-actions button {
   min-height: 36px;
-  border: 1px solid #b9c3cf;
+  border: 1px solid #b8c3cf;
   border-radius: 6px;
   background: #ffffff;
   color: #1f2933;
@@ -177,8 +180,9 @@ h2 {
 }
 
 .toolbar-actions button:hover,
-.object-tree button:hover,
-.button-row button:hover {
+.object-tree ul button:hover,
+.button-row button:hover,
+.viewport-actions button:hover {
   border-color: #6c7f93;
 }
 
@@ -197,19 +201,25 @@ h2 {
 .workspace {
   display: grid;
   min-height: 0;
-  grid-template-columns: minmax(240px, 320px) minmax(360px, 1fr) minmax(
-      220px,
-      300px
+  height: 100%;
+  grid-template-columns: minmax(260px, 330px) minmax(420px, 1fr) minmax(
+      280px,
+      340px
     );
+  overflow: hidden;
+  background: #d7dee7;
 }
 
 .object-tree,
 .inspector {
   min-height: 0;
-  padding: 16px;
+  height: 100%;
+  padding: 14px;
   border-color: #c8d0da;
-  background: #f8fafc;
-  overflow: auto;
+  background: #f7f9fb;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .object-tree {
@@ -252,7 +262,7 @@ h2 {
   font-weight: 700;
 }
 
-.object-tree button {
+.object-tree ul button {
   display: flex;
   width: 100%;
   align-items: center;
@@ -263,7 +273,7 @@ h2 {
   text-align: left;
 }
 
-.object-tree button.selected {
+.object-tree ul button.selected {
   border-color: #bf7c18;
   background: #fff7e8;
 }
@@ -334,17 +344,20 @@ h2 {
 
 .batch-panel,
 .project-panel,
-.occt-panel {
+.occt-panel,
+.command-card {
   display: grid;
   gap: 12px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #d8dee7;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #d6dee7;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .field-grid {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .field-grid.two {
@@ -357,7 +370,7 @@ h2 {
 
 .transform-fields {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .transform-fields.compact {
@@ -384,7 +397,7 @@ h2 {
 .batch-list {
   display: grid;
   gap: 6px;
-  max-height: 150px;
+  max-height: 116px;
   margin: 0;
   padding-left: 20px;
   overflow: auto;
@@ -543,20 +556,53 @@ h2 {
 }
 
 .viewport-panel {
+  display: grid;
   min-width: 0;
   min-height: 0;
-  padding: 16px;
-  background: #dfe5ec;
+  height: 100%;
+  padding: 12px;
+  background: #d7dee7;
 }
 
 .viewport-frame {
+  position: relative;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid #b9c3cf;
-  border-radius: 8px;
-  background: #f6f8fb;
+  border: 1px solid #aebac6;
+  border-radius: 10px;
+  background: #f7f9fb;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.65),
+    0 10px 24px rgba(31, 41, 51, 0.08);
+  overscroll-behavior: contain;
+}
+
+.viewport-head {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: auto;
+}
+
+.viewport-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.viewport-actions button {
+  min-width: 34px;
+  min-height: 32px;
+  padding: 0 9px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 canvas {
@@ -606,11 +652,7 @@ canvas:active {
 }
 
 .command-card {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid #d8dee7;
+  margin-top: 14px;
 }
 
 .command-card h3 {
@@ -633,9 +675,27 @@ canvas:active {
 }
 
 @media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    overflow: auto;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
   .app-toolbar {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
   }
 
   .toolbar-actions {
@@ -644,12 +704,16 @@ canvas:active {
 
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(420px, 1fr) auto;
+    grid-template-rows: auto minmax(360px, 58dvh) auto;
+    overflow: visible;
   }
 
   .object-tree,
   .inspector {
+    height: auto;
+    max-height: none;
     border: 0;
+    overflow: visible;
   }
 
   .object-tree {
@@ -658,5 +722,43 @@ canvas:active {
 
   .inspector {
     border-top: 1px solid #c8d0da;
+  }
+
+  .viewport-panel {
+    height: 58dvh;
+    min-height: 360px;
+  }
+}
+
+@media (max-width: 560px) {
+  .app-toolbar {
+    padding: 10px;
+  }
+
+  .toolbar-actions button {
+    flex: 1 1 auto;
+  }
+
+  .workspace {
+    grid-template-rows: auto minmax(320px, 52dvh) auto;
+  }
+
+  .viewport-panel {
+    height: 52dvh;
+    min-height: 320px;
+    padding: 8px;
+  }
+
+  .viewport-head {
+    left: auto;
+  }
+
+  .viewport-actions {
+    justify-content: flex-start;
+  }
+
+  .object-tree,
+  .inspector {
+    padding: 12px;
   }
 }

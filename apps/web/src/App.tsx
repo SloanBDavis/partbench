@@ -368,7 +368,6 @@ export function App() {
     <main className="app-shell">
       <header className="app-toolbar">
         <div>
-          <p className="eyebrow">Milestone 3</p>
           <h1>Web CAD</h1>
         </div>
         <div className="toolbar-actions" aria-label="Command controls">
