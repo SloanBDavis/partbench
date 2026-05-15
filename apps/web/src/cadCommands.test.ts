@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  areTransformFormsEqual,
   buildBatch,
   buildCreateBoxOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildUpdateTransformOp,
+  resetTransformRotation,
+  resetTransformScale,
+  resetTransformTranslation,
   transformToForm
 } from "./cadCommands";
 
@@ -103,6 +107,41 @@ describe("cad command builders", () => {
       scaleX: 2,
       scaleY: 2,
       scaleZ: 2
+    });
+  });
+
+  it("compares and resets transform form sections", () => {
+    const form = {
+      translationX: 1,
+      translationY: 2,
+      translationZ: 3,
+      rotationX: 0.1,
+      rotationY: 0.2,
+      rotationZ: 0.3,
+      scaleX: 2,
+      scaleY: 3,
+      scaleZ: 4
+    };
+
+    expect(areTransformFormsEqual(form, { ...form })).toBe(true);
+    expect(areTransformFormsEqual(form, { ...form, scaleZ: 5 })).toBe(false);
+    expect(resetTransformTranslation(form)).toMatchObject({
+      translationX: 0,
+      translationY: 0,
+      translationZ: 0,
+      rotationX: 0.1
+    });
+    expect(resetTransformRotation(form)).toMatchObject({
+      rotationX: 0,
+      rotationY: 0,
+      rotationZ: 0,
+      scaleX: 2
+    });
+    expect(resetTransformScale(form)).toMatchObject({
+      scaleX: 1,
+      scaleY: 1,
+      scaleZ: 1,
+      translationX: 1
     });
   });
 });

@@ -133,6 +133,56 @@ export function transformToForm(transform: Transform): TransformCommandForm {
   };
 }
 
+export function areTransformFormsEqual(
+  left: TransformCommandForm,
+  right: TransformCommandForm
+): boolean {
+  return (
+    left.translationX === right.translationX &&
+    left.translationY === right.translationY &&
+    left.translationZ === right.translationZ &&
+    left.rotationX === right.rotationX &&
+    left.rotationY === right.rotationY &&
+    left.rotationZ === right.rotationZ &&
+    left.scaleX === right.scaleX &&
+    left.scaleY === right.scaleY &&
+    left.scaleZ === right.scaleZ
+  );
+}
+
+export function resetTransformTranslation(
+  form: TransformCommandForm
+): TransformCommandForm {
+  return {
+    ...form,
+    translationX: 0,
+    translationY: 0,
+    translationZ: 0
+  };
+}
+
+export function resetTransformRotation(
+  form: TransformCommandForm
+): TransformCommandForm {
+  return {
+    ...form,
+    rotationX: 0,
+    rotationY: 0,
+    rotationZ: 0
+  };
+}
+
+export function resetTransformScale(
+  form: TransformCommandForm
+): TransformCommandForm {
+  return {
+    ...form,
+    scaleX: 1,
+    scaleY: 1,
+    scaleZ: 1
+  };
+}
+
 function buildTransform(form: TransformCommandForm): Transform {
   return {
     translation: toVec3(

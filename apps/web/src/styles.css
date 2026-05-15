@@ -232,6 +232,26 @@ h2 {
   margin: 0;
 }
 
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-heading span {
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cdd6e1;
+  border-radius: 999px;
+  color: #5d6b7a;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .object-tree button {
   display: flex;
   width: 100%;
@@ -248,7 +268,7 @@ h2 {
   background: #fff7e8;
 }
 
-.object-tree span {
+.object-tree .object-id {
   overflow: hidden;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.86rem;
@@ -268,6 +288,48 @@ h2 {
   flex-basis: 100%;
   color: #6c7a89;
   font-size: 0.72rem;
+}
+
+.object-tree .object-meta {
+  color: #4f5f70;
+}
+
+.mesh-status,
+.selected-status {
+  display: inline-flex;
+  width: fit-content;
+  flex-basis: auto;
+  padding: 2px 6px;
+  border: 1px solid #cfd8e2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #536272;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.mesh-status.geometry-ready {
+  border-color: #adc8b0;
+  background: #eef7ef;
+  color: #2f6e3c;
+}
+
+.mesh-status.geometry-pending {
+  border-color: #d4c286;
+  background: #fff8df;
+  color: #7a5d13;
+}
+
+.mesh-status.geometry-error {
+  border-color: #e2bcbc;
+  background: #fff4f4;
+  color: #9a3030;
+}
+
+.selected-status {
+  border-color: #dbb56f;
+  background: #fff6df;
+  color: #79520d;
 }
 
 .batch-panel,
@@ -306,6 +368,10 @@ h2 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.button-row.compact {
+  gap: 6px;
 }
 
 .button-row button {
@@ -550,6 +616,20 @@ canvas:active {
 .command-card h3 {
   margin: 0;
   font-size: 0.88rem;
+}
+
+.command-card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.command-card-heading span {
+  color: #79520d;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 @media (max-width: 900px) {

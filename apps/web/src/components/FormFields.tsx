@@ -25,10 +25,12 @@ export function DimensionFields<TForm extends BatchOperationForm>({
 
 export function TransformFields<TForm extends TransformCommandForm>({
   compact = false,
+  disabled = false,
   form,
   onChange
 }: {
   readonly compact?: boolean;
+  readonly disabled?: boolean;
   readonly form: TForm;
   readonly onChange: (form: TForm) => void;
 }) {
@@ -38,6 +40,7 @@ export function TransformFields<TForm extends TransformCommandForm>({
         <legend>Translation</legend>
         <VectorFields
           keys={["translationX", "translationY", "translationZ"]}
+          disabled={disabled}
           form={form}
           onChange={onChange}
         />
@@ -46,6 +49,7 @@ export function TransformFields<TForm extends TransformCommandForm>({
         <legend>Rotation</legend>
         <VectorFields
           keys={["rotationX", "rotationY", "rotationZ"]}
+          disabled={disabled}
           form={form}
           onChange={onChange}
         />
@@ -54,6 +58,7 @@ export function TransformFields<TForm extends TransformCommandForm>({
         <legend>Scale</legend>
         <VectorFields
           keys={["scaleX", "scaleY", "scaleZ"]}
+          disabled={disabled}
           form={form}
           onChange={onChange}
         />
@@ -87,10 +92,12 @@ export function TextField({
 }
 
 function VectorFields<TForm extends TransformCommandForm>({
+  disabled,
   form,
   keys,
   onChange
 }: {
+  readonly disabled: boolean;
   readonly form: TForm;
   readonly keys: readonly (keyof TransformCommandForm)[];
   readonly onChange: (form: TForm) => void;
@@ -101,6 +108,7 @@ function VectorFields<TForm extends TransformCommandForm>({
         <NumberField
           key={key}
           label={key.toString().slice(-1).toUpperCase()}
+          disabled={disabled}
           value={form[key]}
           onChange={(value) => onChange({ ...form, [key]: value })}
         />
@@ -110,10 +118,12 @@ function VectorFields<TForm extends TransformCommandForm>({
 }
 
 function NumberField({
+  disabled = false,
   label,
   onChange,
   value
 }: {
+  readonly disabled?: boolean;
   readonly label: string;
   readonly onChange: (value: number) => void;
   readonly value: number;
@@ -124,6 +134,7 @@ function NumberField({
       <input
         type="number"
         value={value}
+        disabled={disabled}
         step="0.1"
         onChange={(event) => onChange(event.currentTarget.valueAsNumber || 0)}
       />

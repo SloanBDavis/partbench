@@ -38,6 +38,12 @@ import {
   getDerivedGeometryStatusLabel,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
+import {
+  formatDimensions,
+  formatObjectKind,
+  formatObjectPosition,
+  formatObjectScale
+} from "./sceneObjectDisplay";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -330,6 +336,34 @@ export function App() {
     }
   }
 
+  function renderObjectButton(object: SceneObject) {
+    const geometryEntry = derivedGeometryByObjectId.get(object.id);
+
+    return (
+      <button
+        type="button"
+        className={object.id === selectedId ? "selected" : ""}
+        onClick={() => selectObject(object.id)}
+      >
+        <span className="object-id">{object.id}</span>
+        <strong>{formatObjectKind(object.kind)}</strong>
+        <small className="object-meta">{formatDimensions(object)}</small>
+        <small className="object-meta">{formatObjectPosition(object)}</small>
+        <small className="object-meta">{formatObjectScale(object)}</small>
+        {occtMeshDevEnabled && (
+          <small
+            className={`mesh-status geometry-${geometryEntry?.status ?? "idle"}`}
+          >
+            {getDerivedGeometryStatusLabel(geometryEntry)}
+          </small>
+        )}
+        {object.id === selectedId && (
+          <small className="selected-status">Selected</small>
+        )}
+      </button>
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="app-toolbar">
@@ -378,29 +412,16 @@ export function App() {
       <section className="workspace" aria-label="CAD workspace">
         <aside className="object-tree" aria-label="Scene objects">
           <section>
-            <h2>Objects</h2>
+            <div className="section-heading">
+              <h2>Objects</h2>
+              <span>{sceneObjects.length}</span>
+            </div>
             {sceneObjects.length === 0 ? (
               <p className="empty-state">No objects</p>
             ) : (
               <ul>
                 {sceneObjects.map((object) => (
-                  <li key={object.id}>
-                    <button
-                      type="button"
-                      className={object.id === selectedId ? "selected" : ""}
-                      onClick={() => selectObject(object.id)}
-                    >
-                      <span>{object.id}</span>
-                      <strong>{object.kind}</strong>
-                      {occtMeshDevEnabled && (
-                        <small>
-                          {getDerivedGeometryStatusLabel(
-                            derivedGeometryByObjectId.get(object.id)
-                          )}
-                        </small>
-                      )}
-                    </button>
-                  </li>
+                  <li key={object.id}>{renderObjectButton(object)}</li>
                 ))}
               </ul>
             )}
