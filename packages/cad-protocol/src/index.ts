@@ -34,7 +34,9 @@ export type CadOp =
   | SceneCreateBoxOp
   | SceneCreateCylinderOp
   | SceneDeleteObjectOp
-  | SceneUpdateTransformOp;
+  | SceneUpdateTransformOp
+  | SceneUpdateBoxDimensionsOp
+  | SceneUpdateCylinderDimensionsOp;
 
 export interface SceneCreateBoxOp {
   readonly op: "scene.createBox";
@@ -63,6 +65,18 @@ export interface SceneUpdateTransformOp {
   readonly transform: Partial<Transform>;
 }
 
+export interface SceneUpdateBoxDimensionsOp {
+  readonly op: "scene.updateBoxDimensions";
+  readonly id: ObjectId;
+  readonly dimensions: BoxDimensions;
+}
+
+export interface SceneUpdateCylinderDimensionsOp {
+  readonly op: "scene.updateCylinderDimensions";
+  readonly id: ObjectId;
+  readonly dimensions: CylinderDimensions;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
@@ -83,7 +97,9 @@ export interface CadBatch {
 export type CadBatchValidationErrorCode =
   | "EMPTY_BATCH"
   | "OBJECT_ALREADY_EXISTS"
-  | "OBJECT_NOT_FOUND";
+  | "OBJECT_NOT_FOUND"
+  | "OBJECT_KIND_MISMATCH"
+  | "INVALID_DIMENSIONS";
 
 export interface CadBatchValidationError {
   readonly code: CadBatchValidationErrorCode;

@@ -480,6 +480,8 @@ function applyOperation(
 ): void {
   switch (op.op) {
     case "scene.createBox": {
+      validateBoxDimensions(op.dimensions, opIndex);
+
       const object: BoxObject = {
         id: op.id ?? createObjectId(),
         kind: "box",
@@ -493,6 +495,8 @@ function applyOperation(
     }
 
     case "scene.createCylinder": {
+      validateCylinderDimensions(op.dimensions, opIndex);
+
       const object: CylinderObject = {
         id: op.id ?? createObjectId(),
         kind: "cylinder",
@@ -517,6 +521,36 @@ function applyOperation(
       const updated: SceneObject = {
         ...existing,
         transform: mergeTransform(op.transform, existing.transform)
+      };
+
+      objects.set(op.id, updated);
+      diff.modified.push(objectRef(updated));
+      return;
+    }
+
+    case "scene.updateBoxDimensions": {
+      const existing = getObjectOrThrow(objects, op.id, opIndex);
+      assertObjectKind(existing, "box", opIndex);
+      validateBoxDimensions(op.dimensions, opIndex, op.id);
+
+      const updated: BoxObject = {
+        ...existing,
+        dimensions: op.dimensions
+      };
+
+      objects.set(op.id, updated);
+      diff.modified.push(objectRef(updated));
+      return;
+    }
+
+    case "scene.updateCylinderDimensions": {
+      const existing = getObjectOrThrow(objects, op.id, opIndex);
+      assertObjectKind(existing, "cylinder", opIndex);
+      validateCylinderDimensions(op.dimensions, opIndex, op.id);
+
+      const updated: CylinderObject = {
+        ...existing,
+        dimensions: op.dimensions
       };
 
       objects.set(op.id, updated);
@@ -562,6 +596,68 @@ function getObjectOrThrow(
   }
 
   return object;
+}
+
+function assertObjectKind<TKind extends SceneObject["kind"]>(
+  object: SceneObject,
+  expectedKind: TKind,
+  opIndex?: number
+): asserts object is Extract<SceneObject, { readonly kind: TKind }> {
+  if (object.kind === expectedKind) {
+    return;
+  }
+
+  throwValidationError({
+    code: "OBJECT_KIND_MISMATCH",
+    message: `Object ${object.id} is a ${object.kind}, not a ${expectedKind}.`,
+    opIndex,
+    objectId: object.id
+  });
+}
+
+function validateBoxDimensions(
+  dimensions: BoxDimensions,
+  opIndex?: number,
+  objectId?: ObjectId
+): void {
+  if (
+    isPositiveFiniteNumber(dimensions.width) &&
+    isPositiveFiniteNumber(dimensions.height) &&
+    isPositiveFiniteNumber(dimensions.depth)
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_DIMENSIONS",
+    message: "Box dimensions must be positive finite numbers.",
+    opIndex,
+    objectId
+  });
+}
+
+function validateCylinderDimensions(
+  dimensions: CylinderDimensions,
+  opIndex?: number,
+  objectId?: ObjectId
+): void {
+  if (
+    isPositiveFiniteNumber(dimensions.radius) &&
+    isPositiveFiniteNumber(dimensions.height)
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_DIMENSIONS",
+    message: "Cylinder dimensions must be positive finite numbers.",
+    opIndex,
+    objectId
+  });
+}
+
+function isPositiveFiniteNumber(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
 }
 
 function mergeTransform(
@@ -697,10 +793,16 @@ function toDiffIds(diff: SemanticDiff): {
   deletedIds: readonly ObjectId[];
 } {
   return {
-    createdIds: diff.created.map((object) => object.id),
-    modifiedIds: diff.modified.map((object) => object.id),
-    deletedIds: diff.deleted.map((object) => object.id)
+    createdIds: uniqueObjectIds(diff.created),
+    modifiedIds: uniqueObjectIds(diff.modified),
+    deletedIds: uniqueObjectIds(diff.deleted)
   };
+}
+
+function uniqueObjectIds(
+  objects: readonly CadObjectRef[]
+): readonly ObjectId[] {
+  return [...new Set(objects.map((object) => object.id))];
 }
 
 function throwValidationError(error: CadBatchValidationError): never {
@@ -920,6 +1022,16 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.updateBoxDimensions") {
+    return typeof value.id === "string" && isBoxDimensions(value.dimensions);
+  }
+
+  if (value.op === "scene.updateCylinderDimensions") {
+    return (
+      typeof value.id === "string" && isCylinderDimensions(value.dimensions)
+    );
+  }
+
   return false;
 }
 
@@ -947,8 +1059,11 @@ function isBoxDimensions(value: unknown): value is BoxDimensions {
   return (
     isRecord(value) &&
     typeof value.width === "number" &&
+    isPositiveFiniteNumber(value.width) &&
     typeof value.height === "number" &&
-    typeof value.depth === "number"
+    isPositiveFiniteNumber(value.height) &&
+    typeof value.depth === "number" &&
+    isPositiveFiniteNumber(value.depth)
   );
 }
 
@@ -956,7 +1071,9 @@ function isCylinderDimensions(value: unknown): value is CylinderDimensions {
   return (
     isRecord(value) &&
     typeof value.radius === "number" &&
-    typeof value.height === "number"
+    isPositiveFiniteNumber(value.radius) &&
+    typeof value.height === "number" &&
+    isPositiveFiniteNumber(value.height)
   );
 }
 

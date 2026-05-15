@@ -43,6 +43,12 @@ export function BatchPanel({
           <option value="scene.createBox">Create box</option>
           <option value="scene.createCylinder">Create cylinder</option>
           <option value="scene.updateTransform">Update transform</option>
+          <option value="scene.updateBoxDimensions">
+            Update box dimensions
+          </option>
+          <option value="scene.updateCylinderDimensions">
+            Update cylinder dimensions
+          </option>
           <option value="scene.deleteObject">Delete object</option>
         </select>
       </label>
@@ -58,6 +64,8 @@ export function BatchPanel({
       )}
 
       {(form.op === "scene.updateTransform" ||
+        form.op === "scene.updateBoxDimensions" ||
+        form.op === "scene.updateCylinderDimensions" ||
         form.op === "scene.deleteObject") && (
         <TextField
           label="Target ID"
@@ -66,7 +74,8 @@ export function BatchPanel({
         />
       )}
 
-      {form.op === "scene.createBox" && (
+      {(form.op === "scene.createBox" ||
+        form.op === "scene.updateBoxDimensions") && (
         <DimensionFields
           form={form}
           onChange={onChange}
@@ -74,7 +83,8 @@ export function BatchPanel({
         />
       )}
 
-      {form.op === "scene.createCylinder" && (
+      {(form.op === "scene.createCylinder" ||
+        form.op === "scene.updateCylinderDimensions") && (
         <DimensionFields
           form={form}
           onChange={onChange}
@@ -82,7 +92,9 @@ export function BatchPanel({
         />
       )}
 
-      {form.op !== "scene.deleteObject" && (
+      {(form.op === "scene.createBox" ||
+        form.op === "scene.createCylinder" ||
+        form.op === "scene.updateTransform") && (
         <TransformFields form={form} onChange={onChange} compact />
       )}
 

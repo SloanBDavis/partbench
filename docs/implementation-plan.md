@@ -413,6 +413,18 @@ Deliverables:
 - Add exact or kernel-backed measurement commands for supported primitives.
 - Keep every mutation as a CADOps transaction with semantic diffs.
 
+Current slice delivered:
+
+- Box and cylinder dimensions can be edited after creation through typed CADOps
+  commands: `scene.updateBoxDimensions` and
+  `scene.updateCylinderDimensions`.
+- Dimension edits validate positive dimensions, produce semantic modified diffs,
+  participate in batch dry-run/commit, and work with undo/redo.
+- Project JSON preserves dimension updates through current document state and
+  transaction history.
+- Derived geometry cache keys include dimensions, so dimension edits rebuild
+  renderer meshes as derived views.
+
 Exit criteria:
 
 - Agents and UI can query the model structurally before submitting changes.

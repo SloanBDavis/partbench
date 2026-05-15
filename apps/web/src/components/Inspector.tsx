@@ -1,11 +1,16 @@
 import type { SceneObject } from "@web-cad/cad-core";
 import { useState } from "react";
 import {
+  areBoxDimensionFormsEqual,
+  areCylinderDimensionFormsEqual,
   areTransformFormsEqual,
+  boxDimensionsToForm,
+  cylinderDimensionsToForm,
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
   transformToForm,
+  type DimensionCommandForm,
   type TransformCommandForm
 } from "../cadCommands";
 import {
@@ -13,16 +18,18 @@ import {
   formatObjectKind,
   formatVector
 } from "../sceneObjectDisplay";
-import { TransformFields } from "./FormFields";
+import { DimensionFields, TransformFields } from "./FormFields";
 
 export function Inspector({
   disabled = false,
   object,
+  onApplyDimensions,
   onApplyTransform,
   onDelete
 }: {
   readonly disabled?: boolean;
   readonly object?: SceneObject;
+  readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
 }) {
@@ -59,6 +66,12 @@ export function Inspector({
               <dd>{formatVector(object.transform.scale)}</dd>
             </div>
           </dl>
+          <DimensionEditor
+            key={`${object.id}-${JSON.stringify(object.dimensions)}`}
+            object={object}
+            disabled={disabled}
+            onApply={onApplyDimensions}
+          />
           <TransformEditor
             key={`${object.id}-${object.transform.translation.join(",")}-${object.transform.rotation.join(",")}-${object.transform.scale.join(",")}`}
             object={object}
@@ -69,6 +82,71 @@ export function Inspector({
         </>
       )}
     </aside>
+  );
+}
+
+function DimensionEditor({
+  disabled,
+  object,
+  onApply
+}: {
+  readonly disabled: boolean;
+  readonly object: SceneObject;
+  readonly onApply: (form: DimensionCommandForm) => void;
+}) {
+  const currentForm =
+    object.kind === "box"
+      ? boxDimensionsToForm(object.dimensions)
+      : cylinderDimensionsToForm(object.dimensions);
+  const [form, setForm] = useState<DimensionCommandForm>(() => currentForm);
+  const fields =
+    object.kind === "box"
+      ? (["width", "height", "depth"] as const)
+      : (["radius", "height"] as const);
+  const hasChanges =
+    object.kind === "box"
+      ? !areBoxDimensionFormsEqual(form, currentForm)
+      : !areCylinderDimensionFormsEqual(form, currentForm);
+
+  function resetEdits() {
+    setForm(currentForm);
+  }
+
+  function handleApply() {
+    if (hasChanges) {
+      onApply(form);
+    }
+  }
+
+  return (
+    <section className="command-card">
+      <div className="command-card-heading">
+        <h3>Dimensions</h3>
+        {hasChanges && <span>Edited</span>}
+      </div>
+      <DimensionFields
+        disabled={disabled}
+        fields={fields}
+        form={form}
+        onChange={setForm}
+      />
+      <div className="button-row">
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={disabled || !hasChanges}
+        >
+          Apply dimensions
+        </button>
+        <button
+          type="button"
+          onClick={resetEdits}
+          disabled={disabled || !hasChanges}
+        >
+          Reset edits
+        </button>
+      </div>
+    </section>
   );
 }
 

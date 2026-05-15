@@ -326,6 +326,16 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.updateBoxDimensions") {
+    return typeof value.id === "string" && isBoxDimensions(value.dimensions);
+  }
+
+  if (value.op === "scene.updateCylinderDimensions") {
+    return (
+      typeof value.id === "string" && isCylinderDimensions(value.dimensions)
+    );
+  }
+
   return false;
 }
 

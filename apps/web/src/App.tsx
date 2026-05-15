@@ -19,8 +19,11 @@ import {
   buildCreateCylinderOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
+  buildUpdateBoxDimensionsOp,
+  buildUpdateCylinderDimensionsOp,
   buildUpdateTransformOp,
   type BatchOperationForm,
+  type DimensionCommandForm,
   type PrimitiveCommandForm,
   type TransformCommandForm
 } from "./cadCommands";
@@ -260,6 +263,20 @@ export function App() {
     await commitOps([buildUpdateTransformOp(objectId, form)], () => objectId);
   }
 
+  async function updateSelectedDimensions(form: DimensionCommandForm) {
+    if (!selectedObject) {
+      return;
+    }
+
+    const objectId = selectedObject.id;
+    const op =
+      selectedObject.kind === "box"
+        ? buildUpdateBoxDimensionsOp(objectId, form)
+        : buildUpdateCylinderDimensionsOp(objectId, form);
+
+    await commitOps([op], () => objectId);
+  }
+
   async function deleteSelectedObject() {
     if (!selectedObject) {
       return;
@@ -467,6 +484,7 @@ export function App() {
         <Inspector
           disabled={commandPending}
           object={selectedObject}
+          onApplyDimensions={(form) => void updateSelectedDimensions(form)}
           onApplyTransform={(form) => void updateSelectedTransform(form)}
           onDelete={() => void deleteSelectedObject()}
         />

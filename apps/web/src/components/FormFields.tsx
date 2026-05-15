@@ -1,10 +1,15 @@
-import type { BatchOperationForm, TransformCommandForm } from "../cadCommands";
+import type {
+  DimensionCommandForm,
+  TransformCommandForm
+} from "../cadCommands";
 
-export function DimensionFields<TForm extends BatchOperationForm>({
+export function DimensionFields<TForm extends DimensionCommandForm>({
+  disabled = false,
   fields,
   form,
   onChange
 }: {
+  readonly disabled?: boolean;
   readonly fields: readonly ("width" | "height" | "depth" | "radius")[];
   readonly form: TForm;
   readonly onChange: (form: TForm) => void;
@@ -15,6 +20,7 @@ export function DimensionFields<TForm extends BatchOperationForm>({
         <NumberField
           key={field}
           label={field}
+          disabled={disabled}
           value={form[field]}
           onChange={(value) => onChange({ ...form, [field]: value })}
         />

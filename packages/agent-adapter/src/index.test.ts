@@ -142,6 +142,11 @@ describe("agent-adapter", () => {
               op: "scene.updateTransform",
               id: "json_box",
               transform: { translation: [1, 2, 3] }
+            },
+            {
+              op: "scene.updateBoxDimensions",
+              id: "json_box",
+              dimensions: { width: 7, height: 8, depth: 9 }
             }
           ]
         }
@@ -168,6 +173,9 @@ describe("agent-adapter", () => {
       adapter.getEngine().getDocument().objects.get("json_box")?.transform
         .translation
     ).toEqual([1, 2, 3]);
+    expect(
+      adapter.getEngine().getDocument().objects.get("json_box")?.dimensions
+    ).toEqual({ width: 7, height: 8, depth: 9 });
   });
 
   it("returns project summary queries through the adapter", () => {

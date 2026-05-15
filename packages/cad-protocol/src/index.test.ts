@@ -28,6 +28,16 @@ describe("cad-protocol", () => {
         transform: { translation: [1, 2, 3] }
       },
       {
+        op: "scene.updateBoxDimensions",
+        id: "box_1",
+        dimensions: { width: 4, height: 5, depth: 6 }
+      },
+      {
+        op: "scene.updateCylinderDimensions",
+        id: "cylinder_1",
+        dimensions: { radius: 2, height: 8 }
+      },
+      {
         op: "scene.deleteObject",
         id: "cylinder_1"
       }
@@ -37,6 +47,8 @@ describe("cad-protocol", () => {
       "scene.createBox",
       "scene.createCylinder",
       "scene.updateTransform",
+      "scene.updateBoxDimensions",
+      "scene.updateCylinderDimensions",
       "scene.deleteObject"
     ]);
   });

@@ -25,9 +25,19 @@ describe("derivedGeometry", () => {
         translation: [1, 0, 1]
       }
     };
+    const resizedObject: BoxObject = {
+      ...object,
+      dimensions: {
+        ...object.dimensions,
+        width: 4
+      }
+    };
 
     expect(createDerivedGeometryCacheKey(object)).not.toBe(
       createDerivedGeometryCacheKey(movedObject)
+    );
+    expect(createDerivedGeometryCacheKey(object)).not.toBe(
+      createDerivedGeometryCacheKey(resizedObject)
     );
   });
 

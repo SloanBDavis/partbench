@@ -5,7 +5,13 @@ import {
   buildCreateBoxOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
+  buildUpdateBoxDimensionsOp,
+  buildUpdateCylinderDimensionsOp,
   buildUpdateTransformOp,
+  boxDimensionsToForm,
+  areBoxDimensionFormsEqual,
+  areCylinderDimensionFormsEqual,
+  cylinderDimensionsToForm,
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
@@ -61,6 +67,34 @@ describe("cad command builders", () => {
     });
   });
 
+  it("builds dimension update commands", () => {
+    expect(
+      buildUpdateBoxDimensionsOp("box_1", {
+        width: 4,
+        height: 5,
+        depth: 6,
+        radius: 1
+      })
+    ).toEqual({
+      op: "scene.updateBoxDimensions",
+      id: "box_1",
+      dimensions: { width: 4, height: 5, depth: 6 }
+    });
+
+    expect(
+      buildUpdateCylinderDimensionsOp("cylinder_1", {
+        width: 1,
+        height: 8,
+        depth: 1,
+        radius: 2
+      })
+    ).toEqual({
+      op: "scene.updateCylinderDimensions",
+      id: "cylinder_1",
+      dimensions: { radius: 2, height: 8 }
+    });
+  });
+
   it("builds a CadBatch from queued operations", () => {
     const ops = [
       buildOperationFromBatchForm({
@@ -90,6 +124,58 @@ describe("cad command builders", () => {
     });
   });
 
+  it("builds dimension update operations from batch form values", () => {
+    expect(
+      buildOperationFromBatchForm({
+        op: "scene.updateBoxDimensions",
+        id: "",
+        targetId: "box_1",
+        width: 4,
+        height: 5,
+        depth: 6,
+        radius: 1,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1
+      })
+    ).toEqual({
+      op: "scene.updateBoxDimensions",
+      id: "box_1",
+      dimensions: { width: 4, height: 5, depth: 6 }
+    });
+
+    expect(
+      buildOperationFromBatchForm({
+        op: "scene.updateCylinderDimensions",
+        id: "",
+        targetId: "cylinder_1",
+        width: 1,
+        height: 8,
+        depth: 1,
+        radius: 2,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1
+      })
+    ).toEqual({
+      op: "scene.updateCylinderDimensions",
+      id: "cylinder_1",
+      dimensions: { radius: 2, height: 8 }
+    });
+  });
+
   it("round-trips transform values into editable form state", () => {
     expect(
       transformToForm({
@@ -108,6 +194,32 @@ describe("cad command builders", () => {
       scaleY: 2,
       scaleZ: 2
     });
+  });
+
+  it("round-trips and compares dimension form values", () => {
+    const boxForm = boxDimensionsToForm({ width: 2, height: 3, depth: 4 });
+    const cylinderForm = cylinderDimensionsToForm({ radius: 1.5, height: 6 });
+
+    expect(boxForm).toEqual({ width: 2, height: 3, depth: 4, radius: 1 });
+    expect(cylinderForm).toEqual({
+      width: 1,
+      height: 6,
+      depth: 1,
+      radius: 1.5
+    });
+    expect(areBoxDimensionFormsEqual(boxForm, { ...boxForm })).toBe(true);
+    expect(areBoxDimensionFormsEqual(boxForm, { ...boxForm, depth: 5 })).toBe(
+      false
+    );
+    expect(
+      areCylinderDimensionFormsEqual(cylinderForm, { ...cylinderForm })
+    ).toBe(true);
+    expect(
+      areCylinderDimensionFormsEqual(cylinderForm, {
+        ...cylinderForm,
+        radius: 2
+      })
+    ).toBe(false);
   });
 
   it("compares and resets transform form sections", () => {

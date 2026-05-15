@@ -6,6 +6,8 @@ import type {
   SceneCreateBoxOp,
   SceneCreateCylinderOp,
   SceneDeleteObjectOp,
+  SceneUpdateBoxDimensionsOp,
+  SceneUpdateCylinderDimensionsOp,
   SceneUpdateTransformOp,
   Transform,
   Vec3
@@ -15,14 +17,19 @@ export type BatchOperationKind =
   | "scene.createBox"
   | "scene.createCylinder"
   | "scene.updateTransform"
+  | "scene.updateBoxDimensions"
+  | "scene.updateCylinderDimensions"
   | "scene.deleteObject";
 
-export interface PrimitiveCommandForm {
-  readonly id: string;
+export interface DimensionCommandForm {
   readonly width: number;
   readonly height: number;
   readonly depth: number;
   readonly radius: number;
+}
+
+export interface PrimitiveCommandForm extends DimensionCommandForm {
+  readonly id: string;
   readonly translationX: number;
   readonly translationY: number;
   readonly translationZ: number;
@@ -88,6 +95,35 @@ export function buildUpdateTransformOp(
   };
 }
 
+export function buildUpdateBoxDimensionsOp(
+  id: ObjectId,
+  form: DimensionCommandForm
+): SceneUpdateBoxDimensionsOp {
+  return {
+    op: "scene.updateBoxDimensions",
+    id,
+    dimensions: {
+      width: form.width,
+      height: form.height,
+      depth: form.depth
+    }
+  };
+}
+
+export function buildUpdateCylinderDimensionsOp(
+  id: ObjectId,
+  form: DimensionCommandForm
+): SceneUpdateCylinderDimensionsOp {
+  return {
+    op: "scene.updateCylinderDimensions",
+    id,
+    dimensions: {
+      radius: form.radius,
+      height: form.height
+    }
+  };
+}
+
 export function buildDeleteObjectOp(id: ObjectId): SceneDeleteObjectOp {
   return {
     op: "scene.deleteObject",
@@ -114,9 +150,59 @@ export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
       return buildCreateCylinderOp(form);
     case "scene.updateTransform":
       return buildUpdateTransformOp(requireTargetId(form.targetId), form);
+    case "scene.updateBoxDimensions":
+      return buildUpdateBoxDimensionsOp(requireTargetId(form.targetId), form);
+    case "scene.updateCylinderDimensions":
+      return buildUpdateCylinderDimensionsOp(
+        requireTargetId(form.targetId),
+        form
+      );
     case "scene.deleteObject":
       return buildDeleteObjectOp(requireTargetId(form.targetId));
   }
+}
+
+export function boxDimensionsToForm(input: {
+  readonly width: number;
+  readonly height: number;
+  readonly depth: number;
+}): DimensionCommandForm {
+  return {
+    width: input.width,
+    height: input.height,
+    depth: input.depth,
+    radius: 1
+  };
+}
+
+export function cylinderDimensionsToForm(input: {
+  readonly radius: number;
+  readonly height: number;
+}): DimensionCommandForm {
+  return {
+    width: 1,
+    height: input.height,
+    depth: 1,
+    radius: input.radius
+  };
+}
+
+export function areBoxDimensionFormsEqual(
+  left: DimensionCommandForm,
+  right: DimensionCommandForm
+): boolean {
+  return (
+    left.width === right.width &&
+    left.height === right.height &&
+    left.depth === right.depth
+  );
+}
+
+export function areCylinderDimensionFormsEqual(
+  left: DimensionCommandForm,
+  right: DimensionCommandForm
+): boolean {
+  return left.radius === right.radius && left.height === right.height;
 }
 
 export function transformToForm(transform: Transform): TransformCommandForm {

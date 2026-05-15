@@ -115,6 +115,143 @@ describe("cad-core", () => {
     ]);
   });
 
+  it("updates box dimensions with a semantic diff", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const result = engine.apply({
+      op: "scene.updateBoxDimensions",
+      id: "box_1",
+      dimensions: { width: 4, height: 5, depth: 6 }
+    });
+
+    expect(result.document.objects.get("box_1")).toMatchObject({
+      kind: "box",
+      dimensions: { width: 4, height: 5, depth: 6 }
+    });
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [{ id: "box_1", kind: "box" }],
+      deleted: []
+    });
+  });
+
+  it("updates cylinder dimensions with a semantic diff", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 1, height: 2 }
+    });
+
+    const result = engine.apply({
+      op: "scene.updateCylinderDimensions",
+      id: "cylinder_1",
+      dimensions: { radius: 3, height: 8 }
+    });
+
+    expect(result.document.objects.get("cylinder_1")).toMatchObject({
+      kind: "cylinder",
+      dimensions: { radius: 3, height: 8 }
+    });
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [{ id: "cylinder_1", kind: "cylinder" }],
+      deleted: []
+    });
+  });
+
+  it("validates positive dimensions for dimension updates", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.updateBoxDimensions",
+          id: "box_1",
+          dimensions: { width: 0, height: 2, depth: 3 }
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: "Box dimensions must be positive finite numbers.",
+        opIndex: 0,
+        objectId: "box_1"
+      },
+      errors: [
+        {
+          code: "INVALID_DIMENSIONS",
+          message: "Box dimensions must be positive finite numbers.",
+          opIndex: 0,
+          objectId: "box_1"
+        }
+      ],
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().objects.get("box_1")?.dimensions).toEqual({
+      width: 1,
+      height: 1,
+      depth: 1
+    });
+  });
+
+  it("rejects dimension updates for the wrong object kind", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 1, height: 2 }
+    });
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.updateBoxDimensions",
+          id: "cylinder_1",
+          dimensions: { width: 2, height: 3, depth: 4 }
+        }
+      ]
+    });
+
+    expect(response.ok).toBe(false);
+    expect(response.createdIds).toEqual([]);
+    expect(response.modifiedIds).toEqual([]);
+    expect(response.deletedIds).toEqual([]);
+    if (!response.ok) {
+      expect(response.error).toEqual({
+        code: "OBJECT_KIND_MISMATCH",
+        message: "Object cylinder_1 is a cylinder, not a box.",
+        opIndex: 0,
+        objectId: "cylinder_1"
+      });
+    }
+  });
+
   it("deletes an object", () => {
     const engine = new CadEngine();
 
@@ -168,6 +305,40 @@ describe("cad-core", () => {
     expect(redo?.transaction.status).toBe("committed");
     expect(engine.getTransactions()).toHaveLength(1);
     expect(engine.getRedoStack()).toEqual([]);
+  });
+
+  it("undoes and redoes a dimension update", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 1, height: 2 }
+    });
+    engine.apply({
+      op: "scene.updateCylinderDimensions",
+      id: "cylinder_1",
+      dimensions: { radius: 2.5, height: 7 }
+    });
+
+    expect(engine.getDocument().objects.get("cylinder_1")?.dimensions).toEqual({
+      radius: 2.5,
+      height: 7
+    });
+
+    engine.undo();
+
+    expect(engine.getDocument().objects.get("cylinder_1")?.dimensions).toEqual({
+      radius: 1,
+      height: 2
+    });
+
+    engine.redo();
+
+    expect(engine.getDocument().objects.get("cylinder_1")?.dimensions).toEqual({
+      radius: 2.5,
+      height: 7
+    });
   });
 
   it("returns combined transaction diff contents for a batch", () => {
@@ -348,6 +519,57 @@ describe("cad-core", () => {
       engine.getDocument().objects.get("box_1")?.transform.translation
     ).toEqual([2, 0, 0]);
     expect(engine.getDocument().objects.has("cylinder_1")).toBe(false);
+  });
+
+  it("dry-runs and commits dimension updates through batches", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "scene.updateBoxDimensions" as const,
+          id: "box_1",
+          dimensions: { width: 4, height: 5, depth: 6 }
+        }
+      ]
+    };
+
+    expect(engine.executeBatch(batch)).toEqual({
+      ok: true,
+      mode: "dryRun",
+      createdIds: [],
+      modifiedIds: ["box_1"],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().objects.get("box_1")?.dimensions).toEqual({
+      width: 1,
+      height: 2,
+      depth: 3
+    });
+
+    expect(engine.executeBatch({ ...batch, mode: "commit" })).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: [],
+      modifiedIds: ["box_1"],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_2"
+    });
+    expect(engine.getDocument().objects.get("box_1")?.dimensions).toEqual({
+      width: 4,
+      height: 5,
+      depth: 6
+    });
   });
 
   it("undoes a committed CADOps batch", () => {
@@ -636,6 +858,16 @@ describe("cad-core", () => {
       id: "fixture",
       transform: { rotation: [0, 0, 1.25], scale: [2, 2, 1] }
     });
+    engine.apply({
+      op: "scene.updateBoxDimensions",
+      id: "obj_1",
+      dimensions: { width: 8, height: 9, depth: 10 }
+    });
+    engine.apply({
+      op: "scene.updateCylinderDimensions",
+      id: "fixture",
+      dimensions: { radius: 2.5, height: 7 }
+    });
 
     const restored = importCadProjectJson(exportCadProjectJson(engine));
     const restoredObjects = restored.getDocument().objects;
@@ -648,6 +880,21 @@ describe("cad-core", () => {
       engine.getDocument().objects.get("fixture")
     );
     expect(restored.getTransactions()).toEqual(engine.getTransactions());
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("fixture")?.dimensions).toEqual({
+      radius: 1.5,
+      height: 6
+    });
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("obj_1")?.dimensions).toEqual({
+      width: 2,
+      height: 3,
+      depth: 4
+    });
 
     restored.undo();
 
