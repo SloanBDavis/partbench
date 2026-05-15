@@ -1,9 +1,8 @@
 import {
   AsyncCadCommandExecutor,
   CadEngine,
+  exportCadProject,
   exportCadProjectJson,
-  formatCadProjectImportError,
-  parseCadProjectJson,
   type CadDocument,
   type CadTransactionHistoryEntry,
   type ObjectMeasurementsSnapshot,
@@ -56,6 +55,11 @@ import {
   formatObjectScale
 } from "./sceneObjectDisplay";
 import { createRenderSceneInputs } from "./renderScene";
+import {
+  createProjectJsonPreview,
+  formatProjectJsonSummary,
+  summarizeCadProject
+} from "./projectJson";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -201,6 +205,11 @@ export function App() {
   const renderScene = useMemo(
     () => createRenderSceneInputs(sceneObjects, derivedGeometryByObjectId),
     [derivedGeometryByObjectId, sceneObjects]
+  );
+  const currentProjectSummary = summarizeCadProject(exportCadProject(engine));
+  const projectJsonPreview = useMemo(
+    () => createProjectJsonPreview(projectJson),
+    [projectJson]
   );
 
   useEffect(() => {
@@ -399,24 +408,57 @@ export function App() {
 
   function exportProjectJson() {
     setProjectJson(exportCadProjectJson(engine));
-    setProjectMessage("Exported current project JSON.");
+    setProjectMessage(
+      `Generated ${formatProjectJsonSummary(currentProjectSummary)}.`
+    );
+    setProjectMessageTone("info");
+  }
+
+  function downloadProjectJson() {
+    const projectJson = exportCadProjectJson(engine);
+    const blob = new Blob([projectJson], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = "web-cad-project.json";
+    window.document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setProjectJson(projectJson);
+    setProjectMessage(
+      `Downloaded ${formatProjectJsonSummary(currentProjectSummary)}.`
+    );
+    setProjectMessageTone("info");
+  }
+
+  function loadProjectFile(projectJson: string, fileName: string) {
+    setProjectJson(projectJson);
+    setProjectMessage(`Loaded ${fileName} for import preview.`);
     setProjectMessageTone("info");
   }
 
   function importProjectJson() {
-    try {
-      engine.loadProject(parseCadProjectJson(projectJson));
-      setQueuedOps([]);
-      setBatchResponse(undefined);
-      setBatchError(undefined);
-      setCommandError(undefined);
-      setProjectMessage("Imported project JSON.");
-      setProjectMessageTone("info");
-      syncDocument(undefined);
-    } catch (error) {
-      setProjectMessage(formatCadProjectImportError(error));
+    const preview = createProjectJsonPreview(projectJson);
+
+    if (preview.status !== "valid") {
+      setProjectMessage(
+        preview.status === "invalid"
+          ? preview.message
+          : "Load or paste valid project JSON before importing."
+      );
       setProjectMessageTone("error");
+      return;
     }
+
+    engine.loadProject(preview.project);
+    setQueuedOps([]);
+    setBatchResponse(undefined);
+    setBatchError(undefined);
+    setCommandError(undefined);
+    setProjectMessage(`Imported ${formatProjectJsonSummary(preview.summary)}.`);
+    setProjectMessageTone("info");
+    syncDocument(undefined);
   }
 
   function renderObjectButton(object: SceneObject) {
@@ -563,10 +605,21 @@ export function App() {
           <ProjectJsonPanel
             disabled={commandPending}
             projectJson={projectJson}
+            currentSummary={currentProjectSummary}
             message={projectMessage}
             messageTone={projectMessageTone}
-            onProjectJsonChange={setProjectJson}
+            preview={projectJsonPreview}
+            onProjectJsonChange={(value) => {
+              setProjectJson(value);
+              setProjectMessage(undefined);
+            }}
+            onProjectFileLoaded={loadProjectFile}
+            onProjectFileError={(message) => {
+              setProjectMessage(message);
+              setProjectMessageTone("error");
+            }}
             onExport={exportProjectJson}
+            onDownload={downloadProjectJson}
             onImport={importProjectJson}
           />
 

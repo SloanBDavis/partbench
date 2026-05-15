@@ -138,6 +138,12 @@ h2 {
   line-height: 1.2;
 }
 
+h3 {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
 .toolbar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -545,6 +551,77 @@ h2 {
   line-height: 1.4;
 }
 
+.hidden-file-input {
+  display: none;
+}
+
+.project-summary,
+.project-validation {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e7ed;
+}
+
+.project-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px 10px;
+  margin: 0;
+}
+
+.project-summary-grid div {
+  min-width: 0;
+}
+
+.project-summary-grid dt {
+  color: #687789;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.project-summary-grid dd {
+  margin: 2px 0 0;
+  color: #1f2933;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.project-validation ul {
+  display: grid;
+  gap: 7px;
+  max-height: 150px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.project-validation li {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border-left: 3px solid #d66f6f;
+  background: #fff7f7;
+}
+
+.project-validation code {
+  color: #8f2d2d;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.project-validation span,
+.project-validation p {
+  margin: 0;
+  color: #4f5f70;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .geometry-status-list {
   display: grid;
   gap: 8px;
@@ -719,6 +796,11 @@ canvas:active {
   margin: 14px 0 0;
   color: #6c7a89;
   font-size: 0.9rem;
+}
+
+.empty-state.compact {
+  margin: 0;
+  font-size: 0.82rem;
 }
 
 .inspector dl {

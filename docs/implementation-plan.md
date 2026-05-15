@@ -138,7 +138,8 @@ Delivered:
 - Minimal JSON project format for the current MVP document model.
 - Export/import for objects, transforms, dimensions, and practical transaction
   history.
-- UI buttons for export/import JSON.
+- Project panel for generating, downloading, previewing, validating, and
+  importing the current versioned JSON format.
 - Round-trip tests.
 
 This is intentionally not OPFS and not the final native `.wcad` project package.
@@ -468,13 +469,13 @@ Exit criteria:
 
 ### Phase E: Project Format and Local Persistence
 
-Goal: move beyond debug JSON toward a real project format while avoiding OPFS
+Goal: move beyond ad hoc JSON toward a deliberate project format while avoiding OPFS
 prematurely.
 
 Deliverables:
 
 - Define a versioned native project package target in `docs/native-format.md`.
-- Keep JSON export/import as a debug/interchange path.
+- Keep JSON export/import as the current V1 source-of-truth interchange path.
 - Decide package shape for source document, command log, derived mesh cache, and
   metadata.
 - Add import/export tests.
@@ -492,7 +493,8 @@ Current slice delivered:
   metadata, and transaction replay where practical.
 - Invalid imports return structured `CadProjectImportError` issues with codes,
   JSON-style paths, and messages.
-- The UI displays formatted project import errors.
+- The UI displays current project metadata, import preview metadata, and
+  structured validation errors before import.
 
 Exit criteria:
 

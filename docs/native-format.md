@@ -26,6 +26,12 @@ parseCadProjectJson(json)
 importCadProjectJson(json)
 ```
 
+The web app Project panel uses this same format for the current V1 save/load
+flow. It can generate/download current project JSON, load JSON into an import
+preview, and show schema/version, object count, transaction count, redo count,
+and structured validation issues before import. This remains ordinary JSON
+import/export and does not use OPFS or the File System Access API.
+
 The current JSON shape is:
 
 ```ts
