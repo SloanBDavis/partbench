@@ -29,8 +29,10 @@ importCadProjectJson(json)
 The web app Project panel uses this same format for the current V1 save/load
 flow. It can generate/download current project JSON, load JSON into an import
 preview, and show schema/version, object count, transaction count, redo count,
-and structured validation issues before import. This remains ordinary JSON
-import/export and does not use OPFS or the File System Access API.
+and structured validation issues before import. The preview uses the same
+importability checks as load, including transaction replay, so malformed history
+is blocked before the user imports it. This remains ordinary JSON import/export
+and does not use OPFS or the File System Access API.
 
 The current JSON shape is:
 
@@ -189,8 +191,14 @@ document.
 - transforms
 - object names
 - transaction and semantic diff shape
+- committed transaction stack status
+- undone redo stack status
+- duplicate transaction IDs across history and redo stack
+- `nextObjectNumber` collisions with generated object IDs
 - optional transaction actor metadata
 - transaction replay where practical
+- consistency between the saved document and replayed committed transaction
+  history when history or redo entries are present
 
 Invalid imports throw `CadProjectImportError` with structured issues:
 

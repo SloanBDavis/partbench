@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   createProjectJsonPreview,
   formatProjectJsonSummary,
+  getProjectImportStatusText,
   summarizeCadProject
 } from "./projectJson";
 
@@ -62,6 +63,18 @@ describe("projectJson helpers", () => {
     expect(formatProjectJsonSummary(preview.summary)).toBe(
       "web-cad.project.v1, 0 object(s), 0 transaction(s), 1 redo"
     );
+    expect(getProjectImportStatusText(preview)).toBe(
+      "Ready to import web-cad.project.v1, 0 object(s), 0 transaction(s), 1 redo. Import replaces the current document and restores available undo/redo history."
+    );
+  });
+
+  it("describes empty project JSON input as not ready for import", () => {
+    const preview = createProjectJsonPreview(" ");
+
+    expect(preview).toEqual({ status: "empty" });
+    expect(getProjectImportStatusText(preview)).toBe(
+      "Generate, load, or paste project JSON to preview source-of-truth data before import."
+    );
   });
 
   it("returns structured import issues for malformed JSON", () => {
@@ -81,6 +94,9 @@ describe("projectJson helpers", () => {
       }
     ]);
     expect(preview.message).toContain("Invalid Web CAD project JSON");
+    expect(getProjectImportStatusText(preview)).toBe(
+      "Import is blocked until the project JSON validates successfully."
+    );
   });
 
   it("returns structured import issues for unsupported project versions", () => {
@@ -106,6 +122,46 @@ describe("projectJson helpers", () => {
         path: "$.schemaVersion",
         message: "Unsupported project schemaVersion: web-cad.project.v0."
       }
+    ]);
+  });
+
+  it("blocks previews for transaction history that cannot be imported", () => {
+    const project = JSON.parse(exportCadProjectJson(new CadEngine())) as object;
+    const preview = createProjectJsonPreview(
+      JSON.stringify({
+        ...project,
+        history: [
+          {
+            id: "txn_1",
+            status: "committed",
+            ops: [
+              {
+                op: "scene.updateTransform",
+                id: "missing",
+                transform: { translation: [1, 2, 3] }
+              }
+            ],
+            diff: {
+              created: [],
+              modified: [{ id: "missing", kind: "box" }],
+              deleted: []
+            }
+          }
+        ]
+      })
+    );
+
+    expect(preview.status).toBe("invalid");
+
+    if (preview.status !== "invalid") {
+      throw new Error("Expected an invalid project preview.");
+    }
+
+    expect(preview.issues).toEqual([
+      expect.objectContaining({
+        code: "INVALID_TRANSACTION_HISTORY",
+        path: "$.history"
+      })
     ]);
   });
 });

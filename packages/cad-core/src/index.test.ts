@@ -1990,6 +1990,17 @@ describe("cad-core", () => {
     });
   });
 
+  it("round-trips an empty project", () => {
+    const restored = importCadProjectJson(
+      exportCadProjectJson(new CadEngine())
+    );
+
+    expect(restored.getDocument().units).toBe("mm");
+    expect(restored.getDocument().objects.size).toBe(0);
+    expect(restored.getTransactions()).toEqual([]);
+    expect(restored.getRedoStack()).toEqual([]);
+  });
+
   it("round-trips converted unit values and undo history", () => {
     const engine = new CadEngine();
 
@@ -2065,6 +2076,44 @@ describe("cad-core", () => {
 
     expect(restored.getDocument().objects.get("obj_1")?.kind).toBe("box");
     expect(restored.getTransactions()[0]?.id).toBe("txn_1");
+  });
+
+  it("round-trips redo history with transaction actor metadata", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "agent",
+        id: "redo-agent",
+        name: "Redo Agent"
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          dimensions: { width: 2, height: 2, depth: 2 }
+        }
+      ]
+    });
+    engine.undo();
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(restored.getDocument().objects.size).toBe(0);
+    expect(restored.getRedoStack()[0]?.actor).toEqual({
+      type: "agent",
+      id: "redo-agent",
+      name: "Redo Agent"
+    });
+
+    restored.redo();
+
+    expect(restored.getTransactions()[0]?.actor).toEqual({
+      type: "agent",
+      id: "redo-agent",
+      name: "Redo Agent"
+    });
   });
 
   it("round-trips transaction actor metadata through project JSON", () => {
@@ -2335,6 +2384,134 @@ describe("cad-core", () => {
       {
         code: "INVALID_TRANSACTION",
         path: "$.history[0].actor.type"
+      }
+    );
+  });
+
+  it("rejects transaction stack status mismatches in project JSON", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [
+              {
+                ...project.history[0],
+                status: "undone"
+              }
+            ]
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION",
+        path: "$.history[0].status"
+      }
+    );
+  });
+
+  it("rejects duplicate transaction IDs across history and redo stacks", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    engine.apply({
+      op: "scene.renameObject",
+      id: "box_1",
+      name: "Named box"
+    });
+    engine.undo();
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            redoStack: [
+              {
+                ...project.redoStack[0],
+                id: project.history[0]?.id
+              }
+            ]
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION",
+        path: "$.redoStack[0].id"
+      }
+    );
+  });
+
+  it("rejects project documents that do not match committed transaction replay", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        importCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              objects: [
+                {
+                  ...project.document.objects[0],
+                  dimensions: { width: 2, height: 1, depth: 1 }
+                }
+              ]
+            }
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION_HISTORY",
+        path: "$.history"
+      }
+    );
+  });
+
+  it("rejects project nextObjectNumber values that would collide", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              nextObjectNumber: 1
+            }
+          })
+        ),
+      {
+        code: "INVALID_DOCUMENT",
+        path: "$.document.nextObjectNumber"
       }
     );
   });

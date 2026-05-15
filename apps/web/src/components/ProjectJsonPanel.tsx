@@ -1,5 +1,9 @@
 import { useRef } from "react";
-import type { ProjectJsonPreview, ProjectJsonSummary } from "../projectJson";
+import {
+  getProjectImportStatusText,
+  type ProjectJsonPreview,
+  type ProjectJsonSummary
+} from "../projectJson";
 
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
@@ -84,6 +88,9 @@ export function ProjectJsonPanel({
           event.currentTarget.value = "";
         }}
       />
+      <p className="project-import-status">
+        {getProjectImportStatusText(preview)}
+      </p>
       <ProjectPreview preview={preview} />
       <textarea
         value={projectJson}

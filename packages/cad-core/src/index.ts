@@ -1776,6 +1776,10 @@ function createProjectState(project: CadProject): {
     throwProjectTransactionHistoryError("$.history", error);
   }
 
+  if (project.history.length > 0 || project.redoStack.length > 0) {
+    assertProjectDocumentMatchesReplay(project, historyState.document);
+  }
+
   try {
     redoEntriesInApplyOrder = createTransactionEntries(
       [...project.redoStack].reverse(),
@@ -1827,6 +1831,82 @@ function createTransactionEntries(
   };
 }
 
+function assertProjectDocumentMatchesReplay(
+  project: CadProject,
+  replayedDocument: CadDocument
+): void {
+  const projectDocument = createCadDocumentFromSnapshot(project.document);
+
+  if (cadDocumentsEqual(projectDocument, replayedDocument)) {
+    return;
+  }
+
+  throw new CadProjectImportError([
+    {
+      code: "INVALID_TRANSACTION_HISTORY",
+      path: "$.history",
+      message:
+        "Project document does not match replayed committed transaction history."
+    }
+  ]);
+}
+
+function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
+  if (left.units !== right.units || left.objects.size !== right.objects.size) {
+    return false;
+  }
+
+  for (const [id, leftObject] of left.objects) {
+    const rightObject = right.objects.get(id);
+
+    if (!rightObject || !sceneObjectsEqual(leftObject, rightObject)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function sceneObjectsEqual(left: SceneObject, right: SceneObject): boolean {
+  if (
+    left.id !== right.id ||
+    left.kind !== right.kind ||
+    left.name !== right.name ||
+    !transformsEqual(left.transform, right.transform)
+  ) {
+    return false;
+  }
+
+  if (left.kind === "box" && right.kind === "box") {
+    return (
+      left.dimensions.width === right.dimensions.width &&
+      left.dimensions.height === right.dimensions.height &&
+      left.dimensions.depth === right.dimensions.depth
+    );
+  }
+
+  if (left.kind === "cylinder" && right.kind === "cylinder") {
+    return (
+      left.dimensions.radius === right.dimensions.radius &&
+      left.dimensions.height === right.dimensions.height
+    );
+  }
+
+  return false;
+}
+
+function transformsEqual(left: Transform, right: Transform): boolean {
+  return (
+    vec3Equal(left.translation, right.translation) &&
+    vec3Equal(left.rotation, right.rotation) &&
+    vec3Equal(left.scale, right.scale)
+  );
+}
+
+function vec3Equal(left: Vec3, right: Vec3): boolean {
+  return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
+}
+
 function parseCadProject(value: unknown): CadProject {
   assertValidCadProject(value);
   return value as CadProject;
@@ -1870,8 +1950,22 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
   }
 
   validateCadDocumentSnapshot(value.document, "$.document", issues);
-  validateTransactionArray(value.history, "$.history", issues);
-  validateTransactionArray(value.redoStack, "$.redoStack", issues);
+
+  const seenTransactionIds = new Set<TransactionId>();
+  validateTransactionArray(
+    value.history,
+    "$.history",
+    issues,
+    "committed",
+    seenTransactionIds
+  );
+  validateTransactionArray(
+    value.redoStack,
+    "$.redoStack",
+    issues,
+    "undone",
+    seenTransactionIds
+  );
 
   return issues;
 }
@@ -1900,6 +1994,8 @@ function validateCadDocumentSnapshot(
     );
   }
 
+  let maxGeneratedObjectNumber = 0;
+
   if (!Array.isArray(value.objects)) {
     addProjectIssue(
       issues,
@@ -1917,19 +2013,35 @@ function validateCadDocumentSnapshot(
         issues,
         seenObjectIds
       );
+
+      if (isRecord(object) && typeof object.id === "string") {
+        maxGeneratedObjectNumber = Math.max(
+          maxGeneratedObjectNumber,
+          parseObjectNumber(object.id)
+        );
+      }
     }
   }
 
-  if (
-    typeof value.nextObjectNumber !== "number" ||
-    !Number.isInteger(value.nextObjectNumber) ||
-    value.nextObjectNumber <= 0
-  ) {
+  const nextObjectNumber = value.nextObjectNumber;
+  const hasValidNextObjectNumber =
+    typeof nextObjectNumber === "number" &&
+    Number.isInteger(nextObjectNumber) &&
+    nextObjectNumber > 0;
+
+  if (!hasValidNextObjectNumber) {
     addProjectIssue(
       issues,
       "INVALID_DOCUMENT",
       `${path}.nextObjectNumber`,
       "Document nextObjectNumber must be a positive integer."
+    );
+  } else if (nextObjectNumber <= maxGeneratedObjectNumber) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.nextObjectNumber`,
+      "Document nextObjectNumber must be greater than existing generated object ids."
     );
   }
 }
@@ -2127,7 +2239,9 @@ function validatePositiveFiniteField(
 function validateTransactionArray(
   value: unknown,
   path: string,
-  issues: CadProjectImportIssue[]
+  issues: CadProjectImportIssue[],
+  expectedStatus?: CadTransactionStatus,
+  seenTransactionIds?: Set<TransactionId>
 ): void {
   if (!Array.isArray(value)) {
     addProjectIssue(
@@ -2140,14 +2254,22 @@ function validateTransactionArray(
   }
 
   for (const [index, transaction] of value.entries()) {
-    validateTransactionShape(transaction, `${path}[${index}]`, issues);
+    validateTransactionShape(
+      transaction,
+      `${path}[${index}]`,
+      issues,
+      expectedStatus,
+      seenTransactionIds
+    );
   }
 }
 
 function validateTransactionShape(
   value: unknown,
   path: string,
-  issues: CadProjectImportIssue[]
+  issues: CadProjectImportIssue[],
+  expectedStatus?: CadTransactionStatus,
+  seenTransactionIds?: Set<TransactionId>
 ): void {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -2166,6 +2288,15 @@ function validateTransactionShape(
       `${path}.id`,
       "Transaction id must be a non-empty string."
     );
+  } else if (seenTransactionIds?.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.id`,
+      `Duplicate transaction id: ${value.id}.`
+    );
+  } else {
+    seenTransactionIds?.add(value.id);
   }
 
   if (!Array.isArray(value.ops)) {
@@ -2194,6 +2325,13 @@ function validateTransactionShape(
       "INVALID_TRANSACTION",
       `${path}.status`,
       "Transaction status must be committed or undone."
+    );
+  } else if (expectedStatus !== undefined && value.status !== expectedStatus) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.status`,
+      `Transactions in ${path.startsWith("$.redoStack") ? "redoStack" : "history"} must have ${expectedStatus} status.`
     );
   }
 

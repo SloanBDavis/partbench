@@ -1,6 +1,7 @@
 import {
   CadProjectImportError,
   formatCadProjectImportError,
+  importCadProject,
   parseCadProjectJson,
   type CadProject,
   type CadProjectImportIssue
@@ -46,6 +47,7 @@ export function createProjectJsonPreview(json: string): ProjectJsonPreview {
 
   try {
     const project = parseCadProjectJson(json);
+    importCadProject(project);
 
     return {
       status: "valid",
@@ -68,4 +70,18 @@ export function formatProjectJsonSummary(summary: ProjectJsonSummary): string {
       : "";
 
   return `${summary.schemaVersion}, ${summary.objectCount} object(s), ${summary.transactionCount} transaction(s)${redo}`;
+}
+
+export function getProjectImportStatusText(
+  preview: ProjectJsonPreview
+): string {
+  if (preview.status === "empty") {
+    return "Generate, load, or paste project JSON to preview source-of-truth data before import.";
+  }
+
+  if (preview.status === "invalid") {
+    return "Import is blocked until the project JSON validates successfully.";
+  }
+
+  return `Ready to import ${formatProjectJsonSummary(preview.summary)}. Import replaces the current document and restores available undo/redo history.`;
 }

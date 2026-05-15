@@ -495,6 +495,10 @@ Current slice delivered:
   JSON-style paths, and messages.
 - The UI displays current project metadata, import preview metadata, and
   structured validation errors before import.
+- Import preview now uses the same importability checks as load, including
+  transaction replay and document/history consistency checks.
+- Project validation enforces expected transaction stack status, duplicate
+  transaction ID checks, and generated object-number collision checks.
 
 Exit criteria:
 
