@@ -363,6 +363,7 @@ h2 {
 .batch-panel,
 .project-panel,
 .geometry-panel,
+.history-panel,
 .command-card {
   display: grid;
   gap: 12px;
@@ -371,6 +372,70 @@ h2 {
   border: 1px solid #d6dee7;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 250px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.history-card {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  border: 1px solid #d4dbe4;
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.history-card.history-undone {
+  background: #f3f5f8;
+  color: #5b6877;
+}
+
+.history-card-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-card code {
+  min-width: 0;
+  color: #1f2933;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.history-card strong {
+  margin-left: 0;
+  color: #607080;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.history-card.history-undone strong {
+  color: #7d8794;
+}
+
+.history-card p {
+  margin: 0;
+  color: #4f5f70;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.history-card .history-diff {
+  color: #1f2933;
+  font-weight: 700;
 }
 
 .field-grid {

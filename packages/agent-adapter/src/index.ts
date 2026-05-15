@@ -12,6 +12,7 @@ import type {
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
+  CadTransactionHistoryEntry,
   DocumentUnits,
   ObjectExtentSnapshot,
   ObjectMeasurementsSnapshot,
@@ -72,6 +73,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
+  | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
 export interface CadOpsAgentProjectSummaryQueryResponse {
@@ -116,6 +118,16 @@ export interface CadOpsAgentProjectExtentsQueryResponse {
   readonly objects: readonly ObjectExtentSnapshot[];
 }
 
+export interface CadOpsAgentTransactionHistoryQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "transaction.history";
+  readonly transactionCount: number;
+  readonly transactions: readonly CadTransactionHistoryEntry[];
+}
+
 export interface CadOpsAgentQueryErrorResponse {
   readonly ok: false;
   readonly requestId: string;
@@ -125,7 +137,8 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.summary"
     | "object.get"
     | "object.measurements"
-    | "project.extents";
+    | "project.extents"
+    | "transaction.history";
   readonly error: CadQueryError;
 }
 
@@ -324,6 +337,18 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "transaction.history") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      transactionCount: response.transactionCount,
+      transactions: response.transactions
+    };
+  }
+
   return {
     ok: true,
     requestId: request.requestId,
@@ -389,6 +414,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "object.measurements" &&
         typeof value.query.id === "string") ||
       (value.query.query === "project.extents" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
   );
 }

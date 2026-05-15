@@ -1238,6 +1238,157 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns transaction history with actor, op, and diff summaries", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "script",
+        id: "audit-script",
+        name: "Audit Script"
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "audit_box",
+          dimensions: { width: 1, height: 2, depth: 3 }
+        },
+        {
+          op: "scene.updateTransform",
+          id: "audit_box",
+          transform: { translation: [1, 0, 0] }
+        },
+        {
+          op: "document.updateUnits",
+          units: "in"
+        }
+      ]
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      query: "transaction.history",
+      cadOpsVersion: "cadops.v1",
+      transactionCount: 1,
+      transactions: [
+        {
+          id: "txn_1",
+          status: "committed",
+          actor: {
+            type: "script",
+            id: "audit-script",
+            name: "Audit Script"
+          },
+          opCount: 3,
+          ops: [
+            {
+              op: "scene.createBox",
+              label: "Create box audit_box",
+              objectId: "audit_box",
+              objectKind: "box"
+            },
+            {
+              op: "scene.updateTransform",
+              label: "Update transform for audit_box",
+              objectId: "audit_box",
+              objectKind: "box"
+            },
+            {
+              op: "document.updateUnits",
+              label: "Set document units to in"
+            }
+          ],
+          diff: {
+            created: [{ id: "audit_box", kind: "box" }],
+            modified: [{ id: "audit_box", kind: "box" }],
+            deleted: [],
+            createdCount: 1,
+            modifiedCount: 1,
+            deletedCount: 0,
+            document: {
+              units: {
+                before: "mm",
+                after: "in"
+              }
+            }
+          }
+        }
+      ]
+    });
+  });
+
+  it("reports undo and redo status through transaction history", () => {
+    const engine = new CadEngine();
+
+    engine.apply(
+      {
+        op: "scene.createCylinder",
+        id: "undo_audit_cylinder",
+        dimensions: { radius: 1, height: 2 }
+      },
+      {
+        actor: {
+          type: "human",
+          id: "user-1"
+        }
+      }
+    );
+
+    engine.undo();
+
+    const undone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(undone).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactions: [
+        {
+          id: "txn_1",
+          status: "undone",
+          actor: {
+            type: "human",
+            id: "user-1"
+          },
+          ops: [
+            {
+              op: "scene.createCylinder",
+              objectId: "undo_audit_cylinder",
+              objectKind: "cylinder"
+            }
+          ]
+        }
+      ]
+    });
+
+    engine.redo();
+
+    const redone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(redone).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactions: [
+        {
+          id: "txn_1",
+          status: "committed"
+        }
+      ]
+    });
+  });
+
   it("returns a structured query error for a missing object", () => {
     const engine = new CadEngine();
 

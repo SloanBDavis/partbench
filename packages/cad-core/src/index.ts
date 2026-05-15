@@ -8,9 +8,13 @@ import type {
   CadAxisAlignedBounds,
   CadObjectSnapshot,
   CadObjectRef,
+  CadOperationSummary,
   CadOp,
   CadQueryRequest,
   CadQueryResponse,
+  CadSemanticDiffSummary,
+  CadTransactionHistoryEntry,
+  CadTransactionStatus,
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnits,
@@ -32,9 +36,13 @@ export type {
   CadAxisAlignedBounds,
   CadObjectSnapshot,
   CadObjectRef,
+  CadOperationSummary,
   CadOp,
   CadQueryRequest,
   CadQueryResponse,
+  CadSemanticDiffSummary,
+  CadTransactionHistoryEntry,
+  CadTransactionStatus,
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnits,
@@ -77,7 +85,7 @@ export interface CadDocument {
 export interface Transaction {
   readonly id: TransactionId;
   readonly ops: readonly CadOp[];
-  readonly status: "committed" | "undone";
+  readonly status: CadTransactionStatus;
   readonly diff: SemanticDiff;
   readonly actor?: CadActorMetadata;
 }
@@ -421,6 +429,21 @@ export class CadEngine {
             worldBounds: measurement.worldBounds,
             approximateVolume: measurement.approximateVolume
           }))
+        };
+      }
+
+      case "transaction.history": {
+        const transactions = createTransactionHistoryEntries([
+          ...this.#history.map((entry) => entry.transaction),
+          ...this.#redoStack.map((entry) => entry.transaction)
+        ]);
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          transactionCount: transactions.length,
+          transactions
         };
       }
     }
@@ -973,6 +996,161 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
     name: object.name,
     dimensions: { ...object.dimensions },
     transform: cloneTransform(object.transform)
+  };
+}
+
+function createTransactionHistoryEntries(
+  transactions: readonly Transaction[]
+): readonly CadTransactionHistoryEntry[] {
+  return [...transactions]
+    .sort((left, right) => {
+      const leftNumber = parseTransactionNumber(left.id);
+      const rightNumber = parseTransactionNumber(right.id);
+      return leftNumber === rightNumber
+        ? left.id.localeCompare(right.id)
+        : leftNumber - rightNumber;
+    })
+    .map(createTransactionHistoryEntry);
+}
+
+function createTransactionHistoryEntry(
+  transaction: Transaction
+): CadTransactionHistoryEntry {
+  const ops = createOperationSummaries(transaction);
+
+  return {
+    id: transaction.id,
+    status: transaction.status,
+    ...(transaction.actor ? { actor: transaction.actor } : {}),
+    opCount: transaction.ops.length,
+    ops,
+    diff: createSemanticDiffSummary(transaction.diff)
+  };
+}
+
+function createOperationSummaries(
+  transaction: Transaction
+): readonly CadOperationSummary[] {
+  let createdIndex = 0;
+
+  return transaction.ops.map((op) => {
+    const createdRef =
+      op.op === "scene.createBox" || op.op === "scene.createCylinder"
+        ? transaction.diff.created[createdIndex++]
+        : undefined;
+
+    switch (op.op) {
+      case "document.updateUnits":
+        return {
+          op: op.op,
+          label: `Set document units to ${op.units}`
+        };
+
+      case "scene.createBox": {
+        const objectId = op.id ?? createdRef?.id;
+
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Create box ${objectId ?? "with generated ID"}`,
+          objectId,
+          objectKind: "box"
+        });
+      }
+
+      case "scene.createCylinder": {
+        const objectId = op.id ?? createdRef?.id;
+
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Create cylinder ${objectId ?? "with generated ID"}`,
+          objectId,
+          objectKind: "cylinder"
+        });
+      }
+
+      case "scene.deleteObject":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Delete object ${op.id}`,
+          objectId: op.id,
+          objectKind: findObjectKind(transaction.diff.deleted, op.id)
+        });
+
+      case "scene.updateTransform":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Update transform for ${op.id}`,
+          objectId: op.id,
+          objectKind: findObjectKind(transaction.diff.modified, op.id)
+        });
+
+      case "scene.updateBoxDimensions":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Update box dimensions for ${op.id}`,
+          objectId: op.id,
+          objectKind: "box"
+        });
+
+      case "scene.updateCylinderDimensions":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Update cylinder dimensions for ${op.id}`,
+          objectId: op.id,
+          objectKind: "cylinder"
+        });
+
+      case "scene.renameObject":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Rename object ${op.id}`,
+          objectId: op.id,
+          objectKind: findObjectKind(transaction.diff.modified, op.id)
+        });
+    }
+  });
+}
+
+function createObjectOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.objectId ? { objectId: summary.objectId } : {}),
+    ...(summary.objectKind ? { objectKind: summary.objectKind } : {})
+  };
+}
+
+function findObjectKind(
+  refs: readonly CadObjectRef[],
+  id: ObjectId
+): CadObjectRef["kind"] | undefined {
+  return refs.find((ref) => ref.id === id)?.kind;
+}
+
+function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
+  return {
+    created: [...diff.created],
+    modified: [...diff.modified],
+    deleted: [...diff.deleted],
+    createdCount: diff.created.length,
+    modifiedCount: diff.modified.length,
+    deletedCount: diff.deleted.length,
+    ...(diff.document
+      ? {
+          document: {
+            ...(diff.document.units
+              ? {
+                  units: {
+                    before: diff.document.units.before,
+                    after: diff.document.units.after
+                  }
+                }
+              : {})
+          }
+        }
+      : {})
   };
 }
 

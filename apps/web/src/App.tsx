@@ -5,6 +5,7 @@ import {
   formatCadProjectImportError,
   parseCadProjectJson,
   type CadDocument,
+  type CadTransactionHistoryEntry,
   type ObjectMeasurementsSnapshot,
   type SceneObject
 } from "@web-cad/cad-core";
@@ -35,6 +36,7 @@ import {
 import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { BatchPanel } from "./components/BatchPanel";
 import { GeometryPanel } from "./components/GeometryPanel";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
@@ -105,6 +107,17 @@ const initialBatchForm: BatchOperationForm = {
   units: "mm"
 };
 
+function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "transaction.history" }
+  });
+
+  return response.ok && response.query === "transaction.history"
+    ? response.transactions
+    : [];
+}
+
 export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
@@ -159,6 +172,7 @@ export function App() {
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
     : undefined;
+  const transactionHistory = readTransactionHistory();
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
   >(() => {
@@ -507,6 +521,8 @@ export function App() {
               </ul>
             )}
           </section>
+
+          <HistoryPanel transactions={transactionHistory} />
 
           <BatchPanel
             disabled={commandPending}

@@ -13,6 +13,7 @@ export type CadMcpToolName =
   | "cad.project_summary"
   | "cad.object_measurements"
   | "cad.project_extents"
+  | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
 
@@ -115,6 +116,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_extents") {
       return this.#callProjectExtents(request);
+    }
+
+    if (request.name === "cad.transaction_history") {
+      return this.#callTransactionHistory(request);
     }
 
     if (request.name === "cad.batch") {
@@ -243,6 +248,30 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callTransactionHistory(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.transaction_history does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "transaction.history" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callBatch(request: CadMcpToolCallRequest): CadMcpToolCallResult {
     if (!isBatchToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
@@ -313,6 +342,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_extents",
     description:
       "Returns aggregate derived extents and approximate volume for the current CAD document.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.transaction_history",
+    description:
+      "Returns read-only transaction history with actor, operation, and semantic diff summaries.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

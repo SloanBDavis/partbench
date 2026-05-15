@@ -438,6 +438,83 @@ describe("agent-adapter", () => {
     expect(response.approximateVolume).toBeCloseTo(4 * Math.PI);
   });
 
+  it("returns transaction history through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_req_history_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      actor: {
+        type: "agent",
+        id: "history-agent",
+        name: "History Agent"
+      },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "history_box",
+            dimensions: { width: 1, height: 2, depth: 3 }
+          }
+        ]
+      }
+    });
+    adapter.getEngine().undo();
+
+    const request = parseCadOpsAgentQueryRequestJson(
+      JSON.stringify({
+        requestId: "agent_history_json",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "transaction.history" }
+        }
+      })
+    );
+    const response = JSON.parse(adapter.queryJson(JSON.stringify(request))) as {
+      readonly ok: boolean;
+      readonly query: string;
+      readonly transactionCount: number;
+      readonly transactions: readonly {
+        readonly id: string;
+        readonly status: string;
+        readonly actor?: { readonly id?: string };
+        readonly ops: readonly {
+          readonly op: string;
+          readonly objectId?: string;
+        }[];
+      }[];
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactionCount: 1,
+      transactions: [
+        {
+          id: "txn_1",
+          status: "undone",
+          actor: {
+            id: "history-agent"
+          },
+          ops: [
+            {
+              op: "scene.createBox",
+              objectId: "history_box"
+            }
+          ],
+          diff: {
+            createdCount: 1,
+            modifiedCount: 0,
+            deletedCount: 0
+          }
+        }
+      ]
+    });
+  });
+
   it("returns structured adapter query errors", () => {
     const adapter = new CadOpsAgentAdapter();
 

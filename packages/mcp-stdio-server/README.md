@@ -10,6 +10,7 @@ Only these existing tools are exposed:
 - `cad.project_summary`
 - `cad.object_measurements`
 - `cad.project_extents`
+- `cad.transaction_history`
 - `cad.batch`
 
 The transport does not depend on React, the renderer, OCCT, OPFS, STEP
@@ -74,3 +75,5 @@ document.
 `cad.object_measurements` and `cad.project_extents` return read-only derived
 bounds and approximate volumes from the authoritative document. Units are
 current-model metadata only; the server does not perform unit conversion.
+`cad.transaction_history` returns read-only summaries of the in-memory
+transaction and redo history, including actor metadata when present.

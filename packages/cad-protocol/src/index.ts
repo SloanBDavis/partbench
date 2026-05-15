@@ -117,6 +117,8 @@ export interface SemanticDiff {
   readonly document?: DocumentSemanticDiff;
 }
 
+export type CadTransactionStatus = "committed" | "undone";
+
 export interface CadBatch {
   readonly version: CadOpsVersion;
   readonly mode: CadBatchMode;
@@ -179,13 +181,15 @@ export type CadQueryKind =
   | "project.summary"
   | "object.get"
   | "object.measurements"
-  | "project.extents";
+  | "project.extents"
+  | "transaction.history";
 
 export type CadQuery =
   | ProjectSummaryQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
-  | ProjectExtentsQuery;
+  | ProjectExtentsQuery
+  | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
   readonly query: "project.summary";
@@ -203,6 +207,10 @@ export interface ObjectMeasurementsQuery {
 
 export interface ProjectExtentsQuery {
   readonly query: "project.extents";
+}
+
+export interface TransactionHistoryQuery {
+  readonly query: "transaction.history";
 }
 
 export interface CadQueryRequest {
@@ -255,6 +263,32 @@ export interface ObjectExtentSnapshot {
   readonly approximateVolume: number;
 }
 
+export interface CadOperationSummary {
+  readonly op: CadOp["op"];
+  readonly label: string;
+  readonly objectId?: ObjectId;
+  readonly objectKind?: CadObjectKind;
+}
+
+export interface CadSemanticDiffSummary {
+  readonly created: readonly CadObjectRef[];
+  readonly modified: readonly CadObjectRef[];
+  readonly deleted: readonly CadObjectRef[];
+  readonly createdCount: number;
+  readonly modifiedCount: number;
+  readonly deletedCount: number;
+  readonly document?: DocumentSemanticDiff;
+}
+
+export interface CadTransactionHistoryEntry {
+  readonly id: TransactionId;
+  readonly status: CadTransactionStatus;
+  readonly actor?: CadActorMetadata;
+  readonly opCount: number;
+  readonly ops: readonly CadOperationSummary[];
+  readonly diff: CadSemanticDiffSummary;
+}
+
 export type CadQueryErrorCode = "OBJECT_NOT_FOUND";
 
 export interface CadQueryError {
@@ -268,6 +302,7 @@ export type CadQueryResponse =
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
+  | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
 export interface ProjectSummaryQueryResponse {
@@ -302,6 +337,14 @@ export interface ProjectExtentsQueryResponse {
   readonly bounds?: CadAxisAlignedBounds;
   readonly approximateVolume: number;
   readonly objects: readonly ObjectExtentSnapshot[];
+}
+
+export interface TransactionHistoryQueryResponse {
+  readonly ok: true;
+  readonly query: "transaction.history";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly transactionCount: number;
+  readonly transactions: readonly CadTransactionHistoryEntry[];
 }
 
 export interface CadQueryErrorResponse {

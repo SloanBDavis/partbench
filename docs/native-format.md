@@ -119,6 +119,9 @@ The source of truth is:
 Transactions are preserved so undo/redo, command auditability, and future
 rebuild/migration work have a stable record of how the current document was
 produced.
+The `transaction.history` query returns read-only summaries of this saved
+transaction model for UI, scripts, agents, and MCP clients. Those summaries are
+not separately persisted; they are derived from `history` and `redoStack`.
 
 ## Rebuildable Cache
 
@@ -132,6 +135,7 @@ These are not source of truth and must not be required to load a project:
 - geometry-worker timing metrics
 - browser smoke metrics
 - read-only measurement and project extent query results
+- read-only transaction history summary query results
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the

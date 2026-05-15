@@ -516,6 +516,13 @@ Current slice delivered:
   and default structured commits to agent actors when no caller-provided actor is
   present.
 - Actor validation failures return structured CADOps validation errors.
+- CADOps read/query support now includes `transaction.history`, which returns
+  transaction IDs, undo/redo status, actor metadata, operation summaries, and
+  semantic diff summaries from the existing transaction model.
+- The agent adapter and MCP wrapper expose transaction history as read-only query
+  data.
+- The web UI includes a compact recent history/audit panel. It does not add
+  rollback-to-transaction or any new mutation path.
 
 Still pending:
 

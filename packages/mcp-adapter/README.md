@@ -9,6 +9,7 @@ It exposes these MCP-style tools:
 - `cad.project_summary`
 - `cad.object_measurements`
 - `cad.project_extents`
+- `cad.transaction_history`
 - `cad.batch`
 
 It does not depend on React, the renderer, OCCT, OPFS, STEP import/export,
@@ -21,7 +22,7 @@ adapter calls, and returns structured adapter responses.
 
 ```text
 MCP client
-  -> cad.project_summary / cad.object_measurements / cad.project_extents / cad.batch
+  -> cad.project_summary / cad.object_measurements / cad.project_extents / cad.transaction_history / cad.batch
     -> @web-cad/mcp-adapter
       -> @web-cad/agent-adapter
         -> CADOps
@@ -89,12 +90,26 @@ Call `cad.project_extents`:
 }
 ```
 
-Call `cad.batch` in dry-run mode:
+Call `cad.transaction_history`:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 5,
+  "method": "tools/call",
+  "params": {
+    "name": "cad.transaction_history",
+    "arguments": {}
+  }
+}
+```
+
+Call `cad.batch` in dry-run mode:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 6,
   "method": "tools/call",
   "params": {
     "name": "cad.batch",

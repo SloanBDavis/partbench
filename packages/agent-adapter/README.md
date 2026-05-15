@@ -98,6 +98,20 @@ Measurement and extent queries use the same read-only query envelope:
 }
 ```
 
+Transaction history uses the same read-only query envelope and returns summaries
+of the existing `cad-core` transaction model:
+
+```json
+{
+  "requestId": "agent_query_005",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "transaction.history" }
+  }
+}
+```
+
 The adapter delegates batches directly to `CadEngine.executeBatch()` and queries
 directly to `CadEngine.executeQuery()`. CADOps remains the internal API; MCP,
 SDKs, scripts, and future agent tools should wrap this adapter rather than define

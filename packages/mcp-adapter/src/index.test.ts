@@ -9,6 +9,7 @@ describe("mcp-adapter", () => {
       "cad.project_summary",
       "cad.object_measurements",
       "cad.project_extents",
+      "cad.transaction_history",
       "cad.batch"
     ]);
   });
@@ -243,6 +244,67 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns transaction history through cad.transaction_history", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_history_create",
+      arguments: {
+        actor: {
+          type: "agent",
+          id: "mcp-history-agent",
+          name: "MCP History Agent"
+        },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "history_box",
+              dimensions: { width: 1, height: 2, depth: 3 }
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.transaction_history",
+      requestId: "mcp_req_history"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.transaction_history",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_history",
+        query: "transaction.history",
+        transactionCount: 1,
+        transactions: [
+          {
+            id: "txn_1",
+            status: "committed",
+            actor: {
+              id: "mcp-history-agent"
+            },
+            ops: [
+              {
+                op: "scene.createBox",
+                objectId: "history_box"
+              }
+            ],
+            diff: {
+              createdCount: 1
+            }
+          }
+        ]
+      }
+    });
+  });
+
   it("returns structured CADOps errors from cad.batch", () => {
     const server = new CadMcpServer();
 
@@ -317,6 +379,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_summary" },
           { name: "cad.object_measurements" },
           { name: "cad.project_extents" },
+          { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]
       }

@@ -128,6 +128,10 @@ describe("cad-protocol", () => {
       {
         version: "cadops.v1",
         query: { query: "project.extents" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "transaction.history" }
       }
     ];
 
@@ -135,7 +139,8 @@ describe("cad-protocol", () => {
       "project.summary",
       "object.get",
       "object.measurements",
-      "project.extents"
+      "project.extents",
+      "transaction.history"
     ]);
   });
 
