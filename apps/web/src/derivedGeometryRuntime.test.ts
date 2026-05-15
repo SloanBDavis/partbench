@@ -1,20 +1,20 @@
-import type { GeometryWorkerSpikeResponse } from "@web-cad/geometry-worker-spike";
+import type { GeometryWorkerResponse } from "@web-cad/geometry-worker";
 import type { MeshRendererBridgeResult } from "@web-cad/renderer-mesh-bridge";
 import { describe, expect, it } from "vitest";
 import {
-  createOcctMeshDevErrorDetails,
-  createOcctMeshDevErrorFromWorkerResponse,
-  createOcctMeshDevMetrics,
+  createDerivedGeometryErrorDetails,
+  createDerivedGeometryErrorFromWorkerResponse,
+  createDerivedGeometryMetrics,
   formatMetricMs,
-  formatOcctMeshDevError
-} from "./occtMeshDev";
+  formatDerivedGeometryError
+} from "./derivedGeometryRuntime";
 
-describe("occtMeshDev", () => {
+describe("derivedGeometryRuntime", () => {
   it("creates display metrics from a geometry worker response", () => {
-    const response: GeometryWorkerSpikeResponse = {
+    const response: GeometryWorkerResponse = {
       id: "worker_req_1",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "kernel_req_1",
       response: {
         ok: true,
@@ -60,7 +60,7 @@ describe("occtMeshDev", () => {
     };
 
     expect(
-      createOcctMeshDevMetrics({
+      createDerivedGeometryMetrics({
         objectId: "obj_1",
         response,
         bridgeResult,
@@ -85,10 +85,10 @@ describe("occtMeshDev", () => {
   });
 
   it("creates structured UI errors from failed worker responses", () => {
-    const response: GeometryWorkerSpikeResponse = {
+    const response: GeometryWorkerResponse = {
       id: "worker_req_failure",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "kernel_req_failure",
       response: {
         ok: false,
@@ -113,7 +113,7 @@ describe("occtMeshDev", () => {
       }
     };
 
-    const error = createOcctMeshDevErrorFromWorkerResponse(response);
+    const error = createDerivedGeometryErrorFromWorkerResponse(response);
 
     expect(error.details).toEqual({
       code: "WASM_LOAD_FAILED",
@@ -122,14 +122,14 @@ describe("occtMeshDev", () => {
       workerStarted: true,
       wasmLoadStatus: "failed"
     });
-    expect(formatOcctMeshDevError(error.details)).toBe(
+    expect(formatDerivedGeometryError(error.details)).toBe(
       "WASM_LOAD_FAILED at wasmLoad: Failed to load OCCT WASM."
     );
   });
 
   it("creates structured UI errors from transport diagnostics", () => {
     expect(
-      createOcctMeshDevErrorDetails({
+      createDerivedGeometryErrorDetails({
         diagnostics: {
           ok: false,
           stage: "transport",

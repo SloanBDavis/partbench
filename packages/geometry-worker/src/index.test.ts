@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  GeometryKernelWorkerSpike,
+  GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
-  createGeometryKernelWorkerSpike
+  createGeometryKernelWorker
 } from "./index";
 
-describe("geometry-worker-spike", () => {
+describe("geometry-worker", () => {
   it("creates a typed box tessellation worker request", () => {
     const request = createBoxTessellationWorkerRequest({
       id: "worker_req_1",
@@ -20,8 +20,8 @@ describe("geometry-worker-spike", () => {
 
     expect(request).toEqual({
       id: "worker_req_1",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payload: {
         id: "worker_req_1:payload",
         version: "geometry-kernel.v1",
@@ -48,8 +48,8 @@ describe("geometry-worker-spike", () => {
 
     expect(request).toEqual({
       id: "worker_req_cylinder",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payload: {
         id: "worker_req_cylinder:payload",
         version: "geometry-kernel.v1",
@@ -66,7 +66,7 @@ describe("geometry-worker-spike", () => {
   });
 
   it("tessellates one box asynchronously through the geometry kernel facade", async () => {
-    const worker = createGeometryKernelWorkerSpike({ delayMs: 1 });
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
     const responsePromise = worker.execute(
       createBoxTessellationWorkerRequest({
         id: "worker_req_box",
@@ -87,8 +87,8 @@ describe("geometry-worker-spike", () => {
 
     expect(response).toMatchObject({
       id: "worker_req_box",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "geometry_req_box",
       response: {
         ok: true,
@@ -115,7 +115,7 @@ describe("geometry-worker-spike", () => {
   });
 
   it("tessellates one cylinder asynchronously through the geometry kernel facade", async () => {
-    const worker = createGeometryKernelWorkerSpike({ delayMs: 1 });
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
     const response = await worker.execute(
       createCylinderTessellationWorkerRequest({
         id: "worker_req_cylinder",
@@ -127,8 +127,8 @@ describe("geometry-worker-spike", () => {
 
     expect(response).toMatchObject({
       id: "worker_req_cylinder",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "geometry_req_cylinder",
       response: {
         ok: true,
@@ -152,7 +152,7 @@ describe("geometry-worker-spike", () => {
   });
 
   it("returns structured kernel validation errors without transferables", async () => {
-    const worker = new GeometryKernelWorkerSpike();
+    const worker = new GeometryKernelWorker();
 
     const response = await worker.execute(
       createBoxTessellationWorkerRequest({
@@ -165,8 +165,8 @@ describe("geometry-worker-spike", () => {
 
     expect(response).toEqual({
       id: "worker_req_bad_dimensions",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "worker_req_bad_dimensions:payload",
       response: {
         ok: false,

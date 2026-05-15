@@ -5,14 +5,14 @@ import {
   createOcctBoxMeshWithLoader,
   type OcctBoxInput
 } from "./tessellateBox";
-import type { OcctSpikeMesh } from "./readTriangulatedShape";
+import type { OcctMeshData } from "./readTriangulatedShape";
 import {
   createOcctCylinderMeshWithInstance,
   createOcctCylinderMeshWithLoader,
   type OcctCylinderInput
 } from "./tessellateCylinder";
 
-export type { OcctBoxInput, OcctCylinderInput, OcctSpikeMesh };
+export type { OcctBoxInput, OcctCylinderInput, OcctMeshData };
 export {
   createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
@@ -27,14 +27,14 @@ export async function loadOcct(): Promise<OpenCascadeInstance> {
   return occtPromise;
 }
 
-export async function createOcctBoxMeshSpike(
+export async function createOcctBoxMesh(
   input: OcctBoxInput
-): Promise<OcctSpikeMesh> {
+): Promise<OcctMeshData> {
   return createOcctBoxMeshWithLoader(loadOcct, input);
 }
 
-export async function createOcctCylinderMeshSpike(
+export async function createOcctCylinderMesh(
   input: OcctCylinderInput
-): Promise<OcctSpikeMesh> {
+): Promise<OcctMeshData> {
   return createOcctCylinderMeshWithLoader(loadOcct, input);
 }

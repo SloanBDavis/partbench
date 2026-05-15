@@ -1,29 +1,29 @@
 import {
   createWorkerErrorDiagnostics,
-  GeometryKernelBrowserWorkerSpike,
-  type GeometryWorkerSpikeRequest
-} from "@web-cad/geometry-worker-spike/browser";
+  GeometryKernelBrowserWorker,
+  type GeometryWorkerRequest
+} from "@web-cad/geometry-worker/browser";
 
 interface GeometryWorkerGlobalScope {
   addEventListener(
     type: "message",
-    listener: (event: MessageEvent<GeometryWorkerSpikeRequest>) => void
+    listener: (event: MessageEvent<GeometryWorkerRequest>) => void
   ): void;
   postMessage(message: unknown, transfer: Transferable[]): void;
 }
 
 const workerScope = self as unknown as GeometryWorkerGlobalScope;
-const geometryWorker = new GeometryKernelBrowserWorkerSpike();
+const geometryWorker = new GeometryKernelBrowserWorker();
 
 workerScope.addEventListener(
   "message",
-  (event: MessageEvent<GeometryWorkerSpikeRequest>) => {
+  (event: MessageEvent<GeometryWorkerRequest>) => {
     void executeGeometryRequest(event.data);
   }
 );
 
 async function executeGeometryRequest(
-  request: GeometryWorkerSpikeRequest
+  request: GeometryWorkerRequest
 ): Promise<void> {
   try {
     const response = await geometryWorker.execute(request);

@@ -7,7 +7,7 @@ export interface DerivedGeometryFlagState {
   readonly enabled: boolean;
   readonly source:
     | "disabled"
-    | "development-default"
+    | "serve-default"
     | "explicit-enable"
     | "explicit-disable";
 }
@@ -17,8 +17,7 @@ export function resolveDerivedGeometryFlags(
 ): DerivedGeometryFlagState {
   if (
     isTruthy(input.env.VITE_DISABLE_DERIVED_GEOMETRY) ||
-    isFalsey(input.env.VITE_ENABLE_DERIVED_GEOMETRY) ||
-    isFalsey(input.env.VITE_ENABLE_OCCT_MESH_DEV)
+    isFalsey(input.env.VITE_ENABLE_DERIVED_GEOMETRY)
   ) {
     return {
       enabled: false,
@@ -26,10 +25,7 @@ export function resolveDerivedGeometryFlags(
     };
   }
 
-  if (
-    isTruthy(input.env.VITE_ENABLE_DERIVED_GEOMETRY) ||
-    isTruthy(input.env.VITE_ENABLE_OCCT_MESH_DEV)
-  ) {
+  if (isTruthy(input.env.VITE_ENABLE_DERIVED_GEOMETRY)) {
     return {
       enabled: true,
       source: "explicit-enable"
@@ -39,7 +35,7 @@ export function resolveDerivedGeometryFlags(
   if (input.command === "serve") {
     return {
       enabled: true,
-      source: "development-default"
+      source: "serve-default"
     };
   }
 

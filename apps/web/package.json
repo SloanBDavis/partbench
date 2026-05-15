@@ -13,7 +13,7 @@
   "dependencies": {
     "@web-cad/cad-core": "workspace:*",
     "@web-cad/cad-protocol": "workspace:*",
-    "@web-cad/geometry-worker-spike": "workspace:*",
+    "@web-cad/geometry-worker": "workspace:*",
     "@web-cad/renderer": "workspace:*",
     "@web-cad/renderer-mesh-bridge": "workspace:*",
     "react": "^19.2.1",

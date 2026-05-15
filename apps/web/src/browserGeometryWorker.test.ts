@@ -1,9 +1,9 @@
 import {
-  GeometryKernelWorkerSpike,
+  GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
-  type GeometryWorkerSpikeRequest
-} from "@web-cad/geometry-worker-spike";
+  type GeometryWorkerRequest
+} from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
 import {
   BrowserGeometryWorker,
@@ -27,22 +27,20 @@ type MessageListener = (
 type ErrorListener = (event: WorkerErrorEvent) => void;
 
 class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
-  readonly requests: GeometryWorkerSpikeRequest[] = [];
+  readonly requests: GeometryWorkerRequest[] = [];
   readonly #handler: (
-    request: GeometryWorkerSpikeRequest
+    request: GeometryWorkerRequest
   ) => Promise<GeometryWorkerMessage>;
   readonly #messageListeners = new Set<MessageListener>();
   readonly #errorListeners = new Set<ErrorListener>();
 
   constructor(
-    handler: (
-      request: GeometryWorkerSpikeRequest
-    ) => Promise<GeometryWorkerMessage>
+    handler: (request: GeometryWorkerRequest) => Promise<GeometryWorkerMessage>
   ) {
     this.#handler = handler;
   }
 
-  postMessage(message: GeometryWorkerSpikeRequest): void {
+  postMessage(message: GeometryWorkerRequest): void {
     this.requests.push(message);
 
     queueMicrotask(() => {
@@ -83,7 +81,7 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
     this.#errorListeners.clear();
   }
 
-  async #postResponse(request: GeometryWorkerSpikeRequest): Promise<void> {
+  async #postResponse(request: GeometryWorkerRequest): Promise<void> {
     try {
       const response = await this.#handler(request);
 
@@ -148,7 +146,7 @@ describe("BrowserGeometryWorker", () => {
   });
 
   it("can run one box tessellation through the browser transport wrapper", async () => {
-    const kernelWorker = new GeometryKernelWorkerSpike();
+    const kernelWorker = new GeometryKernelWorker();
     const transport = new FakeGeometryWorkerTransport((request) =>
       kernelWorker.execute(request)
     );
@@ -166,8 +164,8 @@ describe("BrowserGeometryWorker", () => {
 
     expect(response).toMatchObject({
       id: "browser_geometry_req_box",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "browser_geometry_payload_box",
       response: {
         ok: true,
@@ -190,7 +188,7 @@ describe("BrowserGeometryWorker", () => {
   });
 
   it("can run one cylinder tessellation through the browser transport wrapper", async () => {
-    const kernelWorker = new GeometryKernelWorkerSpike();
+    const kernelWorker = new GeometryKernelWorker();
     const transport = new FakeGeometryWorkerTransport((request) =>
       kernelWorker.execute(request)
     );
@@ -207,8 +205,8 @@ describe("BrowserGeometryWorker", () => {
 
     expect(response).toMatchObject({
       id: "browser_geometry_req_cylinder",
-      version: "geometry-worker-spike.v1",
-      kind: "geometry-worker-spike.tessellatePrimitive",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
       payloadId: "browser_geometry_payload_cylinder",
       response: {
         ok: true,

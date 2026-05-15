@@ -1,6 +1,6 @@
 # Geometry Kernel Facade
 
-This package is the typed boundary in front of the isolated OCCT spike. It is
+This package is the typed boundary in front of the isolated OCCT WASM adapter. It is
 not imported by `packages/cad-core` or `packages/renderer`.
 
 The goal is to make the future geometry worker contract explicit without moving

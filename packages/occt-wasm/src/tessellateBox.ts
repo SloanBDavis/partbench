@@ -1,39 +1,42 @@
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
   readTriangulatedShape,
-  type OcctSpikeMesh
+  type OcctMeshData
 } from "./readTriangulatedShape";
-import type { OcctLoader } from "./tessellateBox";
 
-export interface OcctCylinderInput {
-  readonly radius: number;
+export interface OcctBoxInput {
+  readonly width: number;
   readonly height: number;
+  readonly depth: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }
 
-export async function createOcctCylinderMeshWithLoader(
+export type OcctLoader = () => Promise<OpenCascadeInstance>;
+
+export async function createOcctBoxMeshWithLoader(
   loadOcct: OcctLoader,
-  input: OcctCylinderInput
-): Promise<OcctSpikeMesh> {
+  input: OcctBoxInput
+): Promise<OcctMeshData> {
   const oc = await loadOcct();
 
-  return createOcctCylinderMeshWithInstance(oc, input);
+  return createOcctBoxMeshWithInstance(oc, input);
 }
 
-export function createOcctCylinderMeshWithInstance(
+export function createOcctBoxMeshWithInstance(
   oc: OpenCascadeInstance,
-  input: OcctCylinderInput
-): OcctSpikeMesh {
+  input: OcctBoxInput
+): OcctMeshData {
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
-  const makeCylinder = new oc.BRepPrimAPI_MakeCylinder_1(
-    input.radius,
-    input.height
+  const makeBox = new oc.BRepPrimAPI_MakeBox_2(
+    input.width,
+    input.height,
+    input.depth
   );
 
   try {
-    const shape = makeCylinder.Shape();
+    const shape = makeBox.Shape();
     const mesh = new oc.BRepMesh_IncrementalMesh_2(
       shape,
       linearDeflection,
@@ -49,11 +52,11 @@ export function createOcctCylinderMeshWithInstance(
         );
       }
 
-      return readTriangulatedShape(oc, shape, "cylinder");
+      return readTriangulatedShape(oc, shape, "box");
     } finally {
       mesh.delete();
     }
   } finally {
-    makeCylinder.delete();
+    makeBox.delete();
   }
 }

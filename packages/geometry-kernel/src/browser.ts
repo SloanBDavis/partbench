@@ -2,7 +2,7 @@ import {
   createOcctBoxMeshWithInstance,
   createOcctCylinderMeshWithInstance,
   loadBrowserOcct
-} from "@web-cad/occt-spike/browser";
+} from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,

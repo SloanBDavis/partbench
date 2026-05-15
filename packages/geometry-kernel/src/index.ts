@@ -1,7 +1,4 @@
-import {
-  createOcctBoxMeshSpike,
-  createOcctCylinderMeshSpike
-} from "@web-cad/occt-spike";
+import { createOcctBoxMesh, createOcctCylinderMesh } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
@@ -46,8 +43,8 @@ export async function executeGeometryKernelRequest(
 ): Promise<GeometryKernelResponse> {
   return executeGeometryKernelRequestWithMeshFactory(
     {
-      createBoxMesh: createOcctBoxMeshSpike,
-      createCylinderMesh: createOcctCylinderMeshSpike
+      createBoxMesh: createOcctBoxMesh,
+      createCylinderMesh: createOcctCylinderMesh
     },
     request
   );

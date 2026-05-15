@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { resolveDerivedGeometryFlags } from "./derivedGeometryFlags";
 
 describe("derivedGeometryFlags", () => {
-  it("enables derived geometry by default for development server builds", () => {
+  it("enables derived geometry by default for local serve builds", () => {
     expect(resolveDerivedGeometryFlags({ command: "serve", env: {} })).toEqual({
       enabled: true,
-      source: "development-default"
+      source: "serve-default"
     });
   });
 
@@ -21,18 +21,6 @@ describe("derivedGeometryFlags", () => {
       resolveDerivedGeometryFlags({
         command: "build",
         env: { VITE_ENABLE_DERIVED_GEOMETRY: "true" }
-      })
-    ).toEqual({
-      enabled: true,
-      source: "explicit-enable"
-    });
-  });
-
-  it("supports the legacy OCCT mesh env flag", () => {
-    expect(
-      resolveDerivedGeometryFlags({
-        command: "build",
-        env: { VITE_ENABLE_OCCT_MESH_DEV: "true" }
       })
     ).toEqual({
       enabled: true,

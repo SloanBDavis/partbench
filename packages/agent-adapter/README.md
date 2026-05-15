@@ -1,8 +1,7 @@
-# Agent Adapter Spike
+# Agent Adapter
 
-This package is the Milestone 5 AI/MCP adapter spike. It exposes the existing
-CADOps batch and read/query interfaces through a small JSON-callable adapter
-without changing the internal CAD architecture.
+This package exposes the existing CADOps batch and read/query interfaces through
+a small JSON-callable adapter without changing the internal CAD architecture.
 
 It depends on:
 

@@ -30,7 +30,7 @@ The current repo is a TypeScript pnpm workspace with a Vite React app and focuse
 packages:
 
 - `apps/web` - browser UI, command-worker entrypoint, geometry-worker entrypoint,
-  development-default derived mesh service for OCCT box and cylinder meshes,
+  local-serve default derived mesh service for OCCT box and cylinder meshes,
   primitive-rendering fallback, and smoke page.
 - `packages/cad-protocol` - typed CADOps command, batch, and query shapes.
 - `packages/cad-core` - in-memory document model, command application,
@@ -40,10 +40,10 @@ packages:
   canvas viewport rendering.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
   mesh data into renderer mesh data.
-- `packages/occt-spike` - isolated OCCT/WASM primitive tessellation spike.
+- `packages/occt-wasm` - isolated OCCT/WASM primitive tessellation adapter.
 - `packages/geometry-kernel` - typed primitive tessellation facade around the
   isolated OCCT path.
-- `packages/geometry-worker-spike` - async geometry worker request/response
+- `packages/geometry-worker` - async geometry worker request/response
   boundary for primitive tessellation.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs.
 - `packages/mcp-adapter` - tool wrapper exposing CADOps-oriented MCP tools.
@@ -150,16 +150,16 @@ Delivered:
 - `cad-core` remains authoritative; command workers do not own the document.
 - Tests proving the async path.
 
-### Milestone 4: OCCT/WASM Kernel Spike
+### Milestone 4: OCCT/WASM Kernel Integration
 
-Status: complete as an isolated spike.
+Status: complete as an isolated adapter.
 
 Delivered:
 
 - Isolated OCCT/WASM package.
 - One primitive shape path: box.
 - Tessellation to serializable mesh-like typed arrays.
-- Geometry-kernel facade around the OCCT spike.
+- Geometry-kernel facade around the OCCT WASM adapter.
 - Browser geometry worker entrypoint.
 - Renderer mesh bridge.
 - App UI path for deriving box meshes asynchronously through the browser Worker
@@ -198,9 +198,9 @@ for the smoke/hosting path. Real binary shrinkage still requires a custom
 OpenCascade.js build experiment; the installed package only ships the full
 prebuilt WASM.
 
-### Milestone 5: AI/MCP Adapter Spike
+### Milestone 5: AI/MCP Adapter
 
-Status: complete as a structured transport spike.
+Status: complete as a structured transport layer.
 
 Delivered:
 
@@ -236,7 +236,7 @@ Derived geometry development path:
 pnpm dev
 ```
 
-Development builds enable derived OCCT geometry by default. Use the fallback
+The local Vite server enables derived OCCT geometry by default. Use the fallback
 escape hatch when debugging primitive rendering or worker failures:
 
 ```sh
@@ -281,7 +281,7 @@ Current limitations:
   is still deriving one, or is on primitive fallback.
 - The viewport uses ready derived meshes as the preferred display input and keeps
   primitive rendering as fallback instead of drawing both for the same object.
-- Derived geometry is default-enabled for development builds and still disabled
+- Derived geometry is default-enabled for local Vite serve and still disabled
   by default for production builds, so there is no full production geometry cache
   yet.
 - No stable topological naming system exists yet.
@@ -298,8 +298,8 @@ Current limitations:
 
 ### Phase A: Harden the OCCT Worker Path
 
-Goal: turn the current OCCT browser-worker path from a successful spike into a
-reliable development subsystem.
+Goal: harden the current OCCT browser-worker path into a reliable derived
+geometry subsystem.
 
 Deliverables:
 
@@ -347,7 +347,7 @@ Deliverables:
 
 Current slice delivered:
 
-- A development-default app-layer derived geometry service consumes current
+- A local-serve default app-layer derived geometry service consumes current
   document objects and derives renderer meshes for boxes through the existing
   browser geometry worker path. Production builds remain opt-in.
 - Per-object derived geometry status is tracked as unsupported, pending, ready,
@@ -357,7 +357,7 @@ Current slice delivered:
 - Derived mesh entries are reconciled after create, transform update, delete,
   undo, redo, and project import/load because those paths update the current
   document snapshot.
-- Cylinder tessellation now runs through the same OCCT spike, geometry-kernel
+- Cylinder tessellation now runs through the same OCCT WASM adapter, geometry-kernel
   facade, browser worker, renderer mesh bridge, and derived geometry status path
   as box tessellation.
 - The app-layer render scene preparation prefers ready derived meshes and omits
@@ -382,7 +382,7 @@ Deliverables:
   through the same browser-worker path as boxes.
 - Route boxes and cylinders through the same derived geometry service. Current
   implementation keeps both as derived views/caches, default-enabled in
-  development and opt-in for production builds.
+  local Vite serve and opt-in for production builds.
 - Add tests and browser smoke scenarios for box and cylinder. Current
   implementation adds focused package/app tests for the cylinder request,
   kernel, worker, mesh bridge, and derived service paths; the browser smoke runs

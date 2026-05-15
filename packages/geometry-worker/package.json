@@ -1,5 +1,5 @@
 {
-  "name": "@web-cad/occt-spike",
+  "name": "@web-cad/geometry-worker",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -21,6 +21,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "opencascade.js": "2.0.0-beta.b5ff984"
+    "@web-cad/geometry-kernel": "workspace:*"
   }
 }

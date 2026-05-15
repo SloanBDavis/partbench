@@ -11,7 +11,7 @@ import type {
   CadBatchResponse,
   CadOp
 } from "@web-cad/cad-protocol";
-import { createOcctMeshDevRuntime } from "@web-cad/occt-mesh-dev-runtime";
+import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
@@ -30,7 +30,7 @@ import { GeometryPanel } from "./components/GeometryPanel";
 import { Inspector } from "./components/Inspector";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
-import type { OcctMeshDevRuntime } from "./occtMeshDev";
+import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createEmptyDerivedGeometrySnapshot,
   DerivedGeometryService,
@@ -95,7 +95,7 @@ const initialBatchForm: BatchOperationForm = {
 };
 
 export function App() {
-  const occtMeshDevRuntimeRef = useRef<OcctMeshDevRuntime | undefined>(
+  const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
   );
   const derivedGeometryServiceRef = useRef<DerivedGeometryService | undefined>(
@@ -120,23 +120,23 @@ export function App() {
     useState<DerivedGeometrySnapshot>(() =>
       createEmptyDerivedGeometrySnapshot()
     );
-  const getOcctMeshDevRuntime = useCallback((): OcctMeshDevRuntime => {
-    if (!occtMeshDevRuntimeRef.current) {
-      occtMeshDevRuntimeRef.current = createOcctMeshDevRuntime();
+  const getDerivedGeometryRuntime = useCallback((): DerivedGeometryRuntime => {
+    if (!derivedGeometryRuntimeRef.current) {
+      derivedGeometryRuntimeRef.current = createDerivedGeometryRuntime();
     }
 
-    return occtMeshDevRuntimeRef.current;
+    return derivedGeometryRuntimeRef.current;
   }, []);
   const getDerivedGeometryService = useCallback((): DerivedGeometryService => {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
-        runtime: getOcctMeshDevRuntime(),
+        runtime: getDerivedGeometryRuntime(),
         onChange: setDerivedGeometry
       });
     }
 
     return derivedGeometryServiceRef.current;
-  }, [getOcctMeshDevRuntime]);
+  }, [getDerivedGeometryRuntime]);
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -159,7 +159,7 @@ export function App() {
     return () => {
       derivedGeometryServiceRef.current?.dispose();
       derivedGeometryServiceRef.current = undefined;
-      occtMeshDevRuntimeRef.current = undefined;
+      derivedGeometryRuntimeRef.current = undefined;
     };
   }, []);
 

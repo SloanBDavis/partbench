@@ -1,13 +1,13 @@
 import {
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest
-} from "@web-cad/geometry-worker-spike/browser";
+} from "@web-cad/geometry-worker/browser";
 import { createRenderMeshFromGeometryWorkerResponse } from "@web-cad/renderer-mesh-bridge";
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
 import {
-  createOcctMeshDevErrorDetails,
-  createOcctMeshDevErrorFromWorkerResponse
-} from "./occtMeshDev";
+  createDerivedGeometryErrorDetails,
+  createDerivedGeometryErrorFromWorkerResponse
+} from "./derivedGeometryRuntime";
 
 const output = document.getElementById("geometry-worker-smoke");
 
@@ -46,7 +46,7 @@ async function runGeometryWorkerSmoke(): Promise<void> {
       const roundTripMs = performance.now() - roundTripStart;
 
       if (!response.response.ok) {
-        throw createOcctMeshDevErrorFromWorkerResponse(response);
+        throw createDerivedGeometryErrorFromWorkerResponse(response);
       }
 
       const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {
@@ -85,7 +85,7 @@ async function runGeometryWorkerSmoke(): Promise<void> {
     document.body.dataset.geometryWorkerSmoke = "ok";
     writeOutput(JSON.stringify(result, null, 2));
   } catch (error) {
-    const details = createOcctMeshDevErrorDetails(error);
+    const details = createDerivedGeometryErrorDetails(error);
 
     document.body.dataset.geometryWorkerSmoke = "error";
     writeOutput(

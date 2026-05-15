@@ -9,11 +9,11 @@ import {
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import type {
-  OcctMeshDevBoxInput,
-  OcctMeshDevCylinderInput,
-  OcctMeshDevResult,
-  OcctMeshDevRuntime
-} from "./occtMeshDev";
+  DerivedGeometryBoxInput,
+  DerivedGeometryCylinderInput,
+  DerivedGeometryResult,
+  DerivedGeometryRuntime
+} from "./derivedGeometryRuntime";
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -70,7 +70,7 @@ describe("derivedGeometry", () => {
   });
 
   it("does not duplicate requests for unchanged pending or ready objects", async () => {
-    const deferred = createDeferred<OcctMeshDevResult>();
+    const deferred = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     const object = createBoxObject("box_1", 2);
     const runtime = createRuntime(() => deferred.promise);
@@ -137,7 +137,7 @@ describe("derivedGeometry", () => {
   });
 
   it("ignores stale worker results after object deletion", async () => {
-    const pending = createDeferred<OcctMeshDevResult>();
+    const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
       runtime: createRuntime(() => pending.promise),
@@ -155,8 +155,8 @@ describe("derivedGeometry", () => {
   });
 
   it("ignores stale worker results after cache-key invalidation", async () => {
-    const first = createDeferred<OcctMeshDevResult>();
-    const second = createDeferred<OcctMeshDevResult>();
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
       runtime: createRuntime((input) =>
@@ -184,8 +184,8 @@ describe("derivedGeometry", () => {
   });
 
   it("ignores stale worker results after refresh with the same cache key", async () => {
-    const first = createDeferred<OcctMeshDevResult>();
-    const second = createDeferred<OcctMeshDevResult>();
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     let requestCount = 0;
     const service = new DerivedGeometryService({
@@ -229,7 +229,7 @@ describe("derivedGeometry", () => {
       objectId: "box_1",
       status: "error",
       error: {
-        code: "UNKNOWN_OCCT_MESH_DEV_ERROR",
+        code: "UNKNOWN_DERIVED_GEOMETRY_ERROR",
         message: "worker failed"
       }
     });
@@ -265,7 +265,7 @@ describe("derivedGeometry", () => {
   });
 
   it("disposes runtime and ignores pending work after disposal", async () => {
-    const pending = createDeferred<OcctMeshDevResult>();
+    const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(() => pending.promise);
     const service = new DerivedGeometryService({
@@ -325,13 +325,16 @@ function createCylinderObject(id = "cylinder_1"): CylinderObject {
 
 function createRuntime(
   handler: (
-    input: OcctMeshDevBoxInput | OcctMeshDevCylinderInput
-  ) => Promise<OcctMeshDevResult>
-): OcctMeshDevRuntime & {
-  readonly inputs: readonly (OcctMeshDevBoxInput | OcctMeshDevCylinderInput)[];
+    input: DerivedGeometryBoxInput | DerivedGeometryCylinderInput
+  ) => Promise<DerivedGeometryResult>
+): DerivedGeometryRuntime & {
+  readonly inputs: readonly (
+    | DerivedGeometryBoxInput
+    | DerivedGeometryCylinderInput
+  )[];
   readonly disposeCount: number;
 } {
-  const inputs: (OcctMeshDevBoxInput | OcctMeshDevCylinderInput)[] = [];
+  const inputs: (DerivedGeometryBoxInput | DerivedGeometryCylinderInput)[] = [];
   let disposeCount = 0;
 
   return {
@@ -356,7 +359,7 @@ function createRuntime(
 function createResult(
   objectId: string,
   mesh: RenderTriangleMesh
-): OcctMeshDevResult {
+): DerivedGeometryResult {
   return {
     mesh,
     metrics: {

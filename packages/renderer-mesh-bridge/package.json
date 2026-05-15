@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@web-cad/geometry-kernel": "workspace:*",
-    "@web-cad/geometry-worker-spike": "workspace:*",
+    "@web-cad/geometry-worker": "workspace:*",
     "@web-cad/renderer": "workspace:*"
   }
 }

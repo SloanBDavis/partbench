@@ -21,6 +21,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@web-cad/occt-spike": "workspace:*"
+    "@web-cad/occt-wasm": "workspace:*"
   }
 }

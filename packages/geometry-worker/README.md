@@ -1,24 +1,24 @@
-# Geometry Worker Spike
+# Geometry Worker
 
-This package proves that the existing `@web-cad/geometry-kernel` facade can run
-behind a worker-style asynchronous boundary.
+This package runs the existing `@web-cad/geometry-kernel` facade behind a typed,
+asynchronous worker boundary.
 
 It is intentionally isolated:
 
 - `cad-core` does not import this package.
-- `apps/web` imports this package only through an explicit dev path and dynamic
+- `apps/web` imports this package only through the derived geometry runtime and dynamic
   browser-worker request code.
 - The current renderer is unchanged.
-- OCCT is loaded only when the explicit spike executor runs a request.
+- OCCT is loaded only when the derived geometry runtime executes a request.
 
 ## Boundary
 
 ```text
 caller-owned document data
-  -> explicit GeometryWorkerSpikeRequest
-    -> @web-cad/geometry-worker-spike
+  -> explicit GeometryWorkerRequest
+    -> @web-cad/geometry-worker
       -> dynamic import("@web-cad/geometry-kernel")
-        -> isolated OCCT spike
+        -> isolated OCCT WASM adapter
           -> serializable mesh data
 ```
 
@@ -31,8 +31,8 @@ that can be rebuilt from authoritative document state.
 ```json
 {
   "id": "worker_req_box",
-  "version": "geometry-worker-spike.v1",
-  "kind": "geometry-worker-spike.tessellatePrimitive",
+  "version": "geometry-worker.v1",
+  "kind": "geometry-worker.tessellatePrimitive",
   "payload": {
     "id": "geometry_req_box",
     "version": "geometry-kernel.v1",
@@ -48,7 +48,7 @@ that can be rebuilt from authoritative document state.
 
 `createBoxTessellationWorkerRequest()` and
 `createCylinderTessellationWorkerRequest()` build these shapes for the current
-spike.
+box and cylinder tessellation path.
 
 ## Response Shape
 
@@ -58,8 +58,8 @@ and transferables for a real Worker transport:
 ```ts
 {
   id: "worker_req_box",
-  version: "geometry-worker-spike.v1",
-  kind: "geometry-worker-spike.tessellatePrimitive",
+  version: "geometry-worker.v1",
+  kind: "geometry-worker.tessellatePrimitive",
   payloadId: "geometry_req_box",
   response: {
     ok: true,
@@ -92,7 +92,7 @@ failure, worker runtime failure, and worker transport failure.
 
 ## Browser Worker Entry Point
 
-`apps/web` now has an explicit browser Worker spike path:
+`apps/web` owns the browser Worker entrypoint:
 
 - `apps/web/src/geometryTessellation.worker.ts`
 - `apps/web/src/browserGeometryWorker.ts`
@@ -102,7 +102,7 @@ caller must explicitly create `BrowserGeometryWorker` to start the Worker:
 
 ```ts
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
-import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker-spike/browser";
+import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker/browser";
 
 const worker = new BrowserGeometryWorker();
 const response = await worker.execute(
@@ -116,7 +116,7 @@ const response = await worker.execute(
 ```
 
 That keeps default production app startup on the existing primitive renderer
-path. The web app enables derived geometry by default in development builds and
+path. The web app enables derived geometry by default for local Vite serve and
 keeps `VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev` as the primitive fallback
 escape hatch; if OCCT or WASM loading fails, the authoritative document still
 uses `cad-core` and the renderer can keep showing primitives.
@@ -131,8 +131,8 @@ uses `cad-core` and the renderer can keep showing primitives.
 - Typed arrays are ready for structured clone/transfer, but no production mesh
   cache or invalidation strategy is implemented here.
 - Two primitive paths are proven: box and cylinder tessellation.
-- The browser Worker path is still a spike path, not a production geometry
-  service.
+- This package is the typed geometry worker boundary; production mesh cache
+  ownership remains in the app-layer derived geometry service.
 - Tests cover the browser transport wrapper and an in-process worker-backed
   tessellation path. `pnpm build:geometry-worker` covers the real Vite Worker
   bundle, and `apps/web/geometry-worker-smoke.html` is the browser runtime smoke

@@ -6,10 +6,10 @@ import type {
   gp_Pnt
 } from "opencascade.js";
 
-export type OcctSpikePrimitive = "box" | "cylinder";
+export type OcctPrimitiveKind = "box" | "cylinder";
 
-export interface OcctSpikeMesh {
-  readonly primitive: OcctSpikePrimitive;
+export interface OcctMeshData {
+  readonly primitive: OcctPrimitiveKind;
   readonly positions: Float32Array;
   readonly indices: Uint32Array;
   readonly faceCount: number;
@@ -20,8 +20,8 @@ export interface OcctSpikeMesh {
 export function readTriangulatedShape(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
-  primitive: OcctSpikePrimitive
-): OcctSpikeMesh {
+  primitive: OcctPrimitiveKind
+): OcctMeshData {
   const positions: number[] = [];
   const indices: number[] = [];
   const faceShapeType = oc.TopAbs_ShapeEnum

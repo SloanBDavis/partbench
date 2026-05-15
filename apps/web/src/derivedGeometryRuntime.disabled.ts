@@ -1,6 +1,6 @@
-import type { OcctMeshDevRuntime } from "./occtMeshDev";
+import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 
-export function createOcctMeshDevRuntime(): OcctMeshDevRuntime {
+export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   return {
     async tessellateBox() {
       throw new Error("Derived geometry runtime is disabled.");

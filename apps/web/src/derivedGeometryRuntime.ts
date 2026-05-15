@@ -1,11 +1,11 @@
 import type {
-  GeometryWorkerSpikeDiagnostics,
-  GeometryWorkerSpikeResponse
-} from "@web-cad/geometry-worker-spike";
+  GeometryWorkerDiagnostics,
+  GeometryWorkerResponse
+} from "@web-cad/geometry-worker";
 import type { MeshRendererBridgeResult } from "@web-cad/renderer-mesh-bridge";
 import type { RenderTransform, RenderTriangleMesh } from "@web-cad/renderer";
 
-export interface OcctMeshDevBoxInput {
+export interface DerivedGeometryBoxInput {
   readonly id: string;
   readonly dimensions: {
     readonly width: number;
@@ -15,7 +15,7 @@ export interface OcctMeshDevBoxInput {
   readonly transform: RenderTransform;
 }
 
-export interface OcctMeshDevCylinderInput {
+export interface DerivedGeometryCylinderInput {
   readonly id: string;
   readonly dimensions: {
     readonly radius: number;
@@ -24,7 +24,7 @@ export interface OcctMeshDevCylinderInput {
   readonly transform: RenderTransform;
 }
 
-export interface OcctMeshDevMetrics {
+export interface DerivedGeometryMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
   readonly tessellationMs?: number;
@@ -35,13 +35,13 @@ export interface OcctMeshDevMetrics {
   readonly triangleCount: number;
 }
 
-export interface OcctMeshDevResult {
+export interface DerivedGeometryResult {
   readonly mesh: RenderTriangleMesh;
-  readonly metrics: OcctMeshDevMetrics;
+  readonly metrics: DerivedGeometryMetrics;
   readonly message: string;
 }
 
-export interface OcctMeshDevErrorDetails {
+export interface DerivedGeometryErrorDetails {
   readonly code: string;
   readonly stage: string;
   readonly message: string;
@@ -49,30 +49,30 @@ export interface OcctMeshDevErrorDetails {
   readonly wasmLoadStatus: string;
 }
 
-export interface OcctMeshDevRuntime {
-  tessellateBox(input: OcctMeshDevBoxInput): Promise<OcctMeshDevResult>;
+export interface DerivedGeometryRuntime {
+  tessellateBox(input: DerivedGeometryBoxInput): Promise<DerivedGeometryResult>;
   tessellateCylinder(
-    input: OcctMeshDevCylinderInput
-  ): Promise<OcctMeshDevResult>;
+    input: DerivedGeometryCylinderInput
+  ): Promise<DerivedGeometryResult>;
   dispose(): void;
 }
 
-export class OcctMeshDevRuntimeError extends Error {
-  readonly details: OcctMeshDevErrorDetails;
+export class DerivedGeometryRuntimeError extends Error {
+  readonly details: DerivedGeometryErrorDetails;
 
-  constructor(details: OcctMeshDevErrorDetails) {
+  constructor(details: DerivedGeometryErrorDetails) {
     super(details.message);
-    this.name = "OcctMeshDevRuntimeError";
+    this.name = "DerivedGeometryRuntimeError";
     this.details = details;
   }
 }
 
-export function createOcctMeshDevMetrics(input: {
+export function createDerivedGeometryMetrics(input: {
   readonly objectId: string;
-  readonly response: GeometryWorkerSpikeResponse;
+  readonly response: GeometryWorkerResponse;
   readonly bridgeResult: MeshRendererBridgeResult;
   readonly roundTripMs: number;
-}): OcctMeshDevMetrics {
+}): DerivedGeometryMetrics {
   return {
     objectId: input.objectId,
     occtLoadMs: input.response.timings?.occtLoadMs,
@@ -85,45 +85,47 @@ export function createOcctMeshDevMetrics(input: {
   };
 }
 
-export function createOcctMeshDevErrorFromWorkerResponse(
-  response: GeometryWorkerSpikeResponse
-): OcctMeshDevRuntimeError {
+export function createDerivedGeometryErrorFromWorkerResponse(
+  response: GeometryWorkerResponse
+): DerivedGeometryRuntimeError {
   if (response.response.ok) {
     throw new Error(
-      "Cannot create an OCCT mesh error from a success response."
+      "Cannot create a derived geometry error from a success response."
     );
   }
 
-  return new OcctMeshDevRuntimeError(
-    createOcctMeshDevErrorDetailsFromDiagnostics(
+  return new DerivedGeometryRuntimeError(
+    createDerivedGeometryErrorDetailsFromDiagnostics(
       response.diagnostics,
       response.response.error.message
     )
   );
 }
 
-export function createOcctMeshDevErrorDetails(
+export function createDerivedGeometryErrorDetails(
   error: unknown
-): OcctMeshDevErrorDetails {
-  if (error instanceof OcctMeshDevRuntimeError) {
+): DerivedGeometryErrorDetails {
+  if (error instanceof DerivedGeometryRuntimeError) {
     return error.details;
   }
 
   if (hasGeometryWorkerDiagnostics(error)) {
-    return createOcctMeshDevErrorDetailsFromDiagnostics(error.diagnostics);
+    return createDerivedGeometryErrorDetailsFromDiagnostics(error.diagnostics);
   }
 
   return {
-    code: "UNKNOWN_OCCT_MESH_DEV_ERROR",
+    code: "UNKNOWN_DERIVED_GEOMETRY_ERROR",
     stage: "unknown",
     message:
-      error instanceof Error ? error.message : "OCCT tessellation failed.",
+      error instanceof Error ? error.message : "Geometry tessellation failed.",
     workerStarted: false,
     wasmLoadStatus: "unknown"
   };
 }
 
-export function formatOcctMeshDevError(error: OcctMeshDevErrorDetails): string {
+export function formatDerivedGeometryError(
+  error: DerivedGeometryErrorDetails
+): string {
   return `${error.code} at ${error.stage}: ${error.message}`;
 }
 
@@ -136,10 +138,10 @@ export function formatMetricMs(value: number | undefined): string {
   return `${safeValue.toFixed(safeValue < 10 ? 2 : 1)} ms`;
 }
 
-function createOcctMeshDevErrorDetailsFromDiagnostics(
-  diagnostics: GeometryWorkerSpikeDiagnostics | undefined,
+function createDerivedGeometryErrorDetailsFromDiagnostics(
+  diagnostics: GeometryWorkerDiagnostics | undefined,
   fallbackMessage?: string
-): OcctMeshDevErrorDetails {
+): DerivedGeometryErrorDetails {
   return {
     code: diagnostics?.error?.code ?? "GEOMETRY_WORKER_ERROR",
     stage: diagnostics?.stage ?? "worker",
@@ -154,7 +156,7 @@ function createOcctMeshDevErrorDetailsFromDiagnostics(
 
 function hasGeometryWorkerDiagnostics(
   error: unknown
-): error is { readonly diagnostics: GeometryWorkerSpikeDiagnostics } {
+): error is { readonly diagnostics: GeometryWorkerDiagnostics } {
   return (
     typeof error === "object" &&
     error !== null &&

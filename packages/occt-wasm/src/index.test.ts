@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createOcctBoxMeshSpike, createOcctCylinderMeshSpike } from "./index";
+import { createOcctBoxMesh, createOcctCylinderMesh } from "./index";
 
-describe("occt-spike", () => {
+describe("occt-wasm", () => {
   it("creates and tessellates a box through Open CASCADE WASM", async () => {
-    const mesh = await createOcctBoxMeshSpike({
+    const mesh = await createOcctBoxMesh({
       width: 10,
       height: 20,
       depth: 30
@@ -22,7 +22,7 @@ describe("occt-spike", () => {
   });
 
   it("creates and tessellates a cylinder through Open CASCADE WASM", async () => {
-    const mesh = await createOcctCylinderMeshSpike({
+    const mesh = await createOcctCylinderMesh({
       radius: 10,
       height: 30
     });

@@ -1,12 +1,12 @@
 import type { BoxObject, CylinderObject, SceneObject } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
-  createOcctMeshDevErrorDetails,
-  type OcctMeshDevErrorDetails,
-  type OcctMeshDevMetrics,
-  type OcctMeshDevResult,
-  type OcctMeshDevRuntime
-} from "./occtMeshDev";
+  createDerivedGeometryErrorDetails,
+  type DerivedGeometryErrorDetails,
+  type DerivedGeometryMetrics,
+  type DerivedGeometryResult,
+  type DerivedGeometryRuntime
+} from "./derivedGeometryRuntime";
 
 export type DerivedGeometryStatusKind =
   | "unsupported"
@@ -39,12 +39,12 @@ export interface DerivedGeometryPendingEntry extends DerivedGeometryBaseEntry {
 export interface DerivedGeometryReadyEntry extends DerivedGeometryBaseEntry {
   readonly status: "ready";
   readonly mesh: RenderTriangleMesh;
-  readonly metrics: OcctMeshDevMetrics;
+  readonly metrics: DerivedGeometryMetrics;
 }
 
 export interface DerivedGeometryErrorEntry extends DerivedGeometryBaseEntry {
   readonly status: "error";
-  readonly error: OcctMeshDevErrorDetails;
+  readonly error: DerivedGeometryErrorDetails;
 }
 
 export interface DerivedGeometrySnapshot {
@@ -57,7 +57,7 @@ export interface DerivedGeometrySnapshot {
 }
 
 export interface DerivedGeometryServiceOptions {
-  readonly runtime: OcctMeshDevRuntime;
+  readonly runtime: DerivedGeometryRuntime;
   readonly onChange: (snapshot: DerivedGeometrySnapshot) => void;
 }
 
@@ -70,7 +70,7 @@ interface ActiveDerivedGeometryRequest {
 }
 
 export class DerivedGeometryService {
-  readonly #runtime: OcctMeshDevRuntime;
+  readonly #runtime: DerivedGeometryRuntime;
   readonly #onChange: (snapshot: DerivedGeometrySnapshot) => void;
   readonly #entries = new Map<string, DerivedGeometryEntry>();
   readonly #requestVersions = new Map<string, number>();
@@ -205,7 +205,7 @@ export class DerivedGeometryService {
   #applyReadyResult(
     object: SupportedDerivedGeometryObject,
     request: ActiveDerivedGeometryRequest,
-    result: OcctMeshDevResult
+    result: DerivedGeometryResult
   ): void {
     if (!this.#canApplyResult(request)) {
       return;
@@ -237,7 +237,7 @@ export class DerivedGeometryService {
       objectKind: object.kind,
       cacheKey: request.cacheKey,
       status: "error",
-      error: createOcctMeshDevErrorDetails(error)
+      error: createDerivedGeometryErrorDetails(error)
     });
     this.#requestVersions.delete(object.id);
     this.#emitChange();
@@ -366,5 +366,3 @@ function isSameStringArray(
     left.every((value, index) => value === right[index])
   );
 }
-
-export type { OcctMeshDevResult as DerivedGeometryResult };

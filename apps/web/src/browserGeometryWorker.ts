@@ -1,19 +1,19 @@
 import type {
-  GeometryWorkerSpike,
-  GeometryWorkerSpikeDiagnostics,
-  GeometryWorkerSpikeRequest,
-  GeometryWorkerSpikeResponse
-} from "@web-cad/geometry-worker-spike";
-import { createWorkerErrorDiagnostics } from "@web-cad/geometry-worker-spike/browser";
+  GeometryWorker,
+  GeometryWorkerDiagnostics,
+  GeometryWorkerRequest,
+  GeometryWorkerResponse
+} from "@web-cad/geometry-worker";
+import { createWorkerErrorDiagnostics } from "@web-cad/geometry-worker/browser";
 
 export type GeometryWorkerMessage =
-  | GeometryWorkerSpikeResponse
+  | GeometryWorkerResponse
   | GeometryWorkerErrorResponse;
 
 export interface GeometryWorkerErrorResponse {
   readonly id: string;
   readonly error: string;
-  readonly diagnostics?: GeometryWorkerSpikeDiagnostics;
+  readonly diagnostics?: GeometryWorkerDiagnostics;
 }
 
 interface WorkerMessageEvent<T> {
@@ -26,7 +26,7 @@ interface WorkerErrorEvent {
 }
 
 export interface GeometryWorkerTransport {
-  postMessage(message: GeometryWorkerSpikeRequest): void;
+  postMessage(message: GeometryWorkerRequest): void;
   addEventListener(
     type: "message",
     listener: (event: WorkerMessageEvent<GeometryWorkerMessage>) => void
@@ -47,21 +47,21 @@ export interface GeometryWorkerTransport {
 }
 
 interface PendingRequest {
-  readonly resolve: (response: GeometryWorkerSpikeResponse) => void;
+  readonly resolve: (response: GeometryWorkerResponse) => void;
   readonly reject: (error: BrowserGeometryWorkerError) => void;
 }
 
 export class BrowserGeometryWorkerError extends Error {
-  readonly diagnostics: GeometryWorkerSpikeDiagnostics;
+  readonly diagnostics: GeometryWorkerDiagnostics;
 
-  constructor(diagnostics: GeometryWorkerSpikeDiagnostics) {
+  constructor(diagnostics: GeometryWorkerDiagnostics) {
     super(diagnostics.error?.message ?? "Geometry worker failed.");
     this.name = "BrowserGeometryWorkerError";
     this.diagnostics = diagnostics;
   }
 }
 
-export class BrowserGeometryWorker implements GeometryWorkerSpike {
+export class BrowserGeometryWorker implements GeometryWorker {
   readonly #transport: GeometryWorkerTransport;
   readonly #pendingRequests = new Map<string, PendingRequest>();
   readonly #handleMessage = (
@@ -117,9 +117,7 @@ export class BrowserGeometryWorker implements GeometryWorkerSpike {
     this.#transport.addEventListener("error", this.#handleError);
   }
 
-  execute(
-    request: GeometryWorkerSpikeRequest
-  ): Promise<GeometryWorkerSpikeResponse> {
+  execute(request: GeometryWorkerRequest): Promise<GeometryWorkerResponse> {
     return new Promise((resolve, reject) => {
       this.#pendingRequests.set(request.id, { resolve, reject });
 

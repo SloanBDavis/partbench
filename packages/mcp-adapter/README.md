@@ -1,8 +1,8 @@
-# MCP Adapter Spike
+# MCP Adapter
 
-This package is a minimal MCP transport spike over the existing CADOps agent
-adapter. It keeps `@web-cad/agent-adapter` as the internal API boundary and does
-not define CAD operations itself.
+This package is the MCP tool wrapper over the existing CADOps agent adapter. It
+keeps `@web-cad/agent-adapter` as the internal API boundary and does not define
+CAD operations itself.
 
 It exposes only two MCP-style tools:
 

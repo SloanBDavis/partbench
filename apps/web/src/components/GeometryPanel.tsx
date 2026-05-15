@@ -2,7 +2,7 @@ import {
   getDerivedGeometryStatusLabel,
   type DerivedGeometrySnapshot
 } from "../derivedGeometry";
-import { formatMetricMs } from "../occtMeshDev";
+import { formatMetricMs } from "../derivedGeometryRuntime";
 
 export interface GeometryPanelProps {
   readonly disabled: boolean;

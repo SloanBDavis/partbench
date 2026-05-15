@@ -4,12 +4,12 @@ import type {
 } from "@web-cad/geometry-kernel";
 import {
   createKernelFailureResponse,
-  createWorkerSpikeResponse,
+  createGeometryWorkerResponse,
   delay,
-  type GeometryWorkerSpike,
-  type GeometryWorkerSpikeOptions,
-  type GeometryWorkerSpikeRequest,
-  type GeometryWorkerSpikeResponse
+  type GeometryWorker,
+  type GeometryWorkerOptions,
+  type GeometryWorkerRequest,
+  type GeometryWorkerResponse
 } from "./protocol";
 
 export {
@@ -17,30 +17,30 @@ export {
   createCylinderTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
-  type GeometryWorkerSpike,
-  type GeometryWorkerSpikeDiagnostics,
-  type GeometryWorkerSpikeErrorCode,
-  type GeometryWorkerSpikeErrorDetails,
-  type GeometryWorkerSpikeOptions,
-  type GeometryWorkerSpikeRequest,
-  type GeometryWorkerSpikeRequestKind,
-  type GeometryWorkerSpikeResponse,
-  type GeometryWorkerSpikeStage,
-  type GeometryWorkerSpikeTimings,
-  type GeometryWorkerSpikeVersion,
+  type GeometryWorker,
+  type GeometryWorkerDiagnostics,
+  type GeometryWorkerErrorCode,
+  type GeometryWorkerErrorDetails,
+  type GeometryWorkerOptions,
+  type GeometryWorkerRequest,
+  type GeometryWorkerRequestKind,
+  type GeometryWorkerResponse,
+  type GeometryWorkerStage,
+  type GeometryWorkerTimings,
+  type GeometryWorkerVersion,
   type GeometryWorkerWasmLoadStatus
 } from "./protocol";
 
-export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {
+export class GeometryKernelWorker implements GeometryWorker {
   readonly #delayMs: number;
 
-  constructor(options: GeometryWorkerSpikeOptions = {}) {
+  constructor(options: GeometryWorkerOptions = {}) {
     this.#delayMs = options.delayMs ?? 0;
   }
 
   async execute(
-    request: GeometryWorkerSpikeRequest
-  ): Promise<GeometryWorkerSpikeResponse> {
+    request: GeometryWorkerRequest
+  ): Promise<GeometryWorkerResponse> {
     if (this.#delayMs > 0) {
       await delay(this.#delayMs);
     }
@@ -51,13 +51,13 @@ export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {
         request.payload
       );
 
-      return createWorkerSpikeResponse(
+      return createGeometryWorkerResponse(
         request,
         response as GeometryKernelResponse,
         geometryKernel.getGeometryResponseTransferables(response)
       );
     } catch (error) {
-      return createWorkerSpikeResponse(
+      return createGeometryWorkerResponse(
         request,
         createKernelFailureResponse(
           request,
@@ -69,8 +69,8 @@ export class GeometryKernelWorkerSpike implements GeometryWorkerSpike {
   }
 }
 
-export function createGeometryKernelWorkerSpike(
-  options: GeometryWorkerSpikeOptions = {}
-): GeometryKernelWorkerSpike {
-  return new GeometryKernelWorkerSpike(options);
+export function createGeometryKernelWorker(
+  options: GeometryWorkerOptions = {}
+): GeometryKernelWorker {
+  return new GeometryKernelWorker(options);
 }

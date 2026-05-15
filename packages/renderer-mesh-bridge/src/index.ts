@@ -1,5 +1,5 @@
 import type { SerializableMeshData } from "@web-cad/geometry-kernel";
-import type { GeometryWorkerSpikeResponse } from "@web-cad/geometry-worker-spike";
+import type { GeometryWorkerResponse } from "@web-cad/geometry-worker";
 import type {
   RenderTransform,
   RenderTriangleMesh,
@@ -60,7 +60,7 @@ export function createRenderMeshFromSerializableMesh(
 }
 
 export function createRenderMeshFromGeometryWorkerResponse(
-  response: GeometryWorkerSpikeResponse,
+  response: GeometryWorkerResponse,
   options: MeshRendererBridgeOptions
 ): MeshRendererBridgeResult {
   if (!response.response.ok) {

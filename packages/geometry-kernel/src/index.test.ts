@@ -5,7 +5,7 @@ import {
 } from "./index";
 
 describe("geometry-kernel facade", () => {
-  it("tessellates a box through the isolated OCCT spike", async () => {
+  it("tessellates a box through the isolated OCCT WASM adapter", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_1",
       version: "geometry-kernel.v1",
@@ -42,7 +42,7 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
-  it("tessellates a cylinder through the isolated OCCT spike", async () => {
+  it("tessellates a cylinder through the isolated OCCT WASM adapter", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_cylinder",
       version: "geometry-kernel.v1",

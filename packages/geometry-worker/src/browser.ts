@@ -7,13 +7,13 @@ import {
 import {
   createKernelFailureResponse,
   createWorkerErrorDiagnostics,
-  createWorkerSpikeResponse,
+  createGeometryWorkerResponse,
   createWorkerSuccessDiagnostics,
   delay,
-  type GeometryWorkerSpike,
-  type GeometryWorkerSpikeOptions,
-  type GeometryWorkerSpikeRequest,
-  type GeometryWorkerSpikeResponse
+  type GeometryWorker,
+  type GeometryWorkerOptions,
+  type GeometryWorkerRequest,
+  type GeometryWorkerResponse
 } from "./protocol";
 
 export {
@@ -21,30 +21,30 @@ export {
   createCylinderTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
-  type GeometryWorkerSpike,
-  type GeometryWorkerSpikeDiagnostics,
-  type GeometryWorkerSpikeErrorCode,
-  type GeometryWorkerSpikeErrorDetails,
-  type GeometryWorkerSpikeOptions,
-  type GeometryWorkerSpikeRequest,
-  type GeometryWorkerSpikeRequestKind,
-  type GeometryWorkerSpikeResponse,
-  type GeometryWorkerSpikeStage,
-  type GeometryWorkerSpikeTimings,
-  type GeometryWorkerSpikeVersion,
+  type GeometryWorker,
+  type GeometryWorkerDiagnostics,
+  type GeometryWorkerErrorCode,
+  type GeometryWorkerErrorDetails,
+  type GeometryWorkerOptions,
+  type GeometryWorkerRequest,
+  type GeometryWorkerRequestKind,
+  type GeometryWorkerResponse,
+  type GeometryWorkerStage,
+  type GeometryWorkerTimings,
+  type GeometryWorkerVersion,
   type GeometryWorkerWasmLoadStatus
 } from "./protocol";
 
-export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
+export class GeometryKernelBrowserWorker implements GeometryWorker {
   readonly #delayMs: number;
 
-  constructor(options: GeometryWorkerSpikeOptions = {}) {
+  constructor(options: GeometryWorkerOptions = {}) {
     this.#delayMs = options.delayMs ?? 0;
   }
 
   async execute(
-    request: GeometryWorkerSpikeRequest
-  ): Promise<GeometryWorkerSpikeResponse> {
+    request: GeometryWorkerRequest
+  ): Promise<GeometryWorkerResponse> {
     if (this.#delayMs > 0) {
       await delay(this.#delayMs);
     }
@@ -52,7 +52,7 @@ export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
     const unsupportedMessage = getUnsupportedPrimitiveMessage(request);
 
     if (unsupportedMessage) {
-      return createWorkerSpikeResponse(
+      return createGeometryWorkerResponse(
         request,
         createKernelFailureResponse(
           request,
@@ -97,7 +97,7 @@ export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
                   : "notRequested"
           });
 
-      return createWorkerSpikeResponse(
+      return createGeometryWorkerResponse(
         request,
         response as GeometryKernelResponse,
         getGeometryResponseTransferables(response),
@@ -110,7 +110,7 @@ export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
         diagnostics
       );
     } catch (error) {
-      return createWorkerSpikeResponse(
+      return createGeometryWorkerResponse(
         request,
         createKernelFailureResponse(
           request,
@@ -131,19 +131,19 @@ export class GeometryKernelBrowserWorkerSpike implements GeometryWorkerSpike {
   }
 }
 
-export function createGeometryKernelBrowserWorkerSpike(
-  options: GeometryWorkerSpikeOptions = {}
-): GeometryKernelBrowserWorkerSpike {
-  return new GeometryKernelBrowserWorkerSpike(options);
+export function createGeometryKernelBrowserWorker(
+  options: GeometryWorkerOptions = {}
+): GeometryKernelBrowserWorker {
+  return new GeometryKernelBrowserWorker(options);
 }
 
 function getUnsupportedPrimitiveMessage(
-  request: GeometryWorkerSpikeRequest
+  request: GeometryWorkerRequest
 ): string | undefined {
   const kind = request.kind as string;
   const op = request.payload.op as string;
 
-  if (kind !== "geometry-worker-spike.tessellatePrimitive") {
+  if (kind !== "geometry-worker.tessellatePrimitive") {
     return `Unsupported geometry worker request kind: ${kind}.`;
   }
 

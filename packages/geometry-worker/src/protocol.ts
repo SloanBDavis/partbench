@@ -4,36 +4,35 @@ import type {
   GeometryKernelResponse
 } from "@web-cad/geometry-kernel";
 
-export type GeometryWorkerSpikeVersion = "geometry-worker-spike.v1";
-export type GeometryWorkerSpikeRequestKind =
-  "geometry-worker-spike.tessellatePrimitive";
+export type GeometryWorkerVersion = "geometry-worker.v1";
+export type GeometryWorkerRequestKind = "geometry-worker.tessellatePrimitive";
 
-export interface GeometryWorkerSpikeRequest {
+export interface GeometryWorkerRequest {
   readonly id: string;
-  readonly version: GeometryWorkerSpikeVersion;
-  readonly kind: GeometryWorkerSpikeRequestKind;
+  readonly version: GeometryWorkerVersion;
+  readonly kind: GeometryWorkerRequestKind;
   readonly payload: GeometryKernelRequest;
 }
 
-export interface GeometryWorkerSpikeResponse {
+export interface GeometryWorkerResponse {
   readonly id: string;
-  readonly version: GeometryWorkerSpikeVersion;
-  readonly kind: GeometryWorkerSpikeRequestKind;
+  readonly version: GeometryWorkerVersion;
+  readonly kind: GeometryWorkerRequestKind;
   readonly payloadId: string;
   readonly response: GeometryKernelResponse;
   readonly transferables: readonly ArrayBuffer[];
-  readonly timings?: GeometryWorkerSpikeTimings;
-  readonly diagnostics?: GeometryWorkerSpikeDiagnostics;
+  readonly timings?: GeometryWorkerTimings;
+  readonly diagnostics?: GeometryWorkerDiagnostics;
 }
 
-export interface GeometryWorkerSpikeTimings {
+export interface GeometryWorkerTimings {
   readonly occtLoadMs?: number;
   readonly tessellationMs?: number;
   readonly workerExecutionMs?: number;
   readonly geometryKernelMs?: number;
 }
 
-export type GeometryWorkerSpikeStage =
+export type GeometryWorkerStage =
   | "requestValidation"
   | "wasmLoad"
   | "tessellation"
@@ -41,7 +40,7 @@ export type GeometryWorkerSpikeStage =
   | "transport"
   | "complete";
 
-export type GeometryWorkerSpikeErrorCode =
+export type GeometryWorkerErrorCode =
   | "WASM_LOAD_FAILED"
   | "UNSUPPORTED_PRIMITIVE"
   | "KERNEL_TESSELLATION_FAILED"
@@ -50,37 +49,35 @@ export type GeometryWorkerSpikeErrorCode =
 
 export type GeometryWorkerWasmLoadStatus = "notRequested" | "loaded" | "failed";
 
-export interface GeometryWorkerSpikeErrorDetails {
-  readonly code: GeometryWorkerSpikeErrorCode;
+export interface GeometryWorkerErrorDetails {
+  readonly code: GeometryWorkerErrorCode;
   readonly message: string;
   readonly cause?: string;
 }
 
-export interface GeometryWorkerSpikeDiagnostics {
+export interface GeometryWorkerDiagnostics {
   readonly ok: boolean;
-  readonly stage: GeometryWorkerSpikeStage;
+  readonly stage: GeometryWorkerStage;
   readonly workerStarted: boolean;
   readonly wasmLoadStatus: GeometryWorkerWasmLoadStatus;
-  readonly error?: GeometryWorkerSpikeErrorDetails;
+  readonly error?: GeometryWorkerErrorDetails;
 }
 
-export interface GeometryWorkerSpike {
-  execute(
-    request: GeometryWorkerSpikeRequest
-  ): Promise<GeometryWorkerSpikeResponse>;
+export interface GeometryWorker {
+  execute(request: GeometryWorkerRequest): Promise<GeometryWorkerResponse>;
 }
 
-export interface GeometryWorkerSpikeOptions {
+export interface GeometryWorkerOptions {
   readonly delayMs?: number;
 }
 
-export function createWorkerSpikeResponse(
-  request: GeometryWorkerSpikeRequest,
+export function createGeometryWorkerResponse(
+  request: GeometryWorkerRequest,
   response: GeometryKernelResponse,
   transferables: readonly ArrayBuffer[],
-  timings?: GeometryWorkerSpikeTimings,
-  diagnostics?: GeometryWorkerSpikeDiagnostics
-): GeometryWorkerSpikeResponse {
+  timings?: GeometryWorkerTimings,
+  diagnostics?: GeometryWorkerDiagnostics
+): GeometryWorkerResponse {
   return {
     id: request.id,
     version: request.version,
@@ -95,7 +92,7 @@ export function createWorkerSpikeResponse(
 
 export function createWorkerSuccessDiagnostics(input: {
   readonly wasmLoadStatus: GeometryWorkerWasmLoadStatus;
-}): GeometryWorkerSpikeDiagnostics {
+}): GeometryWorkerDiagnostics {
   return {
     ok: true,
     stage: "complete",
@@ -105,13 +102,13 @@ export function createWorkerSuccessDiagnostics(input: {
 }
 
 export function createWorkerErrorDiagnostics(input: {
-  readonly stage: GeometryWorkerSpikeStage;
-  readonly code: GeometryWorkerSpikeErrorCode;
+  readonly stage: GeometryWorkerStage;
+  readonly code: GeometryWorkerErrorCode;
   readonly message: string;
   readonly wasmLoadStatus?: GeometryWorkerWasmLoadStatus;
   readonly workerStarted?: boolean;
   readonly cause?: string;
-}): GeometryWorkerSpikeDiagnostics {
+}): GeometryWorkerDiagnostics {
   return {
     ok: false,
     stage: input.stage,
@@ -133,13 +130,13 @@ export function createBoxTessellationWorkerRequest(input: {
   readonly depth: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerSpikeRequest {
+}): GeometryWorkerRequest {
   const tessellation = createTessellationOptions(input);
 
   return {
     id: input.id,
-    version: "geometry-worker-spike.v1",
-    kind: "geometry-worker-spike.tessellatePrimitive",
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellatePrimitive",
     payload: {
       id: input.payloadId ?? `${input.id}:payload`,
       version: "geometry-kernel.v1",
@@ -161,13 +158,13 @@ export function createCylinderTessellationWorkerRequest(input: {
   readonly height: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerSpikeRequest {
+}): GeometryWorkerRequest {
   const tessellation = createTessellationOptions(input);
 
   return {
     id: input.id,
-    version: "geometry-worker-spike.v1",
-    kind: "geometry-worker-spike.tessellatePrimitive",
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellatePrimitive",
     payload: {
       id: input.payloadId ?? `${input.id}:payload`,
       version: "geometry-kernel.v1",
@@ -182,7 +179,7 @@ export function createCylinderTessellationWorkerRequest(input: {
 }
 
 export function createKernelFailureResponse(
-  request: GeometryWorkerSpikeRequest,
+  request: GeometryWorkerRequest,
   error: unknown
 ): GeometryKernelErrorResponse {
   return {
@@ -194,7 +191,7 @@ export function createKernelFailureResponse(
       message:
         error instanceof Error
           ? error.message
-          : "The geometry worker spike failed to execute the kernel request."
+          : "The geometry worker failed to execute the kernel request."
     },
     warnings: []
   };

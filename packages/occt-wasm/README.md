@@ -1,8 +1,8 @@
-# OCCT WASM Spike
+# OCCT WASM Adapter
 
-This package is an isolated Milestone 4 spike. It proves that the repo can load
-an Open CASCADE-compatible WASM package, create primitive shapes, run OCCT
-tessellation, and return mesh-like typed arrays.
+This package is an isolated OCCT/WASM adapter. It loads an Open
+CASCADE-compatible WASM package, creates primitive shapes, runs OCCT
+tessellation, and returns mesh-like typed arrays.
 
 It is not imported by `packages/cad-core` or `packages/renderer`. Normal app
 startup does not depend on this package. The web app can bundle it only through
@@ -14,12 +14,12 @@ the explicit geometry-worker smoke entrypoint.
 - License reported by npm package metadata: `LGPL-2.1-only`
 - The package wraps Open CASCADE 7.6.2 according to its bundled README.
 
-This spike uses the direct OpenCascade.js wrapper instead of a higher-level CAD
-DSL so the integration risk is visible at the kernel boundary.
+This adapter uses the direct OpenCascade.js wrapper instead of a higher-level
+CAD DSL so the integration risk is visible at the kernel boundary.
 
-## What The Spike Does
+## What The Adapter Does
 
-`createOcctBoxMeshSpike()` and `createOcctCylinderMeshSpike()`:
+`createOcctBoxMesh()` and `createOcctCylinderMesh()`:
 
 1. Loads OpenCascade.js WASM.
 2. Creates a primitive with `BRepPrimAPI_MakeBox` or
@@ -40,7 +40,7 @@ From the repo root:
 
 ```sh
 pnpm install
-pnpm --filter @web-cad/occt-spike test
+pnpm --filter @web-cad/occt-wasm test
 ```
 
 The root commands also include this package:
@@ -55,8 +55,8 @@ pnpm build
 
 The package now exposes two loaders:
 
-- `@web-cad/occt-spike` uses `opencascade.js/dist/node.js` for Node tests.
-- `@web-cad/occt-spike/browser` uses `opencascade.full.js` plus
+- `@web-cad/occt-wasm` uses `opencascade.js/dist/node.js` for Node tests.
+- `@web-cad/occt-wasm/browser` uses `opencascade.full.js` plus
   `opencascade.full.wasm?url` so Vite treats the WASM as a browser asset.
 
 The browser path is proven by:

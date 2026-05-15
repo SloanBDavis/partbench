@@ -1,8 +1,8 @@
 import {
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
-  GeometryKernelWorkerSpike
-} from "@web-cad/geometry-worker-spike";
+  GeometryKernelWorker
+} from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
 import {
   createRenderMeshFromGeometryWorkerResponse,
@@ -48,8 +48,8 @@ describe("renderer mesh bridge", () => {
     ]);
   });
 
-  it("adapts a tessellated box response from the geometry worker spike", async () => {
-    const worker = new GeometryKernelWorkerSpike();
+  it("adapts a tessellated box response from the geometry worker", async () => {
+    const worker = new GeometryKernelWorker();
     const response = await worker.execute(
       createBoxTessellationWorkerRequest({
         id: "mesh_bridge_req_box",
@@ -72,8 +72,8 @@ describe("renderer mesh bridge", () => {
     });
   });
 
-  it("adapts a tessellated cylinder response from the geometry worker spike", async () => {
-    const worker = new GeometryKernelWorkerSpike();
+  it("adapts a tessellated cylinder response from the geometry worker", async () => {
+    const worker = new GeometryKernelWorker();
     const response = await worker.execute(
       createCylinderTessellationWorkerRequest({
         id: "mesh_bridge_req_cylinder",
@@ -96,7 +96,7 @@ describe("renderer mesh bridge", () => {
   });
 
   it("can center corner-origin box meshes for the current primitive renderer", async () => {
-    const worker = new GeometryKernelWorkerSpike();
+    const worker = new GeometryKernelWorker();
     const response = await worker.execute(
       createBoxTessellationWorkerRequest({
         id: "mesh_bridge_req_centered_box",

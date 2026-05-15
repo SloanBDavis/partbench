@@ -43,7 +43,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ["packages/occt-spike/src/browser.ts"],
+    files: ["packages/occt-wasm/src/browser.ts"],
     rules: {
       "@typescript-eslint/triple-slash-reference": "off"
     }

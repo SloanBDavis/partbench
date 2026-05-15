@@ -38,19 +38,19 @@ Completed:
 
 ## Work Completed Beyond MVP
 
-The repo now also includes scoped spikes and infrastructure that were originally
-listed as post-MVP:
+The repo now also includes scoped infrastructure that was originally listed as
+post-MVP:
 
 - Project JSON export/import for the current document model.
 - CADOps query/read interface.
 - Agent adapter over CADOps.
 - Minimal MCP adapter and stdio JSON-RPC server.
 - Browser command worker transport.
-- Isolated OCCT/WASM spike.
+- Isolated OCCT/WASM adapter.
 - Geometry-kernel facade.
 - Browser geometry worker entrypoint.
 - Renderer mesh bridge.
-- Development-default derived geometry UI for OCCT-backed box and cylinder
+- Local-serve default derived geometry UI for OCCT-backed box and cylinder
   meshes.
 - Non-gating OCCT browser smoke/metrics command.
 

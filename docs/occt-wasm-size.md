@@ -10,9 +10,9 @@ recommendation. It does not change the production app architecture.
 The OCCT path remains isolated:
 
 - default production app startup does not load OCCT;
-- development builds enable the derived geometry path by default, but the worker
+- local Vite serve enables the derived geometry path by default, but the worker
   still loads OCCT lazily only when tessellation is requested;
-- `VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev` keeps development on primitive
+- `VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev` keeps local serve on primitive
   fallback for debugging;
 - `cad-core` remains authoritative;
 - meshes remain derived renderer data;
@@ -82,8 +82,8 @@ Status: already in the right shape.
 
 OCCT is imported only through the derived-geometry runtime and browser geometry
 worker path. Production startup remains independent from OCCT by default. In
-development, the runtime path is enabled by default, but the worker and WASM load
-remain lazy and occur only when a supported object needs tessellation.
+local Vite serve, the runtime path is enabled by default, but the worker and WASM
+load remain lazy and occur only when a supported object needs tessellation.
 
 ### Hosting And Caching
 

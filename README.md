@@ -1,9 +1,9 @@
 # Web CAD
 
-An open-source, browser-native, AI-native CAD application. The current MVP
-prototype has a typed CADOps command layer, in-memory document model, primitive
-viewport, project JSON serialization, agent/MCP adapter spikes, and isolated
-OCCT/WASM geometry experiments.
+An open-source, browser-native, AI-native CAD application. The current app has
+a typed CADOps command layer, in-memory document model, viewport, project JSON
+serialization, structured agent/MCP adapters, and an isolated OCCT/WASM derived
+geometry path.
 
 ## Requirements
 
@@ -26,11 +26,11 @@ Run the browser app:
 pnpm dev
 ```
 
-In development builds, boxes and cylinders are submitted to the derived geometry
-service by default and tessellated asynchronously in the browser Worker. The
-returned mesh is displayed as derived renderer data, the Geometry panel shows
-per-object status, and the authoritative CAD document is not updated by mesh
-generation.
+When running the local Vite server, boxes and cylinders are submitted to the
+derived geometry service by default and tessellated asynchronously in the browser
+Worker. The returned mesh is displayed as derived renderer data, the Geometry
+panel shows per-object status, and the authoritative CAD document is not updated
+by mesh generation.
 
 Disable derived geometry for fallback debugging:
 
@@ -99,7 +99,7 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `packages/cad-core` - document model, transactions, undo/redo, project JSON
 - `packages/renderer` - simple renderer abstraction and canvas viewport support
 - `packages/geometry-kernel` - isolated primitive tessellation facade
-- `packages/geometry-worker-spike` - async worker boundary for tessellation
+- `packages/geometry-worker` - async worker boundary for tessellation
 - `packages/renderer-mesh-bridge` - mesh data adapter for the current renderer
 - `packages/agent-adapter` - CADOps adapter for external structured callers
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter

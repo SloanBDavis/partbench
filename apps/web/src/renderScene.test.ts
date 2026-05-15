@@ -68,7 +68,7 @@ describe("renderScene", () => {
           cacheKey: "cylinder-error",
           status: "error",
           error: {
-            code: "UNKNOWN_OCCT_MESH_DEV_ERROR",
+            code: "UNKNOWN_DERIVED_GEOMETRY_ERROR",
             message: "worker failed",
             stage: "unknown",
             wasmLoadStatus: "unknown",
