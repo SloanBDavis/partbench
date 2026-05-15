@@ -2,7 +2,7 @@ import type { BoxObject, CylinderObject } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type { DerivedGeometryEntry } from "./derivedGeometry";
-import { createRenderSceneInputs } from "./renderScene";
+import { createMeshDisplayEdges, createRenderSceneInputs } from "./renderScene";
 
 describe("renderScene", () => {
   it("prefers a ready derived mesh over the primitive fallback", () => {
@@ -31,7 +31,13 @@ describe("renderScene", () => {
     );
 
     expect(scene.primitives).toEqual([]);
-    expect(scene.meshes).toEqual([mesh]);
+    expect(scene.meshes).toEqual([
+      {
+        ...mesh,
+        edgeSegments: createMeshDisplayEdges(box)
+      }
+    ]);
+    expect(scene.meshes[0].edgeSegments).toHaveLength(12);
   });
 
   it("keeps renderable IDs stable for primitive and mesh selection", () => {
@@ -63,8 +69,56 @@ describe("renderScene", () => {
     expect(scene.meshes.map((renderable) => renderable.id)).toEqual([
       "selected_box"
     ]);
+    expect(scene.meshes[0].edgeSegments).toHaveLength(12);
     expect(scene.primitives.map((renderable) => renderable.id)).toEqual([
       "selected_cylinder"
+    ]);
+  });
+
+  it("adds cylinder display edges to ready derived meshes", () => {
+    const cylinder = createCylinderObject("cylinder_1");
+    const mesh = createMesh(cylinder.id);
+    const scene = createRenderSceneInputs(
+      [cylinder],
+      new Map([
+        [
+          cylinder.id,
+          {
+            objectId: cylinder.id,
+            objectKind: "cylinder",
+            cacheKey: "cylinder-ready",
+            status: "ready",
+            mesh,
+            metrics: {
+              objectId: cylinder.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ])
+    );
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes[0].edgeSegments).toHaveLength(68);
+    expect(scene.meshes[0].edgeSegments?.slice(-4)).toEqual([
+      {
+        start: [1, 0, 1],
+        end: [1, 0, -1]
+      },
+      {
+        start: [0, 1, 1],
+        end: [0, 1, -1]
+      },
+      {
+        start: [-1, 0, 1],
+        end: [-1, 0, -1]
+      },
+      {
+        start: [0, -1, 1],
+        end: [0, -1, -1]
+      }
     ]);
   });
 

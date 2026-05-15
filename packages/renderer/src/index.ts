@@ -35,12 +35,18 @@ export interface RenderCylinderPrimitive {
 
 export type RenderPrimitive = RenderBoxPrimitive | RenderCylinderPrimitive;
 
+export interface RenderEdgeSegment {
+  readonly start: Vec3;
+  readonly end: Vec3;
+}
+
 export interface RenderTriangleMesh {
   readonly id: string;
   readonly kind: "mesh";
   readonly vertices: readonly Vec3[];
   readonly indices: readonly number[];
   readonly transform: RenderTransform;
+  readonly edgeSegments?: readonly RenderEdgeSegment[];
   readonly source?: string;
   readonly label?: string;
 }
@@ -366,26 +372,39 @@ function drawTriangleMesh(
     transformPoint(vertex, mesh.transform)
   );
   const edges = getMeshEdges(mesh.indices);
+  const displayEdges = mesh.edgeSegments ?? [];
 
   context.save();
   context.lineJoin = "round";
   context.lineCap = "round";
 
-  if (selected) {
-    context.fillStyle = "rgba(242, 165, 65, 0.16)";
+  context.fillStyle = selected
+    ? "rgba(242, 165, 65, 0.18)"
+    : "rgba(47, 111, 151, 0.08)";
+  drawMeshFaces(context, mesh.indices, vertices, camera, size);
 
-    for (let index = 0; index + 2 < mesh.indices.length; index += 3) {
-      const first = vertices[mesh.indices[index]];
-      const second = vertices[mesh.indices[index + 1]];
-      const third = vertices[mesh.indices[index + 2]];
+  context.strokeStyle = selected
+    ? "rgba(242, 165, 65, 0.28)"
+    : "rgba(53, 75, 91, 0.22)";
+  context.lineWidth = selected ? 1.25 : 0.75;
 
-      if (first && second && third) {
-        fillProjectedFace(context, camera, size, [first, second, third]);
-      }
-    }
+  for (const [start, end] of edges) {
+    strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
+  }
 
-    context.strokeStyle = "rgba(242, 165, 65, 0.34)";
-    context.lineWidth = 6;
+  if (selected && displayEdges.length > 0) {
+    context.strokeStyle = "rgba(242, 165, 65, 0.42)";
+    context.lineWidth = 7;
+    strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
+  }
+
+  if (displayEdges.length > 0) {
+    context.strokeStyle = selected ? "#f2a541" : "#235f86";
+    context.lineWidth = selected ? 3 : 2;
+    strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
+  } else if (selected) {
+    context.strokeStyle = "#f2a541";
+    context.lineWidth = 3;
 
     for (const [start, end] of edges) {
       strokeProjectedLine(
@@ -398,14 +417,43 @@ function drawTriangleMesh(
     }
   }
 
-  context.strokeStyle = selected ? "#f2a541" : "#8a5a16";
-  context.lineWidth = selected ? 2.5 : 1.5;
-
-  for (const [start, end] of edges) {
-    strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
-  }
-
   context.restore();
+}
+
+function drawMeshFaces(
+  context: CanvasRenderingContext2D,
+  indices: readonly number[],
+  vertices: readonly Vec3[],
+  camera: RenderCamera,
+  size: ViewportSize
+): void {
+  for (let index = 0; index + 2 < indices.length; index += 3) {
+    const first = vertices[indices[index]];
+    const second = vertices[indices[index + 1]];
+    const third = vertices[indices[index + 2]];
+
+    if (first && second && third) {
+      fillProjectedFace(context, camera, size, [first, second, third]);
+    }
+  }
+}
+
+function strokeMeshEdgeSegments(
+  context: CanvasRenderingContext2D,
+  mesh: RenderTriangleMesh,
+  edgeSegments: readonly RenderEdgeSegment[],
+  camera: RenderCamera,
+  size: ViewportSize
+): void {
+  for (const edge of edgeSegments) {
+    strokeProjectedLine(
+      context,
+      camera,
+      size,
+      transformPoint(edge.start, mesh.transform),
+      transformPoint(edge.end, mesh.transform)
+    );
+  }
 }
 
 function strokeProjectedLine(
