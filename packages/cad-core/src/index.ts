@@ -10,6 +10,8 @@ import type {
   CadObjectRef,
   CadOperationSummary,
   CadOp,
+  CadPrimitiveFeatureSource,
+  CadPrimitiveFeatureSummary,
   CadQueryRequest,
   CadQueryResponse,
   CadSemanticDiffSummary,
@@ -38,6 +40,8 @@ export type {
   CadObjectRef,
   CadOperationSummary,
   CadOp,
+  CadPrimitiveFeatureSource,
+  CadPrimitiveFeatureSummary,
   CadQueryRequest,
   CadQueryResponse,
   CadSemanticDiffSummary,
@@ -352,6 +356,21 @@ export class CadEngine {
           units: this.#document.units,
           objectCount: objects.length,
           objects
+        };
+      }
+
+      case "project.features": {
+        const features = createPrimitiveFeatureSummaries(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          featureCount: features.length,
+          features
         };
       }
 
@@ -999,18 +1018,73 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
   };
 }
 
+function createPrimitiveFeatureSummaries(
+  document: CadDocument,
+  transactions: readonly Transaction[]
+): readonly CadPrimitiveFeatureSummary[] {
+  const sourceByObjectId = createPrimitiveFeatureSourceMap(transactions);
+
+  return [...document.objects.values()].map((object) => ({
+    id: createPrimitiveFeatureId(object.id),
+    kind: "primitive",
+    primitive: object.kind,
+    objectId: object.id,
+    name: object.name,
+    dimensions: { ...object.dimensions },
+    transform: cloneTransform(object.transform),
+    source: sourceByObjectId.get(object.id) ?? {
+      type: "sceneObject"
+    }
+  }));
+}
+
+function createPrimitiveFeatureId(objectId: ObjectId): string {
+  return `feature:${objectId}`;
+}
+
+function createPrimitiveFeatureSourceMap(
+  transactions: readonly Transaction[]
+): ReadonlyMap<ObjectId, CadPrimitiveFeatureSource> {
+  const sourceByObjectId = new Map<ObjectId, CadPrimitiveFeatureSource>();
+
+  for (const transaction of sortTransactions(transactions)) {
+    for (const op of materializeGeneratedObjectIds(transaction)) {
+      if (op.op === "scene.createBox" || op.op === "scene.createCylinder") {
+        if (op.id) {
+          sourceByObjectId.set(op.id, {
+            type: "sceneObject",
+            createdByTransactionId: transaction.id,
+            createOp: op.op
+          });
+        }
+        continue;
+      }
+
+      if (op.op === "scene.deleteObject") {
+        sourceByObjectId.delete(op.id);
+      }
+    }
+  }
+
+  return sourceByObjectId;
+}
+
 function createTransactionHistoryEntries(
   transactions: readonly Transaction[]
 ): readonly CadTransactionHistoryEntry[] {
-  return [...transactions]
-    .sort((left, right) => {
-      const leftNumber = parseTransactionNumber(left.id);
-      const rightNumber = parseTransactionNumber(right.id);
-      return leftNumber === rightNumber
-        ? left.id.localeCompare(right.id)
-        : leftNumber - rightNumber;
-    })
-    .map(createTransactionHistoryEntry);
+  return sortTransactions(transactions).map(createTransactionHistoryEntry);
+}
+
+function sortTransactions(
+  transactions: readonly Transaction[]
+): readonly Transaction[] {
+  return [...transactions].sort((left, right) => {
+    const leftNumber = parseTransactionNumber(left.id);
+    const rightNumber = parseTransactionNumber(right.id);
+    return leftNumber === rightNumber
+      ? left.id.localeCompare(right.id)
+      : leftNumber - rightNumber;
+  });
 }
 
 function createTransactionHistoryEntry(

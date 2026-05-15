@@ -450,6 +450,11 @@ Current slice delivered:
   `project.extents` for current boxes and cylinders. These queries derive local
   bounds, transformed world bounds, and approximate volume from the
   authoritative document instead of renderer meshes.
+- CADOps read/query support now includes `project.features`, a minimal
+  feature-model bridge that derives primitive feature summaries from current
+  scene objects and active transaction history. It gives boxes and cylinders
+  stable feature-shaped IDs and source metadata without replacing the scene
+  object model or adding persisted feature graph records.
 
 Exit criteria:
 

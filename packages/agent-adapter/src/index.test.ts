@@ -438,6 +438,58 @@ describe("agent-adapter", () => {
     expect(response.approximateVolume).toBeCloseTo(4 * Math.PI);
   });
 
+  it("returns primitive feature summaries through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_req_features_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "feature_box",
+            name: "Feature box",
+            dimensions: { width: 2, height: 3, depth: 4 }
+          }
+        ]
+      }
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_features_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.features" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_features_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.features",
+      featureCount: 1,
+      features: [
+        {
+          id: "feature:feature_box",
+          kind: "primitive",
+          primitive: "box",
+          objectId: "feature_box",
+          name: "Feature box",
+          source: {
+            createdByTransactionId: "txn_1",
+            createOp: "scene.createBox"
+          }
+        }
+      ]
+    });
+  });
+
   it("returns transaction history through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

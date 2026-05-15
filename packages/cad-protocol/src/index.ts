@@ -7,6 +7,7 @@ export type CadOpsVersion = "cadops.v1";
 export type CadBatchMode = "dryRun" | "commit";
 
 export type ObjectId = string;
+export type FeatureId = string;
 export type TransactionId = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type CadActorType = "human" | "agent" | "script" | "system";
@@ -179,6 +180,7 @@ export interface CadBatchErrorResponse {
 
 export type CadQueryKind =
   | "project.summary"
+  | "project.features"
   | "object.get"
   | "object.measurements"
   | "project.extents"
@@ -186,6 +188,7 @@ export type CadQueryKind =
 
 export type CadQuery =
   | ProjectSummaryQuery
+  | ProjectFeaturesQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
@@ -193,6 +196,10 @@ export type CadQuery =
 
 export interface ProjectSummaryQuery {
   readonly query: "project.summary";
+}
+
+export interface ProjectFeaturesQuery {
+  readonly query: "project.features";
 }
 
 export interface ObjectGetQuery {
@@ -263,6 +270,25 @@ export interface ObjectExtentSnapshot {
   readonly approximateVolume: number;
 }
 
+export type CadPrimitiveCreateOp = "scene.createBox" | "scene.createCylinder";
+
+export interface CadPrimitiveFeatureSource {
+  readonly type: "sceneObject";
+  readonly createdByTransactionId?: TransactionId;
+  readonly createOp?: CadPrimitiveCreateOp;
+}
+
+export interface CadPrimitiveFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "primitive";
+  readonly primitive: CadObjectKind;
+  readonly objectId: ObjectId;
+  readonly name?: string;
+  readonly dimensions: BoxDimensions | CylinderDimensions;
+  readonly transform: Transform;
+  readonly source: CadPrimitiveFeatureSource;
+}
+
 export interface CadOperationSummary {
   readonly op: CadOp["op"];
   readonly label: string;
@@ -299,6 +325,7 @@ export interface CadQueryError {
 
 export type CadQueryResponse =
   | ProjectSummaryQueryResponse
+  | ProjectFeaturesQueryResponse
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
@@ -312,6 +339,14 @@ export interface ProjectSummaryQueryResponse {
   readonly units: DocumentUnits;
   readonly objectCount: number;
   readonly objects: readonly CadObjectSnapshot[];
+}
+
+export interface ProjectFeaturesQueryResponse {
+  readonly ok: true;
+  readonly query: "project.features";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly featureCount: number;
+  readonly features: readonly CadPrimitiveFeatureSummary[];
 }
 
 export interface ObjectGetQueryResponse {

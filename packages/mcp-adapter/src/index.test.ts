@@ -7,6 +7,7 @@ describe("mcp-adapter", () => {
 
     expect(server.listTools().tools.map((tool) => tool.name)).toEqual([
       "cad.project_summary",
+      "cad.project_features",
       "cad.object_measurements",
       "cad.project_extents",
       "cad.transaction_history",
@@ -206,6 +207,55 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns primitive feature summaries through cad.project_features", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_feature_box",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "mcp_feature_box",
+              dimensions: { width: 2, height: 3, depth: 4 }
+            }
+          ]
+        }
+      }
+    });
+    const result = server.callTool({
+      name: "cad.project_features",
+      requestId: "mcp_req_features"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_features",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_features",
+        query: "project.features",
+        featureCount: 1,
+        features: [
+          {
+            id: "feature:mcp_feature_box",
+            kind: "primitive",
+            primitive: "box",
+            objectId: "mcp_feature_box",
+            source: {
+              createdByTransactionId: "txn_1",
+              createOp: "scene.createBox"
+            }
+          }
+        ]
+      }
+    });
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
@@ -377,6 +427,7 @@ describe("mcp-adapter", () => {
       result: {
         tools: [
           { name: "cad.project_summary" },
+          { name: "cad.project_features" },
           { name: "cad.object_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.transaction_history" },

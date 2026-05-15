@@ -7,6 +7,7 @@ CAD operations itself.
 It exposes these MCP-style tools:
 
 - `cad.project_summary`
+- `cad.project_features`
 - `cad.object_measurements`
 - `cad.project_extents`
 - `cad.transaction_history`
@@ -22,7 +23,7 @@ adapter calls, and returns structured adapter responses.
 
 ```text
 MCP client
-  -> cad.project_summary / cad.object_measurements / cad.project_extents / cad.transaction_history / cad.batch
+  -> cad.project_summary / cad.project_features / cad.object_measurements / cad.project_extents / cad.transaction_history / cad.batch
     -> @web-cad/mcp-adapter
       -> @web-cad/agent-adapter
         -> CADOps
@@ -62,12 +63,26 @@ Call `cad.project_summary`:
 }
 ```
 
-Call `cad.object_measurements`:
+Call `cad.project_features`:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "cad.project_features",
+    "arguments": {}
+  }
+}
+```
+
+Call `cad.object_measurements`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
   "method": "tools/call",
   "params": {
     "name": "cad.object_measurements",
@@ -81,7 +96,7 @@ Call `cad.project_extents`:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 5,
   "method": "tools/call",
   "params": {
     "name": "cad.project_extents",
@@ -95,7 +110,7 @@ Call `cad.transaction_history`:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 5,
+  "id": 6,
   "method": "tools/call",
   "params": {
     "name": "cad.transaction_history",
@@ -109,7 +124,7 @@ Call `cad.batch` in dry-run mode:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 7,
   "method": "tools/call",
   "params": {
     "name": "cad.batch",

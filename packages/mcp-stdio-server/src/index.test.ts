@@ -20,6 +20,7 @@ describe("mcp stdio server", () => {
       result: {
         tools: [
           { name: "cad.project_summary" },
+          { name: "cad.project_features" },
           { name: "cad.object_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.transaction_history" },

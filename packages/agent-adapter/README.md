@@ -98,12 +98,27 @@ Measurement and extent queries use the same read-only query envelope:
 }
 ```
 
+Primitive feature summaries use the same read-only query envelope. The current
+implementation derives these from scene objects and transaction history; it does
+not require a persisted feature graph:
+
+```json
+{
+  "requestId": "agent_query_005",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "project.features" }
+  }
+}
+```
+
 Transaction history uses the same read-only query envelope and returns summaries
 of the existing `cad-core` transaction model:
 
 ```json
 {
-  "requestId": "agent_query_005",
+  "requestId": "agent_query_006",
   "adapterVersion": "web-cad.agent-adapter.v1",
   "query": {
     "version": "cadops.v1",

@@ -3,6 +3,7 @@ import type {
   CadAxisAlignedBounds,
   CadBatch,
   CadBatchValidationError,
+  CadPrimitiveFeatureSummary,
   CadOp,
   CadQueryRequest
 } from "./index";
@@ -119,6 +120,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "project.features" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "object.get", id: "box_1" }
       },
       {
@@ -137,6 +142,7 @@ describe("cad-protocol", () => {
 
     expect(queries.map((request) => request.query.query)).toEqual([
       "project.summary",
+      "project.features",
       "object.get",
       "object.measurements",
       "project.extents",
@@ -153,5 +159,31 @@ describe("cad-protocol", () => {
     };
 
     expect(bounds.size).toEqual([2, 4, 6]);
+  });
+
+  it("types primitive feature summaries", () => {
+    const feature: CadPrimitiveFeatureSummary = {
+      id: "feature:box_1",
+      kind: "primitive",
+      primitive: "box",
+      objectId: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 },
+      transform: {
+        translation: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      },
+      source: {
+        type: "sceneObject",
+        createdByTransactionId: "txn_1",
+        createOp: "scene.createBox"
+      }
+    };
+
+    expect(feature).toMatchObject({
+      id: "feature:box_1",
+      kind: "primitive",
+      objectId: "box_1"
+    });
   });
 });

@@ -8,6 +8,7 @@ writes one JSON-RPC response line to stdout.
 Only these existing tools are exposed:
 
 - `cad.project_summary`
+- `cad.project_features`
 - `cad.object_measurements`
 - `cad.project_extents`
 - `cad.transaction_history`
@@ -72,6 +73,8 @@ process through the existing adapter stack. Restarting the process resets that
 document.
 
 `cad.project_summary` returns document units and object names when present.
+`cad.project_features` returns read-only primitive feature summaries derived
+from the current scene objects and transaction history.
 `cad.object_measurements` and `cad.project_extents` return read-only derived
 bounds and approximate volumes from the authoritative document. Units are
 current-model metadata only; the server does not perform unit conversion.

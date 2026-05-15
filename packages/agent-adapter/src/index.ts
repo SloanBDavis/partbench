@@ -9,6 +9,7 @@ import type {
   CadObjectSnapshot,
   CadOp,
   CadOpsVersion,
+  CadPrimitiveFeatureSummary,
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
@@ -70,6 +71,7 @@ export interface CadOpsAgentErrorResponse {
 
 export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSummaryQueryResponse
+  | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
@@ -85,6 +87,16 @@ export interface CadOpsAgentProjectSummaryQueryResponse {
   readonly units: DocumentUnits;
   readonly objectCount: number;
   readonly objects: readonly CadObjectSnapshot[];
+}
+
+export interface CadOpsAgentProjectFeaturesQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.features";
+  readonly featureCount: number;
+  readonly features: readonly CadPrimitiveFeatureSummary[];
 }
 
 export interface CadOpsAgentObjectGetQueryResponse {
@@ -135,6 +147,7 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query:
     | "project.summary"
+    | "project.features"
     | "object.get"
     | "object.measurements"
     | "project.extents"
@@ -311,6 +324,18 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.features") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      featureCount: response.featureCount,
+      features: response.features
+    };
+  }
+
   if (response.query === "object.measurements") {
     return {
       ok: true,
@@ -409,6 +434,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
     isRecord(value.query) &&
     ((value.query.query === "project.summary" &&
       Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.features" &&
+        Object.keys(value.query).length === 1) ||
       (value.query.query === "object.get" &&
         typeof value.query.id === "string") ||
       (value.query.query === "object.measurements" &&

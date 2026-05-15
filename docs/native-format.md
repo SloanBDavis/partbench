@@ -122,6 +122,10 @@ produced.
 The `transaction.history` query returns read-only summaries of this saved
 transaction model for UI, scripts, agents, and MCP clients. Those summaries are
 not separately persisted; they are derived from `history` and `redoStack`.
+The `project.features` query currently returns read-only primitive feature
+summaries derived from `document.objects` and committed transaction history. It
+is a migration bridge toward future feature/body concepts, not a saved feature
+graph in this format.
 
 ## Rebuildable Cache
 
@@ -136,6 +140,7 @@ These are not source of truth and must not be required to load a project:
 - browser smoke metrics
 - read-only measurement and project extent query results
 - read-only transaction history summary query results
+- read-only primitive feature summary query results
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the

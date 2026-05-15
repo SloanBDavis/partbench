@@ -1033,6 +1033,159 @@ describe("cad-core", () => {
     expect(engine.getTransactions()).toHaveLength(2);
   });
 
+  it("returns read-only primitive feature summaries from current scene objects", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      name: "Generated box",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+    engine.apply({
+      op: "scene.updateBoxDimensions",
+      id: "obj_1",
+      dimensions: { width: 4, height: 5, depth: 6 }
+    });
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      name: "Source cylinder",
+      dimensions: { radius: 2, height: 8 },
+      transform: { translation: [1, 2, 3] }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.features" }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      query: "project.features",
+      cadOpsVersion: "cadops.v1",
+      featureCount: 2,
+      features: [
+        {
+          id: "feature:obj_1",
+          kind: "primitive",
+          primitive: "box",
+          objectId: "obj_1",
+          name: "Generated box",
+          dimensions: { width: 4, height: 5, depth: 6 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          source: {
+            type: "sceneObject",
+            createdByTransactionId: "txn_1",
+            createOp: "scene.createBox"
+          }
+        },
+        {
+          id: "feature:cylinder_1",
+          kind: "primitive",
+          primitive: "cylinder",
+          objectId: "cylinder_1",
+          name: "Source cylinder",
+          dimensions: { radius: 2, height: 8 },
+          transform: {
+            translation: [1, 2, 3],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          source: {
+            type: "sceneObject",
+            createdByTransactionId: "txn_3",
+            createOp: "scene.createCylinder"
+          }
+        }
+      ]
+    });
+  });
+
+  it("keeps primitive feature summaries aligned with undo and redo", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "undo_feature_box",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    engine.undo();
+
+    const undone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.features" }
+    });
+
+    expect(undone).toEqual({
+      ok: true,
+      query: "project.features",
+      cadOpsVersion: "cadops.v1",
+      featureCount: 0,
+      features: []
+    });
+
+    engine.redo();
+
+    const redone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.features" }
+    });
+
+    expect(redone).toMatchObject({
+      ok: true,
+      query: "project.features",
+      featureCount: 1,
+      features: [
+        {
+          id: "feature:undo_feature_box",
+          objectId: "undo_feature_box",
+          source: {
+            createdByTransactionId: "txn_1",
+            createOp: "scene.createBox"
+          }
+        }
+      ]
+    });
+  });
+
+  it("preserves primitive feature summaries through project export and import", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "exported_feature_cylinder",
+      dimensions: { radius: 1, height: 3 }
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const response = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.features" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.features",
+      featureCount: 1,
+      features: [
+        {
+          id: "feature:exported_feature_cylinder",
+          primitive: "cylinder",
+          objectId: "exported_feature_cylinder",
+          source: {
+            createdByTransactionId: "txn_1",
+            createOp: "scene.createCylinder"
+          }
+        }
+      ]
+    });
+  });
+
   it("returns one object by ID through a read query", () => {
     const engine = new CadEngine();
 
