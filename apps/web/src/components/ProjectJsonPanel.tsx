@@ -2,6 +2,7 @@ export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
   readonly projectJson: string;
   readonly message?: string;
+  readonly messageTone?: "info" | "error";
   readonly onProjectJsonChange: (projectJson: string) => void;
   readonly onExport: () => void;
   readonly onImport: () => void;
@@ -11,6 +12,7 @@ export function ProjectJsonPanel({
   disabled,
   projectJson,
   message,
+  messageTone = "info",
   onProjectJsonChange,
   onExport,
   onImport
@@ -36,7 +38,15 @@ export function ProjectJsonPanel({
         placeholder="Export or paste Web CAD project JSON"
         spellCheck={false}
       />
-      {message && <p className="project-message">{message}</p>}
+      {message && (
+        <p
+          className={`project-message ${
+            messageTone === "error" ? "error-text" : ""
+          }`}
+        >
+          {message}
+        </p>
+      )}
     </section>
   );
 }

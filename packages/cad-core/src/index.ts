@@ -107,7 +107,38 @@ export interface MockCadCommandWorkerOptions {
   readonly delayMs?: number;
 }
 
-export type CadProjectFormatVersion = "web-cad.project.v1";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v1";
+
+export type CadProjectFormatVersion = typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
+
+export type CadProjectImportErrorCode =
+  | "INVALID_JSON"
+  | "INVALID_PROJECT"
+  | "UNSUPPORTED_PROJECT_VERSION"
+  | "INVALID_DOCUMENT"
+  | "INVALID_UNITS"
+  | "INVALID_OBJECT"
+  | "INVALID_OBJECT_NAME"
+  | "INVALID_DIMENSIONS"
+  | "INVALID_TRANSFORM"
+  | "INVALID_TRANSACTION"
+  | "INVALID_TRANSACTION_HISTORY";
+
+export interface CadProjectImportIssue {
+  readonly code: CadProjectImportErrorCode;
+  readonly path: string;
+  readonly message: string;
+}
+
+export class CadProjectImportError extends Error {
+  readonly issues: readonly CadProjectImportIssue[];
+
+  constructor(issues: readonly CadProjectImportIssue[]) {
+    super(formatCadProjectImportIssues(issues));
+    this.name = "CadProjectImportError";
+    this.issues = issues;
+  }
+}
 
 export interface CadProject {
   readonly schemaVersion: CadProjectFormatVersion;
@@ -453,7 +484,7 @@ export class AsyncCadCommandExecutor {
 
 export function exportCadProject(engine: CadEngine): CadProject {
   return {
-    schemaVersion: "web-cad.project.v1",
+    schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
     document: engine.createSnapshot(),
     history: engine.getTransactions(),
     redoStack: engine.getRedoStack()
@@ -465,7 +496,21 @@ export function exportCadProjectJson(engine: CadEngine): string {
 }
 
 export function parseCadProjectJson(json: string): CadProject {
-  return parseCadProject(JSON.parse(json));
+  let value: unknown;
+
+  try {
+    value = JSON.parse(json);
+  } catch {
+    throw new CadProjectImportError([
+      {
+        code: "INVALID_JSON",
+        path: "$",
+        message: "Project JSON could not be parsed."
+      }
+    ]);
+  }
+
+  return parseCadProject(value);
 }
 
 export function importCadProject(project: CadProject): CadEngine {
@@ -474,6 +519,14 @@ export function importCadProject(project: CadProject): CadEngine {
 
 export function importCadProjectJson(json: string): CadEngine {
   return importCadProject(parseCadProjectJson(json));
+}
+
+export function formatCadProjectImportError(error: unknown): string {
+  if (error instanceof CadProjectImportError) {
+    return error.message;
+  }
+
+  return error instanceof Error ? error.message : "Invalid project JSON.";
 }
 
 type MutableSemanticDiff = {
@@ -792,7 +845,7 @@ export function createCadDocumentSnapshot(
 ): CadDocumentSnapshot {
   return {
     units: document.units,
-    objects: [...document.objects.values()],
+    objects: [...document.objects.values()].map(createCadObjectSnapshot),
     nextObjectNumber
   };
 }
@@ -801,7 +854,9 @@ export function createCadDocumentFromSnapshot(
   snapshot: CadDocumentSnapshot
 ): CadDocument {
   return createCadDocument(
-    snapshot.objects.map((object) => [object.id, object] as const),
+    snapshot.objects.map(
+      (object) => [object.id, createCadObjectSnapshot(object)] as const
+    ),
     snapshot.units
   );
 }
@@ -942,14 +997,32 @@ function createProjectState(project: CadProject): {
   readonly history: TransactionEntry[];
   readonly redoStack: TransactionEntry[];
 } {
-  assertSupportedProject(project);
+  assertValidCadProject(project);
 
-  const historyState = createTransactionEntries(project.history);
-  const redoEntriesInApplyOrder = createTransactionEntries(
-    [...project.redoStack].reverse(),
-    historyState.document,
-    project.document.nextObjectNumber
-  );
+  let historyState: {
+    readonly document: CadDocument;
+    readonly entries: TransactionEntry[];
+  };
+  let redoEntriesInApplyOrder: {
+    readonly document: CadDocument;
+    readonly entries: TransactionEntry[];
+  };
+
+  try {
+    historyState = createTransactionEntries(project.history);
+  } catch (error) {
+    throwProjectTransactionHistoryError("$.history", error);
+  }
+
+  try {
+    redoEntriesInApplyOrder = createTransactionEntries(
+      [...project.redoStack].reverse(),
+      historyState.document,
+      project.document.nextObjectNumber
+    );
+  } catch (error) {
+    throwProjectTransactionHistoryError("$.redoStack", error);
+  }
 
   return {
     document: createCadDocumentFromSnapshot(project.document),
@@ -993,17 +1066,425 @@ function createTransactionEntries(
 }
 
 function parseCadProject(value: unknown): CadProject {
-  if (!isCadProject(value)) {
-    throw new Error("Invalid Web CAD project JSON.");
-  }
-
-  return value;
+  assertValidCadProject(value);
+  return value as CadProject;
 }
 
-function assertSupportedProject(project: CadProject): void {
-  if (project.schemaVersion !== "web-cad.project.v1") {
-    throw new Error(`Unsupported project schema: ${project.schemaVersion}`);
+function assertValidCadProject(value: unknown): asserts value is CadProject {
+  const issues = validateCadProject(value);
+
+  if (issues.length > 0) {
+    throw new CadProjectImportError(issues);
   }
+}
+
+function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
+  const issues: CadProjectImportIssue[] = [];
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_PROJECT",
+      "$",
+      "Project root must be an object."
+    );
+    return issues;
+  }
+
+  if (typeof value.schemaVersion !== "string") {
+    addProjectIssue(
+      issues,
+      "INVALID_PROJECT",
+      "$.schemaVersion",
+      "Project schemaVersion must be a string."
+    );
+  } else if (value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+    addProjectIssue(
+      issues,
+      "UNSUPPORTED_PROJECT_VERSION",
+      "$.schemaVersion",
+      `Unsupported project schemaVersion: ${value.schemaVersion}.`
+    );
+  }
+
+  validateCadDocumentSnapshot(value.document, "$.document", issues);
+  validateTransactionArray(value.history, "$.history", issues);
+  validateTransactionArray(value.redoStack, "$.redoStack", issues);
+
+  return issues;
+}
+
+function validateCadDocumentSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      path,
+      "Project document must be an object."
+    );
+    return;
+  }
+
+  if (!isDocumentUnits(value.units)) {
+    addProjectIssue(
+      issues,
+      "INVALID_UNITS",
+      `${path}.units`,
+      "Document units must be one of: mm, cm, m, in."
+    );
+  }
+
+  if (!Array.isArray(value.objects)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.objects`,
+      "Document objects must be an array."
+    );
+  } else {
+    const seenObjectIds = new Set<string>();
+
+    for (const [index, object] of value.objects.entries()) {
+      validateSceneObject(
+        object,
+        `${path}.objects[${index}]`,
+        issues,
+        seenObjectIds
+      );
+    }
+  }
+
+  if (
+    typeof value.nextObjectNumber !== "number" ||
+    !Number.isInteger(value.nextObjectNumber) ||
+    value.nextObjectNumber <= 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.nextObjectNumber`,
+      "Document nextObjectNumber must be a positive integer."
+    );
+  }
+}
+
+function validateSceneObject(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenObjectIds: Set<string>
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_OBJECT",
+      path,
+      "Scene object must be an object."
+    );
+    return;
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_OBJECT",
+      `${path}.id`,
+      "Scene object id must be a non-empty string."
+    );
+  } else if (seenObjectIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_OBJECT",
+      `${path}.id`,
+      `Duplicate scene object id: ${value.id}.`
+    );
+  } else {
+    seenObjectIds.add(value.id);
+  }
+
+  validateOptionalObjectName(value.name, `${path}.name`, issues);
+
+  if (value.kind === "box") {
+    validateBoxDimensionsShape(value.dimensions, `${path}.dimensions`, issues);
+  } else if (value.kind === "cylinder") {
+    validateCylinderDimensionsShape(
+      value.dimensions,
+      `${path}.dimensions`,
+      issues
+    );
+  } else {
+    addProjectIssue(
+      issues,
+      "INVALID_OBJECT",
+      `${path}.kind`,
+      "Scene object kind must be box or cylinder."
+    );
+  }
+
+  validateTransformShape(value.transform, `${path}.transform`, issues);
+}
+
+function validateOptionalObjectName(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_OBJECT_NAME",
+      path,
+      "Object name must be a non-empty string when present."
+    );
+  }
+}
+
+function validateBoxDimensionsShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      path,
+      "Box dimensions must be an object."
+    );
+    return;
+  }
+
+  validatePositiveFiniteField(
+    value.width,
+    `${path}.width`,
+    "Box width",
+    issues
+  );
+  validatePositiveFiniteField(
+    value.height,
+    `${path}.height`,
+    "Box height",
+    issues
+  );
+  validatePositiveFiniteField(
+    value.depth,
+    `${path}.depth`,
+    "Box depth",
+    issues
+  );
+}
+
+function validateCylinderDimensionsShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      path,
+      "Cylinder dimensions must be an object."
+    );
+    return;
+  }
+
+  validatePositiveFiniteField(
+    value.radius,
+    `${path}.radius`,
+    "Cylinder radius",
+    issues
+  );
+  validatePositiveFiniteField(
+    value.height,
+    `${path}.height`,
+    "Cylinder height",
+    issues
+  );
+}
+
+function validateTransformShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSFORM",
+      path,
+      "Transform must be an object."
+    );
+    return;
+  }
+
+  validateVec3Field(value.translation, `${path}.translation`, issues);
+  validateVec3Field(value.rotation, `${path}.rotation`, issues);
+  validateVec3Field(value.scale, `${path}.scale`, issues);
+}
+
+function validateVec3Field(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isVec3(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSFORM",
+      path,
+      "Transform vector must contain three finite numbers."
+    );
+  }
+}
+
+function validatePositiveFiniteField(
+  value: unknown,
+  path: string,
+  label: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (typeof value !== "number" || !isPositiveFiniteNumber(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      path,
+      `${label} must be a positive finite number.`
+    );
+  }
+}
+
+function validateTransactionArray(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!Array.isArray(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      path,
+      "Transaction history must be an array."
+    );
+    return;
+  }
+
+  for (const [index, transaction] of value.entries()) {
+    validateTransactionShape(transaction, `${path}[${index}]`, issues);
+  }
+}
+
+function validateTransactionShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      path,
+      "Transaction must be an object."
+    );
+    return;
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.id`,
+      "Transaction id must be a non-empty string."
+    );
+  }
+
+  if (!Array.isArray(value.ops)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.ops`,
+      "Transaction ops must be an array."
+    );
+  } else {
+    for (const [index, op] of value.ops.entries()) {
+      if (!isCadOp(op)) {
+        addProjectIssue(
+          issues,
+          "INVALID_TRANSACTION",
+          `${path}.ops[${index}]`,
+          "Transaction operation must be a valid CADOps command."
+        );
+      }
+    }
+  }
+
+  if (value.status !== "committed" && value.status !== "undone") {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.status`,
+      "Transaction status must be committed or undone."
+    );
+  }
+
+  if (!isSemanticDiff(value.diff)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.diff`,
+      "Transaction diff must be a valid semantic diff."
+    );
+  }
+}
+
+function throwProjectTransactionHistoryError(
+  path: string,
+  error: unknown
+): never {
+  const message =
+    error instanceof Error
+      ? error.message
+      : "Project transaction history could not be replayed.";
+
+  throw new CadProjectImportError([
+    {
+      code: "INVALID_TRANSACTION_HISTORY",
+      path,
+      message: `Project transaction history could not be replayed: ${message}`
+    }
+  ]);
+}
+
+function addProjectIssue(
+  issues: CadProjectImportIssue[],
+  code: CadProjectImportErrorCode,
+  path: string,
+  message: string
+): void {
+  issues.push({ code, path, message });
+}
+
+function formatCadProjectImportIssues(
+  issues: readonly CadProjectImportIssue[]
+): string {
+  const firstIssue = issues[0];
+
+  if (!firstIssue) {
+    return "Invalid Web CAD project JSON.";
+  }
+
+  const suffix =
+    issues.length > 1 ? `; ${issues.length - 1} more issue(s).` : ".";
+
+  return `Invalid Web CAD project JSON: ${firstIssue.message} (${firstIssue.path})${suffix}`;
 }
 
 function materializeGeneratedObjectIds(
@@ -1025,68 +1506,6 @@ function materializeGeneratedObjectIds(
 
     return createdRef ? { ...op, id: createdRef.id } : op;
   });
-}
-
-function isCadProject(value: unknown): value is CadProject {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    value.schemaVersion === "web-cad.project.v1" &&
-    isCadDocumentSnapshot(value.document) &&
-    Array.isArray(value.history) &&
-    value.history.every(isTransaction) &&
-    Array.isArray(value.redoStack) &&
-    value.redoStack.every(isTransaction)
-  );
-}
-
-function isCadDocumentSnapshot(value: unknown): value is CadDocumentSnapshot {
-  return (
-    isRecord(value) &&
-    isDocumentUnits(value.units) &&
-    Array.isArray(value.objects) &&
-    value.objects.every(isSceneObject) &&
-    typeof value.nextObjectNumber === "number" &&
-    Number.isInteger(value.nextObjectNumber) &&
-    value.nextObjectNumber > 0
-  );
-}
-
-function isTransaction(value: unknown): value is Transaction {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    Array.isArray(value.ops) &&
-    value.ops.every(isCadOp) &&
-    (value.status === "committed" || value.status === "undone") &&
-    isSemanticDiff(value.diff)
-  );
-}
-
-function isSceneObject(value: unknown): value is SceneObject {
-  if (!isRecord(value) || typeof value.id !== "string") {
-    return false;
-  }
-
-  if (value.kind === "box") {
-    return (
-      isBoxDimensions(value.dimensions) &&
-      isTransform(value.transform) &&
-      isOptionalObjectName(value.name)
-    );
-  }
-
-  if (value.kind === "cylinder") {
-    return (
-      isCylinderDimensions(value.dimensions) &&
-      isTransform(value.transform) &&
-      isOptionalObjectName(value.name)
-    );
-  }
-
-  return false;
 }
 
 function isCadOp(value: unknown): value is CadOp {
@@ -1211,31 +1630,16 @@ function isOptionalTransform(value: unknown): value is Partial<Transform> {
   );
 }
 
-function isTransform(value: unknown): value is Transform {
-  return (
-    isRecord(value) &&
-    isVec3(value.translation) &&
-    isVec3(value.rotation) &&
-    isVec3(value.scale)
-  );
-}
-
 function isVec3(value: unknown): value is readonly [number, number, number] {
   return (
     Array.isArray(value) &&
     value.length === 3 &&
-    value.every((item) => typeof item === "number")
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
   );
 }
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
-}
-
-function isOptionalObjectName(value: unknown): value is string | undefined {
-  return (
-    value === undefined || (typeof value === "string" && value.trim() !== "")
-  );
 }
 
 function isDocumentUnits(value: unknown): value is DocumentUnits {

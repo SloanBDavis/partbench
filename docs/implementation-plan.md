@@ -53,6 +53,8 @@ packages:
   the OCCT worker path, including structured success/failure diagnostics.
 - `scripts/occt-smoke` - helper modules for OCCT smoke browser/server plumbing,
   asset metrics, and structured result records.
+- `docs/native-format.md` - current versioned project JSON format and future
+  native package direction.
 - `docs/occt-wasm-size.md` - current OCCT/WASM load-size findings,
   tradeoffs, and recommendation.
 
@@ -456,6 +458,20 @@ Deliverables:
   metadata.
 - Add import/export tests.
 - Add migration/versioning rules.
+
+Current slice delivered:
+
+- The current source-of-truth JSON format is explicitly documented as
+  `web-cad.project.v1`.
+- `cad-core` exports `CURRENT_CAD_PROJECT_FORMAT_VERSION`.
+- Project export strips rebuildable mesh/cache-like fields and saves only the
+  authoritative document snapshot plus transaction/redo history.
+- Project import validates schema version, document shape, units, object names,
+  dimensions, transforms, transaction shape, and transaction replay where
+  practical.
+- Invalid imports return structured `CadProjectImportError` issues with codes,
+  JSON-style paths, and messages.
+- The UI displays formatted project import errors.
 
 Exit criteria:
 

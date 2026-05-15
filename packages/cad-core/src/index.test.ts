@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   AsyncCadCommandExecutor,
+  CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
+  CadProjectImportError,
+  createCadDocument,
   MockCadCommandWorker,
   corePackage,
   exportCadProjectJson,
@@ -1155,4 +1158,279 @@ describe("cad-core", () => {
     expect(restored.getDocument().objects.get("obj_1")?.kind).toBe("box");
     expect(restored.getTransactions()[0]?.id).toBe("txn_1");
   });
+
+  it("exports the current deliberate project format version", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+  });
+
+  it("rejects an unsupported project format version with a structured error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            schemaVersion: "web-cad.project.v0"
+          })
+        ),
+      {
+        code: "UNSUPPORTED_PROJECT_VERSION",
+        path: "$.schemaVersion"
+      }
+    );
+  });
+
+  it("rejects a malformed object with a structured import error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              objects: [
+                {
+                  id: "bad_object",
+                  kind: "sphere",
+                  dimensions: { radius: 1 },
+                  transform: {
+                    translation: [0, 0, 0],
+                    rotation: [0, 0, 0],
+                    scale: [1, 1, 1]
+                  }
+                }
+              ]
+            }
+          })
+        ),
+      {
+        code: "INVALID_OBJECT",
+        path: "$.document.objects[0].kind"
+      }
+    );
+  });
+
+  it("rejects invalid object dimensions with a structured import error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              objects: [
+                {
+                  id: "bad_box",
+                  kind: "box",
+                  dimensions: { width: 1, height: 0, depth: 1 },
+                  transform: {
+                    translation: [0, 0, 0],
+                    rotation: [0, 0, 0],
+                    scale: [1, 1, 1]
+                  }
+                }
+              ]
+            }
+          })
+        ),
+      {
+        code: "INVALID_DIMENSIONS",
+        path: "$.document.objects[0].dimensions.height"
+      }
+    );
+  });
+
+  it("rejects invalid document units and object names", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    try {
+      parseCadProjectJson(
+        JSON.stringify({
+          ...project,
+          document: {
+            ...project.document,
+            units: "ft",
+            objects: [
+              {
+                id: "bad_box",
+                kind: "box",
+                name: " ",
+                dimensions: { width: 1, height: 1, depth: 1 },
+                transform: {
+                  translation: [0, 0, 0],
+                  rotation: [0, 0, 0],
+                  scale: [1, 1, 1]
+                }
+              }
+            ]
+          }
+        })
+      );
+    } catch (error) {
+      expect(error).toBeInstanceOf(CadProjectImportError);
+
+      const projectError = error as CadProjectImportError;
+      expect(projectError.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "INVALID_UNITS",
+            path: "$.document.units"
+          }),
+          expect.objectContaining({
+            code: "INVALID_OBJECT_NAME",
+            path: "$.document.objects[0].name"
+          })
+        ])
+      );
+      return;
+    }
+
+    throw new Error("Expected project import error.");
+  });
+
+  it("rejects malformed transforms with a structured import error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              objects: [
+                {
+                  id: "bad_box",
+                  kind: "box",
+                  dimensions: { width: 1, height: 1, depth: 1 },
+                  transform: {
+                    translation: [0, 0],
+                    rotation: [0, 0, 0],
+                    scale: [1, 1, 1]
+                  }
+                }
+              ]
+            }
+          })
+        ),
+      {
+        code: "INVALID_TRANSFORM",
+        path: "$.document.objects[0].transform.translation"
+      }
+    );
+  });
+
+  it("reports invalid JSON with a structured import error", () => {
+    expectProjectImportError(() => parseCadProjectJson("{"), {
+      code: "INVALID_JSON",
+      path: "$"
+    });
+  });
+
+  it("rejects transaction history that cannot be replayed", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        importCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [
+              {
+                id: "txn_1",
+                status: "committed",
+                ops: [
+                  {
+                    op: "scene.updateTransform",
+                    id: "missing",
+                    transform: { translation: [1, 2, 3] }
+                  }
+                ],
+                diff: {
+                  created: [],
+                  modified: [{ id: "missing", kind: "box" }],
+                  deleted: []
+                }
+              }
+            ]
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION_HISTORY",
+        path: "$.history"
+      }
+    );
+  });
+
+  it("does not persist derived mesh-like cache fields in project JSON", () => {
+    const engine = new CadEngine(
+      createCadDocument([
+        [
+          "box_1",
+          {
+            id: "box_1",
+            kind: "box",
+            dimensions: { width: 1, height: 1, depth: 1 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            },
+            mesh: {
+              vertices: [[0, 0, 0]],
+              indices: [0]
+            },
+            geometryStatus: "ready"
+          } as never
+        ]
+      ])
+    );
+
+    const projectJson = exportCadProjectJson(engine);
+    const project = parseCadProjectJson(projectJson);
+
+    expect(projectJson).not.toContain("mesh");
+    expect(projectJson).not.toContain("geometryStatus");
+    expect(project.document.objects[0]).toEqual({
+      id: "box_1",
+      kind: "box",
+      dimensions: { width: 1, height: 1, depth: 1 },
+      transform: {
+        translation: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      }
+    });
+  });
 });
+
+function expectProjectImportError(
+  action: () => unknown,
+  expectedIssue: { readonly code: string; readonly path: string }
+): void {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(CadProjectImportError);
+
+    const projectError = error as CadProjectImportError;
+    expect(projectError.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: expectedIssue.code,
+          path: expectedIssue.path
+        })
+      ])
+    );
+    return;
+  }
+
+  throw new Error("Expected project import error.");
+}

@@ -2,6 +2,7 @@ import {
   AsyncCadCommandExecutor,
   CadEngine,
   exportCadProjectJson,
+  formatCadProjectImportError,
   parseCadProjectJson,
   type CadDocument,
   type SceneObject
@@ -124,6 +125,9 @@ export function App() {
   const [commandPending, setCommandPending] = useState(false);
   const [projectJson, setProjectJson] = useState("");
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
+  const [projectMessageTone, setProjectMessageTone] = useState<
+    "info" | "error"
+  >("info");
   const [derivedGeometry, setDerivedGeometry] =
     useState<DerivedGeometrySnapshot>(() =>
       createEmptyDerivedGeometrySnapshot()
@@ -357,6 +361,7 @@ export function App() {
   function exportProjectJson() {
     setProjectJson(exportCadProjectJson(engine));
     setProjectMessage("Exported current project JSON.");
+    setProjectMessageTone("info");
   }
 
   function importProjectJson() {
@@ -367,11 +372,11 @@ export function App() {
       setBatchError(undefined);
       setCommandError(undefined);
       setProjectMessage("Imported project JSON.");
+      setProjectMessageTone("info");
       syncDocument(undefined);
     } catch (error) {
-      setProjectMessage(
-        error instanceof Error ? error.message : "Invalid project JSON."
-      );
+      setProjectMessage(formatCadProjectImportError(error));
+      setProjectMessageTone("error");
     }
   }
 
@@ -503,6 +508,7 @@ export function App() {
             disabled={commandPending}
             projectJson={projectJson}
             message={projectMessage}
+            messageTone={projectMessageTone}
             onProjectJsonChange={setProjectJson}
             onExport={exportProjectJson}
             onImport={importProjectJson}
