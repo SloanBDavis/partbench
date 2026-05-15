@@ -9,8 +9,11 @@ recommendation. It does not change the production app architecture.
 
 The OCCT path remains isolated:
 
-- normal app startup does not load OCCT;
-- OCCT runs only through the explicit feature-flagged geometry-worker path;
+- default production app startup does not load OCCT;
+- development builds enable the derived geometry path by default, but the worker
+  still loads OCCT lazily only when tessellation is requested;
+- `VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev` keeps development on primitive
+  fallback for debugging;
 - `cad-core` remains authoritative;
 - meshes remain derived renderer data;
 - the current app still falls back to primitive rendering.
@@ -56,7 +59,7 @@ served WASM: 11.19 MB via br
 
 This reduces the measured delivered OCCT WASM payload by about 78% versus raw
 serving and about 20% versus gzip, without changing the OCCT package, worker
-boundary, command engine, renderer, or normal startup behavior.
+boundary, command engine, renderer, or default production startup behavior.
 
 The smoke record now includes:
 
@@ -77,9 +80,10 @@ Timing metrics remain non-gating.
 
 Status: already in the right shape.
 
-OCCT is imported only through the feature-flagged runtime and browser geometry
-worker path. Normal app startup is independent from OCCT. This avoids paying the
-OCCT load cost unless derived geometry is explicitly enabled.
+OCCT is imported only through the derived-geometry runtime and browser geometry
+worker path. Production startup remains independent from OCCT by default. In
+development, the runtime path is enabled by default, but the worker and WASM load
+remain lazy and occur only when a supported object needs tessellation.
 
 ### Hosting And Caching
 

@@ -303,18 +303,18 @@ export function getDerivedGeometryStatusLabel(
   entry: DerivedGeometryEntry | undefined
 ): string {
   if (!entry) {
-    return "not requested";
+    return "Primitive fallback";
   }
 
   switch (entry.status) {
     case "ready":
-      return "mesh ready";
+      return "OCCT mesh ready";
     case "pending":
-      return "mesh pending";
+      return "Building OCCT mesh";
     case "error":
-      return "mesh error";
+      return "Primitive fallback";
     case "unsupported":
-      return "unsupported";
+      return "Primitive fallback";
   }
 }
 

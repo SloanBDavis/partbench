@@ -27,8 +27,8 @@ import {
 } from "./cadCommands";
 import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { BatchPanel } from "./components/BatchPanel";
+import { GeometryPanel } from "./components/GeometryPanel";
 import { Inspector } from "./components/Inspector";
-import { OcctMeshDevPanel } from "./components/OcctMeshDevPanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import type { OcctMeshDevRuntime } from "./occtMeshDev";
@@ -51,7 +51,7 @@ const commandExecutor = new AsyncCadCommandExecutor(
   engine,
   new BrowserCadCommandWorker()
 );
-const occtMeshDevEnabled = __WEB_CAD_OCCT_MESH_DEV__;
+const derivedGeometryEnabled = __WEB_CAD_DERIVED_GEOMETRY_ENABLED__;
 
 const quickBoxForm: PrimitiveCommandForm = {
   id: "",
@@ -164,7 +164,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!occtMeshDevEnabled) {
+    if (!derivedGeometryEnabled) {
       return;
     }
 
@@ -187,7 +187,7 @@ export function App() {
   }
 
   function reconcileDerivedGeometry(nextDocument: CadDocument) {
-    if (!occtMeshDevEnabled) {
+    if (!derivedGeometryEnabled) {
       return;
     }
 
@@ -195,7 +195,7 @@ export function App() {
   }
 
   function refreshDerivedGeometry() {
-    if (!occtMeshDevEnabled) {
+    if (!derivedGeometryEnabled) {
       return;
     }
 
@@ -350,7 +350,7 @@ export function App() {
         <small className="object-meta">{formatDimensions(object)}</small>
         <small className="object-meta">{formatObjectPosition(object)}</small>
         <small className="object-meta">{formatObjectScale(object)}</small>
-        {occtMeshDevEnabled && (
+        {derivedGeometryEnabled && (
           <small
             className={`mesh-status geometry-${geometryEntry?.status ?? "idle"}`}
           >
@@ -448,8 +448,8 @@ export function App() {
             onImport={importProjectJson}
           />
 
-          {occtMeshDevEnabled && (
-            <OcctMeshDevPanel
+          {derivedGeometryEnabled && (
+            <GeometryPanel
               disabled={commandPending}
               snapshot={derivedGeometry}
               onRefresh={refreshDerivedGeometry}

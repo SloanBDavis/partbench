@@ -64,8 +64,9 @@ describe("derivedGeometry", () => {
       "cylinder_1"
     ]);
     expect(getDerivedGeometryStatusLabel(snapshot.entries[0])).toBe(
-      "mesh ready"
+      "OCCT mesh ready"
     );
+    expect(getDerivedGeometryStatusLabel(undefined)).toBe("Primitive fallback");
   });
 
   it("does not duplicate requests for unchanged pending or ready objects", async () => {
@@ -232,6 +233,35 @@ describe("derivedGeometry", () => {
         message: "worker failed"
       }
     });
+  });
+
+  it("labels error and unsupported states as primitive fallback", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async () => {
+        throw new Error("worker failed");
+      }),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([createBoxObject("box_1", 2)]);
+    await flushPromises();
+
+    const errorEntry = snapshots.at(-1)?.entries[0];
+    expect(getDerivedGeometryStatusLabel(errorEntry)).toBe(
+      "Primitive fallback"
+    );
+
+    service.reconcile([
+      {
+        ...createBoxObject("unsupported_1", 2),
+        kind: "unsupported" as never
+      }
+    ]);
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Primitive fallback"
+    );
   });
 
   it("disposes runtime and ignores pending work after disposal", async () => {

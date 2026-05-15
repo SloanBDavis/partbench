@@ -50,13 +50,14 @@ listed as post-MVP:
 - Geometry-kernel facade.
 - Browser geometry worker entrypoint.
 - Renderer mesh bridge.
-- Feature-flagged OCCT mesh dev UI.
+- Development-default derived geometry UI for OCCT-backed box and cylinder
+  meshes.
 - Non-gating OCCT browser smoke/metrics command.
 
 These additions remain bounded by the architecture rules:
 
 - `cad-core` is still authoritative.
-- OCCT is not in normal startup.
+- OCCT is not in default production startup.
 - Meshes are derived views.
 - MCP wraps CADOps rather than defining the core architecture.
 

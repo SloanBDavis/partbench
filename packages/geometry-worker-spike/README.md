@@ -115,9 +115,11 @@ const response = await worker.execute(
 );
 ```
 
-That keeps normal app startup on the existing primitive renderer path. The web
-app exposes the path only when `VITE_ENABLE_OCCT_MESH_DEV=true`; if OCCT or WASM
-loading fails, it affects only that explicit dev workflow.
+That keeps default production app startup on the existing primitive renderer
+path. The web app enables derived geometry by default in development builds and
+keeps `VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev` as the primitive fallback
+escape hatch; if OCCT or WASM loading fails, the authoritative document still
+uses `cad-core` and the renderer can keep showing primitives.
 
 ## Production Risks
 

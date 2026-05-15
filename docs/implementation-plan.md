@@ -30,8 +30,8 @@ The current repo is a TypeScript pnpm workspace with a Vite React app and focuse
 packages:
 
 - `apps/web` - browser UI, command-worker entrypoint, geometry-worker entrypoint,
-  feature-flagged derived mesh service for OCCT box and cylinder meshes, and
-  smoke page.
+  development-default derived mesh service for OCCT box and cylinder meshes,
+  primitive-rendering fallback, and smoke page.
 - `packages/cad-protocol` - typed CADOps command, batch, and query shapes.
 - `packages/cad-core` - in-memory document model, command application,
   transactions, semantic diffs, undo/redo, CADOps query path, and project JSON
@@ -162,8 +162,8 @@ Delivered:
 - Geometry-kernel facade around the OCCT spike.
 - Browser geometry worker entrypoint.
 - Renderer mesh bridge.
-- Feature-flagged app UI path for deriving box meshes asynchronously through the
-  browser Worker and displaying returned meshes as derived overlays.
+- App UI path for deriving box meshes asynchronously through the browser Worker
+  and displaying returned meshes as derived overlays.
 - Lightweight instrumentation for:
   - OCCT/WASM first-load time.
   - Tessellation request time.
@@ -175,8 +175,8 @@ Delivered:
 - Structured worker diagnostics for WASM load failure, unsupported primitive
   requests, kernel/tessellation failure, worker runtime failure, and transport
   failure.
-- Dev UI surfacing for OCCT worker error code, stage, worker startup, and WASM
-  load status.
+- Geometry UI surfacing for OCCT worker error code, stage, worker startup, and
+  WASM load status.
 
 Current measured smoke example:
 
@@ -230,10 +230,23 @@ pnpm lint
 pnpm format:check
 ```
 
-Feature-flagged OCCT mesh dev path:
+Derived geometry development path:
 
 ```sh
-VITE_ENABLE_OCCT_MESH_DEV=true pnpm dev
+pnpm dev
+```
+
+Development builds enable derived OCCT geometry by default. Use the fallback
+escape hatch when debugging primitive rendering or worker failures:
+
+```sh
+VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev
+```
+
+Production builds keep derived geometry disabled unless explicitly enabled:
+
+```sh
+VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build
 ```
 
 OCCT browser smoke/metrics:
@@ -264,9 +277,11 @@ Current limitations:
 - OCCT currently proves box and cylinder tessellation.
 - Primitive rendering remains the fallback when derived geometry is unavailable,
   loading, or failed.
-- The OCCT mesh UI is dev-flagged and not a production geometry pipeline.
-- The first feature-flagged derived mesh cache/invalidation path exists for
-  boxes and cylinders, but there is no full production geometry cache yet.
+- The Geometry panel reports whether each object is using an OCCT-derived mesh,
+  is still deriving one, or is on primitive fallback.
+- Derived geometry is default-enabled for development builds and still disabled
+  by default for production builds, so there is no full production geometry cache
+  yet.
 - No stable topological naming system exists yet.
 - No sketch solver exists yet.
 - No exact measurement API exists yet.
@@ -292,8 +307,9 @@ Deliverables:
 - Improve worker error reporting and lifecycle handling. The current diagnostic
   shape covers WASM load, unsupported primitive, kernel/tessellation, worker
   runtime, and transport failures.
-- Make WASM loading diagnostics visible in the dev UI. The current dev-flagged
-  panel shows error code, stage, worker startup, and WASM load status.
+- Make WASM loading diagnostics visible in the UI. The current Geometry panel
+  shows error code, stage, worker startup, and WASM load status when derived
+  geometry fails.
 - Track OCCT asset size over time.
 - Keep Brotli/gzip delivery metrics in the smoke pipeline.
 - Investigate a smaller custom OCCT build as the next meaningful binary-size
@@ -308,12 +324,12 @@ Exit criteria:
 - A developer can run the real browser-worker OCCT path repeatedly.
 - Metrics are recorded in structured form.
 - Failures are actionable.
-- Normal app startup remains independent from OCCT.
+- Default production app startup remains independent from OCCT.
 
 ### Phase B: Production Derived Geometry Pipeline
 
-Goal: replace the manual dev-only tessellation overlay with a real derived mesh
-pipeline while keeping `cad-core` authoritative.
+Goal: replace manual tessellation checks with a real derived mesh pipeline while
+keeping `cad-core` authoritative.
 
 Deliverables:
 
@@ -329,9 +345,9 @@ Deliverables:
 
 Current slice delivered:
 
-- A feature-flagged app-layer derived geometry service consumes current document
-  objects and derives renderer meshes for boxes through the existing browser
-  geometry worker path.
+- A development-default app-layer derived geometry service consumes current
+  document objects and derives renderer meshes for boxes through the existing
+  browser geometry worker path. Production builds remain opt-in.
 - Per-object derived geometry status is tracked as unsupported, pending, ready,
   or error.
 - Cache keys include current MVP dimensions and transforms, and stale async
@@ -360,7 +376,8 @@ Deliverables:
 - Tessellate cylinders through the worker. Current implementation supports this
   through the same browser-worker path as boxes.
 - Route boxes and cylinders through the same derived geometry service. Current
-  implementation keeps both as derived views/caches behind the feature flag.
+  implementation keeps both as derived views/caches, default-enabled in
+  development and opt-in for production builds.
 - Add tests and browser smoke scenarios for box and cylinder. Current
   implementation adds focused package/app tests for the cylinder request,
   kernel, worker, mesh bridge, and derived service paths; the browser smoke runs

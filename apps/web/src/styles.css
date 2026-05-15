@@ -336,6 +336,13 @@ h2 {
   color: #9a3030;
 }
 
+.mesh-status.geometry-idle,
+.mesh-status.geometry-unsupported {
+  border-color: #cfd8e2;
+  background: #f7f9fb;
+  color: #607080;
+}
+
 .selected-status {
   border-color: #dbb56f;
   background: #fff6df;
@@ -344,7 +351,7 @@ h2 {
 
 .batch-panel,
 .project-panel,
-.occt-panel,
+.geometry-panel,
 .command-card {
   display: grid;
   gap: 12px;
@@ -480,6 +487,11 @@ h2 {
   background: #f2f8f2;
 }
 
+.geometry-status-list li.geometry-pending {
+  border-color: #d4c286;
+  background: #fff8df;
+}
+
 .geometry-status-list li.geometry-error {
   border-color: #e2bcbc;
   background: #fff4f4;
@@ -514,13 +526,13 @@ h2 {
 }
 
 .metrics-list,
-.occt-error {
+.geometry-error {
   display: grid;
   gap: 6px;
   margin: 0;
 }
 
-.occt-error {
+.geometry-error {
   padding: 10px;
   border: 1px solid #e2bcbc;
   border-radius: 6px;
@@ -528,7 +540,7 @@ h2 {
 }
 
 .metrics-list div,
-.occt-error div {
+.geometry-error div {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -537,7 +549,7 @@ h2 {
 }
 
 .metrics-list dt,
-.occt-error dt {
+.geometry-error dt {
   color: #6c7a89;
   font-size: 0.72rem;
   font-weight: 700;
@@ -545,7 +557,7 @@ h2 {
 }
 
 .metrics-list dd,
-.occt-error dd {
+.geometry-error dd {
   min-width: 0;
   margin: 0;
   color: #1f2933;

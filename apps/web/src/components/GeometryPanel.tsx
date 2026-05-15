@@ -4,36 +4,36 @@ import {
 } from "../derivedGeometry";
 import { formatMetricMs } from "../occtMeshDev";
 
-export interface OcctMeshDevPanelProps {
+export interface GeometryPanelProps {
   readonly disabled: boolean;
   readonly snapshot: DerivedGeometrySnapshot;
   readonly onRefresh: () => void;
 }
 
-export function OcctMeshDevPanel({
+export function GeometryPanel({
   disabled,
   snapshot,
   onRefresh
-}: OcctMeshDevPanelProps) {
+}: GeometryPanelProps) {
   const hasSupportedObjects = snapshot.supportedCount > 0;
   const hasPendingWork = snapshot.pendingCount > 0;
   const firstError = snapshot.entries.find((entry) => entry.status === "error");
 
   return (
-    <section className="occt-panel" aria-label="OCCT mesh dev tools">
-      <h2>OCCT Mesh Dev</h2>
+    <section className="geometry-panel" aria-label="Geometry status">
+      <h2>Geometry</h2>
       <div className="button-row">
         <button
           type="button"
           onClick={onRefresh}
           disabled={disabled || hasPendingWork || !hasSupportedObjects}
         >
-          {hasPendingWork ? "Deriving meshes" : "Refresh derived meshes"}
+          {hasPendingWork ? "Deriving meshes" : "Refresh meshes"}
         </button>
       </div>
 
       {snapshot.entries.length === 0 ? (
-        <p className="project-message">No objects to derive.</p>
+        <p className="project-message">No objects.</p>
       ) : (
         <ul className="geometry-status-list">
           {snapshot.entries.map((entry) => (
@@ -89,7 +89,7 @@ export function OcctMeshDevPanel({
         </div>
       </dl>
       {firstError?.status === "error" && (
-        <dl className="occt-error">
+        <dl className="geometry-error">
           <div>
             <dt>Code</dt>
             <dd>{firstError.error.code}</dd>

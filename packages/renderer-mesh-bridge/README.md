@@ -6,8 +6,8 @@ It accepts `SerializableMeshData` from `@web-cad/geometry-kernel` or a `Geometry
 
 To display the result in the current app stack, pass `result.mesh` into
 `renderCanvasScene({ meshes: [...] })` or the web app `ViewportCanvas` `meshes`
-prop. The web app mounts the derived OCCT mesh service only when
-`VITE_ENABLE_OCCT_MESH_DEV=true`; normal startup remains on the primitive
-renderer path and does not start the geometry worker.
+prop. Development builds mount the derived OCCT mesh service by default; use
+`VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev` to force primitive fallback.
+Production builds remain opt-in with `VITE_ENABLE_DERIVED_GEOMETRY=true`.
 
 The bridge is not the production renderer/cache design. Production geometry caching should eventually track document object revisions, derived mesh invalidation, worker lifecycle, memory pressure, and renderer-specific buffer ownership. This package only proves that mesh data from the spike can cross the worker boundary and become a derived viewport input without making `cad-core` depend on geometry or rendering internals.

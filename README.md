@@ -26,17 +26,23 @@ Run the browser app:
 pnpm dev
 ```
 
-Run the app with the explicit OCCT mesh dev path enabled:
+In development builds, boxes and cylinders are submitted to the derived geometry
+service by default and tessellated asynchronously in the browser Worker. The
+returned mesh is displayed as derived renderer data, the Geometry panel shows
+per-object status, and the authoritative CAD document is not updated by mesh
+generation.
+
+Disable derived geometry for fallback debugging:
 
 ```sh
-VITE_ENABLE_OCCT_MESH_DEV=true pnpm dev
+VITE_DISABLE_DERIVED_GEOMETRY=true pnpm dev
 ```
 
-With that flag enabled, boxes and cylinders are automatically submitted to the
-derived mesh service and tessellated asynchronously in the browser Worker. The
-returned mesh is displayed as a derived renderer overlay, the panel shows
-per-object geometry status, and the authoritative CAD document is not updated by
-mesh generation.
+Production builds keep derived geometry disabled unless explicitly enabled:
+
+```sh
+VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build
+```
 
 Run the full build:
 
@@ -100,9 +106,9 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 ## Current Limitations
 
-- The production renderer still uses simple primitive drawing as fallback; OCCT
-  mesh display is feature-flagged for boxes and cylinders.
-- OCCT/WASM is intentionally off the normal startup path and currently proves
-  primitive tessellation only.
+- The renderer still uses simple primitive drawing as fallback while OCCT-derived
+  meshes are loading, disabled, unavailable, or failed.
+- OCCT/WASM is intentionally off the default production startup path and
+  currently proves box and cylinder tessellation only.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.
