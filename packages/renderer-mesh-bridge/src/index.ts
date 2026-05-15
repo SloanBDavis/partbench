@@ -74,7 +74,7 @@ export function createRenderMeshFromGeometryWorkerResponse(
 }
 
 function validateMesh(mesh: SerializableMeshData): void {
-  if (mesh.primitive !== "box") {
+  if (mesh.primitive !== "box" && mesh.primitive !== "cylinder") {
     throw new Error(`Unsupported mesh primitive: ${mesh.primitive}`);
   }
 

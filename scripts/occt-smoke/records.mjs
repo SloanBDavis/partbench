@@ -26,6 +26,20 @@ export function assertSmokeResult(record) {
     );
   }
 
+  const cylinder = metrics.meshes?.find(
+    (mesh) => mesh.primitive === "cylinder"
+  );
+
+  if (!cylinder) {
+    throw new Error("Missing cylinder tessellation smoke result.");
+  }
+
+  if (cylinder.vertexCount <= 0 || cylinder.triangleCount <= 0) {
+    throw new Error(
+      `Unexpected cylinder mesh size: ${cylinder.vertexCount} vertices, ${cylinder.triangleCount} triangles.`
+    );
+  }
+
   for (const key of timingKeys) {
     if (!Number.isFinite(metrics[key])) {
       throw new Error(`Missing or invalid timing metric: ${key}.`);
@@ -58,7 +72,8 @@ export function createSuccessRecord(input) {
       workerExecutionMs: input.smokeResult.timings.workerExecutionMs,
       roundTripMs: input.smokeResult.timings.roundTripMs,
       vertexCount: input.smokeResult.vertexCount,
-      triangleCount: input.smokeResult.triangleCount
+      triangleCount: input.smokeResult.triangleCount,
+      meshes: input.smokeResult.meshes
     }
   };
 }
@@ -102,6 +117,17 @@ export function printSummary(record, metricsPath) {
   console.log(
     `mesh: ${metrics.vertexCount} vertices, ${metrics.triangleCount} triangles`
   );
+
+  if (metrics.meshes?.length) {
+    console.log(
+      `meshes: ${metrics.meshes
+        .map(
+          (mesh) =>
+            `${mesh.primitive} ${mesh.vertexCount} vertices/${mesh.triangleCount} triangles`
+        )
+        .join(", ")}`
+    );
+  }
   console.log(
     `OCCT WASM: ${formatBytes(metrics.occtWasmBytes)} raw, ${formatBytes(
       metrics.occtWasmGzipBytes

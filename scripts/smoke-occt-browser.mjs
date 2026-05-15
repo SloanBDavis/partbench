@@ -24,7 +24,7 @@ const smokeHtmlPath = join(smokeDistDir, "geometry-worker-smoke.html");
 const metricsDir = join(repoRoot, ".metrics");
 const metricsPath = join(metricsDir, "occt-browser.jsonl");
 const smokeTimeoutMs = 60_000;
-const scenarioName = "box-2x3x4";
+const scenarioName = "box-and-cylinder";
 
 await mkdir(metricsDir, { recursive: true });
 const browserExecutable = findBrowserExecutable();

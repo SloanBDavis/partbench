@@ -10,6 +10,7 @@ import {
 } from "./derivedGeometry";
 import type {
   OcctMeshDevBoxInput,
+  OcctMeshDevCylinderInput,
   OcctMeshDevResult,
   OcctMeshDevRuntime
 } from "./occtMeshDev";
@@ -30,7 +31,7 @@ describe("derivedGeometry", () => {
     );
   });
 
-  it("marks cylinders unsupported and boxes pending then ready", async () => {
+  it("marks boxes and cylinders pending then ready", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(async (input) =>
       createResult(input.id, createMesh(input.id))
@@ -44,18 +45,24 @@ describe("derivedGeometry", () => {
 
     expect(snapshots.at(-1)?.entries.map((entry) => entry.status)).toEqual([
       "pending",
-      "unsupported"
+      "pending"
     ]);
-    expect(runtime.inputs.map((input) => input.id)).toEqual(["box_1"]);
+    expect(runtime.inputs.map((input) => input.id)).toEqual([
+      "box_1",
+      "cylinder_1"
+    ]);
 
     await flushPromises();
 
     const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
     expect(snapshot.entries.map((entry) => entry.status)).toEqual([
       "ready",
-      "unsupported"
+      "ready"
     ]);
-    expect(snapshot.meshes.map((mesh) => mesh.id)).toEqual(["box_1"]);
+    expect(snapshot.meshes.map((mesh) => mesh.id)).toEqual([
+      "box_1",
+      "cylinder_1"
+    ]);
     expect(getDerivedGeometryStatusLabel(snapshot.entries[0])).toBe(
       "mesh ready"
     );
@@ -85,7 +92,9 @@ describe("derivedGeometry", () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
       runtime: createRuntime((input) =>
-        input.dimensions.width === 2 ? first.promise : second.promise
+        "width" in input.dimensions && input.dimensions.width === 2
+          ? first.promise
+          : second.promise
       ),
       onChange: (snapshot) => snapshots.push(snapshot)
     });
@@ -193,13 +202,21 @@ function createCylinderObject(): CylinderObject {
 }
 
 function createRuntime(
-  handler: (input: OcctMeshDevBoxInput) => Promise<OcctMeshDevResult>
-): OcctMeshDevRuntime & { readonly inputs: OcctMeshDevBoxInput[] } {
-  const inputs: OcctMeshDevBoxInput[] = [];
+  handler: (
+    input: OcctMeshDevBoxInput | OcctMeshDevCylinderInput
+  ) => Promise<OcctMeshDevResult>
+): OcctMeshDevRuntime & {
+  readonly inputs: readonly (OcctMeshDevBoxInput | OcctMeshDevCylinderInput)[];
+} {
+  const inputs: (OcctMeshDevBoxInput | OcctMeshDevCylinderInput)[] = [];
 
   return {
     inputs,
     tessellateBox(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    tessellateCylinder(input) {
       inputs.push(input);
       return handler(input);
     },

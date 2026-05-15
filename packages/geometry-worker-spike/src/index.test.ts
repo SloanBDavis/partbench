@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GeometryKernelWorkerSpike,
   createBoxTessellationWorkerRequest,
+  createCylinderTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorkerSpike
@@ -32,6 +33,33 @@ describe("geometry-worker-spike", () => {
         },
         tessellation: {
           linearDeflection: 0.25
+        }
+      }
+    });
+  });
+
+  it("creates a typed cylinder tessellation worker request", () => {
+    const request = createCylinderTessellationWorkerRequest({
+      id: "worker_req_cylinder",
+      radius: 10,
+      height: 30,
+      angularDeflection: 0.5
+    });
+
+    expect(request).toEqual({
+      id: "worker_req_cylinder",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payload: {
+        id: "worker_req_cylinder:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateCylinder",
+        dimensions: {
+          radius: 10,
+          height: 30
+        },
+        tessellation: {
+          angularDeflection: 0.5
         }
       }
     });
@@ -80,6 +108,43 @@ describe("geometry-worker-spike", () => {
     expect(response.response.mesh.triangleCount).toBe(12);
     expect(response.response.mesh.positions).toBeInstanceOf(Float32Array);
     expect(response.response.mesh.indices).toBeInstanceOf(Uint32Array);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
+  it("tessellates one cylinder asynchronously through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorkerSpike({ delayMs: 1 });
+    const response = await worker.execute(
+      createCylinderTessellationWorkerRequest({
+        id: "worker_req_cylinder",
+        payloadId: "geometry_req_cylinder",
+        radius: 10,
+        height: 30
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_cylinder",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payloadId: "geometry_req_cylinder",
+      response: {
+        ok: true,
+        id: "geometry_req_cylinder",
+        op: "geometry.tessellateCylinder",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("cylinder");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
     expect(response.transferables).toEqual([
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer

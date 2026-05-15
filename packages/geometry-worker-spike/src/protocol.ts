@@ -154,6 +154,33 @@ export function createBoxTessellationWorkerRequest(input: {
   };
 }
 
+export function createCylinderTessellationWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly radius: number;
+  readonly height: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerSpikeRequest {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker-spike.v1",
+    kind: "geometry-worker-spike.tessellatePrimitive",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCylinder",
+      dimensions: {
+        radius: input.radius,
+        height: input.height
+      },
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
 export function createKernelFailureResponse(
   request: GeometryWorkerSpikeRequest,
   error: unknown

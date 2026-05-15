@@ -42,6 +42,42 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
+  it("tessellates a cylinder through the isolated OCCT spike", async () => {
+    const response = await executeGeometryKernelRequest({
+      id: "geometry_req_cylinder",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCylinder",
+      dimensions: {
+        radius: 10,
+        height: 30
+      }
+    });
+
+    expect(response.ok).toBe(true);
+
+    if (!response.ok) {
+      throw new Error(response.error.message);
+    }
+
+    expect(response).toMatchObject({
+      id: "geometry_req_cylinder",
+      op: "geometry.tessellateCylinder",
+      warnings: []
+    });
+    expect(response.mesh.primitive).toBe("cylinder");
+    expect(response.mesh.faceCount).toBeGreaterThanOrEqual(3);
+    expect(response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+    expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+    expect(response.mesh.positions).toHaveLength(response.mesh.vertexCount * 3);
+    expect(response.mesh.indices).toHaveLength(response.mesh.triangleCount * 3);
+    expect(getGeometryResponseTransferables(response)).toEqual([
+      response.mesh.positions.buffer,
+      response.mesh.indices.buffer
+    ]);
+  });
+
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_bad_dimensions",
@@ -61,6 +97,29 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message: "Box dimensions must be finite numbers greater than zero."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured cylinder validation errors before calling the kernel", async () => {
+    const response = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_cylinder",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCylinder",
+      dimensions: {
+        radius: 0,
+        height: 30
+      }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_bad_cylinder",
+      op: "geometry.tessellateCylinder",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: "Cylinder dimensions must be finite numbers greater than zero."
       },
       warnings: []
     });

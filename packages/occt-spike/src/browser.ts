@@ -6,12 +6,22 @@ import type { OpenCascadeInstance } from "opencascade.js";
 import {
   createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
-  type OcctBoxInput,
-  type OcctSpikeMesh
+  type OcctBoxInput
 } from "./tessellateBox";
+import type { OcctSpikeMesh } from "./readTriangulatedShape";
+import {
+  createOcctCylinderMeshWithInstance,
+  createOcctCylinderMeshWithLoader,
+  type OcctCylinderInput
+} from "./tessellateCylinder";
 
-export type { OcctBoxInput, OcctSpikeMesh };
-export { createOcctBoxMeshWithInstance, createOcctBoxMeshWithLoader };
+export type { OcctBoxInput, OcctCylinderInput, OcctSpikeMesh };
+export {
+  createOcctBoxMeshWithInstance,
+  createOcctBoxMeshWithLoader,
+  createOcctCylinderMeshWithInstance,
+  createOcctCylinderMeshWithLoader
+};
 
 type OpenCascadeModuleObject = Record<string, unknown>;
 type LoadDynamicLibrary = (
@@ -90,4 +100,10 @@ export async function createOcctBoxMeshSpike(
   input: OcctBoxInput
 ): Promise<OcctSpikeMesh> {
   return createOcctBoxMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctCylinderMeshSpike(
+  input: OcctCylinderInput
+): Promise<OcctSpikeMesh> {
+  return createOcctCylinderMeshWithLoader(loadBrowserOcct, input);
 }

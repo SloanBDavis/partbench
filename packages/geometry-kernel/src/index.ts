@@ -1,8 +1,12 @@
-import { createOcctBoxMeshSpike } from "@web-cad/occt-spike";
+import {
+  createOcctBoxMeshSpike,
+  createOcctCylinderMeshSpike
+} from "@web-cad/occt-spike";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
   type BoxGeometryDimensions,
+  type CylinderGeometryDimensions,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
   type GeometryKernelOp,
@@ -14,11 +18,13 @@ import {
   type GeometryKernelErrorResponse,
   type SerializableMeshData,
   type TessellateBoxRequest,
+  type TessellateCylinderRequest,
   type TessellationOptions
 } from "./kernel";
 
 export type {
   BoxGeometryDimensions,
+  CylinderGeometryDimensions,
   GeometryKernelError,
   GeometryKernelErrorCode,
   GeometryKernelOp,
@@ -30,6 +36,7 @@ export type {
   GeometryKernelErrorResponse,
   SerializableMeshData,
   TessellateBoxRequest,
+  TessellateCylinderRequest,
   TessellationOptions
 };
 export { getGeometryResponseTransferables };
@@ -38,7 +45,10 @@ export async function executeGeometryKernelRequest(
   request: GeometryKernelRequest
 ): Promise<GeometryKernelResponse> {
   return executeGeometryKernelRequestWithMeshFactory(
-    createOcctBoxMeshSpike,
+    {
+      createBoxMesh: createOcctBoxMeshSpike,
+      createCylinderMesh: createOcctCylinderMeshSpike
+    },
     request
   );
 }

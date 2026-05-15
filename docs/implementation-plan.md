@@ -30,7 +30,8 @@ The current repo is a TypeScript pnpm workspace with a Vite React app and focuse
 packages:
 
 - `apps/web` - browser UI, command-worker entrypoint, geometry-worker entrypoint,
-  feature-flagged derived mesh service for OCCT box meshes, and smoke page.
+  feature-flagged derived mesh service for OCCT box and cylinder meshes, and
+  smoke page.
 - `packages/cad-protocol` - typed CADOps command, batch, and query shapes.
 - `packages/cad-core` - in-memory document model, command application,
   transactions, semantic diffs, undo/redo, CADOps query path, and project JSON
@@ -178,11 +179,11 @@ Delivered:
 Current measured smoke example:
 
 ```text
-scenario: box-2x3x4
+scenario: box-and-cylinder
 OCCT load: ~1.2-1.4 s on the current local machine
 tessellation: ~15-20 ms
 round trip: ~1.3-1.4 s on first load
-mesh: 24 vertices, 12 triangles
+meshes: box 24 vertices / 12 triangles, cylinder ~100 vertices / ~100 triangles
 OCCT WASM: ~50.31 MB raw, ~13.96 MB gzip
 ```
 
@@ -251,11 +252,12 @@ Current limitations:
 
 - `cad-core` stores scene objects, not a true feature graph.
 - There is no real B-rep topology in the authoritative document.
-- OCCT currently proves box tessellation only.
-- Cylinders still render through the simple primitive renderer path.
+- OCCT currently proves box and cylinder tessellation.
+- Primitive rendering remains the fallback when derived geometry is unavailable,
+  loading, or failed.
 - The OCCT mesh UI is dev-flagged and not a production geometry pipeline.
 - The first feature-flagged derived mesh cache/invalidation path exists for
-  boxes, but there is no full production geometry cache yet.
+  boxes and cylinders, but there is no full production geometry cache yet.
 - No stable topological naming system exists yet.
 - No sketch solver exists yet.
 - No exact measurement API exists yet.
@@ -324,6 +326,9 @@ Current slice delivered:
 - Derived mesh entries are reconciled after create, transform update, delete,
   undo, redo, and project import/load because those paths update the current
   document snapshot.
+- Cylinder tessellation now runs through the same OCCT spike, geometry-kernel
+  facade, browser worker, renderer mesh bridge, and derived geometry status path
+  as box tessellation.
 
 Exit criteria:
 
@@ -337,10 +342,16 @@ Goal: make the geometry-kernel facade useful for the current scene command set.
 
 Deliverables:
 
-- Add typed tessellation request/response for cylinders.
-- Tessellate cylinders through the worker.
-- Route boxes and cylinders through the same derived geometry service.
-- Add tests and browser smoke scenarios for box and cylinder.
+- Add typed tessellation request/response for cylinders. Current implementation
+  supports this through `geometry.tessellateCylinder`.
+- Tessellate cylinders through the worker. Current implementation supports this
+  through the same browser-worker path as boxes.
+- Route boxes and cylinders through the same derived geometry service. Current
+  implementation keeps both as derived views/caches behind the feature flag.
+- Add tests and browser smoke scenarios for box and cylinder. Current
+  implementation adds focused package/app tests for the cylinder request,
+  kernel, worker, mesh bridge, and derived service paths; the browser smoke runs
+  box and cylinder requests in the same worker session.
 - Keep command semantics unchanged while mesh derivation improves.
 
 Exit criteria:

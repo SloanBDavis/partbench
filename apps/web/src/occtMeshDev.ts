@@ -15,6 +15,15 @@ export interface OcctMeshDevBoxInput {
   readonly transform: RenderTransform;
 }
 
+export interface OcctMeshDevCylinderInput {
+  readonly id: string;
+  readonly dimensions: {
+    readonly radius: number;
+    readonly height: number;
+  };
+  readonly transform: RenderTransform;
+}
+
 export interface OcctMeshDevMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
@@ -42,6 +51,9 @@ export interface OcctMeshDevErrorDetails {
 
 export interface OcctMeshDevRuntime {
   tessellateBox(input: OcctMeshDevBoxInput): Promise<OcctMeshDevResult>;
+  tessellateCylinder(
+    input: OcctMeshDevCylinderInput
+  ): Promise<OcctMeshDevResult>;
   dispose(): void;
 }
 

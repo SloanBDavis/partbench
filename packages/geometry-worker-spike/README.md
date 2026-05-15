@@ -46,7 +46,9 @@ that can be rebuilt from authoritative document state.
 }
 ```
 
-`createBoxTessellationWorkerRequest()` builds this shape for the current spike.
+`createBoxTessellationWorkerRequest()` and
+`createCylinderTessellationWorkerRequest()` build these shapes for the current
+spike.
 
 ## Response Shape
 
@@ -126,7 +128,7 @@ loading fails, it affects only that explicit dev workflow.
   lifecycle cleanup policy, and a smaller custom OCCT build.
 - Typed arrays are ready for structured clone/transfer, but no production mesh
   cache or invalidation strategy is implemented here.
-- Only one primitive path is proven: box tessellation.
+- Two primitive paths are proven: box and cylinder tessellation.
 - The browser Worker path is still a spike path, not a production geometry
   service.
 - Tests cover the browser transport wrapper and an in-process worker-backed

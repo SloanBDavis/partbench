@@ -5,6 +5,9 @@ export function createOcctMeshDevRuntime(): OcctMeshDevRuntime {
     async tessellateBox() {
       throw new Error("OCCT mesh dev runtime is disabled.");
     },
+    async tessellateCylinder() {
+      throw new Error("OCCT mesh dev runtime is disabled.");
+    },
     dispose() {}
   };
 }

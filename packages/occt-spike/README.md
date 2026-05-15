@@ -1,7 +1,7 @@
 # OCCT WASM Spike
 
 This package is an isolated Milestone 4 spike. It proves that the repo can load
-an Open CASCADE-compatible WASM package, create one primitive shape, run OCCT
+an Open CASCADE-compatible WASM package, create primitive shapes, run OCCT
 tessellation, and return mesh-like typed arrays.
 
 It is not imported by `packages/cad-core` or `packages/renderer`. Normal app
@@ -19,10 +19,11 @@ DSL so the integration risk is visible at the kernel boundary.
 
 ## What The Spike Does
 
-`createOcctBoxMeshSpike()`:
+`createOcctBoxMeshSpike()` and `createOcctCylinderMeshSpike()`:
 
 1. Loads OpenCascade.js WASM.
-2. Creates a `BRepPrimAPI_MakeBox`.
+2. Creates a primitive with `BRepPrimAPI_MakeBox` or
+   `BRepPrimAPI_MakeCylinder`.
 3. Runs `BRepMesh_IncrementalMesh`.
 4. Reads face triangulations with `BRep_Tool.Triangulation`.
 5. Returns:
@@ -65,8 +66,8 @@ pnpm build:geometry-worker
 ```
 
 and by opening `apps/web/geometry-worker-smoke.html` through Vite. The smoke page
-starts the browser Worker, loads OCCT WASM, tessellates one box, and adapts the
-mesh into renderer data.
+starts the browser Worker, loads OCCT WASM, runs a primitive tessellation
+request, and adapts the mesh into renderer data.
 
 ## Runtime And Bundle Risks
 

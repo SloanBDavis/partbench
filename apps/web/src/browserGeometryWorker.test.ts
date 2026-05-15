@@ -1,6 +1,7 @@
 import {
   GeometryKernelWorkerSpike,
   createBoxTessellationWorkerRequest,
+  createCylinderTessellationWorkerRequest,
   type GeometryWorkerSpikeRequest
 } from "@web-cad/geometry-worker-spike";
 import { describe, expect, it } from "vitest";
@@ -182,6 +183,47 @@ describe("BrowserGeometryWorker", () => {
     expect(response.response.mesh.primitive).toBe("box");
     expect(response.response.mesh.vertexCount).toBe(24);
     expect(response.response.mesh.triangleCount).toBe(12);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
+  it("can run one cylinder tessellation through the browser transport wrapper", async () => {
+    const kernelWorker = new GeometryKernelWorkerSpike();
+    const transport = new FakeGeometryWorkerTransport((request) =>
+      kernelWorker.execute(request)
+    );
+    const worker = new BrowserGeometryWorker(transport);
+
+    const response = await worker.execute(
+      createCylinderTessellationWorkerRequest({
+        id: "browser_geometry_req_cylinder",
+        payloadId: "browser_geometry_payload_cylinder",
+        radius: 10,
+        height: 30
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "browser_geometry_req_cylinder",
+      version: "geometry-worker-spike.v1",
+      kind: "geometry-worker-spike.tessellatePrimitive",
+      payloadId: "browser_geometry_payload_cylinder",
+      response: {
+        ok: true,
+        id: "browser_geometry_payload_cylinder",
+        op: "geometry.tessellateCylinder"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("cylinder");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
     expect(response.transferables).toEqual([
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer

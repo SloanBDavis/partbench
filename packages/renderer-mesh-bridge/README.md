@@ -6,7 +6,7 @@ It accepts `SerializableMeshData` from `@web-cad/geometry-kernel` or a `Geometry
 
 To display the result in the current app stack, pass `result.mesh` into
 `renderCanvasScene({ meshes: [...] })` or the web app `ViewportCanvas` `meshes`
-prop. The web app mounts the OCCT-backed mesh button only when
+prop. The web app mounts the derived OCCT mesh service only when
 `VITE_ENABLE_OCCT_MESH_DEV=true`; normal startup remains on the primitive
 renderer path and does not start the geometry worker.
 

@@ -18,6 +18,7 @@ import {
 
 export {
   createBoxTessellationWorkerRequest,
+  createCylinderTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorkerSpike,
@@ -139,12 +140,15 @@ export function createGeometryKernelBrowserWorkerSpike(
 function getUnsupportedPrimitiveMessage(
   request: GeometryWorkerSpikeRequest
 ): string | undefined {
-  if (request.kind !== "geometry-worker-spike.tessellatePrimitive") {
-    return `Unsupported geometry worker request kind: ${request.kind}.`;
+  const kind = request.kind as string;
+  const op = request.payload.op as string;
+
+  if (kind !== "geometry-worker-spike.tessellatePrimitive") {
+    return `Unsupported geometry worker request kind: ${kind}.`;
   }
 
-  if (request.payload.op !== "geometry.tessellateBox") {
-    return `Unsupported geometry kernel operation: ${request.payload.op}.`;
+  if (op !== "geometry.tessellateBox" && op !== "geometry.tessellateCylinder") {
+    return `Unsupported geometry kernel operation: ${op}.`;
   }
 
   return undefined;

@@ -1,4 +1,4 @@
-import type { BoxObject, SceneObject } from "@web-cad/cad-core";
+import type { BoxObject, CylinderObject, SceneObject } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createOcctMeshDevErrorDetails,
@@ -61,6 +61,8 @@ export interface DerivedGeometryServiceOptions {
   readonly onChange: (snapshot: DerivedGeometrySnapshot) => void;
 }
 
+type SupportedDerivedGeometryObject = BoxObject | CylinderObject;
+
 export class DerivedGeometryService {
   readonly #runtime: OcctMeshDevRuntime;
   readonly #onChange: (snapshot: DerivedGeometrySnapshot) => void;
@@ -93,14 +95,15 @@ export class DerivedGeometryService {
       const cacheKey = createDerivedGeometryCacheKey(object);
       const existing = this.#entries.get(object.id);
 
-      if (object.kind !== "box") {
+      if (!isSupportedDerivedGeometryObject(object)) {
         this.#requestVersions.delete(object.id);
         const unsupported: DerivedGeometryUnsupportedEntry = {
           objectId: object.id,
           objectKind: object.kind,
           cacheKey,
           status: "unsupported",
-          message: "Derived OCCT mesh generation currently supports boxes only."
+          message:
+            "Derived OCCT mesh generation currently supports boxes and cylinders only."
         };
 
         if (!isSameEntry(existing, unsupported)) {
@@ -115,6 +118,7 @@ export class DerivedGeometryService {
         continue;
       }
 
+      const supportedObject = object as SupportedDerivedGeometryObject;
       this.#nextRequestVersion += 1;
       const requestVersion = this.#nextRequestVersion;
       this.#requestVersions.set(object.id, requestVersion);
@@ -126,7 +130,7 @@ export class DerivedGeometryService {
       };
       this.#entries.set(object.id, pending);
       changed = true;
-      void this.#deriveBox(object, cacheKey, requestVersion);
+      void this.#deriveObject(supportedObject, cacheKey, requestVersion);
     }
 
     for (const objectId of this.#entries.keys()) {
@@ -158,17 +162,24 @@ export class DerivedGeometryService {
     this.#runtime.dispose();
   }
 
-  async #deriveBox(
-    object: BoxObject,
+  async #deriveObject(
+    object: SupportedDerivedGeometryObject,
     cacheKey: string,
     requestVersion: number
   ): Promise<void> {
     try {
-      const result = await this.#runtime.tessellateBox({
-        id: object.id,
-        dimensions: object.dimensions,
-        transform: object.transform
-      });
+      const result =
+        object.kind === "box"
+          ? await this.#runtime.tessellateBox({
+              id: object.id,
+              dimensions: object.dimensions,
+              transform: object.transform
+            })
+          : await this.#runtime.tessellateCylinder({
+              id: object.id,
+              dimensions: object.dimensions,
+              transform: object.transform
+            });
 
       if (!this.#canApplyResult(object.id, cacheKey, requestVersion)) {
         return;
@@ -214,6 +225,10 @@ export class DerivedGeometryService {
   #emitChange(): void {
     this.#onChange(this.getSnapshot());
   }
+}
+
+function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
+  return object.kind === "box" || object.kind === "cylinder";
 }
 
 export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {

@@ -34,7 +34,7 @@ describe("occt smoke records", () => {
       gitSha: "abc123",
       nodeVersion: "v23.3.0",
       remoteDebuggingPort: 3001,
-      scenarioName: "box-2x3x4",
+      scenarioName: "box-and-cylinder",
       timestamp: "2026-05-14T00:00:00.000Z",
       smokeResult: {
         vertexCount: 24,
@@ -51,7 +51,21 @@ describe("occt smoke records", () => {
           geometryKernelMs: 1_000_000,
           workerExecutionMs: 1_000_001,
           roundTripMs: 1_000_002
-        }
+        },
+        meshes: [
+          {
+            scenario: "box-2x3x4",
+            primitive: "box",
+            vertexCount: 24,
+            triangleCount: 12
+          },
+          {
+            scenario: "cylinder-r1-h4",
+            primitive: "cylinder",
+            vertexCount: 48,
+            triangleCount: 32
+          }
+        ]
       }
     });
 
@@ -61,7 +75,7 @@ describe("occt smoke records", () => {
       timestamp: "2026-05-14T00:00:00.000Z",
       gitSha: "abc123",
       nodeVersion: "v23.3.0",
-      scenario: "box-2x3x4",
+      scenario: "box-and-cylinder",
       browser: {
         remoteDebuggingPort: 3001,
         name: "Chrome/148.0.7778.97"
@@ -74,7 +88,21 @@ describe("occt smoke records", () => {
         ...assetMetrics,
         occtLoadMs: 999_999,
         vertexCount: 24,
-        triangleCount: 12
+        triangleCount: 12,
+        meshes: [
+          {
+            scenario: "box-2x3x4",
+            primitive: "box",
+            vertexCount: 24,
+            triangleCount: 12
+          },
+          {
+            scenario: "cylinder-r1-h4",
+            primitive: "cylinder",
+            vertexCount: 48,
+            triangleCount: 32
+          }
+        ]
       }
     });
     expect(() => assertSmokeResult(record)).not.toThrow();

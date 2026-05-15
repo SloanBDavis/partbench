@@ -1,11 +1,18 @@
 export type GeometryKernelVersion = "geometry-kernel.v1";
-export type GeometryKernelOp = "geometry.tessellateBox";
-export type GeometryKernelPrimitive = "box";
+export type GeometryKernelOp =
+  | "geometry.tessellateBox"
+  | "geometry.tessellateCylinder";
+export type GeometryKernelPrimitive = "box" | "cylinder";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
   readonly height: number;
   readonly depth: number;
+}
+
+export interface CylinderGeometryDimensions {
+  readonly radius: number;
+  readonly height: number;
 }
 
 export interface TessellationOptions {
@@ -21,7 +28,17 @@ export interface TessellateBoxRequest {
   readonly tessellation?: TessellationOptions;
 }
 
-export type GeometryKernelRequest = TessellateBoxRequest;
+export interface TessellateCylinderRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.tessellateCylinder";
+  readonly dimensions: CylinderGeometryDimensions;
+  readonly tessellation?: TessellationOptions;
+}
+
+export type GeometryKernelRequest =
+  | TessellateBoxRequest
+  | TessellateCylinderRequest;
 
 export interface SerializableMeshData {
   readonly primitive: GeometryKernelPrimitive;
@@ -71,12 +88,21 @@ export interface GeometryKernelMeshResult {
   readonly faceCount: number;
 }
 
-export type GeometryKernelMeshFactory = (
+export type GeometryKernelBoxMeshFactory = (
   input: BoxGeometryDimensions & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelCylinderMeshFactory = (
+  input: CylinderGeometryDimensions & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
+export interface GeometryKernelMeshFactories {
+  readonly createBoxMesh: GeometryKernelBoxMeshFactory;
+  readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
+}
+
 export async function executeGeometryKernelRequestWithMeshFactory(
-  createBoxMesh: GeometryKernelMeshFactory,
+  factories: GeometryKernelMeshFactories,
   request: GeometryKernelRequest
 ): Promise<GeometryKernelResponse> {
   const validationError = validateRequest(request);
@@ -86,11 +112,18 @@ export async function executeGeometryKernelRequestWithMeshFactory(
   }
 
   try {
-    const mesh = await createBoxMesh({
-      ...request.dimensions,
-      linearDeflection: request.tessellation?.linearDeflection,
-      angularDeflection: request.tessellation?.angularDeflection
-    });
+    const mesh =
+      request.op === "geometry.tessellateBox"
+        ? await factories.createBoxMesh({
+            ...request.dimensions,
+            linearDeflection: request.tessellation?.linearDeflection,
+            angularDeflection: request.tessellation?.angularDeflection
+          })
+        : await factories.createCylinderMesh({
+            ...request.dimensions,
+            linearDeflection: request.tessellation?.linearDeflection,
+            angularDeflection: request.tessellation?.angularDeflection
+          });
 
     return {
       ok: true,
@@ -133,14 +166,24 @@ export function getGeometryResponseTransferables(
 function validateRequest(
   request: GeometryKernelRequest
 ): GeometryKernelError | undefined {
-  if (
-    !isPositiveFiniteNumber(request.dimensions.width) ||
-    !isPositiveFiniteNumber(request.dimensions.height) ||
-    !isPositiveFiniteNumber(request.dimensions.depth)
+  if (request.op === "geometry.tessellateBox") {
+    if (
+      !isPositiveFiniteNumber(request.dimensions.width) ||
+      !isPositiveFiniteNumber(request.dimensions.height) ||
+      !isPositiveFiniteNumber(request.dimensions.depth)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Box dimensions must be finite numbers greater than zero."
+      };
+    }
+  } else if (
+    !isPositiveFiniteNumber(request.dimensions.radius) ||
+    !isPositiveFiniteNumber(request.dimensions.height)
   ) {
     return {
       code: "INVALID_DIMENSIONS",
-      message: "Box dimensions must be finite numbers greater than zero."
+      message: "Cylinder dimensions must be finite numbers greater than zero."
     };
   }
 

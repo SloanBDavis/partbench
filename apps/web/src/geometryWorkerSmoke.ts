@@ -1,4 +1,7 @@
-import { createBoxTessellationWorkerRequest } from "@web-cad/geometry-worker-spike/browser";
+import {
+  createBoxTessellationWorkerRequest,
+  createCylinderTessellationWorkerRequest
+} from "@web-cad/geometry-worker-spike/browser";
 import { createRenderMeshFromGeometryWorkerResponse } from "@web-cad/renderer-mesh-bridge";
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
 import {
@@ -14,39 +17,69 @@ async function runGeometryWorkerSmoke(): Promise<void> {
   const worker = new BrowserGeometryWorker();
 
   try {
-    const roundTripStart = performance.now();
-    const response = await worker.execute(
-      createBoxTessellationWorkerRequest({
-        id: "browser_occt_smoke",
-        payloadId: "browser_occt_smoke_payload",
-        width: 2,
-        height: 3,
-        depth: 4
-      })
-    );
-    const roundTripMs = performance.now() - roundTripStart;
+    const meshResults = [];
+    const requests = [
+      {
+        scenario: "box-2x3x4",
+        request: createBoxTessellationWorkerRequest({
+          id: "browser_occt_smoke_box",
+          payloadId: "browser_occt_smoke_box_payload",
+          width: 2,
+          height: 3,
+          depth: 4
+        })
+      },
+      {
+        scenario: "cylinder-r1-h4",
+        request: createCylinderTessellationWorkerRequest({
+          id: "browser_occt_smoke_cylinder",
+          payloadId: "browser_occt_smoke_cylinder_payload",
+          radius: 1,
+          height: 4
+        })
+      }
+    ];
 
-    if (!response.response.ok) {
-      throw createOcctMeshDevErrorFromWorkerResponse(response);
+    for (const item of requests) {
+      const roundTripStart = performance.now();
+      const response = await worker.execute(item.request);
+      const roundTripMs = performance.now() - roundTripStart;
+
+      if (!response.response.ok) {
+        throw createOcctMeshDevErrorFromWorkerResponse(response);
+      }
+
+      const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {
+        id: `${item.request.id}_mesh`,
+        alignment: "boundsCenter"
+      });
+
+      meshResults.push({
+        scenario: item.scenario,
+        primitive: response.response.mesh.primitive,
+        vertexCount: renderMesh.vertexCount,
+        triangleCount: renderMesh.triangleCount,
+        bounds: renderMesh.bounds,
+        diagnostics: response.diagnostics,
+        timings: {
+          occtLoadMs: response.timings?.occtLoadMs,
+          tessellationMs: response.timings?.tessellationMs,
+          geometryKernelMs: response.timings?.geometryKernelMs,
+          workerExecutionMs: response.timings?.workerExecutionMs,
+          roundTripMs
+        }
+      });
     }
 
-    const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {
-      id: "browser_occt_smoke_mesh",
-      alignment: "boundsCenter"
-    });
+    const primary = meshResults[0];
     const result = {
-      ok: response.response.ok,
-      vertexCount: renderMesh.vertexCount,
-      triangleCount: renderMesh.triangleCount,
-      bounds: renderMesh.bounds,
-      diagnostics: response.diagnostics,
-      timings: {
-        occtLoadMs: response.timings?.occtLoadMs,
-        tessellationMs: response.timings?.tessellationMs,
-        geometryKernelMs: response.timings?.geometryKernelMs,
-        workerExecutionMs: response.timings?.workerExecutionMs,
-        roundTripMs
-      }
+      ok: true,
+      vertexCount: primary.vertexCount,
+      triangleCount: primary.triangleCount,
+      bounds: primary.bounds,
+      diagnostics: primary.diagnostics,
+      timings: primary.timings,
+      meshes: meshResults
     };
 
     document.body.dataset.geometryWorkerSmoke = "ok";

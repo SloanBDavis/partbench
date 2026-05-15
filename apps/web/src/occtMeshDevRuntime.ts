@@ -1,8 +1,13 @@
-import type { GeometryWorkerSpike } from "@web-cad/geometry-worker-spike";
+import type {
+  GeometryWorkerSpike,
+  GeometryWorkerSpikeRequest
+} from "@web-cad/geometry-worker-spike";
 import {
   createOcctMeshDevErrorFromWorkerResponse,
   createOcctMeshDevMetrics,
   type OcctMeshDevBoxInput,
+  type OcctMeshDevCylinderInput,
+  type OcctMeshDevResult,
   type OcctMeshDevRuntime
 } from "./occtMeshDev";
 
@@ -22,19 +27,48 @@ export function createOcctMeshDevRuntime(): OcctMeshDevRuntime {
     return geometryWorker;
   }
 
+  async function executeTessellationRequest(
+    input: OcctMeshDevBoxInput | OcctMeshDevCylinderInput,
+    request: GeometryWorkerSpikeRequest
+  ): Promise<OcctMeshDevResult> {
+    const { createRenderMeshFromGeometryWorkerResponse } =
+      await import("@web-cad/renderer-mesh-bridge");
+    const worker = await getGeometryWorker();
+    const roundTripStart = performance.now();
+    const response = await worker.execute(request);
+    const roundTripMs = performance.now() - roundTripStart;
+
+    if (!response.response.ok) {
+      throw createOcctMeshDevErrorFromWorkerResponse(response);
+    }
+
+    const bridgeResult = createRenderMeshFromGeometryWorkerResponse(response, {
+      id: input.id,
+      alignment: "boundsCenter",
+      transform: input.transform,
+      label: `${input.id} OCCT mesh`
+    });
+
+    return {
+      mesh: bridgeResult.mesh,
+      metrics: createOcctMeshDevMetrics({
+        objectId: input.id,
+        response,
+        bridgeResult,
+        roundTripMs
+      }),
+      message: `Displayed derived OCCT mesh for ${input.id}.`
+    };
+  }
+
   return {
     async tessellateBox(input: OcctMeshDevBoxInput) {
-      const [
-        { createBoxTessellationWorkerRequest },
-        { createRenderMeshFromGeometryWorkerResponse }
-      ] = await Promise.all([
-        import("@web-cad/geometry-worker-spike/browser"),
-        import("@web-cad/renderer-mesh-bridge")
-      ]);
-      const worker = await getGeometryWorker();
+      const { createBoxTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker-spike/browser");
       const requestId = `occt_mesh_${input.id}_${Date.now()}`;
-      const roundTripStart = performance.now();
-      const response = await worker.execute(
+
+      return executeTessellationRequest(
+        input,
         createBoxTessellationWorkerRequest({
           id: requestId,
           payloadId: `${requestId}:kernel`,
@@ -45,32 +79,23 @@ export function createOcctMeshDevRuntime(): OcctMeshDevRuntime {
           angularDeflection: 0.5
         })
       );
-      const roundTripMs = performance.now() - roundTripStart;
+    },
+    async tessellateCylinder(input: OcctMeshDevCylinderInput) {
+      const { createCylinderTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker-spike/browser");
+      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
 
-      if (!response.response.ok) {
-        throw createOcctMeshDevErrorFromWorkerResponse(response);
-      }
-
-      const bridgeResult = createRenderMeshFromGeometryWorkerResponse(
-        response,
-        {
-          id: input.id,
-          alignment: "boundsCenter",
-          transform: input.transform,
-          label: `${input.id} OCCT mesh`
-        }
+      return executeTessellationRequest(
+        input,
+        createCylinderTessellationWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          radius: input.dimensions.radius,
+          height: input.dimensions.height,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
       );
-
-      return {
-        mesh: bridgeResult.mesh,
-        metrics: createOcctMeshDevMetrics({
-          objectId: input.id,
-          response,
-          bridgeResult,
-          roundTripMs
-        }),
-        message: `Displayed derived OCCT mesh for ${input.id}.`
-      };
     },
     dispose() {
       geometryWorker?.dispose();
