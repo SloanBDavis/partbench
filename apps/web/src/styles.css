@@ -284,6 +284,9 @@ h2 {
 .object-tree ul button.selected {
   border-color: #bf7c18;
   background: #fff7e8;
+  box-shadow:
+    inset 3px 0 0 #f2a541,
+    0 0 0 1px rgba(242, 165, 65, 0.18);
 }
 
 .object-tree .object-id {
@@ -623,6 +626,12 @@ h2 {
   background: rgba(255, 255, 255, 0.92);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.viewport-actions button:disabled {
+  border-color: #d4dbe4;
+  color: #8b98a7;
+  cursor: not-allowed;
 }
 
 canvas {

@@ -34,6 +34,40 @@ describe("renderScene", () => {
     expect(scene.meshes).toEqual([mesh]);
   });
 
+  it("keeps renderable IDs stable for primitive and mesh selection", () => {
+    const box = createBoxObject("selected_box");
+    const cylinder = createCylinderObject("selected_cylinder");
+    const mesh = createMesh(box.id);
+    const scene = createRenderSceneInputs(
+      [box, cylinder],
+      new Map([
+        [
+          box.id,
+          {
+            objectId: box.id,
+            objectKind: "box",
+            cacheKey: "box-ready",
+            status: "ready",
+            mesh,
+            metrics: {
+              objectId: box.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ])
+    );
+
+    expect(scene.meshes.map((renderable) => renderable.id)).toEqual([
+      "selected_box"
+    ]);
+    expect(scene.primitives.map((renderable) => renderable.id)).toEqual([
+      "selected_cylinder"
+    ]);
+  });
+
   it("keeps primitive fallback when derived geometry is unavailable", () => {
     const box = createBoxObject("box_1");
     const cylinder = createCylinderObject("cylinder_1");

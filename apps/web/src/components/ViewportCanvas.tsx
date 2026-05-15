@@ -10,7 +10,10 @@ import {
   zoomCamera
 } from "@web-cad/renderer";
 import { useEffect, useRef, useState } from "react";
-import { fitCameraToRenderScene } from "../viewportCamera";
+import {
+  fitCameraToRenderObject,
+  fitCameraToRenderScene
+} from "../viewportCamera";
 
 export function ViewportCanvas({
   meshes,
@@ -93,6 +96,12 @@ export function ViewportCanvas({
     );
   }
 
+  function fitSelectedView() {
+    setCamera((current) =>
+      fitCameraToRenderObject(current, selectedId, primitives, meshes ?? [])
+    );
+  }
+
   function resetView() {
     setCamera(createDefaultCamera());
   }
@@ -114,8 +123,16 @@ export function ViewportCanvas({
       >
         <div className="viewport-head">
           <div className="viewport-actions" aria-label="Viewport controls">
-            <button type="button" onClick={fitView} title="Fit view">
-              Fit
+            <button type="button" onClick={fitView} title="Fit all objects">
+              Fit all
+            </button>
+            <button
+              type="button"
+              onClick={fitSelectedView}
+              disabled={!selectedId}
+              title="Fit selected object"
+            >
+              Fit selected
             </button>
             <button type="button" onClick={resetView} title="Reset view">
               Reset

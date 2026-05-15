@@ -213,22 +213,38 @@ export function renderCanvasScene(
     }))
     .sort((left, right) => right.depth - left.depth);
 
-  for (const { primitive } of sorted) {
-    if (primitive.kind === "box") {
-      drawBox(context, primitive, camera, size, primitive.id === selectedId);
-    } else {
-      drawCylinder(
-        context,
-        primitive,
-        camera,
-        size,
-        primitive.id === selectedId
-      );
-    }
+  for (const { primitive } of sorted.filter(
+    (entry) => entry.primitive.id !== selectedId
+  )) {
+    drawPrimitive(context, primitive, camera, size, false);
   }
 
-  for (const mesh of meshes) {
+  for (const mesh of meshes.filter((mesh) => mesh.id !== selectedId)) {
     drawTriangleMesh(context, mesh, camera, size, mesh.id === selectedId);
+  }
+
+  for (const { primitive } of sorted.filter(
+    (entry) => entry.primitive.id === selectedId
+  )) {
+    drawPrimitive(context, primitive, camera, size, true);
+  }
+
+  for (const mesh of meshes.filter((mesh) => mesh.id === selectedId)) {
+    drawTriangleMesh(context, mesh, camera, size, true);
+  }
+}
+
+function drawPrimitive(
+  context: CanvasRenderingContext2D,
+  primitive: RenderPrimitive,
+  camera: RenderCamera,
+  size: ViewportSize,
+  selected: boolean
+): void {
+  if (primitive.kind === "box") {
+    drawBox(context, primitive, camera, size, selected);
+  } else {
+    drawCylinder(context, primitive, camera, size, selected);
   }
 }
 
@@ -352,8 +368,38 @@ function drawTriangleMesh(
   const edges = getMeshEdges(mesh.indices);
 
   context.save();
+  context.lineJoin = "round";
+  context.lineCap = "round";
+
+  if (selected) {
+    context.fillStyle = "rgba(242, 165, 65, 0.16)";
+
+    for (let index = 0; index + 2 < mesh.indices.length; index += 3) {
+      const first = vertices[mesh.indices[index]];
+      const second = vertices[mesh.indices[index + 1]];
+      const third = vertices[mesh.indices[index + 2]];
+
+      if (first && second && third) {
+        fillProjectedFace(context, camera, size, [first, second, third]);
+      }
+    }
+
+    context.strokeStyle = "rgba(242, 165, 65, 0.34)";
+    context.lineWidth = 6;
+
+    for (const [start, end] of edges) {
+      strokeProjectedLine(
+        context,
+        camera,
+        size,
+        vertices[start],
+        vertices[end]
+      );
+    }
+  }
+
   context.strokeStyle = selected ? "#f2a541" : "#8a5a16";
-  context.lineWidth = selected ? 2 : 1.5;
+  context.lineWidth = selected ? 2.5 : 1.5;
 
   for (const [start, end] of edges) {
     strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);

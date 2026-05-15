@@ -22,6 +22,48 @@ export function fitCameraToRenderScene(
     return createDefaultCamera();
   }
 
+  return fitCameraToBounds(camera, bounds);
+}
+
+export function fitCameraToRenderObject(
+  camera: RenderCamera,
+  objectId: string | undefined,
+  primitives: readonly RenderPrimitive[],
+  meshes: readonly RenderTriangleMesh[] = []
+): RenderCamera {
+  if (!objectId) {
+    return camera;
+  }
+
+  const bounds = getRenderObjectBounds(objectId, primitives, meshes);
+
+  return bounds ? fitCameraToBounds(camera, bounds) : camera;
+}
+
+export function getRenderObjectBounds(
+  objectId: string,
+  primitives: readonly RenderPrimitive[],
+  meshes: readonly RenderTriangleMesh[] = []
+): RenderSceneBounds | undefined {
+  for (const primitive of primitives) {
+    if (primitive.id === objectId) {
+      return getPrimitiveBounds(primitive);
+    }
+  }
+
+  for (const mesh of meshes) {
+    if (mesh.id === objectId) {
+      return getMeshBounds(mesh);
+    }
+  }
+
+  return undefined;
+}
+
+function fitCameraToBounds(
+  camera: RenderCamera,
+  bounds: RenderSceneBounds
+): RenderCamera {
   const center: Vec3 = [
     (bounds.min[0] + bounds.max[0]) / 2,
     (bounds.min[1] + bounds.max[1]) / 2,
