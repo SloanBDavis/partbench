@@ -131,10 +131,13 @@ These are not source of truth and must not be required to load a project:
 - derived geometry status
 - geometry-worker timing metrics
 - browser smoke metrics
+- read-only measurement and project extent query results
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the
 authoritative document and geometry pipeline after load.
+Measurements and extents are likewise recomputed from the loaded source-of-truth
+document.
 
 ## Import Validation
 

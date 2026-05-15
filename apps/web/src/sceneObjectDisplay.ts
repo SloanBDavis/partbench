@@ -1,4 +1,4 @@
-import type { SceneObject } from "@web-cad/cad-core";
+import type { CadAxisAlignedBounds, SceneObject } from "@web-cad/cad-core";
 
 export function formatObjectKind(kind: SceneObject["kind"]): string {
   return kind === "box" ? "Box" : "Cylinder";
@@ -32,6 +32,26 @@ export function formatObjectPosition(object: SceneObject): string {
 
 export function formatObjectScale(object: SceneObject): string {
   return `scale ${formatVector(object.transform.scale)}`;
+}
+
+export function formatBounds(
+  bounds: CadAxisAlignedBounds,
+  units?: string
+): string {
+  const suffix = units ? ` ${units}` : "";
+  return `min ${formatVectorWithSuffix(bounds.min, suffix)}; max ${formatVectorWithSuffix(bounds.max, suffix)}; size ${formatVectorWithSuffix(bounds.size, suffix)}`;
+}
+
+export function formatVolume(value: number, units?: string): string {
+  const suffix = units ? ` ${units}^3` : "";
+  return `${formatNumber(value)}${suffix}`;
+}
+
+function formatVectorWithSuffix(
+  vector: readonly [number, number, number],
+  suffix: string
+): string {
+  return vector.map((value) => `${formatNumber(value)}${suffix}`).join(", ");
 }
 
 function formatNumber(value: number): string {

@@ -18,7 +18,12 @@ describe("mcp stdio server", () => {
       jsonrpc: "2.0",
       id: 1,
       result: {
-        tools: [{ name: "cad.project_summary" }, { name: "cad.batch" }]
+        tools: [
+          { name: "cad.project_summary" },
+          { name: "cad.object_measurements" },
+          { name: "cad.project_extents" },
+          { name: "cad.batch" }
+        ]
       }
     });
   });

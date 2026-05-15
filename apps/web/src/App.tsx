@@ -5,6 +5,7 @@ import {
   formatCadProjectImportError,
   parseCadProjectJson,
   type CadDocument,
+  type ObjectMeasurementsSnapshot,
   type SceneObject
 } from "@web-cad/cad-core";
 import type {
@@ -158,6 +159,22 @@ export function App() {
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
     : undefined;
+  const selectedMeasurements = useMemo<
+    ObjectMeasurementsSnapshot | undefined
+  >(() => {
+    if (!selectedObject) {
+      return undefined;
+    }
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: selectedObject.id }
+    });
+
+    return response.ok && response.query === "object.measurements"
+      ? response.measurements
+      : undefined;
+  }, [selectedObject]);
   const derivedGeometryByObjectId = useMemo(
     () =>
       new Map(derivedGeometry.entries.map((entry) => [entry.objectId, entry])),
@@ -533,6 +550,7 @@ export function App() {
 
         <Inspector
           disabled={commandPending}
+          measurements={selectedMeasurements}
           object={selectedObject}
           units={document.units}
           onApplyDimensions={(form) => void updateSelectedDimensions(form)}

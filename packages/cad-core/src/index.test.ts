@@ -1067,6 +1067,177 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns object measurements for boxes from the authoritative document", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      name: "Measured box",
+      dimensions: { width: 2, height: 4, depth: 6 },
+      transform: {
+        translation: [10, 0, 3],
+        rotation: [0, 0, Math.PI / 2],
+        scale: [1, 2, 1]
+      }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: "box_1" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "object.measurements",
+      cadOpsVersion: "cadops.v1",
+      measurements: {
+        id: "box_1",
+        kind: "box",
+        name: "Measured box",
+        units: "mm",
+        dimensions: { width: 2, height: 4, depth: 6 },
+        localBounds: {
+          min: [-1, -2, -3],
+          max: [1, 2, 3],
+          size: [2, 4, 6],
+          center: [0, 0, 0]
+        },
+        worldBounds: {
+          min: [6, -1, 0],
+          max: [14, 1, 6],
+          size: [8, 2, 6],
+          center: [10, 0, 3]
+        },
+        approximateVolume: 96
+      }
+    });
+  });
+
+  it("returns approximate cylinder measurements", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 2, height: 5 },
+      transform: { translation: [1, 2, 3] }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: "cylinder_1" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "object.measurements",
+      measurements: {
+        id: "cylinder_1",
+        kind: "cylinder",
+        localBounds: {
+          min: [-2, -2, -2.5],
+          max: [2, 2, 2.5],
+          size: [4, 4, 5],
+          center: [0, 0, 0]
+        },
+        worldBounds: {
+          min: [-1, 0, 0.5],
+          max: [3, 4, 5.5],
+          size: [4, 4, 5],
+          center: [1, 2, 3]
+        }
+      }
+    });
+
+    if (response.ok && response.query === "object.measurements") {
+      expect(response.measurements.approximateVolume).toBeCloseTo(20 * Math.PI);
+    } else {
+      throw new Error("Expected object measurements response.");
+    }
+  });
+
+  it("returns project extents from object world bounds", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "left_box",
+      dimensions: { width: 2, height: 2, depth: 2 },
+      transform: { translation: [-2, 0, 0] }
+    });
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "right_cylinder",
+      dimensions: { radius: 1, height: 4 },
+      transform: { translation: [3, 0, 0] }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      cadOpsVersion: "cadops.v1",
+      units: "mm",
+      objectCount: 2,
+      bounds: {
+        min: [-3, -1, -2],
+        max: [4, 1, 2],
+        size: [7, 2, 4],
+        center: [0.5, 0, 0]
+      },
+      objects: [
+        {
+          id: "left_box",
+          kind: "box",
+          worldBounds: {
+            min: [-3, -1, -1],
+            max: [-1, 1, 1]
+          },
+          approximateVolume: 8
+        },
+        {
+          id: "right_cylinder",
+          kind: "cylinder",
+          worldBounds: {
+            min: [2, -1, -2],
+            max: [4, 1, 2]
+          }
+        }
+      ]
+    });
+
+    if (response.ok && response.query === "project.extents") {
+      expect(response.approximateVolume).toBeCloseTo(8 + 4 * Math.PI);
+      expect(response.objects[1]?.approximateVolume).toBeCloseTo(4 * Math.PI);
+    } else {
+      throw new Error("Expected project extents response.");
+    }
+  });
+
+  it("returns empty project extents for an empty document", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      query: "project.extents",
+      cadOpsVersion: "cadops.v1",
+      units: "mm",
+      objectCount: 0,
+      approximateVolume: 0,
+      objects: []
+    });
+  });
+
   it("returns a structured query error for a missing object", () => {
     const engine = new CadEngine();
 
@@ -1078,6 +1249,26 @@ describe("cad-core", () => {
     expect(response).toEqual({
       ok: false,
       query: "object.get",
+      cadOpsVersion: "cadops.v1",
+      error: {
+        code: "OBJECT_NOT_FOUND",
+        message: "Object does not exist: missing_object",
+        objectId: "missing_object"
+      }
+    });
+  });
+
+  it("returns a structured measurement query error for a missing object", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: "missing_object" }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      query: "object.measurements",
       cadOpsVersion: "cadops.v1",
       error: {
         code: "OBJECT_NOT_FOUND",

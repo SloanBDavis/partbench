@@ -5,6 +5,7 @@ import type {
   CadBatchResponse,
   CadBatchValidationError,
   CadBatchValidationResult,
+  CadAxisAlignedBounds,
   CadObjectSnapshot,
   CadObjectRef,
   CadOp,
@@ -13,10 +14,12 @@ import type {
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnits,
+  ObjectMeasurementsSnapshot,
   ObjectId,
   SemanticDiff,
   TransactionId,
-  Transform
+  Transform,
+  Vec3
 } from "@web-cad/cad-protocol";
 
 export type {
@@ -26,6 +29,7 @@ export type {
   CadBatchResponse,
   CadBatchValidationError,
   CadBatchValidationResult,
+  CadAxisAlignedBounds,
   CadObjectSnapshot,
   CadObjectRef,
   CadOp,
@@ -34,10 +38,12 @@ export type {
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnits,
+  ObjectMeasurementsSnapshot,
   ObjectId,
   SemanticDiff,
   TransactionId,
-  Transform
+  Transform,
+  Vec3
 } from "@web-cad/cad-protocol";
 
 export interface PackageInfo {
@@ -362,6 +368,59 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           object: createCadObjectSnapshot(object)
+        };
+      }
+
+      case "object.measurements": {
+        const object = this.#document.objects.get(request.query.id);
+
+        if (!object) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "OBJECT_NOT_FOUND",
+              message: `Object does not exist: ${request.query.id}`,
+              objectId: request.query.id
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          measurements: createObjectMeasurements(object, this.#document.units)
+        };
+      }
+
+      case "project.extents": {
+        const measurements = [...this.#document.objects.values()].map(
+          (object) => createObjectMeasurements(object, this.#document.units)
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          units: this.#document.units,
+          objectCount: measurements.length,
+          ...(measurements.length > 0
+            ? {
+                bounds: mergeBounds(
+                  measurements.map((measurement) => measurement.worldBounds)
+                )
+              }
+            : {}),
+          approximateVolume: sumApproximateVolumes(measurements),
+          objects: measurements.map((measurement) => ({
+            id: measurement.id,
+            kind: measurement.kind,
+            name: measurement.name,
+            worldBounds: measurement.worldBounds,
+            approximateVolume: measurement.approximateVolume
+          }))
         };
       }
     }
@@ -915,6 +974,172 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
     dimensions: { ...object.dimensions },
     transform: cloneTransform(object.transform)
   };
+}
+
+function createObjectMeasurements(
+  object: SceneObject,
+  units: DocumentUnits
+): ObjectMeasurementsSnapshot {
+  const localBounds = createLocalBounds(object);
+  const worldBounds = createBounds(
+    createMeasurementPoints(object).map((point) =>
+      transformPoint(point, object.transform)
+    )
+  );
+
+  return {
+    id: object.id,
+    kind: object.kind,
+    name: object.name,
+    units,
+    dimensions: { ...object.dimensions },
+    transform: cloneTransform(object.transform),
+    localBounds,
+    worldBounds,
+    approximateVolume: calculateApproximateVolume(object)
+  };
+}
+
+function createLocalBounds(object: SceneObject): CadAxisAlignedBounds {
+  return createBounds(createMeasurementPoints(object));
+}
+
+function createMeasurementPoints(object: SceneObject): readonly Vec3[] {
+  if (object.kind === "box") {
+    const { depth, height, width } = object.dimensions;
+    return createBoxBoundsPoints(width / 2, height / 2, depth / 2);
+  }
+
+  const { height, radius } = object.dimensions;
+  const halfHeight = height / 2;
+
+  return [
+    [-radius, -radius, -halfHeight],
+    [radius, -radius, -halfHeight],
+    [radius, radius, -halfHeight],
+    [-radius, radius, -halfHeight],
+    [-radius, -radius, halfHeight],
+    [radius, -radius, halfHeight],
+    [radius, radius, halfHeight],
+    [-radius, radius, halfHeight]
+  ];
+}
+
+function createBoxBoundsPoints(
+  halfX: number,
+  halfY: number,
+  halfZ: number
+): readonly Vec3[] {
+  return [
+    [-halfX, -halfY, -halfZ],
+    [halfX, -halfY, -halfZ],
+    [halfX, halfY, -halfZ],
+    [-halfX, halfY, -halfZ],
+    [-halfX, -halfY, halfZ],
+    [halfX, -halfY, halfZ],
+    [halfX, halfY, halfZ],
+    [-halfX, halfY, halfZ]
+  ];
+}
+
+function calculateApproximateVolume(object: SceneObject): number {
+  const scaleFactor = Math.abs(
+    object.transform.scale[0] *
+      object.transform.scale[1] *
+      object.transform.scale[2]
+  );
+
+  if (object.kind === "box") {
+    const { depth, height, width } = object.dimensions;
+    return width * height * depth * scaleFactor;
+  }
+
+  const { height, radius } = object.dimensions;
+  return Math.PI * radius * radius * height * scaleFactor;
+}
+
+function mergeBounds(
+  boundsList: readonly CadAxisAlignedBounds[]
+): CadAxisAlignedBounds {
+  return createBounds(boundsList.flatMap((bounds) => [bounds.min, bounds.max]));
+}
+
+function sumApproximateVolumes(
+  measurements: readonly ObjectMeasurementsSnapshot[]
+): number {
+  return measurements.reduce(
+    (total, measurement) => total + measurement.approximateVolume,
+    0
+  );
+}
+
+function createBounds(points: readonly Vec3[]): CadAxisAlignedBounds {
+  const xs = points.map((point) => point[0]);
+  const ys = points.map((point) => point[1]);
+  const zs = points.map((point) => point[2]);
+  const min: Vec3 = [
+    cleanMeasurementNumber(Math.min(...xs)),
+    cleanMeasurementNumber(Math.min(...ys)),
+    cleanMeasurementNumber(Math.min(...zs))
+  ];
+  const max: Vec3 = [
+    cleanMeasurementNumber(Math.max(...xs)),
+    cleanMeasurementNumber(Math.max(...ys)),
+    cleanMeasurementNumber(Math.max(...zs))
+  ];
+  const size: Vec3 = [
+    cleanMeasurementNumber(max[0] - min[0]),
+    cleanMeasurementNumber(max[1] - min[1]),
+    cleanMeasurementNumber(max[2] - min[2])
+  ];
+  const center: Vec3 = [
+    cleanMeasurementNumber((min[0] + max[0]) / 2),
+    cleanMeasurementNumber((min[1] + max[1]) / 2),
+    cleanMeasurementNumber((min[2] + max[2]) / 2)
+  ];
+
+  return { min, max, size, center };
+}
+
+function cleanMeasurementNumber(value: number): number {
+  const rounded = Math.round(value * 1e12) / 1e12;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function transformPoint(point: Vec3, transform: Transform): Vec3 {
+  const scaled: Vec3 = [
+    point[0] * transform.scale[0],
+    point[1] * transform.scale[1],
+    point[2] * transform.scale[2]
+  ];
+
+  return addVec3(
+    rotateEuler(scaled, transform.rotation),
+    transform.translation
+  );
+}
+
+function rotateEuler(point: Vec3, rotation: Vec3): Vec3 {
+  const [rx, ry, rz] = rotation;
+  const cosX = Math.cos(rx);
+  const sinX = Math.sin(rx);
+  const cosY = Math.cos(ry);
+  const sinY = Math.sin(ry);
+  const cosZ = Math.cos(rz);
+  const sinZ = Math.sin(rz);
+
+  const y1 = point[1] * cosX - point[2] * sinX;
+  const z1 = point[1] * sinX + point[2] * cosX;
+  const x2 = point[0] * cosY + z1 * sinY;
+  const z2 = -point[0] * sinY + z1 * cosY;
+  const x3 = x2 * cosZ - y1 * sinZ;
+  const y3 = x2 * sinZ + y1 * cosZ;
+
+  return [x3, y3, z2];
+}
+
+function addVec3(left: Vec3, right: Vec3): Vec3 {
+  return [left[0] + right[0], left[1] + right[1], left[2] + right[2]];
 }
 
 function runOperations(

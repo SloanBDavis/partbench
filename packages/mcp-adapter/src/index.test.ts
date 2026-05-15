@@ -7,6 +7,8 @@ describe("mcp-adapter", () => {
 
     expect(server.listTools().tools.map((tool) => tool.name)).toEqual([
       "cad.project_summary",
+      "cad.object_measurements",
+      "cad.project_extents",
       "cad.batch"
     ]);
   });
@@ -156,6 +158,91 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns object measurements through cad.object_measurements", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_measured",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "measured_box",
+              dimensions: { width: 2, height: 4, depth: 6 }
+            }
+          ]
+        }
+      }
+    });
+    const result = server.callTool({
+      name: "cad.object_measurements",
+      requestId: "mcp_req_measure",
+      arguments: { id: "measured_box" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.object_measurements",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_measure",
+        cadOpsVersion: "cadops.v1",
+        query: "object.measurements",
+        measurements: {
+          id: "measured_box",
+          kind: "box",
+          approximateVolume: 48,
+          localBounds: {
+            min: [-1, -2, -3],
+            max: [1, 2, 3]
+          }
+        }
+      }
+    });
+  });
+
+  it("returns project extents through cad.project_extents", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_extents",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createCylinder",
+              id: "extent_cylinder",
+              dimensions: { radius: 1, height: 4 }
+            }
+          ]
+        }
+      }
+    });
+    const result = server.callTool({
+      name: "cad.project_extents",
+      requestId: "mcp_req_extents"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_extents",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_extents",
+        query: "project.extents",
+        objectCount: 1,
+        objects: [{ id: "extent_cylinder" }]
+      }
+    });
+  });
+
   it("returns structured CADOps errors from cad.batch", () => {
     const server = new CadMcpServer();
 
@@ -226,7 +313,12 @@ describe("mcp-adapter", () => {
       jsonrpc: "2.0",
       id: 1,
       result: {
-        tools: [{ name: "cad.project_summary" }, { name: "cad.batch" }]
+        tools: [
+          { name: "cad.project_summary" },
+          { name: "cad.object_measurements" },
+          { name: "cad.project_extents" },
+          { name: "cad.batch" }
+        ]
       }
     });
     expect(call).toMatchObject({
@@ -266,6 +358,19 @@ describe("mcp-adapter", () => {
       })
     ).toMatchObject({
       toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.object_measurements",
+        arguments: {}
+      })
+    ).toMatchObject({
+      toolName: "cad.object_measurements",
       isError: true,
       structuredContent: {
         ok: false,

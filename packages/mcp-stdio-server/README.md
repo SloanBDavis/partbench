@@ -8,6 +8,8 @@ writes one JSON-RPC response line to stdout.
 Only these existing tools are exposed:
 
 - `cad.project_summary`
+- `cad.object_measurements`
+- `cad.project_extents`
 - `cad.batch`
 
 The transport does not depend on React, the renderer, OCCT, OPFS, STEP
@@ -69,5 +71,6 @@ process through the existing adapter stack. Restarting the process resets that
 document.
 
 `cad.project_summary` returns document units and object names when present.
-Units are current-model metadata only; the server does not perform unit
-conversion.
+`cad.object_measurements` and `cad.project_extents` return read-only derived
+bounds and approximate volumes from the authoritative document. Units are
+current-model metadata only; the server does not perform unit conversion.

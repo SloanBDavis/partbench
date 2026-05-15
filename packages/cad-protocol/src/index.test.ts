@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  CadAxisAlignedBounds,
   CadBatch,
   CadBatchValidationError,
   CadOp,
@@ -119,12 +120,33 @@ describe("cad-protocol", () => {
       {
         version: "cadops.v1",
         query: { query: "object.get", id: "box_1" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "object.measurements", id: "box_1" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "project.extents" }
       }
     ];
 
     expect(queries.map((request) => request.query.query)).toEqual([
       "project.summary",
-      "object.get"
+      "object.get",
+      "object.measurements",
+      "project.extents"
     ]);
+  });
+
+  it("types measurement bounds", () => {
+    const bounds: CadAxisAlignedBounds = {
+      min: [-1, -2, -3],
+      max: [1, 2, 3],
+      size: [2, 4, 6],
+      center: [0, 0, 0]
+    };
+
+    expect(bounds.size).toEqual([2, 4, 6]);
   });
 });

@@ -5,6 +5,7 @@ import type {
   CadBatchMode,
   CadBatchResponse,
   CadBatchValidationError,
+  CadAxisAlignedBounds,
   CadObjectSnapshot,
   CadOp,
   CadOpsVersion,
@@ -12,6 +13,8 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   DocumentUnits,
+  ObjectExtentSnapshot,
+  ObjectMeasurementsSnapshot,
   ObjectId,
   Transform,
   Vec3
@@ -67,6 +70,8 @@ export interface CadOpsAgentErrorResponse {
 export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentObjectGetQueryResponse
+  | CadOpsAgentObjectMeasurementsQueryResponse
+  | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
 export interface CadOpsAgentProjectSummaryQueryResponse {
@@ -89,12 +94,38 @@ export interface CadOpsAgentObjectGetQueryResponse {
   readonly object: CadObjectSnapshot;
 }
 
+export interface CadOpsAgentObjectMeasurementsQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "object.measurements";
+  readonly measurements: ObjectMeasurementsSnapshot;
+}
+
+export interface CadOpsAgentProjectExtentsQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.extents";
+  readonly units: DocumentUnits;
+  readonly objectCount: number;
+  readonly bounds?: CadAxisAlignedBounds;
+  readonly approximateVolume: number;
+  readonly objects: readonly ObjectExtentSnapshot[];
+}
+
 export interface CadOpsAgentQueryErrorResponse {
   readonly ok: false;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
-  readonly query: "project.summary" | "object.get";
+  readonly query:
+    | "project.summary"
+    | "object.get"
+    | "object.measurements"
+    | "project.extents";
   readonly error: CadQueryError;
 }
 
@@ -267,6 +298,32 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "object.measurements") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      measurements: response.measurements
+    };
+  }
+
+  if (response.query === "project.extents") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      units: response.units,
+      objectCount: response.objectCount,
+      ...(response.bounds ? { bounds: response.bounds } : {}),
+      approximateVolume: response.approximateVolume,
+      objects: response.objects
+    };
+  }
+
   return {
     ok: true,
     requestId: request.requestId,
@@ -328,7 +385,11 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
     ((value.query.query === "project.summary" &&
       Object.keys(value.query).length === 1) ||
       (value.query.query === "object.get" &&
-        typeof value.query.id === "string"))
+        typeof value.query.id === "string") ||
+      (value.query.query === "object.measurements" &&
+        typeof value.query.id === "string") ||
+      (value.query.query === "project.extents" &&
+        Object.keys(value.query).length === 1))
   );
 }
 

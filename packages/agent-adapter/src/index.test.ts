@@ -356,6 +356,88 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns object measurements through adapter queries", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "measured_box",
+      dimensions: { width: 2, height: 4, depth: 6 }
+    });
+
+    const response = executeCadOpsAgentQueryRequest(engine, {
+      requestId: "agent_measure_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "object.measurements", id: "measured_box" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_measure_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "object.measurements",
+      measurements: {
+        id: "measured_box",
+        kind: "box",
+        approximateVolume: 48,
+        localBounds: {
+          min: [-1, -2, -3],
+          max: [1, 2, 3]
+        }
+      }
+    });
+  });
+
+  it("returns project extents through adapter query JSON", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_req_extents_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createCylinder",
+            id: "extent_cylinder",
+            dimensions: { radius: 1, height: 4 }
+          }
+        ]
+      }
+    });
+
+    const request = parseCadOpsAgentQueryRequestJson(
+      JSON.stringify({
+        requestId: "agent_extents_json",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.extents" }
+        }
+      })
+    );
+    const response = JSON.parse(adapter.queryJson(JSON.stringify(request))) as {
+      readonly ok: boolean;
+      readonly query: string;
+      readonly objectCount: number;
+      readonly objects: readonly { readonly id: string }[];
+      readonly approximateVolume: number;
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 1,
+      objects: [{ id: "extent_cylinder" }]
+    });
+    expect(response.approximateVolume).toBeCloseTo(4 * Math.PI);
+  });
+
   it("returns structured adapter query errors", () => {
     const adapter = new CadOpsAgentAdapter();
 

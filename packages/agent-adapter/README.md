@@ -74,6 +74,30 @@ Object lookup uses the same envelope:
 }
 ```
 
+Measurement and extent queries use the same read-only query envelope:
+
+```json
+{
+  "requestId": "agent_query_003",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "object.measurements", "id": "box_from_agent" }
+  }
+}
+```
+
+```json
+{
+  "requestId": "agent_query_004",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "project.extents" }
+  }
+}
+```
+
 The adapter delegates batches directly to `CadEngine.executeBatch()` and queries
 directly to `CadEngine.executeQuery()`. CADOps remains the internal API; MCP,
 SDKs, scripts, and future agent tools should wrap this adapter rather than define
@@ -139,6 +163,10 @@ error.
 Document units are current-model metadata. The adapter does not perform unit
 conversion; callers should treat dimensions as authored in the document's
 reported units.
+
+Measurement queries are derived from the authoritative document, not renderer
+meshes. Current measurements support boxes and cylinders and include local
+bounds, transformed world bounds, and approximate volume.
 
 ## Example Usage
 

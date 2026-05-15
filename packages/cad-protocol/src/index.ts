@@ -175,9 +175,17 @@ export interface CadBatchErrorResponse {
   readonly warnings: readonly string[];
 }
 
-export type CadQueryKind = "project.summary" | "object.get";
+export type CadQueryKind =
+  | "project.summary"
+  | "object.get"
+  | "object.measurements"
+  | "project.extents";
 
-export type CadQuery = ProjectSummaryQuery | ObjectGetQuery;
+export type CadQuery =
+  | ProjectSummaryQuery
+  | ObjectGetQuery
+  | ObjectMeasurementsQuery
+  | ProjectExtentsQuery;
 
 export interface ProjectSummaryQuery {
   readonly query: "project.summary";
@@ -186,6 +194,15 @@ export interface ProjectSummaryQuery {
 export interface ObjectGetQuery {
   readonly query: "object.get";
   readonly id: ObjectId;
+}
+
+export interface ObjectMeasurementsQuery {
+  readonly query: "object.measurements";
+  readonly id: ObjectId;
+}
+
+export interface ProjectExtentsQuery {
+  readonly query: "project.extents";
 }
 
 export interface CadQueryRequest {
@@ -211,6 +228,33 @@ export interface CylinderObjectSnapshot {
   readonly transform: Transform;
 }
 
+export interface CadAxisAlignedBounds {
+  readonly min: Vec3;
+  readonly max: Vec3;
+  readonly size: Vec3;
+  readonly center: Vec3;
+}
+
+export interface ObjectMeasurementsSnapshot {
+  readonly id: ObjectId;
+  readonly kind: CadObjectKind;
+  readonly name?: string;
+  readonly units: DocumentUnits;
+  readonly dimensions: BoxDimensions | CylinderDimensions;
+  readonly transform: Transform;
+  readonly localBounds: CadAxisAlignedBounds;
+  readonly worldBounds: CadAxisAlignedBounds;
+  readonly approximateVolume: number;
+}
+
+export interface ObjectExtentSnapshot {
+  readonly id: ObjectId;
+  readonly kind: CadObjectKind;
+  readonly name?: string;
+  readonly worldBounds: CadAxisAlignedBounds;
+  readonly approximateVolume: number;
+}
+
 export type CadQueryErrorCode = "OBJECT_NOT_FOUND";
 
 export interface CadQueryError {
@@ -222,6 +266,8 @@ export interface CadQueryError {
 export type CadQueryResponse =
   | ProjectSummaryQueryResponse
   | ObjectGetQueryResponse
+  | ObjectMeasurementsQueryResponse
+  | ProjectExtentsQueryResponse
   | CadQueryErrorResponse;
 
 export interface ProjectSummaryQueryResponse {
@@ -238,6 +284,24 @@ export interface ObjectGetQueryResponse {
   readonly query: "object.get";
   readonly cadOpsVersion: CadOpsVersion;
   readonly object: CadObjectSnapshot;
+}
+
+export interface ObjectMeasurementsQueryResponse {
+  readonly ok: true;
+  readonly query: "object.measurements";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly measurements: ObjectMeasurementsSnapshot;
+}
+
+export interface ProjectExtentsQueryResponse {
+  readonly ok: true;
+  readonly query: "project.extents";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly units: DocumentUnits;
+  readonly objectCount: number;
+  readonly bounds?: CadAxisAlignedBounds;
+  readonly approximateVolume: number;
+  readonly objects: readonly ObjectExtentSnapshot[];
 }
 
 export interface CadQueryErrorResponse {

@@ -1,12 +1,14 @@
 import type { BoxObject, CylinderObject } from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
+  formatBounds,
   formatDimensions,
   getObjectDisplayName,
   formatObjectKind,
   formatObjectPosition,
   formatObjectScale,
-  formatVector
+  formatVector,
+  formatVolume
 } from "./sceneObjectDisplay";
 
 describe("scene object display helpers", () => {
@@ -31,6 +33,23 @@ describe("scene object display helpers", () => {
     expect(formatVector([1, 2.345, 3])).toBe("1, 2.35, 3");
     expect(formatObjectPosition(object)).toBe("pos 1, 2.35, 3");
     expect(formatObjectScale(object)).toBe("scale 1, 1, 2");
+  });
+
+  it("formats measurement values", () => {
+    expect(
+      formatBounds(
+        {
+          min: [-1, -2.345, -3],
+          max: [1, 2.345, 3],
+          size: [2, 4.69, 6],
+          center: [0, 0, 0]
+        },
+        "mm"
+      )
+    ).toBe(
+      "min -1 mm, -2.35 mm, -3 mm; max 1 mm, 2.35 mm, 3 mm; size 2 mm, 4.69 mm, 6 mm"
+    );
+    expect(formatVolume(12.345, "mm")).toBe("12.35 mm^3");
   });
 });
 

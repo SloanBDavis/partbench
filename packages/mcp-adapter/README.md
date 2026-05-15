@@ -4,9 +4,11 @@ This package is the MCP tool wrapper over the existing CADOps agent adapter. It
 keeps `@web-cad/agent-adapter` as the internal API boundary and does not define
 CAD operations itself.
 
-It exposes only two MCP-style tools:
+It exposes these MCP-style tools:
 
 - `cad.project_summary`
+- `cad.object_measurements`
+- `cad.project_extents`
 - `cad.batch`
 
 It does not depend on React, the renderer, OCCT, OPFS, STEP import/export,
@@ -19,7 +21,7 @@ adapter calls, and returns structured adapter responses.
 
 ```text
 MCP client
-  -> cad.project_summary / cad.batch
+  -> cad.project_summary / cad.object_measurements / cad.project_extents / cad.batch
     -> @web-cad/mcp-adapter
       -> @web-cad/agent-adapter
         -> CADOps
@@ -59,12 +61,40 @@ Call `cad.project_summary`:
 }
 ```
 
-Call `cad.batch` in dry-run mode:
+Call `cad.object_measurements`:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "cad.object_measurements",
+    "arguments": { "id": "preview_box" }
+  }
+}
+```
+
+Call `cad.project_extents`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "cad.project_extents",
+    "arguments": {}
+  }
+}
+```
+
+Call `cad.batch` in dry-run mode:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 5,
   "method": "tools/call",
   "params": {
     "name": "cad.batch",
@@ -141,13 +171,7 @@ agent adapter response:
     "createdIds": ["preview_box"],
     "modifiedIds": [],
     "deletedIds": [],
-    "warnings": [],
-    "transactionId": "txn_1",
-    "actor": {
-      "type": "agent",
-      "id": "mcp",
-      "name": "MCP Client"
-    }
+    "warnings": []
   },
   "content": [
     {
@@ -165,3 +189,7 @@ Unknown tools or malformed wrapper arguments return tool-level errors with
 Project summary responses include the document units and object display names
 when present. Units are metadata-only in the current model; changing units does
 not convert stored dimensions.
+
+Measurement responses are read-only derived data from the authoritative
+document, not renderer meshes. Current measurements support boxes and cylinders
+and include local bounds, world bounds, and approximate volume.

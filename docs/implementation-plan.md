@@ -36,8 +36,9 @@ packages:
   and validation error shapes.
 - `packages/cad-core` - in-memory document model, command application,
   transactions with optional actor metadata, semantic diffs, undo/redo, CADOps
-  query path, and project JSON serialization for current scene objects, display
-  names, document units, and transaction history.
+  query path, read-only measurements/extents for current primitives, and project
+  JSON serialization for current scene objects, display names, document units,
+  and transaction history.
 - `packages/renderer` - simple renderer-facing primitive and mesh types plus
   canvas viewport rendering.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -294,7 +295,9 @@ Current limitations:
   yet.
 - No stable topological naming system exists yet.
 - No sketch solver exists yet.
-- No exact measurement API exists yet.
+- Read-only measurements exist for current boxes and cylinders, but they are
+  primitive-derived bounds and approximate volumes, not exact B-rep/kernel
+  measurement APIs.
 - No OPFS storage exists yet.
 - No File System Access API integration exists yet.
 - No STEP import/export exists yet.
@@ -443,6 +446,10 @@ Current slice delivered:
 - CADOps batch validation errors now include machine-readable context where
   practical: operation name, JSON-style path, expected value shape, received
   value, operation index, and affected object ID.
+- CADOps read/query support now includes `object.measurements` and
+  `project.extents` for current boxes and cylinders. These queries derive local
+  bounds, transformed world bounds, and approximate volume from the
+  authoritative document instead of renderer meshes.
 
 Exit criteria:
 

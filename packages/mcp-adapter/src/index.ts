@@ -9,7 +9,11 @@ import {
 } from "@web-cad/agent-adapter";
 import type { CadActorMetadata, CadBatch } from "@web-cad/cad-protocol";
 
-export type CadMcpToolName = "cad.project_summary" | "cad.batch";
+export type CadMcpToolName =
+  | "cad.project_summary"
+  | "cad.object_measurements"
+  | "cad.project_extents"
+  | "cad.batch";
 export type McpJsonRpcId = string | number | null;
 
 export interface McpToolDefinition {
@@ -105,6 +109,14 @@ export class CadMcpServer {
       return this.#callProjectSummary(request);
     }
 
+    if (request.name === "cad.object_measurements") {
+      return this.#callObjectMeasurements(request);
+    }
+
+    if (request.name === "cad.project_extents") {
+      return this.#callProjectExtents(request);
+    }
+
     if (request.name === "cad.batch") {
       return this.#callBatch(request);
     }
@@ -182,6 +194,55 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callObjectMeasurements(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isObjectMeasurementsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.object_measurements expects arguments shaped as { id: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "object.measurements",
+            id: request.arguments.id
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectExtents(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_extents does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.extents" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callBatch(request: CadMcpToolCallRequest): CadMcpToolCallResult {
     if (!isBatchToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
@@ -226,6 +287,32 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_summary",
     description: "Returns a structured summary of the current CAD document.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.object_measurements",
+    description:
+      "Returns derived measurements and bounds for one current CAD object.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id"],
+      properties: {
+        id: {
+          type: "string",
+          description: "Object ID to measure."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.project_extents",
+    description:
+      "Returns aggregate derived extents and approximate volume for the current CAD document.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -289,6 +376,12 @@ function isBatchToolArguments(
   value: unknown
 ): value is { readonly batch: CadBatch; readonly actor?: CadActorMetadata } {
   return isRecord(value) && value.batch !== undefined;
+}
+
+function isObjectMeasurementsToolArguments(
+  value: unknown
+): value is { readonly id: string } {
+  return isRecord(value) && typeof value.id === "string" && value.id !== "";
 }
 
 function isEmptyObjectOrUndefined(value: unknown): boolean {

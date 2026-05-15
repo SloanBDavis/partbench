@@ -1,4 +1,8 @@
-import type { DocumentUnits, SceneObject } from "@web-cad/cad-core";
+import type {
+  DocumentUnits,
+  ObjectMeasurementsSnapshot,
+  SceneObject
+} from "@web-cad/cad-core";
 import { useState } from "react";
 import {
   areBoxDimensionFormsEqual,
@@ -15,14 +19,17 @@ import {
 } from "../cadCommands";
 import {
   formatDimensions,
+  formatBounds,
   getObjectDisplayName,
   formatObjectKind,
-  formatVector
+  formatVector,
+  formatVolume
 } from "../sceneObjectDisplay";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function Inspector({
   disabled = false,
+  measurements,
   object,
   units,
   onApplyDimensions,
@@ -31,6 +38,7 @@ export function Inspector({
   onDelete
 }: {
   readonly disabled?: boolean;
+  readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
@@ -88,6 +96,7 @@ export function Inspector({
             disabled={disabled}
             onApply={onApplyDimensions}
           />
+          <MeasurementPanel measurements={measurements} units={units} />
           <TransformEditor
             key={`${object.id}-${object.transform.translation.join(",")}-${object.transform.rotation.join(",")}-${object.transform.scale.join(",")}`}
             object={object}
@@ -98,6 +107,40 @@ export function Inspector({
         </>
       )}
     </aside>
+  );
+}
+
+function MeasurementPanel({
+  measurements,
+  units
+}: {
+  readonly measurements?: ObjectMeasurementsSnapshot;
+  readonly units: DocumentUnits;
+}) {
+  if (!measurements) {
+    return null;
+  }
+
+  return (
+    <section className="command-card">
+      <div className="command-card-heading">
+        <h3>Measurements</h3>
+      </div>
+      <dl>
+        <div>
+          <dt>Approx volume</dt>
+          <dd>{formatVolume(measurements.approximateVolume, units)}</dd>
+        </div>
+        <div>
+          <dt>Local bounds</dt>
+          <dd>{formatBounds(measurements.localBounds, units)}</dd>
+        </div>
+        <div>
+          <dt>World bounds</dt>
+          <dd>{formatBounds(measurements.worldBounds, units)}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
