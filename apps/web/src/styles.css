@@ -146,6 +146,14 @@ h2 {
   gap: 8px;
 }
 
+.toolbar-field {
+  width: 76px;
+}
+
+.toolbar-field select {
+  min-height: 36px;
+}
+
 .pending-status,
 .toolbar-error {
   margin: 0;

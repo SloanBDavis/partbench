@@ -5,8 +5,10 @@ import {
   buildCreateBoxOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
+  buildRenameObjectOp,
   buildUpdateBoxDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateUnitsOp,
   buildUpdateTransformOp,
   boxDimensionsToForm,
   areBoxDimensionFormsEqual,
@@ -95,6 +97,18 @@ describe("cad command builders", () => {
     });
   });
 
+  it("builds units and rename commands", () => {
+    expect(buildUpdateUnitsOp("in")).toEqual({
+      op: "document.updateUnits",
+      units: "in"
+    });
+    expect(buildRenameObjectOp("box_1", "  Base plate  ")).toEqual({
+      op: "scene.renameObject",
+      id: "box_1",
+      name: "Base plate"
+    });
+  });
+
   it("builds a CadBatch from queued operations", () => {
     const ops = [
       buildOperationFromBatchForm({
@@ -113,7 +127,9 @@ describe("cad command builders", () => {
         rotationZ: 0,
         scaleX: 1,
         scaleY: 1,
-        scaleZ: 1
+        scaleZ: 1,
+        name: "",
+        units: "mm"
       })
     ];
 
@@ -142,7 +158,9 @@ describe("cad command builders", () => {
         rotationZ: 0,
         scaleX: 1,
         scaleY: 1,
-        scaleZ: 1
+        scaleZ: 1,
+        name: "",
+        units: "mm"
       })
     ).toEqual({
       op: "scene.updateBoxDimensions",
@@ -167,12 +185,67 @@ describe("cad command builders", () => {
         rotationZ: 0,
         scaleX: 1,
         scaleY: 1,
-        scaleZ: 1
+        scaleZ: 1,
+        name: "",
+        units: "mm"
       })
     ).toEqual({
       op: "scene.updateCylinderDimensions",
       id: "cylinder_1",
       dimensions: { radius: 2, height: 8 }
+    });
+
+    expect(
+      buildOperationFromBatchForm({
+        op: "scene.renameObject",
+        id: "",
+        targetId: "box_1",
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 1,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        name: "Panel",
+        units: "mm"
+      })
+    ).toEqual({
+      op: "scene.renameObject",
+      id: "box_1",
+      name: "Panel"
+    });
+
+    expect(
+      buildOperationFromBatchForm({
+        op: "document.updateUnits",
+        id: "",
+        targetId: "",
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 1,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        name: "",
+        units: "cm"
+      })
+    ).toEqual({
+      op: "document.updateUnits",
+      units: "cm"
     });
   });
 

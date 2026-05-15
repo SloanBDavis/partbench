@@ -10,6 +10,7 @@ import type {
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
+  DocumentUnits,
   ObjectId,
   Transform,
   Vec3
@@ -71,6 +72,7 @@ export interface CadOpsAgentProjectSummaryQueryResponse {
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "project.summary";
+  readonly units: DocumentUnits;
   readonly objectCount: number;
   readonly objects: readonly CadObjectSnapshot[];
 }
@@ -232,6 +234,7 @@ function toAgentQueryResponse(
       adapterVersion: request.adapterVersion,
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
+      units: response.units,
       objectCount: response.objectCount,
       objects: response.objects
     };
@@ -334,6 +337,14 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" && isCylinderDimensions(value.dimensions)
     );
+  }
+
+  if (value.op === "scene.renameObject") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "document.updateUnits") {
+    return typeof value.units === "string";
   }
 
   return false;

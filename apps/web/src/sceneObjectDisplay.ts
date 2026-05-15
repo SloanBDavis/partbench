@@ -4,14 +4,20 @@ export function formatObjectKind(kind: SceneObject["kind"]): string {
   return kind === "box" ? "Box" : "Cylinder";
 }
 
-export function formatDimensions(object: SceneObject): string {
+export function getObjectDisplayName(object: SceneObject): string {
+  return object.name ?? object.id;
+}
+
+export function formatDimensions(object: SceneObject, units?: string): string {
+  const suffix = units ? ` ${units}` : "";
+
   if (object.kind === "box") {
     const { depth, height, width } = object.dimensions;
-    return `${formatNumber(width)} x ${formatNumber(height)} x ${formatNumber(depth)}`;
+    return `${formatNumber(width)} x ${formatNumber(height)} x ${formatNumber(depth)}${suffix}`;
   }
 
   const { height, radius } = object.dimensions;
-  return `r ${formatNumber(radius)}, h ${formatNumber(height)}`;
+  return `r ${formatNumber(radius)}${suffix}, h ${formatNumber(height)}${suffix}`;
 }
 
 export function formatVector(

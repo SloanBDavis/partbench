@@ -111,6 +111,7 @@ describe("BrowserCadCommandWorker", () => {
     const responsePromise = worker.execute({
       id: "worker_req_1",
       document: {
+        units: "mm",
         objects: [],
         nextObjectNumber: 1
       },

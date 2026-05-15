@@ -2,10 +2,13 @@ import type {
   CadBatch,
   CadBatchMode,
   CadOp,
+  DocumentUnits,
+  DocumentUpdateUnitsOp,
   ObjectId,
   SceneCreateBoxOp,
   SceneCreateCylinderOp,
   SceneDeleteObjectOp,
+  SceneRenameObjectOp,
   SceneUpdateBoxDimensionsOp,
   SceneUpdateCylinderDimensionsOp,
   SceneUpdateTransformOp,
@@ -14,11 +17,13 @@ import type {
 } from "@web-cad/cad-protocol";
 
 export type BatchOperationKind =
+  | "document.updateUnits"
   | "scene.createBox"
   | "scene.createCylinder"
   | "scene.updateTransform"
   | "scene.updateBoxDimensions"
   | "scene.updateCylinderDimensions"
+  | "scene.renameObject"
   | "scene.deleteObject";
 
 export interface DimensionCommandForm {
@@ -51,6 +56,8 @@ export interface BatchOperationForm
   extends PrimitiveCommandForm, TransformCommandForm {
   readonly op: BatchOperationKind;
   readonly targetId: string;
+  readonly name: string;
+  readonly units: DocumentUnits;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -84,6 +91,15 @@ export function buildCreateCylinderOp(
   };
 }
 
+export function buildUpdateUnitsOp(
+  units: DocumentUnits
+): DocumentUpdateUnitsOp {
+  return {
+    op: "document.updateUnits",
+    units
+  };
+}
+
 export function buildUpdateTransformOp(
   id: ObjectId,
   form: TransformCommandForm
@@ -92,6 +108,17 @@ export function buildUpdateTransformOp(
     op: "scene.updateTransform",
     id,
     transform: buildTransform(form)
+  };
+}
+
+export function buildRenameObjectOp(
+  id: ObjectId,
+  name: string
+): SceneRenameObjectOp {
+  return {
+    op: "scene.renameObject",
+    id,
+    name: name.trim()
   };
 }
 
@@ -144,6 +171,8 @@ export function buildBatch(
 
 export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
   switch (form.op) {
+    case "document.updateUnits":
+      return buildUpdateUnitsOp(form.units);
     case "scene.createBox":
       return buildCreateBoxOp(form);
     case "scene.createCylinder":
@@ -157,6 +186,8 @@ export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
         requireTargetId(form.targetId),
         form
       );
+    case "scene.renameObject":
+      return buildRenameObjectOp(requireTargetId(form.targetId), form.name);
     case "scene.deleteObject":
       return buildDeleteObjectOp(requireTargetId(form.targetId));
   }

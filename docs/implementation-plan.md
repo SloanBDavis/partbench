@@ -35,7 +35,8 @@ packages:
 - `packages/cad-protocol` - typed CADOps command, batch, and query shapes.
 - `packages/cad-core` - in-memory document model, command application,
   transactions, semantic diffs, undo/redo, CADOps query path, and project JSON
-  serialization.
+  serialization for current scene objects, display names, document units, and
+  transaction history.
 - `packages/renderer` - simple renderer-facing primitive and mesh types plus
   canvas viewport rendering.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -273,6 +274,10 @@ The project is past the first MVP, but it is not yet a real CAD system.
 Current limitations:
 
 - `cad-core` stores scene objects, not a true feature graph.
+- Document units are stored as model metadata only; unit conversion is not
+  implemented yet.
+- Scene objects can have optional display names, but names are not required to
+  be unique yet.
 - There is no real B-rep topology in the authoritative document.
 - OCCT currently proves box and cylinder tessellation.
 - Primitive rendering remains the fallback when derived geometry is unavailable,
@@ -424,6 +429,13 @@ Current slice delivered:
   transaction history.
 - Derived geometry cache keys include dimensions, so dimension edits rebuild
   renderer meshes as derived views.
+- Document units can be updated through the typed CADOps command
+  `document.updateUnits`.
+- Scene objects can be renamed through the typed CADOps command
+  `scene.renameObject`.
+- Units and object names validate, produce semantic diffs, participate in batch
+  dry-run/commit, and work with undo/redo.
+- Project JSON preserves document units and object names.
 
 Exit criteria:
 

@@ -147,6 +147,15 @@ describe("agent-adapter", () => {
               op: "scene.updateBoxDimensions",
               id: "json_box",
               dimensions: { width: 7, height: 8, depth: 9 }
+            },
+            {
+              op: "scene.renameObject",
+              id: "json_box",
+              name: "JSON box"
+            },
+            {
+              op: "document.updateUnits",
+              units: "in"
             }
           ]
         }
@@ -176,6 +185,10 @@ describe("agent-adapter", () => {
     expect(
       adapter.getEngine().getDocument().objects.get("json_box")?.dimensions
     ).toEqual({ width: 7, height: 8, depth: 9 });
+    expect(
+      adapter.getEngine().getDocument().objects.get("json_box")?.name
+    ).toBe("JSON box");
+    expect(adapter.getEngine().getDocument().units).toBe("in");
   });
 
   it("returns project summary queries through the adapter", () => {
@@ -214,6 +227,7 @@ describe("agent-adapter", () => {
       adapterVersion: "web-cad.agent-adapter.v1",
       cadOpsVersion: "cadops.v1",
       query: "project.summary",
+      units: "mm",
       objectCount: 2,
       objects: [
         {

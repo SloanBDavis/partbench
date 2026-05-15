@@ -26,7 +26,12 @@ External callers submit mutations with a `CadOpsAgentRequest`:
       {
         "op": "scene.createBox",
         "id": "box_from_agent",
+        "name": "Agent box",
         "dimensions": { "width": 10, "height": 20, "depth": 30 }
+      },
+      {
+        "op": "document.updateUnits",
+        "units": "in"
       }
     ]
   }
@@ -95,11 +100,13 @@ Project summary queries return a serializable object list:
   "adapterVersion": "web-cad.agent-adapter.v1",
   "cadOpsVersion": "cadops.v1",
   "query": "project.summary",
+  "units": "in",
   "objectCount": 1,
   "objects": [
     {
       "id": "box_from_agent",
       "kind": "box",
+      "name": "Agent box",
       "dimensions": { "width": 10, "height": 20, "depth": 30 },
       "transform": {
         "translation": [0, 0, 0],
@@ -113,6 +120,10 @@ Project summary queries return a serializable object list:
 
 Missing object lookups return `ok: false` with a structured `OBJECT_NOT_FOUND`
 error.
+
+Document units are current-model metadata. The adapter does not perform unit
+conversion; callers should treat dimensions as authored in the document's
+reported units.
 
 ## Example Usage
 

@@ -76,7 +76,12 @@ Call `cad.batch` in dry-run mode:
           {
             "op": "scene.createBox",
             "id": "preview_box",
+            "name": "Preview box",
             "dimensions": { "width": 10, "height": 20, "depth": 30 }
+          },
+          {
+            "op": "document.updateUnits",
+            "units": "in"
           }
         ]
       }
@@ -120,3 +125,7 @@ agent adapter response:
 Validation failures from CADOps are returned as structured CADOps errors.
 Unknown tools or malformed wrapper arguments return tool-level errors with
 `UNKNOWN_TOOL` or `INVALID_ARGUMENTS`.
+
+Project summary responses include the document units and object display names
+when present. Units are metadata-only in the current model; changing units does
+not convert stored dimensions.

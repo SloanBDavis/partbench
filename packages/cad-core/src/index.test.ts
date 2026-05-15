@@ -167,6 +167,123 @@ describe("cad-core", () => {
     });
   });
 
+  it("updates document units with a semantic diff", () => {
+    const engine = new CadEngine();
+
+    const result = engine.apply({
+      op: "document.updateUnits",
+      units: "in"
+    });
+
+    expect(result.document.units).toBe("in");
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [],
+      deleted: [],
+      document: {
+        units: {
+          before: "mm",
+          after: "in"
+        }
+      }
+    });
+  });
+
+  it("renames an object with a semantic diff", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const result = engine.apply({
+      op: "scene.renameObject",
+      id: "box_1",
+      name: "  Base plate  "
+    });
+
+    expect(result.document.objects.get("box_1")?.name).toBe("Base plate");
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [{ id: "box_1", kind: "box" }],
+      deleted: []
+    });
+  });
+
+  it("validates document units", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "document.updateUnits",
+          units: "ft" as never
+        }
+      ]
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "INVALID_UNITS",
+        message: "Unsupported document units: ft.",
+        opIndex: 0
+      },
+      errors: [
+        {
+          code: "INVALID_UNITS",
+          message: "Unsupported document units: ft.",
+          opIndex: 0
+        }
+      ],
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().units).toBe("mm");
+  });
+
+  it("validates non-empty object names", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 1, height: 2 }
+    });
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.renameObject",
+          id: "cylinder_1",
+          name: "   "
+        }
+      ]
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) {
+      expect(response.error).toEqual({
+        code: "INVALID_OBJECT_NAME",
+        message: "Object name must be non-empty.",
+        opIndex: 0,
+        objectId: "cylinder_1"
+      });
+    }
+    expect(
+      engine.getDocument().objects.get("cylinder_1")?.name
+    ).toBeUndefined();
+  });
+
   it("validates positive dimensions for dimension updates", () => {
     const engine = new CadEngine();
 
@@ -339,6 +456,42 @@ describe("cad-core", () => {
       radius: 2.5,
       height: 7
     });
+  });
+
+  it("undoes and redoes document units and object names", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+    engine.apply({
+      op: "document.updateUnits",
+      units: "cm"
+    });
+    engine.apply({
+      op: "scene.renameObject",
+      id: "box_1",
+      name: "Box renamed"
+    });
+
+    expect(engine.getDocument().units).toBe("cm");
+    expect(engine.getDocument().objects.get("box_1")?.name).toBe("Box renamed");
+
+    engine.undo();
+
+    expect(engine.getDocument().objects.get("box_1")?.name).toBeUndefined();
+
+    engine.undo();
+
+    expect(engine.getDocument().units).toBe("mm");
+
+    engine.redo();
+    engine.redo();
+
+    expect(engine.getDocument().units).toBe("cm");
+    expect(engine.getDocument().objects.get("box_1")?.name).toBe("Box renamed");
   });
 
   it("returns combined transaction diff contents for a batch", () => {
@@ -572,6 +725,63 @@ describe("cad-core", () => {
     });
   });
 
+  it("dry-runs and commits units and rename changes through batches", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const ops = [
+      {
+        op: "document.updateUnits" as const,
+        units: "in" as const
+      },
+      {
+        op: "scene.renameObject" as const,
+        id: "box_1",
+        name: "Named box"
+      }
+    ];
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops
+      })
+    ).toEqual({
+      ok: true,
+      mode: "dryRun",
+      createdIds: [],
+      modifiedIds: ["box_1"],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().units).toBe("mm");
+    expect(engine.getDocument().objects.get("box_1")?.name).toBeUndefined();
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops
+      })
+    ).toEqual({
+      ok: true,
+      mode: "commit",
+      createdIds: [],
+      modifiedIds: ["box_1"],
+      deletedIds: [],
+      warnings: [],
+      transactionId: "txn_2"
+    });
+    expect(engine.getDocument().units).toBe("in");
+    expect(engine.getDocument().objects.get("box_1")?.name).toBe("Named box");
+  });
+
   it("undoes a committed CADOps batch", () => {
     const engine = new CadEngine();
 
@@ -627,6 +837,7 @@ describe("cad-core", () => {
       ok: true,
       query: "project.summary",
       cadOpsVersion: "cadops.v1",
+      units: "mm",
       objectCount: 2,
       objects: [
         {
@@ -844,6 +1055,7 @@ describe("cad-core", () => {
 
     engine.apply({
       op: "scene.createBox",
+      name: "Generated box",
       dimensions: { width: 2, height: 3, depth: 4 },
       transform: { translation: [1, 2, 3] }
     });
@@ -868,10 +1080,20 @@ describe("cad-core", () => {
       id: "fixture",
       dimensions: { radius: 2.5, height: 7 }
     });
+    engine.apply({
+      op: "document.updateUnits",
+      units: "in"
+    });
+    engine.apply({
+      op: "scene.renameObject",
+      id: "fixture",
+      name: "Fixture renamed"
+    });
 
     const restored = importCadProjectJson(exportCadProjectJson(engine));
     const restoredObjects = restored.getDocument().objects;
 
+    expect(restored.getDocument().units).toBe("in");
     expect([...restoredObjects.keys()]).toEqual(["obj_1", "fixture"]);
     expect(restoredObjects.get("obj_1")).toEqual(
       engine.getDocument().objects.get("obj_1")
@@ -880,6 +1102,14 @@ describe("cad-core", () => {
       engine.getDocument().objects.get("fixture")
     );
     expect(restored.getTransactions()).toEqual(engine.getTransactions());
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("fixture")?.name).toBeUndefined();
+
+    restored.undo();
+
+    expect(restored.getDocument().units).toBe("mm");
 
     restored.undo();
 

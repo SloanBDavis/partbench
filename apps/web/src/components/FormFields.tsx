@@ -7,19 +7,21 @@ export function DimensionFields<TForm extends DimensionCommandForm>({
   disabled = false,
   fields,
   form,
-  onChange
+  onChange,
+  unitLabel
 }: {
   readonly disabled?: boolean;
   readonly fields: readonly ("width" | "height" | "depth" | "radius")[];
   readonly form: TForm;
   readonly onChange: (form: TForm) => void;
+  readonly unitLabel?: string;
 }) {
   return (
     <div className="field-grid two">
       {fields.map((field) => (
         <NumberField
           key={field}
-          label={field}
+          label={unitLabel ? `${field} (${unitLabel})` : field}
           disabled={disabled}
           value={form[field]}
           onChange={(value) => onChange({ ...form, [field]: value })}
@@ -74,11 +76,13 @@ export function TransformFields<TForm extends TransformCommandForm>({
 }
 
 export function TextField({
+  disabled = false,
   label,
   onChange,
   placeholder,
   value
 }: {
+  readonly disabled?: boolean;
   readonly label: string;
   readonly onChange: (value: string) => void;
   readonly placeholder?: string;
@@ -90,6 +94,7 @@ export function TextField({
       <input
         type="text"
         value={value}
+        disabled={disabled}
         placeholder={placeholder}
         onChange={(event) => onChange(event.currentTarget.value)}
       />

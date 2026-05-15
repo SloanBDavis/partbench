@@ -2,6 +2,7 @@ import type { BoxObject, CylinderObject } from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
   formatDimensions,
+  getObjectDisplayName,
   formatObjectKind,
   formatObjectPosition,
   formatObjectScale,
@@ -13,7 +14,15 @@ describe("scene object display helpers", () => {
     expect(formatObjectKind("box")).toBe("Box");
     expect(formatObjectKind("cylinder")).toBe("Cylinder");
     expect(formatDimensions(createBoxObject())).toBe("2 x 3.25 x 4");
+    expect(formatDimensions(createBoxObject(), "mm")).toBe("2 x 3.25 x 4 mm");
     expect(formatDimensions(createCylinderObject())).toBe("r 1.50, h 4");
+    expect(formatDimensions(createCylinderObject(), "in")).toBe(
+      "r 1.50 in, h 4 in"
+    );
+    expect(getObjectDisplayName(createBoxObject())).toBe("box_1");
+    expect(getObjectDisplayName({ ...createBoxObject(), name: "Base" })).toBe(
+      "Base"
+    );
   });
 
   it("formats transform values compactly", () => {

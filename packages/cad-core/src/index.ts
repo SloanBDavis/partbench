@@ -10,6 +10,8 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   CylinderDimensions,
+  DocumentSemanticDiff,
+  DocumentUnits,
   ObjectId,
   SemanticDiff,
   TransactionId,
@@ -28,6 +30,8 @@ export type {
   CadQueryRequest,
   CadQueryResponse,
   CylinderDimensions,
+  DocumentSemanticDiff,
+  DocumentUnits,
   ObjectId,
   SemanticDiff,
   TransactionId,
@@ -59,6 +63,7 @@ export type SceneObject = BoxObject | CylinderObject;
 
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
+  readonly units: DocumentUnits;
 }
 
 export interface Transaction {
@@ -78,6 +83,7 @@ export interface CadEngineOptions {
 }
 
 export interface CadDocumentSnapshot {
+  readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly nextObjectNumber: number;
 }
@@ -127,6 +133,8 @@ export const corePackage: PackageInfo = {
   status: "ready"
 };
 
+export const DEFAULT_DOCUMENT_UNITS: DocumentUnits = "mm";
+
 export function createDefaultTransform(): Transform {
   return {
     translation: [0, 0, 0],
@@ -136,10 +144,12 @@ export function createDefaultTransform(): Transform {
 }
 
 export function createCadDocument(
-  objects: Iterable<readonly [ObjectId, SceneObject]> = []
+  objects: Iterable<readonly [ObjectId, SceneObject]> = [],
+  units: DocumentUnits = DEFAULT_DOCUMENT_UNITS
 ): CadDocument {
   return {
-    objects: new Map(objects)
+    objects: new Map(objects),
+    units
   };
 }
 
@@ -280,6 +290,7 @@ export class CadEngine {
           ok: true,
           query: request.query.query,
           cadOpsVersion: request.version,
+          units: this.#document.units,
           objectCount: objects.length,
           objects
         };
@@ -469,28 +480,59 @@ type MutableSemanticDiff = {
   created: CadObjectRef[];
   modified: CadObjectRef[];
   deleted: CadObjectRef[];
+  document?: MutableDocumentSemanticDiff;
 };
+
+type MutableDocumentSemanticDiff = {
+  units?: {
+    before: DocumentUnits;
+    after: DocumentUnits;
+  };
+};
+
+interface MutableDocumentState {
+  objects: Map<ObjectId, SceneObject>;
+  units: DocumentUnits;
+}
 
 function applyOperation(
   op: CadOp,
-  objects: Map<ObjectId, SceneObject>,
+  state: MutableDocumentState,
   diff: MutableSemanticDiff,
   createObjectId: () => ObjectId,
   opIndex: number
 ): void {
   switch (op.op) {
+    case "document.updateUnits": {
+      validateDocumentUnits(op.units, opIndex);
+
+      if (state.units !== op.units) {
+        const before = diff.document?.units?.before ?? state.units;
+        diff.document = {
+          ...diff.document,
+          units: {
+            before,
+            after: op.units
+          }
+        };
+        state.units = op.units;
+      }
+
+      return;
+    }
+
     case "scene.createBox": {
       validateBoxDimensions(op.dimensions, opIndex);
 
       const object: BoxObject = {
         id: op.id ?? createObjectId(),
         kind: "box",
-        name: op.name,
+        name: normalizeOptionalObjectName(op.name, opIndex, op.id),
         dimensions: op.dimensions,
         transform: mergeTransform(op.transform)
       };
 
-      addObject(objects, object, diff, opIndex);
+      addObject(state.objects, object, diff, opIndex);
       return;
     }
 
@@ -500,36 +542,36 @@ function applyOperation(
       const object: CylinderObject = {
         id: op.id ?? createObjectId(),
         kind: "cylinder",
-        name: op.name,
+        name: normalizeOptionalObjectName(op.name, opIndex, op.id),
         dimensions: op.dimensions,
         transform: mergeTransform(op.transform)
       };
 
-      addObject(objects, object, diff, opIndex);
+      addObject(state.objects, object, diff, opIndex);
       return;
     }
 
     case "scene.deleteObject": {
-      const existing = getObjectOrThrow(objects, op.id, opIndex);
-      objects.delete(op.id);
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
+      state.objects.delete(op.id);
       diff.deleted.push(objectRef(existing));
       return;
     }
 
     case "scene.updateTransform": {
-      const existing = getObjectOrThrow(objects, op.id, opIndex);
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
       const updated: SceneObject = {
         ...existing,
         transform: mergeTransform(op.transform, existing.transform)
       };
 
-      objects.set(op.id, updated);
+      state.objects.set(op.id, updated);
       diff.modified.push(objectRef(updated));
       return;
     }
 
     case "scene.updateBoxDimensions": {
-      const existing = getObjectOrThrow(objects, op.id, opIndex);
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
       assertObjectKind(existing, "box", opIndex);
       validateBoxDimensions(op.dimensions, opIndex, op.id);
 
@@ -538,13 +580,13 @@ function applyOperation(
         dimensions: op.dimensions
       };
 
-      objects.set(op.id, updated);
+      state.objects.set(op.id, updated);
       diff.modified.push(objectRef(updated));
       return;
     }
 
     case "scene.updateCylinderDimensions": {
-      const existing = getObjectOrThrow(objects, op.id, opIndex);
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
       assertObjectKind(existing, "cylinder", opIndex);
       validateCylinderDimensions(op.dimensions, opIndex, op.id);
 
@@ -553,7 +595,20 @@ function applyOperation(
         dimensions: op.dimensions
       };
 
-      objects.set(op.id, updated);
+      state.objects.set(op.id, updated);
+      diff.modified.push(objectRef(updated));
+      return;
+    }
+
+    case "scene.renameObject": {
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
+      const name = normalizeObjectName(op.name, opIndex, op.id);
+      const updated: SceneObject = {
+        ...existing,
+        name
+      };
+
+      state.objects.set(op.id, updated);
       diff.modified.push(objectRef(updated));
       return;
     }
@@ -656,6 +711,47 @@ function validateCylinderDimensions(
   });
 }
 
+function validateDocumentUnits(units: DocumentUnits, opIndex?: number): void {
+  if (isDocumentUnits(units)) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_UNITS",
+    message: `Unsupported document units: ${String(units)}.`,
+    opIndex
+  });
+}
+
+function normalizeOptionalObjectName(
+  name: string | undefined,
+  opIndex?: number,
+  objectId?: ObjectId
+): string | undefined {
+  return name === undefined
+    ? undefined
+    : normalizeObjectName(name, opIndex, objectId);
+}
+
+function normalizeObjectName(
+  name: string,
+  opIndex?: number,
+  objectId?: ObjectId
+): string {
+  const normalized = name.trim();
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  throwValidationError({
+    code: "INVALID_OBJECT_NAME",
+    message: "Object name must be non-empty.",
+    opIndex,
+    objectId
+  });
+}
+
 function isPositiveFiniteNumber(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
@@ -687,7 +783,7 @@ function objectRef(object: SceneObject): CadObjectRef {
 }
 
 function cloneDocument(document: CadDocument): CadDocument {
-  return createCadDocument(document.objects);
+  return createCadDocument(document.objects, document.units);
 }
 
 export function createCadDocumentSnapshot(
@@ -695,6 +791,7 @@ export function createCadDocumentSnapshot(
   nextObjectNumber = inferNextObjectNumber(document)
 ): CadDocumentSnapshot {
   return {
+    units: document.units,
     objects: [...document.objects.values()],
     nextObjectNumber
   };
@@ -704,7 +801,8 @@ export function createCadDocumentFromSnapshot(
   snapshot: CadDocumentSnapshot
 ): CadDocument {
   return createCadDocument(
-    snapshot.objects.map((object) => [object.id, object] as const)
+    snapshot.objects.map((object) => [object.id, object] as const),
+    snapshot.units
   );
 }
 
@@ -740,7 +838,10 @@ function runOperations(
     });
   }
 
-  const nextObjects = new Map(document.objects);
+  const state: MutableDocumentState = {
+    objects: new Map(document.objects),
+    units: document.units
+  };
   let nextObjectNumber = initialObjectNumber;
   const diff: MutableSemanticDiff = {
     created: [],
@@ -751,10 +852,10 @@ function runOperations(
   for (const [opIndex, op] of ops.entries()) {
     applyOperation(
       op,
-      nextObjects,
+      state,
       diff,
       () => {
-        const result = createObjectId(nextObjects, nextObjectNumber);
+        const result = createObjectId(state.objects, nextObjectNumber);
         nextObjectNumber = result.nextObjectNumber;
         return result.id;
       },
@@ -763,7 +864,7 @@ function runOperations(
   }
 
   return {
-    document: createCadDocument(nextObjects),
+    document: createCadDocument(state.objects, state.units),
     diff,
     nextObjectNumber
   };
@@ -944,6 +1045,7 @@ function isCadProject(value: unknown): value is CadProject {
 function isCadDocumentSnapshot(value: unknown): value is CadDocumentSnapshot {
   return (
     isRecord(value) &&
+    isDocumentUnits(value.units) &&
     Array.isArray(value.objects) &&
     value.objects.every(isSceneObject) &&
     typeof value.nextObjectNumber === "number" &&
@@ -972,7 +1074,7 @@ function isSceneObject(value: unknown): value is SceneObject {
     return (
       isBoxDimensions(value.dimensions) &&
       isTransform(value.transform) &&
-      isOptionalString(value.name)
+      isOptionalObjectName(value.name)
     );
   }
 
@@ -980,7 +1082,7 @@ function isSceneObject(value: unknown): value is SceneObject {
     return (
       isCylinderDimensions(value.dimensions) &&
       isTransform(value.transform) &&
-      isOptionalString(value.name)
+      isOptionalObjectName(value.name)
     );
   }
 
@@ -1032,6 +1134,14 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.renameObject") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "document.updateUnits") {
+    return isDocumentUnits(value.units);
+  }
+
   return false;
 }
 
@@ -1043,7 +1153,18 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     Array.isArray(value.modified) &&
     value.modified.every(isCadObjectRef) &&
     Array.isArray(value.deleted) &&
-    value.deleted.every(isCadObjectRef)
+    value.deleted.every(isCadObjectRef) &&
+    (value.document === undefined || isDocumentSemanticDiff(value.document))
+  );
+}
+
+function isDocumentSemanticDiff(value: unknown): value is DocumentSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.units === undefined ||
+      (isRecord(value.units) &&
+        isDocumentUnits(value.units.before) &&
+        isDocumentUnits(value.units.after)))
   );
 }
 
@@ -1109,6 +1230,16 @@ function isVec3(value: unknown): value is readonly [number, number, number] {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isOptionalObjectName(value: unknown): value is string | undefined {
+  return (
+    value === undefined || (typeof value === "string" && value.trim() !== "")
+  );
+}
+
+function isDocumentUnits(value: unknown): value is DocumentUnits {
+  return value === "mm" || value === "cm" || value === "m" || value === "in";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

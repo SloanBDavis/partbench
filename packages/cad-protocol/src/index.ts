@@ -8,6 +8,7 @@ export type CadBatchMode = "dryRun" | "commit";
 
 export type ObjectId = string;
 export type TransactionId = string;
+export type DocumentUnits = "mm" | "cm" | "m" | "in";
 
 export type Vec3 = readonly [number, number, number];
 
@@ -31,12 +32,19 @@ export interface CylinderDimensions {
 export type CadObjectKind = "box" | "cylinder";
 
 export type CadOp =
+  | DocumentUpdateUnitsOp
   | SceneCreateBoxOp
   | SceneCreateCylinderOp
   | SceneDeleteObjectOp
   | SceneUpdateTransformOp
   | SceneUpdateBoxDimensionsOp
-  | SceneUpdateCylinderDimensionsOp;
+  | SceneUpdateCylinderDimensionsOp
+  | SceneRenameObjectOp;
+
+export interface DocumentUpdateUnitsOp {
+  readonly op: "document.updateUnits";
+  readonly units: DocumentUnits;
+}
 
 export interface SceneCreateBoxOp {
   readonly op: "scene.createBox";
@@ -77,15 +85,29 @@ export interface SceneUpdateCylinderDimensionsOp {
   readonly dimensions: CylinderDimensions;
 }
 
+export interface SceneRenameObjectOp {
+  readonly op: "scene.renameObject";
+  readonly id: ObjectId;
+  readonly name: string;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
+}
+
+export interface DocumentSemanticDiff {
+  readonly units?: {
+    readonly before: DocumentUnits;
+    readonly after: DocumentUnits;
+  };
 }
 
 export interface SemanticDiff {
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
   readonly deleted: readonly CadObjectRef[];
+  readonly document?: DocumentSemanticDiff;
 }
 
 export interface CadBatch {
@@ -99,7 +121,9 @@ export type CadBatchValidationErrorCode =
   | "OBJECT_ALREADY_EXISTS"
   | "OBJECT_NOT_FOUND"
   | "OBJECT_KIND_MISMATCH"
-  | "INVALID_DIMENSIONS";
+  | "INVALID_DIMENSIONS"
+  | "INVALID_UNITS"
+  | "INVALID_OBJECT_NAME";
 
 export interface CadBatchValidationError {
   readonly code: CadBatchValidationErrorCode;
@@ -190,6 +214,7 @@ export interface ProjectSummaryQueryResponse {
   readonly ok: true;
   readonly query: "project.summary";
   readonly cadOpsVersion: CadOpsVersion;
+  readonly units: DocumentUnits;
   readonly objectCount: number;
   readonly objects: readonly CadObjectSnapshot[];
 }

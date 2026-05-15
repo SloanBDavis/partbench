@@ -1,4 +1,4 @@
-import type { SceneObject } from "@web-cad/cad-core";
+import type { DocumentUnits, SceneObject } from "@web-cad/cad-core";
 import { useState } from "react";
 import {
   areBoxDimensionFormsEqual,
@@ -15,21 +15,26 @@ import {
 } from "../cadCommands";
 import {
   formatDimensions,
+  getObjectDisplayName,
   formatObjectKind,
   formatVector
 } from "../sceneObjectDisplay";
-import { DimensionFields, TransformFields } from "./FormFields";
+import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function Inspector({
   disabled = false,
   object,
+  units,
   onApplyDimensions,
+  onApplyName,
   onApplyTransform,
   onDelete
 }: {
   readonly disabled?: boolean;
   readonly object?: SceneObject;
+  readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
+  readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
 }) {
@@ -46,12 +51,16 @@ export function Inspector({
               <dd>{object.id}</dd>
             </div>
             <div>
+              <dt>Name</dt>
+              <dd>{getObjectDisplayName(object)}</dd>
+            </div>
+            <div>
               <dt>Type</dt>
               <dd>{formatObjectKind(object.kind)}</dd>
             </div>
             <div>
               <dt>Dimensions</dt>
-              <dd>{formatDimensions(object)}</dd>
+              <dd>{formatDimensions(object, units)}</dd>
             </div>
             <div>
               <dt>Translation</dt>
@@ -66,9 +75,16 @@ export function Inspector({
               <dd>{formatVector(object.transform.scale)}</dd>
             </div>
           </dl>
+          <NameEditor
+            key={`${object.id}-${object.name ?? ""}`}
+            object={object}
+            disabled={disabled}
+            onApply={onApplyName}
+          />
           <DimensionEditor
             key={`${object.id}-${JSON.stringify(object.dimensions)}`}
             object={object}
+            units={units}
             disabled={disabled}
             onApply={onApplyDimensions}
           />
@@ -85,13 +101,73 @@ export function Inspector({
   );
 }
 
-function DimensionEditor({
+function NameEditor({
   disabled,
   object,
   onApply
 }: {
   readonly disabled: boolean;
   readonly object: SceneObject;
+  readonly onApply: (name: string) => void;
+}) {
+  const currentName = object.name ?? object.id;
+  const [name, setName] = useState(currentName);
+  const normalizedName = name.trim();
+  const hasChanges = normalizedName !== currentName;
+  const isValid = normalizedName.length > 0;
+
+  function resetEdits() {
+    setName(currentName);
+  }
+
+  function handleApply() {
+    if (hasChanges && isValid) {
+      onApply(normalizedName);
+    }
+  }
+
+  return (
+    <section className="command-card">
+      <div className="command-card-heading">
+        <h3>Name</h3>
+        {hasChanges && <span>Edited</span>}
+      </div>
+      <TextField
+        disabled={disabled}
+        label="Display name"
+        value={name}
+        onChange={setName}
+      />
+      <div className="button-row">
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={disabled || !hasChanges || !isValid}
+        >
+          Rename object
+        </button>
+        <button
+          type="button"
+          onClick={resetEdits}
+          disabled={disabled || !hasChanges}
+        >
+          Reset edits
+        </button>
+      </div>
+      {!isValid && <p className="error-text">Name is required.</p>}
+    </section>
+  );
+}
+
+function DimensionEditor({
+  disabled,
+  object,
+  units,
+  onApply
+}: {
+  readonly disabled: boolean;
+  readonly object: SceneObject;
+  readonly units: DocumentUnits;
   readonly onApply: (form: DimensionCommandForm) => void;
 }) {
   const currentForm =
@@ -129,6 +205,7 @@ function DimensionEditor({
         fields={fields}
         form={form}
         onChange={setForm}
+        unitLabel={units}
       />
       <div className="button-row">
         <button

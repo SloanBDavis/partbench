@@ -1,4 +1,8 @@
-import type { CadBatchResponse, CadOp } from "@web-cad/cad-protocol";
+import type {
+  CadBatchResponse,
+  CadOp,
+  DocumentUnits
+} from "@web-cad/cad-protocol";
 import type { BatchOperationForm, BatchOperationKind } from "../cadCommands";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
@@ -12,7 +16,8 @@ export function BatchPanel({
   onCommit,
   onDryRun,
   queuedOps,
-  response
+  response,
+  units
 }: {
   readonly disabled?: boolean;
   readonly error?: string;
@@ -24,6 +29,7 @@ export function BatchPanel({
   readonly onDryRun: () => void;
   readonly queuedOps: readonly CadOp[];
   readonly response?: CadBatchResponse;
+  readonly units: DocumentUnits;
 }) {
   return (
     <section className="batch-panel" aria-label="Batch command panel">
@@ -40,6 +46,7 @@ export function BatchPanel({
             })
           }
         >
+          <option value="document.updateUnits">Update document units</option>
           <option value="scene.createBox">Create box</option>
           <option value="scene.createCylinder">Create cylinder</option>
           <option value="scene.updateTransform">Update transform</option>
@@ -49,9 +56,31 @@ export function BatchPanel({
           <option value="scene.updateCylinderDimensions">
             Update cylinder dimensions
           </option>
+          <option value="scene.renameObject">Rename object</option>
           <option value="scene.deleteObject">Delete object</option>
         </select>
       </label>
+
+      {form.op === "document.updateUnits" && (
+        <label>
+          Units
+          <select
+            value={form.units}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange({
+                ...form,
+                units: event.currentTarget.value as DocumentUnits
+              })
+            }
+          >
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m">m</option>
+            <option value="in">in</option>
+          </select>
+        </label>
+      )}
 
       {(form.op === "scene.createBox" ||
         form.op === "scene.createCylinder") && (
@@ -66,11 +95,20 @@ export function BatchPanel({
       {(form.op === "scene.updateTransform" ||
         form.op === "scene.updateBoxDimensions" ||
         form.op === "scene.updateCylinderDimensions" ||
+        form.op === "scene.renameObject" ||
         form.op === "scene.deleteObject") && (
         <TextField
           label="Target ID"
           value={form.targetId}
           onChange={(targetId) => onChange({ ...form, targetId })}
+        />
+      )}
+
+      {form.op === "scene.renameObject" && (
+        <TextField
+          label="Name"
+          value={form.name}
+          onChange={(name) => onChange({ ...form, name })}
         />
       )}
 
@@ -80,6 +118,7 @@ export function BatchPanel({
           form={form}
           onChange={onChange}
           fields={["width", "height", "depth"]}
+          unitLabel={units}
         />
       )}
 
@@ -89,6 +128,7 @@ export function BatchPanel({
           form={form}
           onChange={onChange}
           fields={["radius", "height"]}
+          unitLabel={units}
         />
       )}
 
@@ -186,6 +226,10 @@ function DiffIds({
 function summarizeOp(op: CadOp): string {
   if (op.op === "scene.createBox" || op.op === "scene.createCylinder") {
     return `${op.op}${op.id ? ` ${op.id}` : ""}`;
+  }
+
+  if (op.op === "document.updateUnits") {
+    return `${op.op} ${op.units}`;
   }
 
   return `${op.op} ${op.id}`;

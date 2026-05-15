@@ -13,6 +13,10 @@ describe("cad-protocol", () => {
   it("types supported scene commands", () => {
     const ops: CadOp[] = [
       {
+        op: "document.updateUnits",
+        units: "in"
+      },
+      {
         op: "scene.createBox",
         id: "box_1",
         dimensions: { width: 1, height: 2, depth: 3 }
@@ -38,17 +42,24 @@ describe("cad-protocol", () => {
         dimensions: { radius: 2, height: 8 }
       },
       {
+        op: "scene.renameObject",
+        id: "box_1",
+        name: "Base plate"
+      },
+      {
         op: "scene.deleteObject",
         id: "cylinder_1"
       }
     ];
 
     expect(ops.map((op) => op.op)).toEqual([
+      "document.updateUnits",
       "scene.createBox",
       "scene.createCylinder",
       "scene.updateTransform",
       "scene.updateBoxDimensions",
       "scene.updateCylinderDimensions",
+      "scene.renameObject",
       "scene.deleteObject"
     ]);
   });

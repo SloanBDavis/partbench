@@ -19,8 +19,10 @@ import {
   buildCreateCylinderOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
+  buildRenameObjectOp,
   buildUpdateBoxDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateUnitsOp,
   buildUpdateTransformOp,
   type BatchOperationForm,
   type DimensionCommandForm,
@@ -42,6 +44,7 @@ import {
 } from "./derivedGeometry";
 import {
   formatDimensions,
+  getObjectDisplayName,
   formatObjectKind,
   formatObjectPosition,
   formatObjectScale
@@ -94,7 +97,9 @@ const initialBatchForm: BatchOperationForm = {
   rotationZ: 0,
   scaleX: 1,
   scaleY: 1,
-  scaleZ: 1
+  scaleZ: 1,
+  name: "",
+  units: "mm"
 };
 
 export function App() {
@@ -254,6 +259,23 @@ export function App() {
     );
   }
 
+  async function updateDocumentUnits(units: CadDocument["units"]) {
+    if (units === document.units) {
+      return;
+    }
+
+    await commitOps([buildUpdateUnitsOp(units)], () => selectedId);
+  }
+
+  async function renameSelectedObject(name: string) {
+    if (!selectedObject) {
+      return;
+    }
+
+    const objectId = selectedObject.id;
+    await commitOps([buildRenameObjectOp(objectId, name)], () => objectId);
+  }
+
   async function updateSelectedTransform(form: TransformCommandForm) {
     if (!selectedObject) {
       return;
@@ -362,9 +384,12 @@ export function App() {
         className={object.id === selectedId ? "selected" : ""}
         onClick={() => selectObject(object.id)}
       >
-        <span className="object-id">{object.id}</span>
+        <span className="object-id">{getObjectDisplayName(object)}</span>
         <strong>{formatObjectKind(object.kind)}</strong>
-        <small className="object-meta">{formatDimensions(object)}</small>
+        {object.name && <small className="object-meta">ID {object.id}</small>}
+        <small className="object-meta">
+          {formatDimensions(object, document.units)}
+        </small>
         <small className="object-meta">{formatObjectPosition(object)}</small>
         <small className="object-meta">{formatObjectScale(object)}</small>
         {derivedGeometryEnabled && (
@@ -393,6 +418,23 @@ export function App() {
               Worker running
             </span>
           )}
+          <label className="toolbar-field">
+            Units
+            <select
+              value={document.units}
+              disabled={commandPending}
+              onChange={(event) =>
+                void updateDocumentUnits(
+                  event.currentTarget.value as CadDocument["units"]
+                )
+              }
+            >
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+              <option value="in">in</option>
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => void createBox()}
@@ -447,6 +489,7 @@ export function App() {
             disabled={commandPending}
             form={batchForm}
             onChange={setBatchForm}
+            units={document.units}
             queuedOps={queuedOps}
             response={batchResponse}
             error={batchError}
@@ -484,7 +527,9 @@ export function App() {
         <Inspector
           disabled={commandPending}
           object={selectedObject}
+          units={document.units}
           onApplyDimensions={(form) => void updateSelectedDimensions(form)}
+          onApplyName={(name) => void renameSelectedObject(name)}
           onApplyTransform={(form) => void updateSelectedTransform(form)}
           onDelete={() => void deleteSelectedObject()}
         />

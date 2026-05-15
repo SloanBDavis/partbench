@@ -50,7 +50,12 @@ Call `cad.batch`:
           {
             "op": "scene.createBox",
             "id": "stdio_box",
+            "name": "Stdio box",
             "dimensions": { "width": 2, "height": 3, "depth": 4 }
+          },
+          {
+            "op": "document.updateUnits",
+            "units": "in"
           }
         ]
       }
@@ -62,3 +67,7 @@ Call `cad.batch`:
 The server keeps an in-memory `cad-core` document for the lifetime of the
 process through the existing adapter stack. Restarting the process resets that
 document.
+
+`cad.project_summary` returns document units and object names when present.
+Units are current-model metadata only; the server does not perform unit
+conversion.
