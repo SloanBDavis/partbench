@@ -59,6 +59,79 @@ export function formatTransactionDiffSummary(
     parts.push(`${diff.deletedCount} deleted`);
   }
 
+  pushCountSummary(
+    parts,
+    diff.sketches?.created?.length,
+    "sketch created",
+    "sketches created"
+  );
+  pushCountSummary(
+    parts,
+    diff.sketches?.modified?.length,
+    "sketch modified",
+    "sketches modified"
+  );
+  pushCountSummary(
+    parts,
+    diff.sketches?.deleted?.length,
+    "sketch deleted",
+    "sketches deleted"
+  );
+  pushCountSummary(
+    parts,
+    diff.sketches?.entitiesCreated?.length,
+    "sketch entity created",
+    "sketch entities created"
+  );
+  pushCountSummary(
+    parts,
+    diff.sketches?.entitiesModified?.length,
+    "sketch entity modified",
+    "sketch entities modified"
+  );
+  pushCountSummary(
+    parts,
+    diff.sketches?.entitiesDeleted?.length,
+    "sketch entity deleted",
+    "sketch entities deleted"
+  );
+  pushCountSummary(
+    parts,
+    diff.features?.created?.length,
+    "feature created",
+    "features created"
+  );
+  pushCountSummary(
+    parts,
+    diff.features?.modified?.length,
+    "feature modified",
+    "features modified"
+  );
+  pushCountSummary(
+    parts,
+    diff.features?.deleted?.length,
+    "feature deleted",
+    "features deleted"
+  );
+  pushCountSummary(
+    parts,
+    diff.features?.bodiesCreated?.length,
+    "body created",
+    "bodies created"
+  );
+  pushCountSummary(
+    parts,
+    diff.features?.bodiesModified?.length,
+    "body modified",
+    "bodies modified"
+  );
+  pushCountSummary(
+    parts,
+    diff.features?.bodiesDeleted?.length,
+    "body deleted",
+    "bodies deleted"
+  );
+
   if (diff.document?.units) {
     const mode =
       diff.document.units.mode === "preservePhysicalSize"
@@ -70,4 +143,17 @@ export function formatTransactionDiffSummary(
   }
 
   return parts.length > 0 ? parts.join(", ") : "No visible diff";
+}
+
+function pushCountSummary(
+  parts: string[],
+  count: number | undefined,
+  singular: string,
+  plural: string
+): void {
+  if (!count) {
+    return;
+  }
+
+  parts.push(`${count} ${count === 1 ? singular : plural}`);
 }

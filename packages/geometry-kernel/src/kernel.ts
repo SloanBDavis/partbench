@@ -384,8 +384,7 @@ async function createExtrudeMesh(
     positions: mapExtrudePositions(
       mesh.positions,
       request.sketchPlane,
-      request.profile.center,
-      request.depth
+      request.profile.center
     ),
     indices: mesh.indices,
     vertexCount: mesh.vertexCount,
@@ -397,15 +396,18 @@ async function createExtrudeMesh(
 function mapExtrudePositions(
   positions: Float32Array,
   sketchPlane: GeometryKernelSketchPlane,
-  center: readonly [number, number],
-  depth: number
+  center: readonly [number, number]
 ): Float32Array {
   const mapped = new Float32Array(positions.length);
+  const bounds = getPositionBounds(positions);
+  const profileCenterX = (bounds.min[0] + bounds.max[0]) / 2;
+  const profileCenterY = (bounds.min[1] + bounds.max[1]) / 2;
+  const normalOrigin = bounds.min[2];
 
   for (let index = 0; index < positions.length; index += 3) {
-    const profileX = positions[index] + center[0];
-    const profileY = positions[index + 1] + center[1];
-    const normal = positions[index + 2] + depth / 2;
+    const profileX = positions[index] - profileCenterX + center[0];
+    const profileY = positions[index + 1] - profileCenterY + center[1];
+    const normal = positions[index + 2] - normalOrigin;
     const [x, y, z] = mapPlanePoint(sketchPlane, profileX, profileY, normal);
 
     mapped[index] = x;
@@ -414,6 +416,32 @@ function mapExtrudePositions(
   }
 
   return mapped;
+}
+
+function getPositionBounds(positions: Float32Array): {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+} {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let minZ = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let maxZ = Number.NEGATIVE_INFINITY;
+
+  for (let index = 0; index < positions.length; index += 3) {
+    minX = Math.min(minX, positions[index]);
+    minY = Math.min(minY, positions[index + 1]);
+    minZ = Math.min(minZ, positions[index + 2]);
+    maxX = Math.max(maxX, positions[index]);
+    maxY = Math.max(maxY, positions[index + 1]);
+    maxZ = Math.max(maxZ, positions[index + 2]);
+  }
+
+  return {
+    min: [minX, minY, minZ],
+    max: [maxX, maxY, maxZ]
+  };
 }
 
 function mapPlanePoint(

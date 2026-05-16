@@ -185,9 +185,22 @@ describe("geometry-kernel facade", () => {
     expect(rectangle.mesh.primitive).toBe("extrude");
     expect(rectangle.mesh.vertexCount).toBeGreaterThan(0);
     expect(rectangle.mesh.triangleCount).toBeGreaterThan(0);
+    expect(getMeshBounds(rectangle.mesh.positions)).toEqual({
+      min: [-1, 0.5, 0],
+      max: [3, 3.5, 5]
+    });
+    const circleBounds = getMeshBounds(circle.mesh.positions);
+
     expect(circle.mesh.primitive).toBe("extrude");
     expect(circle.mesh.vertexCount).toBeGreaterThan(0);
     expect(circle.mesh.triangleCount).toBeGreaterThan(0);
+    expect(circleBounds.min[0]).toBeCloseTo(-2, 6);
+    expect(circleBounds.max[0]).toBeCloseTo(2, 6);
+    expect(circleBounds.min[1]).toBeCloseTo(0, 6);
+    expect(circleBounds.max[1]).toBeCloseTo(6, 6);
+    expect(circleBounds.min[2]).toBeGreaterThanOrEqual(-2);
+    expect(circleBounds.max[2]).toBeLessThanOrEqual(2);
+    expect(circleBounds.min[2] + circleBounds.max[2]).toBeCloseTo(0, 6);
   });
 
   it("returns structured validation errors before calling the kernel", async () => {
@@ -302,3 +315,36 @@ describe("geometry-kernel facade", () => {
     });
   });
 });
+
+function getMeshBounds(positions: Float32Array): {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+} {
+  const points: Array<readonly [number, number, number]> = [];
+
+  for (let index = 0; index < positions.length; index += 3) {
+    points.push([
+      cleanNumber(positions[index]),
+      cleanNumber(positions[index + 1]),
+      cleanNumber(positions[index + 2])
+    ]);
+  }
+
+  return {
+    min: [
+      Math.min(...points.map((point) => point[0])),
+      Math.min(...points.map((point) => point[1])),
+      Math.min(...points.map((point) => point[2]))
+    ],
+    max: [
+      Math.max(...points.map((point) => point[0])),
+      Math.max(...points.map((point) => point[1])),
+      Math.max(...points.map((point) => point[2]))
+    ]
+  };
+}
+
+function cleanNumber(value: number): number {
+  const rounded = Math.round(value * 1e6) / 1e6;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}

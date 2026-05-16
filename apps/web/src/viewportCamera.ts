@@ -110,8 +110,8 @@ function getPrimitiveBounds(primitive: RenderPrimitive): RenderSceneBounds {
   if (primitive.kind === "box") {
     const halfExtents: Vec3 = [
       (primitive.dimensions.width * Math.abs(scale[0])) / 2,
-      (primitive.dimensions.depth * Math.abs(scale[1])) / 2,
-      (primitive.dimensions.height * Math.abs(scale[2])) / 2
+      (primitive.dimensions.height * Math.abs(scale[1])) / 2,
+      (primitive.dimensions.depth * Math.abs(scale[2])) / 2
     ];
 
     return boundsFromCenter(translation, halfExtents);

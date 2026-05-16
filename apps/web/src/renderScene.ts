@@ -1,4 +1,9 @@
-import type { SceneObject } from "@web-cad/cad-core";
+import type {
+  SceneObject,
+  SketchEntitySnapshot,
+  SketchPlane,
+  SketchSnapshot
+} from "@web-cad/cad-core";
 import type {
   RenderEdgeSegment,
   RenderPrimitive,
@@ -19,7 +24,8 @@ export interface RenderSceneInputs {
 export function createRenderSceneInputs(
   objects: readonly SceneObject[],
   derivedGeometryBySourceId: ReadonlyMap<string, DerivedGeometryEntry>,
-  extrudeSources: readonly DerivedExtrudeGeometrySource[] = []
+  extrudeSources: readonly DerivedExtrudeGeometrySource[] = [],
+  sketches: readonly SketchSnapshot[] = []
 ): RenderSceneInputs {
   const primitives: RenderPrimitive[] = [];
   const meshes: RenderTriangleMesh[] = [];
@@ -46,7 +52,36 @@ export function createRenderSceneInputs(
     primitives.push(toExtrudeFallbackPrimitive(source));
   }
 
+  meshes.push(...createSketchDisplayMeshes(sketches));
+
   return { primitives, meshes };
+}
+
+export function createSketchDisplayMeshes(
+  sketches: readonly SketchSnapshot[]
+): readonly RenderTriangleMesh[] {
+  return sketches.map((sketch) => ({
+    id: `sketch:${sketch.id}`,
+    kind: "mesh",
+    vertices: [],
+    indices: [],
+    transform: createIdentityTransform(),
+    edgeSegments: createSketchDisplayEdges(sketch),
+    source: "sketch",
+    label: sketch.name
+  }));
+}
+
+export function createSketchDisplayEdges(
+  sketch: SketchSnapshot
+): readonly RenderEdgeSegment[] {
+  if (sketch.entities.length === 0) {
+    return createEmptySketchPlaneMarker(sketch.plane);
+  }
+
+  return sketch.entities.flatMap((entity) =>
+    createSketchEntityDisplayEdges(sketch.plane, entity)
+  );
 }
 
 export function addMeshDisplayEdges(
@@ -253,6 +288,123 @@ function createExtrudeDisplayEdges(
   }
 
   return transformEdges([], primitive.transform);
+}
+
+function createSketchEntityDisplayEdges(
+  plane: SketchPlane,
+  entity: SketchEntitySnapshot
+): readonly RenderEdgeSegment[] {
+  switch (entity.kind) {
+    case "point":
+      return createSketchPointMarker(plane, entity.point);
+    case "line":
+      return [
+        {
+          start: mapSketchPoint(plane, entity.start),
+          end: mapSketchPoint(plane, entity.end)
+        }
+      ];
+    case "rectangle":
+      return createSketchRectangleEdges(
+        plane,
+        entity.center,
+        entity.width,
+        entity.height
+      );
+    case "circle":
+      return createSketchCircleEdges(plane, entity.center, entity.radius);
+  }
+}
+
+function createEmptySketchPlaneMarker(
+  plane: SketchPlane
+): readonly RenderEdgeSegment[] {
+  return [
+    ...createSketchRectangleEdges(plane, [0, 0], 1, 1),
+    ...createSketchPointMarker(plane, [0, 0])
+  ];
+}
+
+function createSketchPointMarker(
+  plane: SketchPlane,
+  point: readonly [number, number]
+): readonly RenderEdgeSegment[] {
+  const markerSize = 0.1;
+
+  return [
+    {
+      start: mapSketchPoint(plane, [point[0] - markerSize, point[1]]),
+      end: mapSketchPoint(plane, [point[0] + markerSize, point[1]])
+    },
+    {
+      start: mapSketchPoint(plane, [point[0], point[1] - markerSize]),
+      end: mapSketchPoint(plane, [point[0], point[1] + markerSize])
+    }
+  ];
+}
+
+function createSketchRectangleEdges(
+  plane: SketchPlane,
+  center: readonly [number, number],
+  width: number,
+  height: number
+): readonly RenderEdgeSegment[] {
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const corners = [
+    [center[0] - halfWidth, center[1] - halfHeight],
+    [center[0] + halfWidth, center[1] - halfHeight],
+    [center[0] + halfWidth, center[1] + halfHeight],
+    [center[0] - halfWidth, center[1] + halfHeight]
+  ] as const;
+
+  return corners.map((corner, index) => ({
+    start: mapSketchPoint(plane, corner),
+    end: mapSketchPoint(plane, corners[(index + 1) % corners.length])
+  }));
+}
+
+function createSketchCircleEdges(
+  plane: SketchPlane,
+  center: readonly [number, number],
+  radius: number
+): readonly RenderEdgeSegment[] {
+  const segmentCount = 48;
+  const points = Array.from({ length: segmentCount }, (_, index) => {
+    const angle = (index / segmentCount) * Math.PI * 2;
+
+    return [
+      cleanRenderNumber(center[0] + Math.cos(angle) * radius),
+      cleanRenderNumber(center[1] + Math.sin(angle) * radius)
+    ] as const;
+  });
+
+  return points.map((point, index) => ({
+    start: mapSketchPoint(plane, point),
+    end: mapSketchPoint(plane, points[(index + 1) % points.length])
+  }));
+}
+
+function mapSketchPoint(
+  plane: SketchPlane,
+  point: readonly [number, number]
+): Vec3 {
+  switch (plane) {
+    case "XY":
+      return [point[0], point[1], 0];
+    case "XZ":
+      return [point[0], 0, point[1]];
+    case "YZ":
+      return [0, point[0], point[1]];
+  }
+}
+
+function createIdentityTransform(): RenderTransform {
+  return {
+    translation: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1]
+  };
 }
 
 function transformEdges(

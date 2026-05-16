@@ -57,6 +57,45 @@ describe("transaction history display helpers", () => {
         }
       })
     ).toBe("1 created, units mm -> in (relabelled)");
+    expect(
+      formatTransactionDiffSummary({
+        created: [],
+        modified: [],
+        deleted: [],
+        createdCount: 0,
+        modifiedCount: 0,
+        deletedCount: 0,
+        sketches: {
+          created: [{ id: "sketch_1" }],
+          modified: [],
+          deleted: [],
+          entitiesCreated: [
+            { sketchId: "sketch_1", id: "skent_1", kind: "rectangle" }
+          ],
+          entitiesModified: [],
+          entitiesDeleted: []
+        },
+        features: {
+          created: [
+            {
+              id: "feat_1",
+              kind: "extrude",
+              bodyId: "body_1",
+              sketchId: "sketch_1",
+              entityId: "skent_1",
+              profileKind: "rectangle"
+            }
+          ],
+          modified: [],
+          deleted: [],
+          bodiesCreated: [{ id: "body_1", kind: "solid", featureId: "feat_1" }],
+          bodiesModified: [],
+          bodiesDeleted: []
+        }
+      })
+    ).toBe(
+      "1 sketch created, 1 sketch entity created, 1 feature created, 1 body created"
+    );
   });
 
   it("returns recent transactions newest first", () => {

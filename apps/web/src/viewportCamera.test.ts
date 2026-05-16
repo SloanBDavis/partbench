@@ -16,8 +16,8 @@ describe("viewport camera helpers", () => {
     const bounds = getRenderSceneBounds([createBoxPrimitive()]);
 
     expect(bounds).toEqual({
-      min: [1, 0, 2],
-      max: [5, 6, 4]
+      min: [1, 2, 0],
+      max: [5, 4, 6]
     });
   });
 
@@ -95,8 +95,8 @@ describe("viewport camera helpers", () => {
     ]);
 
     expect(getRenderObjectBounds("box_1", [createBoxPrimitive()])).toEqual({
-      min: [1, 0, 2],
-      max: [5, 6, 4]
+      min: [1, 2, 0],
+      max: [5, 4, 6]
     });
     expect(fitted.target).toEqual([3, 3, 3]);
     expect(fitted.distance).toBeCloseTo(11.97, 2);

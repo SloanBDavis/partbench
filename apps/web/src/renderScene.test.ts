@@ -2,13 +2,18 @@ import type {
   BoxObject,
   ConeObject,
   CylinderObject,
+  SketchSnapshot,
   SphereObject,
   TorusObject
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type { DerivedGeometryEntry } from "./derivedGeometry";
-import { createMeshDisplayEdges, createRenderSceneInputs } from "./renderScene";
+import {
+  createMeshDisplayEdges,
+  createRenderSceneInputs,
+  createSketchDisplayEdges
+} from "./renderScene";
 
 describe("renderScene", () => {
   it("prefers a ready derived mesh over the primitive fallback", () => {
@@ -271,6 +276,88 @@ describe("renderScene", () => {
       "box_unsupported"
     ]);
     expect(scene.meshes).toEqual([]);
+  });
+
+  it("adds sketch display edges so authored sketches are visible in the viewport", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch_1",
+      name: "Base sketch",
+      plane: "XY",
+      entities: [
+        {
+          id: "rect_1",
+          kind: "rectangle",
+          center: [1, 2],
+          width: 4,
+          height: 6
+        }
+      ]
+    };
+    const scene = createRenderSceneInputs([], new Map(), [], [sketch]);
+
+    expect(scene.meshes).toHaveLength(1);
+    expect(scene.meshes[0]).toMatchObject({
+      id: "sketch:sketch_1",
+      kind: "mesh",
+      vertices: [],
+      indices: [],
+      source: "sketch",
+      label: "Base sketch"
+    });
+    expect(scene.meshes[0].edgeSegments).toEqual([
+      {
+        start: [-1, -1, 0],
+        end: [3, -1, 0]
+      },
+      {
+        start: [3, -1, 0],
+        end: [3, 5, 0]
+      },
+      {
+        start: [3, 5, 0],
+        end: [-1, 5, 0]
+      },
+      {
+        start: [-1, 5, 0],
+        end: [-1, -1, 0]
+      }
+    ]);
+  });
+
+  it("adds a small plane marker for empty sketches", () => {
+    expect(
+      createSketchDisplayEdges({
+        id: "sketch_empty",
+        name: "Empty sketch",
+        plane: "XZ",
+        entities: []
+      })
+    ).toEqual([
+      {
+        start: [-0.5, 0, -0.5],
+        end: [0.5, 0, -0.5]
+      },
+      {
+        start: [0.5, 0, -0.5],
+        end: [0.5, 0, 0.5]
+      },
+      {
+        start: [0.5, 0, 0.5],
+        end: [-0.5, 0, 0.5]
+      },
+      {
+        start: [-0.5, 0, 0.5],
+        end: [-0.5, 0, -0.5]
+      },
+      {
+        start: [-0.1, 0, 0],
+        end: [0.1, 0, 0]
+      },
+      {
+        start: [0, 0, -0.1],
+        end: [0, 0, 0.1]
+      }
+    ]);
   });
 });
 

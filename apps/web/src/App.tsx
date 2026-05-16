@@ -428,9 +428,10 @@ export function App() {
       createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
-        extrudeSources
+        extrudeSources,
+        sketches
       ),
-    [derivedGeometryBySourceId, extrudeSources, sceneObjects]
+    [derivedGeometryBySourceId, extrudeSources, sceneObjects, sketches]
   );
   const currentProjectSummary = summarizeCadProject(exportCadProject(engine));
   const projectJsonPreview = useMemo(
