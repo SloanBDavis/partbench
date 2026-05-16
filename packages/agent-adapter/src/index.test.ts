@@ -706,6 +706,83 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns derived part, feature, body, and object source mappings through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_req_structure_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createCylinder",
+            id: "structure_cylinder",
+            name: "Structure cylinder",
+            dimensions: { radius: 2, height: 8 }
+          }
+        ]
+      }
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_structure_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_structure_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.structure",
+      partCount: 1,
+      featureCount: 1,
+      bodyCount: 1,
+      parts: [
+        {
+          id: "part:default",
+          featureIds: ["feature:structure_cylinder"],
+          bodyIds: ["body:structure_cylinder"],
+          objectIds: ["structure_cylinder"]
+        }
+      ],
+      features: [
+        {
+          id: "feature:structure_cylinder",
+          partId: "part:default",
+          primitive: "cylinder",
+          objectId: "structure_cylinder",
+          bodyId: "body:structure_cylinder"
+        }
+      ],
+      bodies: [
+        {
+          id: "body:structure_cylinder",
+          kind: "solid",
+          partId: "part:default",
+          featureId: "feature:structure_cylinder",
+          objectId: "structure_cylinder",
+          primitive: "cylinder"
+        }
+      ],
+      objectSources: [
+        {
+          objectId: "structure_cylinder",
+          partId: "part:default",
+          featureId: "feature:structure_cylinder",
+          bodyId: "body:structure_cylinder"
+        }
+      ]
+    });
+  });
+
   it("returns transaction history through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

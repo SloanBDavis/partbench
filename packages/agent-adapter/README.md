@@ -140,12 +140,27 @@ not require a persisted feature graph:
 }
 ```
 
+The V2 structure bridge uses the same read-only envelope and returns the derived
+default part, primitive features, solid bodies, and object source mappings for
+the current scene-object model:
+
+```json
+{
+  "requestId": "agent_query_006",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "project.structure" }
+  }
+}
+```
+
 Transaction history uses the same read-only query envelope and returns summaries
 of the existing `cad-core` transaction model:
 
 ```json
 {
-  "requestId": "agent_query_006",
+  "requestId": "agent_query_007",
   "adapterVersion": "web-cad.agent-adapter.v1",
   "query": {
     "version": "cadops.v1",

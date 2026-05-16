@@ -6,9 +6,12 @@ import type {
   CadBatchResponse,
   CadBatchValidationError,
   CadAxisAlignedBounds,
+  CadBodySnapshot,
   CadObjectSnapshot,
+  CadObjectModelSource,
   CadOp,
   CadOpsVersion,
+  CadPartSnapshot,
   CadPrimitiveFeatureSummary,
   CadQueryError,
   CadQueryRequest,
@@ -98,6 +101,7 @@ export interface CadOpsAgentPermissionError {
 export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentProjectFeaturesQueryResponse
+  | CadOpsAgentProjectStructureQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
@@ -123,6 +127,21 @@ export interface CadOpsAgentProjectFeaturesQueryResponse {
   readonly query: "project.features";
   readonly featureCount: number;
   readonly features: readonly CadPrimitiveFeatureSummary[];
+}
+
+export interface CadOpsAgentProjectStructureQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.structure";
+  readonly partCount: number;
+  readonly featureCount: number;
+  readonly bodyCount: number;
+  readonly parts: readonly CadPartSnapshot[];
+  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly bodies: readonly CadBodySnapshot[];
+  readonly objectSources: readonly CadObjectModelSource[];
 }
 
 export interface CadOpsAgentObjectGetQueryResponse {
@@ -174,6 +193,7 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly query:
     | "project.summary"
     | "project.features"
+    | "project.structure"
     | "object.get"
     | "object.measurements"
     | "project.extents"
@@ -425,6 +445,23 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.structure") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      partCount: response.partCount,
+      featureCount: response.featureCount,
+      bodyCount: response.bodyCount,
+      parts: response.parts,
+      features: response.features,
+      bodies: response.bodies,
+      objectSources: response.objectSources
+    };
+  }
+
   if (response.query === "object.measurements") {
     return {
       ok: true,
@@ -562,6 +599,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
     ((value.query.query === "project.summary" &&
       Object.keys(value.query).length === 1) ||
       (value.query.query === "project.features" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "object.get" &&
         typeof value.query.id === "string") ||

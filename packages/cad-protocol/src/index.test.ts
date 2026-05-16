@@ -3,6 +3,9 @@ import type {
   CadAxisAlignedBounds,
   CadBatch,
   CadBatchValidationError,
+  CadBodySnapshot,
+  CadObjectModelSource,
+  CadPartSnapshot,
   CadPrimitiveFeatureSummary,
   CadOp,
   CadQueryRequest
@@ -173,6 +176,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "project.structure" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "object.get", id: "box_1" }
       },
       {
@@ -192,6 +199,7 @@ describe("cad-protocol", () => {
     expect(queries.map((request) => request.query.query)).toEqual([
       "project.summary",
       "project.features",
+      "project.structure",
       "object.get",
       "object.measurements",
       "project.extents",
@@ -214,8 +222,10 @@ describe("cad-protocol", () => {
     const feature: CadPrimitiveFeatureSummary = {
       id: "feature:torus_1",
       kind: "primitive",
+      partId: "part:default",
       primitive: "torus",
       objectId: "torus_1",
+      bodyId: "body:torus_1",
       dimensions: { majorRadius: 3, minorRadius: 0.5 },
       transform: {
         translation: [0, 0, 0],
@@ -233,6 +243,46 @@ describe("cad-protocol", () => {
       id: "feature:torus_1",
       kind: "primitive",
       objectId: "torus_1"
+    });
+  });
+
+  it("types the V2 structural model bridge", () => {
+    const part: CadPartSnapshot = {
+      id: "part:default",
+      kind: "part",
+      name: "Default Part",
+      source: { type: "defaultScenePart" },
+      objectIds: ["box_1"],
+      featureIds: ["feature:box_1"],
+      bodyIds: ["body:box_1"]
+    };
+    const body: CadBodySnapshot = {
+      id: "body:box_1",
+      kind: "solid",
+      partId: "part:default",
+      featureId: "feature:box_1",
+      objectId: "box_1",
+      primitive: "box",
+      source: {
+        type: "primitiveFeature",
+        featureId: "feature:box_1",
+        objectId: "box_1"
+      }
+    };
+    const objectSource: CadObjectModelSource = {
+      objectId: "box_1",
+      partId: part.id,
+      featureId: body.featureId,
+      bodyId: body.id
+    };
+
+    expect(part.featureIds).toEqual(["feature:box_1"]);
+    expect(body.partId).toBe(part.id);
+    expect(objectSource).toEqual({
+      objectId: "box_1",
+      partId: "part:default",
+      featureId: "feature:box_1",
+      bodyId: "body:box_1"
     });
   });
 });

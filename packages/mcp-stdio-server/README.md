@@ -9,6 +9,7 @@ Only these existing tools are exposed:
 
 - `cad.project_summary`
 - `cad.project_features`
+- `cad.project_structure`
 - `cad.object_measurements`
 - `cad.project_extents`
 - `cad.transaction_history`
@@ -81,6 +82,8 @@ document.
 `cad.project_summary` returns document units and object names when present.
 `cad.project_features` returns read-only primitive feature summaries derived
 from the current scene objects and transaction history.
+`cad.project_structure` returns the derived default part, primitive features,
+solid bodies, and object source mappings for the current scene-object model.
 `cad.object_measurements` and `cad.project_extents` return read-only derived
 bounds and approximate volumes from the authoritative document. Unit changes go
 through CADOps: `metadataOnly` relabels numeric values, while

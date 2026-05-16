@@ -12,6 +12,7 @@ import type { CadActorMetadata, CadBatch } from "@web-cad/cad-protocol";
 export type CadMcpToolName =
   | "cad.project_summary"
   | "cad.project_features"
+  | "cad.project_structure"
   | "cad.object_measurements"
   | "cad.project_extents"
   | "cad.transaction_history"
@@ -113,6 +114,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_features") {
       return this.#callProjectFeatures(request);
+    }
+
+    if (request.name === "cad.project_structure") {
+      return this.#callProjectStructure(request);
     }
 
     if (request.name === "cad.object_measurements") {
@@ -219,6 +224,28 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.features" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectStructure(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_structure does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.structure" }
         }
       })
     );
@@ -360,6 +387,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_features",
     description:
       "Returns read-only primitive feature summaries derived from current scene objects.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.project_structure",
+    description:
+      "Returns the derived default part, primitive features, bodies, and object source mappings.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

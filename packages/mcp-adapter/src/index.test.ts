@@ -8,6 +8,7 @@ describe("mcp-adapter", () => {
     expect(server.listTools().tools.map((tool) => tool.name)).toEqual([
       "cad.project_summary",
       "cad.project_features",
+      "cad.project_structure",
       "cad.object_measurements",
       "cad.project_extents",
       "cad.transaction_history",
@@ -443,6 +444,78 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns derived model structure through cad.project_structure", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_structure_box",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "mcp_structure_box",
+              dimensions: { width: 2, height: 3, depth: 4 }
+            }
+          ]
+        }
+      }
+    });
+    const result = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_structure"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_structure",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_structure",
+        query: "project.structure",
+        partCount: 1,
+        featureCount: 1,
+        bodyCount: 1,
+        parts: [
+          {
+            id: "part:default",
+            featureIds: ["feature:mcp_structure_box"],
+            bodyIds: ["body:mcp_structure_box"],
+            objectIds: ["mcp_structure_box"]
+          }
+        ],
+        features: [
+          {
+            id: "feature:mcp_structure_box",
+            partId: "part:default",
+            objectId: "mcp_structure_box",
+            bodyId: "body:mcp_structure_box"
+          }
+        ],
+        bodies: [
+          {
+            id: "body:mcp_structure_box",
+            partId: "part:default",
+            featureId: "feature:mcp_structure_box",
+            objectId: "mcp_structure_box"
+          }
+        ],
+        objectSources: [
+          {
+            objectId: "mcp_structure_box",
+            partId: "part:default",
+            featureId: "feature:mcp_structure_box",
+            bodyId: "body:mcp_structure_box"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
@@ -626,6 +699,7 @@ describe("mcp-adapter", () => {
         tools: [
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
+          { name: "cad.project_structure" },
           { name: "cad.object_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.transaction_history" },

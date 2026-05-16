@@ -7,7 +7,9 @@ export type CadOpsVersion = "cadops.v1";
 export type CadBatchMode = "dryRun" | "commit";
 
 export type ObjectId = string;
+export type PartId = string;
 export type FeatureId = string;
+export type BodyId = string;
 export type TransactionId = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
@@ -260,6 +262,7 @@ export interface CadBatchErrorResponse {
 export type CadQueryKind =
   | "project.summary"
   | "project.features"
+  | "project.structure"
   | "object.get"
   | "object.measurements"
   | "project.extents"
@@ -268,6 +271,7 @@ export type CadQueryKind =
 export type CadQuery =
   | ProjectSummaryQuery
   | ProjectFeaturesQuery
+  | ProjectStructureQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
@@ -279,6 +283,10 @@ export interface ProjectSummaryQuery {
 
 export interface ProjectFeaturesQuery {
   readonly query: "project.features";
+}
+
+export interface ProjectStructureQuery {
+  readonly query: "project.structure";
 }
 
 export interface ObjectGetQuery {
@@ -399,8 +407,10 @@ export interface CadPrimitiveFeatureSource {
 export interface CadPrimitiveFeatureSummary {
   readonly id: FeatureId;
   readonly kind: "primitive";
+  readonly partId: PartId;
   readonly primitive: CadObjectKind;
   readonly objectId: ObjectId;
+  readonly bodyId: BodyId;
   readonly name?: string;
   readonly dimensions:
     | BoxDimensions
@@ -410,6 +420,44 @@ export interface CadPrimitiveFeatureSummary {
     | TorusDimensions;
   readonly transform: Transform;
   readonly source: CadPrimitiveFeatureSource;
+}
+
+export interface CadPartSource {
+  readonly type: "defaultScenePart";
+}
+
+export interface CadPartSnapshot {
+  readonly id: PartId;
+  readonly kind: "part";
+  readonly name: string;
+  readonly source: CadPartSource;
+  readonly objectIds: readonly ObjectId[];
+  readonly featureIds: readonly FeatureId[];
+  readonly bodyIds: readonly BodyId[];
+}
+
+export interface CadBodySource {
+  readonly type: "primitiveFeature";
+  readonly featureId: FeatureId;
+  readonly objectId: ObjectId;
+}
+
+export interface CadBodySnapshot {
+  readonly id: BodyId;
+  readonly kind: "solid";
+  readonly partId: PartId;
+  readonly featureId: FeatureId;
+  readonly objectId: ObjectId;
+  readonly primitive: CadObjectKind;
+  readonly name?: string;
+  readonly source: CadBodySource;
+}
+
+export interface CadObjectModelSource {
+  readonly objectId: ObjectId;
+  readonly partId: PartId;
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
 }
 
 export interface CadOperationSummary {
@@ -450,6 +498,7 @@ export interface CadQueryError {
 export type CadQueryResponse =
   | ProjectSummaryQueryResponse
   | ProjectFeaturesQueryResponse
+  | ProjectStructureQueryResponse
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
@@ -471,6 +520,19 @@ export interface ProjectFeaturesQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly featureCount: number;
   readonly features: readonly CadPrimitiveFeatureSummary[];
+}
+
+export interface ProjectStructureQueryResponse {
+  readonly ok: true;
+  readonly query: "project.structure";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly partCount: number;
+  readonly featureCount: number;
+  readonly bodyCount: number;
+  readonly parts: readonly CadPartSnapshot[];
+  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly bodies: readonly CadBodySnapshot[];
+  readonly objectSources: readonly CadObjectModelSource[];
 }
 
 export interface ObjectGetQueryResponse {

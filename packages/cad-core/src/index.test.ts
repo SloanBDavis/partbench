@@ -1707,8 +1707,10 @@ describe("cad-core", () => {
         {
           id: "feature:obj_1",
           kind: "primitive",
+          partId: "part:default",
           primitive: "box",
           objectId: "obj_1",
+          bodyId: "body:obj_1",
           name: "Generated box",
           dimensions: { width: 4, height: 5, depth: 6 },
           transform: {
@@ -1725,8 +1727,10 @@ describe("cad-core", () => {
         {
           id: "feature:cylinder_1",
           kind: "primitive",
+          partId: "part:default",
           primitive: "cylinder",
           objectId: "cylinder_1",
+          bodyId: "body:cylinder_1",
           name: "Source cylinder",
           dimensions: { radius: 2, height: 8 },
           transform: {
@@ -1739,6 +1743,131 @@ describe("cad-core", () => {
             createdByTransactionId: "txn_3",
             createOp: "scene.createCylinder"
           }
+        }
+      ]
+    });
+  });
+
+  it("returns a derived default part, primitive features, bodies, and object mappings", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "structure_box",
+      name: "Structure box",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+    engine.apply({
+      op: "scene.createSphere",
+      id: "structure_sphere",
+      dimensions: { radius: 4 }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(response).toEqual({
+      ok: true,
+      query: "project.structure",
+      cadOpsVersion: "cadops.v1",
+      partCount: 1,
+      featureCount: 2,
+      bodyCount: 2,
+      parts: [
+        {
+          id: "part:default",
+          kind: "part",
+          name: "Default Part",
+          source: { type: "defaultScenePart" },
+          objectIds: ["structure_box", "structure_sphere"],
+          featureIds: ["feature:structure_box", "feature:structure_sphere"],
+          bodyIds: ["body:structure_box", "body:structure_sphere"]
+        }
+      ],
+      features: [
+        {
+          id: "feature:structure_box",
+          kind: "primitive",
+          partId: "part:default",
+          primitive: "box",
+          objectId: "structure_box",
+          bodyId: "body:structure_box",
+          name: "Structure box",
+          dimensions: { width: 1, height: 2, depth: 3 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          source: {
+            type: "sceneObject",
+            createdByTransactionId: "txn_1",
+            createOp: "scene.createBox"
+          }
+        },
+        {
+          id: "feature:structure_sphere",
+          kind: "primitive",
+          partId: "part:default",
+          primitive: "sphere",
+          objectId: "structure_sphere",
+          bodyId: "body:structure_sphere",
+          dimensions: { radius: 4 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          source: {
+            type: "sceneObject",
+            createdByTransactionId: "txn_2",
+            createOp: "scene.createSphere"
+          }
+        }
+      ],
+      bodies: [
+        {
+          id: "body:structure_box",
+          kind: "solid",
+          partId: "part:default",
+          featureId: "feature:structure_box",
+          objectId: "structure_box",
+          primitive: "box",
+          name: "Structure box",
+          source: {
+            type: "primitiveFeature",
+            featureId: "feature:structure_box",
+            objectId: "structure_box"
+          }
+        },
+        {
+          id: "body:structure_sphere",
+          kind: "solid",
+          partId: "part:default",
+          featureId: "feature:structure_sphere",
+          objectId: "structure_sphere",
+          primitive: "sphere",
+          source: {
+            type: "primitiveFeature",
+            featureId: "feature:structure_sphere",
+            objectId: "structure_sphere"
+          }
+        }
+      ],
+      objectSources: [
+        {
+          objectId: "structure_box",
+          partId: "part:default",
+          featureId: "feature:structure_box",
+          bodyId: "body:structure_box"
+        },
+        {
+          objectId: "structure_sphere",
+          partId: "part:default",
+          featureId: "feature:structure_sphere",
+          bodyId: "body:structure_sphere"
         }
       ]
     });
@@ -1782,7 +1911,9 @@ describe("cad-core", () => {
       features: [
         {
           id: "feature:undo_feature_box",
+          partId: "part:default",
           objectId: "undo_feature_box",
+          bodyId: "body:undo_feature_box",
           source: {
             createdByTransactionId: "txn_1",
             createOp: "scene.createBox"
@@ -1802,24 +1933,57 @@ describe("cad-core", () => {
     });
 
     const restored = importCadProjectJson(exportCadProjectJson(engine));
-    const response = restored.executeQuery({
+    const featuresResponse = restored.executeQuery({
       version: "cadops.v1",
       query: { query: "project.features" }
     });
+    const structureResponse = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
 
-    expect(response).toMatchObject({
+    expect(featuresResponse).toMatchObject({
       ok: true,
       query: "project.features",
       featureCount: 1,
       features: [
         {
           id: "feature:exported_feature_cylinder",
+          partId: "part:default",
           primitive: "cylinder",
           objectId: "exported_feature_cylinder",
+          bodyId: "body:exported_feature_cylinder",
           source: {
             createdByTransactionId: "txn_1",
             createOp: "scene.createCylinder"
           }
+        }
+      ]
+    });
+    expect(structureResponse).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      parts: [
+        {
+          id: "part:default",
+          featureIds: ["feature:exported_feature_cylinder"],
+          bodyIds: ["body:exported_feature_cylinder"],
+          objectIds: ["exported_feature_cylinder"]
+        }
+      ],
+      bodies: [
+        {
+          id: "body:exported_feature_cylinder",
+          featureId: "feature:exported_feature_cylinder",
+          objectId: "exported_feature_cylinder"
+        }
+      ],
+      objectSources: [
+        {
+          objectId: "exported_feature_cylinder",
+          partId: "part:default",
+          featureId: "feature:exported_feature_cylinder",
+          bodyId: "body:exported_feature_cylinder"
         }
       ]
     });

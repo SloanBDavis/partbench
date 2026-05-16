@@ -40,8 +40,9 @@ packages:
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
-  semantic diffs, undo/redo, queries, measurements/extents, primitive feature
-  summaries, and versioned project JSON import/export.
+  semantic diffs, undo/redo, queries, measurements/extents, derived
+  part/feature/body structure summaries for the current scene primitives, and
+  versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -164,6 +165,11 @@ boundaries.
 Goal: introduce the smallest useful part/feature/body structure without
 replacing working V1 behavior in one jump.
 
+Current status: started. The current implementation exposes a derived default
+part/primitive feature/solid body structure through CADOps queries while keeping
+V1 scene primitives as the saved source of truth. This is a compatibility bridge,
+not a persisted V2 feature graph.
+
 Deliverables:
 
 - Define typed CADOps-compatible IDs and snapshots for project, part, feature,
@@ -176,6 +182,18 @@ Deliverables:
   metadata.
 - Keep rendered meshes derived and rebuildable.
 - Add project format version/migration tests.
+
+Implemented first slice:
+
+- `project.features` now includes default part and body IDs for each current
+  primitive feature.
+- `project.structure` returns the derived default part, primitive features,
+  solid bodies, and object-to-source mappings.
+- `cad.project_structure` exposes the same read model through the MCP wrapper.
+- No body instances are introduced yet because there is no assembly or instancing
+  caller.
+- No project format version change is required yet because this first slice is
+  derived from existing V1 source-of-truth data.
 
 Exit criteria:
 

@@ -6,10 +6,13 @@ import type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadBodySnapshot,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
   CadOp,
+  CadObjectModelSource,
+  CadPartSnapshot,
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
   CadQueryRequest,
@@ -24,9 +27,11 @@ import type {
   DocumentUnits,
   ObjectMeasurementsSnapshot,
   ObjectId,
+  PartId,
   SemanticDiff,
   SphereDimensions,
   TorusDimensions,
+  BodyId,
   CadTransactionAuditMetadata,
   TransactionId,
   Transform,
@@ -41,10 +46,13 @@ export type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadBodySnapshot,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
   CadOp,
+  CadObjectModelSource,
+  CadPartSnapshot,
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
   CadQueryRequest,
@@ -60,9 +68,11 @@ export type {
   DocumentUnits,
   ObjectMeasurementsSnapshot,
   ObjectId,
+  PartId,
   SemanticDiff,
   SphereDimensions,
   TorusDimensions,
+  BodyId,
   TransactionId,
   Transform,
   Vec3
@@ -231,6 +241,8 @@ export const corePackage: PackageInfo = {
 };
 
 export const DEFAULT_DOCUMENT_UNITS: DocumentUnits = "mm";
+export const DEFAULT_PART_ID: PartId = "part:default";
+export const DEFAULT_PART_NAME = "Default Part";
 
 export function createDefaultTransform(): Transform {
   return {
@@ -410,7 +422,7 @@ export class CadEngine {
       }
 
       case "project.features": {
-        const features = createPrimitiveFeatureSummaries(
+        const structure = createProjectStructure(
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
@@ -419,8 +431,28 @@ export class CadEngine {
           ok: true,
           query: request.query.query,
           cadOpsVersion: request.version,
-          featureCount: features.length,
-          features
+          featureCount: structure.features.length,
+          features: structure.features
+        };
+      }
+
+      case "project.structure": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          partCount: structure.parts.length,
+          featureCount: structure.features.length,
+          bodyCount: structure.bodies.length,
+          parts: structure.parts,
+          features: structure.features,
+          bodies: structure.bodies,
+          objectSources: structure.objectSources
         };
       }
 
@@ -1402,28 +1434,101 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
   }
 }
 
-function createPrimitiveFeatureSummaries(
+interface CadProjectStructureSnapshot {
+  readonly parts: readonly CadPartSnapshot[];
+  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly bodies: readonly CadBodySnapshot[];
+  readonly objectSources: readonly CadObjectModelSource[];
+}
+
+function createProjectStructure(
   document: CadDocument,
   transactions: readonly Transaction[]
-): readonly CadPrimitiveFeatureSummary[] {
+): CadProjectStructureSnapshot {
   const sourceByObjectId = createPrimitiveFeatureSourceMap(transactions);
+  const objects = [...document.objects.values()];
+  const features = objects.map((object) =>
+    createPrimitiveFeatureSummary(
+      object,
+      sourceByObjectId.get(object.id) ?? {
+        type: "sceneObject"
+      }
+    )
+  );
+  const bodies = objects.map(createBodySnapshot);
+  const objectSources = objects.map(createObjectModelSource);
+  const part: CadPartSnapshot = {
+    id: DEFAULT_PART_ID,
+    kind: "part",
+    name: DEFAULT_PART_NAME,
+    source: {
+      type: "defaultScenePart"
+    },
+    objectIds: objects.map((object) => object.id),
+    featureIds: features.map((feature) => feature.id),
+    bodyIds: bodies.map((body) => body.id)
+  };
 
-  return [...document.objects.values()].map((object) => ({
+  return {
+    parts: [part],
+    features,
+    bodies,
+    objectSources
+  };
+}
+
+function createPrimitiveFeatureSummary(
+  object: SceneObject,
+  source: CadPrimitiveFeatureSource
+): CadPrimitiveFeatureSummary {
+  return {
     id: createPrimitiveFeatureId(object.id),
     kind: "primitive",
+    partId: DEFAULT_PART_ID,
     primitive: object.kind,
     objectId: object.id,
+    bodyId: createBodyId(object.id),
     name: object.name,
     dimensions: { ...object.dimensions },
     transform: cloneTransform(object.transform),
-    source: sourceByObjectId.get(object.id) ?? {
-      type: "sceneObject"
-    }
-  }));
+    source
+  };
 }
 
 function createPrimitiveFeatureId(objectId: ObjectId): string {
   return `feature:${objectId}`;
+}
+
+function createBodyId(objectId: ObjectId): BodyId {
+  return `body:${objectId}`;
+}
+
+function createBodySnapshot(object: SceneObject): CadBodySnapshot {
+  const featureId = createPrimitiveFeatureId(object.id);
+
+  return {
+    id: createBodyId(object.id),
+    kind: "solid",
+    partId: DEFAULT_PART_ID,
+    featureId,
+    objectId: object.id,
+    primitive: object.kind,
+    name: object.name,
+    source: {
+      type: "primitiveFeature",
+      featureId,
+      objectId: object.id
+    }
+  };
+}
+
+function createObjectModelSource(object: SceneObject): CadObjectModelSource {
+  return {
+    objectId: object.id,
+    partId: DEFAULT_PART_ID,
+    featureId: createPrimitiveFeatureId(object.id),
+    bodyId: createBodyId(object.id)
+  };
 }
 
 function createPrimitiveFeatureSourceMap(
