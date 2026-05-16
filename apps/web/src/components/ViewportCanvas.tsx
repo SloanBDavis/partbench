@@ -19,12 +19,16 @@ export function ViewportCanvas({
   meshes,
   onSelect,
   primitives,
-  selectedId
+  selectedId,
+  statusDetail,
+  statusTitle
 }: {
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly onSelect: (id: string | undefined) => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
+  readonly statusDetail: string;
+  readonly statusTitle: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -144,6 +148,10 @@ export function ViewportCanvas({
               -
             </button>
           </div>
+        </div>
+        <div className="viewport-status" aria-live="polite">
+          <strong>{statusTitle}</strong>
+          <span>{statusDetail}</span>
         </div>
         <canvas
           ref={canvasRef}

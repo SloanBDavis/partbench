@@ -11,6 +11,7 @@ export interface ProjectJsonSummary {
   readonly schemaVersion: string;
   readonly units: string;
   readonly objectCount: number;
+  readonly objectKindSummary: string;
   readonly transactionCount: number;
   readonly redoTransactionCount: number;
 }
@@ -35,6 +36,7 @@ export function summarizeCadProject(project: CadProject): ProjectJsonSummary {
     schemaVersion: project.schemaVersion,
     units: project.document.units,
     objectCount: project.document.objects.length,
+    objectKindSummary: summarizeObjectKinds(project),
     transactionCount: project.history.length,
     redoTransactionCount: project.redoStack.length
   };
@@ -68,8 +70,10 @@ export function formatProjectJsonSummary(summary: ProjectJsonSummary): string {
     summary.redoTransactionCount > 0
       ? `, ${summary.redoTransactionCount} redo`
       : "";
+  const objectKinds =
+    summary.objectCount > 0 ? ` (${summary.objectKindSummary})` : "";
 
-  return `${summary.schemaVersion}, ${summary.objectCount} object(s), ${summary.transactionCount} transaction(s)${redo}`;
+  return `${summary.schemaVersion}, ${summary.objectCount} object(s)${objectKinds}, ${summary.transactionCount} transaction(s)${redo}`;
 }
 
 export function getProjectImportStatusText(
@@ -84,4 +88,23 @@ export function getProjectImportStatusText(
   }
 
   return `Ready to import ${formatProjectJsonSummary(preview.summary)}. Import replaces the current document and restores available undo/redo history.`;
+}
+
+function summarizeObjectKinds(project: CadProject): string {
+  const counts = new Map<string, number>();
+
+  for (const object of project.document.objects) {
+    counts.set(object.kind, (counts.get(object.kind) ?? 0) + 1);
+  }
+
+  if (counts.size === 0) {
+    return "none";
+  }
+
+  const orderedKinds = ["box", "cylinder", "sphere", "cone", "torus"];
+
+  return orderedKinds
+    .filter((kind) => counts.has(kind))
+    .map((kind) => `${kind} ${counts.get(kind)}`)
+    .join(", ");
 }

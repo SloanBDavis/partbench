@@ -2,6 +2,7 @@ import type {
   DimensionCommandForm,
   TransformCommandForm
 } from "../cadCommands";
+import { formatDimensionFieldLabel } from "./fieldLabels";
 
 export function DimensionFields<TForm extends DimensionCommandForm>({
   disabled = false,
@@ -21,7 +22,7 @@ export function DimensionFields<TForm extends DimensionCommandForm>({
       {fields.map((field) => (
         <NumberField
           key={field}
-          label={unitLabel ? `${field} (${unitLabel})` : field}
+          label={formatDimensionFieldLabel(field, unitLabel)}
           disabled={disabled}
           value={form[field]}
           onChange={(value) => onChange({ ...form, [field]: value })}

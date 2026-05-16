@@ -4,6 +4,7 @@ import type {
   DocumentUnits
 } from "@web-cad/cad-protocol";
 import type { BatchOperationForm, BatchOperationKind } from "../cadCommands";
+import { formatBatchModeLabel } from "./batchDisplay";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function BatchPanel({
@@ -33,7 +34,10 @@ export function BatchPanel({
 }) {
   return (
     <section className="batch-panel" aria-label="Batch command panel">
-      <h2>Batch</h2>
+      <div className="section-heading">
+        <h2>Batch</h2>
+        <span>{queuedOps.length}</span>
+      </div>
       <label>
         Operation
         <select
@@ -261,7 +265,7 @@ function BatchResponseView({
   if (!response.ok) {
     return (
       <section className="batch-response error-response">
-        <h3>{response.mode} failed</h3>
+        <h3>{formatBatchModeLabel(response.mode)} failed</h3>
         <p>{response.error.message}</p>
         <code>{response.error.code}</code>
       </section>
@@ -270,7 +274,7 @@ function BatchResponseView({
 
   return (
     <section className="batch-response">
-      <h3>{response.mode} OK</h3>
+      <h3>{formatBatchModeLabel(response.mode)} OK</h3>
       {response.transactionId && <p>Transaction: {response.transactionId}</p>}
       <DiffIds label="Created" ids={response.createdIds} />
       <DiffIds label="Modified" ids={response.modifiedIds} />

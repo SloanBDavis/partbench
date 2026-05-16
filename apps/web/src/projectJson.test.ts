@@ -30,6 +30,7 @@ describe("projectJson helpers", () => {
       schemaVersion: "web-cad.project.v1",
       units: "cm",
       objectCount: 1,
+      objectKindSummary: "box 1",
       transactionCount: 2,
       redoTransactionCount: 0
     });
@@ -57,6 +58,7 @@ describe("projectJson helpers", () => {
       schemaVersion: "web-cad.project.v1",
       units: "mm",
       objectCount: 0,
+      objectKindSummary: "none",
       transactionCount: 0,
       redoTransactionCount: 1
     });
@@ -65,6 +67,39 @@ describe("projectJson helpers", () => {
     );
     expect(getProjectImportStatusText(preview)).toBe(
       "Ready to import web-cad.project.v1, 0 object(s), 0 transaction(s), 1 redo. Import replaces the current document and restores available undo/redo history."
+    );
+  });
+
+  it("summarizes multiple primitive types in stable order", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createTorus",
+          id: "torus_1",
+          dimensions: { majorRadius: 2, minorRadius: 0.5 }
+        },
+        {
+          op: "scene.createBox",
+          id: "box_1",
+          dimensions: { width: 1, height: 1, depth: 1 }
+        },
+        {
+          op: "scene.createCone",
+          id: "cone_1",
+          dimensions: { radius: 1, height: 2 }
+        }
+      ]
+    });
+
+    const summary = summarizeCadProject(exportCadProject(engine));
+
+    expect(summary.objectKindSummary).toBe("box 1, cone 1, torus 1");
+    expect(formatProjectJsonSummary(summary)).toBe(
+      "web-cad.project.v1, 3 object(s) (box 1, cone 1, torus 1), 1 transaction(s)"
     );
   });
 

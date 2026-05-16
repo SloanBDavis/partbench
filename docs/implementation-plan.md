@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the actual repo state and a
 near-term roadmap.
 
-Last updated: 2026-05-15.
+Last updated: 2026-05-16.
 
 The project should continue to move in small, testable milestones. Do not skip
 ahead to a future architecture layer unless the requested milestone calls for it.
@@ -612,4 +612,10 @@ A future task is done only when:
 
 ## Current Target
 
-The first MVP is complete. The active product target is now `docs/v1.md`.
+The first MVP is complete. V1 is now a coherent CAD foundation as described in
+`docs/v1.md`: five primitive types, command-layer editing, versioned JSON
+project interchange, derived OCCT meshes with primitive fallback, structured
+queries, transaction audit visibility, and MCP/agent wrappers over CADOps.
+
+Future work should start from the later architecture milestones above rather
+than continuing to expand V1 scope.

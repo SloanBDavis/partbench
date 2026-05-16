@@ -5,6 +5,11 @@ a typed CADOps command layer, in-memory document model, viewport, project JSON
 serialization, structured agent/MCP adapters, and an isolated OCCT/WASM derived
 geometry path.
 
+The current V1 foundation supports creating and editing boxes, cylinders,
+spheres, cones, and tori through the shared command layer. OCCT-derived meshes
+are display data only; the source of truth remains the typed document and
+transaction history in `cad-core`.
+
 ## Requirements
 
 - Node.js 22 or newer

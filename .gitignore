@@ -5,6 +5,7 @@ dist-geometry-worker-smoke/
 .vite/
 coverage/
 .metrics/
+.playwright-mcp/
 
 .DS_Store
 *.log

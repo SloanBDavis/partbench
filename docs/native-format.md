@@ -313,6 +313,6 @@ Likely rebuildable cache files are:
 - thumbnails
 - geometry diagnostics
 
-The current JSON format is the V1 source-of-truth interchange/debug format. It
-is not the final storage backend and does not imply OPFS or File System Access
-API behavior.
+The current JSON format is the V1 source-of-truth interchange format. It is not
+the final storage backend and does not imply OPFS or File System Access API
+behavior.

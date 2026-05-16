@@ -49,18 +49,18 @@ export function ProjectJsonPanel({
   }
 
   return (
-    <section className="project-panel" aria-label="Project JSON">
+    <section className="project-panel" aria-label="Project">
       <div className="section-heading">
         <h2>Project</h2>
-        <span>JSON</span>
+        <span>v1</span>
       </div>
       <ProjectSummary title="Current" summary={currentSummary} />
       <div className="button-row">
         <button type="button" onClick={onExport} disabled={disabled}>
-          Generate JSON
+          Generate export
         </button>
         <button type="button" onClick={onDownload} disabled={disabled}>
-          Download JSON
+          Download project
         </button>
         <button
           type="button"
@@ -74,7 +74,7 @@ export function ProjectJsonPanel({
           onClick={onImport}
           disabled={disabled || preview.status !== "valid"}
         >
-          Import preview
+          Import project
         </button>
       </div>
       <input
@@ -133,6 +133,10 @@ function ProjectSummary({
         <div>
           <dt>Objects</dt>
           <dd>{summary.objectCount}</dd>
+        </div>
+        <div>
+          <dt>Types</dt>
+          <dd>{summary.objectKindSummary}</dd>
         </div>
         <div>
           <dt>Transactions</dt>

@@ -253,6 +253,19 @@ export function App() {
       new Map(derivedGeometry.entries.map((entry) => [entry.objectId, entry])),
     [derivedGeometry]
   );
+  const selectedGeometryEntry = selectedId
+    ? derivedGeometryByObjectId.get(selectedId)
+    : undefined;
+  const viewportStatusTitle = selectedObject
+    ? `${getObjectDisplayName(selectedObject)} (${formatObjectKind(selectedObject.kind)})`
+    : "No selection";
+  const viewportStatusDetail = selectedObject
+    ? derivedGeometryEnabled
+      ? getDerivedGeometryStatusLabel(selectedGeometryEntry)
+      : "Primitive fallback"
+    : derivedGeometryEnabled
+      ? "Select an object"
+      : "Primitive fallback mode";
   const renderScene = useMemo(
     () => createRenderSceneInputs(sceneObjects, derivedGeometryByObjectId),
     [derivedGeometryByObjectId, sceneObjects]
@@ -701,6 +714,11 @@ export function App() {
                 ))}
               </ul>
             )}
+            {!derivedGeometryEnabled && sceneObjects.length > 0 && (
+              <p className="project-message">
+                Showing primitive fallback geometry.
+              </p>
+            )}
           </section>
 
           <HistoryPanel transactions={transactionHistory} />
@@ -753,6 +771,8 @@ export function App() {
           primitives={renderScene.primitives}
           meshes={renderScene.meshes}
           selectedId={selectedId}
+          statusDetail={viewportStatusDetail}
+          statusTitle={viewportStatusTitle}
           onSelect={selectObject}
         />
 
