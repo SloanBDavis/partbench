@@ -316,7 +316,14 @@ export class CadMcpServer {
           actor:
             request.arguments.actor ??
             request.arguments.batch.actor ??
-            DEFAULT_MCP_ACTOR
+            DEFAULT_MCP_ACTOR,
+          permissions: {
+            allowCommit: request.arguments.allowCommit === true
+          },
+          source: {
+            source: "mcp",
+            toolName: request.name
+          }
         })
       );
 
@@ -411,6 +418,11 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         actor: {
           type: "object",
           description: "Optional actor metadata for the committed transaction."
+        },
+        allowCommit: {
+          type: "boolean",
+          description:
+            "Must be true to allow a CadBatch with mode=commit. Dry-runs do not require this flag."
         }
       }
     }
@@ -448,9 +460,11 @@ function createInvalidArgumentsResult(
   });
 }
 
-function isBatchToolArguments(
-  value: unknown
-): value is { readonly batch: CadBatch; readonly actor?: CadActorMetadata } {
+function isBatchToolArguments(value: unknown): value is {
+  readonly batch: CadBatch;
+  readonly actor?: CadActorMetadata;
+  readonly allowCommit?: boolean;
+} {
   return isRecord(value) && value.batch !== undefined;
 }
 

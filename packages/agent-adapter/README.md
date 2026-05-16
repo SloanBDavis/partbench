@@ -19,10 +19,17 @@ External callers submit mutations with a `CadOpsAgentRequest`:
 {
   "requestId": "agent_req_001",
   "adapterVersion": "web-cad.agent-adapter.v1",
+  "permissions": {
+    "allowCommit": false
+  },
   "actor": {
     "type": "agent",
     "id": "local-agent",
     "name": "Local Agent"
+  },
+  "source": {
+    "source": "agent",
+    "toolName": "local-agent-tool"
   },
   "batch": {
     "version": "cadops.v1",
@@ -43,10 +50,30 @@ External callers submit mutations with a `CadOpsAgentRequest`:
 }
 ```
 
+Read/query requests and dry-run batches are allowed by default. Commit batches
+require an explicit adapter permission:
+
+```json
+{
+  "permissions": {
+    "allowCommit": true
+  }
+}
+```
+
+This is an adapter boundary policy, not an auth system. It prevents accidental
+commits by structured agents and transports while leaving CADOps as the shared
+internal command API.
+
 `actor` is optional. If neither the request nor the batch supplies actor
 metadata, the adapter marks committed transactions as an agent-adapter commit.
 Actor metadata is stored on committed `cad-core` transactions for auditability;
 it is not an authorization system.
+
+The adapter also attaches generic audit metadata to each batch response and to
+committed transactions where practical: request source, request ID, tool name,
+intent (`dryRun` or `commit`), and operation count. Transaction history exposes
+that audit metadata alongside actor metadata.
 
 External callers inspect the current model with a `CadOpsAgentQueryRequest`:
 
@@ -146,18 +173,27 @@ Dry-run and commit both return structured fields suitable for agents:
   "createdIds": ["box_from_agent"],
   "modifiedIds": [],
   "deletedIds": [],
-  "warnings": []
+  "warnings": [],
+  "audit": {
+    "source": "agent-adapter",
+    "requestId": "agent_req_001",
+    "intent": "dryRun",
+    "operationCount": 2
+  }
 }
 ```
 
 Commit responses include `transactionId` when the batch commits.
 When actor metadata is present on a committed transaction, commit responses also
-include the committed `actor`.
+include the committed `actor`. Commit responses also include the stored `audit`
+metadata.
 
 Validation failures keep the same shape and include `error` plus `errors`.
 CADOps validation errors include stable codes plus structured context such as
 operation name, JSON-style path, expected value shape, received value, operation
 index, and affected object ID where practical.
+Adapter permission failures use a stable `COMMIT_NOT_ALLOWED` code and do not
+mutate the document.
 
 Project summary queries return a serializable object list:
 

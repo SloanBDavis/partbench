@@ -24,6 +24,7 @@ import type {
   ObjectMeasurementsSnapshot,
   ObjectId,
   SemanticDiff,
+  CadTransactionAuditMetadata,
   TransactionId,
   Transform,
   Vec3
@@ -48,6 +49,7 @@ export type {
   CadSemanticDiffSummary,
   CadTransactionHistoryEntry,
   CadTransactionStatus,
+  CadTransactionAuditMetadata,
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnitUpdateMode,
@@ -94,6 +96,7 @@ export interface Transaction {
   readonly status: CadTransactionStatus;
   readonly diff: SemanticDiff;
   readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
 }
 
 export interface ApplyResult {
@@ -107,6 +110,7 @@ export interface CadEngineOptions {
 
 export interface CadExecutionOptions {
   readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
 }
 
 export interface CadDocumentSnapshot {
@@ -275,6 +279,7 @@ export class CadEngine {
     options: CadExecutionOptions = {}
   ): ApplyResult {
     const actor = normalizeActorMetadata(options.actor);
+    const audit = normalizeAuditMetadata(options.audit, "commit", ops.length);
     const before = cloneDocument(this.#document);
     const run = this.#runOperations(ops);
 
@@ -283,7 +288,8 @@ export class CadEngine {
       ops: [...ops],
       status: "committed",
       diff: run.diff,
-      ...(actor ? { actor } : {})
+      ...(actor ? { actor } : {}),
+      ...(audit ? { audit } : {})
     };
 
     const entry: TransactionEntry = {
@@ -321,18 +327,24 @@ export class CadEngine {
 
     const run = this.#runOperations(batch.ops);
     const diffIds = toDiffIds(run.diff);
+    const audit = normalizeAuditMetadata(
+      batch.audit,
+      batch.mode,
+      batch.ops.length
+    );
 
     if (batch.mode === "dryRun") {
       return {
         ok: true,
         mode: batch.mode,
         ...diffIds,
-        warnings: validation.warnings
+        warnings: validation.warnings,
+        ...(audit ? { audit } : {})
       };
     }
 
     const actor = normalizeActorMetadata(batch.actor);
-    const result = this.applyBatch(batch.ops, { actor });
+    const result = this.applyBatch(batch.ops, { actor, audit });
 
     return {
       ok: true,
@@ -340,7 +352,8 @@ export class CadEngine {
       ...diffIds,
       warnings: validation.warnings,
       transactionId: result.transaction.id,
-      ...(result.transaction.actor ? { actor: result.transaction.actor } : {})
+      ...(result.transaction.actor ? { actor: result.transaction.actor } : {}),
+      ...(result.transaction.audit ? { audit: result.transaction.audit } : {})
     };
   }
 
@@ -473,6 +486,7 @@ export class CadEngine {
   validateBatch(batch: CadBatch): CadBatchValidationResult {
     try {
       normalizeActorMetadata(batch.actor);
+      normalizeAuditMetadata(batch.audit, batch.mode, batch.ops.length);
       this.#runOperations(batch.ops);
       return {
         ok: true,
@@ -1227,6 +1241,7 @@ function createTransactionHistoryEntry(
     id: transaction.id,
     status: transaction.status,
     ...(transaction.actor ? { actor: transaction.actor } : {}),
+    ...(transaction.audit ? { audit: transaction.audit } : {}),
     opCount: transaction.ops.length,
     ops,
     diff: createSemanticDiffSummary(transaction.diff)
@@ -1692,6 +1707,77 @@ function normalizeActorMetadata(actor: unknown): CadActorMetadata | undefined {
   }
 
   return normalized;
+}
+
+function normalizeAuditMetadata(
+  audit: unknown,
+  expectedIntent: CadBatch["mode"],
+  expectedOperationCount: number
+): CadTransactionAuditMetadata | undefined {
+  if (audit === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(audit)) {
+    throwValidationError({
+      code: "INVALID_AUDIT",
+      message: "Transaction audit metadata must be an object.",
+      path: "$.audit",
+      expected: "audit metadata object",
+      received: describeReceived(audit)
+    });
+  }
+
+  if (audit.intent !== expectedIntent) {
+    throwValidationError({
+      code: "INVALID_AUDIT",
+      message: `Transaction audit intent must match batch mode: ${expectedIntent}.`,
+      path: "$.audit.intent",
+      expected: expectedIntent,
+      received: describeReceived(audit.intent)
+    });
+  }
+
+  if (audit.operationCount !== expectedOperationCount) {
+    throwValidationError({
+      code: "INVALID_AUDIT",
+      message: `Transaction audit operationCount must match batch operation count: ${expectedOperationCount}.`,
+      path: "$.audit.operationCount",
+      expected: String(expectedOperationCount),
+      received: describeReceived(audit.operationCount)
+    });
+  }
+
+  const normalized: CadTransactionAuditMetadata = {
+    intent: expectedIntent,
+    operationCount: expectedOperationCount,
+    ...normalizeOptionalAuditString(audit.source, "source"),
+    ...normalizeOptionalAuditString(audit.requestId, "requestId"),
+    ...normalizeOptionalAuditString(audit.toolName, "toolName")
+  };
+
+  return normalized;
+}
+
+function normalizeOptionalAuditString(
+  value: unknown,
+  field: "source" | "requestId" | "toolName"
+): Partial<CadTransactionAuditMetadata> {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throwValidationError({
+      code: "INVALID_AUDIT",
+      message: `Transaction audit ${field} must be a non-empty string when present.`,
+      path: `$.audit.${field}`,
+      expected: "non-empty string",
+      received: describeReceived(value)
+    });
+  }
+
+  return { [field]: value.trim() };
 }
 
 function operationPath(opIndex?: number, field?: string): string | undefined {
@@ -2336,6 +2422,12 @@ function validateTransactionShape(
   }
 
   validateOptionalTransactionActor(value.actor, `${path}.actor`, issues);
+  validateOptionalTransactionAudit(
+    value.audit,
+    `${path}.audit`,
+    Array.isArray(value.ops) ? value.ops.length : undefined,
+    issues
+  );
 
   if (!isSemanticDiff(value.diff)) {
     addProjectIssue(
@@ -2343,6 +2435,86 @@ function validateTransactionShape(
       "INVALID_TRANSACTION",
       `${path}.diff`,
       "Transaction diff must be a valid semantic diff."
+    );
+  }
+}
+
+function validateOptionalTransactionAudit(
+  value: unknown,
+  path: string,
+  expectedOperationCount: number | undefined,
+  issues: CadProjectImportIssue[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      path,
+      "Transaction audit metadata must be an object when present."
+    );
+    return;
+  }
+
+  if (value.intent !== "commit") {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.intent`,
+      "Saved transaction audit intent must be commit."
+    );
+  }
+
+  if (
+    typeof value.operationCount !== "number" ||
+    !Number.isInteger(value.operationCount) ||
+    value.operationCount < 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.operationCount`,
+      "Transaction audit operationCount must be a non-negative integer."
+    );
+  } else if (
+    expectedOperationCount !== undefined &&
+    value.operationCount !== expectedOperationCount
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      `${path}.operationCount`,
+      "Transaction audit operationCount must match transaction ops length."
+    );
+  }
+
+  validateOptionalAuditStringField(value.source, `${path}.source`, issues);
+  validateOptionalAuditStringField(
+    value.requestId,
+    `${path}.requestId`,
+    issues
+  );
+  validateOptionalAuditStringField(value.toolName, `${path}.toolName`, issues);
+}
+
+function validateOptionalAuditStringField(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_TRANSACTION",
+      path,
+      "Transaction audit metadata fields must be non-empty strings when present."
     );
   }
 }

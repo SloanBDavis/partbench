@@ -531,9 +531,17 @@ Current slice delivered:
   and default structured commits to agent actors when no caller-provided actor is
   present.
 - Actor validation failures return structured CADOps validation errors.
+- The agent adapter now enforces the first permission default: read/query and
+  dry-run are allowed, while commit requires an explicit adapter permission.
+- The MCP `cad.batch` wrapper requires top-level `allowCommit: true` before
+  forwarding commit batches.
+- Committed transactions can carry generic audit metadata for request source,
+  request ID, tool name, commit intent, and operation count. This metadata is
+  exposed through transaction history and project JSON, but it is not an auth
+  system.
 - CADOps read/query support now includes `transaction.history`, which returns
-  transaction IDs, undo/redo status, actor metadata, operation summaries, and
-  semantic diff summaries from the existing transaction model.
+  transaction IDs, undo/redo status, actor metadata, audit metadata, operation
+  summaries, and semantic diff summaries from the existing transaction model.
 - The agent adapter and MCP wrapper expose transaction history as read-only query
   data.
 - The web UI includes a compact recent history/audit panel. It does not add
@@ -542,7 +550,7 @@ Current slice delivered:
 Still pending:
 
 - Full audit event records with tool input/output hashes.
-- Permission policy defaults and approval flows for destructive agent commits.
+- Approval flows for destructive agent commits.
 
 Exit criteria:
 

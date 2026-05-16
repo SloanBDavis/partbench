@@ -85,6 +85,13 @@ describe("cad-protocol", () => {
         id: "test-script",
         name: "Test Script"
       },
+      audit: {
+        source: "script",
+        requestId: "script_req_1",
+        toolName: "local-script",
+        intent: "dryRun",
+        operationCount: 1
+      },
       ops: [
         {
           op: "scene.createBox",
@@ -96,6 +103,7 @@ describe("cad-protocol", () => {
     expect(batch.version).toBe("cadops.v1");
     expect(batch.mode).toBe("dryRun");
     expect(batch.actor?.type).toBe("script");
+    expect(batch.audit?.operationCount).toBe(1);
     expect(batch.ops).toHaveLength(1);
   });
 

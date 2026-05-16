@@ -150,14 +150,17 @@ Call `cad.batch` in dry-run mode:
 }
 ```
 
-Commit uses the same `cad.batch` tool with `"mode": "commit"`. Callers can
-provide optional actor metadata either inside the batch or as a top-level tool
-argument:
+Commit uses the same `cad.batch` tool with `"mode": "commit"`, but the MCP
+wrapper requires an explicit top-level `"allowCommit": true` argument before it
+will forward a commit to the agent adapter. Dry-runs do not require this flag.
+Callers can provide optional actor metadata either inside the batch or as a
+top-level tool argument:
 
 ```json
 {
   "name": "cad.batch",
   "arguments": {
+    "allowCommit": true,
     "actor": {
       "type": "agent",
       "id": "local-agent",
@@ -182,6 +185,12 @@ When no actor is provided, the MCP wrapper marks committed transactions as an
 agent-originated MCP commit. Actor metadata is audit context only; it is not an
 authorization or permission system.
 
+MCP also passes generic audit metadata through the agent adapter: source `mcp`,
+tool name `cad.batch`, request ID, intent, and operation count. The committed
+transaction history exposes this audit metadata. Missing `allowCommit: true`
+returns a structured `COMMIT_NOT_ALLOWED` adapter error and does not mutate the
+document.
+
 ## Response Shape
 
 Tool results include the normal MCP-style `content` text plus
@@ -201,7 +210,14 @@ agent adapter response:
     "createdIds": ["preview_box"],
     "modifiedIds": [],
     "deletedIds": [],
-    "warnings": []
+    "warnings": [],
+    "audit": {
+      "source": "mcp",
+      "requestId": "mcp_jsonrpc_3",
+      "toolName": "cad.batch",
+      "intent": "dryRun",
+      "operationCount": 2
+    }
   },
   "content": [
     {

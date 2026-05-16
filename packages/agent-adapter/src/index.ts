@@ -13,6 +13,7 @@ import type {
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
+  CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   DocumentUnits,
   ObjectExtentSnapshot,
@@ -29,6 +30,17 @@ export interface CadOpsAgentRequest {
   readonly adapterVersion: AgentAdapterVersion;
   readonly batch: CadBatch;
   readonly actor?: CadActorMetadata;
+  readonly permissions?: CadOpsAgentPermissionPolicy;
+  readonly source?: CadOpsAgentRequestSource;
+}
+
+export interface CadOpsAgentPermissionPolicy {
+  readonly allowCommit?: boolean;
+}
+
+export interface CadOpsAgentRequestSource {
+  readonly source: string;
+  readonly toolName?: string;
 }
 
 export interface CadOpsAgentQueryRequest {
@@ -53,6 +65,7 @@ export interface CadOpsAgentSuccessResponse {
   readonly warnings: readonly string[];
   readonly transactionId?: string;
   readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
 }
 
 export interface CadOpsAgentErrorResponse {
@@ -61,12 +74,25 @@ export interface CadOpsAgentErrorResponse {
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
   readonly mode: CadBatchMode;
-  readonly error: CadBatchValidationError;
-  readonly errors: readonly CadBatchValidationError[];
+  readonly error: CadOpsAgentExecutionError;
+  readonly errors: readonly CadOpsAgentExecutionError[];
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
   readonly warnings: readonly string[];
+  readonly audit?: CadTransactionAuditMetadata;
+}
+
+export type CadOpsAgentExecutionError =
+  | CadBatchValidationError
+  | CadOpsAgentPermissionError;
+
+export interface CadOpsAgentPermissionError {
+  readonly code: "COMMIT_NOT_ALLOWED";
+  readonly message: string;
+  readonly path?: string;
+  readonly expected?: string;
+  readonly received?: string;
 }
 
 export type CadOpsAgentQueryResponse =
@@ -159,7 +185,15 @@ export class CadOpsAgentAdapter {
   constructor(private readonly engine: CadEngine = new CadEngine()) {}
 
   execute(request: CadOpsAgentRequest): CadOpsAgentResponse {
-    const effectiveRequest = applyAgentActor(request);
+    const effectiveRequest = applyAgentRequestContext(request);
+    const permissionError = validateAgentPermissions(effectiveRequest);
+
+    if (permissionError) {
+      return createAgentPermissionErrorResponse(
+        effectiveRequest,
+        permissionError
+      );
+    }
 
     return toAgentResponse(
       effectiveRequest,
@@ -259,7 +293,8 @@ function toAgentResponse(
       createdIds: response.createdIds,
       modifiedIds: response.modifiedIds,
       deletedIds: response.deletedIds,
-      warnings: response.warnings
+      warnings: response.warnings,
+      ...(request.batch.audit ? { audit: request.batch.audit } : {})
     };
   }
 
@@ -274,7 +309,8 @@ function toAgentResponse(
     deletedIds: response.deletedIds,
     warnings: response.warnings,
     transactionId: response.transactionId,
-    ...(response.actor ? { actor: response.actor } : {})
+    ...(response.actor ? { actor: response.actor } : {}),
+    ...(response.audit ? { audit: response.audit } : {})
   };
 }
 
@@ -284,15 +320,68 @@ const DEFAULT_AGENT_ACTOR: CadActorMetadata = {
   name: "Agent Adapter"
 };
 
-function applyAgentActor(request: CadOpsAgentRequest): CadOpsAgentRequest {
+function applyAgentRequestContext(
+  request: CadOpsAgentRequest
+): CadOpsAgentRequest {
   const actor = request.actor ?? request.batch.actor ?? DEFAULT_AGENT_ACTOR;
+  const audit = createAgentAuditMetadata(request);
 
   return {
     ...request,
     batch: {
       ...request.batch,
-      actor
+      actor,
+      audit
     }
+  };
+}
+
+function validateAgentPermissions(
+  request: CadOpsAgentRequest
+): CadOpsAgentPermissionError | undefined {
+  if (request.batch.mode !== "commit" || request.permissions?.allowCommit) {
+    return undefined;
+  }
+
+  return {
+    code: "COMMIT_NOT_ALLOWED",
+    message:
+      "CADOps commit was blocked by adapter policy. Set permissions.allowCommit to true to explicitly allow this commit.",
+    path: "$.permissions.allowCommit",
+    expected: "true",
+    received: String(request.permissions?.allowCommit ?? false)
+  };
+}
+
+function createAgentPermissionErrorResponse(
+  request: CadOpsAgentRequest,
+  error: CadOpsAgentPermissionError
+): CadOpsAgentErrorResponse {
+  return {
+    ok: false,
+    requestId: request.requestId,
+    adapterVersion: request.adapterVersion,
+    cadOpsVersion: request.batch.version,
+    mode: request.batch.mode,
+    error,
+    errors: [error],
+    createdIds: [],
+    modifiedIds: [],
+    deletedIds: [],
+    warnings: [],
+    ...(request.batch.audit ? { audit: request.batch.audit } : {})
+  };
+}
+
+function createAgentAuditMetadata(
+  request: CadOpsAgentRequest
+): CadTransactionAuditMetadata {
+  return {
+    source: request.source?.source ?? "agent-adapter",
+    requestId: request.requestId,
+    ...(request.source?.toolName ? { toolName: request.source.toolName } : {}),
+    intent: request.batch.mode,
+    operationCount: request.batch.ops.length
   };
 }
 
@@ -391,7 +480,10 @@ function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
     typeof value.requestId === "string" &&
     value.adapterVersion === "web-cad.agent-adapter.v1" &&
     isCadBatch(value.batch) &&
-    (value.actor === undefined || isCadActorMetadataShape(value.actor))
+    (value.actor === undefined || isCadActorMetadataShape(value.actor)) &&
+    (value.permissions === undefined ||
+      isCadOpsAgentPermissionPolicy(value.permissions)) &&
+    (value.source === undefined || isCadOpsAgentRequestSource(value.source))
   );
 }
 
@@ -414,7 +506,42 @@ function isCadBatch(value: unknown): value is CadBatch {
     (value.mode === "dryRun" || value.mode === "commit") &&
     Array.isArray(value.ops) &&
     value.ops.every(isCadOp) &&
-    (value.actor === undefined || isCadActorMetadataShape(value.actor))
+    (value.actor === undefined || isCadActorMetadataShape(value.actor)) &&
+    (value.audit === undefined ||
+      isCadTransactionAuditMetadataShape(value.audit))
+  );
+}
+
+function isCadOpsAgentPermissionPolicy(
+  value: unknown
+): value is CadOpsAgentPermissionPolicy {
+  return (
+    isRecord(value) &&
+    (value.allowCommit === undefined || typeof value.allowCommit === "boolean")
+  );
+}
+
+function isCadOpsAgentRequestSource(
+  value: unknown
+): value is CadOpsAgentRequestSource {
+  return (
+    isRecord(value) &&
+    typeof value.source === "string" &&
+    value.source !== "" &&
+    (value.toolName === undefined || typeof value.toolName === "string")
+  );
+}
+
+function isCadTransactionAuditMetadataShape(
+  value: unknown
+): value is CadTransactionAuditMetadata {
+  return (
+    isRecord(value) &&
+    (value.source === undefined || typeof value.source === "string") &&
+    (value.requestId === undefined || typeof value.requestId === "string") &&
+    (value.toolName === undefined || typeof value.toolName === "string") &&
+    (value.intent === "dryRun" || value.intent === "commit") &&
+    typeof value.operationCount === "number"
   );
 }
 

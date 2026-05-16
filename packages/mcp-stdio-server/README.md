@@ -47,6 +47,7 @@ Call `cad.batch`:
   "params": {
     "name": "cad.batch",
     "arguments": {
+      "allowCommit": true,
       "batch": {
         "version": "cadops.v1",
         "mode": "commit",
@@ -68,6 +69,11 @@ Call `cad.batch`:
 }
 ```
 
+Commit batches require `"allowCommit": true` at the tool-argument level. Dry-run
+batches do not require that flag. This permission check happens in the adapter
+stack and is only an accidental-commit guard; it is not authentication or hosted
+authorization.
+
 The server keeps an in-memory `cad-core` document for the lifetime of the
 process through the existing adapter stack. Restarting the process resets that
 document.
@@ -81,4 +87,4 @@ through CADOps: `metadataOnly` relabels numeric values, while
 `preservePhysicalSize` scales current dimensions and transform translations in
 `cad-core`.
 `cad.transaction_history` returns read-only summaries of the in-memory
-transaction and redo history, including actor metadata when present.
+transaction and redo history, including actor and audit metadata when present.

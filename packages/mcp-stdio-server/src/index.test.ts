@@ -41,6 +41,7 @@ describe("mcp stdio server", () => {
           params: {
             name: "cad.batch",
             arguments: {
+              allowCommit: true,
               batch: {
                 version: "cadops.v1",
                 mode: "commit",

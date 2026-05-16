@@ -37,7 +37,13 @@ describe("agent-adapter", () => {
       modifiedIds: [],
       deletedIds: [],
       warnings: [],
-      transactionId: undefined
+      transactionId: undefined,
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_1",
+        intent: "dryRun",
+        operationCount: 1
+      }
     });
     expect(engine.getDocument().objects.size).toBe(0);
   });
@@ -48,6 +54,7 @@ describe("agent-adapter", () => {
     const response = adapter.execute({
       requestId: "agent_req_2",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       actor: {
         type: "agent",
         id: "fixture-agent",
@@ -81,6 +88,12 @@ describe("agent-adapter", () => {
         type: "agent",
         id: "fixture-agent",
         name: "Fixture Agent"
+      },
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_2",
+        intent: "commit",
+        operationCount: 1
       }
     });
     expect(adapter.getEngine().getTransactions()[0]?.actor).toEqual({
@@ -93,12 +106,52 @@ describe("agent-adapter", () => {
     ).toBe("cylinder");
   });
 
+  it("blocks commit batches unless the caller explicitly allows commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_blocked_commit",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "blocked_box",
+            dimensions: { width: 1, height: 1, depth: 1 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      requestId: "agent_req_blocked_commit",
+      mode: "commit",
+      error: {
+        code: "COMMIT_NOT_ALLOWED",
+        path: "$.permissions.allowCommit",
+        expected: "true",
+        received: "false"
+      },
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_blocked_commit",
+        intent: "commit",
+        operationCount: 1
+      }
+    });
+    expect(adapter.getEngine().getDocument().objects.size).toBe(0);
+  });
+
   it("returns structured CADOps validation errors", () => {
     const adapter = new CadOpsAgentAdapter();
 
     const response = adapter.execute({
       requestId: "agent_req_3",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       batch: {
         version: "cadops.v1",
         mode: "commit",
@@ -148,6 +201,7 @@ describe("agent-adapter", () => {
     const response = adapter.execute({
       requestId: "agent_req_bad_unit_mode",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       batch: {
         version: "cadops.v1",
         mode: "commit",
@@ -184,6 +238,7 @@ describe("agent-adapter", () => {
     const response = adapter.execute({
       requestId: "agent_req_bad_actor",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       actor: {
         type: "robot" as never
       },
@@ -219,6 +274,7 @@ describe("agent-adapter", () => {
       JSON.stringify({
         requestId: "agent_req_json",
         adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -350,6 +406,7 @@ describe("agent-adapter", () => {
     adapter.execute({
       requestId: "agent_req_create",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       batch: {
         version: "cadops.v1",
         mode: "commit",
@@ -434,6 +491,7 @@ describe("agent-adapter", () => {
     adapter.execute({
       requestId: "agent_req_extents_create",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       batch: {
         version: "cadops.v1",
         mode: "commit",
@@ -480,6 +538,7 @@ describe("agent-adapter", () => {
     adapter.execute({
       requestId: "agent_req_features_create",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       batch: {
         version: "cadops.v1",
         mode: "commit",
@@ -532,6 +591,7 @@ describe("agent-adapter", () => {
     adapter.execute({
       requestId: "agent_req_history_create",
       adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
       actor: {
         type: "agent",
         id: "history-agent",
@@ -586,6 +646,12 @@ describe("agent-adapter", () => {
           status: "undone",
           actor: {
             id: "history-agent"
+          },
+          audit: {
+            source: "agent-adapter",
+            requestId: "agent_req_history_create",
+            intent: "commit",
+            operationCount: 1
           },
           ops: [
             {

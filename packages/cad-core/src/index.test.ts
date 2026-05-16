@@ -2147,6 +2147,94 @@ describe("cad-core", () => {
     );
   });
 
+  it("stores transaction audit metadata and exposes it through history", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      audit: {
+        source: "script",
+        requestId: "script_req_1",
+        toolName: "fixture-script",
+        intent: "commit",
+        operationCount: 1
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "audited_box",
+          dimensions: { width: 1, height: 1, depth: 1 }
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      audit: {
+        source: "script",
+        requestId: "script_req_1",
+        toolName: "fixture-script",
+        intent: "commit",
+        operationCount: 1
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error("Expected audited commit to succeed.");
+    }
+
+    expect(engine.getTransactions()[0]?.audit).toEqual(response.audit);
+
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: [
+        {
+          id: "txn_1",
+          audit: response.audit
+        }
+      ]
+    });
+  });
+
+  it("rejects invalid transaction audit metadata from CADOps", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      audit: {
+        source: "script",
+        requestId: "script_req_1",
+        intent: "dryRun",
+        operationCount: 1
+      },
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "audit_error_box",
+          dimensions: { width: 1, height: 1, depth: 1 }
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_AUDIT",
+        path: "$.audit.intent",
+        expected: "commit",
+        received: "dryRun"
+      }
+    });
+    expect(engine.getTransactions()).toEqual([]);
+  });
+
   it("exports the current deliberate project format version", () => {
     const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
 

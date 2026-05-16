@@ -12,6 +12,7 @@ export type TransactionId = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
 export type CadActorType = "human" | "agent" | "script" | "system";
+export type CadRequestIntent = CadBatchMode;
 
 export type Vec3 = readonly [number, number, number];
 
@@ -19,6 +20,14 @@ export interface CadActorMetadata {
   readonly type: CadActorType;
   readonly id?: string;
   readonly name?: string;
+}
+
+export interface CadTransactionAuditMetadata {
+  readonly source?: string;
+  readonly requestId?: string;
+  readonly toolName?: string;
+  readonly intent: CadRequestIntent;
+  readonly operationCount: number;
 }
 
 export interface Transform {
@@ -129,6 +138,7 @@ export interface CadBatch {
   readonly mode: CadBatchMode;
   readonly ops: readonly CadOp[];
   readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
 }
 
 export type CadBatchValidationErrorCode =
@@ -140,7 +150,8 @@ export type CadBatchValidationErrorCode =
   | "INVALID_UNITS"
   | "INVALID_UNIT_UPDATE_MODE"
   | "INVALID_OBJECT_NAME"
-  | "INVALID_ACTOR";
+  | "INVALID_ACTOR"
+  | "INVALID_AUDIT";
 
 export interface CadBatchValidationError {
   readonly code: CadBatchValidationErrorCode;
@@ -170,6 +181,7 @@ export interface CadBatchSuccessResponse {
   readonly warnings: readonly string[];
   readonly transactionId?: TransactionId;
   readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
 }
 
 export interface CadBatchErrorResponse {
@@ -315,6 +327,7 @@ export interface CadTransactionHistoryEntry {
   readonly id: TransactionId;
   readonly status: CadTransactionStatus;
   readonly actor?: CadActorMetadata;
+  readonly audit?: CadTransactionAuditMetadata;
   readonly opCount: number;
   readonly ops: readonly CadOperationSummary[];
   readonly diff: CadSemanticDiffSummary;

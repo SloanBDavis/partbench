@@ -69,6 +69,7 @@ describe("mcp-adapter", () => {
       name: "cad.batch",
       requestId: "mcp_req_commit",
       arguments: {
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -130,6 +131,7 @@ describe("mcp-adapter", () => {
           id: "external-agent",
           name: "External Agent"
         },
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -160,6 +162,57 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("blocks cad.batch commit unless allowCommit is explicit", () => {
+    const server = new CadMcpServer();
+
+    const result = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_blocked_commit",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "blocked_mcp_box",
+              dimensions: { width: 1, height: 1, depth: 1 }
+            }
+          ]
+        }
+      }
+    });
+    const summary = server.callTool({
+      name: "cad.project_summary",
+      requestId: "mcp_req_blocked_summary"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        requestId: "mcp_req_blocked_commit",
+        mode: "commit",
+        error: {
+          code: "COMMIT_NOT_ALLOWED",
+          path: "$.permissions.allowCommit"
+        },
+        audit: {
+          source: "mcp",
+          requestId: "mcp_req_blocked_commit",
+          toolName: "cad.batch",
+          intent: "commit",
+          operationCount: 1
+        }
+      }
+    });
+    expect(summary.structuredContent).toMatchObject({
+      ok: true,
+      objectCount: 0
+    });
+  });
+
   it("returns object measurements through cad.object_measurements", () => {
     const server = new CadMcpServer();
 
@@ -167,6 +220,7 @@ describe("mcp-adapter", () => {
       name: "cad.batch",
       requestId: "mcp_req_create_measured",
       arguments: {
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -214,6 +268,7 @@ describe("mcp-adapter", () => {
       name: "cad.batch",
       requestId: "mcp_req_create_feature_box",
       arguments: {
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -263,6 +318,7 @@ describe("mcp-adapter", () => {
       name: "cad.batch",
       requestId: "mcp_req_create_extents",
       arguments: {
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -306,6 +362,7 @@ describe("mcp-adapter", () => {
           id: "mcp-history-agent",
           name: "MCP History Agent"
         },
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -340,6 +397,13 @@ describe("mcp-adapter", () => {
             actor: {
               id: "mcp-history-agent"
             },
+            audit: {
+              source: "mcp",
+              requestId: "mcp_req_history_create",
+              toolName: "cad.batch",
+              intent: "commit",
+              operationCount: 1
+            },
             ops: [
               {
                 op: "scene.createBox",
@@ -362,6 +426,7 @@ describe("mcp-adapter", () => {
       name: "cad.batch",
       requestId: "mcp_req_error",
       arguments: {
+        allowCommit: true,
         batch: {
           version: "cadops.v1",
           mode: "commit",
@@ -406,6 +471,7 @@ describe("mcp-adapter", () => {
       params: {
         name: "cad.batch",
         arguments: {
+          allowCommit: true,
           batch: {
             version: "cadops.v1",
             mode: "commit",

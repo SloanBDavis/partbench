@@ -60,6 +60,13 @@ Transaction {
     id?: string
     name?: string
   }
+  audit?: {
+    source?: string
+    requestId?: string
+    toolName?: string
+    intent: "commit"
+    operationCount: number
+  }
   ops: CadOp[]
   diff: SemanticDiff
 }
@@ -67,6 +74,11 @@ Transaction {
 
 The actor records where the committed mutation came from. It is audit metadata,
 not an authorization system.
+
+The optional audit record captures adapter/request context for committed
+transactions: source, request ID, tool name, commit intent, and operation count.
+It is deterministic transaction metadata for traceability, not a permission or
+authentication system.
 
 Unit-change semantic diffs record the old unit, new unit, update mode, and net
 numeric scale applied in that transaction:
@@ -144,6 +156,7 @@ The source of truth is:
 - committed transaction history
 - redo transaction history where practical
 - optional transaction actor metadata
+- optional transaction audit metadata
 
 Transactions are preserved so undo/redo, command auditability, and future
 rebuild/migration work have a stable record of how the current document was
@@ -191,6 +204,7 @@ document.
 - transforms
 - object names
 - transaction and semantic diff shape
+- optional transaction audit metadata
 - committed transaction stack status
 - undone redo stack status
 - duplicate transaction IDs across history and redo stack
