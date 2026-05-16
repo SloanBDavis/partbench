@@ -97,6 +97,17 @@ when the path breaks or required metrics are missing. Set
 
 Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
+## Documentation
+
+- `docs/architecture.md` - long-term architecture.
+- `docs/implementation-plan.md` - current implementation source of truth and
+  roadmap.
+- `docs/v1.md` - completed V1 foundation.
+- `docs/v2.md` - active next product target.
+- `docs/native-format.md` - current JSON format and native project package
+  direction.
+- `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
+
 ## Workspace Layout
 
 - `apps/web` - Vite browser app and explicit worker entrypoints

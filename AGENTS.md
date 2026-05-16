@@ -11,8 +11,8 @@ The long-term architecture is in:
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
-- `docs/v1.md`
-- `docs/mvp.md`
+- `docs/v1.md` — completed V1 baseline
+- `docs/v2.md` — active next target
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 
@@ -22,7 +22,7 @@ Do not attempt to build the entire architecture at once. Implement only the mile
 2. Human UI, scripts, tests, and future AI/MCP connectors must all use the same command layer.
 3. The document model is authoritative. Rendered meshes are derived views/caches.
 4. Do not couple the React UI directly to geometry internals.
-5. Keep renderer, command engine, protocol, storage, and future WASM geometry boundaries separate.
+5. Keep renderer, command engine, protocol, storage, and WASM geometry boundaries separate.
 6. Do not introduce Open CASCADE, WASM, MCP, OPFS, STEP import/export, or WebGPU until the requested milestone calls for it.
 7. Prefer small, testable packages over one large app.
 8. Every implemented command must have tests.
@@ -31,12 +31,20 @@ Do not attempt to build the entire architecture at once. Implement only the mile
 
 ## Expected Repo Shape
 
-Use this shape unless the user instructs otherwise:
+The repo has grown beyond the initial four-package foundation. Keep this shape
+unless the user instructs otherwise:
 
 - `apps/web` — browser UI
 - `packages/cad-protocol` — command schemas and shared types
 - `packages/cad-core` — document model, transactions, undo/redo
 - `packages/renderer` — rendering abstraction and simple viewport implementation
+- `packages/renderer-mesh-bridge` — derived mesh adapter for the renderer
+- `packages/geometry-kernel` — typed geometry facade
+- `packages/geometry-worker` — async geometry worker boundary
+- `packages/occt-wasm` — isolated OCCT/WASM integration
+- `packages/agent-adapter` — structured CADOps adapter for external callers
+- `packages/mcp-adapter` — MCP tool wrapper over the agent adapter
+- `packages/mcp-stdio-server` — local stdio JSON-RPC MCP transport
 - `docs` — architecture and implementation docs
 
 ## Engineering Preferences

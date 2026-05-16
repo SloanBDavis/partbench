@@ -1,9 +1,11 @@
 # Native Project Format
 
 This document describes the current source-of-truth project format and the
-direction for the future native package format. It is intentionally scoped to
-V1 Phase E and does not introduce OPFS, File System Access API, STEP
-import/export, real topology, or a final `.wcad` package implementation.
+direction for the future native package format. The current V1 format is
+complete as a JSON source-of-truth interchange format. V2 planning should use
+this document to evolve toward a native package without prematurely introducing
+OPFS, File System Access API, STEP import/export, real topology, or a final
+`.wcad` implementation.
 
 ## Current Format
 
@@ -26,10 +28,10 @@ parseCadProjectJson(json)
 importCadProjectJson(json)
 ```
 
-The web app Project panel uses this same format for the current V1 save/load
-flow. It can generate/download current project JSON, load JSON into an import
-preview, and show schema/version, object count, transaction count, redo count,
-and structured validation issues before import. The preview uses the same
+The web app Project panel uses this same format for the V1 save/load flow. It
+can generate/download current project JSON, load JSON into an import preview,
+and show schema/version, object count, transaction count, redo count, and
+structured validation issues before import. The preview uses the same
 importability checks as load, including transaction replay, so malformed history
 is blocked before the user imports it. This remains ordinary JSON import/export
 and does not use OPFS or the File System Access API.
