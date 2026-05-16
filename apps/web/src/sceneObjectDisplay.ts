@@ -1,7 +1,14 @@
 import type { CadAxisAlignedBounds, SceneObject } from "@web-cad/cad-core";
 
 export function formatObjectKind(kind: SceneObject["kind"]): string {
-  return kind === "box" ? "Box" : "Cylinder";
+  switch (kind) {
+    case "box":
+      return "Box";
+    case "cylinder":
+      return "Cylinder";
+    case "sphere":
+      return "Sphere";
+  }
 }
 
 export function getObjectDisplayName(object: SceneObject): string {
@@ -14,6 +21,11 @@ export function formatDimensions(object: SceneObject, units?: string): string {
   if (object.kind === "box") {
     const { depth, height, width } = object.dimensions;
     return `${formatNumber(width)} x ${formatNumber(height)} x ${formatNumber(depth)}${suffix}`;
+  }
+
+  if (object.kind === "sphere") {
+    const { radius } = object.dimensions;
+    return `r ${formatNumber(radius)}${suffix}`;
   }
 
   const { height, radius } = object.dimensions;

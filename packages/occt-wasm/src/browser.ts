@@ -14,13 +14,20 @@ import {
   createOcctCylinderMeshWithLoader,
   type OcctCylinderInput
 } from "./tessellateCylinder";
+import {
+  createOcctSphereMeshWithInstance,
+  createOcctSphereMeshWithLoader,
+  type OcctSphereInput
+} from "./tessellateSphere";
 
-export type { OcctBoxInput, OcctCylinderInput, OcctMeshData };
+export type { OcctBoxInput, OcctCylinderInput, OcctSphereInput, OcctMeshData };
 export {
   createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
   createOcctCylinderMeshWithInstance,
-  createOcctCylinderMeshWithLoader
+  createOcctCylinderMeshWithLoader,
+  createOcctSphereMeshWithInstance,
+  createOcctSphereMeshWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;
@@ -106,4 +113,10 @@ export async function createOcctCylinderMesh(
   input: OcctCylinderInput
 ): Promise<OcctMeshData> {
   return createOcctCylinderMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctSphereMesh(
+  input: OcctSphereInput
+): Promise<OcctMeshData> {
+  return createOcctSphereMeshWithLoader(loadBrowserOcct, input);
 }

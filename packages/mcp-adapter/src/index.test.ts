@@ -261,6 +261,53 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("accepts sphere batches and exposes sphere measurements", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_sphere",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createSphere",
+              id: "measured_sphere",
+              dimensions: { radius: 2 }
+            }
+          ]
+        }
+      }
+    });
+    const result = server.callTool({
+      name: "cad.object_measurements",
+      requestId: "mcp_req_measure_sphere",
+      arguments: { id: "measured_sphere" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.object_measurements",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_measure_sphere",
+        query: "object.measurements",
+        measurements: {
+          id: "measured_sphere",
+          kind: "sphere",
+          dimensions: { radius: 2 },
+          localBounds: {
+            min: [-2, -2, -2],
+            max: [2, 2, 2]
+          }
+        }
+      }
+    });
+  });
+
   it("returns primitive feature summaries through cad.project_features", () => {
     const server = new CadMcpServer();
 

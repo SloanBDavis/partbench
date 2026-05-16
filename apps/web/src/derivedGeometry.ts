@@ -1,4 +1,9 @@
-import type { BoxObject, CylinderObject, SceneObject } from "@web-cad/cad-core";
+import type {
+  BoxObject,
+  CylinderObject,
+  SceneObject,
+  SphereObject
+} from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createDerivedGeometryErrorDetails,
@@ -61,7 +66,7 @@ export interface DerivedGeometryServiceOptions {
   readonly onChange: (snapshot: DerivedGeometrySnapshot) => void;
 }
 
-type SupportedDerivedGeometryObject = BoxObject | CylinderObject;
+type SupportedDerivedGeometryObject = BoxObject | CylinderObject | SphereObject;
 
 interface ActiveDerivedGeometryRequest {
   readonly objectId: string;
@@ -110,7 +115,7 @@ export class DerivedGeometryService {
           cacheKey,
           status: "unsupported",
           message:
-            "Derived OCCT mesh generation currently supports boxes and cylinders only."
+            "Derived OCCT mesh generation currently supports boxes, cylinders, and spheres only."
         };
 
         if (!isSameEntry(existing, unsupported)) {
@@ -183,18 +188,7 @@ export class DerivedGeometryService {
     request: ActiveDerivedGeometryRequest
   ): Promise<void> {
     try {
-      const result =
-        object.kind === "box"
-          ? await this.#runtime.tessellateBox({
-              id: object.id,
-              dimensions: object.dimensions,
-              transform: object.transform
-            })
-          : await this.#runtime.tessellateCylinder({
-              id: object.id,
-              dimensions: object.dimensions,
-              transform: object.transform
-            });
+      const result = await deriveObjectMesh(this.#runtime, object);
 
       this.#applyReadyResult(object, request, result);
     } catch (error) {
@@ -275,7 +269,37 @@ function createPendingEntry(
 }
 
 function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
-  return object.kind === "box" || object.kind === "cylinder";
+  return (
+    object.kind === "box" ||
+    object.kind === "cylinder" ||
+    object.kind === "sphere"
+  );
+}
+
+function deriveObjectMesh(
+  runtime: DerivedGeometryRuntime,
+  object: SupportedDerivedGeometryObject
+): Promise<DerivedGeometryResult> {
+  switch (object.kind) {
+    case "box":
+      return runtime.tessellateBox({
+        id: object.id,
+        dimensions: object.dimensions,
+        transform: object.transform
+      });
+    case "cylinder":
+      return runtime.tessellateCylinder({
+        id: object.id,
+        dimensions: object.dimensions,
+        transform: object.transform
+      });
+    case "sphere":
+      return runtime.tessellateSphere({
+        id: object.id,
+        dimensions: object.dimensions,
+        transform: object.transform
+      });
+  }
 }
 
 export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {

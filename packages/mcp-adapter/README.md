@@ -238,5 +238,5 @@ current numeric values, while `preservePhysicalSize` scales current dimensions
 and transform translations in `cad-core`.
 
 Measurement responses are read-only derived data from the authoritative
-document, not renderer meshes. Current measurements support boxes and cylinders
-and include local bounds, world bounds, and approximate volume.
+document, not renderer meshes. Current measurements support boxes, cylinders,
+and spheres and include local bounds, world bounds, and approximate volume.

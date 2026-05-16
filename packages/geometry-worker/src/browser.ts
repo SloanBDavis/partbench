@@ -19,6 +19,7 @@ import {
 export {
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createSphereTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorker,
@@ -147,7 +148,11 @@ function getUnsupportedPrimitiveMessage(
     return `Unsupported geometry worker request kind: ${kind}.`;
   }
 
-  if (op !== "geometry.tessellateBox" && op !== "geometry.tessellateCylinder") {
+  if (
+    op !== "geometry.tessellateBox" &&
+    op !== "geometry.tessellateCylinder" &&
+    op !== "geometry.tessellateSphere"
+  ) {
     return `Unsupported geometry kernel operation: ${op}.`;
   }
 

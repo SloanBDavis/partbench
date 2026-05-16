@@ -49,12 +49,16 @@ export function BatchPanel({
           <option value="document.updateUnits">Update document units</option>
           <option value="scene.createBox">Create box</option>
           <option value="scene.createCylinder">Create cylinder</option>
+          <option value="scene.createSphere">Create sphere</option>
           <option value="scene.updateTransform">Update transform</option>
           <option value="scene.updateBoxDimensions">
             Update box dimensions
           </option>
           <option value="scene.updateCylinderDimensions">
             Update cylinder dimensions
+          </option>
+          <option value="scene.updateSphereDimensions">
+            Update sphere dimensions
           </option>
           <option value="scene.renameObject">Rename object</option>
           <option value="scene.deleteObject">Delete object</option>
@@ -103,7 +107,8 @@ export function BatchPanel({
       )}
 
       {(form.op === "scene.createBox" ||
-        form.op === "scene.createCylinder") && (
+        form.op === "scene.createCylinder" ||
+        form.op === "scene.createSphere") && (
         <TextField
           label="New ID"
           value={form.id}
@@ -115,6 +120,7 @@ export function BatchPanel({
       {(form.op === "scene.updateTransform" ||
         form.op === "scene.updateBoxDimensions" ||
         form.op === "scene.updateCylinderDimensions" ||
+        form.op === "scene.updateSphereDimensions" ||
         form.op === "scene.renameObject" ||
         form.op === "scene.deleteObject") && (
         <TextField
@@ -152,8 +158,19 @@ export function BatchPanel({
         />
       )}
 
+      {(form.op === "scene.createSphere" ||
+        form.op === "scene.updateSphereDimensions") && (
+        <DimensionFields
+          form={form}
+          onChange={onChange}
+          fields={["radius"]}
+          unitLabel={units}
+        />
+      )}
+
       {(form.op === "scene.createBox" ||
         form.op === "scene.createCylinder" ||
+        form.op === "scene.createSphere" ||
         form.op === "scene.updateTransform") && (
         <TransformFields form={form} onChange={onChange} compact />
       )}
@@ -244,7 +261,11 @@ function DiffIds({
 }
 
 function summarizeOp(op: CadOp): string {
-  if (op.op === "scene.createBox" || op.op === "scene.createCylinder") {
+  if (
+    op.op === "scene.createBox" ||
+    op.op === "scene.createCylinder" ||
+    op.op === "scene.createSphere"
+  ) {
     return `${op.op}${op.id ? ` ${op.id}` : ""}`;
   }
 

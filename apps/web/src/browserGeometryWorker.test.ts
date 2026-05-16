@@ -2,6 +2,7 @@ import {
   GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createSphereTessellationWorkerRequest,
   type GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
@@ -228,6 +229,46 @@ describe("BrowserGeometryWorker", () => {
     ]);
   });
 
+  it("can run one sphere tessellation through the browser transport wrapper", async () => {
+    const kernelWorker = new GeometryKernelWorker();
+    const transport = new FakeGeometryWorkerTransport((request) =>
+      kernelWorker.execute(request)
+    );
+    const worker = new BrowserGeometryWorker(transport);
+
+    const response = await worker.execute(
+      createSphereTessellationWorkerRequest({
+        id: "browser_geometry_req_sphere",
+        payloadId: "browser_geometry_payload_sphere",
+        radius: 10
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "browser_geometry_req_sphere",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
+      payloadId: "browser_geometry_payload_sphere",
+      response: {
+        ok: true,
+        id: "browser_geometry_payload_sphere",
+        op: "geometry.tessellateSphere"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("sphere");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
   it("rejects pending requests when the worker transport reports an error", async () => {
     const transport = new FakeGeometryWorkerTransport(async () => {
       throw new Error("geometry worker transport failed");
@@ -262,8 +303,7 @@ describe("BrowserGeometryWorker", () => {
   it("rejects structured worker message errors with diagnostics", async () => {
     const transport = new FakeGeometryWorkerTransport(async (request) => ({
       id: request.id,
-      error:
-        "Unsupported geometry kernel operation: geometry.tessellateSphere.",
+      error: "Unsupported geometry kernel operation: geometry.tessellateTorus.",
       diagnostics: {
         ok: false,
         stage: "requestValidation",
@@ -272,7 +312,7 @@ describe("BrowserGeometryWorker", () => {
         error: {
           code: "UNSUPPORTED_PRIMITIVE",
           message:
-            "Unsupported geometry kernel operation: geometry.tessellateSphere."
+            "Unsupported geometry kernel operation: geometry.tessellateTorus."
         }
       }
     }));

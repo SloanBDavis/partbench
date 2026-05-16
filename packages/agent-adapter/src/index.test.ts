@@ -485,6 +485,51 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("accepts sphere commands and exposes sphere measurements through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_sphere_commit",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createSphere",
+            id: "agent_sphere",
+            dimensions: { radius: 2 }
+          }
+        ]
+      }
+    });
+
+    const response = adapter.query({
+      requestId: "agent_sphere_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "object.measurements", id: "agent_sphere" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_sphere_measure",
+      query: "object.measurements",
+      measurements: {
+        id: "agent_sphere",
+        kind: "sphere",
+        dimensions: { radius: 2 },
+        localBounds: {
+          min: [-2, -2, -2],
+          max: [2, 2, 2]
+        }
+      }
+    });
+  });
+
   it("returns project extents through adapter query JSON", () => {
     const adapter = new CadOpsAgentAdapter();
 

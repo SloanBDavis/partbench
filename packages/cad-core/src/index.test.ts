@@ -68,6 +68,31 @@ describe("cad-core", () => {
     });
   });
 
+  it("creates a sphere", () => {
+    const engine = new CadEngine();
+
+    const result = engine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 5 },
+      transform: { translation: [4, 5, 6] }
+    });
+
+    expect(result.document.objects.get("sphere_1")).toEqual({
+      id: "sphere_1",
+      kind: "sphere",
+      dimensions: { radius: 5 },
+      transform: {
+        translation: [4, 5, 6],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      }
+    });
+    expect(result.transaction.diff.created).toEqual([
+      { id: "sphere_1", kind: "sphere" }
+    ]);
+  });
+
   it("generates object IDs when a command does not provide one", () => {
     const engine = new CadEngine();
 
@@ -80,13 +105,22 @@ describe("cad-core", () => {
       {
         op: "scene.createCylinder",
         dimensions: { radius: 2, height: 8 }
+      },
+      {
+        op: "scene.createSphere",
+        dimensions: { radius: 4 }
       }
     ]);
 
-    expect([...result.document.objects.keys()]).toEqual(["obj_1", "obj_2"]);
+    expect([...result.document.objects.keys()]).toEqual([
+      "obj_1",
+      "obj_2",
+      "obj_3"
+    ]);
     expect(result.transaction.diff.created).toEqual([
       { id: "obj_1", kind: "box" },
-      { id: "obj_2", kind: "cylinder" }
+      { id: "obj_2", kind: "cylinder" },
+      { id: "obj_3", kind: "sphere" }
     ]);
   });
 
@@ -170,6 +204,32 @@ describe("cad-core", () => {
     });
   });
 
+  it("updates sphere dimensions with a semantic diff", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 1 }
+    });
+
+    const result = engine.apply({
+      op: "scene.updateSphereDimensions",
+      id: "sphere_1",
+      dimensions: { radius: 3 }
+    });
+
+    expect(result.document.objects.get("sphere_1")).toMatchObject({
+      kind: "sphere",
+      dimensions: { radius: 3 }
+    });
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [{ id: "sphere_1", kind: "sphere" }],
+      deleted: []
+    });
+  });
+
   it("updates document units with a semantic diff", () => {
     const engine = new CadEngine();
 
@@ -209,6 +269,12 @@ describe("cad-core", () => {
       dimensions: { radius: 5, height: 10 },
       transform: { translation: [25.4, 0, 10] }
     });
+    engine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 12.7 },
+      transform: { translation: [0, 25.4, 12.7] }
+    });
 
     const result = engine.apply({
       op: "document.updateUnits",
@@ -218,13 +284,19 @@ describe("cad-core", () => {
 
     const box = result.document.objects.get("box_1");
     const cylinder = result.document.objects.get("cylinder_1");
+    const sphere = result.document.objects.get("sphere_1");
 
     expect(result.document.units).toBe("in");
     expect(box?.kind).toBe("box");
     expect(cylinder?.kind).toBe("cylinder");
+    expect(sphere?.kind).toBe("sphere");
 
-    if (box?.kind !== "box" || cylinder?.kind !== "cylinder") {
-      throw new Error("Expected converted box and cylinder objects.");
+    if (
+      box?.kind !== "box" ||
+      cylinder?.kind !== "cylinder" ||
+      sphere?.kind !== "sphere"
+    ) {
+      throw new Error("Expected converted box, cylinder, and sphere objects.");
     }
 
     expect(box.dimensions.width).toBeCloseTo(10 / 25.4, 10);
@@ -240,11 +312,17 @@ describe("cad-core", () => {
     expect(cylinder.transform.translation[1]).toBeCloseTo(0, 10);
     expect(cylinder.transform.translation[2]).toBeCloseTo(10 / 25.4, 10);
 
+    expect(sphere.dimensions.radius).toBeCloseTo(0.5, 10);
+    expect(sphere.transform.translation[0]).toBeCloseTo(0, 10);
+    expect(sphere.transform.translation[1]).toBeCloseTo(1, 10);
+    expect(sphere.transform.translation[2]).toBeCloseTo(0.5, 10);
+
     expect(result.transaction.diff).toEqual({
       created: [],
       modified: [
         { id: "box_1", kind: "box" },
-        { id: "cylinder_1", kind: "cylinder" }
+        { id: "cylinder_1", kind: "cylinder" },
+        { id: "sphere_1", kind: "sphere" }
       ],
       deleted: [],
       document: {
@@ -451,6 +529,50 @@ describe("cad-core", () => {
       width: 1,
       height: 1,
       depth: 1
+    });
+  });
+
+  it("validates positive sphere dimensions", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 1 }
+    });
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.updateSphereDimensions",
+          id: "sphere_1",
+          dimensions: { radius: 0 }
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: "Sphere dimensions must be positive finite numbers.",
+        opIndex: 0,
+        op: "scene.updateSphereDimensions",
+        objectId: "sphere_1",
+        path: "$.ops[0].dimensions",
+        expected: "positive finite radius",
+        received: '{"radius":0}'
+      },
+      createdIds: [],
+      modifiedIds: [],
+      deletedIds: [],
+      warnings: []
+    });
+    expect(engine.getDocument().objects.get("sphere_1")?.dimensions).toEqual({
+      radius: 1
     });
   });
 
@@ -750,6 +872,66 @@ describe("cad-core", () => {
       "cylinder"
     );
     expect(engine.getTransactions()).toHaveLength(1);
+  });
+
+  it("supports sphere create and dimension updates in batch dry-run and commit", () => {
+    const engine = new CadEngine();
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "scene.createSphere",
+          id: "sphere_1",
+          dimensions: { radius: 2 }
+        }
+      ]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdIds: ["sphere_1"],
+      modifiedIds: []
+    });
+    expect(engine.getDocument().objects.has("sphere_1")).toBe(false);
+
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createSphere",
+          id: "sphere_1",
+          dimensions: { radius: 2 }
+        },
+        {
+          op: "scene.updateSphereDimensions",
+          id: "sphere_1",
+          dimensions: { radius: 3 }
+        }
+      ]
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdIds: ["sphere_1"],
+      modifiedIds: ["sphere_1"],
+      transactionId: "txn_1"
+    });
+    expect(engine.getDocument().objects.get("sphere_1")).toMatchObject({
+      kind: "sphere",
+      dimensions: { radius: 3 }
+    });
+
+    engine.undo();
+    expect(engine.getDocument().objects.has("sphere_1")).toBe(false);
+
+    engine.redo();
+    expect(engine.getDocument().objects.get("sphere_1")).toMatchObject({
+      kind: "sphere",
+      dimensions: { radius: 3 }
+    });
   });
 
   it("records actor metadata for direct command execution", () => {
@@ -1501,6 +1683,52 @@ describe("cad-core", () => {
     }
   });
 
+  it("returns approximate sphere measurements", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 2 },
+      transform: { translation: [1, 2, 3] }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: "sphere_1" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "object.measurements",
+      measurements: {
+        id: "sphere_1",
+        kind: "sphere",
+        dimensions: { radius: 2 },
+        localBounds: {
+          min: [-2, -2, -2],
+          max: [2, 2, 2],
+          size: [4, 4, 4],
+          center: [0, 0, 0]
+        },
+        worldBounds: {
+          min: [-1, 0, 1],
+          max: [3, 4, 5],
+          size: [4, 4, 4],
+          center: [1, 2, 3]
+        }
+      }
+    });
+
+    if (response.ok && response.query === "object.measurements") {
+      expect(response.measurements.approximateVolume).toBeCloseTo(
+        (32 / 3) * Math.PI
+      );
+    } else {
+      throw new Error("Expected object measurements response.");
+    }
+  });
+
   it("returns project extents from object world bounds", () => {
     const engine = new CadEngine();
 
@@ -1921,6 +2149,12 @@ describe("cad-core", () => {
       transform: { translation: [4, 0, 3] }
     });
     engine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 2 },
+      transform: { translation: [0, 4, 2] }
+    });
+    engine.apply({
       op: "scene.updateTransform",
       id: "fixture",
       transform: { rotation: [0, 0, 1.25], scale: [2, 2, 1] }
@@ -1936,6 +2170,11 @@ describe("cad-core", () => {
       dimensions: { radius: 2.5, height: 7 }
     });
     engine.apply({
+      op: "scene.updateSphereDimensions",
+      id: "sphere_1",
+      dimensions: { radius: 3 }
+    });
+    engine.apply({
       op: "document.updateUnits",
       units: "in"
     });
@@ -1949,12 +2188,19 @@ describe("cad-core", () => {
     const restoredObjects = restored.getDocument().objects;
 
     expect(restored.getDocument().units).toBe("in");
-    expect([...restoredObjects.keys()]).toEqual(["obj_1", "fixture"]);
+    expect([...restoredObjects.keys()]).toEqual([
+      "obj_1",
+      "fixture",
+      "sphere_1"
+    ]);
     expect(restoredObjects.get("obj_1")).toEqual(
       engine.getDocument().objects.get("obj_1")
     );
     expect(restoredObjects.get("fixture")).toEqual(
       engine.getDocument().objects.get("fixture")
+    );
+    expect(restoredObjects.get("sphere_1")).toEqual(
+      engine.getDocument().objects.get("sphere_1")
     );
     expect(restored.getTransactions()).toEqual(engine.getTransactions());
 
@@ -1965,6 +2211,12 @@ describe("cad-core", () => {
     restored.undo();
 
     expect(restored.getDocument().units).toBe("mm");
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("sphere_1")?.dimensions).toEqual({
+      radius: 2
+    });
 
     restored.undo();
 
@@ -2272,7 +2524,7 @@ describe("cad-core", () => {
               objects: [
                 {
                   id: "bad_object",
-                  kind: "sphere",
+                  kind: "torus",
                   dimensions: { radius: 1 },
                   transform: {
                     translation: [0, 0, 0],
@@ -2319,6 +2571,38 @@ describe("cad-core", () => {
       {
         code: "INVALID_DIMENSIONS",
         path: "$.document.objects[0].dimensions.height"
+      }
+    );
+  });
+
+  it("rejects invalid sphere dimensions with a structured import error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              objects: [
+                {
+                  id: "bad_sphere",
+                  kind: "sphere",
+                  dimensions: { radius: 0 },
+                  transform: {
+                    translation: [0, 0, 0],
+                    rotation: [0, 0, 0],
+                    scale: [1, 1, 1]
+                  }
+                }
+              ]
+            }
+          })
+        ),
+      {
+        code: "INVALID_DIMENSIONS",
+        path: "$.document.objects[0].dimensions.radius"
       }
     );
   });

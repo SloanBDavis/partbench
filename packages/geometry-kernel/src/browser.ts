@@ -1,6 +1,7 @@
 import {
   createOcctBoxMeshWithInstance,
   createOcctCylinderMeshWithInstance,
+  createOcctSphereMeshWithInstance,
   loadBrowserOcct
 } from "@web-cad/occt-wasm/browser";
 import {
@@ -18,8 +19,10 @@ import {
   type GeometryKernelVersion,
   type GeometryKernelErrorResponse,
   type SerializableMeshData,
+  type SphereGeometryDimensions,
   type TessellateBoxRequest,
   type TessellateCylinderRequest,
+  type TessellateSphereRequest,
   type TessellationOptions
 } from "./kernel";
 
@@ -36,8 +39,10 @@ export type {
   GeometryKernelVersion,
   GeometryKernelErrorResponse,
   SerializableMeshData,
+  SphereGeometryDimensions,
   TessellateBoxRequest,
   TessellateCylinderRequest,
+  TessellateSphereRequest,
   TessellationOptions
 };
 export { getGeometryResponseTransferables };
@@ -73,7 +78,8 @@ export async function executeTimedBrowserGeometryKernelRequest(
     {
       createBoxMesh: (input) => createMeshWithBrowserOcct(input, "box"),
       createCylinderMesh: (input) =>
-        createMeshWithBrowserOcct(input, "cylinder")
+        createMeshWithBrowserOcct(input, "cylinder"),
+      createSphereMesh: (input) => createMeshWithBrowserOcct(input, "sphere")
     },
     request
   );
@@ -91,7 +97,8 @@ export async function executeTimedBrowserGeometryKernelRequest(
   async function createMeshWithBrowserOcct(
     input:
       | (BoxGeometryDimensions & TessellationOptions)
-      | (CylinderGeometryDimensions & TessellationOptions),
+      | (CylinderGeometryDimensions & TessellationOptions)
+      | (SphereGeometryDimensions & TessellationOptions),
     primitive: GeometryKernelPrimitive
   ) {
     const occtLoadStart = performance.now();
@@ -110,15 +117,23 @@ export async function executeTimedBrowserGeometryKernelRequest(
     const tessellationStart = performance.now();
 
     try {
-      return primitive === "box"
-        ? createOcctBoxMeshWithInstance(
+      switch (primitive) {
+        case "box":
+          return createOcctBoxMeshWithInstance(
             oc,
             input as BoxGeometryDimensions & TessellationOptions
-          )
-        : createOcctCylinderMeshWithInstance(
+          );
+        case "cylinder":
+          return createOcctCylinderMeshWithInstance(
             oc,
             input as CylinderGeometryDimensions & TessellationOptions
           );
+        case "sphere":
+          return createOcctSphereMeshWithInstance(
+            oc,
+            input as SphereGeometryDimensions & TessellationOptions
+          );
+      }
     } catch (error) {
       failureStage = "tessellation";
       throw error;

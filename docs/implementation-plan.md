@@ -30,7 +30,8 @@ The current repo is a TypeScript pnpm workspace with a Vite React app and focuse
 packages:
 
 - `apps/web` - browser UI, command-worker entrypoint, geometry-worker entrypoint,
-  local-serve default derived mesh service for OCCT box and cylinder meshes,
+  local-serve default derived mesh service for OCCT box, cylinder, and sphere
+  meshes,
   primitive-rendering fallback, and smoke page.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
@@ -187,11 +188,11 @@ Delivered:
 Current measured smoke example:
 
 ```text
-scenario: box-and-cylinder
+scenario: box-cylinder-sphere
 OCCT load: ~1.2-1.4 s on the current local machine
 tessellation: ~15-20 ms
 round trip: ~1.3-1.4 s on first load
-meshes: box 24 vertices / 12 triangles, cylinder ~100 vertices / ~100 triangles
+meshes: box 24 vertices / 12 triangles, cylinder ~100 vertices / ~100 triangles, sphere mesh present
 OCCT WASM: ~50.31 MB raw, ~13.96 MB gzip, ~11.19 MB Brotli
 served OCCT WASM in smoke: ~11.19 MB via br
 ```
@@ -285,7 +286,7 @@ Current limitations:
 - Scene objects can have optional display names, but names are not required to
   be unique yet.
 - There is no real B-rep topology in the authoritative document.
-- OCCT currently proves box and cylinder tessellation.
+- OCCT currently proves box, cylinder, and sphere tessellation.
 - Primitive rendering remains the fallback when derived geometry is unavailable,
   loading, or failed.
 - The Geometry panel reports whether each object is using an OCCT-derived mesh,
@@ -297,7 +298,7 @@ Current limitations:
   yet.
 - No stable topological naming system exists yet.
 - No sketch solver exists yet.
-- Read-only measurements exist for current boxes and cylinders, but they are
+- Read-only measurements exist for current boxes, cylinders, and spheres, but they are
   primitive-derived bounds and approximate volumes, not exact B-rep/kernel
   measurement APIs.
 - No OPFS storage exists yet.
@@ -371,16 +372,16 @@ Current slice delivered:
 - Derived mesh entries are reconciled after create, transform update, delete,
   undo, redo, and project import/load because those paths update the current
   document snapshot.
-- Cylinder tessellation now runs through the same OCCT WASM adapter, geometry-kernel
-  facade, browser worker, renderer mesh bridge, and derived geometry status path
-  as box tessellation.
+- Cylinder and sphere tessellation now run through the same OCCT WASM adapter,
+  geometry-kernel facade, browser worker, renderer mesh bridge, and derived
+  geometry status path as box tessellation.
 - The app-layer render scene preparation prefers ready derived meshes and omits
   duplicate primitive fallback for those objects, while pending, failed,
   unsupported, or disabled derived geometry still displays primitives.
 
 Exit criteria:
 
-- A box can be created through CADOps and automatically get a derived OCCT mesh.
+- Supported primitives can be created through CADOps and automatically get derived OCCT meshes.
 - Stale meshes are not displayed after document changes.
 - The renderer accepts derived meshes without importing `cad-core` or OCCT.
 
@@ -390,24 +391,25 @@ Goal: make the geometry-kernel facade useful for the current scene command set.
 
 Deliverables:
 
-- Add typed tessellation request/response for cylinders. Current implementation
-  supports this through `geometry.tessellateCylinder`.
-- Tessellate cylinders through the worker. Current implementation supports this
-  through the same browser-worker path as boxes.
-- Route boxes and cylinders through the same derived geometry service. Current
-  implementation keeps both as derived views/caches, default-enabled in
-  local Vite serve and opt-in for production builds.
-- Add tests and browser smoke scenarios for box and cylinder. Current
-  implementation adds focused package/app tests for the cylinder request,
-  kernel, worker, mesh bridge, and derived service paths; the browser smoke runs
-  box and cylinder requests in the same worker session.
+- Add typed tessellation request/response for cylinders and spheres. Current
+  implementation supports this through `geometry.tessellateCylinder` and
+  `geometry.tessellateSphere`.
+- Tessellate cylinders and spheres through the worker. Current implementation
+  supports this through the same browser-worker path as boxes.
+- Route boxes, cylinders, and spheres through the same derived geometry service.
+  Current implementation keeps all three as derived views/caches, default-enabled
+  in local Vite serve and opt-in for production builds.
+- Add tests and browser smoke scenarios for box, cylinder, and sphere. Current
+  implementation adds focused package/app tests for the cylinder and sphere
+  request, kernel, worker, mesh bridge, and derived service paths; the browser
+  smoke runs box, cylinder, and sphere requests in the same worker session.
 - Keep command semantics unchanged while mesh derivation improves.
 
 Exit criteria:
 
 - Existing CADOps scene commands produce consistent document diffs.
-- Box and cylinder display can use worker-derived meshes when the geometry path
-  is enabled.
+- Box, cylinder, and sphere display can use worker-derived meshes when the
+  geometry path is enabled.
 - Primitive rendering remains available as fallback.
 - Ready derived meshes are displayed instead of duplicate primitives for the
   same object.
@@ -429,9 +431,9 @@ Deliverables:
 
 Current slice delivered:
 
-- Box and cylinder dimensions can be edited after creation through typed CADOps
+- Box, cylinder, and sphere dimensions can be edited after creation through typed CADOps
   commands: `scene.updateBoxDimensions` and
-  `scene.updateCylinderDimensions`.
+  `scene.updateCylinderDimensions`, and `scene.updateSphereDimensions`.
 - Dimension edits validate positive dimensions, produce semantic modified diffs,
   participate in batch dry-run/commit, and work with undo/redo.
 - Project JSON preserves dimension updates through current document state and
@@ -442,7 +444,7 @@ Current slice delivered:
   `document.updateUnits`.
 - Unit updates now make behavior explicit: metadata-only changes relabel the
   existing numeric model values, while preserve-physical-size conversion scales
-  current box/cylinder dimensions and transform translations.
+  current box/cylinder/sphere dimensions and transform translations.
 - Scene objects can be renamed through the typed CADOps command
   `scene.renameObject`.
 - Units and object names validate, produce semantic diffs, participate in batch
@@ -452,13 +454,13 @@ Current slice delivered:
   practical: operation name, JSON-style path, expected value shape, received
   value, operation index, and affected object ID.
 - CADOps read/query support now includes `object.measurements` and
-  `project.extents` for current boxes and cylinders. These queries derive local
+  `project.extents` for current boxes, cylinders, and spheres. These queries derive local
   bounds, transformed world bounds, and approximate volume from the
   authoritative document instead of renderer meshes.
 - CADOps read/query support now includes `project.features`, a minimal
   feature-model bridge that derives primitive feature summaries from current
-  scene objects and active transaction history. It gives boxes and cylinders
-  stable feature-shaped IDs and source metadata without replacing the scene
+  scene objects and active transaction history. It gives boxes, cylinders, and
+  spheres stable feature-shaped IDs and source metadata without replacing the scene
   object model or adding persisted feature graph records.
 
 Exit criteria:

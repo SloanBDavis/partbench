@@ -69,6 +69,28 @@ describe("renderer", () => {
     expect(selectedId).toBe("box_1");
   });
 
+  it("picks a sphere primitive by projected bounds", () => {
+    const selectedId = pickPrimitive(
+      [
+        {
+          id: "sphere_1",
+          kind: "sphere",
+          dimensions: { radius: 2 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      createDefaultCamera(),
+      { width: 800, height: 600 },
+      { x: 400, y: 300 }
+    );
+
+    expect(selectedId).toBe("sphere_1");
+  });
+
   it("picks a mesh by projected bounds", () => {
     const selectedId = pickRenderScene(
       [],

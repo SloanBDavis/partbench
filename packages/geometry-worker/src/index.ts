@@ -15,6 +15,7 @@ import {
 export {
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createSphereTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorker,

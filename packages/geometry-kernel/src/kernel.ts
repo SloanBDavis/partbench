@@ -1,8 +1,9 @@
 export type GeometryKernelVersion = "geometry-kernel.v1";
 export type GeometryKernelOp =
   | "geometry.tessellateBox"
-  | "geometry.tessellateCylinder";
-export type GeometryKernelPrimitive = "box" | "cylinder";
+  | "geometry.tessellateCylinder"
+  | "geometry.tessellateSphere";
+export type GeometryKernelPrimitive = "box" | "cylinder" | "sphere";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -13,6 +14,10 @@ export interface BoxGeometryDimensions {
 export interface CylinderGeometryDimensions {
   readonly radius: number;
   readonly height: number;
+}
+
+export interface SphereGeometryDimensions {
+  readonly radius: number;
 }
 
 export interface TessellationOptions {
@@ -36,9 +41,18 @@ export interface TessellateCylinderRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface TessellateSphereRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.tessellateSphere";
+  readonly dimensions: SphereGeometryDimensions;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
-  | TessellateCylinderRequest;
+  | TessellateCylinderRequest
+  | TessellateSphereRequest;
 
 export interface SerializableMeshData {
   readonly primitive: GeometryKernelPrimitive;
@@ -96,9 +110,14 @@ export type GeometryKernelCylinderMeshFactory = (
   input: CylinderGeometryDimensions & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelSphereMeshFactory = (
+  input: SphereGeometryDimensions & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
+  readonly createSphereMesh: GeometryKernelSphereMeshFactory;
 }
 
 export async function executeGeometryKernelRequestWithMeshFactory(
@@ -112,18 +131,7 @@ export async function executeGeometryKernelRequestWithMeshFactory(
   }
 
   try {
-    const mesh =
-      request.op === "geometry.tessellateBox"
-        ? await factories.createBoxMesh({
-            ...request.dimensions,
-            linearDeflection: request.tessellation?.linearDeflection,
-            angularDeflection: request.tessellation?.angularDeflection
-          })
-        : await factories.createCylinderMesh({
-            ...request.dimensions,
-            linearDeflection: request.tessellation?.linearDeflection,
-            angularDeflection: request.tessellation?.angularDeflection
-          });
+    const mesh = await createMesh(factories, request);
 
     return {
       ok: true,
@@ -177,13 +185,20 @@ function validateRequest(
         message: "Box dimensions must be finite numbers greater than zero."
       };
     }
-  } else if (
-    !isPositiveFiniteNumber(request.dimensions.radius) ||
-    !isPositiveFiniteNumber(request.dimensions.height)
-  ) {
+  } else if (request.op === "geometry.tessellateCylinder") {
+    if (
+      !isPositiveFiniteNumber(request.dimensions.radius) ||
+      !isPositiveFiniteNumber(request.dimensions.height)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Cylinder dimensions must be finite numbers greater than zero."
+      };
+    }
+  } else if (!isPositiveFiniteNumber(request.dimensions.radius)) {
     return {
       code: "INVALID_DIMENSIONS",
-      message: "Cylinder dimensions must be finite numbers greater than zero."
+      message: "Sphere dimensions must be finite numbers greater than zero."
     };
   }
 
@@ -198,6 +213,32 @@ function validateRequest(
   }
 
   return undefined;
+}
+
+function createMesh(
+  factories: GeometryKernelMeshFactories,
+  request: GeometryKernelRequest
+): Promise<GeometryKernelMeshResult> {
+  switch (request.op) {
+    case "geometry.tessellateBox":
+      return factories.createBoxMesh({
+        ...request.dimensions,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
+    case "geometry.tessellateCylinder":
+      return factories.createCylinderMesh({
+        ...request.dimensions,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
+    case "geometry.tessellateSphere":
+      return factories.createSphereMesh({
+        ...request.dimensions,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
+  }
 }
 
 function errorResponse(

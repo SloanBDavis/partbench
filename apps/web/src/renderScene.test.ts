@@ -1,4 +1,8 @@
-import type { BoxObject, CylinderObject } from "@web-cad/cad-core";
+import type {
+  BoxObject,
+  CylinderObject,
+  SphereObject
+} from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type { DerivedGeometryEntry } from "./derivedGeometry";
@@ -122,6 +126,39 @@ describe("renderScene", () => {
     ]);
   });
 
+  it("adds sphere display edges to ready derived meshes", () => {
+    const sphere = createSphereObject("sphere_1");
+    const mesh = createMesh(sphere.id);
+    const scene = createRenderSceneInputs(
+      [sphere],
+      new Map([
+        [
+          sphere.id,
+          {
+            objectId: sphere.id,
+            objectKind: "sphere",
+            cacheKey: "sphere-ready",
+            status: "ready",
+            mesh,
+            metrics: {
+              objectId: sphere.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ])
+    );
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes[0].edgeSegments).toHaveLength(96);
+    expect(scene.meshes[0].edgeSegments?.[0]).toEqual({
+      start: [1, 0, 0],
+      end: [0.980785280403, 0.195090322016, 0]
+    });
+  });
+
   it("keeps primitive fallback when derived geometry is unavailable", () => {
     const box = createBoxObject("box_1");
     const cylinder = createCylinderObject("cylinder_1");
@@ -213,6 +250,21 @@ function createCylinderObject(id: string): CylinderObject {
     dimensions: {
       radius: 1,
       height: 2
+    },
+    transform: {
+      translation: [0, 0, 1],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createSphereObject(id: string): SphereObject {
+  return {
+    id,
+    kind: "sphere",
+    dimensions: {
+      radius: 1
     },
     transform: {
       translation: [0, 0, 1],

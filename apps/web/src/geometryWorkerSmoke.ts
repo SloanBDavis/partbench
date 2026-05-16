@@ -1,6 +1,7 @@
 import {
   createBoxTessellationWorkerRequest,
-  createCylinderTessellationWorkerRequest
+  createCylinderTessellationWorkerRequest,
+  createSphereTessellationWorkerRequest
 } from "@web-cad/geometry-worker/browser";
 import { createRenderMeshFromGeometryWorkerResponse } from "@web-cad/renderer-mesh-bridge";
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
@@ -36,6 +37,14 @@ async function runGeometryWorkerSmoke(): Promise<void> {
           payloadId: "browser_occt_smoke_cylinder_payload",
           radius: 1,
           height: 4
+        })
+      },
+      {
+        scenario: "sphere-r1",
+        request: createSphereTessellationWorkerRequest({
+          id: "browser_occt_smoke_sphere",
+          payloadId: "browser_occt_smoke_sphere_payload",
+          radius: 1
         })
       }
     ];

@@ -26,11 +26,11 @@ Run the browser app:
 pnpm dev
 ```
 
-When running the local Vite server, boxes and cylinders are submitted to the
-derived geometry service by default and tessellated asynchronously in the browser
-Worker. The returned mesh is displayed as derived renderer data, the Geometry
-panel shows per-object status, and the authoritative CAD document is not updated
-by mesh generation.
+When running the local Vite server, boxes, cylinders, and spheres are submitted
+to the derived geometry service by default and tessellated asynchronously in the
+browser Worker. The returned mesh is displayed as derived renderer data, the
+Geometry panel shows per-object status, and the authoritative CAD document is
+not updated by mesh generation.
 
 Disable derived geometry for fallback debugging:
 
@@ -109,6 +109,6 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - The renderer still uses simple primitive drawing as fallback while OCCT-derived
   meshes are loading, disabled, unavailable, or failed.
 - OCCT/WASM is intentionally off the default production startup path and
-  currently proves box and cylinder tessellation only.
+  currently proves box, cylinder, and sphere tessellation.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.

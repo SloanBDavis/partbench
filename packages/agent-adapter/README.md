@@ -231,8 +231,8 @@ numeric values or `mode: "preservePhysicalSize"` to scale current dimensions and
 transform translations.
 
 Measurement queries are derived from the authoritative document, not renderer
-meshes. Current measurements support boxes and cylinders and include local
-bounds, transformed world bounds, and approximate volume.
+meshes. Current measurements support boxes, cylinders, and spheres and include
+local bounds, transformed world bounds, and approximate volume.
 
 ## Example Usage
 

@@ -78,6 +78,41 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
+  it("tessellates a sphere through the isolated OCCT WASM adapter", async () => {
+    const response = await executeGeometryKernelRequest({
+      id: "geometry_req_sphere",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateSphere",
+      dimensions: {
+        radius: 10
+      }
+    });
+
+    expect(response.ok).toBe(true);
+
+    if (!response.ok) {
+      throw new Error(response.error.message);
+    }
+
+    expect(response).toMatchObject({
+      id: "geometry_req_sphere",
+      op: "geometry.tessellateSphere",
+      warnings: []
+    });
+    expect(response.mesh.primitive).toBe("sphere");
+    expect(response.mesh.faceCount).toBeGreaterThan(0);
+    expect(response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+    expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+    expect(response.mesh.positions).toHaveLength(response.mesh.vertexCount * 3);
+    expect(response.mesh.indices).toHaveLength(response.mesh.triangleCount * 3);
+    expect(getGeometryResponseTransferables(response)).toEqual([
+      response.mesh.positions.buffer,
+      response.mesh.indices.buffer
+    ]);
+  });
+
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_bad_dimensions",
@@ -120,6 +155,28 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message: "Cylinder dimensions must be finite numbers greater than zero."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured sphere validation errors before calling the kernel", async () => {
+    const response = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_sphere",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateSphere",
+      dimensions: {
+        radius: 0
+      }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_bad_sphere",
+      op: "geometry.tessellateSphere",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: "Sphere dimensions must be finite numbers greater than zero."
       },
       warnings: []
     });

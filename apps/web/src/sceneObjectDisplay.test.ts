@@ -1,4 +1,8 @@
-import type { BoxObject, CylinderObject } from "@web-cad/cad-core";
+import type {
+  BoxObject,
+  CylinderObject,
+  SphereObject
+} from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
   formatBounds,
@@ -15,12 +19,14 @@ describe("scene object display helpers", () => {
   it("formats object kinds and dimensions for object lists and inspector", () => {
     expect(formatObjectKind("box")).toBe("Box");
     expect(formatObjectKind("cylinder")).toBe("Cylinder");
+    expect(formatObjectKind("sphere")).toBe("Sphere");
     expect(formatDimensions(createBoxObject())).toBe("2 x 3.25 x 4");
     expect(formatDimensions(createBoxObject(), "mm")).toBe("2 x 3.25 x 4 mm");
     expect(formatDimensions(createCylinderObject())).toBe("r 1.50, h 4");
     expect(formatDimensions(createCylinderObject(), "in")).toBe(
       "r 1.50 in, h 4 in"
     );
+    expect(formatDimensions(createSphereObject(), "cm")).toBe("r 2.25 cm");
     expect(getObjectDisplayName(createBoxObject())).toBe("box_1");
     expect(getObjectDisplayName({ ...createBoxObject(), name: "Base" })).toBe(
       "Base"
@@ -80,6 +86,21 @@ function createCylinderObject(): CylinderObject {
     },
     transform: {
       translation: [0, 0, 2],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createSphereObject(): SphereObject {
+  return {
+    id: "sphere_1",
+    kind: "sphere",
+    dimensions: {
+      radius: 2.25
+    },
+    transform: {
+      translation: [0, 0, 2.25],
       rotation: [0, 0, 0],
       scale: [1, 1, 1]
     }

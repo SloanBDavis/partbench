@@ -47,6 +47,18 @@ export function assertSmokeResult(record) {
     );
   }
 
+  const sphere = metrics.meshes?.find((mesh) => mesh.primitive === "sphere");
+
+  if (!sphere) {
+    throw new Error("Missing sphere tessellation smoke result.");
+  }
+
+  if (sphere.vertexCount <= 0 || sphere.triangleCount <= 0) {
+    throw new Error(
+      `Unexpected sphere mesh size: ${sphere.vertexCount} vertices, ${sphere.triangleCount} triangles.`
+    );
+  }
+
   for (const key of timingKeys) {
     if (!Number.isFinite(metrics[key])) {
       throw new Error(`Missing or invalid timing metric: ${key}.`);

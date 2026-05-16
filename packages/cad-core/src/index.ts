@@ -24,6 +24,7 @@ import type {
   ObjectMeasurementsSnapshot,
   ObjectId,
   SemanticDiff,
+  SphereDimensions,
   CadTransactionAuditMetadata,
   TransactionId,
   Transform,
@@ -57,6 +58,7 @@ export type {
   ObjectMeasurementsSnapshot,
   ObjectId,
   SemanticDiff,
+  SphereDimensions,
   TransactionId,
   Transform,
   Vec3
@@ -83,7 +85,15 @@ export interface CylinderObject {
   readonly transform: Transform;
 }
 
-export type SceneObject = BoxObject | CylinderObject;
+export interface SphereObject {
+  readonly id: ObjectId;
+  readonly kind: "sphere";
+  readonly name?: string;
+  readonly dimensions: SphereDimensions;
+  readonly transform: Transform;
+}
+
+export type SceneObject = BoxObject | CylinderObject | SphereObject;
 
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
@@ -759,6 +769,21 @@ function applyOperation(
       return;
     }
 
+    case "scene.createSphere": {
+      validateSphereDimensions(op.dimensions, opIndex);
+
+      const object: SphereObject = {
+        id: op.id ?? createObjectId(),
+        kind: "sphere",
+        name: normalizeOptionalObjectName(op.name, opIndex, op.id),
+        dimensions: op.dimensions,
+        transform: mergeTransform(op.transform)
+      };
+
+      addObject(state.objects, object, diff, opIndex);
+      return;
+    }
+
     case "scene.deleteObject": {
       const existing = getObjectOrThrow(state.objects, op.id, opIndex);
       state.objects.delete(op.id);
@@ -799,6 +824,21 @@ function applyOperation(
       validateCylinderDimensions(op.dimensions, opIndex, op.id);
 
       const updated: CylinderObject = {
+        ...existing,
+        dimensions: op.dimensions
+      };
+
+      state.objects.set(op.id, updated);
+      diff.modified.push(objectRef(updated));
+      return;
+    }
+
+    case "scene.updateSphereDimensions": {
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
+      assertObjectKind(existing, "sphere", opIndex);
+      validateSphereDimensions(op.dimensions, opIndex, op.id);
+
+      const updated: SphereObject = {
         ...existing,
         dimensions: op.dimensions
       };
@@ -930,6 +970,26 @@ function validateCylinderDimensions(
     objectId,
     path: operationPath(opIndex, "dimensions"),
     expected: "positive finite radius and height",
+    received: describeReceived(dimensions)
+  });
+}
+
+function validateSphereDimensions(
+  dimensions: SphereDimensions,
+  opIndex?: number,
+  objectId?: ObjectId
+): void {
+  if (isPositiveFiniteNumber(dimensions.radius)) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_DIMENSIONS",
+    message: "Sphere dimensions must be positive finite numbers.",
+    opIndex,
+    objectId,
+    path: operationPath(opIndex, "dimensions"),
+    expected: "positive finite radius",
     received: describeReceived(dimensions)
   });
 }
@@ -1085,11 +1145,21 @@ function scaleSceneObjectLengthValues(
     };
   }
 
+  if (object.kind === "cylinder") {
+    return {
+      ...object,
+      dimensions: {
+        radius: scaleLength(object.dimensions.radius, scaleFactor),
+        height: scaleLength(object.dimensions.height, scaleFactor)
+      },
+      transform
+    };
+  }
+
   return {
     ...object,
     dimensions: {
-      radius: scaleLength(object.dimensions.radius, scaleFactor),
-      height: scaleLength(object.dimensions.height, scaleFactor)
+      radius: scaleLength(object.dimensions.radius, scaleFactor)
     },
     transform
   };
@@ -1144,23 +1214,32 @@ export function createCadDocumentFromSnapshot(
 }
 
 function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
-  if (object.kind === "box") {
-    return {
-      id: object.id,
-      kind: object.kind,
-      name: object.name,
-      dimensions: { ...object.dimensions },
-      transform: cloneTransform(object.transform)
-    };
+  switch (object.kind) {
+    case "box":
+      return {
+        id: object.id,
+        kind: object.kind,
+        name: object.name,
+        dimensions: { ...object.dimensions },
+        transform: cloneTransform(object.transform)
+      };
+    case "cylinder":
+      return {
+        id: object.id,
+        kind: object.kind,
+        name: object.name,
+        dimensions: { ...object.dimensions },
+        transform: cloneTransform(object.transform)
+      };
+    case "sphere":
+      return {
+        id: object.id,
+        kind: object.kind,
+        name: object.name,
+        dimensions: { ...object.dimensions },
+        transform: cloneTransform(object.transform)
+      };
   }
-
-  return {
-    id: object.id,
-    kind: object.kind,
-    name: object.name,
-    dimensions: { ...object.dimensions },
-    transform: cloneTransform(object.transform)
-  };
 }
 
 function createPrimitiveFeatureSummaries(
@@ -1194,7 +1273,11 @@ function createPrimitiveFeatureSourceMap(
 
   for (const transaction of sortTransactions(transactions)) {
     for (const op of materializeGeneratedObjectIds(transaction)) {
-      if (op.op === "scene.createBox" || op.op === "scene.createCylinder") {
+      if (
+        op.op === "scene.createBox" ||
+        op.op === "scene.createCylinder" ||
+        op.op === "scene.createSphere"
+      ) {
         if (op.id) {
           sourceByObjectId.set(op.id, {
             type: "sceneObject",
@@ -1255,7 +1338,9 @@ function createOperationSummaries(
 
   return transaction.ops.map((op) => {
     const createdRef =
-      op.op === "scene.createBox" || op.op === "scene.createCylinder"
+      op.op === "scene.createBox" ||
+      op.op === "scene.createCylinder" ||
+      op.op === "scene.createSphere"
         ? transaction.diff.created[createdIndex++]
         : undefined;
 
@@ -1285,6 +1370,17 @@ function createOperationSummaries(
           label: `Create cylinder ${objectId ?? "with generated ID"}`,
           objectId,
           objectKind: "cylinder"
+        });
+      }
+
+      case "scene.createSphere": {
+        const objectId = op.id ?? createdRef?.id;
+
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Create sphere ${objectId ?? "with generated ID"}`,
+          objectId,
+          objectKind: "sphere"
         });
       }
 
@@ -1318,6 +1414,14 @@ function createOperationSummaries(
           label: `Update cylinder dimensions for ${op.id}`,
           objectId: op.id,
           objectKind: "cylinder"
+        });
+
+      case "scene.updateSphereDimensions":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Update sphere dimensions for ${op.id}`,
+          objectId: op.id,
+          objectKind: "sphere"
         });
 
       case "scene.renameObject":
@@ -1420,6 +1524,10 @@ function createMeasurementPoints(object: SceneObject): readonly Vec3[] {
     return createBoxBoundsPoints(width / 2, height / 2, depth / 2);
   }
 
+  if (object.kind === "sphere") {
+    return createSphereBoundsPoints(object.dimensions.radius);
+  }
+
   const { height, radius } = object.dimensions;
   const halfHeight = height / 2;
 
@@ -1432,6 +1540,19 @@ function createMeasurementPoints(object: SceneObject): readonly Vec3[] {
     [radius, -radius, halfHeight],
     [radius, radius, halfHeight],
     [-radius, radius, halfHeight]
+  ];
+}
+
+function createSphereBoundsPoints(radius: number): readonly Vec3[] {
+  return [
+    [-radius, -radius, -radius],
+    [radius, -radius, -radius],
+    [radius, radius, -radius],
+    [-radius, radius, -radius],
+    [-radius, -radius, radius],
+    [radius, -radius, radius],
+    [radius, radius, radius],
+    [-radius, radius, radius]
   ];
 }
 
@@ -1462,6 +1583,11 @@ function calculateApproximateVolume(object: SceneObject): number {
   if (object.kind === "box") {
     const { depth, height, width } = object.dimensions;
     return width * height * depth * scaleFactor;
+  }
+
+  if (object.kind === "sphere") {
+    const { radius } = object.dimensions;
+    return (4 / 3) * Math.PI * radius * radius * radius * scaleFactor;
   }
 
   const { height, radius } = object.dimensions;
@@ -1978,6 +2104,10 @@ function sceneObjectsEqual(left: SceneObject, right: SceneObject): boolean {
     );
   }
 
+  if (left.kind === "sphere" && right.kind === "sphere") {
+    return left.dimensions.radius === right.dimensions.radius;
+  }
+
   return false;
 }
 
@@ -2176,12 +2306,18 @@ function validateSceneObject(
       `${path}.dimensions`,
       issues
     );
+  } else if (value.kind === "sphere") {
+    validateSphereDimensionsShape(
+      value.dimensions,
+      `${path}.dimensions`,
+      issues
+    );
   } else {
     addProjectIssue(
       issues,
       "INVALID_OBJECT",
       `${path}.kind`,
-      "Scene object kind must be box or cylinder."
+      "Scene object kind must be box, cylinder, or sphere."
     );
   }
 
@@ -2267,6 +2403,29 @@ function validateCylinderDimensionsShape(
     value.height,
     `${path}.height`,
     "Cylinder height",
+    issues
+  );
+}
+
+function validateSphereDimensionsShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      path,
+      "Sphere dimensions must be an object."
+    );
+    return;
+  }
+
+  validatePositiveFiniteField(
+    value.radius,
+    `${path}.radius`,
+    "Sphere radius",
     issues
   );
 }
@@ -2625,7 +2784,11 @@ function materializeGeneratedObjectIds(
   let createdIndex = 0;
 
   return transaction.ops.map((op) => {
-    if (op.op !== "scene.createBox" && op.op !== "scene.createCylinder") {
+    if (
+      op.op !== "scene.createBox" &&
+      op.op !== "scene.createCylinder" &&
+      op.op !== "scene.createSphere"
+    ) {
       return op;
     }
 
@@ -2663,6 +2826,15 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.createSphere") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isSphereDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
   if (value.op === "scene.deleteObject") {
     return typeof value.id === "string";
   }
@@ -2683,6 +2855,10 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" && isCylinderDimensions(value.dimensions)
     );
+  }
+
+  if (value.op === "scene.updateSphereDimensions") {
+    return typeof value.id === "string" && isSphereDimensions(value.dimensions);
   }
 
   if (value.op === "scene.renameObject") {
@@ -2732,7 +2908,9 @@ function isCadObjectRef(value: unknown): value is CadObjectRef {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
-    (value.kind === "box" || value.kind === "cylinder")
+    (value.kind === "box" ||
+      value.kind === "cylinder" ||
+      value.kind === "sphere")
   );
 }
 
@@ -2755,6 +2933,14 @@ function isCylinderDimensions(value: unknown): value is CylinderDimensions {
     isPositiveFiniteNumber(value.radius) &&
     typeof value.height === "number" &&
     isPositiveFiniteNumber(value.height)
+  );
+}
+
+function isSphereDimensions(value: unknown): value is SphereDimensions {
+  return (
+    isRecord(value) &&
+    typeof value.radius === "number" &&
+    isPositiveFiniteNumber(value.radius)
   );
 }
 

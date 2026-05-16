@@ -597,6 +597,15 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.createSphere") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isSphereDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
   if (value.op === "scene.deleteObject") {
     return typeof value.id === "string";
   }
@@ -617,6 +626,10 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       typeof value.id === "string" && isCylinderDimensions(value.dimensions)
     );
+  }
+
+  if (value.op === "scene.updateSphereDimensions") {
+    return typeof value.id === "string" && isSphereDimensions(value.dimensions);
   }
 
   if (value.op === "scene.renameObject") {
@@ -648,6 +661,10 @@ function isCylinderDimensions(value: unknown): boolean {
     typeof value.radius === "number" &&
     typeof value.height === "number"
   );
+}
+
+function isSphereDimensions(value: unknown): boolean {
+  return isRecord(value) && typeof value.radius === "number";
 }
 
 function isOptionalTransform(value: unknown): value is Partial<Transform> {

@@ -110,12 +110,13 @@ Docker image. A custom build lets us expose only the bindings required by the ap
 and choose compiler flags such as `-O3` and exception settings. The docs note
 that disabling exception catching can greatly reduce size for full builds.
 
-For the current box/cylinder tessellation path, the custom-build candidate
+For the current box/cylinder/sphere tessellation path, the custom-build candidate
 bindings should start from the symbols used by:
 
 ```text
 BRepPrimAPI_MakeBox
 BRepPrimAPI_MakeCylinder
+BRepPrimAPI_MakeSphere
 BRepMesh_IncrementalMesh
 TopExp_Explorer
 TopoDS
@@ -144,7 +145,7 @@ brotli bytes
 OCCT load time
 tessellation time
 worker round-trip time
-box/cylinder smoke correctness
+box/cylinder/sphere smoke correctness
 ```
 
 That experiment should stay behind the existing geometry-worker boundary until

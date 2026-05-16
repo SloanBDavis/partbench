@@ -1,6 +1,7 @@
 import {
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createSphereTessellationWorkerRequest,
   GeometryKernelWorker
 } from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
@@ -93,6 +94,26 @@ describe("renderer mesh bridge", () => {
     expect(result.bounds.max[0]).toBeGreaterThanOrEqual(2);
     expect(result.bounds.min[2]).toBe(0);
     expect(result.bounds.max[2]).toBe(6);
+  });
+
+  it("adapts a tessellated sphere response from the geometry worker", async () => {
+    const worker = new GeometryKernelWorker();
+    const response = await worker.execute(
+      createSphereTessellationWorkerRequest({
+        id: "mesh_bridge_req_sphere",
+        radius: 2
+      })
+    );
+    const result = createRenderMeshFromGeometryWorkerResponse(response, {
+      id: "mesh_sphere_from_worker"
+    });
+
+    expect(result.mesh.id).toBe("mesh_sphere_from_worker");
+    expect(result.mesh.kind).toBe("mesh");
+    expect(result.vertexCount).toBeGreaterThan(0);
+    expect(result.triangleCount).toBeGreaterThan(0);
+    expect(result.bounds.min[0]).toBeLessThan(-1.9);
+    expect(result.bounds.max[0]).toBeGreaterThan(1.9);
   });
 
   it("can center corner-origin box meshes for the current primitive renderer", async () => {

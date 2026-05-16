@@ -35,6 +35,11 @@ describe("cad-protocol", () => {
         dimensions: { radius: 1, height: 4 }
       },
       {
+        op: "scene.createSphere",
+        id: "sphere_1",
+        dimensions: { radius: 2 }
+      },
+      {
         op: "scene.updateTransform",
         id: "box_1",
         transform: { translation: [1, 2, 3] }
@@ -48,6 +53,11 @@ describe("cad-protocol", () => {
         op: "scene.updateCylinderDimensions",
         id: "cylinder_1",
         dimensions: { radius: 2, height: 8 }
+      },
+      {
+        op: "scene.updateSphereDimensions",
+        id: "sphere_1",
+        dimensions: { radius: 3 }
       },
       {
         op: "scene.renameObject",
@@ -64,9 +74,11 @@ describe("cad-protocol", () => {
       "document.updateUnits",
       "scene.createBox",
       "scene.createCylinder",
+      "scene.createSphere",
       "scene.updateTransform",
       "scene.updateBoxDimensions",
       "scene.updateCylinderDimensions",
+      "scene.updateSphereDimensions",
       "scene.renameObject",
       "scene.deleteObject"
     ]);
@@ -176,11 +188,11 @@ describe("cad-protocol", () => {
 
   it("types primitive feature summaries", () => {
     const feature: CadPrimitiveFeatureSummary = {
-      id: "feature:box_1",
+      id: "feature:sphere_1",
       kind: "primitive",
-      primitive: "box",
-      objectId: "box_1",
-      dimensions: { width: 1, height: 2, depth: 3 },
+      primitive: "sphere",
+      objectId: "sphere_1",
+      dimensions: { radius: 2 },
       transform: {
         translation: [0, 0, 0],
         rotation: [0, 0, 0],
@@ -189,14 +201,14 @@ describe("cad-protocol", () => {
       source: {
         type: "sceneObject",
         createdByTransactionId: "txn_1",
-        createOp: "scene.createBox"
+        createOp: "scene.createSphere"
       }
     };
 
     expect(feature).toMatchObject({
-      id: "feature:box_1",
+      id: "feature:sphere_1",
       kind: "primitive",
-      objectId: "box_1"
+      objectId: "sphere_1"
     });
   });
 });

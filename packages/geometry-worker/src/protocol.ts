@@ -178,6 +178,31 @@ export function createCylinderTessellationWorkerRequest(input: {
   };
 }
 
+export function createSphereTessellationWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly radius: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellatePrimitive",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateSphere",
+      dimensions: {
+        radius: input.radius
+      },
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
 export function createKernelFailureResponse(
   request: GeometryWorkerRequest,
   error: unknown

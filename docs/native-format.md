@@ -118,6 +118,16 @@ CylinderObject {
   transform: Transform
 }
 
+SphereObject {
+  id: string
+  kind: "sphere"
+  name?: string
+  dimensions: {
+    radius: number
+  }
+  transform: Transform
+}
+
 Transform {
   translation: [number, number, number]
   rotation: [number, number, number]
@@ -135,8 +145,8 @@ two modes:
 - `metadataOnly`: changes `document.units` while leaving existing numeric
   dimensions and transform translations unchanged.
 - `preservePhysicalSize`: changes `document.units` and scales current
-  box/cylinder dimensions plus transform translations so physical size is
-  preserved.
+  box/cylinder/sphere dimensions plus transform translations so physical size
+  is preserved.
 
 The project file stores the resulting authoritative document values and the
 transaction diff that explains how the unit change happened.

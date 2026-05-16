@@ -47,16 +47,22 @@ export interface CylinderDimensions {
   readonly height: number;
 }
 
-export type CadObjectKind = "box" | "cylinder";
+export interface SphereDimensions {
+  readonly radius: number;
+}
+
+export type CadObjectKind = "box" | "cylinder" | "sphere";
 
 export type CadOp =
   | DocumentUpdateUnitsOp
   | SceneCreateBoxOp
   | SceneCreateCylinderOp
+  | SceneCreateSphereOp
   | SceneDeleteObjectOp
   | SceneUpdateTransformOp
   | SceneUpdateBoxDimensionsOp
   | SceneUpdateCylinderDimensionsOp
+  | SceneUpdateSphereDimensionsOp
   | SceneRenameObjectOp;
 
 export interface DocumentUpdateUnitsOp {
@@ -81,6 +87,14 @@ export interface SceneCreateCylinderOp {
   readonly transform?: Partial<Transform>;
 }
 
+export interface SceneCreateSphereOp {
+  readonly op: "scene.createSphere";
+  readonly id?: ObjectId;
+  readonly name?: string;
+  readonly dimensions: SphereDimensions;
+  readonly transform?: Partial<Transform>;
+}
+
 export interface SceneDeleteObjectOp {
   readonly op: "scene.deleteObject";
   readonly id: ObjectId;
@@ -102,6 +116,12 @@ export interface SceneUpdateCylinderDimensionsOp {
   readonly op: "scene.updateCylinderDimensions";
   readonly id: ObjectId;
   readonly dimensions: CylinderDimensions;
+}
+
+export interface SceneUpdateSphereDimensionsOp {
+  readonly op: "scene.updateSphereDimensions";
+  readonly id: ObjectId;
+  readonly dimensions: SphereDimensions;
 }
 
 export interface SceneRenameObjectOp {
@@ -242,7 +262,10 @@ export interface CadQueryRequest {
   readonly query: CadQuery;
 }
 
-export type CadObjectSnapshot = BoxObjectSnapshot | CylinderObjectSnapshot;
+export type CadObjectSnapshot =
+  | BoxObjectSnapshot
+  | CylinderObjectSnapshot
+  | SphereObjectSnapshot;
 
 export interface BoxObjectSnapshot {
   readonly id: ObjectId;
@@ -260,6 +283,14 @@ export interface CylinderObjectSnapshot {
   readonly transform: Transform;
 }
 
+export interface SphereObjectSnapshot {
+  readonly id: ObjectId;
+  readonly kind: "sphere";
+  readonly name?: string;
+  readonly dimensions: SphereDimensions;
+  readonly transform: Transform;
+}
+
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
   readonly max: Vec3;
@@ -272,7 +303,7 @@ export interface ObjectMeasurementsSnapshot {
   readonly kind: CadObjectKind;
   readonly name?: string;
   readonly units: DocumentUnits;
-  readonly dimensions: BoxDimensions | CylinderDimensions;
+  readonly dimensions: BoxDimensions | CylinderDimensions | SphereDimensions;
   readonly transform: Transform;
   readonly localBounds: CadAxisAlignedBounds;
   readonly worldBounds: CadAxisAlignedBounds;
@@ -287,7 +318,10 @@ export interface ObjectExtentSnapshot {
   readonly approximateVolume: number;
 }
 
-export type CadPrimitiveCreateOp = "scene.createBox" | "scene.createCylinder";
+export type CadPrimitiveCreateOp =
+  | "scene.createBox"
+  | "scene.createCylinder"
+  | "scene.createSphere";
 
 export interface CadPrimitiveFeatureSource {
   readonly type: "sceneObject";
@@ -301,7 +335,7 @@ export interface CadPrimitiveFeatureSummary {
   readonly primitive: CadObjectKind;
   readonly objectId: ObjectId;
   readonly name?: string;
-  readonly dimensions: BoxDimensions | CylinderDimensions;
+  readonly dimensions: BoxDimensions | CylinderDimensions | SphereDimensions;
   readonly transform: Transform;
   readonly source: CadPrimitiveFeatureSource;
 }

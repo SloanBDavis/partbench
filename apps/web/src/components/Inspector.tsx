@@ -7,12 +7,14 @@ import { useState } from "react";
 import {
   areBoxDimensionFormsEqual,
   areCylinderDimensionFormsEqual,
+  areSphereDimensionFormsEqual,
   areTransformFormsEqual,
   boxDimensionsToForm,
   cylinderDimensionsToForm,
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
+  sphereDimensionsToForm,
   transformToForm,
   type DimensionCommandForm,
   type TransformCommandForm
@@ -213,19 +215,10 @@ function DimensionEditor({
   readonly units: DocumentUnits;
   readonly onApply: (form: DimensionCommandForm) => void;
 }) {
-  const currentForm =
-    object.kind === "box"
-      ? boxDimensionsToForm(object.dimensions)
-      : cylinderDimensionsToForm(object.dimensions);
+  const currentForm = dimensionsToForm(object);
   const [form, setForm] = useState<DimensionCommandForm>(() => currentForm);
-  const fields =
-    object.kind === "box"
-      ? (["width", "height", "depth"] as const)
-      : (["radius", "height"] as const);
-  const hasChanges =
-    object.kind === "box"
-      ? !areBoxDimensionFormsEqual(form, currentForm)
-      : !areCylinderDimensionFormsEqual(form, currentForm);
+  const fields = getDimensionFields(object);
+  const hasChanges = !areDimensionFormsEqual(object, form, currentForm);
 
   function resetEdits() {
     setForm(currentForm);
@@ -268,6 +261,45 @@ function DimensionEditor({
       </div>
     </section>
   );
+}
+
+function dimensionsToForm(object: SceneObject): DimensionCommandForm {
+  switch (object.kind) {
+    case "box":
+      return boxDimensionsToForm(object.dimensions);
+    case "cylinder":
+      return cylinderDimensionsToForm(object.dimensions);
+    case "sphere":
+      return sphereDimensionsToForm(object.dimensions);
+  }
+}
+
+function getDimensionFields(
+  object: SceneObject
+): readonly (keyof DimensionCommandForm)[] {
+  switch (object.kind) {
+    case "box":
+      return ["width", "height", "depth"];
+    case "cylinder":
+      return ["radius", "height"];
+    case "sphere":
+      return ["radius"];
+  }
+}
+
+function areDimensionFormsEqual(
+  object: SceneObject,
+  left: DimensionCommandForm,
+  right: DimensionCommandForm
+): boolean {
+  switch (object.kind) {
+    case "box":
+      return areBoxDimensionFormsEqual(left, right);
+    case "cylinder":
+      return areCylinderDimensionFormsEqual(left, right);
+    case "sphere":
+      return areSphereDimensionFormsEqual(left, right);
+  }
 }
 
 function TransformEditor({

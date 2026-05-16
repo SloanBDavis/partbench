@@ -46,9 +46,10 @@ that can be rebuilt from authoritative document state.
 }
 ```
 
-`createBoxTessellationWorkerRequest()` and
-`createCylinderTessellationWorkerRequest()` build these shapes for the current
-box and cylinder tessellation path.
+`createBoxTessellationWorkerRequest()`,
+`createCylinderTessellationWorkerRequest()`, and
+`createSphereTessellationWorkerRequest()` build these shapes for the current
+primitive tessellation path.
 
 ## Response Shape
 
@@ -130,7 +131,7 @@ uses `cad-core` and the renderer can keep showing primitives.
   lifecycle cleanup policy, and a smaller custom OCCT build.
 - Typed arrays are ready for structured clone/transfer, but no production mesh
   cache or invalidation strategy is implemented here.
-- Two primitive paths are proven: box and cylinder tessellation.
+- Three primitive paths are proven: box, cylinder, and sphere tessellation.
 - This package is the typed geometry worker boundary; production mesh cache
   ownership remains in the app-layer derived geometry service.
 - Tests cover the browser transport wrapper and an in-process worker-backed

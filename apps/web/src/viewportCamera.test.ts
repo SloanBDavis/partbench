@@ -21,6 +21,26 @@ describe("viewport camera helpers", () => {
     });
   });
 
+  it("bounds sphere primitive objects", () => {
+    const bounds = getRenderSceneBounds([
+      {
+        id: "sphere_1",
+        kind: "sphere",
+        dimensions: { radius: 2 },
+        transform: {
+          translation: [1, 2, 3],
+          rotation: [0, 0, 0],
+          scale: [1, 2, 3]
+        }
+      }
+    ]);
+
+    expect(bounds).toEqual({
+      min: [-1, -2, -3],
+      max: [3, 6, 9]
+    });
+  });
+
   it("fits the camera target and distance to visible content", () => {
     const camera = createDefaultCamera();
     const fitted = fitCameraToRenderScene(camera, [createBoxPrimitive()]);

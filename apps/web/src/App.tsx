@@ -20,11 +20,13 @@ import {
   buildBatch,
   buildCreateBoxOp,
   buildCreateCylinderOp,
+  buildCreateSphereOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildUpdateBoxDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateSphereDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   WEB_UI_ACTOR,
@@ -89,6 +91,17 @@ const quickCylinderForm: PrimitiveCommandForm = {
   translationX: 0,
   translationY: 0,
   translationZ: 1.1
+};
+
+const quickSphereForm: PrimitiveCommandForm = {
+  id: "",
+  width: 2,
+  height: 2,
+  depth: 2,
+  radius: 1,
+  translationX: 0,
+  translationY: 0,
+  translationZ: 1
 };
 
 const initialBatchForm: BatchOperationForm = {
@@ -308,6 +321,19 @@ export function App() {
     );
   }
 
+  async function createSphere() {
+    const offset = document.objects.size * 2.8;
+    await commitOps(
+      [
+        buildCreateSphereOp({
+          ...quickSphereForm,
+          translationX: offset
+        })
+      ],
+      (response) => response.createdIds[0]
+    );
+  }
+
   async function updateDocumentUnits(units: CadDocument["units"]) {
     if (units === document.units) {
       return;
@@ -346,7 +372,9 @@ export function App() {
     const op =
       selectedObject.kind === "box"
         ? buildUpdateBoxDimensionsOp(objectId, form)
-        : buildUpdateCylinderDimensionsOp(objectId, form);
+        : selectedObject.kind === "cylinder"
+          ? buildUpdateCylinderDimensionsOp(objectId, form)
+          : buildUpdateSphereDimensionsOp(objectId, form);
 
     await commitOps([op], () => objectId);
   }
@@ -549,6 +577,13 @@ export function App() {
             disabled={commandPending}
           >
             Create cylinder
+          </button>
+          <button
+            type="button"
+            onClick={() => void createSphere()}
+            disabled={commandPending}
+          >
+            Create sphere
           </button>
           <button
             type="button"

@@ -7,6 +7,7 @@ import {
   createDerivedGeometryMetrics,
   type DerivedGeometryBoxInput,
   type DerivedGeometryCylinderInput,
+  type DerivedGeometrySphereInput,
   type DerivedGeometryResult,
   type DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
@@ -28,7 +29,10 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   }
 
   async function executeTessellationRequest(
-    input: DerivedGeometryBoxInput | DerivedGeometryCylinderInput,
+    input:
+      | DerivedGeometryBoxInput
+      | DerivedGeometryCylinderInput
+      | DerivedGeometrySphereInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -92,6 +96,22 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           payloadId: `${requestId}:kernel`,
           radius: input.dimensions.radius,
           height: input.dimensions.height,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async tessellateSphere(input: DerivedGeometrySphereInput) {
+      const { createSphereTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+
+      return executeTessellationRequest(
+        input,
+        createSphereTessellationWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          radius: input.dimensions.radius,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

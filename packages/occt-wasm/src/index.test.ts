@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createOcctBoxMesh, createOcctCylinderMesh } from "./index";
+import {
+  createOcctBoxMesh,
+  createOcctCylinderMesh,
+  createOcctSphereMesh
+} from "./index";
 
 describe("occt-wasm", () => {
   it("creates and tessellates a box through Open CASCADE WASM", async () => {
@@ -29,6 +33,21 @@ describe("occt-wasm", () => {
 
     expect(mesh.primitive).toBe("cylinder");
     expect(mesh.faceCount).toBeGreaterThanOrEqual(3);
+    expect(mesh.vertexCount).toBeGreaterThan(0);
+    expect(mesh.triangleCount).toBeGreaterThan(0);
+    expect(mesh.positions).toBeInstanceOf(Float32Array);
+    expect(mesh.indices).toBeInstanceOf(Uint32Array);
+    expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
+    expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+  });
+
+  it("creates and tessellates a sphere through Open CASCADE WASM", async () => {
+    const mesh = await createOcctSphereMesh({
+      radius: 10
+    });
+
+    expect(mesh.primitive).toBe("sphere");
+    expect(mesh.faceCount).toBeGreaterThan(0);
     expect(mesh.vertexCount).toBeGreaterThan(0);
     expect(mesh.triangleCount).toBeGreaterThan(0);
     expect(mesh.positions).toBeInstanceOf(Float32Array);

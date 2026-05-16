@@ -3,6 +3,7 @@ import {
   GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createSphereTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
@@ -33,6 +34,31 @@ describe("geometry-worker", () => {
         },
         tessellation: {
           linearDeflection: 0.25
+        }
+      }
+    });
+  });
+
+  it("creates a typed sphere tessellation worker request", () => {
+    const request = createSphereTessellationWorkerRequest({
+      id: "worker_req_sphere",
+      radius: 10,
+      angularDeflection: 0.5
+    });
+
+    expect(request).toEqual({
+      id: "worker_req_sphere",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
+      payload: {
+        id: "worker_req_sphere:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateSphere",
+        dimensions: {
+          radius: 10
+        },
+        tessellation: {
+          angularDeflection: 0.5
         }
       }
     });
@@ -143,6 +169,42 @@ describe("geometry-worker", () => {
     }
 
     expect(response.response.mesh.primitive).toBe("cylinder");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
+  it("tessellates one sphere asynchronously through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createSphereTessellationWorkerRequest({
+        id: "worker_req_sphere",
+        payloadId: "geometry_req_sphere",
+        radius: 10
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_sphere",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellatePrimitive",
+      payloadId: "geometry_req_sphere",
+      response: {
+        ok: true,
+        id: "geometry_req_sphere",
+        op: "geometry.tessellateSphere",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("sphere");
     expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
     expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
     expect(response.transferables).toEqual([

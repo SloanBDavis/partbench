@@ -1,4 +1,8 @@
-import type { BoxObject, CylinderObject } from "@web-cad/cad-core";
+import type {
+  BoxObject,
+  CylinderObject,
+  SphereObject
+} from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
@@ -12,7 +16,8 @@ import type {
   DerivedGeometryBoxInput,
   DerivedGeometryCylinderInput,
   DerivedGeometryResult,
-  DerivedGeometryRuntime
+  DerivedGeometryRuntime,
+  DerivedGeometrySphereInput
 } from "./derivedGeometryRuntime";
 
 describe("derivedGeometry", () => {
@@ -41,7 +46,7 @@ describe("derivedGeometry", () => {
     );
   });
 
-  it("marks boxes and cylinders pending then ready", async () => {
+  it("marks boxes, cylinders, and spheres pending then ready", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(async (input) =>
       createResult(input.id, createMesh(input.id))
@@ -51,15 +56,21 @@ describe("derivedGeometry", () => {
       onChange: (snapshot) => snapshots.push(snapshot)
     });
 
-    service.reconcile([createBoxObject("box_1", 2), createCylinderObject()]);
+    service.reconcile([
+      createBoxObject("box_1", 2),
+      createCylinderObject(),
+      createSphereObject()
+    ]);
 
     expect(snapshots.at(-1)?.entries.map((entry) => entry.status)).toEqual([
+      "pending",
       "pending",
       "pending"
     ]);
     expect(runtime.inputs.map((input) => input.id)).toEqual([
       "box_1",
-      "cylinder_1"
+      "cylinder_1",
+      "sphere_1"
     ]);
 
     await flushPromises();
@@ -67,11 +78,13 @@ describe("derivedGeometry", () => {
     const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
     expect(snapshot.entries.map((entry) => entry.status)).toEqual([
       "ready",
+      "ready",
       "ready"
     ]);
     expect(snapshot.meshes.map((mesh) => mesh.id)).toEqual([
       "box_1",
-      "cylinder_1"
+      "cylinder_1",
+      "sphere_1"
     ]);
     expect(getDerivedGeometryStatusLabel(snapshot.entries[0])).toBe(
       "OCCT mesh ready"
@@ -333,18 +346,41 @@ function createCylinderObject(id = "cylinder_1"): CylinderObject {
   };
 }
 
+function createSphereObject(id = "sphere_1"): SphereObject {
+  return {
+    id,
+    kind: "sphere",
+    dimensions: {
+      radius: 1.25
+    },
+    transform: {
+      translation: [0, 0, 1.25],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
 function createRuntime(
   handler: (
-    input: DerivedGeometryBoxInput | DerivedGeometryCylinderInput
+    input:
+      | DerivedGeometryBoxInput
+      | DerivedGeometryCylinderInput
+      | DerivedGeometrySphereInput
   ) => Promise<DerivedGeometryResult>
 ): DerivedGeometryRuntime & {
   readonly inputs: readonly (
     | DerivedGeometryBoxInput
     | DerivedGeometryCylinderInput
+    | DerivedGeometrySphereInput
   )[];
   readonly disposeCount: number;
 } {
-  const inputs: (DerivedGeometryBoxInput | DerivedGeometryCylinderInput)[] = [];
+  const inputs: (
+    | DerivedGeometryBoxInput
+    | DerivedGeometryCylinderInput
+    | DerivedGeometrySphereInput
+  )[] = [];
   let disposeCount = 0;
 
   return {
@@ -357,6 +393,10 @@ function createRuntime(
       return handler(input);
     },
     tessellateCylinder(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    tessellateSphere(input) {
       inputs.push(input);
       return handler(input);
     },

@@ -46,9 +46,14 @@ export function addMeshDisplayEdges(
 export function createMeshDisplayEdges(
   object: SceneObject
 ): readonly RenderEdgeSegment[] {
-  return object.kind === "box"
-    ? createBoxDisplayEdges(object.dimensions)
-    : createCylinderDisplayEdges(object.dimensions);
+  switch (object.kind) {
+    case "box":
+      return createBoxDisplayEdges(object.dimensions);
+    case "cylinder":
+      return createCylinderDisplayEdges(object.dimensions);
+    case "sphere":
+      return createSphereDisplayEdges(object.dimensions);
+  }
 }
 
 export function toRenderPrimitive(object: SceneObject): RenderPrimitive {
@@ -56,6 +61,15 @@ export function toRenderPrimitive(object: SceneObject): RenderPrimitive {
     return {
       id: object.id,
       kind: "box",
+      dimensions: object.dimensions,
+      transform: object.transform
+    };
+  }
+
+  if (object.kind === "sphere") {
+    return {
+      id: object.id,
+      kind: "sphere",
       dimensions: object.dimensions,
       transform: object.transform
     };
@@ -136,6 +150,43 @@ function createCylinderDisplayEdges(dimensions: {
   }
 
   return edges;
+}
+
+function createSphereDisplayEdges(dimensions: {
+  readonly radius: number;
+}): readonly RenderEdgeSegment[] {
+  const segmentCount = 32;
+  const edges: RenderEdgeSegment[] = [];
+
+  for (const plane of ["xy", "xz", "yz"] as const) {
+    for (let index = 0; index < segmentCount; index += 1) {
+      edges.push({
+        start: spherePoint(dimensions.radius, plane, index),
+        end: spherePoint(dimensions.radius, plane, (index + 1) % segmentCount)
+      });
+    }
+  }
+
+  return edges;
+}
+
+function spherePoint(
+  radius: number,
+  plane: "xy" | "xz" | "yz",
+  index: number
+): Vec3 {
+  const angle = (index / 32) * Math.PI * 2;
+  const first = cleanRenderNumber(Math.cos(angle) * radius);
+  const second = cleanRenderNumber(Math.sin(angle) * radius);
+
+  switch (plane) {
+    case "xy":
+      return [first, second, 0];
+    case "xz":
+      return [first, 0, second];
+    case "yz":
+      return [0, first, second];
+  }
 }
 
 function cylinderPoint(radius: number, z: number, index: number): Vec3 {

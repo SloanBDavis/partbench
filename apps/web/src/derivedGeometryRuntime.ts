@@ -24,6 +24,14 @@ export interface DerivedGeometryCylinderInput {
   readonly transform: RenderTransform;
 }
 
+export interface DerivedGeometrySphereInput {
+  readonly id: string;
+  readonly dimensions: {
+    readonly radius: number;
+  };
+  readonly transform: RenderTransform;
+}
+
 export interface DerivedGeometryMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
@@ -53,6 +61,9 @@ export interface DerivedGeometryRuntime {
   tessellateBox(input: DerivedGeometryBoxInput): Promise<DerivedGeometryResult>;
   tessellateCylinder(
     input: DerivedGeometryCylinderInput
+  ): Promise<DerivedGeometryResult>;
+  tessellateSphere(
+    input: DerivedGeometrySphereInput
   ): Promise<DerivedGeometryResult>;
   dispose(): void;
 }

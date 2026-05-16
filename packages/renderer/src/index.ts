@@ -33,7 +33,19 @@ export interface RenderCylinderPrimitive {
   readonly transform: RenderTransform;
 }
 
-export type RenderPrimitive = RenderBoxPrimitive | RenderCylinderPrimitive;
+export interface RenderSpherePrimitive {
+  readonly id: string;
+  readonly kind: "sphere";
+  readonly dimensions: {
+    readonly radius: number;
+  };
+  readonly transform: RenderTransform;
+}
+
+export type RenderPrimitive =
+  | RenderBoxPrimitive
+  | RenderCylinderPrimitive
+  | RenderSpherePrimitive;
 
 export interface RenderEdgeSegment {
   readonly start: Vec3;
@@ -249,8 +261,10 @@ function drawPrimitive(
 ): void {
   if (primitive.kind === "box") {
     drawBox(context, primitive, camera, size, selected);
-  } else {
+  } else if (primitive.kind === "cylinder") {
     drawCylinder(context, primitive, camera, size, selected);
+  } else {
+    drawSphere(context, primitive, camera, size, selected);
   }
 }
 
@@ -354,6 +368,34 @@ function drawCylinder(
         size,
         segments.top[index],
         segments.bottom[index]
+      );
+    }
+  }
+
+  context.restore();
+}
+
+function drawSphere(
+  context: CanvasRenderingContext2D,
+  primitive: RenderSpherePrimitive,
+  camera: RenderCamera,
+  size: ViewportSize,
+  selected: boolean
+): void {
+  const rings = getSphereSegments(primitive);
+
+  context.save();
+  context.strokeStyle = selected ? "#f2a541" : "#8a4f9f";
+  context.lineWidth = selected ? 3 : 2;
+
+  for (const ring of [rings.xy, rings.xz, rings.yz]) {
+    for (let index = 0; index < ring.length; index += 1) {
+      strokeProjectedLine(
+        context,
+        camera,
+        size,
+        ring[index],
+        ring[(index + 1) % ring.length]
       );
     }
   }
@@ -537,13 +579,7 @@ function getProjectedPrimitiveBounds(
       depth: number;
     }
   | undefined {
-  const points =
-    primitive.kind === "box"
-      ? getBoxVertices(primitive)
-      : [
-          ...getCylinderSegments(primitive).top,
-          ...getCylinderSegments(primitive).bottom
-        ];
+  const points = getPrimitiveBoundsPoints(primitive);
   const projected = points
     .map((point) => projectPoint(point, camera, size))
     .filter((point): point is ProjectedPoint => Boolean(point));
@@ -563,6 +599,22 @@ function getProjectedPrimitiveBounds(
     maxY: Math.max(...ys),
     depth: Math.min(...depths)
   };
+}
+
+function getPrimitiveBoundsPoints(primitive: RenderPrimitive): readonly Vec3[] {
+  if (primitive.kind === "box") {
+    return getBoxVertices(primitive);
+  }
+
+  if (primitive.kind === "cylinder") {
+    return [
+      ...getCylinderSegments(primitive).top,
+      ...getCylinderSegments(primitive).bottom
+    ];
+  }
+
+  const segments = getSphereSegments(primitive);
+  return [...segments.xy, ...segments.xz, ...segments.yz];
 }
 
 function getProjectedMeshBounds(
@@ -667,6 +719,48 @@ function getCylinderSegments(primitive: RenderCylinderPrimitive): {
   }
 
   return { top, bottom };
+}
+
+function getSphereSegments(primitive: RenderSpherePrimitive): {
+  xy: Vec3[];
+  xz: Vec3[];
+  yz: Vec3[];
+} {
+  const segmentCount = 32;
+  const radius = primitive.dimensions.radius;
+  const scale = primitive.transform.scale;
+  const xy: Vec3[] = [];
+  const xz: Vec3[] = [];
+  const yz: Vec3[] = [];
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const angle = (index / segmentCount) * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    xy.push(
+      transformPoint(
+        [cos * radius * scale[0], sin * radius * scale[1], 0],
+        primitive.transform,
+        false
+      )
+    );
+    xz.push(
+      transformPoint(
+        [cos * radius * scale[0], 0, sin * radius * scale[2]],
+        primitive.transform,
+        false
+      )
+    );
+    yz.push(
+      transformPoint(
+        [0, cos * radius * scale[1], sin * radius * scale[2]],
+        primitive.transform,
+        false
+      )
+    );
+  }
+
+  return { xy, xz, yz };
 }
 
 function getMeshEdges(

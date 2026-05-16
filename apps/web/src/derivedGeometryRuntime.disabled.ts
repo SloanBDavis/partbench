@@ -8,6 +8,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateCylinder() {
       throw new Error("Derived geometry runtime is disabled.");
     },
+    async tessellateSphere() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
     dispose() {}
   };
 }

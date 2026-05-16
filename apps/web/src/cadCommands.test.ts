@@ -3,20 +3,24 @@ import {
   areTransformFormsEqual,
   buildBatch,
   buildCreateBoxOp,
+  buildCreateSphereOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildUpdateBoxDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateSphereDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   boxDimensionsToForm,
   areBoxDimensionFormsEqual,
   areCylinderDimensionFormsEqual,
+  areSphereDimensionFormsEqual,
   cylinderDimensionsToForm,
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
+  sphereDimensionsToForm,
   transformToForm,
   WEB_UI_ACTOR
 } from "./cadCommands";
@@ -38,6 +42,24 @@ describe("cad command builders", () => {
       op: "scene.createBox",
       id: "box_1",
       dimensions: { width: 2, height: 3, depth: 4 },
+      transform: { translation: [5, 6, 7] }
+    });
+
+    expect(
+      buildCreateSphereOp({
+        id: "sphere_1",
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 2,
+        translationX: 5,
+        translationY: 6,
+        translationZ: 7
+      })
+    ).toEqual({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 2 },
       transform: { translation: [5, 6, 7] }
     });
   });
@@ -95,6 +117,19 @@ describe("cad command builders", () => {
       op: "scene.updateCylinderDimensions",
       id: "cylinder_1",
       dimensions: { radius: 2, height: 8 }
+    });
+
+    expect(
+      buildUpdateSphereDimensionsOp("sphere_1", {
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 3
+      })
+    ).toEqual({
+      op: "scene.updateSphereDimensions",
+      id: "sphere_1",
+      dimensions: { radius: 3 }
     });
   });
 
@@ -211,6 +246,33 @@ describe("cad command builders", () => {
 
     expect(
       buildOperationFromBatchForm({
+        op: "scene.updateSphereDimensions",
+        id: "",
+        targetId: "sphere_1",
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 3,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        name: "",
+        units: "mm"
+      })
+    ).toEqual({
+      op: "scene.updateSphereDimensions",
+      id: "sphere_1",
+      dimensions: { radius: 3 }
+    });
+
+    expect(
+      buildOperationFromBatchForm({
         op: "scene.renameObject",
         id: "",
         targetId: "box_1",
@@ -288,6 +350,7 @@ describe("cad command builders", () => {
   it("round-trips and compares dimension form values", () => {
     const boxForm = boxDimensionsToForm({ width: 2, height: 3, depth: 4 });
     const cylinderForm = cylinderDimensionsToForm({ radius: 1.5, height: 6 });
+    const sphereForm = sphereDimensionsToForm({ radius: 2.5 });
 
     expect(boxForm).toEqual({ width: 2, height: 3, depth: 4, radius: 1 });
     expect(cylinderForm).toEqual({
@@ -295,6 +358,12 @@ describe("cad command builders", () => {
       height: 6,
       depth: 1,
       radius: 1.5
+    });
+    expect(sphereForm).toEqual({
+      width: 1,
+      height: 1,
+      depth: 1,
+      radius: 2.5
     });
     expect(areBoxDimensionFormsEqual(boxForm, { ...boxForm })).toBe(true);
     expect(areBoxDimensionFormsEqual(boxForm, { ...boxForm, depth: 5 })).toBe(
@@ -307,6 +376,15 @@ describe("cad command builders", () => {
       areCylinderDimensionFormsEqual(cylinderForm, {
         ...cylinderForm,
         radius: 2
+      })
+    ).toBe(false);
+    expect(areSphereDimensionFormsEqual(sphereForm, { ...sphereForm })).toBe(
+      true
+    );
+    expect(
+      areSphereDimensionFormsEqual(sphereForm, {
+        ...sphereForm,
+        radius: 3
       })
     ).toBe(false);
   });

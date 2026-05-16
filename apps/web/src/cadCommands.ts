@@ -9,10 +9,12 @@ import type {
   ObjectId,
   SceneCreateBoxOp,
   SceneCreateCylinderOp,
+  SceneCreateSphereOp,
   SceneDeleteObjectOp,
   SceneRenameObjectOp,
   SceneUpdateBoxDimensionsOp,
   SceneUpdateCylinderDimensionsOp,
+  SceneUpdateSphereDimensionsOp,
   SceneUpdateTransformOp,
   Transform,
   Vec3
@@ -28,9 +30,11 @@ export type BatchOperationKind =
   | "document.updateUnits"
   | "scene.createBox"
   | "scene.createCylinder"
+  | "scene.createSphere"
   | "scene.updateTransform"
   | "scene.updateBoxDimensions"
   | "scene.updateCylinderDimensions"
+  | "scene.updateSphereDimensions"
   | "scene.renameObject"
   | "scene.deleteObject";
 
@@ -100,6 +104,21 @@ export function buildCreateCylinderOp(
   };
 }
 
+export function buildCreateSphereOp(
+  form: PrimitiveCommandForm
+): SceneCreateSphereOp {
+  return {
+    op: "scene.createSphere",
+    id: normalizeOptionalId(form.id),
+    dimensions: {
+      radius: form.radius
+    },
+    transform: {
+      translation: [form.translationX, form.translationY, form.translationZ]
+    }
+  };
+}
+
 export function buildUpdateUnitsOp(
   units: DocumentUnits,
   mode: DocumentUnitUpdateMode = "metadataOnly"
@@ -162,6 +181,19 @@ export function buildUpdateCylinderDimensionsOp(
   };
 }
 
+export function buildUpdateSphereDimensionsOp(
+  id: ObjectId,
+  form: DimensionCommandForm
+): SceneUpdateSphereDimensionsOp {
+  return {
+    op: "scene.updateSphereDimensions",
+    id,
+    dimensions: {
+      radius: form.radius
+    }
+  };
+}
+
 export function buildDeleteObjectOp(id: ObjectId): SceneDeleteObjectOp {
   return {
     op: "scene.deleteObject",
@@ -190,12 +222,19 @@ export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
       return buildCreateBoxOp(form);
     case "scene.createCylinder":
       return buildCreateCylinderOp(form);
+    case "scene.createSphere":
+      return buildCreateSphereOp(form);
     case "scene.updateTransform":
       return buildUpdateTransformOp(requireTargetId(form.targetId), form);
     case "scene.updateBoxDimensions":
       return buildUpdateBoxDimensionsOp(requireTargetId(form.targetId), form);
     case "scene.updateCylinderDimensions":
       return buildUpdateCylinderDimensionsOp(
+        requireTargetId(form.targetId),
+        form
+      );
+    case "scene.updateSphereDimensions":
+      return buildUpdateSphereDimensionsOp(
         requireTargetId(form.targetId),
         form
       );
@@ -231,6 +270,17 @@ export function cylinderDimensionsToForm(input: {
   };
 }
 
+export function sphereDimensionsToForm(input: {
+  readonly radius: number;
+}): DimensionCommandForm {
+  return {
+    width: 1,
+    height: 1,
+    depth: 1,
+    radius: input.radius
+  };
+}
+
 export function areBoxDimensionFormsEqual(
   left: DimensionCommandForm,
   right: DimensionCommandForm
@@ -247,6 +297,13 @@ export function areCylinderDimensionFormsEqual(
   right: DimensionCommandForm
 ): boolean {
   return left.radius === right.radius && left.height === right.height;
+}
+
+export function areSphereDimensionFormsEqual(
+  left: DimensionCommandForm,
+  right: DimensionCommandForm
+): boolean {
+  return left.radius === right.radius;
 }
 
 export function transformToForm(transform: Transform): TransformCommandForm {
