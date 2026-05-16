@@ -206,6 +206,10 @@ Exit criteria:
 Goal: turn the current JSON interchange into a deliberate path toward a native
 project package without losing debuggability.
 
+Current status: storage decision documented. The V2 structural bridge is derived
+from V1 source-of-truth scene objects and transaction history, so it does not
+require a `web-cad.project.v2` format yet.
+
 Deliverables:
 
 - Update `docs/native-format.md` for the next project format version and package
@@ -217,6 +221,18 @@ Deliverables:
   - File System Access for user-visible open/save.
   - OPFS for private rebuildable caches.
 - Keep derived meshes optional and rebuildable.
+
+Implemented decision:
+
+- Continue accepting/exporting only `web-cad.project.v1` while
+  `project.structure` is query-only derived data.
+- Do not persist `part:default`, `feature:<objectId>`, or `body:<objectId>` in
+  V1 JSON.
+- Introduce `web-cad.project.v2` only when the source-of-truth model adds data
+  that cannot be reconstructed from V1 objects and transaction history, such as
+  sketches, explicit authored parts, feature records, body definitions, topology
+  references, or assemblies.
+- Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
 
 Exit criteria:
 

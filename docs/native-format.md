@@ -2,10 +2,11 @@
 
 This document describes the current source-of-truth project format and the
 direction for the future native package format. The current V1 format is
-complete as a JSON source-of-truth interchange format. V2 planning should use
-this document to evolve toward a native package without prematurely introducing
-OPFS, File System Access API, STEP import/export, real topology, or a final
-`.wcad` implementation.
+complete as a JSON source-of-truth interchange format. The V2 structural bridge
+does not require a new saved format yet because it is derived from existing V1
+source-of-truth data. Future V2 storage work should use this document to evolve
+toward a native package without prematurely introducing OPFS, File System Access
+API, STEP import/export, real topology, or a final `.wcad` implementation.
 
 ## Current Format
 
@@ -176,9 +177,39 @@ two modes:
 The project file stores the resulting authoritative document values and the
 transaction diff that explains how the unit change happened.
 
+## V2 Bridge Storage Decision
+
+The current V2 part/feature/body bridge does not change the saved project
+format.
+
+`web-cad.project.v1` remains the only accepted import/export schema because the
+current bridge is fully derived from existing authoritative data:
+
+- scene object IDs;
+- scene object kinds, dimensions, transforms, and names;
+- document units;
+- committed transaction history; and
+- redo transaction history where practical.
+
+The derived mapping is deterministic:
+
+```text
+document.objects[]            -> part:default
+scene object <objectId>       -> feature:<objectId>
+feature:<objectId>            -> body:<objectId>
+```
+
+Those IDs are query/API affordances. They are not separately persisted in V1
+JSON. On load, `cad-core` can rebuild the same structural query response from
+the saved document and transaction history.
+
+This avoids duplicating source-of-truth state. Duplicated saved part/feature/body
+records would create unnecessary consistency rules while the app still has only
+primitive scene objects.
+
 ## Source Of Truth
 
-The source of truth is:
+The current source of truth is:
 
 - `schemaVersion`
 - `document.units`
@@ -213,6 +244,37 @@ The `project.structure` query returns the current V2 compatibility bridge:
 
 This structure is a migration bridge toward future feature/body concepts, not a
 saved feature graph in this format.
+
+## Future Format Version Triggers
+
+Do not introduce `web-cad.project.v2` just because query shapes changed. A new
+project format is justified when the saved source-of-truth model gains data that
+cannot be faithfully reconstructed from `web-cad.project.v1`.
+
+Likely triggers:
+
+- explicit authored parts with names/origins beyond the derived default part;
+- sketch containers, sketch entities, constraints, and dimensions;
+- explicit feature records such as extrudes or revolves;
+- body definitions or exact geometry checkpoints that are source of truth or
+  required rebuild inputs;
+- durable topological references for faces, edges, vertices, bodies, sketches,
+  and features;
+- assembly definitions, instances, mates, or material overrides;
+- project-level parameters/materials/named views that are not represented by V1;
+  or
+- a command-log representation that cannot be preserved with V1 transaction
+  history.
+
+When any of those become real source data, the next format should be explicit,
+for example:
+
+```text
+schemaVersion: web-cad.project.v2
+```
+
+That format should include a migration from `web-cad.project.v1`, not silent
+shape guessing.
 
 ## Rebuildable Cache
 
@@ -290,23 +352,29 @@ silently accepting ambiguous shapes. A future migration should:
 1. Detect the incoming `schemaVersion`.
 2. Validate that version's expected shape.
 3. Convert it into the current authoritative document model.
-4. Preserve or deliberately rewrite command history.
-5. Report structured migration errors with paths.
+4. Rebuild or explicitly author the default part/feature/body mapping.
+5. Preserve or deliberately rewrite command history.
+6. Report structured migration errors with paths.
 
 Do not add migration branches before a real older/newer format exists.
 
 ## Future Native Package Direction
 
 The long-term architecture still points toward a documented native package
-format, likely a directory or ZIP-like package:
+format, likely a directory or ZIP-like package. This is not implemented yet.
+
+Likely shape:
 
 ```text
 project.wcad/
   manifest.json
   document.cbor
   commands.cbor
+  parts/
+  assemblies/
   brep/
   meshes/
+  edge-display/
   thumbnails/
   metadata/
 ```
@@ -314,9 +382,11 @@ project.wcad/
 In that future package, the likely source-of-truth files are:
 
 - `manifest.json`
-- `document.cbor`
-- `commands.cbor`
-- exact geometry checkpoints when the B-rep model exists
+- `document.cbor`, containing source model data such as units, parts, sketches,
+  features, bodies, assemblies, parameters, materials, and named views
+- `commands.cbor`, containing command/transaction history
+- exact geometry checkpoints when the B-rep model exists and checkpoints are
+  required for robust rebuild/performance
 
 Likely rebuildable cache files are:
 
@@ -329,3 +399,7 @@ Likely rebuildable cache files are:
 The current JSON format is the V1 source-of-truth interchange format. It is not
 the final storage backend and does not imply OPFS or File System Access API
 behavior.
+
+Until `web-cad.project.v2` exists, JSON export/import remains the deliberate
+debuggable interchange path and `.wcad` remains a documented direction rather
+than a runtime storage feature.
