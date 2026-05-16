@@ -4,13 +4,17 @@ export type GeometryKernelOp =
   | "geometry.tessellateCylinder"
   | "geometry.tessellateSphere"
   | "geometry.tessellateCone"
-  | "geometry.tessellateTorus";
+  | "geometry.tessellateTorus"
+  | "geometry.tessellateExtrude";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
   | "sphere"
   | "cone"
-  | "torus";
+  | "torus"
+  | "extrude";
+export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
+export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -36,6 +40,23 @@ export interface TorusGeometryDimensions {
   readonly majorRadius: number;
   readonly minorRadius: number;
 }
+
+export interface RectangleExtrudeProfile {
+  readonly kind: "rectangle";
+  readonly center: readonly [number, number];
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface CircleExtrudeProfile {
+  readonly kind: "circle";
+  readonly center: readonly [number, number];
+  readonly radius: number;
+}
+
+export type ExtrudeGeometryProfile =
+  | RectangleExtrudeProfile
+  | CircleExtrudeProfile;
 
 export interface TessellationOptions {
   readonly linearDeflection?: number;
@@ -82,12 +103,23 @@ export interface TessellateTorusRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface TessellateExtrudeRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.tessellateExtrude";
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: ExtrudeGeometryProfile;
+  readonly depth: number;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
   | TessellateCylinderRequest
   | TessellateSphereRequest
   | TessellateConeRequest
-  | TessellateTorusRequest;
+  | TessellateTorusRequest
+  | TessellateExtrudeRequest;
 
 export interface SerializableMeshData {
   readonly primitive: GeometryKernelPrimitive;
@@ -250,6 +282,18 @@ function validateRequest(
         message: "Sphere dimensions must be finite numbers greater than zero."
       };
     }
+  } else if (request.op === "geometry.tessellateExtrude") {
+    if (
+      !isSketchPlane(request.sketchPlane) ||
+      !isPositiveFiniteNumber(request.depth) ||
+      !isValidExtrudeProfile(request.profile)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Extrude requests require a supported sketch plane, rectangle or circle profile, and positive finite depth."
+      };
+    }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -310,6 +354,81 @@ function createMesh(
         linearDeflection: request.tessellation?.linearDeflection,
         angularDeflection: request.tessellation?.angularDeflection
       });
+    case "geometry.tessellateExtrude":
+      return createExtrudeMesh(factories, request);
+  }
+}
+
+async function createExtrudeMesh(
+  factories: GeometryKernelMeshFactories,
+  request: TessellateExtrudeRequest
+): Promise<GeometryKernelMeshResult> {
+  const mesh =
+    request.profile.kind === "rectangle"
+      ? await factories.createBoxMesh({
+          width: request.profile.width,
+          height: request.profile.height,
+          depth: request.depth,
+          linearDeflection: request.tessellation?.linearDeflection,
+          angularDeflection: request.tessellation?.angularDeflection
+        })
+      : await factories.createCylinderMesh({
+          radius: request.profile.radius,
+          height: request.depth,
+          linearDeflection: request.tessellation?.linearDeflection,
+          angularDeflection: request.tessellation?.angularDeflection
+        });
+
+  return {
+    primitive: "extrude",
+    positions: mapExtrudePositions(
+      mesh.positions,
+      request.sketchPlane,
+      request.profile.center,
+      request.depth
+    ),
+    indices: mesh.indices,
+    vertexCount: mesh.vertexCount,
+    triangleCount: mesh.triangleCount,
+    faceCount: mesh.faceCount
+  };
+}
+
+function mapExtrudePositions(
+  positions: Float32Array,
+  sketchPlane: GeometryKernelSketchPlane,
+  center: readonly [number, number],
+  depth: number
+): Float32Array {
+  const mapped = new Float32Array(positions.length);
+
+  for (let index = 0; index < positions.length; index += 3) {
+    const profileX = positions[index] + center[0];
+    const profileY = positions[index + 1] + center[1];
+    const normal = positions[index + 2] + depth / 2;
+    const [x, y, z] = mapPlanePoint(sketchPlane, profileX, profileY, normal);
+
+    mapped[index] = x;
+    mapped[index + 1] = y;
+    mapped[index + 2] = z;
+  }
+
+  return mapped;
+}
+
+function mapPlanePoint(
+  sketchPlane: GeometryKernelSketchPlane,
+  profileX: number,
+  profileY: number,
+  normal: number
+): readonly [number, number, number] {
+  switch (sketchPlane) {
+    case "XY":
+      return [profileX, profileY, normal];
+    case "XZ":
+      return [profileX, normal, profileY];
+    case "YZ":
+      return [normal, profileX, profileY];
   }
 }
 
@@ -325,6 +444,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Cone";
     case "geometry.tessellateTorus":
       return "Torus";
+    case "geometry.tessellateExtrude":
+      return "Extrude";
   }
 }
 
@@ -347,4 +468,32 @@ function isOptionalPositiveFiniteNumber(value: number | undefined): boolean {
 
 function isPositiveFiniteNumber(value: number): boolean {
   return Number.isFinite(value) && value > 0;
+}
+
+function isSketchPlane(value: GeometryKernelSketchPlane): boolean {
+  return value === "XY" || value === "XZ" || value === "YZ";
+}
+
+function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
+  if (profile.kind === "rectangle") {
+    return (
+      isVec2(profile.center) &&
+      isPositiveFiniteNumber(profile.width) &&
+      isPositiveFiniteNumber(profile.height)
+    );
+  }
+
+  if (profile.kind === "circle") {
+    return isVec2(profile.center) && isPositiveFiniteNumber(profile.radius);
+  }
+
+  return false;
+}
+
+function isVec2(value: readonly [number, number]): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
 }

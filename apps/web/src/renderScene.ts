@@ -2,10 +2,14 @@ import type { SceneObject } from "@web-cad/cad-core";
 import type {
   RenderEdgeSegment,
   RenderPrimitive,
+  RenderTransform,
   RenderTriangleMesh,
   Vec3
 } from "@web-cad/renderer";
-import type { DerivedGeometryEntry } from "./derivedGeometry";
+import type {
+  DerivedExtrudeGeometrySource,
+  DerivedGeometryEntry
+} from "./derivedGeometry";
 
 export interface RenderSceneInputs {
   readonly primitives: readonly RenderPrimitive[];
@@ -14,13 +18,14 @@ export interface RenderSceneInputs {
 
 export function createRenderSceneInputs(
   objects: readonly SceneObject[],
-  derivedGeometryByObjectId: ReadonlyMap<string, DerivedGeometryEntry>
+  derivedGeometryBySourceId: ReadonlyMap<string, DerivedGeometryEntry>,
+  extrudeSources: readonly DerivedExtrudeGeometrySource[] = []
 ): RenderSceneInputs {
   const primitives: RenderPrimitive[] = [];
   const meshes: RenderTriangleMesh[] = [];
 
   for (const object of objects) {
-    const derivedGeometry = derivedGeometryByObjectId.get(object.id);
+    const derivedGeometry = derivedGeometryBySourceId.get(object.id);
 
     if (derivedGeometry?.status === "ready") {
       meshes.push(addMeshDisplayEdges(derivedGeometry.mesh, object));
@@ -28,6 +33,17 @@ export function createRenderSceneInputs(
     }
 
     primitives.push(toRenderPrimitive(object));
+  }
+
+  for (const source of extrudeSources) {
+    const derivedGeometry = derivedGeometryBySourceId.get(source.id);
+
+    if (derivedGeometry?.status === "ready") {
+      meshes.push(addExtrudeMeshDisplayEdges(derivedGeometry.mesh, source));
+      continue;
+    }
+
+    primitives.push(toExtrudeFallbackPrimitive(source));
   }
 
   return { primitives, meshes };
@@ -40,6 +56,16 @@ export function addMeshDisplayEdges(
   return {
     ...mesh,
     edgeSegments: createMeshDisplayEdges(object)
+  };
+}
+
+export function addExtrudeMeshDisplayEdges(
+  mesh: RenderTriangleMesh,
+  source: DerivedExtrudeGeometrySource
+): RenderTriangleMesh {
+  return {
+    ...mesh,
+    edgeSegments: createExtrudeDisplayEdges(source)
   };
 }
 
@@ -103,6 +129,173 @@ export function toRenderPrimitive(object: SceneObject): RenderPrimitive {
     dimensions: object.dimensions,
     transform: object.transform
   };
+}
+
+export function toExtrudeFallbackPrimitive(
+  source: DerivedExtrudeGeometrySource
+): RenderPrimitive {
+  if (source.profile.kind === "rectangle") {
+    return toRectangleExtrudePrimitive(source);
+  }
+
+  return toCircleExtrudePrimitive(source);
+}
+
+function toRectangleExtrudePrimitive(
+  source: DerivedExtrudeGeometrySource
+): RenderPrimitive {
+  if (source.profile.kind !== "rectangle") {
+    throw new Error("Rectangle extrude source must use a rectangle profile.");
+  }
+
+  const { center, height, width } = source.profile;
+
+  switch (source.sketchPlane) {
+    case "XY":
+      return {
+        id: source.id,
+        kind: "box",
+        dimensions: { width, height, depth: source.depth },
+        transform: {
+          translation: [center[0], center[1], source.depth / 2],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      };
+    case "XZ":
+      return {
+        id: source.id,
+        kind: "box",
+        dimensions: { width, height: source.depth, depth: height },
+        transform: {
+          translation: [center[0], source.depth / 2, center[1]],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      };
+    case "YZ":
+      return {
+        id: source.id,
+        kind: "box",
+        dimensions: { width: source.depth, height: width, depth: height },
+        transform: {
+          translation: [source.depth / 2, center[0], center[1]],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      };
+  }
+}
+
+function toCircleExtrudePrimitive(
+  source: DerivedExtrudeGeometrySource
+): RenderPrimitive {
+  if (source.profile.kind !== "circle") {
+    throw new Error("Circle extrude source must use a circle profile.");
+  }
+
+  const { center, radius } = source.profile;
+
+  switch (source.sketchPlane) {
+    case "XY":
+      return {
+        id: source.id,
+        kind: "cylinder",
+        dimensions: { radius, height: source.depth },
+        transform: {
+          translation: [center[0], center[1], source.depth / 2],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      };
+    case "XZ":
+      return {
+        id: source.id,
+        kind: "cylinder",
+        dimensions: { radius, height: source.depth },
+        transform: {
+          translation: [center[0], source.depth / 2, center[1]],
+          rotation: [-Math.PI / 2, 0, 0],
+          scale: [1, 1, 1]
+        }
+      };
+    case "YZ":
+      return {
+        id: source.id,
+        kind: "cylinder",
+        dimensions: { radius, height: source.depth },
+        transform: {
+          translation: [source.depth / 2, center[0], center[1]],
+          rotation: [0, Math.PI / 2, 0],
+          scale: [1, 1, 1]
+        }
+      };
+  }
+}
+
+function createExtrudeDisplayEdges(
+  source: DerivedExtrudeGeometrySource
+): readonly RenderEdgeSegment[] {
+  const primitive = toExtrudeFallbackPrimitive(source);
+
+  if (primitive.kind === "box") {
+    return transformEdges(
+      createBoxDisplayEdges(primitive.dimensions),
+      primitive.transform
+    );
+  }
+
+  if (primitive.kind === "cylinder") {
+    return transformEdges(
+      createCylinderDisplayEdges(primitive.dimensions),
+      primitive.transform
+    );
+  }
+
+  return transformEdges([], primitive.transform);
+}
+
+function transformEdges(
+  edges: readonly RenderEdgeSegment[],
+  transform: RenderTransform
+): readonly RenderEdgeSegment[] {
+  return edges.map((edge) => ({
+    start: transformPoint(edge.start, transform),
+    end: transformPoint(edge.end, transform)
+  }));
+}
+
+function transformPoint(point: Vec3, transform: RenderTransform): Vec3 {
+  const scaled: Vec3 = [
+    point[0] * transform.scale[0],
+    point[1] * transform.scale[1],
+    point[2] * transform.scale[2]
+  ];
+  const rotated = rotateEuler(scaled, transform.rotation);
+
+  return [
+    rotated[0] + transform.translation[0],
+    rotated[1] + transform.translation[1],
+    rotated[2] + transform.translation[2]
+  ];
+}
+
+function rotateEuler(point: Vec3, rotation: Vec3): Vec3 {
+  const [rx, ry, rz] = rotation;
+  const cosX = Math.cos(rx);
+  const sinX = Math.sin(rx);
+  const cosY = Math.cos(ry);
+  const sinY = Math.sin(ry);
+  const cosZ = Math.cos(rz);
+  const sinZ = Math.sin(rz);
+  const y1 = point[1] * cosX - point[2] * sinX;
+  const z1 = point[1] * sinX + point[2] * cosX;
+  const x2 = point[0] * cosY + z1 * sinY;
+  const z2 = -point[0] * sinY + z1 * cosY;
+  const x3 = x2 * cosZ - y1 * sinZ;
+  const y3 = x2 * sinZ + y1 * cosZ;
+
+  return [x3, y3, z2];
 }
 
 function createBoxDisplayEdges(dimensions: {

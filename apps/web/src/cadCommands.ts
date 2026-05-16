@@ -6,6 +6,7 @@ import type {
   DocumentUnitUpdateMode,
   DocumentUnits,
   DocumentUpdateUnitsOp,
+  FeatureExtrudeOp,
   ObjectId,
   SceneCreateBoxOp,
   SceneCreateConeOp,
@@ -111,6 +112,13 @@ export interface SketchEntityForm {
   readonly width: number;
   readonly height: number;
   readonly radius: number;
+}
+
+export interface FeatureExtrudeForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly depth: number;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -399,6 +407,23 @@ export function buildDeleteSketchEntityOp(
     op: "sketch.deleteEntity",
     sketchId,
     entityId
+  };
+}
+
+export function buildFeatureExtrudeOp(
+  sketchId: SketchId,
+  entityId: string,
+  form: FeatureExtrudeForm
+): FeatureExtrudeOp {
+  return {
+    op: "feature.extrude",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    sketchId,
+    entityId,
+    depth: form.depth,
+    side: "positive"
   };
 }
 

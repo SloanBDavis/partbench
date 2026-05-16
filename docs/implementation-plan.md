@@ -42,16 +42,17 @@ packages:
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, derived
   part/feature/body structure summaries for the current scene primitives,
-  source-of-truth sketches, and versioned project JSON import/export.
+  source-of-truth sketches, authored rectangle/circle extrude features, and
+  versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
   mesh data into renderer mesh data.
 - `packages/occt-wasm` - isolated OCCT/WASM primitive tessellation adapter.
-- `packages/geometry-kernel` - typed primitive tessellation facade around the
-  isolated OCCT path.
+- `packages/geometry-kernel` - typed primitive and sketch-extrude tessellation
+  facade around the isolated OCCT path.
 - `packages/geometry-worker` - async geometry worker request/response boundary
-  for primitive tessellation.
+  for primitive and sketch-extrude tessellation.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
@@ -81,8 +82,9 @@ Completed foundations:
 - Dimension, transform, rename, delete, unit metadata change, and
   preserve-physical-size unit conversion commands.
 - Versioned source-of-truth JSON project import/export. V1 completed with
-  `web-cad.project.v1`; current V2 exports use `web-cad.project.v2` and still
-  import V1 projects through migration.
+  `web-cad.project.v1`; sketches introduced `web-cad.project.v2`; authored
+  sketch extrudes introduced `web-cad.project.v3`; V1 and V2 projects still
+  import through migration.
 - Browser command worker transport.
 - Isolated OCCT/WASM adapter, geometry-kernel facade, browser geometry worker,
   derived geometry service, renderer mesh bridge, and OCCT browser smoke.
@@ -136,19 +138,21 @@ The repo is ready as a V1 foundation, but it is not yet a full CAD system.
 
 Current limitations:
 
-- `cad-core` stores scene primitives, not a real part/feature/body graph.
+- `cad-core` stores V1 scene primitives plus the first authored sketch/extrude
+  feature records. It is not yet a full part/feature/body graph.
 - There is no authoritative B-rep topology in the document model.
-- The derived OCCT path tessellates current primitives, but exact geometry is
-  not persisted as source-of-truth.
+- The derived OCCT path tessellates current primitives and rectangle/circle
+  sketch extrudes, but exact B-rep geometry is not persisted as source of truth.
 - Measurements are primitive-derived bounds and approximate volumes, not exact
-  kernel/B-rep measurements.
+  kernel/B-rep measurements for feature bodies.
 - Document units are explicit but not a full unit system.
 - Object display names are optional and not unique.
-- The first sketch model slice exists, but there is no sketch solver, constraint
-  system, profile recognition, or sketch-driven feature operation yet.
+- The first sketch and extrude slices exist, but there is no sketch solver,
+  constraint system, automatic profile recognition, feature edit/delete command,
+  or broad feature graph yet.
 - There is no stable topological naming system.
-- There are no extrude, revolve, boolean, fillet, chamfer, shell, loft, pattern,
-  or direct modeling features.
+- There are no revolve, boolean, fillet, chamfer, shell, loft, pattern, or
+  direct modeling features.
 - There is no OPFS storage, File System Access integration, native `.wcad`
   package, STEP import/export, WebGPU renderer, large-assembly pipeline, hosted
   collaboration, or production MCP auth system.
@@ -208,10 +212,11 @@ Exit criteria:
 Goal: turn the current JSON interchange into a deliberate path toward a native
 project package without losing debuggability.
 
-Current status: storage decision implemented. The V2 structural bridge is still
-derived, but the sketch slice added authored source data, so current exports now
-use `web-cad.project.v2`. V1 project JSON remains importable through migration
-with empty sketch data.
+Current status: storage decision implemented and evolved. The V2 structural
+bridge is still derived, the sketch slice added authored source data in
+`web-cad.project.v2`, and the first extrude slice added authored feature/body
+source data in `web-cad.project.v3`. V1 and V2 project JSON remain importable
+through migration.
 
 Deliverables:
 
@@ -229,20 +234,23 @@ Implemented decision:
 
 - Continue deriving `part:default`, `feature:<objectId>`, and
   `body:<objectId>` rather than persisting duplicate part/feature/body records.
-- Export `web-cad.project.v2` with source-of-truth sketches and sketch counters.
-- Accept `web-cad.project.v1` through migration with empty sketches.
+- Export `web-cad.project.v3` with source-of-truth sketches, authored extrude
+  features, sketch counters, feature counters, and body counters.
+- Accept `web-cad.project.v1` through migration with empty sketches/features.
+- Accept `web-cad.project.v2` through migration with sketches and empty
+  features.
 - Introduce a later project format only when source-of-truth data cannot be
-  represented cleanly in the current V2 shape, such as constraints, profiles,
-  explicit authored parts, feature records, body definitions, topology
-  references, or assemblies.
+  represented cleanly in the current V3 shape, such as constraints, explicit
+  profiles, explicit authored parts, additional feature inputs, exact body
+  checkpoints, topology references, or assemblies.
 - Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
 
 Exit criteria:
 
 - The source-of-truth storage contract is clear before OPFS or File System
   Access code is added.
-- V1 JSON remains a supported import/export interchange while V2 storage is
-  introduced.
+- Older JSON versions remain supported imports while the active source format
+  evolves deliberately.
 
 ### Phase 3: Sketch Model First Slice
 
@@ -264,7 +272,7 @@ Implemented:
 - `project.sketches` and `sketch.get` queries through `cad-core`,
   `agent-adapter`, and MCP wrappers.
 - Compact web UI panel for sketch creation and entity editing.
-- Current exports use `web-cad.project.v2`; V1 imports remain compatible.
+- Current exports use `web-cad.project.v3`; V1 and V2 imports remain compatible.
 
 Exit criteria:
 
@@ -277,15 +285,27 @@ Exit criteria:
 Goal: create the first exact kernel-backed body from source-of-truth feature
 data.
 
-Deliverables:
+Current status: first source-of-truth feature/body slice implemented.
 
-- Add the first feature command, preferably `feature.extrude`, unless V2 docs
-  identify a better first feature.
-- Generate exact OCCT geometry behind the worker boundary.
-- Tessellate the resulting body into renderer meshes.
-- Store feature/body source metadata in `cad-core`; keep meshes derived.
-- Add undo/redo, semantic diffs, project round-trip, measurements where
-  practical, and agent/MCP query coverage.
+Implemented:
+
+- `feature.extrude` CADOps command for rectangle and circle sketch entities.
+- Authored extrude feature records in `cad-core` with source sketch/entity,
+  profile kind, depth, positive side, generated feature ID, and generated body
+  ID.
+- Validation for source sketch/entity, supported profile, positive finite
+  depth, and unique feature/body IDs.
+- Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
+  project round trip.
+- `web-cad.project.v3` source-of-truth export with V1/V2 import migration.
+- `project.structure` and `project.features` show primitive-derived and
+  sketch-extrude features/bodies.
+- Geometry-kernel and geometry-worker rectangle/circle extrude tessellation
+  behind the existing worker boundary.
+- Derived renderer meshes remain rebuildable; simple primitive fallback remains
+  available while geometry is disabled, pending, or unavailable.
+- UI support for selecting a rectangle/circle sketch entity, entering extrusion
+  depth, creating the feature through CADOps, and selecting the resulting body.
 
 Exit criteria:
 

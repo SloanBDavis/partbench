@@ -18,6 +18,7 @@ import type {
   DerivedGeometryBoxInput,
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
+  DerivedGeometryExtrudeInput,
   DerivedGeometryResult,
   DerivedGeometryRuntime,
   DerivedGeometrySphereInput,
@@ -29,7 +30,8 @@ type RuntimeInput =
   | DerivedGeometryCylinderInput
   | DerivedGeometrySphereInput
   | DerivedGeometryConeInput
-  | DerivedGeometryTorusInput;
+  | DerivedGeometryTorusInput
+  | DerivedGeometryExtrudeInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -204,7 +206,9 @@ describe("derivedGeometry", () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
       runtime: createRuntime((input) =>
-        "width" in input.dimensions && input.dimensions.width === 2
+        "dimensions" in input &&
+        "width" in input.dimensions &&
+        input.dimensions.width === 2
           ? first.promise
           : second.promise
       ),
@@ -445,6 +449,10 @@ function createRuntime(
       return handler(input);
     },
     tessellateTorus(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    tessellateExtrude(input) {
       inputs.push(input);
       return handler(input);
     },

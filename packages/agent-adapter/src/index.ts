@@ -7,12 +7,12 @@ import type {
   CadBatchValidationError,
   CadAxisAlignedBounds,
   CadBodySnapshot,
+  CadFeatureSummary,
   CadObjectSnapshot,
   CadObjectModelSource,
   CadOp,
   CadOpsVersion,
   CadPartSnapshot,
-  CadPrimitiveFeatureSummary,
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
@@ -72,6 +72,12 @@ export interface CadOpsAgentSuccessResponse {
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
+  readonly createdFeatureIds?: readonly string[];
+  readonly modifiedFeatureIds?: readonly string[];
+  readonly deletedFeatureIds?: readonly string[];
+  readonly createdBodyIds?: readonly string[];
+  readonly modifiedBodyIds?: readonly string[];
+  readonly deletedBodyIds?: readonly string[];
   readonly warnings: readonly string[];
   readonly transactionId?: string;
   readonly actor?: CadActorMetadata;
@@ -95,6 +101,12 @@ export interface CadOpsAgentErrorResponse {
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
+  readonly createdFeatureIds?: readonly string[];
+  readonly modifiedFeatureIds?: readonly string[];
+  readonly deletedFeatureIds?: readonly string[];
+  readonly createdBodyIds?: readonly string[];
+  readonly modifiedBodyIds?: readonly string[];
+  readonly deletedBodyIds?: readonly string[];
   readonly warnings: readonly string[];
   readonly audit?: CadTransactionAuditMetadata;
 }
@@ -141,7 +153,7 @@ export interface CadOpsAgentProjectFeaturesQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "project.features";
   readonly featureCount: number;
-  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly features: readonly CadFeatureSummary[];
 }
 
 export interface CadOpsAgentProjectStructureQueryResponse {
@@ -154,7 +166,7 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly featureCount: number;
   readonly bodyCount: number;
   readonly parts: readonly CadPartSnapshot[];
-  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
 }
@@ -349,7 +361,7 @@ function toAgentResponse(
       createdIds: response.createdIds,
       modifiedIds: response.modifiedIds,
       deletedIds: response.deletedIds,
-      ...toAgentSketchDiffIds(response),
+      ...toAgentDiffIds(response),
       warnings: response.warnings,
       ...(request.batch.audit ? { audit: request.batch.audit } : {})
     };
@@ -364,7 +376,7 @@ function toAgentResponse(
     createdIds: response.createdIds,
     modifiedIds: response.modifiedIds,
     deletedIds: response.deletedIds,
-    ...toAgentSketchDiffIds(response),
+    ...toAgentDiffIds(response),
     warnings: response.warnings,
     transactionId: response.transactionId,
     ...(response.actor ? { actor: response.actor } : {}),
@@ -372,13 +384,19 @@ function toAgentResponse(
   };
 }
 
-function toAgentSketchDiffIds(response: CadBatchResponse): {
+function toAgentDiffIds(response: CadBatchResponse): {
   readonly createdSketchIds?: readonly string[];
   readonly modifiedSketchIds?: readonly string[];
   readonly deletedSketchIds?: readonly string[];
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
+  readonly createdFeatureIds?: readonly string[];
+  readonly modifiedFeatureIds?: readonly string[];
+  readonly deletedFeatureIds?: readonly string[];
+  readonly createdBodyIds?: readonly string[];
+  readonly modifiedBodyIds?: readonly string[];
+  readonly deletedBodyIds?: readonly string[];
 } {
   return {
     ...(response.createdSketchIds
@@ -398,6 +416,24 @@ function toAgentSketchDiffIds(response: CadBatchResponse): {
       : {}),
     ...(response.deletedSketchEntityIds
       ? { deletedSketchEntityIds: response.deletedSketchEntityIds }
+      : {}),
+    ...(response.createdFeatureIds
+      ? { createdFeatureIds: response.createdFeatureIds }
+      : {}),
+    ...(response.modifiedFeatureIds
+      ? { modifiedFeatureIds: response.modifiedFeatureIds }
+      : {}),
+    ...(response.deletedFeatureIds
+      ? { deletedFeatureIds: response.deletedFeatureIds }
+      : {}),
+    ...(response.createdBodyIds
+      ? { createdBodyIds: response.createdBodyIds }
+      : {}),
+    ...(response.modifiedBodyIds
+      ? { modifiedBodyIds: response.modifiedBodyIds }
+      : {}),
+    ...(response.deletedBodyIds
+      ? { deletedBodyIds: response.deletedBodyIds }
       : {})
   };
 }

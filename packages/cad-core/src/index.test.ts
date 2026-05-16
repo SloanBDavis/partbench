@@ -2148,6 +2148,154 @@ describe("cad-core", () => {
     }
   });
 
+  it("creates sketch extrude features and bodies through CADOps", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [1, 2],
+        width: 4,
+        height: 3
+      }
+    ]);
+
+    const result = engine.apply({
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      name: "Base pad",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 5
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(result.transaction.diff.features).toMatchObject({
+      created: [
+        {
+          id: "feat_rect_1",
+          kind: "extrude",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle"
+        }
+      ],
+      bodiesCreated: [
+        { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+      ]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      featureCount: 1,
+      bodyCount: 1,
+      features: [
+        {
+          id: "feat_rect_1",
+          kind: "extrude",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          depth: 5
+        }
+      ],
+      bodies: [
+        {
+          id: "body_rect_1",
+          kind: "solid",
+          featureId: "feat_rect_1",
+          source: {
+            type: "sketchExtrudeFeature",
+            featureId: "feat_rect_1",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            profileKind: "rectangle"
+          }
+        }
+      ]
+    });
+
+    engine.undo();
+    expect(engine.getDocument().features.size).toBe(0);
+
+    engine.redo();
+    expect(engine.getDocument().features.get("feat_rect_1")?.bodyId).toBe(
+      "body_rect_1"
+    );
+  });
+
+  it("validates sketch extrude source entities and batch responses", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [0, 0]
+      }
+    ]);
+
+    const invalid = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          sketchId: "sketch_1",
+          entityId: "point_1",
+          depth: 1
+        }
+      ]
+    });
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_circle_1",
+          bodyId: "body_circle_1",
+          sketchId: "sketch_1",
+          entityId: "circle_1",
+          depth: 3
+        }
+      ]
+    });
+
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_SKETCH_PROFILE",
+        sketchId: "sketch_1",
+        sketchEntityId: "point_1"
+      }
+    });
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_1"],
+      createdBodyIds: ["body_circle_1"]
+    });
+    expect(engine.getDocument().features.size).toBe(0);
+  });
+
   it("keeps primitive feature summaries aligned with undo and redo", () => {
     const engine = new CadEngine();
 
@@ -3077,7 +3225,7 @@ describe("cad-core", () => {
     expect(restored.getRedoStack()).toEqual([]);
   });
 
-  it("round-trips sketch source data through project v2 JSON", () => {
+  it("round-trips sketch source data through project v3 JSON", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
@@ -3096,7 +3244,7 @@ describe("cad-core", () => {
     const restored = importCadProjectJson(JSON.stringify(project));
     const sketch = restored.getDocument().sketches.get("sketch_1");
 
-    expect(project.schemaVersion).toBe("web-cad.project.v2");
+    expect(project.schemaVersion).toBe("web-cad.project.v3");
     expect(project.document.sketches).toEqual([
       {
         id: "sketch_1",
@@ -3113,6 +3261,7 @@ describe("cad-core", () => {
         ]
       }
     ]);
+    expect(project.document.features).toEqual([]);
     expect(sketch?.entities.get("rect_1")).toEqual({
       id: "rect_1",
       kind: "rectangle",
@@ -3122,7 +3271,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("imports v1 project JSON through v2 migration compatibility", () => {
+  it("imports v1 project JSON through v3 migration compatibility", () => {
     const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
     const v1Project = {
       ...project,
@@ -3137,9 +3286,61 @@ describe("cad-core", () => {
     const restoredProject = parseCadProjectJson(JSON.stringify(v1Project));
     const restored = importCadProjectJson(JSON.stringify(v1Project));
 
-    expect(restoredProject.schemaVersion).toBe("web-cad.project.v2");
+    expect(restoredProject.schemaVersion).toBe("web-cad.project.v3");
     expect(restoredProject.document.sketches).toEqual([]);
+    expect(restoredProject.document.features).toEqual([]);
     expect(restored.getDocument().sketches.size).toBe(0);
+  });
+
+  it("round-trips sketch extrude source data through project v3 JSON", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_1",
+        bodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        depth: 6
+      }
+    ]);
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const restored = importCadProjectJson(JSON.stringify(project));
+    const feature = restored.getDocument().features.get("feat_circle_1");
+
+    expect(project.schemaVersion).toBe("web-cad.project.v3");
+    expect(project.document.features).toEqual([
+      {
+        id: "feat_circle_1",
+        kind: "extrude",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        profileKind: "circle",
+        depth: 6,
+        side: "positive",
+        bodyId: "body_circle_1"
+      }
+    ]);
+    expect(feature).toEqual({
+      id: "feat_circle_1",
+      kind: "extrude",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      profileKind: "circle",
+      depth: 6,
+      side: "positive",
+      bodyId: "body_circle_1"
+    });
   });
 
   it("round-trips converted unit values and undo history", () => {

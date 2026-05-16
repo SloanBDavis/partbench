@@ -1,4 +1,6 @@
 import type {
+  CadBodySnapshot,
+  CadFeatureSummary,
   DocumentUnits,
   ObjectMeasurementsSnapshot,
   SceneObject
@@ -35,6 +37,8 @@ import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function Inspector({
   disabled = false,
+  body,
+  feature,
   measurements,
   object,
   units,
@@ -44,6 +48,8 @@ export function Inspector({
   onDelete
 }: {
   readonly disabled?: boolean;
+  readonly body?: CadBodySnapshot;
+  readonly feature?: CadFeatureSummary;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
   readonly units: DocumentUnits;
@@ -55,64 +61,158 @@ export function Inspector({
   return (
     <aside className="inspector" aria-label="Inspector">
       <h2>Inspector</h2>
-      {!object ? (
-        <p className="empty-state">No selection</p>
-      ) : (
-        <>
-          <dl>
-            <div>
-              <dt>ID</dt>
-              <dd>{object.id}</dd>
-            </div>
-            <div>
-              <dt>Name</dt>
-              <dd>{getObjectDisplayName(object)}</dd>
-            </div>
-            <div>
-              <dt>Type</dt>
-              <dd>{formatObjectKind(object.kind)}</dd>
-            </div>
-            <div>
-              <dt>Dimensions</dt>
-              <dd>{formatDimensions(object, units)}</dd>
-            </div>
-            <div>
-              <dt>Translation</dt>
-              <dd>{formatVector(object.transform.translation)}</dd>
-            </div>
-            <div>
-              <dt>Rotation</dt>
-              <dd>{formatVector(object.transform.rotation)}</dd>
-            </div>
-            <div>
-              <dt>Scale</dt>
-              <dd>{formatVector(object.transform.scale)}</dd>
-            </div>
-          </dl>
-          <NameEditor
-            key={`${object.id}-${object.name ?? ""}`}
-            object={object}
-            disabled={disabled}
-            onApply={onApplyName}
-          />
-          <DimensionEditor
-            key={`${object.id}-${JSON.stringify(object.dimensions)}`}
-            object={object}
-            units={units}
-            disabled={disabled}
-            onApply={onApplyDimensions}
-          />
-          <MeasurementPanel measurements={measurements} units={units} />
-          <TransformEditor
-            key={`${object.id}-${object.transform.translation.join(",")}-${object.transform.rotation.join(",")}-${object.transform.scale.join(",")}`}
-            object={object}
-            disabled={disabled}
-            onApply={onApplyTransform}
-            onDelete={onDelete}
-          />
-        </>
-      )}
+      {renderInspectorSelection({
+        body,
+        disabled,
+        feature,
+        measurements,
+        object,
+        onApplyDimensions,
+        onApplyName,
+        onApplyTransform,
+        onDelete,
+        units
+      })}
     </aside>
+  );
+}
+
+function renderInspectorSelection(input: {
+  readonly body?: CadBodySnapshot;
+  readonly disabled: boolean;
+  readonly feature?: CadFeatureSummary;
+  readonly measurements?: ObjectMeasurementsSnapshot;
+  readonly object?: SceneObject;
+  readonly units: DocumentUnits;
+  readonly onApplyDimensions: (form: DimensionCommandForm) => void;
+  readonly onApplyName: (name: string) => void;
+  readonly onApplyTransform: (form: TransformCommandForm) => void;
+  readonly onDelete: () => void;
+}) {
+  if (input.body) {
+    return (
+      <BodyInspector
+        body={input.body}
+        feature={input.feature}
+        units={input.units}
+      />
+    );
+  }
+
+  if (!input.object) {
+    return <p className="empty-state">No selection</p>;
+  }
+
+  const object = input.object;
+
+  return (
+    <>
+      <dl>
+        <div>
+          <dt>ID</dt>
+          <dd>{object.id}</dd>
+        </div>
+        <div>
+          <dt>Name</dt>
+          <dd>{getObjectDisplayName(object)}</dd>
+        </div>
+        <div>
+          <dt>Type</dt>
+          <dd>{formatObjectKind(object.kind)}</dd>
+        </div>
+        <div>
+          <dt>Dimensions</dt>
+          <dd>{formatDimensions(object, input.units)}</dd>
+        </div>
+        <div>
+          <dt>Translation</dt>
+          <dd>{formatVector(object.transform.translation)}</dd>
+        </div>
+        <div>
+          <dt>Rotation</dt>
+          <dd>{formatVector(object.transform.rotation)}</dd>
+        </div>
+        <div>
+          <dt>Scale</dt>
+          <dd>{formatVector(object.transform.scale)}</dd>
+        </div>
+      </dl>
+      <NameEditor
+        key={`${object.id}-${object.name ?? ""}`}
+        object={object}
+        disabled={input.disabled}
+        onApply={input.onApplyName}
+      />
+      <DimensionEditor
+        key={`${object.id}-${JSON.stringify(object.dimensions)}`}
+        object={object}
+        units={input.units}
+        disabled={input.disabled}
+        onApply={input.onApplyDimensions}
+      />
+      <MeasurementPanel measurements={input.measurements} units={input.units} />
+      <TransformEditor
+        key={`${object.id}-${object.transform.translation.join(",")}-${object.transform.rotation.join(",")}-${object.transform.scale.join(",")}`}
+        object={object}
+        disabled={input.disabled}
+        onApply={input.onApplyTransform}
+        onDelete={input.onDelete}
+      />
+    </>
+  );
+}
+
+function BodyInspector({
+  body,
+  feature,
+  units
+}: {
+  readonly body: CadBodySnapshot;
+  readonly feature?: CadFeatureSummary;
+  readonly units: DocumentUnits;
+}) {
+  return (
+    <section className="command-card">
+      <div className="command-card-heading">
+        <h3>Body</h3>
+      </div>
+      <dl>
+        <div>
+          <dt>ID</dt>
+          <dd>{body.id}</dd>
+        </div>
+        <div>
+          <dt>Feature</dt>
+          <dd>{body.featureId}</dd>
+        </div>
+        <div>
+          <dt>Type</dt>
+          <dd>{feature?.kind === "extrude" ? "Sketch extrude" : body.kind}</dd>
+        </div>
+        {feature?.kind === "extrude" && (
+          <>
+            <div>
+              <dt>Profile</dt>
+              <dd>{feature.profileKind}</dd>
+            </div>
+            <div>
+              <dt>Sketch</dt>
+              <dd>{feature.sketchId}</dd>
+            </div>
+            <div>
+              <dt>Entity</dt>
+              <dd>{feature.entityId}</dd>
+            </div>
+            <div>
+              <dt>Depth</dt>
+              <dd>
+                {feature.depth} {units}
+              </dd>
+            </div>
+          </>
+        )}
+      </dl>
+    </section>
   );
 }
 

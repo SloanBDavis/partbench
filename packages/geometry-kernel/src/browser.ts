@@ -21,8 +21,10 @@ import {
   type GeometryKernelSuccessResponse,
   type GeometryKernelVersion,
   type GeometryKernelErrorResponse,
+  type GeometryKernelExtrudeProfileKind,
   type SerializableMeshData,
   type SphereGeometryDimensions,
+  type TessellateExtrudeRequest,
   type TessellateBoxRequest,
   type TessellateConeRequest,
   type TessellateCylinderRequest,
@@ -32,12 +34,15 @@ import {
   type TessellationOptions
 } from "./kernel";
 
+type BrowserOcctPrimitive = Exclude<GeometryKernelPrimitive, "extrude">;
+
 export type {
   BoxGeometryDimensions,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
   GeometryKernelError,
   GeometryKernelErrorCode,
+  GeometryKernelExtrudeProfileKind,
   GeometryKernelOp,
   GeometryKernelPrimitive,
   GeometryKernelRequest,
@@ -50,6 +55,7 @@ export type {
   TessellateBoxRequest,
   TessellateConeRequest,
   TessellateCylinderRequest,
+  TessellateExtrudeRequest,
   TessellateSphereRequest,
   TessellateTorusRequest,
   TorusGeometryDimensions,
@@ -113,7 +119,7 @@ export async function executeTimedBrowserGeometryKernelRequest(
       | (SphereGeometryDimensions & TessellationOptions)
       | (ConeGeometryDimensions & TessellationOptions)
       | (TorusGeometryDimensions & TessellationOptions),
-    primitive: GeometryKernelPrimitive
+    primitive: BrowserOcctPrimitive
   ) {
     const occtLoadStart = performance.now();
     let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;

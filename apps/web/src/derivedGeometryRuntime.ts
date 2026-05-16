@@ -50,6 +50,25 @@ export interface DerivedGeometryTorusInput {
   readonly transform: RenderTransform;
 }
 
+export interface DerivedGeometryExtrudeInput {
+  readonly id: string;
+  readonly sketchPlane: "XY" | "XZ" | "YZ";
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: readonly [number, number];
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: readonly [number, number];
+        readonly radius: number;
+      };
+  readonly depth: number;
+  readonly transform: RenderTransform;
+}
+
 export interface DerivedGeometryMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
@@ -88,6 +107,9 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedGeometryResult>;
   tessellateTorus(
     input: DerivedGeometryTorusInput
+  ): Promise<DerivedGeometryResult>;
+  tessellateExtrude(
+    input: DerivedGeometryExtrudeInput
   ): Promise<DerivedGeometryResult>;
   dispose(): void;
 }

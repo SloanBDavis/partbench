@@ -21,6 +21,8 @@ export type CadRequestIntent = CadBatchMode;
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
 export type SketchPlane = "XY" | "XZ" | "YZ";
+export type FeatureExtrudeProfileKind = "rectangle" | "circle";
+export type FeatureExtrudeSide = "positive";
 
 export interface CadActorMetadata {
   readonly type: CadActorType;
@@ -93,7 +95,8 @@ export type CadOp =
   | SketchAddRectangleOp
   | SketchAddCircleOp
   | SketchUpdateEntityOp
-  | SketchDeleteEntityOp;
+  | SketchDeleteEntityOp
+  | FeatureExtrudeOp;
 
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
@@ -250,6 +253,17 @@ export interface SketchDeleteEntityOp {
   readonly entityId: SketchEntityId;
 }
 
+export interface FeatureExtrudeOp {
+  readonly op: "feature.extrude";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly depth: number;
+  readonly side?: FeatureExtrudeSide;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
@@ -263,6 +277,21 @@ export interface CadSketchEntityRef {
   readonly sketchId: SketchId;
   readonly id: SketchEntityId;
   readonly kind: SketchEntityKind;
+}
+
+export interface CadFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "extrude";
+  readonly bodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+}
+
+export interface CadBodyRef {
+  readonly id: BodyId;
+  readonly kind: "solid";
+  readonly featureId: FeatureId;
 }
 
 export interface DocumentSemanticDiff {
@@ -283,12 +312,22 @@ export interface SketchSemanticDiff {
   readonly entitiesDeleted?: readonly CadSketchEntityRef[];
 }
 
+export interface FeatureSemanticDiff {
+  readonly created?: readonly CadFeatureRef[];
+  readonly modified?: readonly CadFeatureRef[];
+  readonly deleted?: readonly CadFeatureRef[];
+  readonly bodiesCreated?: readonly CadBodyRef[];
+  readonly bodiesModified?: readonly CadBodyRef[];
+  readonly bodiesDeleted?: readonly CadBodyRef[];
+}
+
 export interface SemanticDiff {
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
   readonly deleted: readonly CadObjectRef[];
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
+  readonly features?: FeatureSemanticDiff;
 }
 
 export type CadTransactionStatus = "committed" | "undone";
@@ -314,9 +353,15 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_NOT_FOUND"
   | "SKETCH_ENTITY_ALREADY_EXISTS"
   | "SKETCH_ENTITY_NOT_FOUND"
+  | "SKETCH_IN_USE"
+  | "SKETCH_ENTITY_IN_USE"
   | "INVALID_SKETCH_NAME"
   | "INVALID_SKETCH_PLANE"
   | "INVALID_SKETCH_ENTITY"
+  | "FEATURE_ALREADY_EXISTS"
+  | "BODY_ALREADY_EXISTS"
+  | "INVALID_FEATURE"
+  | "UNSUPPORTED_SKETCH_PROFILE"
   | "INVALID_ACTOR"
   | "INVALID_AUDIT";
 
@@ -328,6 +373,8 @@ export interface CadBatchValidationError {
   readonly objectId?: ObjectId;
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -353,6 +400,12 @@ export interface CadBatchSuccessResponse {
   readonly createdSketchEntityIds?: readonly SketchEntityId[];
   readonly modifiedSketchEntityIds?: readonly SketchEntityId[];
   readonly deletedSketchEntityIds?: readonly SketchEntityId[];
+  readonly createdFeatureIds?: readonly FeatureId[];
+  readonly modifiedFeatureIds?: readonly FeatureId[];
+  readonly deletedFeatureIds?: readonly FeatureId[];
+  readonly createdBodyIds?: readonly BodyId[];
+  readonly modifiedBodyIds?: readonly BodyId[];
+  readonly deletedBodyIds?: readonly BodyId[];
   readonly warnings: readonly string[];
   readonly transactionId?: TransactionId;
   readonly actor?: CadActorMetadata;
@@ -373,6 +426,12 @@ export interface CadBatchErrorResponse {
   readonly createdSketchEntityIds?: readonly SketchEntityId[];
   readonly modifiedSketchEntityIds?: readonly SketchEntityId[];
   readonly deletedSketchEntityIds?: readonly SketchEntityId[];
+  readonly createdFeatureIds?: readonly FeatureId[];
+  readonly modifiedFeatureIds?: readonly FeatureId[];
+  readonly deletedFeatureIds?: readonly FeatureId[];
+  readonly createdBodyIds?: readonly BodyId[];
+  readonly modifiedBodyIds?: readonly BodyId[];
+  readonly deletedBodyIds?: readonly BodyId[];
   readonly warnings: readonly string[];
 }
 
@@ -530,6 +589,18 @@ export interface SketchSnapshot {
   readonly entities: readonly SketchEntitySnapshot[];
 }
 
+export interface ExtrudeFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "extrude";
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
+  readonly bodyId: BodyId;
+}
+
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
   readonly max: Vec3;
@@ -593,6 +664,30 @@ export interface CadPrimitiveFeatureSummary {
   readonly source: CadPrimitiveFeatureSource;
 }
 
+export interface CadExtrudeFeatureSource {
+  readonly type: "sketchEntity";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+}
+
+export interface CadExtrudeFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "extrude";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
+  readonly source: CadExtrudeFeatureSource;
+}
+
+export type CadFeatureSummary =
+  | CadPrimitiveFeatureSummary
+  | CadExtrudeFeatureSummary;
+
 export interface CadPartSource {
   readonly type: "defaultScenePart";
 }
@@ -608,19 +703,29 @@ export interface CadPartSnapshot {
   readonly sketchIds: readonly SketchId[];
 }
 
-export interface CadBodySource {
+export interface CadPrimitiveBodySource {
   readonly type: "primitiveFeature";
   readonly featureId: FeatureId;
   readonly objectId: ObjectId;
 }
+
+export interface CadSketchExtrudeBodySource {
+  readonly type: "sketchExtrudeFeature";
+  readonly featureId: FeatureId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+}
+
+export type CadBodySource = CadPrimitiveBodySource | CadSketchExtrudeBodySource;
 
 export interface CadBodySnapshot {
   readonly id: BodyId;
   readonly kind: "solid";
   readonly partId: PartId;
   readonly featureId: FeatureId;
-  readonly objectId: ObjectId;
-  readonly primitive: CadObjectKind;
+  readonly objectId?: ObjectId;
+  readonly primitive?: CadObjectKind;
   readonly name?: string;
   readonly source: CadBodySource;
 }
@@ -640,6 +745,8 @@ export interface CadOperationSummary {
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly sketchEntityKind?: SketchEntityKind;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
 }
 
 export interface CadSemanticDiffSummary {
@@ -651,6 +758,7 @@ export interface CadSemanticDiffSummary {
   readonly deletedCount: number;
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
+  readonly features?: FeatureSemanticDiff;
 }
 
 export interface CadTransactionHistoryEntry {
@@ -698,7 +806,7 @@ export interface ProjectFeaturesQueryResponse {
   readonly query: "project.features";
   readonly cadOpsVersion: CadOpsVersion;
   readonly featureCount: number;
-  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly features: readonly CadFeatureSummary[];
 }
 
 export interface ProjectStructureQueryResponse {
@@ -709,7 +817,7 @@ export interface ProjectStructureQueryResponse {
   readonly featureCount: number;
   readonly bodyCount: number;
   readonly parts: readonly CadPartSnapshot[];
-  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
 }

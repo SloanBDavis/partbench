@@ -4,6 +4,7 @@ import type {
   CadBatch,
   CadBatchValidationError,
   CadBodySnapshot,
+  CadExtrudeFeatureSummary,
   CadObjectModelSource,
   CadPartSnapshot,
   CadPrimitiveFeatureSummary,
@@ -144,6 +145,16 @@ describe("cad-protocol", () => {
       {
         op: "sketch.delete",
         id: "sketch_1"
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_1",
+        bodyId: "body_1",
+        name: "Pad",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 5,
+        side: "positive"
       }
     ];
 
@@ -170,7 +181,8 @@ describe("cad-protocol", () => {
       "sketch.updateEntity",
       "sketch.deleteEntity",
       "sketch.rename",
-      "sketch.delete"
+      "sketch.delete",
+      "feature.extrude"
     ]);
     expect(ops[0]).toMatchObject({
       op: "document.updateUnits",
@@ -316,6 +328,32 @@ describe("cad-protocol", () => {
       id: "feature:torus_1",
       kind: "primitive",
       objectId: "torus_1"
+    });
+  });
+
+  it("types sketch extrude feature summaries", () => {
+    const feature: CadExtrudeFeatureSummary = {
+      id: "feat_1",
+      kind: "extrude",
+      partId: "part:default",
+      bodyId: "body_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle",
+      depth: 5,
+      side: "positive",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_1",
+        entityId: "rect_1"
+      }
+    };
+
+    expect(feature).toMatchObject({
+      id: "feat_1",
+      kind: "extrude",
+      bodyId: "body_1",
+      profileKind: "rectangle"
     });
   });
 

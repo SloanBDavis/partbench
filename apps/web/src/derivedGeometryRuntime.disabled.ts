@@ -17,6 +17,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateTorus() {
       throw new Error("Derived geometry runtime is disabled.");
     },
+    async tessellateExtrude() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
     dispose() {}
   };
 }

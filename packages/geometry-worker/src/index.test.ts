@@ -4,6 +4,7 @@ import {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExtrudeTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
@@ -117,6 +118,39 @@ describe("geometry-worker", () => {
       version: "geometry-kernel.v1",
       op: "geometry.tessellateTorus",
       dimensions: { majorRadius: 3, minorRadius: 0.5 }
+    });
+  });
+
+  it("creates a typed sketch extrude tessellation worker request", () => {
+    expect(
+      createExtrudeTessellationWorkerRequest({
+        id: "worker_req_extrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 3
+        },
+        depth: 5
+      })
+    ).toEqual({
+      id: "worker_req_extrude",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payload: {
+        id: "worker_req_extrude:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 3
+        },
+        depth: 5
+      }
     });
   });
 
@@ -284,6 +318,43 @@ describe("geometry-worker", () => {
     expect(torus.response.mesh.primitive).toBe("torus");
     expect(cone.response.mesh.vertexCount).toBeGreaterThan(0);
     expect(torus.response.mesh.vertexCount).toBeGreaterThan(0);
+  });
+
+  it("tessellates a sketch extrude asynchronously through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExtrudeTessellationWorkerRequest({
+        id: "worker_req_extrude",
+        payloadId: "geometry_req_extrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 2
+        },
+        depth: 5
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_extrude",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payloadId: "geometry_req_extrude",
+      response: {
+        ok: true,
+        id: "geometry_req_extrude",
+        op: "geometry.tessellateExtrude"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("extrude");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
   });
 
   it("returns structured kernel validation errors without transferables", async () => {

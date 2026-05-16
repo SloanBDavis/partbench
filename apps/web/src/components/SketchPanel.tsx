@@ -5,7 +5,11 @@ import type {
   SketchPlane,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
-import type { SketchCreateForm, SketchEntityForm } from "../cadCommands";
+import type {
+  FeatureExtrudeForm,
+  SketchCreateForm,
+  SketchEntityForm
+} from "../cadCommands";
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
@@ -23,6 +27,11 @@ export interface SketchPanelProps {
     entity: SketchEntitySnapshot
   ) => void;
   readonly onDeleteEntity: (sketchId: string, entityId: string) => void;
+  readonly onExtrudeEntity: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureExtrudeForm
+  ) => void;
 }
 
 const defaultCreateForm: SketchCreateForm = {
@@ -42,6 +51,13 @@ const defaultEntityForm: SketchEntityForm = {
   radius: 0.5
 };
 
+const defaultExtrudeForm: FeatureExtrudeForm = {
+  id: "",
+  bodyId: "",
+  name: "",
+  depth: 1
+};
+
 export function SketchPanel({
   disabled,
   sketches,
@@ -50,7 +66,8 @@ export function SketchPanel({
   onDeleteSketch,
   onAddEntity,
   onUpdateEntity,
-  onDeleteEntity
+  onDeleteEntity,
+  onExtrudeEntity
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
     sketches[0]?.id
@@ -78,6 +95,18 @@ export function SketchPanel({
       ? renameDraft.name
       : (selectedSketch?.name ?? "");
   const [editingEntityId, setEditingEntityId] = useState<string | undefined>();
+  const [extrudeEntityId, setExtrudeEntityId] = useState<string | undefined>();
+  const [extrudeForm, setExtrudeForm] =
+    useState<FeatureExtrudeForm>(defaultExtrudeForm);
+  const extrudableEntities =
+    selectedSketch?.entities.filter(
+      (entity) => entity.kind === "rectangle" || entity.kind === "circle"
+    ) ?? [];
+  const effectiveExtrudeEntityId =
+    extrudeEntityId &&
+    extrudableEntities.some((entity) => entity.id === extrudeEntityId)
+      ? extrudeEntityId
+      : extrudableEntities[0]?.id;
 
   function editEntity(entity: SketchEntitySnapshot) {
     setEditingEntityId(entity.id);
@@ -246,6 +275,16 @@ export function SketchPanel({
                       >
                         Edit
                       </button>
+                      {(entity.kind === "rectangle" ||
+                        entity.kind === "circle") && (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setExtrudeEntityId(entity.id)}
+                        >
+                          Use for extrude
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="danger"
@@ -260,6 +299,95 @@ export function SketchPanel({
                   </li>
                 ))}
               </ul>
+
+              {extrudableEntities.length > 0 && (
+                <section className="entity-editor" aria-label="Extrude feature">
+                  <div className="field-grid two">
+                    <label>
+                      Profile
+                      <select
+                        value={effectiveExtrudeEntityId}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          setExtrudeEntityId(event.currentTarget.value)
+                        }
+                      >
+                        {extrudableEntities.map((entity) => (
+                          <option key={entity.id} value={entity.id}>
+                            {entity.id} / {entity.kind}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <NumberField
+                      disabled={disabled}
+                      label="Depth"
+                      value={extrudeForm.depth}
+                      onChange={(depth) =>
+                        setExtrudeForm({ ...extrudeForm, depth })
+                      }
+                    />
+                  </div>
+                  <div className="field-grid two">
+                    <label>
+                      Optional feature ID
+                      <input
+                        type="text"
+                        value={extrudeForm.id}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          setExtrudeForm({
+                            ...extrudeForm,
+                            id: event.currentTarget.value
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Optional body ID
+                      <input
+                        type="text"
+                        value={extrudeForm.bodyId}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          setExtrudeForm({
+                            ...extrudeForm,
+                            bodyId: event.currentTarget.value
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Optional name
+                    <input
+                      type="text"
+                      value={extrudeForm.name}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        setExtrudeForm({
+                          ...extrudeForm,
+                          name: event.currentTarget.value
+                        })
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={disabled || !effectiveExtrudeEntityId}
+                    onClick={() =>
+                      effectiveExtrudeEntityId &&
+                      onExtrudeEntity(
+                        selectedSketch.id,
+                        effectiveExtrudeEntityId,
+                        extrudeForm
+                      )
+                    }
+                  >
+                    Create extrude
+                  </button>
+                </section>
+              )}
             </div>
           )}
         </div>

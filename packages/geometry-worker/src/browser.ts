@@ -20,6 +20,7 @@ export {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExtrudeTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
@@ -146,7 +147,10 @@ function getUnsupportedPrimitiveMessage(
   const kind = request.kind as string;
   const op = request.payload.op as string;
 
-  if (kind !== "geometry-worker.tessellatePrimitive") {
+  if (
+    kind !== "geometry-worker.tessellatePrimitive" &&
+    kind !== "geometry-worker.tessellateFeature"
+  ) {
     return `Unsupported geometry worker request kind: ${kind}.`;
   }
 
@@ -155,7 +159,8 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.tessellateCylinder" &&
     op !== "geometry.tessellateSphere" &&
     op !== "geometry.tessellateCone" &&
-    op !== "geometry.tessellateTorus"
+    op !== "geometry.tessellateTorus" &&
+    op !== "geometry.tessellateExtrude"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;
   }

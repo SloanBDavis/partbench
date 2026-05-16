@@ -3,10 +3,13 @@ import {
   CadEngine,
   exportCadProject,
   exportCadProjectJson,
+  type CadBodySnapshot,
   type CadDocument,
+  type CadFeatureSummary,
   type CadTransactionHistoryEntry,
   type ObjectMeasurementsSnapshot,
-  type SceneObject
+  type SceneObject,
+  type SketchSnapshot
 } from "@web-cad/cad-core";
 import type {
   CadBatchMode,
@@ -33,6 +36,7 @@ import {
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
   buildDeleteSketchOp,
+  buildFeatureExtrudeOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildRenameSketchOp,
@@ -47,6 +51,7 @@ import {
   WEB_UI_ACTOR,
   type BatchOperationForm,
   type DimensionCommandForm,
+  type FeatureExtrudeForm,
   type PrimitiveCommandForm,
   type SketchCreateForm,
   type SketchEntityForm,
@@ -63,8 +68,11 @@ import { ViewportCanvas } from "./components/ViewportCanvas";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createEmptyDerivedGeometrySnapshot,
+  createPrimitiveDerivedGeometrySource,
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
+  type DerivedExtrudeGeometrySource,
+  type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import {
@@ -189,6 +197,95 @@ function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
     : [];
 }
 
+function readProjectStructure(): {
+  readonly features: readonly CadFeatureSummary[];
+  readonly bodies: readonly CadBodySnapshot[];
+} {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+
+  return response.ok && response.query === "project.structure"
+    ? { features: response.features, bodies: response.bodies }
+    : { features: [], bodies: [] };
+}
+
+function createDerivedGeometrySourcesFromDocument(
+  document: CadDocument,
+  features: readonly CadFeatureSummary[]
+): readonly DerivedGeometrySource[] {
+  const sketches = [...document.sketches.values()].map((sketch) => ({
+    id: sketch.id,
+    name: sketch.name,
+    plane: sketch.plane,
+    entities: [...sketch.entities.values()]
+  }));
+
+  return [
+    ...[...document.objects.values()].map(createPrimitiveDerivedGeometrySource),
+    ...createExtrudeDerivedGeometrySources(features, sketches)
+  ];
+}
+
+function createExtrudeDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[]
+): readonly DerivedExtrudeGeometrySource[] {
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+        feature.kind === "extrude"
+    )
+    .flatMap((feature) => {
+      const sketch = sketches.find(
+        (candidate) => candidate.id === feature.sketchId
+      );
+      const entity = sketch?.entities.find(
+        (candidate) => candidate.id === feature.entityId
+      );
+
+      if (!sketch || !entity) {
+        return [];
+      }
+
+      if (entity.kind === "rectangle") {
+        const source: DerivedExtrudeGeometrySource = {
+          id: feature.bodyId,
+          kind: "extrude",
+          sketchPlane: sketch.plane,
+          profile: {
+            kind: entity.kind,
+            center: entity.center,
+            width: entity.width,
+            height: entity.height
+          },
+          depth: feature.depth
+        };
+
+        return [source];
+      }
+
+      if (entity.kind === "circle") {
+        const source: DerivedExtrudeGeometrySource = {
+          id: feature.bodyId,
+          kind: "extrude",
+          sketchPlane: sketch.plane,
+          profile: {
+            kind: entity.kind,
+            center: entity.center,
+            radius: entity.radius
+          },
+          depth: feature.depth
+        };
+
+        return [source];
+      }
+
+      return [];
+    });
+}
+
 export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
@@ -252,8 +349,36 @@ export function App() {
       })),
     [document]
   );
+  const projectStructure = readProjectStructure();
+  const sketchExtrudeBodies = useMemo(
+    () =>
+      projectStructure.bodies.filter(
+        (body) => body.source.type === "sketchExtrudeFeature"
+      ),
+    [projectStructure.bodies]
+  );
+  const extrudeSources = useMemo(
+    () =>
+      createExtrudeDerivedGeometrySources(projectStructure.features, sketches),
+    [projectStructure.features, sketches]
+  );
+  const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
+    () => [
+      ...sceneObjects.map(createPrimitiveDerivedGeometrySource),
+      ...extrudeSources
+    ],
+    [extrudeSources, sceneObjects]
+  );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
+    : undefined;
+  const selectedBody = selectedId
+    ? projectStructure.bodies.find((body) => body.id === selectedId)
+    : undefined;
+  const selectedFeature = selectedBody
+    ? projectStructure.features.find(
+        (feature) => feature.id === selectedBody.featureId
+      )
     : undefined;
   const transactionHistory = readTransactionHistory();
   const selectedMeasurements = useMemo<
@@ -272,27 +397,40 @@ export function App() {
       ? response.measurements
       : undefined;
   }, [selectedObject]);
-  const derivedGeometryByObjectId = useMemo(
+  const derivedGeometryBySourceId = useMemo(
     () =>
-      new Map(derivedGeometry.entries.map((entry) => [entry.objectId, entry])),
+      new Map(
+        derivedGeometry.entries.map((entry) => [
+          entry.sourceId ?? entry.objectId,
+          entry
+        ])
+      ),
     [derivedGeometry]
   );
   const selectedGeometryEntry = selectedId
-    ? derivedGeometryByObjectId.get(selectedId)
+    ? derivedGeometryBySourceId.get(selectedId)
     : undefined;
   const viewportStatusTitle = selectedObject
     ? `${getObjectDisplayName(selectedObject)} (${formatObjectKind(selectedObject.kind)})`
-    : "No selection";
-  const viewportStatusDetail = selectedObject
-    ? derivedGeometryEnabled
-      ? getDerivedGeometryStatusLabel(selectedGeometryEntry)
-      : "Primitive fallback"
-    : derivedGeometryEnabled
-      ? "Select an object"
-      : "Primitive fallback mode";
+    : selectedBody
+      ? `${selectedBody.name ?? selectedBody.id} (Body)`
+      : "No selection";
+  const viewportStatusDetail =
+    selectedObject || selectedBody
+      ? derivedGeometryEnabled
+        ? getDerivedGeometryStatusLabel(selectedGeometryEntry)
+        : "Primitive fallback"
+      : derivedGeometryEnabled
+        ? "Select an object"
+        : "Primitive fallback mode";
   const renderScene = useMemo(
-    () => createRenderSceneInputs(sceneObjects, derivedGeometryByObjectId),
-    [derivedGeometryByObjectId, sceneObjects]
+    () =>
+      createRenderSceneInputs(
+        sceneObjects,
+        derivedGeometryBySourceId,
+        extrudeSources
+      ),
+    [derivedGeometryBySourceId, extrudeSources, sceneObjects]
   );
   const currentProjectSummary = summarizeCadProject(exportCadProject(engine));
   const projectJsonPreview = useMemo(
@@ -313,15 +451,18 @@ export function App() {
       return;
     }
 
-    getDerivedGeometryService().reconcile(sceneObjects);
-  }, [getDerivedGeometryService, sceneObjects]);
+    getDerivedGeometryService().reconcile(derivedGeometrySources);
+  }, [derivedGeometrySources, getDerivedGeometryService]);
 
   function syncDocument(nextSelectedId = selectedId) {
     const nextDocument = engine.getDocument();
-    reconcileDerivedGeometry(nextDocument);
+    const nextStructure = readProjectStructure();
+    reconcileDerivedGeometry(nextDocument, nextStructure.features);
     setDocument(nextDocument);
     setSelectedId(
-      nextSelectedId && nextDocument.objects.has(nextSelectedId)
+      nextSelectedId &&
+        (nextDocument.objects.has(nextSelectedId) ||
+          nextStructure.bodies.some((body) => body.id === nextSelectedId))
         ? nextSelectedId
         : undefined
     );
@@ -331,12 +472,17 @@ export function App() {
     setSelectedId(objectId);
   }
 
-  function reconcileDerivedGeometry(nextDocument: CadDocument) {
+  function reconcileDerivedGeometry(
+    nextDocument: CadDocument,
+    nextFeatures = readProjectStructure().features
+  ) {
     if (!derivedGeometryEnabled) {
       return;
     }
 
-    getDerivedGeometryService().reconcile([...nextDocument.objects.values()]);
+    getDerivedGeometryService().reconcile(
+      createDerivedGeometrySourcesFromDocument(nextDocument, nextFeatures)
+    );
   }
 
   function refreshDerivedGeometry() {
@@ -344,7 +490,7 @@ export function App() {
       return;
     }
 
-    getDerivedGeometryService().refresh(sceneObjects);
+    getDerivedGeometryService().refresh(derivedGeometrySources);
   }
 
   async function commitOps(
@@ -538,6 +684,17 @@ export function App() {
     );
   }
 
+  async function extrudeSketchEntity(
+    sketchId: string,
+    entityId: string,
+    form: FeatureExtrudeForm
+  ) {
+    await commitOps(
+      [buildFeatureExtrudeOp(sketchId, entityId, form)],
+      (response) => response.createdBodyIds?.[0] ?? selectedId
+    );
+  }
+
   function undo() {
     engine.undo();
     syncDocument();
@@ -641,7 +798,7 @@ export function App() {
   }
 
   function renderObjectButton(object: SceneObject) {
-    const geometryEntry = derivedGeometryByObjectId.get(object.id);
+    const geometryEntry = derivedGeometryBySourceId.get(object.id);
 
     return (
       <button
@@ -665,6 +822,40 @@ export function App() {
           </small>
         )}
         {object.id === selectedId && (
+          <small className="selected-status">Selected</small>
+        )}
+      </button>
+    );
+  }
+
+  function renderBodyButton(body: CadBodySnapshot) {
+    const geometryEntry = derivedGeometryBySourceId.get(body.id);
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === body.featureId
+    );
+
+    return (
+      <button
+        type="button"
+        className={body.id === selectedId ? "selected" : ""}
+        onClick={() => selectObject(body.id)}
+      >
+        <span className="object-id">{body.name ?? body.id}</span>
+        <strong>{feature?.kind === "extrude" ? "Extrude body" : "Body"}</strong>
+        <small className="object-meta">Feature {body.featureId}</small>
+        {feature?.kind === "extrude" && (
+          <small className="object-meta">
+            {feature.profileKind} / depth {feature.depth} {document.units}
+          </small>
+        )}
+        {derivedGeometryEnabled && (
+          <small
+            className={`mesh-status geometry-${geometryEntry?.status ?? "idle"}`}
+          >
+            {getDerivedGeometryStatusLabel(geometryEntry)}
+          </small>
+        )}
+        {body.id === selectedId && (
           <small className="selected-status">Selected</small>
         )}
       </button>
@@ -791,6 +982,22 @@ export function App() {
             )}
           </section>
 
+          <section>
+            <div className="section-heading">
+              <h2>Bodies</h2>
+              <span>{sketchExtrudeBodies.length}</span>
+            </div>
+            {sketchExtrudeBodies.length === 0 ? (
+              <p className="empty-state">No bodies</p>
+            ) : (
+              <ul>
+                {sketchExtrudeBodies.map((body) => (
+                  <li key={body.id}>{renderBodyButton(body)}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <SketchPanel
             disabled={commandPending}
             sketches={sketches}
@@ -807,6 +1014,9 @@ export function App() {
             }
             onDeleteEntity={(sketchId, entityId) =>
               void deleteSketchEntity(sketchId, entityId)
+            }
+            onExtrudeEntity={(sketchId, entityId, form) =>
+              void extrudeSketchEntity(sketchId, entityId, form)
             }
           />
 
@@ -868,6 +1078,8 @@ export function App() {
         <Inspector
           disabled={commandPending}
           measurements={selectedMeasurements}
+          body={selectedBody}
+          feature={selectedFeature}
           object={selectedObject}
           units={document.units}
           onApplyDimensions={(form) => void updateSelectedDimensions(form)}

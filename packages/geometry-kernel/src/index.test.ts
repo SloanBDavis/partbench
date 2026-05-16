@@ -148,6 +148,48 @@ describe("geometry-kernel facade", () => {
     expect(torus.mesh.triangleCount).toBeGreaterThan(0);
   });
 
+  it("tessellates rectangle and circle extrudes through the isolated OCCT WASM adapter", async () => {
+    const rectangle = await executeGeometryKernelRequest({
+      id: "geometry_req_rect_extrude",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateExtrude",
+      sketchPlane: "XY",
+      profile: {
+        kind: "rectangle",
+        center: [1, 2],
+        width: 4,
+        height: 3
+      },
+      depth: 5
+    });
+    const circle = await executeGeometryKernelRequest({
+      id: "geometry_req_circle_extrude",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateExtrude",
+      sketchPlane: "XZ",
+      profile: {
+        kind: "circle",
+        center: [0, 0],
+        radius: 2
+      },
+      depth: 6
+    });
+
+    expect(rectangle.ok).toBe(true);
+    expect(circle.ok).toBe(true);
+
+    if (!rectangle.ok || !circle.ok) {
+      throw new Error("Expected sketch extrude tessellation to succeed.");
+    }
+
+    expect(rectangle.mesh.primitive).toBe("extrude");
+    expect(rectangle.mesh.vertexCount).toBeGreaterThan(0);
+    expect(rectangle.mesh.triangleCount).toBeGreaterThan(0);
+    expect(circle.mesh.primitive).toBe("extrude");
+    expect(circle.mesh.vertexCount).toBeGreaterThan(0);
+    expect(circle.mesh.triangleCount).toBeGreaterThan(0);
+  });
+
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_bad_dimensions",

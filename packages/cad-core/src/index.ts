@@ -6,7 +6,10 @@ import type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadBodyRef,
   CadBodySnapshot,
+  CadFeatureRef,
+  CadFeatureSummary,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
@@ -42,6 +45,11 @@ import type {
   TorusDimensions,
   BodyId,
   CadTransactionAuditMetadata,
+  ExtrudeFeatureSnapshot,
+  FeatureId,
+  FeatureExtrudeProfileKind,
+  FeatureExtrudeSide,
+  FeatureSemanticDiff,
   TransactionId,
   Transform,
   Vec2,
@@ -56,7 +64,10 @@ export type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadBodyRef,
   CadBodySnapshot,
+  CadFeatureRef,
+  CadFeatureSummary,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
@@ -73,6 +84,11 @@ export type {
   CadTransactionHistoryEntry,
   CadTransactionStatus,
   CadTransactionAuditMetadata,
+  ExtrudeFeatureSnapshot,
+  FeatureId,
+  FeatureExtrudeProfileKind,
+  FeatureExtrudeSide,
+  FeatureSemanticDiff,
   ConeDimensions,
   CylinderDimensions,
   DocumentSemanticDiff,
@@ -159,9 +175,24 @@ export interface Sketch {
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntity>;
 }
 
+export type Feature = ExtrudeFeature;
+
+export interface ExtrudeFeature {
+  readonly id: FeatureId;
+  readonly kind: "extrude";
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
+  readonly bodyId: BodyId;
+}
+
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
+  readonly features: ReadonlyMap<FeatureId, Feature>;
   readonly units: DocumentUnits;
 }
 
@@ -183,6 +214,8 @@ export interface CadEngineOptions {
   readonly nextObjectNumber?: number;
   readonly nextSketchNumber?: number;
   readonly nextSketchEntityNumber?: number;
+  readonly nextFeatureNumber?: number;
+  readonly nextBodyNumber?: number;
 }
 
 export interface CadExecutionOptions {
@@ -194,9 +227,12 @@ export interface CadDocumentSnapshot {
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
+  readonly features: readonly ExtrudeFeatureSnapshot[];
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
+  readonly nextFeatureNumber: number;
+  readonly nextBodyNumber: number;
 }
 
 export interface CadWorkerRequest {
@@ -219,10 +255,12 @@ export interface MockCadCommandWorkerOptions {
 }
 
 export const CAD_PROJECT_FORMAT_VERSION_V1 = "web-cad.project.v1";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v2";
+export const CAD_PROJECT_FORMAT_VERSION_V2 = "web-cad.project.v2";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v3";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
+  | typeof CAD_PROJECT_FORMAT_VERSION_V2
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -236,6 +274,7 @@ export type CadProjectImportErrorCode =
   | "INVALID_SKETCH"
   | "INVALID_SKETCH_NAME"
   | "INVALID_SKETCH_ENTITY"
+  | "INVALID_FEATURE"
   | "INVALID_DIMENSIONS"
   | "INVALID_TRANSFORM"
   | "INVALID_TRANSACTION"
@@ -276,6 +315,8 @@ interface OperationRunResult {
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
+  readonly nextFeatureNumber: number;
+  readonly nextBodyNumber: number;
 }
 
 export const corePackage: PackageInfo = {
@@ -298,11 +339,13 @@ export function createDefaultTransform(): Transform {
 export function createCadDocument(
   objects: Iterable<readonly [ObjectId, SceneObject]> = [],
   units: DocumentUnits = DEFAULT_DOCUMENT_UNITS,
-  sketches: Iterable<readonly [SketchId, Sketch]> = []
+  sketches: Iterable<readonly [SketchId, Sketch]> = [],
+  features: Iterable<readonly [FeatureId, Feature]> = []
 ): CadDocument {
   return {
     objects: new Map(objects),
     sketches: new Map(sketches),
+    features: new Map(features),
     units
   };
 }
@@ -314,6 +357,8 @@ export class CadEngine {
   #nextObjectNumber = 1;
   #nextSketchNumber = 1;
   #nextSketchEntityNumber = 1;
+  #nextFeatureNumber = 1;
+  #nextBodyNumber = 1;
   #nextTransactionNumber = 1;
 
   constructor(
@@ -327,6 +372,10 @@ export class CadEngine {
       options.nextSketchNumber ?? inferNextSketchNumber(document);
     this.#nextSketchEntityNumber =
       options.nextSketchEntityNumber ?? inferNextSketchEntityNumber(document);
+    this.#nextFeatureNumber =
+      options.nextFeatureNumber ?? inferNextFeatureNumber(document);
+    this.#nextBodyNumber =
+      options.nextBodyNumber ?? inferNextBodyNumber(document);
   }
 
   getDocument(): CadDocument {
@@ -356,6 +405,8 @@ export class CadEngine {
     this.#nextSketchNumber = normalizedProject.document.nextSketchNumber;
     this.#nextSketchEntityNumber =
       normalizedProject.document.nextSketchEntityNumber;
+    this.#nextFeatureNumber = normalizedProject.document.nextFeatureNumber;
+    this.#nextBodyNumber = normalizedProject.document.nextBodyNumber;
     this.#nextTransactionNumber = inferNextTransactionNumber([
       ...normalizedProject.history,
       ...normalizedProject.redoStack
@@ -373,7 +424,9 @@ export class CadEngine {
       this.#document,
       this.#nextObjectNumber,
       this.#nextSketchNumber,
-      this.#nextSketchEntityNumber
+      this.#nextSketchEntityNumber,
+      this.#nextFeatureNumber,
+      this.#nextBodyNumber
     );
   }
 
@@ -409,6 +462,8 @@ export class CadEngine {
     this.#nextObjectNumber = run.nextObjectNumber;
     this.#nextSketchNumber = run.nextSketchNumber;
     this.#nextSketchEntityNumber = run.nextSketchEntityNumber;
+    this.#nextFeatureNumber = run.nextFeatureNumber;
+    this.#nextBodyNumber = run.nextBodyNumber;
     this.#history.push(entry);
     this.#redoStack = [];
 
@@ -727,7 +782,9 @@ export class CadEngine {
       this.#document,
       this.#nextObjectNumber,
       this.#nextSketchNumber,
-      this.#nextSketchEntityNumber
+      this.#nextSketchEntityNumber,
+      this.#nextFeatureNumber,
+      this.#nextBodyNumber
     );
   }
 }
@@ -749,7 +806,9 @@ export class MockCadCommandWorker implements CadCommandWorker {
       {
         nextObjectNumber: request.document.nextObjectNumber,
         nextSketchNumber: request.document.nextSketchNumber,
-        nextSketchEntityNumber: request.document.nextSketchEntityNumber
+        nextSketchEntityNumber: request.document.nextSketchEntityNumber,
+        nextFeatureNumber: request.document.nextFeatureNumber,
+        nextBodyNumber: request.document.nextBodyNumber
       }
     );
 
@@ -842,6 +901,7 @@ type MutableSemanticDiff = {
   deleted: CadObjectRef[];
   document?: MutableDocumentSemanticDiff;
   sketches?: MutableSketchSemanticDiff;
+  features?: MutableFeatureSemanticDiff;
 };
 
 type MutableDocumentSemanticDiff = {
@@ -862,9 +922,19 @@ type MutableSketchSemanticDiff = {
   entitiesDeleted: CadSketchEntityRef[];
 };
 
+type MutableFeatureSemanticDiff = {
+  created: CadFeatureRef[];
+  modified: CadFeatureRef[];
+  deleted: CadFeatureRef[];
+  bodiesCreated: CadBodyRef[];
+  bodiesModified: CadBodyRef[];
+  bodiesDeleted: CadBodyRef[];
+};
+
 interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
+  features: Map<FeatureId, Feature>;
   units: DocumentUnits;
 }
 
@@ -875,6 +945,8 @@ function applyOperation(
   createObjectId: () => ObjectId,
   createSketchId: () => SketchId,
   createSketchEntityId: () => SketchEntityId,
+  createFeatureId: () => FeatureId,
+  createBodyId: () => BodyId,
   opIndex: number
 ): void {
   switch (op.op) {
@@ -1125,6 +1197,7 @@ function applyOperation(
 
     case "sketch.delete": {
       const existing = getSketchOrThrow(state.sketches, op.id, opIndex);
+      assertSketchNotInUse(state.features, op.id, opIndex);
       state.sketches.delete(op.id);
       pushSketchDeleted(diff, sketchRef(existing));
 
@@ -1196,10 +1269,32 @@ function applyOperation(
       }
 
       const entity = normalizeSketchEntity(op.entity, opIndex);
+      const dependentFeatures = findFeaturesBySketchEntity(
+        state.features,
+        sketch.id,
+        entity.id
+      );
+      const profileKind =
+        dependentFeatures.length > 0
+          ? assertExtrudableProfile(entity, opIndex, sketch.id, entity.id)
+          : undefined;
       const entities = new Map(sketch.entities);
       entities.set(entity.id, entity);
       state.sketches.set(sketch.id, { ...sketch, entities });
       pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
+
+      if (dependentFeatures.length > 0 && profileKind) {
+        for (const feature of dependentFeatures) {
+          const updated: ExtrudeFeature = {
+            ...feature,
+            profileKind
+          };
+          state.features.set(feature.id, updated);
+          pushFeatureModified(diff, featureRef(updated));
+          pushBodyModified(diff, bodyRef(updated));
+        }
+      }
+
       return;
     }
 
@@ -1211,10 +1306,48 @@ function applyOperation(
         throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
       }
 
+      assertSketchEntityNotInUse(
+        state.features,
+        op.sketchId,
+        op.entityId,
+        opIndex
+      );
       const entities = new Map(sketch.entities);
       entities.delete(op.entityId);
       state.sketches.set(sketch.id, { ...sketch, entities });
       pushSketchEntityDeleted(diff, sketchEntityRef(sketch.id, existing));
+      return;
+    }
+
+    case "feature.extrude": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity = sketch.entities.get(op.entityId);
+
+      if (!entity) {
+        throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+      }
+
+      const profileKind = assertExtrudableProfile(
+        entity,
+        opIndex,
+        op.sketchId,
+        op.entityId
+      );
+      const depth = validateExtrudeDepth(op.depth, opIndex);
+      const side = validateExtrudeSide(op.side, opIndex);
+      const feature: ExtrudeFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "extrude",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        sketchId: op.sketchId,
+        entityId: op.entityId,
+        profileKind,
+        depth,
+        side,
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
       return;
     }
   }
@@ -1368,6 +1501,191 @@ function throwSketchEntityNotFound(
     path: operationPath(opIndex, "entityId"),
     expected: "existing sketch entity id",
     received: entityId
+  });
+}
+
+function addFeature(
+  state: MutableDocumentState,
+  feature: Feature,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  if (hasFeatureId(state, feature.id)) {
+    throwValidationError({
+      code: "FEATURE_ALREADY_EXISTS",
+      message: `Feature already exists: ${feature.id}`,
+      opIndex,
+      featureId: feature.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique feature id",
+      received: feature.id
+    });
+  }
+
+  if (hasBodyId(state, feature.bodyId)) {
+    throwValidationError({
+      code: "BODY_ALREADY_EXISTS",
+      message: `Body already exists: ${feature.bodyId}`,
+      opIndex,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "bodyId"),
+      expected: "unique body id",
+      received: feature.bodyId
+    });
+  }
+
+  state.features.set(feature.id, feature);
+  pushFeatureCreated(diff, featureRef(feature));
+  pushBodyCreated(diff, bodyRef(feature));
+}
+
+function hasFeatureId(state: MutableDocumentState, id: FeatureId): boolean {
+  if (state.features.has(id)) {
+    return true;
+  }
+
+  for (const objectId of state.objects.keys()) {
+    if (createPrimitiveFeatureId(objectId) === id) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasBodyId(state: MutableDocumentState, id: BodyId): boolean {
+  for (const feature of state.features.values()) {
+    if (feature.bodyId === id) {
+      return true;
+    }
+  }
+
+  for (const objectId of state.objects.keys()) {
+    if (createPrimitiveBodyId(objectId) === id) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function assertSketchNotInUse(
+  features: ReadonlyMap<FeatureId, Feature>,
+  sketchId: SketchId,
+  opIndex?: number
+): void {
+  const feature = [...features.values()].find(
+    (candidate) => candidate.sketchId === sketchId
+  );
+
+  if (!feature) {
+    return;
+  }
+
+  throwValidationError({
+    code: "SKETCH_IN_USE",
+    message: `Sketch ${sketchId} is used by feature ${feature.id}.`,
+    opIndex,
+    sketchId,
+    featureId: feature.id,
+    path: operationPath(opIndex, "id"),
+    expected: "sketch with no dependent features",
+    received: sketchId
+  });
+}
+
+function assertSketchEntityNotInUse(
+  features: ReadonlyMap<FeatureId, Feature>,
+  sketchId: SketchId,
+  entityId: SketchEntityId,
+  opIndex?: number
+): void {
+  const feature = findFeaturesBySketchEntity(features, sketchId, entityId)[0];
+
+  if (!feature) {
+    return;
+  }
+
+  throwValidationError({
+    code: "SKETCH_ENTITY_IN_USE",
+    message: `Sketch entity ${entityId} is used by feature ${feature.id}.`,
+    opIndex,
+    sketchId,
+    sketchEntityId: entityId,
+    featureId: feature.id,
+    path: operationPath(opIndex, "entityId"),
+    expected: "sketch entity with no dependent features",
+    received: entityId
+  });
+}
+
+function findFeaturesBySketchEntity(
+  features: ReadonlyMap<FeatureId, Feature>,
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): readonly ExtrudeFeature[] {
+  return [...features.values()].filter(
+    (feature): feature is ExtrudeFeature =>
+      feature.kind === "extrude" &&
+      feature.sketchId === sketchId &&
+      feature.entityId === entityId
+  );
+}
+
+function assertExtrudableProfile(
+  entity: SketchEntity,
+  opIndex: number | undefined,
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): FeatureExtrudeProfileKind {
+  if (entity.kind === "rectangle" || entity.kind === "circle") {
+    return entity.kind;
+  }
+
+  throwValidationError({
+    code: "UNSUPPORTED_SKETCH_PROFILE",
+    message:
+      "feature.extrude currently supports rectangle and circle entities only.",
+    opIndex,
+    sketchId,
+    sketchEntityId: entityId,
+    path: operationPath(opIndex, "entityId"),
+    expected: "rectangle or circle sketch entity",
+    received: entity.kind
+  });
+}
+
+function validateExtrudeDepth(value: number, opIndex?: number): number {
+  if (isPositiveFiniteNumber(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "Extrude depth must be a positive finite number.",
+    opIndex,
+    path: operationPath(opIndex, "depth"),
+    expected: "positive finite number",
+    received: describeReceived(value)
+  });
+}
+
+function validateExtrudeSide(
+  value: FeatureExtrudeSide | undefined,
+  opIndex?: number
+): FeatureExtrudeSide {
+  if (value === undefined || value === "positive") {
+    return "positive";
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `Unsupported extrude side: ${String(value)}.`,
+    opIndex,
+    path: operationPath(opIndex, "side"),
+    expected: "positive",
+    received: describeReceived(value)
   });
 }
 
@@ -1577,6 +1895,38 @@ function normalizeSketchName(
   });
 }
 
+function normalizeOptionalFeatureName(
+  name: string | undefined,
+  opIndex?: number,
+  featureId?: FeatureId
+): string | undefined {
+  return name === undefined
+    ? undefined
+    : normalizeFeatureName(name, opIndex, featureId);
+}
+
+function normalizeFeatureName(
+  name: string,
+  opIndex?: number,
+  featureId?: FeatureId
+): string {
+  const normalized = name.trim();
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "Feature name must be non-empty.",
+    opIndex,
+    featureId,
+    path: operationPath(opIndex, "name"),
+    expected: "non-empty string",
+    received: describeReceived(name)
+  });
+}
+
 function validateSketchPlane(
   plane: SketchPlane,
   opIndex?: number
@@ -1739,6 +2089,25 @@ function sketchEntityRef(
   };
 }
 
+function featureRef(feature: Feature): CadFeatureRef {
+  return {
+    id: feature.id,
+    kind: "extrude",
+    bodyId: feature.bodyId,
+    sketchId: feature.sketchId,
+    entityId: feature.entityId,
+    profileKind: feature.profileKind
+  };
+}
+
+function bodyRef(feature: Feature): CadBodyRef {
+  return {
+    id: feature.bodyId,
+    kind: "solid",
+    featureId: feature.id
+  };
+}
+
 function pushSketchCreated(diff: MutableSemanticDiff, ref: CadSketchRef): void {
   ensureSketchDiff(diff).created.push(ref);
 }
@@ -1790,6 +2159,43 @@ function ensureSketchDiff(
   return diff.sketches;
 }
 
+function pushFeatureCreated(
+  diff: MutableSemanticDiff,
+  ref: CadFeatureRef
+): void {
+  ensureFeatureDiff(diff).created.push(ref);
+}
+
+function pushFeatureModified(
+  diff: MutableSemanticDiff,
+  ref: CadFeatureRef
+): void {
+  ensureFeatureDiff(diff).modified.push(ref);
+}
+
+function pushBodyCreated(diff: MutableSemanticDiff, ref: CadBodyRef): void {
+  ensureFeatureDiff(diff).bodiesCreated.push(ref);
+}
+
+function pushBodyModified(diff: MutableSemanticDiff, ref: CadBodyRef): void {
+  ensureFeatureDiff(diff).bodiesModified.push(ref);
+}
+
+function ensureFeatureDiff(
+  diff: MutableSemanticDiff
+): MutableFeatureSemanticDiff {
+  diff.features ??= {
+    created: [],
+    modified: [],
+    deleted: [],
+    bodiesCreated: [],
+    bodiesModified: [],
+    bodiesDeleted: []
+  };
+
+  return diff.features;
+}
+
 function getUnitConversionScaleFactor(
   from: DocumentUnits,
   to: DocumentUnits
@@ -1831,6 +2237,16 @@ function scaleDocumentLengthValues(
     for (const entity of scaled.entities.values()) {
       pushSketchEntityModified(diff, sketchEntityRef(scaled.id, entity));
     }
+  }
+
+  for (const feature of state.features.values()) {
+    const scaled: ExtrudeFeature = {
+      ...feature,
+      depth: scaleLength(feature.depth, scaleFactor)
+    };
+    state.features.set(feature.id, scaled);
+    pushFeatureModified(diff, featureRef(scaled));
+    pushBodyModified(diff, bodyRef(scaled));
   }
 }
 
@@ -1957,22 +2373,32 @@ function scaleLength(value: number, scaleFactor: number): number {
 }
 
 function cloneDocument(document: CadDocument): CadDocument {
-  return createCadDocument(document.objects, document.units, document.sketches);
+  return createCadDocument(
+    document.objects,
+    document.units,
+    document.sketches,
+    document.features
+  );
 }
 
 export function createCadDocumentSnapshot(
   document: CadDocument,
   nextObjectNumber = inferNextObjectNumber(document),
   nextSketchNumber = inferNextSketchNumber(document),
-  nextSketchEntityNumber = inferNextSketchEntityNumber(document)
+  nextSketchEntityNumber = inferNextSketchEntityNumber(document),
+  nextFeatureNumber = inferNextFeatureNumber(document),
+  nextBodyNumber = inferNextBodyNumber(document)
 ): CadDocumentSnapshot {
   return {
     units: document.units,
     objects: [...document.objects.values()].map(createCadObjectSnapshot),
     sketches: [...document.sketches.values()].map(createSketchSnapshot),
+    features: [...document.features.values()].map(createFeatureSnapshot),
     nextObjectNumber,
     nextSketchNumber,
-    nextSketchEntityNumber
+    nextSketchEntityNumber,
+    nextFeatureNumber,
+    nextBodyNumber
   };
 }
 
@@ -1986,6 +2412,9 @@ export function createCadDocumentFromSnapshot(
     snapshot.units,
     snapshot.sketches.map(
       (sketch) => [sketch.id, createSketchFromSnapshot(sketch)] as const
+    ),
+    snapshot.features.map(
+      (feature) => [feature.id, createFeatureFromSnapshot(feature)] as const
     )
   );
 }
@@ -2055,6 +2484,36 @@ function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
   };
 }
 
+function createFeatureSnapshot(feature: Feature): ExtrudeFeatureSnapshot {
+  return {
+    id: feature.id,
+    kind: "extrude",
+    name: feature.name,
+    sketchId: feature.sketchId,
+    entityId: feature.entityId,
+    profileKind: feature.profileKind,
+    depth: feature.depth,
+    side: feature.side,
+    bodyId: feature.bodyId
+  };
+}
+
+function createFeatureFromSnapshot(
+  snapshot: ExtrudeFeatureSnapshot
+): ExtrudeFeature {
+  return {
+    id: snapshot.id,
+    kind: "extrude",
+    name: snapshot.name,
+    sketchId: snapshot.sketchId,
+    entityId: snapshot.entityId,
+    profileKind: snapshot.profileKind,
+    depth: snapshot.depth,
+    side: snapshot.side,
+    bodyId: snapshot.bodyId
+  };
+}
+
 function cloneSketchEntity(entity: SketchEntitySnapshot): SketchEntity {
   switch (entity.kind) {
     case "point":
@@ -2090,7 +2549,7 @@ function cloneSketchEntity(entity: SketchEntitySnapshot): SketchEntity {
 
 interface CadProjectStructureSnapshot {
   readonly parts: readonly CadPartSnapshot[];
-  readonly features: readonly CadPrimitiveFeatureSummary[];
+  readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
 }
@@ -2102,7 +2561,7 @@ function createProjectStructure(
   const sourceByObjectId = createPrimitiveFeatureSourceMap(transactions);
   const objects = [...document.objects.values()];
   const sketches = [...document.sketches.values()];
-  const features = objects.map((object) =>
+  const primitiveFeatures = objects.map((object) =>
     createPrimitiveFeatureSummary(
       object,
       sourceByObjectId.get(object.id) ?? {
@@ -2110,7 +2569,17 @@ function createProjectStructure(
       }
     )
   );
-  const bodies = objects.map(createBodySnapshot);
+  const extrudeFeatures = [...document.features.values()].map(
+    createExtrudeFeatureSummary
+  );
+  const features: readonly CadFeatureSummary[] = [
+    ...primitiveFeatures,
+    ...extrudeFeatures
+  ];
+  const bodies = [
+    ...objects.map(createPrimitiveBodySnapshot),
+    ...[...document.features.values()].map(createExtrudeBodySnapshot)
+  ];
   const objectSources = objects.map(createObjectModelSource);
   const part: CadPartSnapshot = {
     id: DEFAULT_PART_ID,
@@ -2143,7 +2612,7 @@ function createPrimitiveFeatureSummary(
     partId: DEFAULT_PART_ID,
     primitive: object.kind,
     objectId: object.id,
-    bodyId: createBodyId(object.id),
+    bodyId: createPrimitiveBodyId(object.id),
     name: object.name,
     dimensions: { ...object.dimensions },
     transform: cloneTransform(object.transform),
@@ -2155,15 +2624,15 @@ function createPrimitiveFeatureId(objectId: ObjectId): string {
   return `feature:${objectId}`;
 }
 
-function createBodyId(objectId: ObjectId): BodyId {
+function createPrimitiveBodyId(objectId: ObjectId): BodyId {
   return `body:${objectId}`;
 }
 
-function createBodySnapshot(object: SceneObject): CadBodySnapshot {
+function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
   const featureId = createPrimitiveFeatureId(object.id);
 
   return {
-    id: createBodyId(object.id),
+    id: createPrimitiveBodyId(object.id),
     kind: "solid",
     partId: DEFAULT_PART_ID,
     featureId,
@@ -2178,12 +2647,49 @@ function createBodySnapshot(object: SceneObject): CadBodySnapshot {
   };
 }
 
+function createExtrudeFeatureSummary(feature: Feature): CadFeatureSummary {
+  return {
+    id: feature.id,
+    kind: "extrude",
+    partId: DEFAULT_PART_ID,
+    bodyId: feature.bodyId,
+    name: feature.name,
+    sketchId: feature.sketchId,
+    entityId: feature.entityId,
+    profileKind: feature.profileKind,
+    depth: feature.depth,
+    side: feature.side,
+    source: {
+      type: "sketchEntity",
+      sketchId: feature.sketchId,
+      entityId: feature.entityId
+    }
+  };
+}
+
+function createExtrudeBodySnapshot(feature: Feature): CadBodySnapshot {
+  return {
+    id: feature.bodyId,
+    kind: "solid",
+    partId: DEFAULT_PART_ID,
+    featureId: feature.id,
+    name: feature.name,
+    source: {
+      type: "sketchExtrudeFeature",
+      featureId: feature.id,
+      sketchId: feature.sketchId,
+      entityId: feature.entityId,
+      profileKind: feature.profileKind
+    }
+  };
+}
+
 function createObjectModelSource(object: SceneObject): CadObjectModelSource {
   return {
     objectId: object.id,
     partId: DEFAULT_PART_ID,
     featureId: createPrimitiveFeatureId(object.id),
-    bodyId: createBodyId(object.id)
+    bodyId: createPrimitiveBodyId(object.id)
   };
 }
 
@@ -2260,6 +2766,7 @@ function createOperationSummaries(
   let createdIndex = 0;
   let createdSketchIndex = 0;
   let createdSketchEntityIndex = 0;
+  let createdFeatureIndex = 0;
 
   return transaction.ops.map((op) => {
     const createdRef =
@@ -2277,6 +2784,10 @@ function createOperationSummaries(
     const createdSketchEntityRef = isSketchAddEntityOp(op)
       ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
       : undefined;
+    const createdFeatureRef =
+      op.op === "feature.extrude"
+        ? transaction.diff.features?.created?.[createdFeatureIndex++]
+        : undefined;
 
     switch (op.op) {
       case "document.updateUnits":
@@ -2465,6 +2976,20 @@ function createOperationSummaries(
             op.entityId
           )
         });
+
+      case "feature.extrude": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Extrude ${op.entityId} from ${op.sketchId}`,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId,
+          featureId,
+          bodyId
+        });
+      }
     }
   });
 }
@@ -2499,6 +3024,21 @@ function createSketchOperationSummary(
     ...(summary.sketchEntityKind
       ? { sketchEntityKind: summary.sketchEntityKind }
       : {})
+  };
+}
+
+function createFeatureOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.sketchId ? { sketchId: summary.sketchId } : {}),
+    ...(summary.sketchEntityId
+      ? { sketchEntityId: summary.sketchEntityId }
+      : {}),
+    ...(summary.featureId ? { featureId: summary.featureId } : {}),
+    ...(summary.bodyId ? { bodyId: summary.bodyId } : {})
   };
 }
 
@@ -2550,6 +3090,11 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
           sketches: cloneSketchSemanticDiff(diff.sketches)
         }
       : {}),
+    ...(diff.features
+      ? {
+          features: cloneFeatureSemanticDiff(diff.features)
+        }
+      : {}),
     ...(diff.document
       ? {
           document: {
@@ -2587,6 +3132,21 @@ function cloneSketchSemanticDiff(diff: SketchSemanticDiff): SketchSemanticDiff {
     ...(diff.entitiesDeleted
       ? { entitiesDeleted: [...diff.entitiesDeleted] }
       : {})
+  };
+}
+
+function cloneFeatureSemanticDiff(
+  diff: FeatureSemanticDiff
+): FeatureSemanticDiff {
+  return {
+    ...(diff.created ? { created: [...diff.created] } : {}),
+    ...(diff.modified ? { modified: [...diff.modified] } : {}),
+    ...(diff.deleted ? { deleted: [...diff.deleted] } : {}),
+    ...(diff.bodiesCreated ? { bodiesCreated: [...diff.bodiesCreated] } : {}),
+    ...(diff.bodiesModified
+      ? { bodiesModified: [...diff.bodiesModified] }
+      : {}),
+    ...(diff.bodiesDeleted ? { bodiesDeleted: [...diff.bodiesDeleted] } : {})
   };
 }
 
@@ -2811,7 +3371,9 @@ function runOperations(
   document: CadDocument,
   initialObjectNumber: number,
   initialSketchNumber: number,
-  initialSketchEntityNumber: number
+  initialSketchEntityNumber: number,
+  initialFeatureNumber: number,
+  initialBodyNumber: number
 ): OperationRunResult {
   if (ops.length === 0) {
     throwValidationError({
@@ -2826,11 +3388,14 @@ function runOperations(
   const state: MutableDocumentState = {
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
+    features: new Map(document.features),
     units: document.units
   };
   let nextObjectNumber = initialObjectNumber;
   let nextSketchNumber = initialSketchNumber;
   let nextSketchEntityNumber = initialSketchEntityNumber;
+  let nextFeatureNumber = initialFeatureNumber;
+  let nextBodyNumber = initialBodyNumber;
   const diff: MutableSemanticDiff = {
     created: [],
     modified: [],
@@ -2861,6 +3426,16 @@ function runOperations(
           nextSketchEntityNumber = result.nextSketchEntityNumber;
           return result.id;
         },
+        () => {
+          const result = createFeatureId(state, nextFeatureNumber);
+          nextFeatureNumber = result.nextFeatureNumber;
+          return result.id;
+        },
+        () => {
+          const result = createBodyId(state, nextBodyNumber);
+          nextBodyNumber = result.nextBodyNumber;
+          return result.id;
+        },
         opIndex
       );
     } catch (error) {
@@ -2880,7 +3455,8 @@ function runOperations(
   const resultDocument = createCadDocument(
     state.objects,
     state.units,
-    state.sketches
+    state.sketches,
+    state.features
   );
 
   return {
@@ -2897,6 +3473,14 @@ function runOperations(
     nextSketchEntityNumber: Math.max(
       nextSketchEntityNumber,
       inferNextSketchEntityNumber(resultDocument)
+    ),
+    nextFeatureNumber: Math.max(
+      nextFeatureNumber,
+      inferNextFeatureNumber(resultDocument)
+    ),
+    nextBodyNumber: Math.max(
+      nextBodyNumber,
+      inferNextBodyNumber(resultDocument)
     )
   };
 }
@@ -2968,6 +3552,42 @@ function hasSketchEntityId(
   return false;
 }
 
+function createFeatureId(
+  state: MutableDocumentState,
+  initialFeatureNumber: number
+): { id: FeatureId; nextFeatureNumber: number } {
+  let nextFeatureNumber = initialFeatureNumber;
+  let id = `feat_${nextFeatureNumber}`;
+
+  while (hasFeatureId(state, id)) {
+    nextFeatureNumber += 1;
+    id = `feat_${nextFeatureNumber}`;
+  }
+
+  return {
+    id,
+    nextFeatureNumber: nextFeatureNumber + 1
+  };
+}
+
+function createBodyId(
+  state: MutableDocumentState,
+  initialBodyNumber: number
+): { id: BodyId; nextBodyNumber: number } {
+  let nextBodyNumber = initialBodyNumber;
+  let id = `body_${nextBodyNumber}`;
+
+  while (hasBodyId(state, id)) {
+    nextBodyNumber += 1;
+    id = `body_${nextBodyNumber}`;
+  }
+
+  return {
+    id,
+    nextBodyNumber: nextBodyNumber + 1
+  };
+}
+
 function toDiffIds(diff: SemanticDiff): {
   createdIds: readonly ObjectId[];
   modifiedIds: readonly ObjectId[];
@@ -2978,12 +3598,19 @@ function toDiffIds(diff: SemanticDiff): {
   createdSketchEntityIds?: readonly SketchEntityId[];
   modifiedSketchEntityIds?: readonly SketchEntityId[];
   deletedSketchEntityIds?: readonly SketchEntityId[];
+  createdFeatureIds?: readonly FeatureId[];
+  modifiedFeatureIds?: readonly FeatureId[];
+  deletedFeatureIds?: readonly FeatureId[];
+  createdBodyIds?: readonly BodyId[];
+  modifiedBodyIds?: readonly BodyId[];
+  deletedBodyIds?: readonly BodyId[];
 } {
   return {
     createdIds: uniqueObjectIds(diff.created),
     modifiedIds: uniqueObjectIds(diff.modified),
     deletedIds: uniqueObjectIds(diff.deleted),
-    ...toSketchDiffIds(diff.sketches)
+    ...toSketchDiffIds(diff.sketches),
+    ...toFeatureDiffIds(diff.features)
   };
 }
 
@@ -3033,6 +3660,46 @@ function toSketchDiffIds(sketches: SketchSemanticDiff | undefined): {
   };
 }
 
+function toFeatureDiffIds(features: FeatureSemanticDiff | undefined): {
+  createdFeatureIds?: readonly FeatureId[];
+  modifiedFeatureIds?: readonly FeatureId[];
+  deletedFeatureIds?: readonly FeatureId[];
+  createdBodyIds?: readonly BodyId[];
+  modifiedBodyIds?: readonly BodyId[];
+  deletedBodyIds?: readonly BodyId[];
+} {
+  if (!features) {
+    return {};
+  }
+
+  return {
+    ...nonEmptyIdList(
+      "createdFeatureIds",
+      uniqueFeatureIds(features.created ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedFeatureIds",
+      uniqueFeatureIds(features.modified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedFeatureIds",
+      uniqueFeatureIds(features.deleted ?? [])
+    ),
+    ...nonEmptyIdList(
+      "createdBodyIds",
+      uniqueBodyIds(features.bodiesCreated ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedBodyIds",
+      uniqueBodyIds(features.bodiesModified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedBodyIds",
+      uniqueBodyIds(features.bodiesDeleted ?? [])
+    )
+  };
+}
+
 function uniqueSketchIds(
   sketches: readonly CadSketchRef[]
 ): readonly SketchId[] {
@@ -3043,6 +3710,16 @@ function uniqueSketchEntityIds(
   entities: readonly CadSketchEntityRef[]
 ): readonly SketchEntityId[] {
   return [...new Set(entities.map((entity) => entity.id))];
+}
+
+function uniqueFeatureIds(
+  features: readonly CadFeatureRef[]
+): readonly FeatureId[] {
+  return [...new Set(features.map((feature) => feature.id))];
+}
+
+function uniqueBodyIds(bodies: readonly CadBodyRef[]): readonly BodyId[] {
+  return [...new Set(bodies.map((body) => body.id))];
 }
 
 function nonEmptyIdList<TKey extends string, TValue extends string>(
@@ -3262,6 +3939,26 @@ function inferNextSketchEntityNumber(document: CadDocument): number {
   return maxSketchEntityNumber + 1;
 }
 
+function inferNextFeatureNumber(document: CadDocument): number {
+  let maxFeatureNumber = 0;
+
+  for (const id of document.features.keys()) {
+    maxFeatureNumber = Math.max(maxFeatureNumber, parseFeatureNumber(id));
+  }
+
+  return maxFeatureNumber + 1;
+}
+
+function inferNextBodyNumber(document: CadDocument): number {
+  let maxBodyNumber = 0;
+
+  for (const feature of document.features.values()) {
+    maxBodyNumber = Math.max(maxBodyNumber, parseBodyNumber(feature.bodyId));
+  }
+
+  return maxBodyNumber + 1;
+}
+
 function parseObjectNumber(id: ObjectId): number {
   const match = /^obj_(\d+)$/.exec(id);
   return match ? Number(match[1]) : 0;
@@ -3274,6 +3971,16 @@ function parseSketchNumber(id: SketchId): number {
 
 function parseSketchEntityNumber(id: SketchEntityId): number {
   const match = /^skent_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseFeatureNumber(id: FeatureId): number {
+  const match = /^feat_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseBodyNumber(id: BodyId): number {
+  const match = /^body_(\d+)$/.exec(id);
   return match ? Number(match[1]) : 0;
 }
 
@@ -3322,7 +4029,9 @@ function createProjectState(project: CadProject): {
       historyState.document,
       normalizedProject.document.nextObjectNumber,
       normalizedProject.document.nextSketchNumber,
-      normalizedProject.document.nextSketchEntityNumber
+      normalizedProject.document.nextSketchEntityNumber,
+      normalizedProject.document.nextFeatureNumber,
+      normalizedProject.document.nextBodyNumber
     );
   } catch (error) {
     throwProjectTransactionHistoryError("$.redoStack", error);
@@ -3340,7 +4049,9 @@ function createTransactionEntries(
   initialDocument: CadDocument = createCadDocument(),
   initialObjectNumber = inferNextObjectNumber(initialDocument),
   initialSketchNumber = inferNextSketchNumber(initialDocument),
-  initialSketchEntityNumber = inferNextSketchEntityNumber(initialDocument)
+  initialSketchEntityNumber = inferNextSketchEntityNumber(initialDocument),
+  initialFeatureNumber = inferNextFeatureNumber(initialDocument),
+  initialBodyNumber = inferNextBodyNumber(initialDocument)
 ): {
   readonly document: CadDocument;
   readonly entries: TransactionEntry[];
@@ -3349,6 +4060,8 @@ function createTransactionEntries(
   let nextObjectNumber = initialObjectNumber;
   let nextSketchNumber = initialSketchNumber;
   let nextSketchEntityNumber = initialSketchEntityNumber;
+  let nextFeatureNumber = initialFeatureNumber;
+  let nextBodyNumber = initialBodyNumber;
   const entries: TransactionEntry[] = [];
 
   for (const transaction of transactions) {
@@ -3358,12 +4071,16 @@ function createTransactionEntries(
       document,
       nextObjectNumber,
       nextSketchNumber,
-      nextSketchEntityNumber
+      nextSketchEntityNumber,
+      nextFeatureNumber,
+      nextBodyNumber
     );
     document = run.document;
     nextObjectNumber = run.nextObjectNumber;
     nextSketchNumber = run.nextSketchNumber;
     nextSketchEntityNumber = run.nextSketchEntityNumber;
+    nextFeatureNumber = run.nextFeatureNumber;
+    nextBodyNumber = run.nextBodyNumber;
     entries.push({
       transaction: { ...transaction },
       before,
@@ -3401,7 +4118,8 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
   if (
     left.units !== right.units ||
     left.objects.size !== right.objects.size ||
-    left.sketches.size !== right.sketches.size
+    left.sketches.size !== right.sketches.size ||
+    left.features.size !== right.features.size
   ) {
     return false;
   }
@@ -3418,6 +4136,14 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     const rightSketch = right.sketches.get(id);
 
     if (!rightSketch || !sketchesEqual(leftSketch, rightSketch)) {
+      return false;
+    }
+  }
+
+  for (const [id, leftFeature] of left.features) {
+    const rightFeature = right.features.get(id);
+
+    if (!rightFeature || !featuresEqual(leftFeature, rightFeature)) {
       return false;
     }
   }
@@ -3536,6 +4262,20 @@ function vec2Equal(left: Vec2, right: Vec2): boolean {
   return left[0] === right[0] && left[1] === right[1];
 }
 
+function featuresEqual(left: Feature, right: Feature): boolean {
+  return (
+    left.id === right.id &&
+    left.kind === right.kind &&
+    left.name === right.name &&
+    left.sketchId === right.sketchId &&
+    left.entityId === right.entityId &&
+    left.profileKind === right.profileKind &&
+    left.depth === right.depth &&
+    left.side === right.side &&
+    left.bodyId === right.bodyId
+  );
+}
+
 function parseCadProject(value: unknown): CadProject {
   assertValidCadProject(value);
   return normalizeCadProject(value);
@@ -3554,14 +4294,30 @@ function normalizeCadProject(value: CadProject): CadProject {
     return value;
   }
 
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        ...value.document,
+        features: [],
+        nextFeatureNumber: 1,
+        nextBodyNumber: 1
+      }
+    };
+  }
+
   return {
     ...value,
     schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
     document: {
       ...value.document,
       sketches: [],
+      features: [],
       nextSketchNumber: 1,
-      nextSketchEntityNumber: 1
+      nextSketchEntityNumber: 1,
+      nextFeatureNumber: 1,
+      nextBodyNumber: 1
     }
   };
 }
@@ -3588,6 +4344,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   } else if (
     value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
   ) {
     addProjectIssue(
@@ -3602,7 +4359,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.document,
     "$.document",
     issues,
-    value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION
+    value.schemaVersion
   );
 
   const seenTransactionIds = new Set<TransactionId>();
@@ -3628,7 +4385,7 @@ function validateCadDocumentSnapshot(
   value: unknown,
   path: string,
   issues: CadProjectImportIssue[],
-  requireSketches: boolean
+  schemaVersion: unknown
 ): void {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -3652,6 +4409,10 @@ function validateCadDocumentSnapshot(
   let maxGeneratedObjectNumber = 0;
   let maxGeneratedSketchNumber = 0;
   let maxGeneratedSketchEntityNumber = 0;
+  let maxGeneratedFeatureNumber = 0;
+  let maxGeneratedBodyNumber = 0;
+  const primitiveFeatureIds = new Set<string>();
+  const primitiveBodyIds = new Set<string>();
 
   if (!Array.isArray(value.objects)) {
     addProjectIssue(
@@ -3676,6 +4437,8 @@ function validateCadDocumentSnapshot(
           maxGeneratedObjectNumber,
           parseObjectNumber(object.id)
         );
+        primitiveFeatureIds.add(createPrimitiveFeatureId(object.id));
+        primitiveBodyIds.add(createPrimitiveBodyId(object.id));
       }
     }
   }
@@ -3702,7 +4465,13 @@ function validateCadDocumentSnapshot(
     );
   }
 
-  if (requireSketches) {
+  const requiresSketches =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const requiresFeatures = schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const sketchEntityKinds = new Map<SketchEntityId, SketchEntityKind>();
+
+  if (requiresSketches) {
     if (!Array.isArray(value.sketches)) {
       addProjectIssue(
         issues,
@@ -3730,6 +4499,7 @@ function validateCadDocumentSnapshot(
           maxGeneratedSketchEntityNumber,
           generatedNumbers.maxGeneratedSketchEntityNumber
         );
+        collectSketchEntityKinds(sketch, sketchEntityKinds);
       }
     }
 
@@ -3747,6 +4517,56 @@ function validateCadDocumentSnapshot(
       "Document nextSketchEntityNumber",
       "generated sketch entity ids",
       maxGeneratedSketchEntityNumber,
+      issues
+    );
+  }
+
+  if (requiresFeatures) {
+    if (!Array.isArray(value.features)) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.features`,
+        "Document features must be an array."
+      );
+    } else {
+      const seenFeatureIds = new Set<string>(primitiveFeatureIds);
+      const seenBodyIds = new Set<string>(primitiveBodyIds);
+
+      for (const [index, feature] of value.features.entries()) {
+        const generatedNumbers = validateFeatureSnapshot(
+          feature,
+          `${path}.features[${index}]`,
+          issues,
+          seenFeatureIds,
+          seenBodyIds,
+          sketchEntityKinds
+        );
+        maxGeneratedFeatureNumber = Math.max(
+          maxGeneratedFeatureNumber,
+          generatedNumbers.maxGeneratedFeatureNumber
+        );
+        maxGeneratedBodyNumber = Math.max(
+          maxGeneratedBodyNumber,
+          generatedNumbers.maxGeneratedBodyNumber
+        );
+      }
+    }
+
+    validateNextGeneratedNumber(
+      value.nextFeatureNumber,
+      `${path}.nextFeatureNumber`,
+      "Document nextFeatureNumber",
+      "generated feature ids",
+      maxGeneratedFeatureNumber,
+      issues
+    );
+    validateNextGeneratedNumber(
+      value.nextBodyNumber,
+      `${path}.nextBodyNumber`,
+      "Document nextBodyNumber",
+      "generated body ids",
+      maxGeneratedBodyNumber,
       issues
     );
   }
@@ -3983,6 +4803,174 @@ function validateSketchEntitySnapshot(
   }
 
   return maxGeneratedSketchEntityNumber;
+}
+
+function collectSketchEntityKinds(
+  value: unknown,
+  output: Map<SketchEntityId, SketchEntityKind>
+): void {
+  if (!isRecord(value) || !Array.isArray(value.entities)) {
+    return;
+  }
+
+  for (const entity of value.entities) {
+    if (
+      isRecord(entity) &&
+      typeof entity.id === "string" &&
+      isSketchEntityKind(entity.kind)
+    ) {
+      output.set(entity.id, entity.kind);
+    }
+  }
+}
+
+function validateFeatureSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenFeatureIds: Set<string>,
+  seenBodyIds: Set<string>,
+  sketchEntityKinds: ReadonlyMap<SketchEntityId, SketchEntityKind>
+): {
+  readonly maxGeneratedFeatureNumber: number;
+  readonly maxGeneratedBodyNumber: number;
+} {
+  let maxGeneratedFeatureNumber = 0;
+  let maxGeneratedBodyNumber = 0;
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      "Feature must be an object."
+    );
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.id`,
+      "Feature id must be a non-empty string."
+    );
+  } else if (seenFeatureIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.id`,
+      `Duplicate feature id: ${value.id}.`
+    );
+  } else {
+    seenFeatureIds.add(value.id);
+    maxGeneratedFeatureNumber = parseFeatureNumber(value.id);
+  }
+
+  if (value.kind !== "extrude") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.kind`,
+      "Feature kind must be extrude."
+    );
+  }
+
+  validateOptionalFeatureName(value.name, `${path}.name`, issues);
+
+  if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Extrude feature sketchId must be a non-empty string."
+    );
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Extrude feature entityId must be a non-empty string."
+    );
+  }
+
+  if (value.profileKind !== "rectangle" && value.profileKind !== "circle") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.profileKind`,
+      "Extrude feature profileKind must be rectangle or circle."
+    );
+  } else if (
+    typeof value.entityId === "string" &&
+    sketchEntityKinds.has(value.entityId) &&
+    sketchEntityKinds.get(value.entityId) !== value.profileKind
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.profileKind`,
+      "Extrude feature profileKind must match the referenced sketch entity kind."
+    );
+  }
+
+  validatePositiveFiniteField(
+    value.depth,
+    `${path}.depth`,
+    "Extrude depth",
+    issues
+  );
+
+  if (value.side !== "positive") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.side`,
+      "Extrude feature side must be positive."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Extrude feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+    maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+  }
+
+  return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+}
+
+function validateOptionalFeatureName(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      "Feature name must be a non-empty string when present."
+    );
+  }
 }
 
 function validateOptionalObjectName(
@@ -4561,6 +5549,7 @@ function materializeGeneratedObjectIds(
   let createdObjectIndex = 0;
   let createdSketchIndex = 0;
   let createdSketchEntityIndex = 0;
+  let createdFeatureIndex = 0;
 
   return transaction.ops.map((op) => {
     if (isSceneCreateOp(op)) {
@@ -4596,6 +5585,18 @@ function materializeGeneratedObjectIds(
       createdSketchEntityIndex += 1;
 
       return createdRef ? { ...op, id: createdRef.id } : op;
+    }
+
+    if (op.op === "feature.extrude") {
+      const createdRef =
+        transaction.diff.features?.created?.[createdFeatureIndex];
+      createdFeatureIndex += 1;
+
+      return {
+        ...op,
+        id: op.id ?? createdRef?.id,
+        bodyId: op.bodyId ?? createdRef?.bodyId
+      };
     }
 
     return op;
@@ -4800,6 +5801,19 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.extrude") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      typeof value.depth === "number" &&
+      isPositiveFiniteNumber(value.depth) &&
+      (value.side === undefined || value.side === "positive")
+    );
+  }
+
   return false;
 }
 
@@ -4813,7 +5827,8 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     Array.isArray(value.deleted) &&
     value.deleted.every(isCadObjectRef) &&
     (value.document === undefined || isDocumentSemanticDiff(value.document)) &&
-    (value.sketches === undefined || isSketchSemanticDiff(value.sketches))
+    (value.sketches === undefined || isSketchSemanticDiff(value.sketches)) &&
+    (value.features === undefined || isFeatureSemanticDiff(value.features))
   );
 }
 
@@ -4855,6 +5870,28 @@ function isSketchSemanticDiff(value: unknown): value is SketchSemanticDiff {
   );
 }
 
+function isFeatureSemanticDiff(value: unknown): value is FeatureSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.created === undefined ||
+      (Array.isArray(value.created) && value.created.every(isCadFeatureRef))) &&
+    (value.modified === undefined ||
+      (Array.isArray(value.modified) &&
+        value.modified.every(isCadFeatureRef))) &&
+    (value.deleted === undefined ||
+      (Array.isArray(value.deleted) && value.deleted.every(isCadFeatureRef))) &&
+    (value.bodiesCreated === undefined ||
+      (Array.isArray(value.bodiesCreated) &&
+        value.bodiesCreated.every(isCadBodyRef))) &&
+    (value.bodiesModified === undefined ||
+      (Array.isArray(value.bodiesModified) &&
+        value.bodiesModified.every(isCadBodyRef))) &&
+    (value.bodiesDeleted === undefined ||
+      (Array.isArray(value.bodiesDeleted) &&
+        value.bodiesDeleted.every(isCadBodyRef)))
+  );
+}
+
 function isCadObjectRef(value: unknown): value is CadObjectRef {
   return (
     isRecord(value) &&
@@ -4877,6 +5914,27 @@ function isCadSketchEntityRef(value: unknown): value is CadSketchEntityRef {
     typeof value.sketchId === "string" &&
     typeof value.id === "string" &&
     isSketchEntityKind(value.kind)
+  );
+}
+
+function isCadFeatureRef(value: unknown): value is CadFeatureRef {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.kind === "extrude" &&
+    typeof value.bodyId === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    (value.profileKind === "rectangle" || value.profileKind === "circle")
+  );
+}
+
+function isCadBodyRef(value: unknown): value is CadBodyRef {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.kind === "solid" &&
+    typeof value.featureId === "string"
   );
 }
 

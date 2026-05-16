@@ -8,6 +8,7 @@ import {
   type DerivedGeometryBoxInput,
   type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
+  type DerivedGeometryExtrudeInput,
   type DerivedGeometrySphereInput,
   type DerivedGeometryTorusInput,
   type DerivedGeometryResult,
@@ -36,7 +37,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryCylinderInput
       | DerivedGeometrySphereInput
       | DerivedGeometryConeInput
-      | DerivedGeometryTorusInput,
+      | DerivedGeometryTorusInput
+      | DerivedGeometryExtrudeInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -52,7 +54,10 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
 
     const bridgeResult = createRenderMeshFromGeometryWorkerResponse(response, {
       id: input.id,
-      alignment: "boundsCenter",
+      alignment:
+        request.payload.op === "geometry.tessellateExtrude"
+          ? "source"
+          : "boundsCenter",
       transform: input.transform,
       label: `${input.id} OCCT mesh`
     });
@@ -150,6 +155,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           payloadId: `${requestId}:kernel`,
           majorRadius: input.dimensions.majorRadius,
           minorRadius: input.dimensions.minorRadius,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async tessellateExtrude(input: DerivedGeometryExtrudeInput) {
+      const { createExtrudeTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+
+      return executeTessellationRequest(
+        input,
+        createExtrudeTessellationWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          sketchPlane: input.sketchPlane,
+          profile: input.profile,
+          depth: input.depth,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

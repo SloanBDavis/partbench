@@ -20,6 +20,37 @@ export type DerivedGeometryStatusKind =
   | "pending"
   | "ready"
   | "error";
+export type DerivedGeometrySourceKind = SceneObject["kind"] | "extrude";
+
+export type DerivedGeometrySource =
+  | DerivedPrimitiveGeometrySource
+  | DerivedExtrudeGeometrySource;
+export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
+
+export interface DerivedPrimitiveGeometrySource {
+  readonly id: string;
+  readonly kind: SceneObject["kind"];
+  readonly object: SceneObject;
+}
+
+export interface DerivedExtrudeGeometrySource {
+  readonly id: string;
+  readonly kind: "extrude";
+  readonly sketchPlane: "XY" | "XZ" | "YZ";
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: readonly [number, number];
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: readonly [number, number];
+        readonly radius: number;
+      };
+  readonly depth: number;
+}
 
 export type DerivedGeometryEntry =
   | DerivedGeometryUnsupportedEntry
@@ -29,7 +60,9 @@ export type DerivedGeometryEntry =
 
 export interface DerivedGeometryBaseEntry {
   readonly objectId: string;
-  readonly objectKind: SceneObject["kind"];
+  readonly objectKind: DerivedGeometrySourceKind;
+  readonly sourceId?: string;
+  readonly sourceKind?: DerivedGeometrySourceKind;
   readonly cacheKey: string;
   readonly status: DerivedGeometryStatusKind;
 }
@@ -74,9 +107,12 @@ type SupportedDerivedGeometryObject =
   | SphereObject
   | ConeObject
   | TorusObject;
+type SupportedDerivedGeometrySource =
+  | DerivedPrimitiveGeometrySource
+  | DerivedExtrudeGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
-  readonly objectId: string;
+  readonly sourceId: string;
   readonly cacheKey: string;
   readonly version: number;
 }
@@ -86,7 +122,7 @@ export class DerivedGeometryService {
   readonly #onChange: (snapshot: DerivedGeometrySnapshot) => void;
   readonly #entries = new Map<string, DerivedGeometryEntry>();
   readonly #requestVersions = new Map<string, number>();
-  #objectOrder: readonly string[] = [];
+  #sourceOrder: readonly string[] = [];
   #nextRequestVersion = 0;
   #disposed = false;
 
@@ -96,37 +132,40 @@ export class DerivedGeometryService {
   }
 
   getSnapshot(): DerivedGeometrySnapshot {
-    return createDerivedGeometrySnapshot(this.#entries, this.#objectOrder);
+    return createDerivedGeometrySnapshot(this.#entries, this.#sourceOrder);
   }
 
-  reconcile(objects: readonly SceneObject[]): void {
+  reconcile(inputs: readonly DerivedGeometryInput[]): void {
     if (this.#disposed) {
       return;
     }
 
-    const nextObjectOrder = objects.map((object) => object.id);
-    let changed = !isSameStringArray(this.#objectOrder, nextObjectOrder);
+    const sources = inputs.map(toDerivedGeometrySource);
+    const nextSourceOrder = sources.map((source) => source.id);
+    let changed = !isSameStringArray(this.#sourceOrder, nextSourceOrder);
     const nextIds = new Set<string>();
-    this.#objectOrder = nextObjectOrder;
+    this.#sourceOrder = nextSourceOrder;
 
-    for (const object of objects) {
-      nextIds.add(object.id);
-      const cacheKey = createDerivedGeometryCacheKey(object);
-      const existing = this.#entries.get(object.id);
+    for (const source of sources) {
+      nextIds.add(source.id);
+      const cacheKey = createDerivedGeometryCacheKey(source);
+      const existing = this.#entries.get(source.id);
 
-      if (!isSupportedDerivedGeometryObject(object)) {
-        this.#requestVersions.delete(object.id);
+      if (!isSupportedDerivedGeometrySource(source)) {
+        this.#requestVersions.delete(source.id);
         const unsupported: DerivedGeometryUnsupportedEntry = {
-          objectId: object.id,
-          objectKind: object.kind,
+          objectId: source.id,
+          objectKind: source.kind,
+          sourceId: source.id,
+          sourceKind: source.kind,
           cacheKey,
           status: "unsupported",
           message:
-            "Derived OCCT mesh generation currently supports boxes, cylinders, spheres, cones, and tori only."
+            "Derived OCCT mesh generation supports scene primitives and sketch extrudes."
         };
 
         if (!isSameEntry(existing, unsupported)) {
-          this.#entries.set(object.id, unsupported);
+          this.#entries.set(source.id, unsupported);
           changed = true;
         }
 
@@ -137,19 +176,18 @@ export class DerivedGeometryService {
         continue;
       }
 
-      const supportedObject = object as SupportedDerivedGeometryObject;
-      const request = this.#beginRequest(supportedObject);
-      const pending = createPendingEntry(supportedObject, cacheKey);
+      const request = this.#beginRequest(source);
+      const pending = createPendingEntry(source, cacheKey);
 
-      this.#entries.set(object.id, pending);
+      this.#entries.set(source.id, pending);
       changed = true;
-      void this.#deriveObject(supportedObject, request);
+      void this.#deriveSource(source, request);
     }
 
-    for (const objectId of this.#entries.keys()) {
-      if (!nextIds.has(objectId)) {
-        this.#entries.delete(objectId);
-        this.#requestVersions.delete(objectId);
+    for (const sourceId of this.#entries.keys()) {
+      if (!nextIds.has(sourceId)) {
+        this.#entries.delete(sourceId);
+        this.#requestVersions.delete(sourceId);
         changed = true;
       }
     }
@@ -159,14 +197,14 @@ export class DerivedGeometryService {
     }
   }
 
-  refresh(objects: readonly SceneObject[]): void {
+  refresh(sources: readonly DerivedGeometryInput[]): void {
     if (this.#disposed) {
       return;
     }
 
     this.#clearState();
     this.#emitChange();
-    this.reconcile(objects);
+    this.reconcile(sources);
   }
 
   dispose(): void {
@@ -176,35 +214,35 @@ export class DerivedGeometryService {
   }
 
   #beginRequest(
-    object: SupportedDerivedGeometryObject
+    source: SupportedDerivedGeometrySource
   ): ActiveDerivedGeometryRequest {
     this.#nextRequestVersion += 1;
     const request = {
-      objectId: object.id,
-      cacheKey: createDerivedGeometryCacheKey(object),
+      sourceId: source.id,
+      cacheKey: createDerivedGeometryCacheKey(source),
       version: this.#nextRequestVersion
     };
 
-    this.#requestVersions.set(request.objectId, request.version);
+    this.#requestVersions.set(request.sourceId, request.version);
 
     return request;
   }
 
-  async #deriveObject(
-    object: SupportedDerivedGeometryObject,
+  async #deriveSource(
+    source: SupportedDerivedGeometrySource,
     request: ActiveDerivedGeometryRequest
   ): Promise<void> {
     try {
-      const result = await deriveObjectMesh(this.#runtime, object);
+      const result = await deriveSourceMesh(this.#runtime, source);
 
-      this.#applyReadyResult(object, request, result);
+      this.#applyReadyResult(source, request, result);
     } catch (error) {
-      this.#applyErrorResult(object, request, error);
+      this.#applyErrorResult(source, request, error);
     }
   }
 
   #applyReadyResult(
-    object: SupportedDerivedGeometryObject,
+    source: SupportedDerivedGeometrySource,
     request: ActiveDerivedGeometryRequest,
     result: DerivedGeometryResult
   ): void {
@@ -212,20 +250,22 @@ export class DerivedGeometryService {
       return;
     }
 
-    this.#entries.set(object.id, {
-      objectId: object.id,
-      objectKind: object.kind,
+    this.#entries.set(source.id, {
+      objectId: source.id,
+      objectKind: source.kind,
+      sourceId: source.id,
+      sourceKind: source.kind,
       cacheKey: request.cacheKey,
       status: "ready",
       mesh: result.mesh,
       metrics: result.metrics
     });
-    this.#requestVersions.delete(object.id);
+    this.#requestVersions.delete(source.id);
     this.#emitChange();
   }
 
   #applyErrorResult(
-    object: SupportedDerivedGeometryObject,
+    source: SupportedDerivedGeometrySource,
     request: ActiveDerivedGeometryRequest,
     error: unknown
   ): void {
@@ -233,29 +273,31 @@ export class DerivedGeometryService {
       return;
     }
 
-    this.#entries.set(object.id, {
-      objectId: object.id,
-      objectKind: object.kind,
+    this.#entries.set(source.id, {
+      objectId: source.id,
+      objectKind: source.kind,
+      sourceId: source.id,
+      sourceKind: source.kind,
       cacheKey: request.cacheKey,
       status: "error",
       error: createDerivedGeometryErrorDetails(error)
     });
-    this.#requestVersions.delete(object.id);
+    this.#requestVersions.delete(source.id);
     this.#emitChange();
   }
 
   #canApplyResult(request: ActiveDerivedGeometryRequest): boolean {
     return (
       !this.#disposed &&
-      this.#entries.get(request.objectId)?.cacheKey === request.cacheKey &&
-      this.#requestVersions.get(request.objectId) === request.version
+      this.#entries.get(request.sourceId)?.cacheKey === request.cacheKey &&
+      this.#requestVersions.get(request.sourceId) === request.version
     );
   }
 
   #clearState(): void {
     this.#entries.clear();
     this.#requestVersions.clear();
-    this.#objectOrder = [];
+    this.#sourceOrder = [];
   }
 
   #emitChange(): void {
@@ -264,15 +306,45 @@ export class DerivedGeometryService {
 }
 
 function createPendingEntry(
-  object: SupportedDerivedGeometryObject,
+  source: SupportedDerivedGeometrySource,
   cacheKey: string
 ): DerivedGeometryPendingEntry {
   return {
-    objectId: object.id,
-    objectKind: object.kind,
+    objectId: source.id,
+    objectKind: source.kind,
+    sourceId: source.id,
+    sourceKind: source.kind,
     cacheKey,
     status: "pending"
   };
+}
+
+export function createPrimitiveDerivedGeometrySource(
+  object: SceneObject
+): DerivedPrimitiveGeometrySource {
+  return {
+    id: object.id,
+    kind: object.kind,
+    object
+  };
+}
+
+function toDerivedGeometrySource(
+  input: DerivedGeometryInput
+): DerivedGeometrySource {
+  if ("object" in input || input.kind === "extrude") {
+    return input;
+  }
+
+  return createPrimitiveDerivedGeometrySource(input);
+}
+
+function isSupportedDerivedGeometrySource(
+  source: DerivedGeometrySource
+): boolean {
+  return (
+    source.kind === "extrude" || isSupportedDerivedGeometryObject(source.object)
+  );
 }
 
 function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
@@ -285,10 +357,26 @@ function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
   );
 }
 
-function deriveObjectMesh(
+function deriveSourceMesh(
   runtime: DerivedGeometryRuntime,
-  object: SupportedDerivedGeometryObject
+  source: SupportedDerivedGeometrySource
 ): Promise<DerivedGeometryResult> {
+  if (source.kind === "extrude") {
+    return runtime.tessellateExtrude({
+      id: source.id,
+      sketchPlane: source.sketchPlane,
+      profile: source.profile,
+      depth: source.depth,
+      transform: {
+        translation: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      }
+    });
+  }
+
+  const object = source.object as SupportedDerivedGeometryObject;
+
   switch (object.kind) {
     case "box":
       return runtime.tessellateBox({
@@ -334,12 +422,23 @@ export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {
   };
 }
 
-export function createDerivedGeometryCacheKey(object: SceneObject): string {
-  const base = {
-    kind: object.kind,
-    dimensions: object.dimensions,
-    transform: object.transform
-  };
+export function createDerivedGeometryCacheKey(
+  input: DerivedGeometryInput
+): string {
+  const source = toDerivedGeometrySource(input);
+  const base =
+    source.kind === "extrude"
+      ? {
+          kind: source.kind,
+          sketchPlane: source.sketchPlane,
+          profile: source.profile,
+          depth: source.depth
+        }
+      : {
+          kind: source.kind,
+          dimensions: source.object.dimensions,
+          transform: source.object.transform
+        };
 
   return JSON.stringify(base);
 }
@@ -365,10 +464,10 @@ export function getDerivedGeometryStatusLabel(
 
 function createDerivedGeometrySnapshot(
   entries: ReadonlyMap<string, DerivedGeometryEntry>,
-  objectOrder: readonly string[]
+  sourceOrder: readonly string[]
 ): DerivedGeometrySnapshot {
-  const orderedEntries = objectOrder
-    .map((objectId) => entries.get(objectId))
+  const orderedEntries = sourceOrder
+    .map((sourceId) => entries.get(sourceId))
     .filter((entry): entry is DerivedGeometryEntry => Boolean(entry));
   const meshes = orderedEntries
     .filter(
@@ -395,6 +494,7 @@ function isSameEntry(
   right: DerivedGeometryEntry
 ): boolean {
   return (
+    left?.sourceId === right.sourceId &&
     left?.objectId === right.objectId &&
     left.objectKind === right.objectKind &&
     left.cacheKey === right.cacheKey &&

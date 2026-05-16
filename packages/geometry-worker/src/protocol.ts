@@ -1,11 +1,14 @@
 import type {
   GeometryKernelErrorResponse,
   GeometryKernelRequest,
-  GeometryKernelResponse
+  GeometryKernelResponse,
+  GeometryKernelSketchPlane
 } from "@web-cad/geometry-kernel";
 
 export type GeometryWorkerVersion = "geometry-worker.v1";
-export type GeometryWorkerRequestKind = "geometry-worker.tessellatePrimitive";
+export type GeometryWorkerRequestKind =
+  | "geometry-worker.tessellatePrimitive"
+  | "geometry-worker.tessellateFeature";
 
 export interface GeometryWorkerRequest {
   readonly id: string;
@@ -252,6 +255,44 @@ export function createTorusTessellationWorkerRequest(input: {
         majorRadius: input.majorRadius,
         minorRadius: input.minorRadius
       },
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createExtrudeTessellationWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: readonly [number, number];
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: readonly [number, number];
+        readonly radius: number;
+      };
+  readonly depth: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellateFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateExtrude",
+      sketchPlane: input.sketchPlane,
+      profile: input.profile,
+      depth: input.depth,
       ...(tessellation ? { tessellation } : {})
     }
   };
