@@ -59,6 +59,20 @@ export function assertSmokeResult(record) {
     );
   }
 
+  for (const primitive of ["cone", "torus"]) {
+    const mesh = metrics.meshes?.find((item) => item.primitive === primitive);
+
+    if (!mesh) {
+      throw new Error(`Missing ${primitive} tessellation smoke result.`);
+    }
+
+    if (mesh.vertexCount <= 0 || mesh.triangleCount <= 0) {
+      throw new Error(
+        `Unexpected ${primitive} mesh size: ${mesh.vertexCount} vertices, ${mesh.triangleCount} triangles.`
+      );
+    }
+  }
+
   for (const key of timingKeys) {
     if (!Number.isFinite(metrics[key])) {
       throw new Error(`Missing or invalid timing metric: ${key}.`);

@@ -12,8 +12,9 @@ Open CASCADE.
 Input:
 
 - `GeometryKernelRequest`
-- Currently supports `geometry.tessellateBox` and
-  `geometry.tessellateCylinder`
+- Currently supports `geometry.tessellateBox`,
+  `geometry.tessellateCylinder`, `geometry.tessellateSphere`,
+  `geometry.tessellateCone`, and `geometry.tessellateTorus`
 - Includes dimensions and optional tessellation settings
 
 Output:

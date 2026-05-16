@@ -40,6 +40,16 @@ describe("cad-protocol", () => {
         dimensions: { radius: 2 }
       },
       {
+        op: "scene.createCone",
+        id: "cone_1",
+        dimensions: { radius: 2, height: 5 }
+      },
+      {
+        op: "scene.createTorus",
+        id: "torus_1",
+        dimensions: { majorRadius: 3, minorRadius: 0.5 }
+      },
+      {
         op: "scene.updateTransform",
         id: "box_1",
         transform: { translation: [1, 2, 3] }
@@ -60,6 +70,16 @@ describe("cad-protocol", () => {
         dimensions: { radius: 3 }
       },
       {
+        op: "scene.updateConeDimensions",
+        id: "cone_1",
+        dimensions: { radius: 3, height: 8 }
+      },
+      {
+        op: "scene.updateTorusDimensions",
+        id: "torus_1",
+        dimensions: { majorRadius: 4, minorRadius: 0.75 }
+      },
+      {
         op: "scene.renameObject",
         id: "box_1",
         name: "Base plate"
@@ -75,10 +95,14 @@ describe("cad-protocol", () => {
       "scene.createBox",
       "scene.createCylinder",
       "scene.createSphere",
+      "scene.createCone",
+      "scene.createTorus",
       "scene.updateTransform",
       "scene.updateBoxDimensions",
       "scene.updateCylinderDimensions",
       "scene.updateSphereDimensions",
+      "scene.updateConeDimensions",
+      "scene.updateTorusDimensions",
       "scene.renameObject",
       "scene.deleteObject"
     ]);
@@ -188,11 +212,11 @@ describe("cad-protocol", () => {
 
   it("types primitive feature summaries", () => {
     const feature: CadPrimitiveFeatureSummary = {
-      id: "feature:sphere_1",
+      id: "feature:torus_1",
       kind: "primitive",
-      primitive: "sphere",
-      objectId: "sphere_1",
-      dimensions: { radius: 2 },
+      primitive: "torus",
+      objectId: "torus_1",
+      dimensions: { majorRadius: 3, minorRadius: 0.5 },
       transform: {
         translation: [0, 0, 0],
         rotation: [0, 0, 0],
@@ -201,14 +225,14 @@ describe("cad-protocol", () => {
       source: {
         type: "sceneObject",
         createdByTransactionId: "txn_1",
-        createOp: "scene.createSphere"
+        createOp: "scene.createTorus"
       }
     };
 
     expect(feature).toMatchObject({
-      id: "feature:sphere_1",
+      id: "feature:torus_1",
       kind: "primitive",
-      objectId: "sphere_1"
+      objectId: "torus_1"
     });
   });
 });

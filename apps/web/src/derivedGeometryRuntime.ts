@@ -32,6 +32,24 @@ export interface DerivedGeometrySphereInput {
   readonly transform: RenderTransform;
 }
 
+export interface DerivedGeometryConeInput {
+  readonly id: string;
+  readonly dimensions: {
+    readonly radius: number;
+    readonly height: number;
+  };
+  readonly transform: RenderTransform;
+}
+
+export interface DerivedGeometryTorusInput {
+  readonly id: string;
+  readonly dimensions: {
+    readonly majorRadius: number;
+    readonly minorRadius: number;
+  };
+  readonly transform: RenderTransform;
+}
+
 export interface DerivedGeometryMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
@@ -64,6 +82,12 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedGeometryResult>;
   tessellateSphere(
     input: DerivedGeometrySphereInput
+  ): Promise<DerivedGeometryResult>;
+  tessellateCone(
+    input: DerivedGeometryConeInput
+  ): Promise<DerivedGeometryResult>;
+  tessellateTorus(
+    input: DerivedGeometryTorusInput
   ): Promise<DerivedGeometryResult>;
   dispose(): void;
 }

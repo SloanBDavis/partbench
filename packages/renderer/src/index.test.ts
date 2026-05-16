@@ -91,6 +91,51 @@ describe("renderer", () => {
     expect(selectedId).toBe("sphere_1");
   });
 
+  it("picks cone and torus primitives by projected bounds", () => {
+    const camera = createDefaultCamera();
+    const size = { width: 800, height: 600 };
+
+    expect(
+      pickPrimitive(
+        [
+          {
+            id: "cone_1",
+            kind: "cone",
+            dimensions: { radius: 2, height: 4 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        ],
+        camera,
+        size,
+        { x: 400, y: 300 }
+      )
+    ).toBe("cone_1");
+
+    expect(
+      pickPrimitive(
+        [
+          {
+            id: "torus_1",
+            kind: "torus",
+            dimensions: { majorRadius: 2, minorRadius: 0.4 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        ],
+        camera,
+        size,
+        { x: 400, y: 300 }
+      )
+    ).toBe("torus_1");
+  });
+
   it("picks a mesh by projected bounds", () => {
     const selectedId = pickRenderScene(
       [],

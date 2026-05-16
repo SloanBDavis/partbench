@@ -41,6 +41,43 @@ describe("viewport camera helpers", () => {
     });
   });
 
+  it("bounds cone and torus primitive objects", () => {
+    expect(
+      getRenderSceneBounds([
+        {
+          id: "cone_1",
+          kind: "cone",
+          dimensions: { radius: 2, height: 6 },
+          transform: {
+            translation: [1, 2, 3],
+            rotation: [0, 0, 0],
+            scale: [1, 2, 1]
+          }
+        }
+      ])
+    ).toEqual({
+      min: [-1, -2, 0],
+      max: [3, 6, 6]
+    });
+    expect(
+      getRenderSceneBounds([
+        {
+          id: "torus_1",
+          kind: "torus",
+          dimensions: { majorRadius: 3, minorRadius: 0.5 },
+          transform: {
+            translation: [1, 2, 3],
+            rotation: [0, 0, 0],
+            scale: [1, 2, 3]
+          }
+        }
+      ])
+    ).toEqual({
+      min: [-2.5, -5, 1.5],
+      max: [4.5, 9, 4.5]
+    });
+  });
+
   it("fits the camera target and distance to visible content", () => {
     const camera = createDefaultCamera();
     const fitted = fitCameraToRenderScene(camera, [createBoxPrimitive()]);

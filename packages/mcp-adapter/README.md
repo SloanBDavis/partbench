@@ -239,4 +239,5 @@ and transform translations in `cad-core`.
 
 Measurement responses are read-only derived data from the authoritative
 document, not renderer meshes. Current measurements support boxes, cylinders,
-and spheres and include local bounds, world bounds, and approximate volume.
+spheres, cones, and tori and include local bounds, world bounds, and approximate
+volume.

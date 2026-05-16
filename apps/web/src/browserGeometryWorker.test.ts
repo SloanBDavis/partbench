@@ -1,8 +1,10 @@
 import {
   GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
+  createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
+  createTorusTessellationWorkerRequest,
   type GeometryWorkerRequest
 } from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
@@ -269,6 +271,53 @@ describe("BrowserGeometryWorker", () => {
     ]);
   });
 
+  it("can run cone and torus tessellation through the browser transport wrapper", async () => {
+    const kernelWorker = new GeometryKernelWorker();
+    const transport = new FakeGeometryWorkerTransport((request) =>
+      kernelWorker.execute(request)
+    );
+    const worker = new BrowserGeometryWorker(transport);
+
+    const cone = await worker.execute(
+      createConeTessellationWorkerRequest({
+        id: "browser_geometry_req_cone",
+        payloadId: "browser_geometry_payload_cone",
+        radius: 2,
+        height: 5
+      })
+    );
+    const torus = await worker.execute(
+      createTorusTessellationWorkerRequest({
+        id: "browser_geometry_req_torus",
+        payloadId: "browser_geometry_payload_torus",
+        majorRadius: 3,
+        minorRadius: 0.5
+      })
+    );
+
+    expect(cone).toMatchObject({
+      payloadId: "browser_geometry_payload_cone",
+      response: {
+        ok: true,
+        op: "geometry.tessellateCone"
+      }
+    });
+    expect(torus).toMatchObject({
+      payloadId: "browser_geometry_payload_torus",
+      response: {
+        ok: true,
+        op: "geometry.tessellateTorus"
+      }
+    });
+
+    if (!cone.response.ok || !torus.response.ok) {
+      throw new Error("Expected cone and torus browser requests to succeed.");
+    }
+
+    expect(cone.response.mesh.primitive).toBe("cone");
+    expect(torus.response.mesh.primitive).toBe("torus");
+  });
+
   it("rejects pending requests when the worker transport reports an error", async () => {
     const transport = new FakeGeometryWorkerTransport(async () => {
       throw new Error("geometry worker transport failed");
@@ -303,7 +352,7 @@ describe("BrowserGeometryWorker", () => {
   it("rejects structured worker message errors with diagnostics", async () => {
     const transport = new FakeGeometryWorkerTransport(async (request) => ({
       id: request.id,
-      error: "Unsupported geometry kernel operation: geometry.tessellateTorus.",
+      error: "Unsupported geometry kernel operation: geometry.tessellateSweep.",
       diagnostics: {
         ok: false,
         stage: "requestValidation",
@@ -312,7 +361,7 @@ describe("BrowserGeometryWorker", () => {
         error: {
           code: "UNSUPPORTED_PRIMITIVE",
           message:
-            "Unsupported geometry kernel operation: geometry.tessellateTorus."
+            "Unsupported geometry kernel operation: geometry.tessellateSweep."
         }
       }
     }));

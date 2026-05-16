@@ -113,6 +113,41 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
+  it("tessellates cone and torus primitives through the isolated OCCT WASM adapter", async () => {
+    const cone = await executeGeometryKernelRequest({
+      id: "geometry_req_cone",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCone",
+      dimensions: {
+        radius: 2,
+        height: 5
+      }
+    });
+    const torus = await executeGeometryKernelRequest({
+      id: "geometry_req_torus",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateTorus",
+      dimensions: {
+        majorRadius: 3,
+        minorRadius: 0.5
+      }
+    });
+
+    expect(cone.ok).toBe(true);
+    expect(torus.ok).toBe(true);
+
+    if (!cone.ok || !torus.ok) {
+      throw new Error("Expected cone and torus tessellation to succeed.");
+    }
+
+    expect(cone.mesh.primitive).toBe("cone");
+    expect(cone.mesh.vertexCount).toBeGreaterThan(0);
+    expect(cone.mesh.triangleCount).toBeGreaterThan(0);
+    expect(torus.mesh.primitive).toBe("torus");
+    expect(torus.mesh.vertexCount).toBeGreaterThan(0);
+    expect(torus.mesh.triangleCount).toBeGreaterThan(0);
+  });
+
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_bad_dimensions",
@@ -177,6 +212,49 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message: "Sphere dimensions must be finite numbers greater than zero."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured cone and torus validation errors before calling the kernel", async () => {
+    const cone = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_cone",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCone",
+      dimensions: {
+        radius: 0,
+        height: 5
+      }
+    });
+    const torus = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_torus",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateTorus",
+      dimensions: {
+        majorRadius: 1,
+        minorRadius: 1
+      }
+    });
+
+    expect(cone).toEqual({
+      ok: false,
+      id: "geometry_req_bad_cone",
+      op: "geometry.tessellateCone",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: "Cone dimensions must be finite numbers greater than zero."
+      },
+      warnings: []
+    });
+    expect(torus).toEqual({
+      ok: false,
+      id: "geometry_req_bad_torus",
+      op: "geometry.tessellateTorus",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Torus dimensions must be finite numbers greater than zero with minorRadius smaller than majorRadius."
       },
       warnings: []
     });

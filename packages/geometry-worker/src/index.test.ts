@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
+  createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
+  createTorusTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
@@ -88,6 +90,33 @@ describe("geometry-worker", () => {
           angularDeflection: 0.5
         }
       }
+    });
+  });
+
+  it("creates typed cone and torus tessellation worker requests", () => {
+    expect(
+      createConeTessellationWorkerRequest({
+        id: "worker_req_cone",
+        radius: 2,
+        height: 5
+      }).payload
+    ).toEqual({
+      id: "worker_req_cone:payload",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCone",
+      dimensions: { radius: 2, height: 5 }
+    });
+    expect(
+      createTorusTessellationWorkerRequest({
+        id: "worker_req_torus",
+        majorRadius: 3,
+        minorRadius: 0.5
+      }).payload
+    ).toEqual({
+      id: "worker_req_torus:payload",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateTorus",
+      dimensions: { majorRadius: 3, minorRadius: 0.5 }
     });
   });
 
@@ -211,6 +240,50 @@ describe("geometry-worker", () => {
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer
     ]);
+  });
+
+  it("tessellates cone and torus asynchronously through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const cone = await worker.execute(
+      createConeTessellationWorkerRequest({
+        id: "worker_req_cone",
+        payloadId: "geometry_req_cone",
+        radius: 2,
+        height: 5
+      })
+    );
+    const torus = await worker.execute(
+      createTorusTessellationWorkerRequest({
+        id: "worker_req_torus",
+        payloadId: "geometry_req_torus",
+        majorRadius: 3,
+        minorRadius: 0.5
+      })
+    );
+
+    expect(cone).toMatchObject({
+      payloadId: "geometry_req_cone",
+      response: {
+        ok: true,
+        op: "geometry.tessellateCone"
+      }
+    });
+    expect(torus).toMatchObject({
+      payloadId: "geometry_req_torus",
+      response: {
+        ok: true,
+        op: "geometry.tessellateTorus"
+      }
+    });
+
+    if (!cone.response.ok || !torus.response.ok) {
+      throw new Error("Expected cone and torus worker responses to succeed.");
+    }
+
+    expect(cone.response.mesh.primitive).toBe("cone");
+    expect(torus.response.mesh.primitive).toBe("torus");
+    expect(cone.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(torus.response.mesh.vertexCount).toBeGreaterThan(0);
   });
 
   it("returns structured kernel validation errors without transferables", async () => {

@@ -1,7 +1,9 @@
 import {
   createBoxTessellationWorkerRequest,
+  createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
+  createTorusTessellationWorkerRequest,
   GeometryKernelWorker
 } from "@web-cad/geometry-worker";
 import { describe, expect, it } from "vitest";
@@ -114,6 +116,37 @@ describe("renderer mesh bridge", () => {
     expect(result.triangleCount).toBeGreaterThan(0);
     expect(result.bounds.min[0]).toBeLessThan(-1.9);
     expect(result.bounds.max[0]).toBeGreaterThan(1.9);
+  });
+
+  it("adapts tessellated cone and torus responses from the geometry worker", async () => {
+    const worker = new GeometryKernelWorker();
+    const coneResponse = await worker.execute(
+      createConeTessellationWorkerRequest({
+        id: "mesh_bridge_req_cone",
+        radius: 2,
+        height: 5
+      })
+    );
+    const torusResponse = await worker.execute(
+      createTorusTessellationWorkerRequest({
+        id: "mesh_bridge_req_torus",
+        majorRadius: 3,
+        minorRadius: 0.5
+      })
+    );
+    const cone = createRenderMeshFromGeometryWorkerResponse(coneResponse, {
+      id: "mesh_cone_from_worker"
+    });
+    const torus = createRenderMeshFromGeometryWorkerResponse(torusResponse, {
+      id: "mesh_torus_from_worker"
+    });
+
+    expect(cone.mesh.id).toBe("mesh_cone_from_worker");
+    expect(cone.vertexCount).toBeGreaterThan(0);
+    expect(cone.triangleCount).toBeGreaterThan(0);
+    expect(torus.mesh.id).toBe("mesh_torus_from_worker");
+    expect(torus.vertexCount).toBeGreaterThan(0);
+    expect(torus.triangleCount).toBeGreaterThan(0);
   });
 
   it("can center corner-origin box meshes for the current primitive renderer", async () => {

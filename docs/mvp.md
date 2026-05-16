@@ -50,8 +50,8 @@ post-MVP:
 - Geometry-kernel facade.
 - Browser geometry worker entrypoint.
 - Renderer mesh bridge.
-- Local-serve default derived geometry UI for OCCT-backed box, cylinder, and
-  sphere meshes.
+- Local-serve default derived geometry UI for OCCT-backed box, cylinder, sphere,
+  cone, and torus meshes.
 - Non-gating OCCT browser smoke/metrics command.
 
 These additions remain bounded by the architecture rules:

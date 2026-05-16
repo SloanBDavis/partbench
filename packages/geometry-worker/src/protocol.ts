@@ -203,6 +203,60 @@ export function createSphereTessellationWorkerRequest(input: {
   };
 }
 
+export function createConeTessellationWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly radius: number;
+  readonly height: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellatePrimitive",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateCone",
+      dimensions: {
+        radius: input.radius,
+        height: input.height
+      },
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createTorusTessellationWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly majorRadius: number;
+  readonly minorRadius: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellatePrimitive",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateTorus",
+      dimensions: {
+        majorRadius: input.majorRadius,
+        minorRadius: input.minorRadius
+      },
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
 export function createKernelFailureResponse(
   request: GeometryWorkerRequest,
   error: unknown

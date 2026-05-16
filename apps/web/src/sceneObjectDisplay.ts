@@ -8,6 +8,10 @@ export function formatObjectKind(kind: SceneObject["kind"]): string {
       return "Cylinder";
     case "sphere":
       return "Sphere";
+    case "cone":
+      return "Cone";
+    case "torus":
+      return "Torus";
   }
 }
 
@@ -26,6 +30,16 @@ export function formatDimensions(object: SceneObject, units?: string): string {
   if (object.kind === "sphere") {
     const { radius } = object.dimensions;
     return `r ${formatNumber(radius)}${suffix}`;
+  }
+
+  if (object.kind === "cone") {
+    const { height, radius } = object.dimensions;
+    return `r ${formatNumber(radius)}${suffix}, h ${formatNumber(height)}${suffix}`;
+  }
+
+  if (object.kind === "torus") {
+    const { majorRadius, minorRadius } = object.dimensions;
+    return `R ${formatNumber(majorRadius)}${suffix}, r ${formatNumber(minorRadius)}${suffix}`;
   }
 
   const { height, radius } = object.dimensions;

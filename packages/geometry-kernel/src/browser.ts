@@ -1,13 +1,16 @@
 import {
   createOcctBoxMeshWithInstance,
+  createOcctConeMeshWithInstance,
   createOcctCylinderMeshWithInstance,
   createOcctSphereMeshWithInstance,
+  createOcctTorusMeshWithInstance,
   loadBrowserOcct
 } from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
   type BoxGeometryDimensions,
+  type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
@@ -21,13 +24,17 @@ import {
   type SerializableMeshData,
   type SphereGeometryDimensions,
   type TessellateBoxRequest,
+  type TessellateConeRequest,
   type TessellateCylinderRequest,
   type TessellateSphereRequest,
+  type TessellateTorusRequest,
+  type TorusGeometryDimensions,
   type TessellationOptions
 } from "./kernel";
 
 export type {
   BoxGeometryDimensions,
+  ConeGeometryDimensions,
   CylinderGeometryDimensions,
   GeometryKernelError,
   GeometryKernelErrorCode,
@@ -41,8 +48,11 @@ export type {
   SerializableMeshData,
   SphereGeometryDimensions,
   TessellateBoxRequest,
+  TessellateConeRequest,
   TessellateCylinderRequest,
   TessellateSphereRequest,
+  TessellateTorusRequest,
+  TorusGeometryDimensions,
   TessellationOptions
 };
 export { getGeometryResponseTransferables };
@@ -79,7 +89,9 @@ export async function executeTimedBrowserGeometryKernelRequest(
       createBoxMesh: (input) => createMeshWithBrowserOcct(input, "box"),
       createCylinderMesh: (input) =>
         createMeshWithBrowserOcct(input, "cylinder"),
-      createSphereMesh: (input) => createMeshWithBrowserOcct(input, "sphere")
+      createSphereMesh: (input) => createMeshWithBrowserOcct(input, "sphere"),
+      createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
+      createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus")
     },
     request
   );
@@ -98,7 +110,9 @@ export async function executeTimedBrowserGeometryKernelRequest(
     input:
       | (BoxGeometryDimensions & TessellationOptions)
       | (CylinderGeometryDimensions & TessellationOptions)
-      | (SphereGeometryDimensions & TessellationOptions),
+      | (SphereGeometryDimensions & TessellationOptions)
+      | (ConeGeometryDimensions & TessellationOptions)
+      | (TorusGeometryDimensions & TessellationOptions),
     primitive: GeometryKernelPrimitive
   ) {
     const occtLoadStart = performance.now();
@@ -132,6 +146,16 @@ export async function executeTimedBrowserGeometryKernelRequest(
           return createOcctSphereMeshWithInstance(
             oc,
             input as SphereGeometryDimensions & TessellationOptions
+          );
+        case "cone":
+          return createOcctConeMeshWithInstance(
+            oc,
+            input as ConeGeometryDimensions & TessellationOptions
+          );
+        case "torus":
+          return createOcctTorusMeshWithInstance(
+            oc,
+            input as TorusGeometryDimensions & TessellationOptions
           );
       }
     } catch (error) {

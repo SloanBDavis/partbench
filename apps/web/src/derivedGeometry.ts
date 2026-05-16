@@ -1,8 +1,10 @@
 import type {
   BoxObject,
+  ConeObject,
   CylinderObject,
   SceneObject,
-  SphereObject
+  SphereObject,
+  TorusObject
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
@@ -66,7 +68,12 @@ export interface DerivedGeometryServiceOptions {
   readonly onChange: (snapshot: DerivedGeometrySnapshot) => void;
 }
 
-type SupportedDerivedGeometryObject = BoxObject | CylinderObject | SphereObject;
+type SupportedDerivedGeometryObject =
+  | BoxObject
+  | CylinderObject
+  | SphereObject
+  | ConeObject
+  | TorusObject;
 
 interface ActiveDerivedGeometryRequest {
   readonly objectId: string;
@@ -115,7 +122,7 @@ export class DerivedGeometryService {
           cacheKey,
           status: "unsupported",
           message:
-            "Derived OCCT mesh generation currently supports boxes, cylinders, and spheres only."
+            "Derived OCCT mesh generation currently supports boxes, cylinders, spheres, cones, and tori only."
         };
 
         if (!isSameEntry(existing, unsupported)) {
@@ -272,7 +279,9 @@ function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
   return (
     object.kind === "box" ||
     object.kind === "cylinder" ||
-    object.kind === "sphere"
+    object.kind === "sphere" ||
+    object.kind === "cone" ||
+    object.kind === "torus"
   );
 }
 
@@ -295,6 +304,18 @@ function deriveObjectMesh(
       });
     case "sphere":
       return runtime.tessellateSphere({
+        id: object.id,
+        dimensions: object.dimensions,
+        transform: object.transform
+      });
+    case "cone":
+      return runtime.tessellateCone({
+        id: object.id,
+        dimensions: object.dimensions,
+        transform: object.transform
+      });
+    case "torus":
+      return runtime.tessellateTorus({
         id: object.id,
         dimensions: object.dimensions,
         transform: object.transform

@@ -606,6 +606,24 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.createCone") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isConeDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
+  if (value.op === "scene.createTorus") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isTorusDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
   if (value.op === "scene.deleteObject") {
     return typeof value.id === "string";
   }
@@ -630,6 +648,14 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "scene.updateSphereDimensions") {
     return typeof value.id === "string" && isSphereDimensions(value.dimensions);
+  }
+
+  if (value.op === "scene.updateConeDimensions") {
+    return typeof value.id === "string" && isConeDimensions(value.dimensions);
+  }
+
+  if (value.op === "scene.updateTorusDimensions") {
+    return typeof value.id === "string" && isTorusDimensions(value.dimensions);
   }
 
   if (value.op === "scene.renameObject") {
@@ -665,6 +691,22 @@ function isCylinderDimensions(value: unknown): boolean {
 
 function isSphereDimensions(value: unknown): boolean {
   return isRecord(value) && typeof value.radius === "number";
+}
+
+function isConeDimensions(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.radius === "number" &&
+    typeof value.height === "number"
+  );
+}
+
+function isTorusDimensions(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.majorRadius === "number" &&
+    typeof value.minorRadius === "number"
+  );
 }
 
 function isOptionalTransform(value: unknown): value is Partial<Transform> {

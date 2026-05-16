@@ -1,7 +1,9 @@
 import type {
   BoxObject,
+  ConeObject,
   CylinderObject,
-  SphereObject
+  SphereObject,
+  TorusObject
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
@@ -159,6 +161,52 @@ describe("renderScene", () => {
     });
   });
 
+  it("adds cone and torus display edges to ready derived meshes", () => {
+    const cone = createConeObject("cone_1");
+    const torus = createTorusObject("torus_1");
+    const scene = createRenderSceneInputs(
+      [cone, torus],
+      new Map([
+        [
+          cone.id,
+          {
+            objectId: cone.id,
+            objectKind: "cone",
+            cacheKey: "cone-ready",
+            status: "ready",
+            mesh: createMesh(cone.id),
+            metrics: {
+              objectId: cone.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ],
+        [
+          torus.id,
+          {
+            objectId: torus.id,
+            objectKind: "torus",
+            cacheKey: "torus-ready",
+            status: "ready",
+            mesh: createMesh(torus.id),
+            metrics: {
+              objectId: torus.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ])
+    );
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes[0].edgeSegments?.length).toBeGreaterThan(32);
+    expect(scene.meshes[1].edgeSegments?.length).toBeGreaterThan(96);
+  });
+
   it("keeps primitive fallback when derived geometry is unavailable", () => {
     const box = createBoxObject("box_1");
     const cylinder = createCylinderObject("cylinder_1");
@@ -268,6 +316,38 @@ function createSphereObject(id: string): SphereObject {
     },
     transform: {
       translation: [0, 0, 1],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createConeObject(id: string): ConeObject {
+  return {
+    id,
+    kind: "cone",
+    dimensions: {
+      radius: 1,
+      height: 2
+    },
+    transform: {
+      translation: [0, 0, 1],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createTorusObject(id: string): TorusObject {
+  return {
+    id,
+    kind: "torus",
+    dimensions: {
+      majorRadius: 2,
+      minorRadius: 0.4
+    },
+    transform: {
+      translation: [0, 0, 0],
       rotation: [0, 0, 0],
       scale: [1, 1, 1]
     }

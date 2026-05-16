@@ -128,6 +128,28 @@ SphereObject {
   transform: Transform
 }
 
+ConeObject {
+  id: string
+  kind: "cone"
+  name?: string
+  dimensions: {
+    radius: number
+    height: number
+  }
+  transform: Transform
+}
+
+TorusObject {
+  id: string
+  kind: "torus"
+  name?: string
+  dimensions: {
+    majorRadius: number
+    minorRadius: number
+  }
+  transform: Transform
+}
+
 Transform {
   translation: [number, number, number]
   rotation: [number, number, number]
@@ -135,9 +157,10 @@ Transform {
 }
 ```
 
-Numbers in dimensions must be positive and finite. Transform vectors must have
-exactly three finite numbers. Object names are optional, but if present they
-must be non-empty after trimming. Duplicate object names are allowed for now.
+Numbers in dimensions must be positive and finite. Torus `minorRadius` must be
+smaller than `majorRadius`. Transform vectors must have exactly three finite
+numbers. Object names are optional, but if present they must be non-empty after
+trimming. Duplicate object names are allowed for now.
 
 Document units are explicit but still simple. `document.updateUnits` supports
 two modes:
@@ -145,8 +168,8 @@ two modes:
 - `metadataOnly`: changes `document.units` while leaving existing numeric
   dimensions and transform translations unchanged.
 - `preservePhysicalSize`: changes `document.units` and scales current
-  box/cylinder/sphere dimensions plus transform translations so physical size
-  is preserved.
+  box/cylinder/sphere/cone/torus dimensions plus transform translations so
+  physical size is preserved.
 
 The project file stores the resulting authoritative document values and the
 transaction diff that explains how the unit change happened.

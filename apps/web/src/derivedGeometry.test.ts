@@ -1,7 +1,9 @@
 import type {
   BoxObject,
+  ConeObject,
   CylinderObject,
-  SphereObject
+  SphereObject,
+  TorusObject
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
@@ -14,11 +16,20 @@ import {
 } from "./derivedGeometry";
 import type {
   DerivedGeometryBoxInput,
+  DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
   DerivedGeometryResult,
   DerivedGeometryRuntime,
-  DerivedGeometrySphereInput
+  DerivedGeometrySphereInput,
+  DerivedGeometryTorusInput
 } from "./derivedGeometryRuntime";
+
+type RuntimeInput =
+  | DerivedGeometryBoxInput
+  | DerivedGeometryCylinderInput
+  | DerivedGeometrySphereInput
+  | DerivedGeometryConeInput
+  | DerivedGeometryTorusInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -46,7 +57,7 @@ describe("derivedGeometry", () => {
     );
   });
 
-  it("marks boxes, cylinders, and spheres pending then ready", async () => {
+  it("marks supported primitives pending then ready", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(async (input) =>
       createResult(input.id, createMesh(input.id))
@@ -59,10 +70,14 @@ describe("derivedGeometry", () => {
     service.reconcile([
       createBoxObject("box_1", 2),
       createCylinderObject(),
-      createSphereObject()
+      createSphereObject(),
+      createConeObject(),
+      createTorusObject()
     ]);
 
     expect(snapshots.at(-1)?.entries.map((entry) => entry.status)).toEqual([
+      "pending",
+      "pending",
       "pending",
       "pending",
       "pending"
@@ -70,7 +85,9 @@ describe("derivedGeometry", () => {
     expect(runtime.inputs.map((input) => input.id)).toEqual([
       "box_1",
       "cylinder_1",
-      "sphere_1"
+      "sphere_1",
+      "cone_1",
+      "torus_1"
     ]);
 
     await flushPromises();
@@ -79,12 +96,16 @@ describe("derivedGeometry", () => {
     expect(snapshot.entries.map((entry) => entry.status)).toEqual([
       "ready",
       "ready",
+      "ready",
+      "ready",
       "ready"
     ]);
     expect(snapshot.meshes.map((mesh) => mesh.id)).toEqual([
       "box_1",
       "cylinder_1",
-      "sphere_1"
+      "sphere_1",
+      "cone_1",
+      "torus_1"
     ]);
     expect(getDerivedGeometryStatusLabel(snapshot.entries[0])).toBe(
       "OCCT mesh ready"
@@ -361,26 +382,45 @@ function createSphereObject(id = "sphere_1"): SphereObject {
   };
 }
 
+function createConeObject(id = "cone_1"): ConeObject {
+  return {
+    id,
+    kind: "cone",
+    dimensions: {
+      radius: 1,
+      height: 2
+    },
+    transform: {
+      translation: [0, 0, 1],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createTorusObject(id = "torus_1"): TorusObject {
+  return {
+    id,
+    kind: "torus",
+    dimensions: {
+      majorRadius: 1.5,
+      minorRadius: 0.35
+    },
+    transform: {
+      translation: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
 function createRuntime(
-  handler: (
-    input:
-      | DerivedGeometryBoxInput
-      | DerivedGeometryCylinderInput
-      | DerivedGeometrySphereInput
-  ) => Promise<DerivedGeometryResult>
+  handler: (input: RuntimeInput) => Promise<DerivedGeometryResult>
 ): DerivedGeometryRuntime & {
-  readonly inputs: readonly (
-    | DerivedGeometryBoxInput
-    | DerivedGeometryCylinderInput
-    | DerivedGeometrySphereInput
-  )[];
+  readonly inputs: readonly RuntimeInput[];
   readonly disposeCount: number;
 } {
-  const inputs: (
-    | DerivedGeometryBoxInput
-    | DerivedGeometryCylinderInput
-    | DerivedGeometrySphereInput
-  )[] = [];
+  const inputs: RuntimeInput[] = [];
   let disposeCount = 0;
 
   return {
@@ -397,6 +437,14 @@ function createRuntime(
       return handler(input);
     },
     tessellateSphere(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    tessellateCone(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    tessellateTorus(input) {
       inputs.push(input);
       return handler(input);
     },

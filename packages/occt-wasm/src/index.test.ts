@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   createOcctBoxMesh,
+  createOcctConeMesh,
   createOcctCylinderMesh,
-  createOcctSphereMesh
+  createOcctSphereMesh,
+  createOcctTorusMesh
 } from "./index";
 
 describe("occt-wasm", () => {
@@ -54,5 +56,23 @@ describe("occt-wasm", () => {
     expect(mesh.indices).toBeInstanceOf(Uint32Array);
     expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
     expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+  });
+
+  it("creates and tessellates cone and torus primitives through Open CASCADE WASM", async () => {
+    const cone = await createOcctConeMesh({
+      radius: 2,
+      height: 5
+    });
+    const torus = await createOcctTorusMesh({
+      majorRadius: 3,
+      minorRadius: 0.5
+    });
+
+    expect(cone.primitive).toBe("cone");
+    expect(cone.vertexCount).toBeGreaterThan(0);
+    expect(cone.triangleCount).toBeGreaterThan(0);
+    expect(torus.primitive).toBe("torus");
+    expect(torus.vertexCount).toBeGreaterThan(0);
+    expect(torus.triangleCount).toBeGreaterThan(0);
   });
 });

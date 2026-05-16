@@ -6,7 +6,12 @@ import type {
   gp_Pnt
 } from "opencascade.js";
 
-export type OcctPrimitiveKind = "box" | "cylinder" | "sphere";
+export type OcctPrimitiveKind =
+  | "box"
+  | "cylinder"
+  | "sphere"
+  | "cone"
+  | "torus";
 
 export interface OcctMeshData {
   readonly primitive: OcctPrimitiveKind;

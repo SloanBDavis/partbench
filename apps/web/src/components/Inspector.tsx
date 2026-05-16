@@ -6,15 +6,19 @@ import type {
 import { useState } from "react";
 import {
   areBoxDimensionFormsEqual,
+  areConeDimensionFormsEqual,
   areCylinderDimensionFormsEqual,
   areSphereDimensionFormsEqual,
+  areTorusDimensionFormsEqual,
   areTransformFormsEqual,
   boxDimensionsToForm,
+  coneDimensionsToForm,
   cylinderDimensionsToForm,
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
   sphereDimensionsToForm,
+  torusDimensionsToForm,
   transformToForm,
   type DimensionCommandForm,
   type TransformCommandForm
@@ -271,6 +275,10 @@ function dimensionsToForm(object: SceneObject): DimensionCommandForm {
       return cylinderDimensionsToForm(object.dimensions);
     case "sphere":
       return sphereDimensionsToForm(object.dimensions);
+    case "cone":
+      return coneDimensionsToForm(object.dimensions);
+    case "torus":
+      return torusDimensionsToForm(object.dimensions);
   }
 }
 
@@ -284,6 +292,10 @@ function getDimensionFields(
       return ["radius", "height"];
     case "sphere":
       return ["radius"];
+    case "cone":
+      return ["radius", "height"];
+    case "torus":
+      return ["majorRadius", "minorRadius"];
   }
 }
 
@@ -299,6 +311,10 @@ function areDimensionFormsEqual(
       return areCylinderDimensionFormsEqual(left, right);
     case "sphere":
       return areSphereDimensionFormsEqual(left, right);
+    case "cone":
+      return areConeDimensionFormsEqual(left, right);
+    case "torus":
+      return areTorusDimensionFormsEqual(left, right);
   }
 }
 

@@ -6,8 +6,10 @@ import {
   createDerivedGeometryErrorFromWorkerResponse,
   createDerivedGeometryMetrics,
   type DerivedGeometryBoxInput,
+  type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
   type DerivedGeometrySphereInput,
+  type DerivedGeometryTorusInput,
   type DerivedGeometryResult,
   type DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
@@ -32,7 +34,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     input:
       | DerivedGeometryBoxInput
       | DerivedGeometryCylinderInput
-      | DerivedGeometrySphereInput,
+      | DerivedGeometrySphereInput
+      | DerivedGeometryConeInput
+      | DerivedGeometryTorusInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -112,6 +116,40 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           radius: input.dimensions.radius,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async tessellateCone(input: DerivedGeometryConeInput) {
+      const { createConeTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+
+      return executeTessellationRequest(
+        input,
+        createConeTessellationWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          radius: input.dimensions.radius,
+          height: input.dimensions.height,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async tessellateTorus(input: DerivedGeometryTorusInput) {
+      const { createTorusTessellationWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+
+      return executeTessellationRequest(
+        input,
+        createTorusTessellationWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          majorRadius: input.dimensions.majorRadius,
+          minorRadius: input.dimensions.minorRadius,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

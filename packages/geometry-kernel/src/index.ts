@@ -1,12 +1,15 @@
 import {
   createOcctBoxMesh,
   createOcctCylinderMesh,
-  createOcctSphereMesh
+  createOcctSphereMesh,
+  createOcctConeMesh,
+  createOcctTorusMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
   type BoxGeometryDimensions,
+  type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
@@ -20,13 +23,17 @@ import {
   type SerializableMeshData,
   type SphereGeometryDimensions,
   type TessellateBoxRequest,
+  type TessellateConeRequest,
   type TessellateCylinderRequest,
   type TessellateSphereRequest,
+  type TessellateTorusRequest,
+  type TorusGeometryDimensions,
   type TessellationOptions
 } from "./kernel";
 
 export type {
   BoxGeometryDimensions,
+  ConeGeometryDimensions,
   CylinderGeometryDimensions,
   GeometryKernelError,
   GeometryKernelErrorCode,
@@ -40,8 +47,11 @@ export type {
   SerializableMeshData,
   SphereGeometryDimensions,
   TessellateBoxRequest,
+  TessellateConeRequest,
   TessellateCylinderRequest,
   TessellateSphereRequest,
+  TessellateTorusRequest,
+  TorusGeometryDimensions,
   TessellationOptions
 };
 export { getGeometryResponseTransferables };
@@ -53,7 +63,9 @@ export async function executeGeometryKernelRequest(
     {
       createBoxMesh: createOcctBoxMesh,
       createCylinderMesh: createOcctCylinderMesh,
-      createSphereMesh: createOcctSphereMesh
+      createSphereMesh: createOcctSphereMesh,
+      createConeMesh: createOcctConeMesh,
+      createTorusMesh: createOcctTorusMesh
     },
     request
   );

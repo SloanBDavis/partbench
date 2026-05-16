@@ -8,13 +8,17 @@ import type {
   DocumentUpdateUnitsOp,
   ObjectId,
   SceneCreateBoxOp,
+  SceneCreateConeOp,
   SceneCreateCylinderOp,
   SceneCreateSphereOp,
+  SceneCreateTorusOp,
   SceneDeleteObjectOp,
   SceneRenameObjectOp,
   SceneUpdateBoxDimensionsOp,
+  SceneUpdateConeDimensionsOp,
   SceneUpdateCylinderDimensionsOp,
   SceneUpdateSphereDimensionsOp,
+  SceneUpdateTorusDimensionsOp,
   SceneUpdateTransformOp,
   Transform,
   Vec3
@@ -31,10 +35,14 @@ export type BatchOperationKind =
   | "scene.createBox"
   | "scene.createCylinder"
   | "scene.createSphere"
+  | "scene.createCone"
+  | "scene.createTorus"
   | "scene.updateTransform"
   | "scene.updateBoxDimensions"
   | "scene.updateCylinderDimensions"
   | "scene.updateSphereDimensions"
+  | "scene.updateConeDimensions"
+  | "scene.updateTorusDimensions"
   | "scene.renameObject"
   | "scene.deleteObject";
 
@@ -43,6 +51,8 @@ export interface DimensionCommandForm {
   readonly height: number;
   readonly depth: number;
   readonly radius: number;
+  readonly majorRadius: number;
+  readonly minorRadius: number;
 }
 
 export interface PrimitiveCommandForm extends DimensionCommandForm {
@@ -112,6 +122,38 @@ export function buildCreateSphereOp(
     id: normalizeOptionalId(form.id),
     dimensions: {
       radius: form.radius
+    },
+    transform: {
+      translation: [form.translationX, form.translationY, form.translationZ]
+    }
+  };
+}
+
+export function buildCreateConeOp(
+  form: PrimitiveCommandForm
+): SceneCreateConeOp {
+  return {
+    op: "scene.createCone",
+    id: normalizeOptionalId(form.id),
+    dimensions: {
+      radius: form.radius,
+      height: form.height
+    },
+    transform: {
+      translation: [form.translationX, form.translationY, form.translationZ]
+    }
+  };
+}
+
+export function buildCreateTorusOp(
+  form: PrimitiveCommandForm
+): SceneCreateTorusOp {
+  return {
+    op: "scene.createTorus",
+    id: normalizeOptionalId(form.id),
+    dimensions: {
+      majorRadius: form.majorRadius,
+      minorRadius: form.minorRadius
     },
     transform: {
       translation: [form.translationX, form.translationY, form.translationZ]
@@ -194,6 +236,34 @@ export function buildUpdateSphereDimensionsOp(
   };
 }
 
+export function buildUpdateConeDimensionsOp(
+  id: ObjectId,
+  form: DimensionCommandForm
+): SceneUpdateConeDimensionsOp {
+  return {
+    op: "scene.updateConeDimensions",
+    id,
+    dimensions: {
+      radius: form.radius,
+      height: form.height
+    }
+  };
+}
+
+export function buildUpdateTorusDimensionsOp(
+  id: ObjectId,
+  form: DimensionCommandForm
+): SceneUpdateTorusDimensionsOp {
+  return {
+    op: "scene.updateTorusDimensions",
+    id,
+    dimensions: {
+      majorRadius: form.majorRadius,
+      minorRadius: form.minorRadius
+    }
+  };
+}
+
 export function buildDeleteObjectOp(id: ObjectId): SceneDeleteObjectOp {
   return {
     op: "scene.deleteObject",
@@ -224,6 +294,10 @@ export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
       return buildCreateCylinderOp(form);
     case "scene.createSphere":
       return buildCreateSphereOp(form);
+    case "scene.createCone":
+      return buildCreateConeOp(form);
+    case "scene.createTorus":
+      return buildCreateTorusOp(form);
     case "scene.updateTransform":
       return buildUpdateTransformOp(requireTargetId(form.targetId), form);
     case "scene.updateBoxDimensions":
@@ -238,6 +312,10 @@ export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
         requireTargetId(form.targetId),
         form
       );
+    case "scene.updateConeDimensions":
+      return buildUpdateConeDimensionsOp(requireTargetId(form.targetId), form);
+    case "scene.updateTorusDimensions":
+      return buildUpdateTorusDimensionsOp(requireTargetId(form.targetId), form);
     case "scene.renameObject":
       return buildRenameObjectOp(requireTargetId(form.targetId), form.name);
     case "scene.deleteObject":
@@ -254,7 +332,9 @@ export function boxDimensionsToForm(input: {
     width: input.width,
     height: input.height,
     depth: input.depth,
-    radius: 1
+    radius: 1,
+    majorRadius: 2,
+    minorRadius: 0.5
   };
 }
 
@@ -266,7 +346,9 @@ export function cylinderDimensionsToForm(input: {
     width: 1,
     height: input.height,
     depth: 1,
-    radius: input.radius
+    radius: input.radius,
+    majorRadius: 2,
+    minorRadius: 0.5
   };
 }
 
@@ -277,7 +359,37 @@ export function sphereDimensionsToForm(input: {
     width: 1,
     height: 1,
     depth: 1,
-    radius: input.radius
+    radius: input.radius,
+    majorRadius: 2,
+    minorRadius: 0.5
+  };
+}
+
+export function coneDimensionsToForm(input: {
+  readonly radius: number;
+  readonly height: number;
+}): DimensionCommandForm {
+  return {
+    width: 1,
+    height: input.height,
+    depth: 1,
+    radius: input.radius,
+    majorRadius: 2,
+    minorRadius: 0.5
+  };
+}
+
+export function torusDimensionsToForm(input: {
+  readonly majorRadius: number;
+  readonly minorRadius: number;
+}): DimensionCommandForm {
+  return {
+    width: 1,
+    height: 1,
+    depth: 1,
+    radius: 1,
+    majorRadius: input.majorRadius,
+    minorRadius: input.minorRadius
   };
 }
 
@@ -304,6 +416,23 @@ export function areSphereDimensionFormsEqual(
   right: DimensionCommandForm
 ): boolean {
   return left.radius === right.radius;
+}
+
+export function areConeDimensionFormsEqual(
+  left: DimensionCommandForm,
+  right: DimensionCommandForm
+): boolean {
+  return left.radius === right.radius && left.height === right.height;
+}
+
+export function areTorusDimensionFormsEqual(
+  left: DimensionCommandForm,
+  right: DimensionCommandForm
+): boolean {
+  return (
+    left.majorRadius === right.majorRadius &&
+    left.minorRadius === right.minorRadius
+  );
 }
 
 export function transformToForm(transform: Transform): TransformCommandForm {

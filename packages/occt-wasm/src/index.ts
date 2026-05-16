@@ -16,15 +16,36 @@ import {
   createOcctSphereMeshWithLoader,
   type OcctSphereInput
 } from "./tessellateSphere";
+import {
+  createOcctConeMeshWithInstance,
+  createOcctConeMeshWithLoader,
+  type OcctConeInput
+} from "./tessellateCone";
+import {
+  createOcctTorusMeshWithInstance,
+  createOcctTorusMeshWithLoader,
+  type OcctTorusInput
+} from "./tessellateTorus";
 
-export type { OcctBoxInput, OcctCylinderInput, OcctSphereInput, OcctMeshData };
+export type {
+  OcctBoxInput,
+  OcctCylinderInput,
+  OcctSphereInput,
+  OcctConeInput,
+  OcctTorusInput,
+  OcctMeshData
+};
 export {
   createOcctBoxMeshWithInstance,
   createOcctBoxMeshWithLoader,
   createOcctCylinderMeshWithInstance,
   createOcctCylinderMeshWithLoader,
   createOcctSphereMeshWithInstance,
-  createOcctSphereMeshWithLoader
+  createOcctSphereMeshWithLoader,
+  createOcctConeMeshWithInstance,
+  createOcctConeMeshWithLoader,
+  createOcctTorusMeshWithInstance,
+  createOcctTorusMeshWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -50,4 +71,16 @@ export async function createOcctSphereMesh(
   input: OcctSphereInput
 ): Promise<OcctMeshData> {
   return createOcctSphereMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctConeMesh(
+  input: OcctConeInput
+): Promise<OcctMeshData> {
+  return createOcctConeMeshWithLoader(loadOcct, input);
+}
+
+export async function createOcctTorusMesh(
+  input: OcctTorusInput
+): Promise<OcctMeshData> {
+  return createOcctTorusMeshWithLoader(loadOcct, input);
 }

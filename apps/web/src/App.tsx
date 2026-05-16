@@ -19,14 +19,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
   buildCreateBoxOp,
+  buildCreateConeOp,
   buildCreateCylinderOp,
   buildCreateSphereOp,
+  buildCreateTorusOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildUpdateBoxDimensionsOp,
+  buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
   buildUpdateSphereDimensionsOp,
+  buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   WEB_UI_ACTOR,
@@ -77,6 +81,8 @@ const quickBoxForm: PrimitiveCommandForm = {
   height: 1.8,
   depth: 1.6,
   radius: 0.9,
+  majorRadius: 1.4,
+  minorRadius: 0.35,
   translationX: 0,
   translationY: 0,
   translationZ: 0.8
@@ -88,6 +94,8 @@ const quickCylinderForm: PrimitiveCommandForm = {
   height: 2.2,
   depth: 2,
   radius: 0.9,
+  majorRadius: 1.4,
+  minorRadius: 0.35,
   translationX: 0,
   translationY: 0,
   translationZ: 1.1
@@ -99,9 +107,37 @@ const quickSphereForm: PrimitiveCommandForm = {
   height: 2,
   depth: 2,
   radius: 1,
+  majorRadius: 1.4,
+  minorRadius: 0.35,
   translationX: 0,
   translationY: 0,
   translationZ: 1
+};
+
+const quickConeForm: PrimitiveCommandForm = {
+  id: "",
+  width: 2,
+  height: 2.4,
+  depth: 2,
+  radius: 1,
+  majorRadius: 1.4,
+  minorRadius: 0.35,
+  translationX: 0,
+  translationY: 0,
+  translationZ: 1.2
+};
+
+const quickTorusForm: PrimitiveCommandForm = {
+  id: "",
+  width: 2,
+  height: 2,
+  depth: 2,
+  radius: 1,
+  majorRadius: 1.4,
+  minorRadius: 0.35,
+  translationX: 0,
+  translationY: 0,
+  translationZ: 0
 };
 
 const initialBatchForm: BatchOperationForm = {
@@ -112,6 +148,8 @@ const initialBatchForm: BatchOperationForm = {
   height: 2,
   depth: 2,
   radius: 1,
+  majorRadius: 1.4,
+  minorRadius: 0.35,
   translationX: 0,
   translationY: 0,
   translationZ: 1,
@@ -334,6 +372,32 @@ export function App() {
     );
   }
 
+  async function createCone() {
+    const offset = document.objects.size * 2.8;
+    await commitOps(
+      [
+        buildCreateConeOp({
+          ...quickConeForm,
+          translationX: offset
+        })
+      ],
+      (response) => response.createdIds[0]
+    );
+  }
+
+  async function createTorus() {
+    const offset = document.objects.size * 2.8;
+    await commitOps(
+      [
+        buildCreateTorusOp({
+          ...quickTorusForm,
+          translationX: offset
+        })
+      ],
+      (response) => response.createdIds[0]
+    );
+  }
+
   async function updateDocumentUnits(units: CadDocument["units"]) {
     if (units === document.units) {
       return;
@@ -374,7 +438,11 @@ export function App() {
         ? buildUpdateBoxDimensionsOp(objectId, form)
         : selectedObject.kind === "cylinder"
           ? buildUpdateCylinderDimensionsOp(objectId, form)
-          : buildUpdateSphereDimensionsOp(objectId, form);
+          : selectedObject.kind === "sphere"
+            ? buildUpdateSphereDimensionsOp(objectId, form)
+            : selectedObject.kind === "cone"
+              ? buildUpdateConeDimensionsOp(objectId, form)
+              : buildUpdateTorusDimensionsOp(objectId, form);
 
     await commitOps([op], () => objectId);
   }
@@ -584,6 +652,20 @@ export function App() {
             disabled={commandPending}
           >
             Create sphere
+          </button>
+          <button
+            type="button"
+            onClick={() => void createCone()}
+            disabled={commandPending}
+          >
+            Create cone
+          </button>
+          <button
+            type="button"
+            onClick={() => void createTorus()}
+            disabled={commandPending}
+          >
+            Create torus
           </button>
           <button
             type="button"

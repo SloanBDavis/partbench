@@ -127,6 +127,18 @@ function getPrimitiveBounds(primitive: RenderPrimitive): RenderSceneBounds {
     return boundsFromCenter(translation, halfExtents);
   }
 
+  if (primitive.kind === "torus") {
+    const outerRadius =
+      primitive.dimensions.majorRadius + primitive.dimensions.minorRadius;
+    const halfExtents: Vec3 = [
+      outerRadius * Math.abs(scale[0]),
+      outerRadius * Math.abs(scale[1]),
+      primitive.dimensions.minorRadius * Math.abs(scale[2])
+    ];
+
+    return boundsFromCenter(translation, halfExtents);
+  }
+
   const halfExtents: Vec3 = [
     primitive.dimensions.radius * Math.abs(scale[0]),
     primitive.dimensions.radius * Math.abs(scale[1]),

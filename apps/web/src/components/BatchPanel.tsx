@@ -50,6 +50,8 @@ export function BatchPanel({
           <option value="scene.createBox">Create box</option>
           <option value="scene.createCylinder">Create cylinder</option>
           <option value="scene.createSphere">Create sphere</option>
+          <option value="scene.createCone">Create cone</option>
+          <option value="scene.createTorus">Create torus</option>
           <option value="scene.updateTransform">Update transform</option>
           <option value="scene.updateBoxDimensions">
             Update box dimensions
@@ -59,6 +61,12 @@ export function BatchPanel({
           </option>
           <option value="scene.updateSphereDimensions">
             Update sphere dimensions
+          </option>
+          <option value="scene.updateConeDimensions">
+            Update cone dimensions
+          </option>
+          <option value="scene.updateTorusDimensions">
+            Update torus dimensions
           </option>
           <option value="scene.renameObject">Rename object</option>
           <option value="scene.deleteObject">Delete object</option>
@@ -108,7 +116,9 @@ export function BatchPanel({
 
       {(form.op === "scene.createBox" ||
         form.op === "scene.createCylinder" ||
-        form.op === "scene.createSphere") && (
+        form.op === "scene.createSphere" ||
+        form.op === "scene.createCone" ||
+        form.op === "scene.createTorus") && (
         <TextField
           label="New ID"
           value={form.id}
@@ -121,6 +131,8 @@ export function BatchPanel({
         form.op === "scene.updateBoxDimensions" ||
         form.op === "scene.updateCylinderDimensions" ||
         form.op === "scene.updateSphereDimensions" ||
+        form.op === "scene.updateConeDimensions" ||
+        form.op === "scene.updateTorusDimensions" ||
         form.op === "scene.renameObject" ||
         form.op === "scene.deleteObject") && (
         <TextField
@@ -168,9 +180,31 @@ export function BatchPanel({
         />
       )}
 
+      {(form.op === "scene.createCone" ||
+        form.op === "scene.updateConeDimensions") && (
+        <DimensionFields
+          form={form}
+          onChange={onChange}
+          fields={["radius", "height"]}
+          unitLabel={units}
+        />
+      )}
+
+      {(form.op === "scene.createTorus" ||
+        form.op === "scene.updateTorusDimensions") && (
+        <DimensionFields
+          form={form}
+          onChange={onChange}
+          fields={["majorRadius", "minorRadius"]}
+          unitLabel={units}
+        />
+      )}
+
       {(form.op === "scene.createBox" ||
         form.op === "scene.createCylinder" ||
         form.op === "scene.createSphere" ||
+        form.op === "scene.createCone" ||
+        form.op === "scene.createTorus" ||
         form.op === "scene.updateTransform") && (
         <TransformFields form={form} onChange={onChange} compact />
       )}
@@ -264,7 +298,9 @@ function summarizeOp(op: CadOp): string {
   if (
     op.op === "scene.createBox" ||
     op.op === "scene.createCylinder" ||
-    op.op === "scene.createSphere"
+    op.op === "scene.createSphere" ||
+    op.op === "scene.createCone" ||
+    op.op === "scene.createTorus"
   ) {
     return `${op.op}${op.id ? ` ${op.id}` : ""}`;
   }

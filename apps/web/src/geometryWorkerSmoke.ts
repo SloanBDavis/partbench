@@ -1,7 +1,9 @@
 import {
   createBoxTessellationWorkerRequest,
+  createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
-  createSphereTessellationWorkerRequest
+  createSphereTessellationWorkerRequest,
+  createTorusTessellationWorkerRequest
 } from "@web-cad/geometry-worker/browser";
 import { createRenderMeshFromGeometryWorkerResponse } from "@web-cad/renderer-mesh-bridge";
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
@@ -45,6 +47,24 @@ async function runGeometryWorkerSmoke(): Promise<void> {
           id: "browser_occt_smoke_sphere",
           payloadId: "browser_occt_smoke_sphere_payload",
           radius: 1
+        })
+      },
+      {
+        scenario: "cone-r1-h2",
+        request: createConeTessellationWorkerRequest({
+          id: "browser_occt_smoke_cone",
+          payloadId: "browser_occt_smoke_cone_payload",
+          radius: 1,
+          height: 2
+        })
+      },
+      {
+        scenario: "torus-R1.5-r0.35",
+        request: createTorusTessellationWorkerRequest({
+          id: "browser_occt_smoke_torus",
+          payloadId: "browser_occt_smoke_torus_payload",
+          majorRadius: 1.5,
+          minorRadius: 0.35
         })
       }
     ];

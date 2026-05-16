@@ -38,7 +38,7 @@ describe("occt smoke records", () => {
       gitSha: "abc123",
       nodeVersion: "v23.3.0",
       remoteDebuggingPort: 3001,
-      scenarioName: "box-cylinder-sphere",
+      scenarioName: "box-cylinder-sphere-cone-torus",
       timestamp: "2026-05-14T00:00:00.000Z",
       smokeResult: {
         vertexCount: 24,
@@ -74,6 +74,18 @@ describe("occt smoke records", () => {
             primitive: "sphere",
             vertexCount: 64,
             triangleCount: 64
+          },
+          {
+            scenario: "cone-r1-h2",
+            primitive: "cone",
+            vertexCount: 48,
+            triangleCount: 32
+          },
+          {
+            scenario: "torus-R1.5-r0.35",
+            primitive: "torus",
+            vertexCount: 96,
+            triangleCount: 96
           }
         ]
       }
@@ -85,7 +97,7 @@ describe("occt smoke records", () => {
       timestamp: "2026-05-14T00:00:00.000Z",
       gitSha: "abc123",
       nodeVersion: "v23.3.0",
-      scenario: "box-cylinder-sphere",
+      scenario: "box-cylinder-sphere-cone-torus",
       browser: {
         remoteDebuggingPort: 3001,
         name: "Chrome/148.0.7778.97"
@@ -117,6 +129,18 @@ describe("occt smoke records", () => {
             primitive: "sphere",
             vertexCount: 64,
             triangleCount: 64
+          },
+          {
+            scenario: "cone-r1-h2",
+            primitive: "cone",
+            vertexCount: 48,
+            triangleCount: 32
+          },
+          {
+            scenario: "torus-R1.5-r0.35",
+            primitive: "torus",
+            vertexCount: 96,
+            triangleCount: 96
           }
         ]
       }

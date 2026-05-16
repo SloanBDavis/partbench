@@ -53,6 +53,10 @@ export function createMeshDisplayEdges(
       return createCylinderDisplayEdges(object.dimensions);
     case "sphere":
       return createSphereDisplayEdges(object.dimensions);
+    case "cone":
+      return createConeDisplayEdges(object.dimensions);
+    case "torus":
+      return createTorusDisplayEdges(object.dimensions);
   }
 }
 
@@ -70,6 +74,24 @@ export function toRenderPrimitive(object: SceneObject): RenderPrimitive {
     return {
       id: object.id,
       kind: "sphere",
+      dimensions: object.dimensions,
+      transform: object.transform
+    };
+  }
+
+  if (object.kind === "cone") {
+    return {
+      id: object.id,
+      kind: "cone",
+      dimensions: object.dimensions,
+      transform: object.transform
+    };
+  }
+
+  if (object.kind === "torus") {
+    return {
+      id: object.id,
+      kind: "torus",
       dimensions: object.dimensions,
       transform: object.transform
     };
@@ -170,6 +192,61 @@ function createSphereDisplayEdges(dimensions: {
   return edges;
 }
 
+function createConeDisplayEdges(dimensions: {
+  readonly radius: number;
+  readonly height: number;
+}): readonly RenderEdgeSegment[] {
+  const segmentCount = 32;
+  const halfHeight = dimensions.height / 2;
+  const apex: Vec3 = [0, 0, halfHeight];
+  const edges: RenderEdgeSegment[] = [];
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const nextIndex = (index + 1) % segmentCount;
+    const start = cylinderPoint(dimensions.radius, -halfHeight, index);
+    const end = cylinderPoint(dimensions.radius, -halfHeight, nextIndex);
+    edges.push({ start, end });
+
+    if (index % 8 === 0) {
+      edges.push({ start, end: apex });
+    }
+  }
+
+  return edges;
+}
+
+function createTorusDisplayEdges(dimensions: {
+  readonly majorRadius: number;
+  readonly minorRadius: number;
+}): readonly RenderEdgeSegment[] {
+  const segmentCount = 32;
+  const edges: RenderEdgeSegment[] = [];
+
+  for (const radius of [
+    dimensions.majorRadius,
+    dimensions.majorRadius + dimensions.minorRadius,
+    dimensions.majorRadius - dimensions.minorRadius
+  ]) {
+    for (let index = 0; index < segmentCount; index += 1) {
+      edges.push({
+        start: cylinderPoint(radius, 0, index),
+        end: cylinderPoint(radius, 0, (index + 1) % segmentCount)
+      });
+    }
+  }
+
+  for (const sectionAngle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+    for (let index = 0; index < 16; index += 1) {
+      edges.push({
+        start: torusCrossSectionPoint(dimensions, sectionAngle, index),
+        end: torusCrossSectionPoint(dimensions, sectionAngle, (index + 1) % 16)
+      });
+    }
+  }
+
+  return edges;
+}
+
 function spherePoint(
   radius: number,
   plane: "xy" | "xz" | "yz",
@@ -187,6 +264,21 @@ function spherePoint(
     case "yz":
       return [0, first, second];
   }
+}
+
+function torusCrossSectionPoint(
+  dimensions: { readonly majorRadius: number; readonly minorRadius: number },
+  sectionAngle: number,
+  index: number
+): Vec3 {
+  const angle = (index / 16) * Math.PI * 2;
+  const radial =
+    dimensions.majorRadius + Math.cos(angle) * dimensions.minorRadius;
+  return [
+    cleanRenderNumber(Math.cos(sectionAngle) * radial),
+    cleanRenderNumber(Math.sin(sectionAngle) * radial),
+    cleanRenderNumber(Math.sin(angle) * dimensions.minorRadius)
+  ];
 }
 
 function cylinderPoint(radius: number, z: number, index: number): Vec3 {

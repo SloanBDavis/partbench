@@ -18,8 +18,10 @@ import {
 
 export {
   createBoxTessellationWorkerRequest,
+  createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
+  createTorusTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   type GeometryWorker,
@@ -151,7 +153,9 @@ function getUnsupportedPrimitiveMessage(
   if (
     op !== "geometry.tessellateBox" &&
     op !== "geometry.tessellateCylinder" &&
-    op !== "geometry.tessellateSphere"
+    op !== "geometry.tessellateSphere" &&
+    op !== "geometry.tessellateCone" &&
+    op !== "geometry.tessellateTorus"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;
   }

@@ -51,18 +51,32 @@ export interface SphereDimensions {
   readonly radius: number;
 }
 
-export type CadObjectKind = "box" | "cylinder" | "sphere";
+export interface ConeDimensions {
+  readonly radius: number;
+  readonly height: number;
+}
+
+export interface TorusDimensions {
+  readonly majorRadius: number;
+  readonly minorRadius: number;
+}
+
+export type CadObjectKind = "box" | "cylinder" | "sphere" | "cone" | "torus";
 
 export type CadOp =
   | DocumentUpdateUnitsOp
   | SceneCreateBoxOp
   | SceneCreateCylinderOp
   | SceneCreateSphereOp
+  | SceneCreateConeOp
+  | SceneCreateTorusOp
   | SceneDeleteObjectOp
   | SceneUpdateTransformOp
   | SceneUpdateBoxDimensionsOp
   | SceneUpdateCylinderDimensionsOp
   | SceneUpdateSphereDimensionsOp
+  | SceneUpdateConeDimensionsOp
+  | SceneUpdateTorusDimensionsOp
   | SceneRenameObjectOp;
 
 export interface DocumentUpdateUnitsOp {
@@ -95,6 +109,22 @@ export interface SceneCreateSphereOp {
   readonly transform?: Partial<Transform>;
 }
 
+export interface SceneCreateConeOp {
+  readonly op: "scene.createCone";
+  readonly id?: ObjectId;
+  readonly name?: string;
+  readonly dimensions: ConeDimensions;
+  readonly transform?: Partial<Transform>;
+}
+
+export interface SceneCreateTorusOp {
+  readonly op: "scene.createTorus";
+  readonly id?: ObjectId;
+  readonly name?: string;
+  readonly dimensions: TorusDimensions;
+  readonly transform?: Partial<Transform>;
+}
+
 export interface SceneDeleteObjectOp {
   readonly op: "scene.deleteObject";
   readonly id: ObjectId;
@@ -122,6 +152,18 @@ export interface SceneUpdateSphereDimensionsOp {
   readonly op: "scene.updateSphereDimensions";
   readonly id: ObjectId;
   readonly dimensions: SphereDimensions;
+}
+
+export interface SceneUpdateConeDimensionsOp {
+  readonly op: "scene.updateConeDimensions";
+  readonly id: ObjectId;
+  readonly dimensions: ConeDimensions;
+}
+
+export interface SceneUpdateTorusDimensionsOp {
+  readonly op: "scene.updateTorusDimensions";
+  readonly id: ObjectId;
+  readonly dimensions: TorusDimensions;
 }
 
 export interface SceneRenameObjectOp {
@@ -265,7 +307,9 @@ export interface CadQueryRequest {
 export type CadObjectSnapshot =
   | BoxObjectSnapshot
   | CylinderObjectSnapshot
-  | SphereObjectSnapshot;
+  | SphereObjectSnapshot
+  | ConeObjectSnapshot
+  | TorusObjectSnapshot;
 
 export interface BoxObjectSnapshot {
   readonly id: ObjectId;
@@ -291,6 +335,22 @@ export interface SphereObjectSnapshot {
   readonly transform: Transform;
 }
 
+export interface ConeObjectSnapshot {
+  readonly id: ObjectId;
+  readonly kind: "cone";
+  readonly name?: string;
+  readonly dimensions: ConeDimensions;
+  readonly transform: Transform;
+}
+
+export interface TorusObjectSnapshot {
+  readonly id: ObjectId;
+  readonly kind: "torus";
+  readonly name?: string;
+  readonly dimensions: TorusDimensions;
+  readonly transform: Transform;
+}
+
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
   readonly max: Vec3;
@@ -303,7 +363,12 @@ export interface ObjectMeasurementsSnapshot {
   readonly kind: CadObjectKind;
   readonly name?: string;
   readonly units: DocumentUnits;
-  readonly dimensions: BoxDimensions | CylinderDimensions | SphereDimensions;
+  readonly dimensions:
+    | BoxDimensions
+    | CylinderDimensions
+    | SphereDimensions
+    | ConeDimensions
+    | TorusDimensions;
   readonly transform: Transform;
   readonly localBounds: CadAxisAlignedBounds;
   readonly worldBounds: CadAxisAlignedBounds;
@@ -321,7 +386,9 @@ export interface ObjectExtentSnapshot {
 export type CadPrimitiveCreateOp =
   | "scene.createBox"
   | "scene.createCylinder"
-  | "scene.createSphere";
+  | "scene.createSphere"
+  | "scene.createCone"
+  | "scene.createTorus";
 
 export interface CadPrimitiveFeatureSource {
   readonly type: "sceneObject";
@@ -335,7 +402,12 @@ export interface CadPrimitiveFeatureSummary {
   readonly primitive: CadObjectKind;
   readonly objectId: ObjectId;
   readonly name?: string;
-  readonly dimensions: BoxDimensions | CylinderDimensions | SphereDimensions;
+  readonly dimensions:
+    | BoxDimensions
+    | CylinderDimensions
+    | SphereDimensions
+    | ConeDimensions
+    | TorusDimensions;
   readonly transform: Transform;
   readonly source: CadPrimitiveFeatureSource;
 }

@@ -93,6 +93,42 @@ describe("cad-core", () => {
     ]);
   });
 
+  it("creates a cone and torus", () => {
+    const engine = new CadEngine();
+
+    const result = engine.applyBatch([
+      {
+        op: "scene.createCone",
+        id: "cone_1",
+        dimensions: { radius: 2, height: 5 },
+        transform: { translation: [1, 2, 2.5] }
+      },
+      {
+        op: "scene.createTorus",
+        id: "torus_1",
+        dimensions: { majorRadius: 3, minorRadius: 0.75 },
+        transform: { translation: [4, 5, 0] }
+      }
+    ]);
+
+    expect(result.document.objects.get("cone_1")).toMatchObject({
+      id: "cone_1",
+      kind: "cone",
+      dimensions: { radius: 2, height: 5 },
+      transform: { translation: [1, 2, 2.5] }
+    });
+    expect(result.document.objects.get("torus_1")).toMatchObject({
+      id: "torus_1",
+      kind: "torus",
+      dimensions: { majorRadius: 3, minorRadius: 0.75 },
+      transform: { translation: [4, 5, 0] }
+    });
+    expect(result.transaction.diff.created).toEqual([
+      { id: "cone_1", kind: "cone" },
+      { id: "torus_1", kind: "torus" }
+    ]);
+  });
+
   it("generates object IDs when a command does not provide one", () => {
     const engine = new CadEngine();
 
@@ -109,18 +145,30 @@ describe("cad-core", () => {
       {
         op: "scene.createSphere",
         dimensions: { radius: 4 }
+      },
+      {
+        op: "scene.createCone",
+        dimensions: { radius: 2, height: 5 }
+      },
+      {
+        op: "scene.createTorus",
+        dimensions: { majorRadius: 3, minorRadius: 0.5 }
       }
     ]);
 
     expect([...result.document.objects.keys()]).toEqual([
       "obj_1",
       "obj_2",
-      "obj_3"
+      "obj_3",
+      "obj_4",
+      "obj_5"
     ]);
     expect(result.transaction.diff.created).toEqual([
       { id: "obj_1", kind: "box" },
       { id: "obj_2", kind: "cylinder" },
-      { id: "obj_3", kind: "sphere" }
+      { id: "obj_3", kind: "sphere" },
+      { id: "obj_4", kind: "cone" },
+      { id: "obj_5", kind: "torus" }
     ]);
   });
 
@@ -230,6 +278,53 @@ describe("cad-core", () => {
     });
   });
 
+  it("updates cone and torus dimensions with semantic diffs", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "scene.createCone",
+        id: "cone_1",
+        dimensions: { radius: 1, height: 2 }
+      },
+      {
+        op: "scene.createTorus",
+        id: "torus_1",
+        dimensions: { majorRadius: 2, minorRadius: 0.4 }
+      }
+    ]);
+
+    const result = engine.applyBatch([
+      {
+        op: "scene.updateConeDimensions",
+        id: "cone_1",
+        dimensions: { radius: 3, height: 8 }
+      },
+      {
+        op: "scene.updateTorusDimensions",
+        id: "torus_1",
+        dimensions: { majorRadius: 4, minorRadius: 0.75 }
+      }
+    ]);
+
+    expect(result.document.objects.get("cone_1")).toMatchObject({
+      kind: "cone",
+      dimensions: { radius: 3, height: 8 }
+    });
+    expect(result.document.objects.get("torus_1")).toMatchObject({
+      kind: "torus",
+      dimensions: { majorRadius: 4, minorRadius: 0.75 }
+    });
+    expect(result.transaction.diff).toEqual({
+      created: [],
+      modified: [
+        { id: "cone_1", kind: "cone" },
+        { id: "torus_1", kind: "torus" }
+      ],
+      deleted: []
+    });
+  });
+
   it("updates document units with a semantic diff", () => {
     const engine = new CadEngine();
 
@@ -275,6 +370,18 @@ describe("cad-core", () => {
       dimensions: { radius: 12.7 },
       transform: { translation: [0, 25.4, 12.7] }
     });
+    engine.apply({
+      op: "scene.createCone",
+      id: "cone_1",
+      dimensions: { radius: 25.4, height: 50.8 },
+      transform: { translation: [25.4, 25.4, 25.4] }
+    });
+    engine.apply({
+      op: "scene.createTorus",
+      id: "torus_1",
+      dimensions: { majorRadius: 50.8, minorRadius: 12.7 },
+      transform: { translation: [50.8, 0, 0] }
+    });
 
     const result = engine.apply({
       op: "document.updateUnits",
@@ -285,18 +392,24 @@ describe("cad-core", () => {
     const box = result.document.objects.get("box_1");
     const cylinder = result.document.objects.get("cylinder_1");
     const sphere = result.document.objects.get("sphere_1");
+    const cone = result.document.objects.get("cone_1");
+    const torus = result.document.objects.get("torus_1");
 
     expect(result.document.units).toBe("in");
     expect(box?.kind).toBe("box");
     expect(cylinder?.kind).toBe("cylinder");
     expect(sphere?.kind).toBe("sphere");
+    expect(cone?.kind).toBe("cone");
+    expect(torus?.kind).toBe("torus");
 
     if (
       box?.kind !== "box" ||
       cylinder?.kind !== "cylinder" ||
-      sphere?.kind !== "sphere"
+      sphere?.kind !== "sphere" ||
+      cone?.kind !== "cone" ||
+      torus?.kind !== "torus"
     ) {
-      throw new Error("Expected converted box, cylinder, and sphere objects.");
+      throw new Error("Expected converted supported primitive objects.");
     }
 
     expect(box.dimensions.width).toBeCloseTo(10 / 25.4, 10);
@@ -317,12 +430,26 @@ describe("cad-core", () => {
     expect(sphere.transform.translation[1]).toBeCloseTo(1, 10);
     expect(sphere.transform.translation[2]).toBeCloseTo(0.5, 10);
 
+    expect(cone.dimensions.radius).toBeCloseTo(1, 10);
+    expect(cone.dimensions.height).toBeCloseTo(2, 10);
+    expect(cone.transform.translation[0]).toBeCloseTo(1, 10);
+    expect(cone.transform.translation[1]).toBeCloseTo(1, 10);
+    expect(cone.transform.translation[2]).toBeCloseTo(1, 10);
+
+    expect(torus.dimensions.majorRadius).toBeCloseTo(2, 10);
+    expect(torus.dimensions.minorRadius).toBeCloseTo(0.5, 10);
+    expect(torus.transform.translation[0]).toBeCloseTo(2, 10);
+    expect(torus.transform.translation[1]).toBeCloseTo(0, 10);
+    expect(torus.transform.translation[2]).toBeCloseTo(0, 10);
+
     expect(result.transaction.diff).toEqual({
       created: [],
       modified: [
         { id: "box_1", kind: "box" },
         { id: "cylinder_1", kind: "cylinder" },
-        { id: "sphere_1", kind: "sphere" }
+        { id: "sphere_1", kind: "sphere" },
+        { id: "cone_1", kind: "cone" },
+        { id: "torus_1", kind: "torus" }
       ],
       deleted: [],
       document: {
@@ -573,6 +700,66 @@ describe("cad-core", () => {
     });
     expect(engine.getDocument().objects.get("sphere_1")?.dimensions).toEqual({
       radius: 1
+    });
+  });
+
+  it("validates cone and torus dimensions", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createCone",
+      id: "cone_1",
+      dimensions: { radius: 1, height: 2 }
+    });
+    engine.apply({
+      op: "scene.createTorus",
+      id: "torus_1",
+      dimensions: { majorRadius: 2, minorRadius: 0.4 }
+    });
+
+    const coneResponse = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.updateConeDimensions",
+          id: "cone_1",
+          dimensions: { radius: 0, height: 2 }
+        }
+      ]
+    });
+
+    expect(coneResponse).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message: "Cone dimensions must be positive finite numbers.",
+        op: "scene.updateConeDimensions",
+        objectId: "cone_1"
+      }
+    });
+
+    const torusResponse = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.updateTorusDimensions",
+          id: "torus_1",
+          dimensions: { majorRadius: 2, minorRadius: 2 }
+        }
+      ]
+    });
+
+    expect(torusResponse).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Torus dimensions must be positive finite numbers with minorRadius smaller than majorRadius.",
+        op: "scene.updateTorusDimensions",
+        objectId: "torus_1"
+      }
     });
   });
 
@@ -931,6 +1118,85 @@ describe("cad-core", () => {
     expect(engine.getDocument().objects.get("sphere_1")).toMatchObject({
       kind: "sphere",
       dimensions: { radius: 3 }
+    });
+  });
+
+  it("supports cone and torus create and dimension updates in batch dry-run and commit", () => {
+    const engine = new CadEngine();
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "scene.createCone",
+          id: "cone_1",
+          dimensions: { radius: 1, height: 2 }
+        },
+        {
+          op: "scene.createTorus",
+          id: "torus_1",
+          dimensions: { majorRadius: 2, minorRadius: 0.4 }
+        }
+      ]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdIds: ["cone_1", "torus_1"],
+      modifiedIds: []
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createCone",
+          id: "cone_1",
+          dimensions: { radius: 1, height: 2 }
+        },
+        {
+          op: "scene.createTorus",
+          id: "torus_1",
+          dimensions: { majorRadius: 2, minorRadius: 0.4 }
+        },
+        {
+          op: "scene.updateConeDimensions",
+          id: "cone_1",
+          dimensions: { radius: 3, height: 8 }
+        },
+        {
+          op: "scene.updateTorusDimensions",
+          id: "torus_1",
+          dimensions: { majorRadius: 4, minorRadius: 0.75 }
+        }
+      ]
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdIds: ["cone_1", "torus_1"],
+      modifiedIds: ["cone_1", "torus_1"],
+      transactionId: "txn_1"
+    });
+    expect(engine.getDocument().objects.get("cone_1")).toMatchObject({
+      kind: "cone",
+      dimensions: { radius: 3, height: 8 }
+    });
+    expect(engine.getDocument().objects.get("torus_1")).toMatchObject({
+      kind: "torus",
+      dimensions: { majorRadius: 4, minorRadius: 0.75 }
+    });
+
+    engine.undo();
+    expect(engine.getDocument().objects.size).toBe(0);
+
+    engine.redo();
+    expect(engine.getDocument().objects.get("cone_1")).toMatchObject({
+      kind: "cone",
+      dimensions: { radius: 3, height: 8 }
     });
   });
 
@@ -1729,6 +1995,80 @@ describe("cad-core", () => {
     }
   });
 
+  it("returns approximate cone and torus measurements", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "scene.createCone",
+        id: "cone_1",
+        dimensions: { radius: 2, height: 6 },
+        transform: { translation: [1, 2, 3] }
+      },
+      {
+        op: "scene.createTorus",
+        id: "torus_1",
+        dimensions: { majorRadius: 3, minorRadius: 0.75 },
+        transform: { translation: [0, 0, 1] }
+      }
+    ]);
+
+    const cone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: "cone_1" }
+    });
+    const torus = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "object.measurements", id: "torus_1" }
+    });
+
+    expect(cone).toMatchObject({
+      ok: true,
+      query: "object.measurements",
+      measurements: {
+        id: "cone_1",
+        kind: "cone",
+        dimensions: { radius: 2, height: 6 },
+        localBounds: {
+          min: [-2, -2, -3],
+          max: [2, 2, 3],
+          size: [4, 4, 6]
+        },
+        worldBounds: {
+          min: [-1, 0, 0],
+          max: [3, 4, 6]
+        }
+      }
+    });
+    expect(torus).toMatchObject({
+      ok: true,
+      query: "object.measurements",
+      measurements: {
+        id: "torus_1",
+        kind: "torus",
+        dimensions: { majorRadius: 3, minorRadius: 0.75 },
+        localBounds: {
+          min: [-3.75, -3.75, -0.75],
+          max: [3.75, 3.75, 0.75],
+          size: [7.5, 7.5, 1.5]
+        },
+        worldBounds: {
+          min: [-3.75, -3.75, 0.25],
+          max: [3.75, 3.75, 1.75]
+        }
+      }
+    });
+
+    if (cone.ok && cone.query === "object.measurements") {
+      expect(cone.measurements.approximateVolume).toBeCloseTo(8 * Math.PI);
+    }
+    if (torus.ok && torus.query === "object.measurements") {
+      expect(torus.measurements.approximateVolume).toBeCloseTo(
+        3.375 * Math.PI * Math.PI
+      );
+    }
+  });
+
   it("returns project extents from object world bounds", () => {
     const engine = new CadEngine();
 
@@ -2155,6 +2495,18 @@ describe("cad-core", () => {
       transform: { translation: [0, 4, 2] }
     });
     engine.apply({
+      op: "scene.createCone",
+      id: "cone_1",
+      dimensions: { radius: 1, height: 3 },
+      transform: { translation: [5, 0, 1.5] }
+    });
+    engine.apply({
+      op: "scene.createTorus",
+      id: "torus_1",
+      dimensions: { majorRadius: 2, minorRadius: 0.4 },
+      transform: { translation: [7, 0, 0] }
+    });
+    engine.apply({
       op: "scene.updateTransform",
       id: "fixture",
       transform: { rotation: [0, 0, 1.25], scale: [2, 2, 1] }
@@ -2175,6 +2527,16 @@ describe("cad-core", () => {
       dimensions: { radius: 3 }
     });
     engine.apply({
+      op: "scene.updateConeDimensions",
+      id: "cone_1",
+      dimensions: { radius: 2, height: 5 }
+    });
+    engine.apply({
+      op: "scene.updateTorusDimensions",
+      id: "torus_1",
+      dimensions: { majorRadius: 3, minorRadius: 0.5 }
+    });
+    engine.apply({
       op: "document.updateUnits",
       units: "in"
     });
@@ -2191,7 +2553,9 @@ describe("cad-core", () => {
     expect([...restoredObjects.keys()]).toEqual([
       "obj_1",
       "fixture",
-      "sphere_1"
+      "sphere_1",
+      "cone_1",
+      "torus_1"
     ]);
     expect(restoredObjects.get("obj_1")).toEqual(
       engine.getDocument().objects.get("obj_1")
@@ -2202,6 +2566,12 @@ describe("cad-core", () => {
     expect(restoredObjects.get("sphere_1")).toEqual(
       engine.getDocument().objects.get("sphere_1")
     );
+    expect(restoredObjects.get("cone_1")).toEqual(
+      engine.getDocument().objects.get("cone_1")
+    );
+    expect(restoredObjects.get("torus_1")).toEqual(
+      engine.getDocument().objects.get("torus_1")
+    );
     expect(restored.getTransactions()).toEqual(engine.getTransactions());
 
     restored.undo();
@@ -2211,6 +2581,20 @@ describe("cad-core", () => {
     restored.undo();
 
     expect(restored.getDocument().units).toBe("mm");
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("torus_1")?.dimensions).toEqual({
+      majorRadius: 2,
+      minorRadius: 0.4
+    });
+
+    restored.undo();
+
+    expect(restored.getDocument().objects.get("cone_1")?.dimensions).toEqual({
+      radius: 1,
+      height: 3
+    });
 
     restored.undo();
 
@@ -2524,7 +2908,7 @@ describe("cad-core", () => {
               objects: [
                 {
                   id: "bad_object",
-                  kind: "torus",
+                  kind: "spline",
                   dimensions: { radius: 1 },
                   transform: {
                     translation: [0, 0, 0],
@@ -2603,6 +2987,38 @@ describe("cad-core", () => {
       {
         code: "INVALID_DIMENSIONS",
         path: "$.document.objects[0].dimensions.radius"
+      }
+    );
+  });
+
+  it("rejects invalid torus dimensions with a structured import error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              objects: [
+                {
+                  id: "bad_torus",
+                  kind: "torus",
+                  dimensions: { majorRadius: 1, minorRadius: 1 },
+                  transform: {
+                    translation: [0, 0, 0],
+                    rotation: [0, 0, 0],
+                    scale: [1, 1, 1]
+                  }
+                }
+              ]
+            }
+          })
+        ),
+      {
+        code: "INVALID_DIMENSIONS",
+        path: "$.document.objects[0].dimensions.minorRadius"
       }
     );
   });

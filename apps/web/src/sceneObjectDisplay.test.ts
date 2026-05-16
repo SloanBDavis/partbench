@@ -1,7 +1,9 @@
 import type {
   BoxObject,
+  ConeObject,
   CylinderObject,
-  SphereObject
+  SphereObject,
+  TorusObject
 } from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
@@ -20,6 +22,8 @@ describe("scene object display helpers", () => {
     expect(formatObjectKind("box")).toBe("Box");
     expect(formatObjectKind("cylinder")).toBe("Cylinder");
     expect(formatObjectKind("sphere")).toBe("Sphere");
+    expect(formatObjectKind("cone")).toBe("Cone");
+    expect(formatObjectKind("torus")).toBe("Torus");
     expect(formatDimensions(createBoxObject())).toBe("2 x 3.25 x 4");
     expect(formatDimensions(createBoxObject(), "mm")).toBe("2 x 3.25 x 4 mm");
     expect(formatDimensions(createCylinderObject())).toBe("r 1.50, h 4");
@@ -27,6 +31,12 @@ describe("scene object display helpers", () => {
       "r 1.50 in, h 4 in"
     );
     expect(formatDimensions(createSphereObject(), "cm")).toBe("r 2.25 cm");
+    expect(formatDimensions(createConeObject(), "mm")).toBe(
+      "r 1.50 mm, h 4 mm"
+    );
+    expect(formatDimensions(createTorusObject(), "mm")).toBe(
+      "R 3 mm, r 0.50 mm"
+    );
     expect(getObjectDisplayName(createBoxObject())).toBe("box_1");
     expect(getObjectDisplayName({ ...createBoxObject(), name: "Base" })).toBe(
       "Base"
@@ -101,6 +111,38 @@ function createSphereObject(): SphereObject {
     },
     transform: {
       translation: [0, 0, 2.25],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createConeObject(): ConeObject {
+  return {
+    id: "cone_1",
+    kind: "cone",
+    dimensions: {
+      radius: 1.5,
+      height: 4
+    },
+    transform: {
+      translation: [0, 0, 2],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1]
+    }
+  };
+}
+
+function createTorusObject(): TorusObject {
+  return {
+    id: "torus_1",
+    kind: "torus",
+    dimensions: {
+      majorRadius: 3,
+      minorRadius: 0.5
+    },
+    transform: {
+      translation: [0, 0, 0],
       rotation: [0, 0, 0],
       scale: [1, 1, 1]
     }

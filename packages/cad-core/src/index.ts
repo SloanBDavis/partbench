@@ -17,6 +17,7 @@ import type {
   CadSemanticDiffSummary,
   CadTransactionHistoryEntry,
   CadTransactionStatus,
+  ConeDimensions,
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnitUpdateMode,
@@ -25,6 +26,7 @@ import type {
   ObjectId,
   SemanticDiff,
   SphereDimensions,
+  TorusDimensions,
   CadTransactionAuditMetadata,
   TransactionId,
   Transform,
@@ -51,6 +53,7 @@ export type {
   CadTransactionHistoryEntry,
   CadTransactionStatus,
   CadTransactionAuditMetadata,
+  ConeDimensions,
   CylinderDimensions,
   DocumentSemanticDiff,
   DocumentUnitUpdateMode,
@@ -59,6 +62,7 @@ export type {
   ObjectId,
   SemanticDiff,
   SphereDimensions,
+  TorusDimensions,
   TransactionId,
   Transform,
   Vec3
@@ -93,7 +97,28 @@ export interface SphereObject {
   readonly transform: Transform;
 }
 
-export type SceneObject = BoxObject | CylinderObject | SphereObject;
+export interface ConeObject {
+  readonly id: ObjectId;
+  readonly kind: "cone";
+  readonly name?: string;
+  readonly dimensions: ConeDimensions;
+  readonly transform: Transform;
+}
+
+export interface TorusObject {
+  readonly id: ObjectId;
+  readonly kind: "torus";
+  readonly name?: string;
+  readonly dimensions: TorusDimensions;
+  readonly transform: Transform;
+}
+
+export type SceneObject =
+  | BoxObject
+  | CylinderObject
+  | SphereObject
+  | ConeObject
+  | TorusObject;
 
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
@@ -784,6 +809,36 @@ function applyOperation(
       return;
     }
 
+    case "scene.createCone": {
+      validateConeDimensions(op.dimensions, opIndex);
+
+      const object: ConeObject = {
+        id: op.id ?? createObjectId(),
+        kind: "cone",
+        name: normalizeOptionalObjectName(op.name, opIndex, op.id),
+        dimensions: op.dimensions,
+        transform: mergeTransform(op.transform)
+      };
+
+      addObject(state.objects, object, diff, opIndex);
+      return;
+    }
+
+    case "scene.createTorus": {
+      validateTorusDimensions(op.dimensions, opIndex);
+
+      const object: TorusObject = {
+        id: op.id ?? createObjectId(),
+        kind: "torus",
+        name: normalizeOptionalObjectName(op.name, opIndex, op.id),
+        dimensions: op.dimensions,
+        transform: mergeTransform(op.transform)
+      };
+
+      addObject(state.objects, object, diff, opIndex);
+      return;
+    }
+
     case "scene.deleteObject": {
       const existing = getObjectOrThrow(state.objects, op.id, opIndex);
       state.objects.delete(op.id);
@@ -839,6 +894,36 @@ function applyOperation(
       validateSphereDimensions(op.dimensions, opIndex, op.id);
 
       const updated: SphereObject = {
+        ...existing,
+        dimensions: op.dimensions
+      };
+
+      state.objects.set(op.id, updated);
+      diff.modified.push(objectRef(updated));
+      return;
+    }
+
+    case "scene.updateConeDimensions": {
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
+      assertObjectKind(existing, "cone", opIndex);
+      validateConeDimensions(op.dimensions, opIndex, op.id);
+
+      const updated: ConeObject = {
+        ...existing,
+        dimensions: op.dimensions
+      };
+
+      state.objects.set(op.id, updated);
+      diff.modified.push(objectRef(updated));
+      return;
+    }
+
+    case "scene.updateTorusDimensions": {
+      const existing = getObjectOrThrow(state.objects, op.id, opIndex);
+      assertObjectKind(existing, "torus", opIndex);
+      validateTorusDimensions(op.dimensions, opIndex, op.id);
+
+      const updated: TorusObject = {
         ...existing,
         dimensions: op.dimensions
       };
@@ -994,6 +1079,54 @@ function validateSphereDimensions(
   });
 }
 
+function validateConeDimensions(
+  dimensions: ConeDimensions,
+  opIndex?: number,
+  objectId?: ObjectId
+): void {
+  if (
+    isPositiveFiniteNumber(dimensions.radius) &&
+    isPositiveFiniteNumber(dimensions.height)
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_DIMENSIONS",
+    message: "Cone dimensions must be positive finite numbers.",
+    opIndex,
+    objectId,
+    path: operationPath(opIndex, "dimensions"),
+    expected: "positive finite radius and height",
+    received: describeReceived(dimensions)
+  });
+}
+
+function validateTorusDimensions(
+  dimensions: TorusDimensions,
+  opIndex?: number,
+  objectId?: ObjectId
+): void {
+  if (
+    isPositiveFiniteNumber(dimensions.majorRadius) &&
+    isPositiveFiniteNumber(dimensions.minorRadius) &&
+    dimensions.minorRadius < dimensions.majorRadius
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_DIMENSIONS",
+    message:
+      "Torus dimensions must be positive finite numbers with minorRadius smaller than majorRadius.",
+    opIndex,
+    objectId,
+    path: operationPath(opIndex, "dimensions"),
+    expected: "positive finite majorRadius and smaller positive minorRadius",
+    received: describeReceived(dimensions)
+  });
+}
+
 function validateDocumentUnits(units: DocumentUnits, opIndex?: number): void {
   if (isDocumentUnits(units)) {
     return;
@@ -1145,7 +1278,7 @@ function scaleSceneObjectLengthValues(
     };
   }
 
-  if (object.kind === "cylinder") {
+  if (object.kind === "cylinder" || object.kind === "cone") {
     return {
       ...object,
       dimensions: {
@@ -1156,10 +1289,21 @@ function scaleSceneObjectLengthValues(
     };
   }
 
+  if (object.kind === "sphere") {
+    return {
+      ...object,
+      dimensions: {
+        radius: scaleLength(object.dimensions.radius, scaleFactor)
+      },
+      transform
+    };
+  }
+
   return {
     ...object,
     dimensions: {
-      radius: scaleLength(object.dimensions.radius, scaleFactor)
+      majorRadius: scaleLength(object.dimensions.majorRadius, scaleFactor),
+      minorRadius: scaleLength(object.dimensions.minorRadius, scaleFactor)
     },
     transform
   };
@@ -1239,6 +1383,22 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
         dimensions: { ...object.dimensions },
         transform: cloneTransform(object.transform)
       };
+    case "cone":
+      return {
+        id: object.id,
+        kind: object.kind,
+        name: object.name,
+        dimensions: { ...object.dimensions },
+        transform: cloneTransform(object.transform)
+      };
+    case "torus":
+      return {
+        id: object.id,
+        kind: object.kind,
+        name: object.name,
+        dimensions: { ...object.dimensions },
+        transform: cloneTransform(object.transform)
+      };
   }
 }
 
@@ -1276,7 +1436,9 @@ function createPrimitiveFeatureSourceMap(
       if (
         op.op === "scene.createBox" ||
         op.op === "scene.createCylinder" ||
-        op.op === "scene.createSphere"
+        op.op === "scene.createSphere" ||
+        op.op === "scene.createCone" ||
+        op.op === "scene.createTorus"
       ) {
         if (op.id) {
           sourceByObjectId.set(op.id, {
@@ -1340,7 +1502,9 @@ function createOperationSummaries(
     const createdRef =
       op.op === "scene.createBox" ||
       op.op === "scene.createCylinder" ||
-      op.op === "scene.createSphere"
+      op.op === "scene.createSphere" ||
+      op.op === "scene.createCone" ||
+      op.op === "scene.createTorus"
         ? transaction.diff.created[createdIndex++]
         : undefined;
 
@@ -1384,6 +1548,28 @@ function createOperationSummaries(
         });
       }
 
+      case "scene.createCone": {
+        const objectId = op.id ?? createdRef?.id;
+
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Create cone ${objectId ?? "with generated ID"}`,
+          objectId,
+          objectKind: "cone"
+        });
+      }
+
+      case "scene.createTorus": {
+        const objectId = op.id ?? createdRef?.id;
+
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Create torus ${objectId ?? "with generated ID"}`,
+          objectId,
+          objectKind: "torus"
+        });
+      }
+
       case "scene.deleteObject":
         return createObjectOperationSummary({
           op: op.op,
@@ -1422,6 +1608,22 @@ function createOperationSummaries(
           label: `Update sphere dimensions for ${op.id}`,
           objectId: op.id,
           objectKind: "sphere"
+        });
+
+      case "scene.updateConeDimensions":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Update cone dimensions for ${op.id}`,
+          objectId: op.id,
+          objectKind: "cone"
+        });
+
+      case "scene.updateTorusDimensions":
+        return createObjectOperationSummary({
+          op: op.op,
+          label: `Update torus dimensions for ${op.id}`,
+          objectId: op.id,
+          objectKind: "torus"
         });
 
       case "scene.renameObject":
@@ -1528,6 +1730,16 @@ function createMeasurementPoints(object: SceneObject): readonly Vec3[] {
     return createSphereBoundsPoints(object.dimensions.radius);
   }
 
+  if (object.kind === "torus") {
+    const outerRadius =
+      object.dimensions.majorRadius + object.dimensions.minorRadius;
+    return createBoxBoundsPoints(
+      outerRadius,
+      outerRadius,
+      object.dimensions.minorRadius
+    );
+  }
+
   const { height, radius } = object.dimensions;
   const halfHeight = height / 2;
 
@@ -1588,6 +1800,24 @@ function calculateApproximateVolume(object: SceneObject): number {
   if (object.kind === "sphere") {
     const { radius } = object.dimensions;
     return (4 / 3) * Math.PI * radius * radius * radius * scaleFactor;
+  }
+
+  if (object.kind === "cone") {
+    const { height, radius } = object.dimensions;
+    return (Math.PI * radius * radius * height * scaleFactor) / 3;
+  }
+
+  if (object.kind === "torus") {
+    const { majorRadius, minorRadius } = object.dimensions;
+    return (
+      2 *
+      Math.PI *
+      Math.PI *
+      majorRadius *
+      minorRadius *
+      minorRadius *
+      scaleFactor
+    );
   }
 
   const { height, radius } = object.dimensions;
@@ -2108,6 +2338,20 @@ function sceneObjectsEqual(left: SceneObject, right: SceneObject): boolean {
     return left.dimensions.radius === right.dimensions.radius;
   }
 
+  if (left.kind === "cone" && right.kind === "cone") {
+    return (
+      left.dimensions.radius === right.dimensions.radius &&
+      left.dimensions.height === right.dimensions.height
+    );
+  }
+
+  if (left.kind === "torus" && right.kind === "torus") {
+    return (
+      left.dimensions.majorRadius === right.dimensions.majorRadius &&
+      left.dimensions.minorRadius === right.dimensions.minorRadius
+    );
+  }
+
   return false;
 }
 
@@ -2312,12 +2556,20 @@ function validateSceneObject(
       `${path}.dimensions`,
       issues
     );
+  } else if (value.kind === "cone") {
+    validateConeDimensionsShape(value.dimensions, `${path}.dimensions`, issues);
+  } else if (value.kind === "torus") {
+    validateTorusDimensionsShape(
+      value.dimensions,
+      `${path}.dimensions`,
+      issues
+    );
   } else {
     addProjectIssue(
       issues,
       "INVALID_OBJECT",
       `${path}.kind`,
-      "Scene object kind must be box, cylinder, or sphere."
+      "Scene object kind must be box, cylinder, sphere, cone, or torus."
     );
   }
 
@@ -2428,6 +2680,79 @@ function validateSphereDimensionsShape(
     "Sphere radius",
     issues
   );
+}
+
+function validateConeDimensionsShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      path,
+      "Cone dimensions must be an object."
+    );
+    return;
+  }
+
+  validatePositiveFiniteField(
+    value.radius,
+    `${path}.radius`,
+    "Cone radius",
+    issues
+  );
+  validatePositiveFiniteField(
+    value.height,
+    `${path}.height`,
+    "Cone height",
+    issues
+  );
+}
+
+function validateTorusDimensionsShape(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      path,
+      "Torus dimensions must be an object."
+    );
+    return;
+  }
+
+  validatePositiveFiniteField(
+    value.majorRadius,
+    `${path}.majorRadius`,
+    "Torus majorRadius",
+    issues
+  );
+  validatePositiveFiniteField(
+    value.minorRadius,
+    `${path}.minorRadius`,
+    "Torus minorRadius",
+    issues
+  );
+
+  if (
+    typeof value.majorRadius === "number" &&
+    typeof value.minorRadius === "number" &&
+    isPositiveFiniteNumber(value.majorRadius) &&
+    isPositiveFiniteNumber(value.minorRadius) &&
+    value.minorRadius >= value.majorRadius
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      `${path}.minorRadius`,
+      "Torus minorRadius must be smaller than majorRadius."
+    );
+  }
 }
 
 function validateTransformShape(
@@ -2787,7 +3112,9 @@ function materializeGeneratedObjectIds(
     if (
       op.op !== "scene.createBox" &&
       op.op !== "scene.createCylinder" &&
-      op.op !== "scene.createSphere"
+      op.op !== "scene.createSphere" &&
+      op.op !== "scene.createCone" &&
+      op.op !== "scene.createTorus"
     ) {
       return op;
     }
@@ -2835,6 +3162,24 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "scene.createCone") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isConeDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
+  if (value.op === "scene.createTorus") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.name) &&
+      isTorusDimensions(value.dimensions) &&
+      isOptionalTransform(value.transform)
+    );
+  }
+
   if (value.op === "scene.deleteObject") {
     return typeof value.id === "string";
   }
@@ -2859,6 +3204,14 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "scene.updateSphereDimensions") {
     return typeof value.id === "string" && isSphereDimensions(value.dimensions);
+  }
+
+  if (value.op === "scene.updateConeDimensions") {
+    return typeof value.id === "string" && isConeDimensions(value.dimensions);
+  }
+
+  if (value.op === "scene.updateTorusDimensions") {
+    return typeof value.id === "string" && isTorusDimensions(value.dimensions);
   }
 
   if (value.op === "scene.renameObject") {
@@ -2910,7 +3263,9 @@ function isCadObjectRef(value: unknown): value is CadObjectRef {
     typeof value.id === "string" &&
     (value.kind === "box" ||
       value.kind === "cylinder" ||
-      value.kind === "sphere")
+      value.kind === "sphere" ||
+      value.kind === "cone" ||
+      value.kind === "torus")
   );
 }
 
@@ -2941,6 +3296,27 @@ function isSphereDimensions(value: unknown): value is SphereDimensions {
     isRecord(value) &&
     typeof value.radius === "number" &&
     isPositiveFiniteNumber(value.radius)
+  );
+}
+
+function isConeDimensions(value: unknown): value is ConeDimensions {
+  return (
+    isRecord(value) &&
+    typeof value.radius === "number" &&
+    isPositiveFiniteNumber(value.radius) &&
+    typeof value.height === "number" &&
+    isPositiveFiniteNumber(value.height)
+  );
+}
+
+function isTorusDimensions(value: unknown): value is TorusDimensions {
+  return (
+    isRecord(value) &&
+    typeof value.majorRadius === "number" &&
+    isPositiveFiniteNumber(value.majorRadius) &&
+    typeof value.minorRadius === "number" &&
+    isPositiveFiniteNumber(value.minorRadius) &&
+    value.minorRadius < value.majorRadius
   );
 }
 

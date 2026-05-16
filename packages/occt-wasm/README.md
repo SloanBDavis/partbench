@@ -19,11 +19,13 @@ CAD DSL so the integration risk is visible at the kernel boundary.
 
 ## What The Adapter Does
 
-`createOcctBoxMesh()` and `createOcctCylinderMesh()`:
+The adapter currently exposes mesh creation for boxes, cylinders, spheres,
+cones, and tori:
 
 1. Loads OpenCascade.js WASM.
-2. Creates a primitive with `BRepPrimAPI_MakeBox` or
-   `BRepPrimAPI_MakeCylinder`.
+2. Creates a primitive with `BRepPrimAPI_MakeBox`,
+   `BRepPrimAPI_MakeCylinder`, `BRepPrimAPI_MakeSphere`,
+   `BRepPrimAPI_MakeCone`, or `BRepPrimAPI_MakeTorus`.
 3. Runs `BRepMesh_IncrementalMesh`.
 4. Reads face triangulations with `BRep_Tool.Triangulation`.
 5. Returns:

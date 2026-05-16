@@ -308,6 +308,91 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("accepts cone and torus batches and exposes their measurements", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_cone_torus",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createCone",
+              id: "measured_cone",
+              dimensions: { radius: 1.5, height: 4 }
+            },
+            {
+              op: "scene.createTorus",
+              id: "measured_torus",
+              dimensions: { majorRadius: 3, minorRadius: 1 }
+            }
+          ]
+        }
+      }
+    });
+    const cone = server.callTool({
+      name: "cad.object_measurements",
+      requestId: "mcp_req_measure_cone",
+      arguments: { id: "measured_cone" }
+    });
+    const torus = server.callTool({
+      name: "cad.object_measurements",
+      requestId: "mcp_req_measure_torus",
+      arguments: { id: "measured_torus" }
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_create_cone_torus",
+        createdIds: ["measured_cone", "measured_torus"],
+        transactionId: "txn_1"
+      }
+    });
+    expect(cone).toMatchObject({
+      toolName: "cad.object_measurements",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_measure_cone",
+        query: "object.measurements",
+        measurements: {
+          id: "measured_cone",
+          kind: "cone",
+          dimensions: { radius: 1.5, height: 4 },
+          localBounds: {
+            min: [-1.5, -1.5, -2],
+            max: [1.5, 1.5, 2]
+          }
+        }
+      }
+    });
+    expect(torus).toMatchObject({
+      toolName: "cad.object_measurements",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_measure_torus",
+        query: "object.measurements",
+        measurements: {
+          id: "measured_torus",
+          kind: "torus",
+          dimensions: { majorRadius: 3, minorRadius: 1 },
+          localBounds: {
+            min: [-4, -4, -1],
+            max: [4, 4, 1]
+          }
+        }
+      }
+    });
+  });
+
   it("returns primitive feature summaries through cad.project_features", () => {
     const server = new CadMcpServer();
 

@@ -11,7 +11,7 @@ export function DimensionFields<TForm extends DimensionCommandForm>({
   unitLabel
 }: {
   readonly disabled?: boolean;
-  readonly fields: readonly ("width" | "height" | "depth" | "radius")[];
+  readonly fields: readonly (keyof DimensionCommandForm)[];
   readonly form: TForm;
   readonly onChange: (form: TForm) => void;
   readonly unitLabel?: string;

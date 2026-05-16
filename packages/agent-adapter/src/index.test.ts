@@ -530,6 +530,82 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("accepts cone and torus commands and exposes their measurements through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const commit = adapter.execute({
+      requestId: "agent_cone_torus_commit",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createCone",
+            id: "agent_cone",
+            dimensions: { radius: 1.5, height: 4 }
+          },
+          {
+            op: "scene.createTorus",
+            id: "agent_torus",
+            dimensions: { majorRadius: 3, minorRadius: 1 }
+          }
+        ]
+      }
+    });
+    const cone = adapter.query({
+      requestId: "agent_cone_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "object.measurements", id: "agent_cone" }
+      }
+    });
+    const torus = adapter.query({
+      requestId: "agent_torus_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "object.measurements", id: "agent_torus" }
+      }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdIds: ["agent_cone", "agent_torus"],
+      transactionId: "txn_1"
+    });
+    expect(cone).toMatchObject({
+      ok: true,
+      requestId: "agent_cone_measure",
+      query: "object.measurements",
+      measurements: {
+        id: "agent_cone",
+        kind: "cone",
+        dimensions: { radius: 1.5, height: 4 },
+        localBounds: {
+          min: [-1.5, -1.5, -2],
+          max: [1.5, 1.5, 2]
+        }
+      }
+    });
+    expect(torus).toMatchObject({
+      ok: true,
+      requestId: "agent_torus_measure",
+      query: "object.measurements",
+      measurements: {
+        id: "agent_torus",
+        kind: "torus",
+        dimensions: { majorRadius: 3, minorRadius: 1 },
+        localBounds: {
+          min: [-4, -4, -1],
+          max: [4, 4, 1]
+        }
+      }
+    });
+  });
+
   it("returns project extents through adapter query JSON", () => {
     const adapter = new CadOpsAgentAdapter();
 

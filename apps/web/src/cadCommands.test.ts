@@ -3,24 +3,32 @@ import {
   areTransformFormsEqual,
   buildBatch,
   buildCreateBoxOp,
+  buildCreateConeOp,
   buildCreateSphereOp,
+  buildCreateTorusOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildUpdateBoxDimensionsOp,
+  buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
   buildUpdateSphereDimensionsOp,
+  buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   boxDimensionsToForm,
   areBoxDimensionFormsEqual,
+  areConeDimensionFormsEqual,
   areCylinderDimensionFormsEqual,
   areSphereDimensionFormsEqual,
+  areTorusDimensionFormsEqual,
+  coneDimensionsToForm,
   cylinderDimensionsToForm,
   resetTransformRotation,
   resetTransformScale,
   resetTransformTranslation,
   sphereDimensionsToForm,
+  torusDimensionsToForm,
   transformToForm,
   WEB_UI_ACTOR
 } from "./cadCommands";
@@ -34,6 +42,8 @@ describe("cad command builders", () => {
         height: 3,
         depth: 4,
         radius: 1,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 5,
         translationY: 6,
         translationZ: 7
@@ -52,6 +62,8 @@ describe("cad command builders", () => {
         height: 1,
         depth: 1,
         radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 5,
         translationY: 6,
         translationZ: 7
@@ -60,6 +72,46 @@ describe("cad command builders", () => {
       op: "scene.createSphere",
       id: "sphere_1",
       dimensions: { radius: 2 },
+      transform: { translation: [5, 6, 7] }
+    });
+
+    expect(
+      buildCreateConeOp({
+        id: "cone_1",
+        width: 1,
+        height: 4,
+        depth: 1,
+        radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5,
+        translationX: 5,
+        translationY: 6,
+        translationZ: 7
+      })
+    ).toEqual({
+      op: "scene.createCone",
+      id: "cone_1",
+      dimensions: { radius: 2, height: 4 },
+      transform: { translation: [5, 6, 7] }
+    });
+
+    expect(
+      buildCreateTorusOp({
+        id: "torus_1",
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 1,
+        majorRadius: 3,
+        minorRadius: 0.75,
+        translationX: 5,
+        translationY: 6,
+        translationZ: 7
+      })
+    ).toEqual({
+      op: "scene.createTorus",
+      id: "torus_1",
+      dimensions: { majorRadius: 3, minorRadius: 0.75 },
       transform: { translation: [5, 6, 7] }
     });
   });
@@ -98,7 +150,9 @@ describe("cad command builders", () => {
         width: 4,
         height: 5,
         depth: 6,
-        radius: 1
+        radius: 1,
+        majorRadius: 2,
+        minorRadius: 0.5
       })
     ).toEqual({
       op: "scene.updateBoxDimensions",
@@ -111,7 +165,9 @@ describe("cad command builders", () => {
         width: 1,
         height: 8,
         depth: 1,
-        radius: 2
+        radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5
       })
     ).toEqual({
       op: "scene.updateCylinderDimensions",
@@ -124,12 +180,44 @@ describe("cad command builders", () => {
         width: 1,
         height: 1,
         depth: 1,
-        radius: 3
+        radius: 3,
+        majorRadius: 2,
+        minorRadius: 0.5
       })
     ).toEqual({
       op: "scene.updateSphereDimensions",
       id: "sphere_1",
       dimensions: { radius: 3 }
+    });
+
+    expect(
+      buildUpdateConeDimensionsOp("cone_1", {
+        width: 1,
+        height: 4,
+        depth: 1,
+        radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5
+      })
+    ).toEqual({
+      op: "scene.updateConeDimensions",
+      id: "cone_1",
+      dimensions: { radius: 2, height: 4 }
+    });
+
+    expect(
+      buildUpdateTorusDimensionsOp("torus_1", {
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 1,
+        majorRadius: 3,
+        minorRadius: 0.75
+      })
+    ).toEqual({
+      op: "scene.updateTorusDimensions",
+      id: "torus_1",
+      dimensions: { majorRadius: 3, minorRadius: 0.75 }
     });
   });
 
@@ -161,6 +249,8 @@ describe("cad command builders", () => {
         height: 8,
         depth: 1,
         radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 0,
         translationY: 1,
         translationZ: 2,
@@ -199,6 +289,8 @@ describe("cad command builders", () => {
         height: 5,
         depth: 6,
         radius: 1,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 0,
         translationY: 0,
         translationZ: 0,
@@ -226,6 +318,8 @@ describe("cad command builders", () => {
         height: 8,
         depth: 1,
         radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 0,
         translationY: 0,
         translationZ: 0,
@@ -253,6 +347,8 @@ describe("cad command builders", () => {
         height: 1,
         depth: 1,
         radius: 3,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 0,
         translationY: 0,
         translationZ: 0,
@@ -273,6 +369,64 @@ describe("cad command builders", () => {
 
     expect(
       buildOperationFromBatchForm({
+        op: "scene.updateConeDimensions",
+        id: "",
+        targetId: "cone_1",
+        width: 1,
+        height: 4,
+        depth: 1,
+        radius: 2,
+        majorRadius: 2,
+        minorRadius: 0.5,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        name: "",
+        units: "mm"
+      })
+    ).toEqual({
+      op: "scene.updateConeDimensions",
+      id: "cone_1",
+      dimensions: { radius: 2, height: 4 }
+    });
+
+    expect(
+      buildOperationFromBatchForm({
+        op: "scene.updateTorusDimensions",
+        id: "",
+        targetId: "torus_1",
+        width: 1,
+        height: 1,
+        depth: 1,
+        radius: 1,
+        majorRadius: 3,
+        minorRadius: 0.75,
+        translationX: 0,
+        translationY: 0,
+        translationZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+        rotationZ: 0,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        name: "",
+        units: "mm"
+      })
+    ).toEqual({
+      op: "scene.updateTorusDimensions",
+      id: "torus_1",
+      dimensions: { majorRadius: 3, minorRadius: 0.75 }
+    });
+
+    expect(
+      buildOperationFromBatchForm({
         op: "scene.renameObject",
         id: "",
         targetId: "box_1",
@@ -280,6 +434,8 @@ describe("cad command builders", () => {
         height: 1,
         depth: 1,
         radius: 1,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 0,
         translationY: 0,
         translationZ: 0,
@@ -307,6 +463,8 @@ describe("cad command builders", () => {
         height: 1,
         depth: 1,
         radius: 1,
+        majorRadius: 2,
+        minorRadius: 0.5,
         translationX: 0,
         translationY: 0,
         translationZ: 0,
@@ -351,19 +509,51 @@ describe("cad command builders", () => {
     const boxForm = boxDimensionsToForm({ width: 2, height: 3, depth: 4 });
     const cylinderForm = cylinderDimensionsToForm({ radius: 1.5, height: 6 });
     const sphereForm = sphereDimensionsToForm({ radius: 2.5 });
+    const coneForm = coneDimensionsToForm({ radius: 2, height: 4 });
+    const torusForm = torusDimensionsToForm({
+      majorRadius: 3,
+      minorRadius: 0.75
+    });
 
-    expect(boxForm).toEqual({ width: 2, height: 3, depth: 4, radius: 1 });
+    expect(boxForm).toEqual({
+      width: 2,
+      height: 3,
+      depth: 4,
+      radius: 1,
+      majorRadius: 2,
+      minorRadius: 0.5
+    });
     expect(cylinderForm).toEqual({
       width: 1,
       height: 6,
       depth: 1,
-      radius: 1.5
+      radius: 1.5,
+      majorRadius: 2,
+      minorRadius: 0.5
     });
     expect(sphereForm).toEqual({
       width: 1,
       height: 1,
       depth: 1,
-      radius: 2.5
+      radius: 2.5,
+      majorRadius: 2,
+      minorRadius: 0.5
+    });
+    expect(coneForm).toEqual({
+      width: 1,
+      height: 4,
+      depth: 1,
+      radius: 2,
+      majorRadius: 2,
+      minorRadius: 0.5
+    });
+    expect(torusForm).toEqual({
+      width: 1,
+      height: 1,
+      depth: 1,
+      radius: 1,
+      majorRadius: 3,
+      minorRadius: 0.75
     });
     expect(areBoxDimensionFormsEqual(boxForm, { ...boxForm })).toBe(true);
     expect(areBoxDimensionFormsEqual(boxForm, { ...boxForm, depth: 5 })).toBe(
@@ -385,6 +575,20 @@ describe("cad command builders", () => {
       areSphereDimensionFormsEqual(sphereForm, {
         ...sphereForm,
         radius: 3
+      })
+    ).toBe(false);
+    expect(areConeDimensionFormsEqual(coneForm, { ...coneForm })).toBe(true);
+    expect(
+      areConeDimensionFormsEqual(coneForm, {
+        ...coneForm,
+        height: 5
+      })
+    ).toBe(false);
+    expect(areTorusDimensionFormsEqual(torusForm, { ...torusForm })).toBe(true);
+    expect(
+      areTorusDimensionFormsEqual(torusForm, {
+        ...torusForm,
+        minorRadius: 1
       })
     ).toBe(false);
   });

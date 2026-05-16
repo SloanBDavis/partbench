@@ -2,8 +2,15 @@ export type GeometryKernelVersion = "geometry-kernel.v1";
 export type GeometryKernelOp =
   | "geometry.tessellateBox"
   | "geometry.tessellateCylinder"
-  | "geometry.tessellateSphere";
-export type GeometryKernelPrimitive = "box" | "cylinder" | "sphere";
+  | "geometry.tessellateSphere"
+  | "geometry.tessellateCone"
+  | "geometry.tessellateTorus";
+export type GeometryKernelPrimitive =
+  | "box"
+  | "cylinder"
+  | "sphere"
+  | "cone"
+  | "torus";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -18,6 +25,16 @@ export interface CylinderGeometryDimensions {
 
 export interface SphereGeometryDimensions {
   readonly radius: number;
+}
+
+export interface ConeGeometryDimensions {
+  readonly radius: number;
+  readonly height: number;
+}
+
+export interface TorusGeometryDimensions {
+  readonly majorRadius: number;
+  readonly minorRadius: number;
 }
 
 export interface TessellationOptions {
@@ -49,10 +66,28 @@ export interface TessellateSphereRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface TessellateConeRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.tessellateCone";
+  readonly dimensions: ConeGeometryDimensions;
+  readonly tessellation?: TessellationOptions;
+}
+
+export interface TessellateTorusRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.tessellateTorus";
+  readonly dimensions: TorusGeometryDimensions;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
   | TessellateCylinderRequest
-  | TessellateSphereRequest;
+  | TessellateSphereRequest
+  | TessellateConeRequest
+  | TessellateTorusRequest;
 
 export interface SerializableMeshData {
   readonly primitive: GeometryKernelPrimitive;
@@ -114,10 +149,20 @@ export type GeometryKernelSphereMeshFactory = (
   input: SphereGeometryDimensions & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelConeMeshFactory = (
+  input: ConeGeometryDimensions & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
+export type GeometryKernelTorusMeshFactory = (
+  input: TorusGeometryDimensions & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
   readonly createSphereMesh: GeometryKernelSphereMeshFactory;
+  readonly createConeMesh: GeometryKernelConeMeshFactory;
+  readonly createTorusMesh: GeometryKernelTorusMeshFactory;
 }
 
 export async function executeGeometryKernelRequestWithMeshFactory(
@@ -185,20 +230,35 @@ function validateRequest(
         message: "Box dimensions must be finite numbers greater than zero."
       };
     }
-  } else if (request.op === "geometry.tessellateCylinder") {
+  } else if (
+    request.op === "geometry.tessellateCylinder" ||
+    request.op === "geometry.tessellateCone"
+  ) {
     if (
       !isPositiveFiniteNumber(request.dimensions.radius) ||
       !isPositiveFiniteNumber(request.dimensions.height)
     ) {
       return {
         code: "INVALID_DIMENSIONS",
-        message: "Cylinder dimensions must be finite numbers greater than zero."
+        message: `${formatPrimitiveLabel(request.op)} dimensions must be finite numbers greater than zero.`
       };
     }
-  } else if (!isPositiveFiniteNumber(request.dimensions.radius)) {
+  } else if (request.op === "geometry.tessellateSphere") {
+    if (!isPositiveFiniteNumber(request.dimensions.radius)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Sphere dimensions must be finite numbers greater than zero."
+      };
+    }
+  } else if (
+    !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
+    !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
+    request.dimensions.minorRadius >= request.dimensions.majorRadius
+  ) {
     return {
       code: "INVALID_DIMENSIONS",
-      message: "Sphere dimensions must be finite numbers greater than zero."
+      message:
+        "Torus dimensions must be finite numbers greater than zero with minorRadius smaller than majorRadius."
     };
   }
 
@@ -238,6 +298,33 @@ function createMesh(
         linearDeflection: request.tessellation?.linearDeflection,
         angularDeflection: request.tessellation?.angularDeflection
       });
+    case "geometry.tessellateCone":
+      return factories.createConeMesh({
+        ...request.dimensions,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
+    case "geometry.tessellateTorus":
+      return factories.createTorusMesh({
+        ...request.dimensions,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
+  }
+}
+
+function formatPrimitiveLabel(op: GeometryKernelOp): string {
+  switch (op) {
+    case "geometry.tessellateBox":
+      return "Box";
+    case "geometry.tessellateCylinder":
+      return "Cylinder";
+    case "geometry.tessellateSphere":
+      return "Sphere";
+    case "geometry.tessellateCone":
+      return "Cone";
+    case "geometry.tessellateTorus":
+      return "Torus";
   }
 }
 

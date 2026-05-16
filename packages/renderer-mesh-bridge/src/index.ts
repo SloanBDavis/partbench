@@ -77,7 +77,9 @@ function validateMesh(mesh: SerializableMeshData): void {
   if (
     mesh.primitive !== "box" &&
     mesh.primitive !== "cylinder" &&
-    mesh.primitive !== "sphere"
+    mesh.primitive !== "sphere" &&
+    mesh.primitive !== "cone" &&
+    mesh.primitive !== "torus"
   ) {
     throw new Error(`Unsupported mesh primitive: ${mesh.primitive}`);
   }

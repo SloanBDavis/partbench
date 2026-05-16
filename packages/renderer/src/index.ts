@@ -42,10 +42,32 @@ export interface RenderSpherePrimitive {
   readonly transform: RenderTransform;
 }
 
+export interface RenderConePrimitive {
+  readonly id: string;
+  readonly kind: "cone";
+  readonly dimensions: {
+    readonly radius: number;
+    readonly height: number;
+  };
+  readonly transform: RenderTransform;
+}
+
+export interface RenderTorusPrimitive {
+  readonly id: string;
+  readonly kind: "torus";
+  readonly dimensions: {
+    readonly majorRadius: number;
+    readonly minorRadius: number;
+  };
+  readonly transform: RenderTransform;
+}
+
 export type RenderPrimitive =
   | RenderBoxPrimitive
   | RenderCylinderPrimitive
-  | RenderSpherePrimitive;
+  | RenderSpherePrimitive
+  | RenderConePrimitive
+  | RenderTorusPrimitive;
 
 export interface RenderEdgeSegment {
   readonly start: Vec3;
@@ -263,8 +285,12 @@ function drawPrimitive(
     drawBox(context, primitive, camera, size, selected);
   } else if (primitive.kind === "cylinder") {
     drawCylinder(context, primitive, camera, size, selected);
-  } else {
+  } else if (primitive.kind === "sphere") {
     drawSphere(context, primitive, camera, size, selected);
+  } else if (primitive.kind === "cone") {
+    drawCone(context, primitive, camera, size, selected);
+  } else {
+    drawTorus(context, primitive, camera, size, selected);
   }
 }
 
@@ -396,6 +422,83 @@ function drawSphere(
         size,
         ring[index],
         ring[(index + 1) % ring.length]
+      );
+    }
+  }
+
+  context.restore();
+}
+
+function drawCone(
+  context: CanvasRenderingContext2D,
+  primitive: RenderConePrimitive,
+  camera: RenderCamera,
+  size: ViewportSize,
+  selected: boolean
+): void {
+  const segments = getConeSegments(primitive);
+
+  context.save();
+  context.strokeStyle = selected ? "#f2a541" : "#a35f2a";
+  context.lineWidth = selected ? 3 : 2;
+
+  for (let index = 0; index < segments.base.length; index += 1) {
+    const nextIndex = (index + 1) % segments.base.length;
+    strokeProjectedLine(
+      context,
+      camera,
+      size,
+      segments.base[index],
+      segments.base[nextIndex]
+    );
+
+    if (index % 4 === 0) {
+      strokeProjectedLine(
+        context,
+        camera,
+        size,
+        segments.base[index],
+        segments.apex
+      );
+    }
+  }
+
+  context.restore();
+}
+
+function drawTorus(
+  context: CanvasRenderingContext2D,
+  primitive: RenderTorusPrimitive,
+  camera: RenderCamera,
+  size: ViewportSize,
+  selected: boolean
+): void {
+  const rings = getTorusSegments(primitive);
+
+  context.save();
+  context.strokeStyle = selected ? "#f2a541" : "#28756a";
+  context.lineWidth = selected ? 3 : 2;
+
+  for (const ring of [rings.center, rings.outer, rings.inner]) {
+    for (let index = 0; index < ring.length; index += 1) {
+      strokeProjectedLine(
+        context,
+        camera,
+        size,
+        ring[index],
+        ring[(index + 1) % ring.length]
+      );
+    }
+  }
+
+  for (const crossSection of rings.crossSections) {
+    for (let index = 0; index < crossSection.length; index += 1) {
+      strokeProjectedLine(
+        context,
+        camera,
+        size,
+        crossSection[index],
+        crossSection[(index + 1) % crossSection.length]
       );
     }
   }
@@ -613,8 +716,23 @@ function getPrimitiveBoundsPoints(primitive: RenderPrimitive): readonly Vec3[] {
     ];
   }
 
-  const segments = getSphereSegments(primitive);
-  return [...segments.xy, ...segments.xz, ...segments.yz];
+  if (primitive.kind === "sphere") {
+    const segments = getSphereSegments(primitive);
+    return [...segments.xy, ...segments.xz, ...segments.yz];
+  }
+
+  if (primitive.kind === "cone") {
+    const segments = getConeSegments(primitive);
+    return [...segments.base, segments.apex];
+  }
+
+  const segments = getTorusSegments(primitive);
+  return [
+    ...segments.center,
+    ...segments.outer,
+    ...segments.inner,
+    ...segments.crossSections.flat()
+  ];
 }
 
 function getProjectedMeshBounds(
@@ -761,6 +879,116 @@ function getSphereSegments(primitive: RenderSpherePrimitive): {
   }
 
   return { xy, xz, yz };
+}
+
+function getConeSegments(primitive: RenderConePrimitive): {
+  base: Vec3[];
+  apex: Vec3;
+} {
+  const segmentCount = 24;
+  const radius = primitive.dimensions.radius;
+  const scale = primitive.transform.scale;
+  const scaledRadiusX = radius * scale[0];
+  const scaledRadiusY = radius * scale[1];
+  const halfHeight = (primitive.dimensions.height * scale[2]) / 2;
+  const base: Vec3[] = [];
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const angle = (index / segmentCount) * Math.PI * 2;
+    base.push(
+      transformPoint(
+        [
+          Math.cos(angle) * scaledRadiusX,
+          Math.sin(angle) * scaledRadiusY,
+          -halfHeight
+        ],
+        primitive.transform,
+        false
+      )
+    );
+  }
+
+  return {
+    base,
+    apex: transformPoint([0, 0, halfHeight], primitive.transform, false)
+  };
+}
+
+function getTorusSegments(primitive: RenderTorusPrimitive): {
+  center: Vec3[];
+  outer: Vec3[];
+  inner: Vec3[];
+  crossSections: Vec3[][];
+} {
+  const segmentCount = 32;
+  const crossSectionCount = 16;
+  const { majorRadius, minorRadius } = primitive.dimensions;
+  const scale = primitive.transform.scale;
+  const center: Vec3[] = [];
+  const outer: Vec3[] = [];
+  const inner: Vec3[] = [];
+  const crossSections: Vec3[][] = [];
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const angle = (index / segmentCount) * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    center.push(
+      transformPoint(
+        [cos * majorRadius * scale[0], sin * majorRadius * scale[1], 0],
+        primitive.transform,
+        false
+      )
+    );
+    outer.push(
+      transformPoint(
+        [
+          cos * (majorRadius + minorRadius) * scale[0],
+          sin * (majorRadius + minorRadius) * scale[1],
+          0
+        ],
+        primitive.transform,
+        false
+      )
+    );
+    inner.push(
+      transformPoint(
+        [
+          cos * (majorRadius - minorRadius) * scale[0],
+          sin * (majorRadius - minorRadius) * scale[1],
+          0
+        ],
+        primitive.transform,
+        false
+      )
+    );
+  }
+
+  for (const sectionAngle of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+    const cosSection = Math.cos(sectionAngle);
+    const sinSection = Math.sin(sectionAngle);
+    const section: Vec3[] = [];
+
+    for (let index = 0; index < crossSectionCount; index += 1) {
+      const angle = (index / crossSectionCount) * Math.PI * 2;
+      const radial = majorRadius + Math.cos(angle) * minorRadius;
+      section.push(
+        transformPoint(
+          [
+            cosSection * radial * scale[0],
+            sinSection * radial * scale[1],
+            Math.sin(angle) * minorRadius * scale[2]
+          ],
+          primitive.transform,
+          false
+        )
+      );
+    }
+
+    crossSections.push(section);
+  }
+
+  return { center, outer, inner, crossSections };
 }
 
 function getMeshEdges(
