@@ -783,6 +783,72 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns sketch queries and sketch batch IDs through the adapter", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const commit = adapter.execute({
+      requestId: "agent_req_sketch_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          { op: "sketch.create", name: "Adapter sketch", plane: "XY" },
+          {
+            op: "sketch.addCircle",
+            sketchId: "sketch_1",
+            center: [0, 0],
+            radius: 2
+          }
+        ]
+      }
+    });
+
+    const sketches = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_sketches_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.sketches" }
+      }
+    });
+    const sketch = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_sketch_1",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdSketchIds: ["sketch_1"],
+      createdSketchEntityIds: ["skent_1"]
+    });
+    expect(sketches).toMatchObject({
+      ok: true,
+      query: "project.sketches",
+      sketchCount: 1,
+      sketches: [
+        {
+          id: "sketch_1",
+          name: "Adapter sketch",
+          entities: [{ id: "skent_1", kind: "circle" }]
+        }
+      ]
+    });
+    expect(sketch).toMatchObject({
+      ok: true,
+      query: "sketch.get",
+      sketch: {
+        id: "sketch_1",
+        plane: "XY"
+      }
+    });
+  });
+
   it("returns transaction history through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

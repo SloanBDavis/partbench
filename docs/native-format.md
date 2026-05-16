@@ -1,12 +1,13 @@
 # Native Project Format
 
 This document describes the current source-of-truth project format and the
-direction for the future native package format. The current V1 format is
-complete as a JSON source-of-truth interchange format. The V2 structural bridge
-does not require a new saved format yet because it is derived from existing V1
-source-of-truth data. Future V2 storage work should use this document to evolve
-toward a native package without prematurely introducing OPFS, File System Access
-API, STEP import/export, real topology, or a final `.wcad` implementation.
+direction for the future native package format. The V1 format is complete as a
+JSON source-of-truth interchange format. V2 now adds source-of-truth sketches,
+so current exports use an explicit V2 JSON format while the loader still accepts
+V1 projects through migration. Future V2 storage work should use this document
+to evolve toward a native package without prematurely introducing OPFS, File
+System Access API, STEP import/export, real topology, or a final `.wcad`
+implementation.
 
 ## Current Format
 
@@ -14,6 +15,7 @@ The current saved format is deliberate JSON:
 
 ```text
 schemaVersion: web-cad.project.v1
+schemaVersion: web-cad.project.v2
 ```
 
 It is produced by:
@@ -37,15 +39,18 @@ importability checks as load, including transaction replay, so malformed history
 is blocked before the user imports it. This remains ordinary JSON import/export
 and does not use OPFS or the File System Access API.
 
-The current JSON shape is:
+The current exported JSON shape is:
 
 ```ts
-ProjectV1 {
-  schemaVersion: "web-cad.project.v1"
+ProjectV2 {
+  schemaVersion: "web-cad.project.v2"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
+    sketches: Sketch[]
     nextObjectNumber: number
+    nextSketchNumber: number
+    nextSketchEntityNumber: number
   }
   history: Transaction[]
   redoStack: Transaction[]
@@ -177,19 +182,57 @@ two modes:
 The project file stores the resulting authoritative document values and the
 transaction diff that explains how the unit change happened.
 
-## V2 Bridge Storage Decision
+Current sketches are source-of-truth V2 document data:
 
-The current V2 part/feature/body bridge does not change the saved project
-format.
+```ts
+Sketch {
+  id: string
+  name: string
+  plane: "XY" | "XZ" | "YZ"
+  entities: SketchEntity[]
+}
 
-`web-cad.project.v1` remains the only accepted import/export schema because the
-current bridge is fully derived from existing authoritative data:
+SketchEntity =
+  | { id: string; kind: "point"; point: [number, number] }
+  | { id: string; kind: "line"; start: [number, number]; end: [number, number] }
+  | {
+      id: string
+      kind: "rectangle"
+      center: [number, number]
+      width: number
+      height: number
+    }
+  | {
+      id: string
+      kind: "circle"
+      center: [number, number]
+      radius: number
+    }
+```
 
-- scene object IDs;
-- scene object kinds, dimensions, transforms, and names;
-- document units;
-- committed transaction history; and
-- redo transaction history where practical.
+Sketch names must be non-empty after trimming. Sketch coordinates must be
+finite numbers. Rectangle width/height and circle radius must be positive finite
+numbers. Sketches do not yet include constraints, solving, profiles, or feature
+references.
+
+## V2 Storage Decision
+
+The derived V2 part/feature/body bridge did not require a format change because
+it is rebuilt from scene objects. Sketches are different: they are authored CAD
+source data that cannot be reconstructed from V1 objects and transaction history
+unless their commands remain in history forever. Current exports therefore use
+`web-cad.project.v2`.
+
+The loader accepts both:
+
+```text
+web-cad.project.v1
+web-cad.project.v2
+```
+
+V1 projects migrate into the current in-memory model with unchanged units,
+objects, object counters, history, and redo history, plus empty sketch source
+data and fresh sketch counters.
 
 The derived mapping is deterministic:
 
@@ -199,9 +242,9 @@ scene object <objectId>       -> feature:<objectId>
 feature:<objectId>            -> body:<objectId>
 ```
 
-Those IDs are query/API affordances. They are not separately persisted in V1
-JSON. On load, `cad-core` can rebuild the same structural query response from
-the saved document and transaction history.
+Those IDs are query/API affordances. They are not separately persisted as
+part/feature/body records in V2 JSON. On load, `cad-core` can rebuild the same
+structural query response from the saved document and transaction history.
 
 This avoids duplicating source-of-truth state. Duplicated saved part/feature/body
 records would create unnecessary consistency rules while the app still has only
@@ -219,6 +262,12 @@ The current source of truth is:
 - object dimensions
 - object transforms
 - `document.nextObjectNumber`
+- sketch IDs
+- sketch names
+- sketch planes
+- sketch entities and entity geometry
+- `document.nextSketchNumber`
+- `document.nextSketchEntityNumber`
 - committed transaction history
 - redo transaction history where practical
 - optional transaction actor metadata
@@ -247,14 +296,15 @@ saved feature graph in this format.
 
 ## Future Format Version Triggers
 
-Do not introduce `web-cad.project.v2` just because query shapes changed. A new
-project format is justified when the saved source-of-truth model gains data that
-cannot be faithfully reconstructed from `web-cad.project.v1`.
+Do not introduce another format version just because query shapes changed. A
+new project format is justified when the saved source-of-truth model gains data
+that cannot be faithfully represented by the current `web-cad.project.v2`
+document shape.
 
 Likely triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
-- sketch containers, sketch entities, constraints, and dimensions;
+- sketch constraints, dimensions, profiles, or solver state;
 - explicit feature records such as extrudes or revolves;
 - body definitions or exact geometry checkpoints that are source of truth or
   required rebuild inputs;
@@ -266,14 +316,13 @@ Likely triggers:
 - a command-log representation that cannot be preserved with V1 transaction
   history.
 
-When any of those become real source data, the next format should be explicit,
-for example:
+When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v2
+schemaVersion: web-cad.project.v3
 ```
 
-That format should include a migration from `web-cad.project.v1`, not silent
+That format should include a migration from older accepted versions, not silent
 shape guessing.
 
 ## Rebuildable Cache
@@ -291,6 +340,7 @@ These are not source of truth and must not be required to load a project:
 - read-only transaction history summary query results
 - read-only primitive feature summary query results
 - read-only project structure query results
+- read-only project sketch query formatting
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the
@@ -311,12 +361,19 @@ document.
 - object dimensions
 - transforms
 - object names
+- sketch IDs
+- sketch names
+- sketch planes
+- sketch entity IDs
+- sketch entity kinds and geometry
 - transaction and semantic diff shape
 - optional transaction audit metadata
 - committed transaction stack status
 - undone redo stack status
 - duplicate transaction IDs across history and redo stack
 - `nextObjectNumber` collisions with generated object IDs
+- `nextSketchNumber` collisions with generated sketch IDs
+- `nextSketchEntityNumber` collisions with generated sketch entity IDs
 - optional transaction actor metadata
 - transaction replay where practical
 - consistency between the saved document and replayed committed transaction
@@ -337,17 +394,18 @@ codes and paths for malformed project files.
 
 ## Migration And Versioning
 
-The current loader accepts only:
+The current loader accepts:
 
 ```text
 web-cad.project.v1
+web-cad.project.v2
 ```
 
-Unsupported versions fail with a structured `UNSUPPORTED_PROJECT_VERSION`
-issue. That is intentional until a second real format exists.
+V1 is migrated to V2 on parse/load. Unsupported versions fail with a structured
+`UNSUPPORTED_PROJECT_VERSION` issue.
 
-When a new format is needed, add an explicit migration path rather than
-silently accepting ambiguous shapes. A future migration should:
+When another format is needed, add an explicit migration path rather than
+silently accepting ambiguous shapes. A migration should:
 
 1. Detect the incoming `schemaVersion`.
 2. Validate that version's expected shape.
@@ -356,7 +414,7 @@ silently accepting ambiguous shapes. A future migration should:
 5. Preserve or deliberately rewrite command history.
 6. Report structured migration errors with paths.
 
-Do not add migration branches before a real older/newer format exists.
+Do not add more migration branches before another real format exists.
 
 ## Future Native Package Direction
 

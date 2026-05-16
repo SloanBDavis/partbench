@@ -13,8 +13,10 @@ export type CadMcpToolName =
   | "cad.project_summary"
   | "cad.project_features"
   | "cad.project_structure"
+  | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.project_extents"
+  | "cad.sketch_get"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -120,12 +122,20 @@ export class CadMcpServer {
       return this.#callProjectStructure(request);
     }
 
+    if (request.name === "cad.project_sketches") {
+      return this.#callProjectSketches(request);
+    }
+
     if (request.name === "cad.object_measurements") {
       return this.#callObjectMeasurements(request);
     }
 
     if (request.name === "cad.project_extents") {
       return this.#callProjectExtents(request);
+    }
+
+    if (request.name === "cad.sketch_get") {
+      return this.#callSketchGet(request);
     }
 
     if (request.name === "cad.transaction_history") {
@@ -253,6 +263,28 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callProjectSketches(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_sketches does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.sketches" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callObjectMeasurements(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -295,6 +327,31 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.extents" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callSketchGet(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isSketchGetToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.sketch_get expects arguments shaped as { id: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.get",
+            id: request.arguments.id
+          }
         }
       })
     );
@@ -404,6 +461,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.project_sketches",
+    description:
+      "Returns source-of-truth sketches and sketch entities in the current CAD document.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
     name: "cad.object_measurements",
     description:
       "Returns derived measurements and bounds for one current CAD object.",
@@ -427,6 +494,21 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       type: "object",
       additionalProperties: false,
       properties: {}
+    }
+  },
+  {
+    name: "cad.sketch_get",
+    description: "Returns one source-of-truth sketch by ID.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id"],
+      properties: {
+        id: {
+          type: "string",
+          description: "Sketch ID to fetch."
+        }
+      }
     }
   },
   {
@@ -506,6 +588,12 @@ function isBatchToolArguments(value: unknown): value is {
 }
 
 function isObjectMeasurementsToolArguments(
+  value: unknown
+): value is { readonly id: string } {
+  return isRecord(value) && typeof value.id === "string" && value.id !== "";
+}
+
+function isSketchGetToolArguments(
   value: unknown
 ): value is { readonly id: string } {
   return isRecord(value) && typeof value.id === "string" && value.id !== "";

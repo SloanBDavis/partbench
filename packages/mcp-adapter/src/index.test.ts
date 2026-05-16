@@ -9,8 +9,10 @@ describe("mcp-adapter", () => {
       "cad.project_summary",
       "cad.project_features",
       "cad.project_structure",
+      "cad.project_sketches",
       "cad.object_measurements",
       "cad.project_extents",
+      "cad.sketch_get",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -516,6 +518,75 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns sketches through cad.project_sketches and cad.sketch_get", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_sketch",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "mcp_sketch",
+              name: "MCP sketch",
+              plane: "XZ"
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_sketch",
+              id: "mcp_line",
+              start: [0, 0],
+              end: [1, 2]
+            }
+          ]
+        }
+      }
+    });
+    const list = server.callTool({
+      name: "cad.project_sketches",
+      requestId: "mcp_req_project_sketches"
+    });
+    const get = server.callTool({
+      name: "cad.sketch_get",
+      requestId: "mcp_req_sketch_get",
+      arguments: { id: "mcp_sketch" }
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdSketchIds: ["mcp_sketch"],
+      createdSketchEntityIds: ["mcp_line"]
+    });
+    expect(list).toMatchObject({
+      toolName: "cad.project_sketches",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "project.sketches",
+        sketchCount: 1,
+        sketches: [{ id: "mcp_sketch", name: "MCP sketch" }]
+      }
+    });
+    expect(get).toMatchObject({
+      toolName: "cad.sketch_get",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "sketch.get",
+        sketch: {
+          id: "mcp_sketch",
+          plane: "XZ",
+          entities: [{ id: "mcp_line", kind: "line" }]
+        }
+      }
+    });
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
@@ -700,8 +771,10 @@ describe("mcp-adapter", () => {
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
+          { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.project_extents" },
+          { name: "cad.sketch_get" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

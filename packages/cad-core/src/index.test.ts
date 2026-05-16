@@ -486,6 +486,204 @@ describe("cad-core", () => {
     });
   });
 
+  it("creates sketches and sketch entities with semantic diffs", () => {
+    const engine = new CadEngine();
+
+    const result = engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "  Base sketch  ",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [0, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [2, 2]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [1, 1],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [3, 3],
+        radius: 1
+      }
+    ]);
+
+    const sketch = result.document.sketches.get("sketch_1");
+
+    expect(sketch).toBeDefined();
+    expect(sketch?.name).toBe("Base sketch");
+    expect(sketch?.plane).toBe("XY");
+    expect([...(sketch?.entities.keys() ?? [])]).toEqual([
+      "point_1",
+      "line_1",
+      "rect_1",
+      "circle_1"
+    ]);
+    expect(result.transaction.diff.sketches).toEqual({
+      created: [{ id: "sketch_1" }],
+      modified: [],
+      deleted: [],
+      entitiesCreated: [
+        { sketchId: "sketch_1", id: "point_1", kind: "point" },
+        { sketchId: "sketch_1", id: "line_1", kind: "line" },
+        { sketchId: "sketch_1", id: "rect_1", kind: "rectangle" },
+        { sketchId: "sketch_1", id: "circle_1", kind: "circle" }
+      ],
+      entitiesModified: [],
+      entitiesDeleted: []
+    });
+  });
+
+  it("updates, renames, and deletes sketch source data with undo and redo", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XZ" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 1
+      }
+    ]);
+
+    const result = engine.applyBatch([
+      {
+        op: "sketch.updateEntity",
+        sketchId: "sketch_1",
+        entity: {
+          id: "circle_1",
+          kind: "circle",
+          center: [2, 3],
+          radius: 4
+        }
+      },
+      { op: "sketch.rename", id: "sketch_1", name: "Updated profile" },
+      {
+        op: "sketch.deleteEntity",
+        sketchId: "sketch_1",
+        entityId: "circle_1"
+      }
+    ]);
+
+    expect(result.document.sketches.get("sketch_1")?.name).toBe(
+      "Updated profile"
+    );
+    expect(
+      result.document.sketches.get("sketch_1")?.entities.has("circle_1")
+    ).toBe(false);
+    expect(result.transaction.diff.sketches).toMatchObject({
+      modified: [{ id: "sketch_1" }],
+      entitiesModified: [
+        { sketchId: "sketch_1", id: "circle_1", kind: "circle" }
+      ],
+      entitiesDeleted: [
+        { sketchId: "sketch_1", id: "circle_1", kind: "circle" }
+      ]
+    });
+
+    engine.undo();
+    expect(engine.getDocument().sketches.get("sketch_1")?.name).toBe("Profile");
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.has("circle_1")
+    ).toBe(true);
+
+    engine.redo();
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.has("circle_1")
+    ).toBe(false);
+  });
+
+  it("validates sketch commands without mutating the document", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.addRectangle",
+          sketchId: "missing_sketch",
+          center: [0, 0],
+          width: 0,
+          height: 1
+        }
+      ]
+    });
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) {
+      expect(response.error).toMatchObject({
+        code: "SKETCH_NOT_FOUND",
+        op: "sketch.addRectangle",
+        sketchId: "missing_sketch"
+      });
+    }
+    expect(engine.getDocument().sketches.size).toBe(0);
+  });
+
+  it("supports sketch commands in batch dry-run and commit responses", () => {
+    const engine = new CadEngine();
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "sketch.create" as const,
+          name: "Generated sketch",
+          plane: "XY" as const
+        },
+        {
+          op: "sketch.addPoint" as const,
+          sketchId: "sketch_1",
+          point: [1, 2] as const
+        }
+      ]
+    };
+
+    const dryRun = engine.executeBatch(batch);
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_1"],
+      createdSketchEntityIds: ["skent_1"]
+    });
+    expect(engine.getDocument().sketches.size).toBe(0);
+
+    const commit = engine.executeBatch({ ...batch, mode: "commit" });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_1"],
+      createdSketchEntityIds: ["skent_1"],
+      transactionId: "txn_1"
+    });
+    expect(engine.getDocument().sketches.get("sketch_1")?.entities.size).toBe(
+      1
+    );
+  });
+
   it("validates document units", () => {
     const engine = new CadEngine();
 
@@ -1783,7 +1981,8 @@ describe("cad-core", () => {
           source: { type: "defaultScenePart" },
           objectIds: ["structure_box", "structure_sphere"],
           featureIds: ["feature:structure_box", "feature:structure_sphere"],
-          bodyIds: ["body:structure_box", "body:structure_sphere"]
+          bodyIds: ["body:structure_box", "body:structure_sphere"],
+          sketchIds: []
         }
       ],
       features: [
@@ -1814,6 +2013,7 @@ describe("cad-core", () => {
           primitive: "sphere",
           objectId: "structure_sphere",
           bodyId: "body:structure_sphere",
+          name: undefined,
           dimensions: { radius: 4 },
           transform: {
             translation: [0, 0, 0],
@@ -1849,6 +2049,7 @@ describe("cad-core", () => {
           featureId: "feature:structure_sphere",
           objectId: "structure_sphere",
           primitive: "sphere",
+          name: undefined,
           source: {
             type: "primitiveFeature",
             featureId: "feature:structure_sphere",
@@ -1871,6 +2072,80 @@ describe("cad-core", () => {
         }
       ]
     });
+  });
+
+  it("returns sketch lists and one sketch through read queries", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Plan", plane: "YZ" },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [4, 5]
+      }
+    ]);
+
+    const sketchesResponse = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.sketches" }
+    });
+    const sketchResponse = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.get", id: "sketch_1" }
+    });
+    const missingResponse = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.get", id: "missing_sketch" }
+    });
+    const structureResponse = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(sketchesResponse).toEqual({
+      ok: true,
+      query: "project.sketches",
+      cadOpsVersion: "cadops.v1",
+      sketchCount: 1,
+      sketches: [
+        {
+          id: "sketch_1",
+          name: "Plan",
+          plane: "YZ",
+          entities: [{ id: "point_1", kind: "point", point: [4, 5] }]
+        }
+      ]
+    });
+    expect(sketchResponse).toEqual({
+      ok: true,
+      query: "sketch.get",
+      cadOpsVersion: "cadops.v1",
+      sketch: {
+        id: "sketch_1",
+        name: "Plan",
+        plane: "YZ",
+        entities: [{ id: "point_1", kind: "point", point: [4, 5] }]
+      }
+    });
+    expect(missingResponse).toEqual({
+      ok: false,
+      query: "sketch.get",
+      cadOpsVersion: "cadops.v1",
+      error: {
+        code: "SKETCH_NOT_FOUND",
+        message: "Sketch does not exist: missing_sketch",
+        sketchId: "missing_sketch"
+      }
+    });
+    expect(structureResponse.ok).toBe(true);
+    if (
+      structureResponse.ok &&
+      structureResponse.query === "project.structure"
+    ) {
+      expect(structureResponse.parts[0]?.sketchIds).toEqual(["sketch_1"]);
+    }
   });
 
   it("keeps primitive feature summaries aligned with undo and redo", () => {
@@ -2797,8 +3072,74 @@ describe("cad-core", () => {
 
     expect(restored.getDocument().units).toBe("mm");
     expect(restored.getDocument().objects.size).toBe(0);
+    expect(restored.getDocument().sketches.size).toBe(0);
     expect(restored.getTransactions()).toEqual([]);
     expect(restored.getRedoStack()).toEqual([]);
+  });
+
+  it("round-trips sketch source data through project v2 JSON", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 3,
+        height: 2
+      }
+    ]);
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const restored = importCadProjectJson(JSON.stringify(project));
+    const sketch = restored.getDocument().sketches.get("sketch_1");
+
+    expect(project.schemaVersion).toBe("web-cad.project.v2");
+    expect(project.document.sketches).toEqual([
+      {
+        id: "sketch_1",
+        name: "Profile",
+        plane: "XY",
+        entities: [
+          {
+            id: "rect_1",
+            kind: "rectangle",
+            center: [0, 0],
+            width: 3,
+            height: 2
+          }
+        ]
+      }
+    ]);
+    expect(sketch?.entities.get("rect_1")).toEqual({
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 3,
+      height: 2
+    });
+  });
+
+  it("imports v1 project JSON through v2 migration compatibility", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+    const v1Project = {
+      ...project,
+      schemaVersion: "web-cad.project.v1",
+      document: {
+        units: project.document.units,
+        objects: project.document.objects,
+        nextObjectNumber: project.document.nextObjectNumber
+      }
+    };
+
+    const restoredProject = parseCadProjectJson(JSON.stringify(v1Project));
+    const restored = importCadProjectJson(JSON.stringify(v1Project));
+
+    expect(restoredProject.schemaVersion).toBe("web-cad.project.v2");
+    expect(restoredProject.document.sketches).toEqual([]);
+    expect(restored.getDocument().sketches.size).toBe(0);
   });
 
   it("round-trips converted unit values and undo history", () => {
@@ -3263,6 +3604,43 @@ describe("cad-core", () => {
       {
         code: "INVALID_TRANSFORM",
         path: "$.document.objects[0].transform.translation"
+      }
+    );
+  });
+
+  it("rejects malformed sketches with a structured import error", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            document: {
+              ...project.document,
+              sketches: [
+                {
+                  id: "sketch_1",
+                  name: "Bad sketch",
+                  plane: "XY",
+                  entities: [
+                    {
+                      id: "circle_1",
+                      kind: "circle",
+                      center: [0, 0],
+                      radius: 0
+                    }
+                  ]
+                }
+              ],
+              nextSketchNumber: 2,
+              nextSketchEntityNumber: 2
+            }
+          })
+        ),
+      {
+        code: "INVALID_DIMENSIONS",
+        path: "$.document.sketches[0].entities[0].radius"
       }
     );
   });

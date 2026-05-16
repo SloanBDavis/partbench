@@ -155,12 +155,37 @@ the current scene-object model:
 }
 ```
 
+Sketch queries use the same read-only envelope. Sketches are source-of-truth V2
+document data, not renderer geometry:
+
+```json
+{
+  "requestId": "agent_query_007",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "project.sketches" }
+  }
+}
+```
+
+```json
+{
+  "requestId": "agent_query_008",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "query": {
+    "version": "cadops.v1",
+    "query": { "query": "sketch.get", "id": "sketch_1" }
+  }
+}
+```
+
 Transaction history uses the same read-only query envelope and returns summaries
 of the existing `cad-core` transaction model:
 
 ```json
 {
-  "requestId": "agent_query_007",
+  "requestId": "agent_query_009",
   "adapterVersion": "web-cad.agent-adapter.v1",
   "query": {
     "version": "cadops.v1",

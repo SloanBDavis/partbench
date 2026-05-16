@@ -5,10 +5,11 @@ a typed CADOps command layer, in-memory document model, viewport, project JSON
 serialization, structured agent/MCP adapters, and an isolated OCCT/WASM derived
 geometry path.
 
-The current V1 foundation supports creating and editing boxes, cylinders,
-spheres, cones, and tori through the shared command layer. OCCT-derived meshes
-are display data only; the source of truth remains the typed document and
-transaction history in `cad-core`.
+The completed V1 foundation supports creating and editing boxes, cylinders,
+spheres, cones, and tori through the shared command layer. Current V2 work adds
+source-of-truth sketches with point, line, rectangle, and circle entities.
+OCCT-derived meshes are display data only; the source of truth remains the typed
+document and transaction history in `cad-core`.
 
 ## Requirements
 
@@ -119,6 +120,7 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `packages/renderer-mesh-bridge` - mesh data adapter for the current renderer
 - `packages/agent-adapter` - CADOps adapter for external structured callers
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter
+- `packages/mcp-stdio-server` - local stdio JSON-RPC MCP transport
 
 ## Current Limitations
 
@@ -126,5 +128,7 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   meshes are loading, disabled, unavailable, or failed.
 - OCCT/WASM is intentionally off the default production startup path and
   currently proves box, cylinder, sphere, cone, and torus tessellation.
+- Sketches are source-of-truth V2 data, but there is no solver, profile
+  recognition, or sketch-driven feature operation yet.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.

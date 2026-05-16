@@ -12,23 +12,34 @@ import type {
   CadBatchMode,
   CadBatchResponse,
   CadOp,
-  DocumentUnitUpdateMode
+  DocumentUnitUpdateMode,
+  SketchEntityKind,
+  SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   buildBatch,
+  buildAddSketchCircleOp,
+  buildAddSketchLineOp,
+  buildAddSketchPointOp,
+  buildAddSketchRectangleOp,
+  buildCreateSketchOp,
   buildCreateBoxOp,
   buildCreateConeOp,
   buildCreateCylinderOp,
   buildCreateSphereOp,
   buildCreateTorusOp,
   buildDeleteObjectOp,
+  buildDeleteSketchEntityOp,
+  buildDeleteSketchOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
+  buildRenameSketchOp,
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateSketchEntityOp,
   buildUpdateSphereDimensionsOp,
   buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
@@ -37,6 +48,8 @@ import {
   type BatchOperationForm,
   type DimensionCommandForm,
   type PrimitiveCommandForm,
+  type SketchCreateForm,
+  type SketchEntityForm,
   type TransformCommandForm
 } from "./cadCommands";
 import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
@@ -45,6 +58,7 @@ import { GeometryPanel } from "./components/GeometryPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
+import { SketchPanel } from "./components/SketchPanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
@@ -226,6 +240,16 @@ export function App() {
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
+    [document]
+  );
+  const sketches = useMemo(
+    () =>
+      [...document.sketches.values()].map((sketch) => ({
+        id: sketch.id,
+        name: sketch.name,
+        plane: sketch.plane,
+        entities: [...sketch.entities.values()]
+      })),
     [document]
   );
   const selectedObject = selectedId
@@ -466,6 +490,52 @@ export function App() {
     }
 
     await commitOps([buildDeleteObjectOp(selectedObject.id)], () => undefined);
+  }
+
+  async function createSketch(form: SketchCreateForm) {
+    await commitOps([buildCreateSketchOp(form)], () => selectedId);
+  }
+
+  async function renameSketch(sketchId: string, name: string) {
+    await commitOps([buildRenameSketchOp(sketchId, name)], () => selectedId);
+  }
+
+  async function deleteSketch(sketchId: string) {
+    await commitOps([buildDeleteSketchOp(sketchId)], () => selectedId);
+  }
+
+  async function addSketchEntity(
+    sketchId: string,
+    kind: SketchEntityKind,
+    form: SketchEntityForm
+  ) {
+    const op =
+      kind === "point"
+        ? buildAddSketchPointOp(sketchId, form)
+        : kind === "line"
+          ? buildAddSketchLineOp(sketchId, form)
+          : kind === "rectangle"
+            ? buildAddSketchRectangleOp(sketchId, form)
+            : buildAddSketchCircleOp(sketchId, form);
+
+    await commitOps([op], () => selectedId);
+  }
+
+  async function updateSketchEntity(
+    sketchId: string,
+    entity: SketchEntitySnapshot
+  ) {
+    await commitOps(
+      [buildUpdateSketchEntityOp(sketchId, entity)],
+      () => selectedId
+    );
+  }
+
+  async function deleteSketchEntity(sketchId: string, entityId: string) {
+    await commitOps(
+      [buildDeleteSketchEntityOp(sketchId, entityId)],
+      () => selectedId
+    );
   }
 
   function undo() {
@@ -720,6 +790,25 @@ export function App() {
               </p>
             )}
           </section>
+
+          <SketchPanel
+            disabled={commandPending}
+            sketches={sketches}
+            onCreateSketch={(form) => void createSketch(form)}
+            onRenameSketch={(sketchId, name) =>
+              void renameSketch(sketchId, name)
+            }
+            onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
+            onAddEntity={(sketchId, kind, form) =>
+              void addSketchEntity(sketchId, kind, form)
+            }
+            onUpdateEntity={(sketchId, entity) =>
+              void updateSketchEntity(sketchId, entity)
+            }
+            onDeleteEntity={(sketchId, entityId) =>
+              void deleteSketchEntity(sketchId, entityId)
+            }
+          />
 
           <HistoryPanel transactions={transactionHistory} />
 

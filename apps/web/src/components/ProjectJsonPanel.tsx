@@ -52,7 +52,7 @@ export function ProjectJsonPanel({
     <section className="project-panel" aria-label="Project">
       <div className="section-heading">
         <h2>Project</h2>
-        <span>v1</span>
+        <span>JSON</span>
       </div>
       <ProjectSummary title="Current" summary={currentSummary} />
       <div className="button-row">
@@ -133,6 +133,14 @@ function ProjectSummary({
         <div>
           <dt>Objects</dt>
           <dd>{summary.objectCount}</dd>
+        </div>
+        <div>
+          <dt>Sketches</dt>
+          <dd>{summary.sketchCount}</dd>
+        </div>
+        <div>
+          <dt>Sketch entities</dt>
+          <dd>{summary.sketchEntityCount}</dd>
         </div>
         <div>
           <dt>Types</dt>

@@ -113,7 +113,10 @@ describe("BrowserCadCommandWorker", () => {
       document: {
         units: "mm",
         objects: [],
-        nextObjectNumber: 1
+        sketches: [],
+        nextObjectNumber: 1,
+        nextSketchNumber: 1,
+        nextSketchEntityNumber: 1
       },
       batch: {
         version: "cadops.v1",

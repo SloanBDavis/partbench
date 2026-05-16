@@ -20,7 +20,20 @@ import type {
   SceneUpdateSphereDimensionsOp,
   SceneUpdateTorusDimensionsOp,
   SceneUpdateTransformOp,
+  SketchAddCircleOp,
+  SketchAddLineOp,
+  SketchAddPointOp,
+  SketchAddRectangleOp,
+  SketchCreateOp,
+  SketchDeleteEntityOp,
+  SketchDeleteOp,
+  SketchEntitySnapshot,
+  SketchId,
+  SketchPlane,
+  SketchRenameOp,
+  SketchUpdateEntityOp,
   Transform,
+  Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
 
@@ -81,6 +94,23 @@ export interface BatchOperationForm
   readonly name: string;
   readonly units: DocumentUnits;
   readonly unitUpdateMode?: DocumentUnitUpdateMode;
+}
+
+export interface SketchCreateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly plane: SketchPlane;
+}
+
+export interface SketchEntityForm {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly x2: number;
+  readonly y2: number;
+  readonly width: number;
+  readonly height: number;
+  readonly radius: number;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -268,6 +298,107 @@ export function buildDeleteObjectOp(id: ObjectId): SceneDeleteObjectOp {
   return {
     op: "scene.deleteObject",
     id
+  };
+}
+
+export function buildCreateSketchOp(form: SketchCreateForm): SketchCreateOp {
+  return {
+    op: "sketch.create",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    plane: form.plane
+  };
+}
+
+export function buildRenameSketchOp(
+  id: SketchId,
+  name: string
+): SketchRenameOp {
+  return {
+    op: "sketch.rename",
+    id,
+    name: name.trim()
+  };
+}
+
+export function buildDeleteSketchOp(id: SketchId): SketchDeleteOp {
+  return {
+    op: "sketch.delete",
+    id
+  };
+}
+
+export function buildAddSketchPointOp(
+  sketchId: SketchId,
+  form: SketchEntityForm
+): SketchAddPointOp {
+  return {
+    op: "sketch.addPoint",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    point: toVec2(form.x, form.y)
+  };
+}
+
+export function buildAddSketchLineOp(
+  sketchId: SketchId,
+  form: SketchEntityForm
+): SketchAddLineOp {
+  return {
+    op: "sketch.addLine",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    start: toVec2(form.x, form.y),
+    end: toVec2(form.x2, form.y2)
+  };
+}
+
+export function buildAddSketchRectangleOp(
+  sketchId: SketchId,
+  form: SketchEntityForm
+): SketchAddRectangleOp {
+  return {
+    op: "sketch.addRectangle",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    center: toVec2(form.x, form.y),
+    width: form.width,
+    height: form.height
+  };
+}
+
+export function buildAddSketchCircleOp(
+  sketchId: SketchId,
+  form: SketchEntityForm
+): SketchAddCircleOp {
+  return {
+    op: "sketch.addCircle",
+    sketchId,
+    id: normalizeOptionalId(form.id),
+    center: toVec2(form.x, form.y),
+    radius: form.radius
+  };
+}
+
+export function buildUpdateSketchEntityOp(
+  sketchId: SketchId,
+  entity: SketchEntitySnapshot
+): SketchUpdateEntityOp {
+  return {
+    op: "sketch.updateEntity",
+    sketchId,
+    entity
+  };
+}
+
+export function buildDeleteSketchEntityOp(
+  sketchId: SketchId,
+  entityId: string
+): SketchDeleteEntityOp {
+  return {
+    op: "sketch.deleteEntity",
+    sketchId,
+    entityId
   };
 }
 
@@ -513,6 +644,10 @@ function buildTransform(form: TransformCommandForm): Transform {
 
 function toVec3(x: number, y: number, z: number): Vec3 {
   return [x, y, z];
+}
+
+function toVec2(x: number, y: number): Vec2 {
+  return [x, y];
 }
 
 function normalizeOptionalId(id: string): string | undefined {

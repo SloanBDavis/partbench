@@ -90,6 +90,60 @@ describe("cad-protocol", () => {
       {
         op: "scene.deleteObject",
         id: "cylinder_1"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "Base sketch",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "skent_1",
+        point: [0, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        start: [0, 0],
+        end: [1, 1]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        center: [1, 1],
+        radius: 2
+      },
+      {
+        op: "sketch.updateEntity",
+        sketchId: "sketch_1",
+        entity: {
+          id: "skent_1",
+          kind: "point",
+          point: [2, 3]
+        }
+      },
+      {
+        op: "sketch.deleteEntity",
+        sketchId: "sketch_1",
+        entityId: "skent_1"
+      },
+      {
+        op: "sketch.rename",
+        id: "sketch_1",
+        name: "Renamed sketch"
+      },
+      {
+        op: "sketch.delete",
+        id: "sketch_1"
       }
     ];
 
@@ -107,7 +161,16 @@ describe("cad-protocol", () => {
       "scene.updateConeDimensions",
       "scene.updateTorusDimensions",
       "scene.renameObject",
-      "scene.deleteObject"
+      "scene.deleteObject",
+      "sketch.create",
+      "sketch.addPoint",
+      "sketch.addLine",
+      "sketch.addRectangle",
+      "sketch.addCircle",
+      "sketch.updateEntity",
+      "sketch.deleteEntity",
+      "sketch.rename",
+      "sketch.delete"
     ]);
     expect(ops[0]).toMatchObject({
       op: "document.updateUnits",
@@ -180,6 +243,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "project.sketches" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "object.get", id: "box_1" }
       },
       {
@@ -192,6 +259,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -200,9 +271,11 @@ describe("cad-protocol", () => {
       "project.summary",
       "project.features",
       "project.structure",
+      "project.sketches",
       "object.get",
       "object.measurements",
       "project.extents",
+      "sketch.get",
       "transaction.history"
     ]);
   });
@@ -254,7 +327,8 @@ describe("cad-protocol", () => {
       source: { type: "defaultScenePart" },
       objectIds: ["box_1"],
       featureIds: ["feature:box_1"],
-      bodyIds: ["body:box_1"]
+      bodyIds: ["body:box_1"],
+      sketchIds: ["sketch_1"]
     };
     const body: CadBodySnapshot = {
       id: "body:box_1",

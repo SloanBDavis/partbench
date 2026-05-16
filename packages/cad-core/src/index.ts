@@ -18,6 +18,8 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   CadSemanticDiffSummary,
+  CadSketchEntityRef,
+  CadSketchRef,
   CadTransactionHistoryEntry,
   CadTransactionStatus,
   ConeDimensions,
@@ -29,12 +31,20 @@ import type {
   ObjectId,
   PartId,
   SemanticDiff,
+  SketchEntityId,
+  SketchEntityKind,
+  SketchEntitySnapshot,
+  SketchId,
+  SketchPlane,
+  SketchSemanticDiff,
+  SketchSnapshot,
   SphereDimensions,
   TorusDimensions,
   BodyId,
   CadTransactionAuditMetadata,
   TransactionId,
   Transform,
+  Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
 
@@ -58,6 +68,8 @@ export type {
   CadQueryRequest,
   CadQueryResponse,
   CadSemanticDiffSummary,
+  CadSketchEntityRef,
+  CadSketchRef,
   CadTransactionHistoryEntry,
   CadTransactionStatus,
   CadTransactionAuditMetadata,
@@ -70,11 +82,19 @@ export type {
   ObjectId,
   PartId,
   SemanticDiff,
+  SketchEntityId,
+  SketchEntityKind,
+  SketchEntitySnapshot,
+  SketchId,
+  SketchPlane,
+  SketchSemanticDiff,
+  SketchSnapshot,
   SphereDimensions,
   TorusDimensions,
   BodyId,
   TransactionId,
   Transform,
+  Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
 
@@ -130,8 +150,18 @@ export type SceneObject =
   | ConeObject
   | TorusObject;
 
+export type SketchEntity = SketchEntitySnapshot;
+
+export interface Sketch {
+  readonly id: SketchId;
+  readonly name: string;
+  readonly plane: SketchPlane;
+  readonly entities: ReadonlyMap<SketchEntityId, SketchEntity>;
+}
+
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
+  readonly sketches: ReadonlyMap<SketchId, Sketch>;
   readonly units: DocumentUnits;
 }
 
@@ -151,6 +181,8 @@ export interface ApplyResult {
 
 export interface CadEngineOptions {
   readonly nextObjectNumber?: number;
+  readonly nextSketchNumber?: number;
+  readonly nextSketchEntityNumber?: number;
 }
 
 export interface CadExecutionOptions {
@@ -161,7 +193,10 @@ export interface CadExecutionOptions {
 export interface CadDocumentSnapshot {
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
+  readonly sketches: readonly SketchSnapshot[];
   readonly nextObjectNumber: number;
+  readonly nextSketchNumber: number;
+  readonly nextSketchEntityNumber: number;
 }
 
 export interface CadWorkerRequest {
@@ -183,9 +218,12 @@ export interface MockCadCommandWorkerOptions {
   readonly delayMs?: number;
 }
 
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v1";
+export const CAD_PROJECT_FORMAT_VERSION_V1 = "web-cad.project.v1";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v2";
 
-export type CadProjectFormatVersion = typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
+export type CadProjectFormatVersion =
+  | typeof CAD_PROJECT_FORMAT_VERSION_V1
+  | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
   | "INVALID_JSON"
@@ -195,6 +233,9 @@ export type CadProjectImportErrorCode =
   | "INVALID_UNITS"
   | "INVALID_OBJECT"
   | "INVALID_OBJECT_NAME"
+  | "INVALID_SKETCH"
+  | "INVALID_SKETCH_NAME"
+  | "INVALID_SKETCH_ENTITY"
   | "INVALID_DIMENSIONS"
   | "INVALID_TRANSFORM"
   | "INVALID_TRANSACTION"
@@ -233,6 +274,8 @@ interface OperationRunResult {
   readonly document: CadDocument;
   readonly diff: SemanticDiff;
   readonly nextObjectNumber: number;
+  readonly nextSketchNumber: number;
+  readonly nextSketchEntityNumber: number;
 }
 
 export const corePackage: PackageInfo = {
@@ -254,10 +297,12 @@ export function createDefaultTransform(): Transform {
 
 export function createCadDocument(
   objects: Iterable<readonly [ObjectId, SceneObject]> = [],
-  units: DocumentUnits = DEFAULT_DOCUMENT_UNITS
+  units: DocumentUnits = DEFAULT_DOCUMENT_UNITS,
+  sketches: Iterable<readonly [SketchId, Sketch]> = []
 ): CadDocument {
   return {
     objects: new Map(objects),
+    sketches: new Map(sketches),
     units
   };
 }
@@ -267,6 +312,8 @@ export class CadEngine {
   #history: TransactionEntry[] = [];
   #redoStack: TransactionEntry[] = [];
   #nextObjectNumber = 1;
+  #nextSketchNumber = 1;
+  #nextSketchEntityNumber = 1;
   #nextTransactionNumber = 1;
 
   constructor(
@@ -276,6 +323,10 @@ export class CadEngine {
     this.#document = cloneDocument(document);
     this.#nextObjectNumber =
       options.nextObjectNumber ?? inferNextObjectNumber(document);
+    this.#nextSketchNumber =
+      options.nextSketchNumber ?? inferNextSketchNumber(document);
+    this.#nextSketchEntityNumber =
+      options.nextSketchEntityNumber ?? inferNextSketchEntityNumber(document);
   }
 
   getDocument(): CadDocument {
@@ -295,15 +346,19 @@ export class CadEngine {
   }
 
   loadProject(project: CadProject): void {
+    const normalizedProject = normalizeCadProject(project);
     const state = createProjectState(project);
 
     this.#document = state.document;
     this.#history = state.history;
     this.#redoStack = state.redoStack;
-    this.#nextObjectNumber = project.document.nextObjectNumber;
+    this.#nextObjectNumber = normalizedProject.document.nextObjectNumber;
+    this.#nextSketchNumber = normalizedProject.document.nextSketchNumber;
+    this.#nextSketchEntityNumber =
+      normalizedProject.document.nextSketchEntityNumber;
     this.#nextTransactionNumber = inferNextTransactionNumber([
-      ...project.history,
-      ...project.redoStack
+      ...normalizedProject.history,
+      ...normalizedProject.redoStack
     ]);
   }
 
@@ -314,7 +369,12 @@ export class CadEngine {
   }
 
   createSnapshot(): CadDocumentSnapshot {
-    return createCadDocumentSnapshot(this.#document, this.#nextObjectNumber);
+    return createCadDocumentSnapshot(
+      this.#document,
+      this.#nextObjectNumber,
+      this.#nextSketchNumber,
+      this.#nextSketchEntityNumber
+    );
   }
 
   apply(op: CadOp, options: CadExecutionOptions = {}): ApplyResult {
@@ -347,6 +407,8 @@ export class CadEngine {
 
     this.#document = run.document;
     this.#nextObjectNumber = run.nextObjectNumber;
+    this.#nextSketchNumber = run.nextSketchNumber;
+    this.#nextSketchEntityNumber = run.nextSketchEntityNumber;
     this.#history.push(entry);
     this.#redoStack = [];
 
@@ -456,6 +518,20 @@ export class CadEngine {
         };
       }
 
+      case "project.sketches": {
+        const sketches = [...this.#document.sketches.values()].map(
+          createSketchSnapshot
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          sketchCount: sketches.length,
+          sketches
+        };
+      }
+
       case "object.get": {
         const object = this.#document.objects.get(request.query.id);
 
@@ -530,6 +606,30 @@ export class CadEngine {
             worldBounds: measurement.worldBounds,
             approximateVolume: measurement.approximateVolume
           }))
+        };
+      }
+
+      case "sketch.get": {
+        const sketch = this.#document.sketches.get(request.query.id);
+
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.id}`,
+              sketchId: request.query.id
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          sketch: createSketchSnapshot(sketch)
         };
       }
 
@@ -622,7 +722,13 @@ export class CadEngine {
   }
 
   #runOperations(ops: readonly CadOp[]): OperationRunResult {
-    return runOperations(ops, this.#document, this.#nextObjectNumber);
+    return runOperations(
+      ops,
+      this.#document,
+      this.#nextObjectNumber,
+      this.#nextSketchNumber,
+      this.#nextSketchEntityNumber
+    );
   }
 }
 
@@ -641,7 +747,9 @@ export class MockCadCommandWorker implements CadCommandWorker {
     const engine = new CadEngine(
       createCadDocumentFromSnapshot(request.document),
       {
-        nextObjectNumber: request.document.nextObjectNumber
+        nextObjectNumber: request.document.nextObjectNumber,
+        nextSketchNumber: request.document.nextSketchNumber,
+        nextSketchEntityNumber: request.document.nextSketchEntityNumber
       }
     );
 
@@ -733,6 +841,7 @@ type MutableSemanticDiff = {
   modified: CadObjectRef[];
   deleted: CadObjectRef[];
   document?: MutableDocumentSemanticDiff;
+  sketches?: MutableSketchSemanticDiff;
 };
 
 type MutableDocumentSemanticDiff = {
@@ -744,8 +853,18 @@ type MutableDocumentSemanticDiff = {
   };
 };
 
+type MutableSketchSemanticDiff = {
+  created: CadSketchRef[];
+  modified: CadSketchRef[];
+  deleted: CadSketchRef[];
+  entitiesCreated: CadSketchEntityRef[];
+  entitiesModified: CadSketchEntityRef[];
+  entitiesDeleted: CadSketchEntityRef[];
+};
+
 interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
+  sketches: Map<SketchId, Sketch>;
   units: DocumentUnits;
 }
 
@@ -754,6 +873,8 @@ function applyOperation(
   state: MutableDocumentState,
   diff: MutableSemanticDiff,
   createObjectId: () => ObjectId,
+  createSketchId: () => SketchId,
+  createSketchEntityId: () => SketchEntityId,
   opIndex: number
 ): void {
   switch (op.op) {
@@ -977,6 +1098,125 @@ function applyOperation(
       diff.modified.push(objectRef(updated));
       return;
     }
+
+    case "sketch.create": {
+      const sketch: Sketch = {
+        id: op.id ?? createSketchId(),
+        name: normalizeSketchName(op.name, opIndex, op.id),
+        plane: validateSketchPlane(op.plane, opIndex),
+        entities: new Map()
+      };
+
+      addSketch(state.sketches, sketch, diff, opIndex);
+      return;
+    }
+
+    case "sketch.rename": {
+      const existing = getSketchOrThrow(state.sketches, op.id, opIndex);
+      const updated: Sketch = {
+        ...existing,
+        name: normalizeSketchName(op.name, opIndex, op.id)
+      };
+
+      state.sketches.set(op.id, updated);
+      pushSketchModified(diff, sketchRef(updated));
+      return;
+    }
+
+    case "sketch.delete": {
+      const existing = getSketchOrThrow(state.sketches, op.id, opIndex);
+      state.sketches.delete(op.id);
+      pushSketchDeleted(diff, sketchRef(existing));
+
+      for (const entity of existing.entities.values()) {
+        pushSketchEntityDeleted(diff, sketchEntityRef(existing.id, entity));
+      }
+
+      return;
+    }
+
+    case "sketch.addPoint": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity: SketchEntity = {
+        id: op.id ?? createSketchEntityId(),
+        kind: "point",
+        point: validateVec2(op.point, opIndex, "point")
+      };
+
+      addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
+      return;
+    }
+
+    case "sketch.addLine": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity: SketchEntity = {
+        id: op.id ?? createSketchEntityId(),
+        kind: "line",
+        start: validateVec2(op.start, opIndex, "start"),
+        end: validateVec2(op.end, opIndex, "end")
+      };
+
+      addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
+      return;
+    }
+
+    case "sketch.addRectangle": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity: SketchEntity = {
+        id: op.id ?? createSketchEntityId(),
+        kind: "rectangle",
+        center: validateVec2(op.center, opIndex, "center"),
+        width: validatePositiveSketchMeasurement(op.width, opIndex, "width"),
+        height: validatePositiveSketchMeasurement(op.height, opIndex, "height")
+      };
+
+      addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
+      return;
+    }
+
+    case "sketch.addCircle": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity: SketchEntity = {
+        id: op.id ?? createSketchEntityId(),
+        kind: "circle",
+        center: validateVec2(op.center, opIndex, "center"),
+        radius: validatePositiveSketchMeasurement(op.radius, opIndex, "radius")
+      };
+
+      addSketchEntity(state.sketches, sketch, entity, diff, opIndex);
+      return;
+    }
+
+    case "sketch.updateEntity": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const existing = sketch.entities.get(op.entity.id);
+
+      if (!existing) {
+        throwSketchEntityNotFound(op.sketchId, op.entity.id, opIndex);
+      }
+
+      const entity = normalizeSketchEntity(op.entity, opIndex);
+      const entities = new Map(sketch.entities);
+      entities.set(entity.id, entity);
+      state.sketches.set(sketch.id, { ...sketch, entities });
+      pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
+      return;
+    }
+
+    case "sketch.deleteEntity": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const existing = sketch.entities.get(op.entityId);
+
+      if (!existing) {
+        throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+      }
+
+      const entities = new Map(sketch.entities);
+      entities.delete(op.entityId);
+      state.sketches.set(sketch.id, { ...sketch, entities });
+      pushSketchEntityDeleted(diff, sketchEntityRef(sketch.id, existing));
+      return;
+    }
   }
 }
 
@@ -1041,6 +1281,93 @@ function assertObjectKind<TKind extends SceneObject["kind"]>(
     path: operationPath(opIndex, "id"),
     expected: expectedKind,
     received: object.kind
+  });
+}
+
+function addSketch(
+  sketches: Map<SketchId, Sketch>,
+  sketch: Sketch,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  if (sketches.has(sketch.id)) {
+    throwValidationError({
+      code: "SKETCH_ALREADY_EXISTS",
+      message: `Sketch already exists: ${sketch.id}`,
+      opIndex,
+      sketchId: sketch.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique sketch id",
+      received: sketch.id
+    });
+  }
+
+  sketches.set(sketch.id, sketch);
+  pushSketchCreated(diff, sketchRef(sketch));
+}
+
+function getSketchOrThrow(
+  sketches: ReadonlyMap<SketchId, Sketch>,
+  id: SketchId,
+  opIndex?: number
+): Sketch {
+  const sketch = sketches.get(id);
+
+  if (!sketch) {
+    throwValidationError({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${id}`,
+      opIndex,
+      sketchId: id,
+      path: operationPath(opIndex, "sketchId"),
+      expected: "existing sketch id",
+      received: id
+    });
+  }
+
+  return sketch;
+}
+
+function addSketchEntity(
+  sketches: Map<SketchId, Sketch>,
+  sketch: Sketch,
+  entity: SketchEntity,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  if (sketch.entities.has(entity.id)) {
+    throwValidationError({
+      code: "SKETCH_ENTITY_ALREADY_EXISTS",
+      message: `Sketch entity already exists: ${entity.id}`,
+      opIndex,
+      sketchId: sketch.id,
+      sketchEntityId: entity.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique sketch entity id",
+      received: entity.id
+    });
+  }
+
+  const entities = new Map(sketch.entities);
+  entities.set(entity.id, entity);
+  sketches.set(sketch.id, { ...sketch, entities });
+  pushSketchEntityCreated(diff, sketchEntityRef(sketch.id, entity));
+}
+
+function throwSketchEntityNotFound(
+  sketchId: SketchId,
+  entityId: SketchEntityId,
+  opIndex?: number
+): never {
+  throwValidationError({
+    code: "SKETCH_ENTITY_NOT_FOUND",
+    message: `Sketch entity does not exist: ${entityId}`,
+    opIndex,
+    sketchId,
+    sketchEntityId: entityId,
+    path: operationPath(opIndex, "entityId"),
+    expected: "existing sketch entity id",
+    received: entityId
   });
 }
 
@@ -1228,6 +1555,143 @@ function normalizeObjectName(
   });
 }
 
+function normalizeSketchName(
+  name: string,
+  opIndex?: number,
+  sketchId?: SketchId
+): string {
+  const normalized = name.trim();
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_NAME",
+    message: "Sketch name must be non-empty.",
+    opIndex,
+    sketchId,
+    path: operationPath(opIndex, "name"),
+    expected: "non-empty string",
+    received: describeReceived(name)
+  });
+}
+
+function validateSketchPlane(
+  plane: SketchPlane,
+  opIndex?: number
+): SketchPlane {
+  if (isSketchPlane(plane)) {
+    return plane;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_PLANE",
+    message: `Unsupported sketch plane: ${String(plane)}.`,
+    opIndex,
+    path: operationPath(opIndex, "plane"),
+    expected: "XY, XZ, or YZ",
+    received: describeReceived(plane)
+  });
+}
+
+function validateVec2(
+  value: Vec2,
+  opIndex: number | undefined,
+  field: string
+): Vec2 {
+  if (isVec2(value)) {
+    return [value[0], value[1]];
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_ENTITY",
+    message: "Sketch coordinates must contain two finite numbers.",
+    opIndex,
+    path: operationPath(opIndex, field),
+    expected: "two finite numbers",
+    received: describeReceived(value)
+  });
+}
+
+function validatePositiveSketchMeasurement(
+  value: number,
+  opIndex: number | undefined,
+  field: string
+): number {
+  if (isPositiveFiniteNumber(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_ENTITY",
+    message: "Sketch measurements must be positive finite numbers.",
+    opIndex,
+    path: operationPath(opIndex, field),
+    expected: "positive finite number",
+    received: describeReceived(value)
+  });
+}
+
+function normalizeSketchEntity(
+  entity: SketchEntitySnapshot,
+  opIndex?: number
+): SketchEntity {
+  if (typeof entity.id !== "string" || entity.id.length === 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_ENTITY",
+      message: "Sketch entity id must be a non-empty string.",
+      opIndex,
+      path: operationPath(opIndex, "entity.id"),
+      expected: "non-empty string",
+      received: describeReceived(entity.id)
+    });
+  }
+
+  switch (entity.kind) {
+    case "point":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        point: validateVec2(entity.point, opIndex, "entity.point")
+      };
+    case "line":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        start: validateVec2(entity.start, opIndex, "entity.start"),
+        end: validateVec2(entity.end, opIndex, "entity.end")
+      };
+    case "rectangle":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        center: validateVec2(entity.center, opIndex, "entity.center"),
+        width: validatePositiveSketchMeasurement(
+          entity.width,
+          opIndex,
+          "entity.width"
+        ),
+        height: validatePositiveSketchMeasurement(
+          entity.height,
+          opIndex,
+          "entity.height"
+        )
+      };
+    case "circle":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        center: validateVec2(entity.center, opIndex, "entity.center"),
+        radius: validatePositiveSketchMeasurement(
+          entity.radius,
+          opIndex,
+          "entity.radius"
+        )
+      };
+  }
+}
+
 function isPositiveFiniteNumber(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
@@ -1256,6 +1720,74 @@ function objectRef(object: SceneObject): CadObjectRef {
     id: object.id,
     kind: object.kind
   };
+}
+
+function sketchRef(sketch: Sketch): CadSketchRef {
+  return {
+    id: sketch.id
+  };
+}
+
+function sketchEntityRef(
+  sketchId: SketchId,
+  entity: SketchEntity
+): CadSketchEntityRef {
+  return {
+    sketchId,
+    id: entity.id,
+    kind: entity.kind
+  };
+}
+
+function pushSketchCreated(diff: MutableSemanticDiff, ref: CadSketchRef): void {
+  ensureSketchDiff(diff).created.push(ref);
+}
+
+function pushSketchModified(
+  diff: MutableSemanticDiff,
+  ref: CadSketchRef
+): void {
+  ensureSketchDiff(diff).modified.push(ref);
+}
+
+function pushSketchDeleted(diff: MutableSemanticDiff, ref: CadSketchRef): void {
+  ensureSketchDiff(diff).deleted.push(ref);
+}
+
+function pushSketchEntityCreated(
+  diff: MutableSemanticDiff,
+  ref: CadSketchEntityRef
+): void {
+  ensureSketchDiff(diff).entitiesCreated.push(ref);
+}
+
+function pushSketchEntityModified(
+  diff: MutableSemanticDiff,
+  ref: CadSketchEntityRef
+): void {
+  ensureSketchDiff(diff).entitiesModified.push(ref);
+}
+
+function pushSketchEntityDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadSketchEntityRef
+): void {
+  ensureSketchDiff(diff).entitiesDeleted.push(ref);
+}
+
+function ensureSketchDiff(
+  diff: MutableSemanticDiff
+): MutableSketchSemanticDiff {
+  diff.sketches ??= {
+    created: [],
+    modified: [],
+    deleted: [],
+    entitiesCreated: [],
+    entitiesModified: [],
+    entitiesDeleted: []
+  };
+
+  return diff.sketches;
 }
 
 function getUnitConversionScaleFactor(
@@ -1289,6 +1821,16 @@ function scaleDocumentLengthValues(
     const scaled = scaleSceneObjectLengthValues(object, scaleFactor);
     state.objects.set(object.id, scaled);
     diff.modified.push(objectRef(scaled));
+  }
+
+  for (const sketch of state.sketches.values()) {
+    const scaled = scaleSketchLengthValues(sketch, scaleFactor);
+    state.sketches.set(sketch.id, scaled);
+    pushSketchModified(diff, sketchRef(scaled));
+
+    for (const entity of scaled.entities.values()) {
+      pushSketchEntityModified(diff, sketchEntityRef(scaled.id, entity));
+    }
   }
 }
 
@@ -1359,22 +1901,78 @@ function scaleVec3(vector: Vec3, scaleFactor: number): Vec3 {
   ];
 }
 
+function scaleSketchLengthValues(sketch: Sketch, scaleFactor: number): Sketch {
+  return {
+    ...sketch,
+    entities: new Map(
+      [...sketch.entities.entries()].map(([id, entity]) => [
+        id,
+        scaleSketchEntityLengthValues(entity, scaleFactor)
+      ])
+    )
+  };
+}
+
+function scaleSketchEntityLengthValues(
+  entity: SketchEntity,
+  scaleFactor: number
+): SketchEntity {
+  switch (entity.kind) {
+    case "point":
+      return {
+        ...entity,
+        point: scaleVec2(entity.point, scaleFactor)
+      };
+    case "line":
+      return {
+        ...entity,
+        start: scaleVec2(entity.start, scaleFactor),
+        end: scaleVec2(entity.end, scaleFactor)
+      };
+    case "rectangle":
+      return {
+        ...entity,
+        center: scaleVec2(entity.center, scaleFactor),
+        width: scaleLength(entity.width, scaleFactor),
+        height: scaleLength(entity.height, scaleFactor)
+      };
+    case "circle":
+      return {
+        ...entity,
+        center: scaleVec2(entity.center, scaleFactor),
+        radius: scaleLength(entity.radius, scaleFactor)
+      };
+  }
+}
+
+function scaleVec2(vector: Vec2, scaleFactor: number): Vec2 {
+  return [
+    scaleLength(vector[0], scaleFactor),
+    scaleLength(vector[1], scaleFactor)
+  ];
+}
+
 function scaleLength(value: number, scaleFactor: number): number {
   return cleanMeasurementNumber(value * scaleFactor);
 }
 
 function cloneDocument(document: CadDocument): CadDocument {
-  return createCadDocument(document.objects, document.units);
+  return createCadDocument(document.objects, document.units, document.sketches);
 }
 
 export function createCadDocumentSnapshot(
   document: CadDocument,
-  nextObjectNumber = inferNextObjectNumber(document)
+  nextObjectNumber = inferNextObjectNumber(document),
+  nextSketchNumber = inferNextSketchNumber(document),
+  nextSketchEntityNumber = inferNextSketchEntityNumber(document)
 ): CadDocumentSnapshot {
   return {
     units: document.units,
     objects: [...document.objects.values()].map(createCadObjectSnapshot),
-    nextObjectNumber
+    sketches: [...document.sketches.values()].map(createSketchSnapshot),
+    nextObjectNumber,
+    nextSketchNumber,
+    nextSketchEntityNumber
   };
 }
 
@@ -1385,7 +1983,10 @@ export function createCadDocumentFromSnapshot(
     snapshot.objects.map(
       (object) => [object.id, createCadObjectSnapshot(object)] as const
     ),
-    snapshot.units
+    snapshot.units,
+    snapshot.sketches.map(
+      (sketch) => [sketch.id, createSketchFromSnapshot(sketch)] as const
+    )
   );
 }
 
@@ -1434,6 +2035,59 @@ function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
   }
 }
 
+function createSketchSnapshot(sketch: Sketch): SketchSnapshot {
+  return {
+    id: sketch.id,
+    name: sketch.name,
+    plane: sketch.plane,
+    entities: [...sketch.entities.values()].map(cloneSketchEntity)
+  };
+}
+
+function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    plane: snapshot.plane,
+    entities: new Map(
+      snapshot.entities.map((entity) => [entity.id, cloneSketchEntity(entity)])
+    )
+  };
+}
+
+function cloneSketchEntity(entity: SketchEntitySnapshot): SketchEntity {
+  switch (entity.kind) {
+    case "point":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        point: [...entity.point]
+      };
+    case "line":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        start: [...entity.start],
+        end: [...entity.end]
+      };
+    case "rectangle":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        center: [...entity.center],
+        width: entity.width,
+        height: entity.height
+      };
+    case "circle":
+      return {
+        id: entity.id,
+        kind: entity.kind,
+        center: [...entity.center],
+        radius: entity.radius
+      };
+  }
+}
+
 interface CadProjectStructureSnapshot {
   readonly parts: readonly CadPartSnapshot[];
   readonly features: readonly CadPrimitiveFeatureSummary[];
@@ -1447,6 +2101,7 @@ function createProjectStructure(
 ): CadProjectStructureSnapshot {
   const sourceByObjectId = createPrimitiveFeatureSourceMap(transactions);
   const objects = [...document.objects.values()];
+  const sketches = [...document.sketches.values()];
   const features = objects.map((object) =>
     createPrimitiveFeatureSummary(
       object,
@@ -1466,7 +2121,8 @@ function createProjectStructure(
     },
     objectIds: objects.map((object) => object.id),
     featureIds: features.map((feature) => feature.id),
-    bodyIds: bodies.map((body) => body.id)
+    bodyIds: bodies.map((body) => body.id),
+    sketchIds: sketches.map((sketch) => sketch.id)
   };
 
   return {
@@ -1602,6 +2258,8 @@ function createOperationSummaries(
   transaction: Transaction
 ): readonly CadOperationSummary[] {
   let createdIndex = 0;
+  let createdSketchIndex = 0;
+  let createdSketchEntityIndex = 0;
 
   return transaction.ops.map((op) => {
     const createdRef =
@@ -1612,6 +2270,13 @@ function createOperationSummaries(
       op.op === "scene.createTorus"
         ? transaction.diff.created[createdIndex++]
         : undefined;
+    const createdSketchRef =
+      op.op === "sketch.create"
+        ? transaction.diff.sketches?.created?.[createdSketchIndex++]
+        : undefined;
+    const createdSketchEntityRef = isSketchAddEntityOp(op)
+      ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
+      : undefined;
 
     switch (op.op) {
       case "document.updateUnits":
@@ -1738,6 +2403,68 @@ function createOperationSummaries(
           objectId: op.id,
           objectKind: findObjectKind(transaction.diff.modified, op.id)
         });
+
+      case "sketch.create": {
+        const sketchId = op.id ?? createdSketchRef?.id;
+
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Create sketch ${sketchId ?? "with generated ID"}`,
+          sketchId
+        });
+      }
+
+      case "sketch.rename":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Rename sketch ${op.id}`,
+          sketchId: op.id
+        });
+
+      case "sketch.delete":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Delete sketch ${op.id}`,
+          sketchId: op.id
+        });
+
+      case "sketch.addPoint":
+      case "sketch.addLine":
+      case "sketch.addRectangle":
+      case "sketch.addCircle": {
+        const entityId = op.id ?? createdSketchEntityRef?.id;
+        const entityKind = getSketchEntityKindFromAddOp(op.op);
+
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Add ${entityKind} ${entityId ?? "with generated ID"} to ${op.sketchId}`,
+          sketchId: op.sketchId,
+          sketchEntityId: entityId,
+          sketchEntityKind: entityKind
+        });
+      }
+
+      case "sketch.updateEntity":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Update ${op.entity.kind} ${op.entity.id} in ${op.sketchId}`,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entity.id,
+          sketchEntityKind: op.entity.kind
+        });
+
+      case "sketch.deleteEntity":
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Delete entity ${op.entityId} from ${op.sketchId}`,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId,
+          sketchEntityKind: findSketchEntityKind(
+            transaction.diff.sketches?.entitiesDeleted ?? [],
+            op.sketchId,
+            op.entityId
+          )
+        });
     }
   });
 }
@@ -1759,11 +2486,55 @@ function createObjectOperationSummary(
   };
 }
 
+function createSketchOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.sketchId ? { sketchId: summary.sketchId } : {}),
+    ...(summary.sketchEntityId
+      ? { sketchEntityId: summary.sketchEntityId }
+      : {}),
+    ...(summary.sketchEntityKind
+      ? { sketchEntityKind: summary.sketchEntityKind }
+      : {})
+  };
+}
+
 function findObjectKind(
   refs: readonly CadObjectRef[],
   id: ObjectId
 ): CadObjectRef["kind"] | undefined {
   return refs.find((ref) => ref.id === id)?.kind;
+}
+
+function findSketchEntityKind(
+  refs: readonly CadSketchEntityRef[],
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): SketchEntityKind | undefined {
+  return refs.find((ref) => ref.sketchId === sketchId && ref.id === entityId)
+    ?.kind;
+}
+
+function getSketchEntityKindFromAddOp(
+  op:
+    | "sketch.addPoint"
+    | "sketch.addLine"
+    | "sketch.addRectangle"
+    | "sketch.addCircle"
+): SketchEntityKind {
+  switch (op) {
+    case "sketch.addPoint":
+      return "point";
+    case "sketch.addLine":
+      return "line";
+    case "sketch.addRectangle":
+      return "rectangle";
+    case "sketch.addCircle":
+      return "circle";
+  }
 }
 
 function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
@@ -1774,6 +2545,11 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
     createdCount: diff.created.length,
     modifiedCount: diff.modified.length,
     deletedCount: diff.deleted.length,
+    ...(diff.sketches
+      ? {
+          sketches: cloneSketchSemanticDiff(diff.sketches)
+        }
+      : {}),
     ...(diff.document
       ? {
           document: {
@@ -1793,6 +2569,23 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
               : {})
           }
         }
+      : {})
+  };
+}
+
+function cloneSketchSemanticDiff(diff: SketchSemanticDiff): SketchSemanticDiff {
+  return {
+    ...(diff.created ? { created: [...diff.created] } : {}),
+    ...(diff.modified ? { modified: [...diff.modified] } : {}),
+    ...(diff.deleted ? { deleted: [...diff.deleted] } : {}),
+    ...(diff.entitiesCreated
+      ? { entitiesCreated: [...diff.entitiesCreated] }
+      : {}),
+    ...(diff.entitiesModified
+      ? { entitiesModified: [...diff.entitiesModified] }
+      : {}),
+    ...(diff.entitiesDeleted
+      ? { entitiesDeleted: [...diff.entitiesDeleted] }
       : {})
   };
 }
@@ -2016,7 +2809,9 @@ function addVec3(left: Vec3, right: Vec3): Vec3 {
 function runOperations(
   ops: readonly CadOp[],
   document: CadDocument,
-  initialObjectNumber: number
+  initialObjectNumber: number,
+  initialSketchNumber: number,
+  initialSketchEntityNumber: number
 ): OperationRunResult {
   if (ops.length === 0) {
     throwValidationError({
@@ -2030,9 +2825,12 @@ function runOperations(
 
   const state: MutableDocumentState = {
     objects: new Map(document.objects),
+    sketches: new Map(document.sketches),
     units: document.units
   };
   let nextObjectNumber = initialObjectNumber;
+  let nextSketchNumber = initialSketchNumber;
+  let nextSketchEntityNumber = initialSketchEntityNumber;
   const diff: MutableSemanticDiff = {
     created: [],
     modified: [],
@@ -2048,6 +2846,19 @@ function runOperations(
         () => {
           const result = createObjectId(state.objects, nextObjectNumber);
           nextObjectNumber = result.nextObjectNumber;
+          return result.id;
+        },
+        () => {
+          const result = createSketchId(state.sketches, nextSketchNumber);
+          nextSketchNumber = result.nextSketchNumber;
+          return result.id;
+        },
+        () => {
+          const result = createSketchEntityId(
+            state.sketches,
+            nextSketchEntityNumber
+          );
+          nextSketchEntityNumber = result.nextSketchEntityNumber;
           return result.id;
         },
         opIndex
@@ -2066,10 +2877,27 @@ function runOperations(
     }
   }
 
+  const resultDocument = createCadDocument(
+    state.objects,
+    state.units,
+    state.sketches
+  );
+
   return {
-    document: createCadDocument(state.objects, state.units),
+    document: resultDocument,
     diff,
-    nextObjectNumber
+    nextObjectNumber: Math.max(
+      nextObjectNumber,
+      inferNextObjectNumber(resultDocument)
+    ),
+    nextSketchNumber: Math.max(
+      nextSketchNumber,
+      inferNextSketchNumber(resultDocument)
+    ),
+    nextSketchEntityNumber: Math.max(
+      nextSketchEntityNumber,
+      inferNextSketchEntityNumber(resultDocument)
+    )
   };
 }
 
@@ -2091,15 +2919,71 @@ function createObjectId(
   };
 }
 
+function createSketchId(
+  sketches: ReadonlyMap<SketchId, Sketch>,
+  initialSketchNumber: number
+): { id: SketchId; nextSketchNumber: number } {
+  let nextSketchNumber = initialSketchNumber;
+  let id = `sketch_${nextSketchNumber}`;
+
+  while (sketches.has(id)) {
+    nextSketchNumber += 1;
+    id = `sketch_${nextSketchNumber}`;
+  }
+
+  return {
+    id,
+    nextSketchNumber: nextSketchNumber + 1
+  };
+}
+
+function createSketchEntityId(
+  sketches: ReadonlyMap<SketchId, Sketch>,
+  initialSketchEntityNumber: number
+): { id: SketchEntityId; nextSketchEntityNumber: number } {
+  let nextSketchEntityNumber = initialSketchEntityNumber;
+  let id = `skent_${nextSketchEntityNumber}`;
+
+  while (hasSketchEntityId(sketches, id)) {
+    nextSketchEntityNumber += 1;
+    id = `skent_${nextSketchEntityNumber}`;
+  }
+
+  return {
+    id,
+    nextSketchEntityNumber: nextSketchEntityNumber + 1
+  };
+}
+
+function hasSketchEntityId(
+  sketches: ReadonlyMap<SketchId, Sketch>,
+  id: SketchEntityId
+): boolean {
+  for (const sketch of sketches.values()) {
+    if (sketch.entities.has(id)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function toDiffIds(diff: SemanticDiff): {
   createdIds: readonly ObjectId[];
   modifiedIds: readonly ObjectId[];
   deletedIds: readonly ObjectId[];
+  createdSketchIds?: readonly SketchId[];
+  modifiedSketchIds?: readonly SketchId[];
+  deletedSketchIds?: readonly SketchId[];
+  createdSketchEntityIds?: readonly SketchEntityId[];
+  modifiedSketchEntityIds?: readonly SketchEntityId[];
+  deletedSketchEntityIds?: readonly SketchEntityId[];
 } {
   return {
     createdIds: uniqueObjectIds(diff.created),
     modifiedIds: uniqueObjectIds(diff.modified),
-    deletedIds: uniqueObjectIds(diff.deleted)
+    deletedIds: uniqueObjectIds(diff.deleted),
+    ...toSketchDiffIds(diff.sketches)
   };
 }
 
@@ -2107,6 +2991,69 @@ function uniqueObjectIds(
   objects: readonly CadObjectRef[]
 ): readonly ObjectId[] {
   return [...new Set(objects.map((object) => object.id))];
+}
+
+function toSketchDiffIds(sketches: SketchSemanticDiff | undefined): {
+  createdSketchIds?: readonly SketchId[];
+  modifiedSketchIds?: readonly SketchId[];
+  deletedSketchIds?: readonly SketchId[];
+  createdSketchEntityIds?: readonly SketchEntityId[];
+  modifiedSketchEntityIds?: readonly SketchEntityId[];
+  deletedSketchEntityIds?: readonly SketchEntityId[];
+} {
+  if (!sketches) {
+    return {};
+  }
+
+  return {
+    ...nonEmptyIdList(
+      "createdSketchIds",
+      uniqueSketchIds(sketches.created ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedSketchIds",
+      uniqueSketchIds(sketches.modified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedSketchIds",
+      uniqueSketchIds(sketches.deleted ?? [])
+    ),
+    ...nonEmptyIdList(
+      "createdSketchEntityIds",
+      uniqueSketchEntityIds(sketches.entitiesCreated ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedSketchEntityIds",
+      uniqueSketchEntityIds(sketches.entitiesModified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedSketchEntityIds",
+      uniqueSketchEntityIds(sketches.entitiesDeleted ?? [])
+    )
+  };
+}
+
+function uniqueSketchIds(
+  sketches: readonly CadSketchRef[]
+): readonly SketchId[] {
+  return [...new Set(sketches.map((sketch) => sketch.id))];
+}
+
+function uniqueSketchEntityIds(
+  entities: readonly CadSketchEntityRef[]
+): readonly SketchEntityId[] {
+  return [...new Set(entities.map((entity) => entity.id))];
+}
+
+function nonEmptyIdList<TKey extends string, TValue extends string>(
+  key: TKey,
+  values: readonly TValue[]
+): { readonly [K in TKey]?: readonly TValue[] } {
+  if (values.length === 0) {
+    return {};
+  }
+
+  return { [key]: values } as { readonly [K in TKey]: readonly TValue[] };
 }
 
 function normalizeActorMetadata(actor: unknown): CadActorMetadata | undefined {
@@ -2290,8 +3237,43 @@ function inferNextObjectNumber(document: CadDocument): number {
   return maxObjectNumber + 1;
 }
 
+function inferNextSketchNumber(document: CadDocument): number {
+  let maxSketchNumber = 0;
+
+  for (const id of document.sketches.keys()) {
+    maxSketchNumber = Math.max(maxSketchNumber, parseSketchNumber(id));
+  }
+
+  return maxSketchNumber + 1;
+}
+
+function inferNextSketchEntityNumber(document: CadDocument): number {
+  let maxSketchEntityNumber = 0;
+
+  for (const sketch of document.sketches.values()) {
+    for (const id of sketch.entities.keys()) {
+      maxSketchEntityNumber = Math.max(
+        maxSketchEntityNumber,
+        parseSketchEntityNumber(id)
+      );
+    }
+  }
+
+  return maxSketchEntityNumber + 1;
+}
+
 function parseObjectNumber(id: ObjectId): number {
   const match = /^obj_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseSketchNumber(id: SketchId): number {
+  const match = /^sketch_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseSketchEntityNumber(id: SketchEntityId): number {
+  const match = /^skent_(\d+)$/.exec(id);
   return match ? Number(match[1]) : 0;
 }
 
@@ -2307,6 +3289,7 @@ function createProjectState(project: CadProject): {
   readonly redoStack: TransactionEntry[];
 } {
   assertValidCadProject(project);
+  const normalizedProject = normalizeCadProject(project);
 
   let historyState: {
     readonly document: CadDocument;
@@ -2318,27 +3301,35 @@ function createProjectState(project: CadProject): {
   };
 
   try {
-    historyState = createTransactionEntries(project.history);
+    historyState = createTransactionEntries(normalizedProject.history);
   } catch (error) {
     throwProjectTransactionHistoryError("$.history", error);
   }
 
-  if (project.history.length > 0 || project.redoStack.length > 0) {
-    assertProjectDocumentMatchesReplay(project, historyState.document);
+  if (
+    normalizedProject.history.length > 0 ||
+    normalizedProject.redoStack.length > 0
+  ) {
+    assertProjectDocumentMatchesReplay(
+      normalizedProject,
+      historyState.document
+    );
   }
 
   try {
     redoEntriesInApplyOrder = createTransactionEntries(
-      [...project.redoStack].reverse(),
+      [...normalizedProject.redoStack].reverse(),
       historyState.document,
-      project.document.nextObjectNumber
+      normalizedProject.document.nextObjectNumber,
+      normalizedProject.document.nextSketchNumber,
+      normalizedProject.document.nextSketchEntityNumber
     );
   } catch (error) {
     throwProjectTransactionHistoryError("$.redoStack", error);
   }
 
   return {
-    document: createCadDocumentFromSnapshot(project.document),
+    document: createCadDocumentFromSnapshot(normalizedProject.document),
     history: historyState.entries,
     redoStack: [...redoEntriesInApplyOrder.entries].reverse()
   };
@@ -2347,13 +3338,17 @@ function createProjectState(project: CadProject): {
 function createTransactionEntries(
   transactions: readonly Transaction[],
   initialDocument: CadDocument = createCadDocument(),
-  initialObjectNumber = inferNextObjectNumber(initialDocument)
+  initialObjectNumber = inferNextObjectNumber(initialDocument),
+  initialSketchNumber = inferNextSketchNumber(initialDocument),
+  initialSketchEntityNumber = inferNextSketchEntityNumber(initialDocument)
 ): {
   readonly document: CadDocument;
   readonly entries: TransactionEntry[];
 } {
   let document = cloneDocument(initialDocument);
   let nextObjectNumber = initialObjectNumber;
+  let nextSketchNumber = initialSketchNumber;
+  let nextSketchEntityNumber = initialSketchEntityNumber;
   const entries: TransactionEntry[] = [];
 
   for (const transaction of transactions) {
@@ -2361,10 +3356,14 @@ function createTransactionEntries(
     const run = runOperations(
       materializeGeneratedObjectIds(transaction),
       document,
-      nextObjectNumber
+      nextObjectNumber,
+      nextSketchNumber,
+      nextSketchEntityNumber
     );
     document = run.document;
     nextObjectNumber = run.nextObjectNumber;
+    nextSketchNumber = run.nextSketchNumber;
+    nextSketchEntityNumber = run.nextSketchEntityNumber;
     entries.push({
       transaction: { ...transaction },
       before,
@@ -2399,7 +3398,11 @@ function assertProjectDocumentMatchesReplay(
 }
 
 function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
-  if (left.units !== right.units || left.objects.size !== right.objects.size) {
+  if (
+    left.units !== right.units ||
+    left.objects.size !== right.objects.size ||
+    left.sketches.size !== right.sketches.size
+  ) {
     return false;
   }
 
@@ -2407,6 +3410,14 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     const rightObject = right.objects.get(id);
 
     if (!rightObject || !sceneObjectsEqual(leftObject, rightObject)) {
+      return false;
+    }
+  }
+
+  for (const [id, leftSketch] of left.sketches) {
+    const rightSketch = right.sketches.get(id);
+
+    if (!rightSketch || !sketchesEqual(leftSketch, rightSketch)) {
       return false;
     }
   }
@@ -2472,9 +3483,62 @@ function vec3Equal(left: Vec3, right: Vec3): boolean {
   return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
 }
 
+function sketchesEqual(left: Sketch, right: Sketch): boolean {
+  if (
+    left.id !== right.id ||
+    left.name !== right.name ||
+    left.plane !== right.plane ||
+    left.entities.size !== right.entities.size
+  ) {
+    return false;
+  }
+
+  for (const [id, leftEntity] of left.entities) {
+    const rightEntity = right.entities.get(id);
+
+    if (!rightEntity || !sketchEntitiesEqual(leftEntity, rightEntity)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function sketchEntitiesEqual(left: SketchEntity, right: SketchEntity): boolean {
+  if (left.id !== right.id || left.kind !== right.kind) {
+    return false;
+  }
+
+  if (left.kind === "point" && right.kind === "point") {
+    return vec2Equal(left.point, right.point);
+  }
+
+  if (left.kind === "line" && right.kind === "line") {
+    return vec2Equal(left.start, right.start) && vec2Equal(left.end, right.end);
+  }
+
+  if (left.kind === "rectangle" && right.kind === "rectangle") {
+    return (
+      vec2Equal(left.center, right.center) &&
+      left.width === right.width &&
+      left.height === right.height
+    );
+  }
+
+  if (left.kind === "circle" && right.kind === "circle") {
+    return vec2Equal(left.center, right.center) && left.radius === right.radius;
+  }
+
+  return false;
+}
+
+function vec2Equal(left: Vec2, right: Vec2): boolean {
+  return left[0] === right[0] && left[1] === right[1];
+}
+
 function parseCadProject(value: unknown): CadProject {
   assertValidCadProject(value);
-  return value as CadProject;
+  return normalizeCadProject(value);
 }
 
 function assertValidCadProject(value: unknown): asserts value is CadProject {
@@ -2483,6 +3547,23 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
   if (issues.length > 0) {
     throw new CadProjectImportError(issues);
   }
+}
+
+function normalizeCadProject(value: CadProject): CadProject {
+  if (value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+    return value;
+  }
+
+  return {
+    ...value,
+    schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+    document: {
+      ...value.document,
+      sketches: [],
+      nextSketchNumber: 1,
+      nextSketchEntityNumber: 1
+    }
+  };
 }
 
 function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
@@ -2505,7 +3586,10 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
       "$.schemaVersion",
       "Project schemaVersion must be a string."
     );
-  } else if (value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+  } else if (
+    value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
+  ) {
     addProjectIssue(
       issues,
       "UNSUPPORTED_PROJECT_VERSION",
@@ -2514,7 +3598,12 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   }
 
-  validateCadDocumentSnapshot(value.document, "$.document", issues);
+  validateCadDocumentSnapshot(
+    value.document,
+    "$.document",
+    issues,
+    value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION
+  );
 
   const seenTransactionIds = new Set<TransactionId>();
   validateTransactionArray(
@@ -2538,7 +3627,8 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
 function validateCadDocumentSnapshot(
   value: unknown,
   path: string,
-  issues: CadProjectImportIssue[]
+  issues: CadProjectImportIssue[],
+  requireSketches: boolean
 ): void {
   if (!isRecord(value)) {
     addProjectIssue(
@@ -2560,6 +3650,8 @@ function validateCadDocumentSnapshot(
   }
 
   let maxGeneratedObjectNumber = 0;
+  let maxGeneratedSketchNumber = 0;
+  let maxGeneratedSketchEntityNumber = 0;
 
   if (!Array.isArray(value.objects)) {
     addProjectIssue(
@@ -2607,6 +3699,55 @@ function validateCadDocumentSnapshot(
       "INVALID_DOCUMENT",
       `${path}.nextObjectNumber`,
       "Document nextObjectNumber must be greater than existing generated object ids."
+    );
+  }
+
+  if (requireSketches) {
+    if (!Array.isArray(value.sketches)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.sketches`,
+        "Document sketches must be an array."
+      );
+    } else {
+      const seenSketchIds = new Set<string>();
+      const seenSketchEntityIds = new Set<string>();
+
+      for (const [index, sketch] of value.sketches.entries()) {
+        const generatedNumbers = validateSketchSnapshot(
+          sketch,
+          `${path}.sketches[${index}]`,
+          issues,
+          seenSketchIds,
+          seenSketchEntityIds
+        );
+        maxGeneratedSketchNumber = Math.max(
+          maxGeneratedSketchNumber,
+          generatedNumbers.maxGeneratedSketchNumber
+        );
+        maxGeneratedSketchEntityNumber = Math.max(
+          maxGeneratedSketchEntityNumber,
+          generatedNumbers.maxGeneratedSketchEntityNumber
+        );
+      }
+    }
+
+    validateNextGeneratedNumber(
+      value.nextSketchNumber,
+      `${path}.nextSketchNumber`,
+      "Document nextSketchNumber",
+      "generated sketch ids",
+      maxGeneratedSketchNumber,
+      issues
+    );
+    validateNextGeneratedNumber(
+      value.nextSketchEntityNumber,
+      `${path}.nextSketchEntityNumber`,
+      "Document nextSketchEntityNumber",
+      "generated sketch entity ids",
+      maxGeneratedSketchEntityNumber,
+      issues
     );
   }
 }
@@ -2679,6 +3820,169 @@ function validateSceneObject(
   }
 
   validateTransformShape(value.transform, `${path}.transform`, issues);
+}
+
+function validateSketchSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenSketchIds: Set<string>,
+  seenSketchEntityIds: Set<string>
+): {
+  readonly maxGeneratedSketchNumber: number;
+  readonly maxGeneratedSketchEntityNumber: number;
+} {
+  let maxGeneratedSketchNumber = 0;
+  let maxGeneratedSketchEntityNumber = 0;
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      path,
+      "Sketch must be an object."
+    );
+    return { maxGeneratedSketchNumber, maxGeneratedSketchEntityNumber };
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      `${path}.id`,
+      "Sketch id must be a non-empty string."
+    );
+  } else if (seenSketchIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      `${path}.id`,
+      `Duplicate sketch id: ${value.id}.`
+    );
+  } else {
+    seenSketchIds.add(value.id);
+    maxGeneratedSketchNumber = Math.max(
+      maxGeneratedSketchNumber,
+      parseSketchNumber(value.id)
+    );
+  }
+
+  if (typeof value.name !== "string" || value.name.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_NAME",
+      `${path}.name`,
+      "Sketch name must be a non-empty string."
+    );
+  }
+
+  if (!isSketchPlane(value.plane)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      `${path}.plane`,
+      "Sketch plane must be XY, XZ, or YZ."
+    );
+  }
+
+  if (!Array.isArray(value.entities)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_ENTITY",
+      `${path}.entities`,
+      "Sketch entities must be an array."
+    );
+  } else {
+    for (const [index, entity] of value.entities.entries()) {
+      maxGeneratedSketchEntityNumber = Math.max(
+        maxGeneratedSketchEntityNumber,
+        validateSketchEntitySnapshot(
+          entity,
+          `${path}.entities[${index}]`,
+          issues,
+          seenSketchEntityIds
+        )
+      );
+    }
+  }
+
+  return { maxGeneratedSketchNumber, maxGeneratedSketchEntityNumber };
+}
+
+function validateSketchEntitySnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenSketchEntityIds: Set<string>
+): number {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_ENTITY",
+      path,
+      "Sketch entity must be an object."
+    );
+    return 0;
+  }
+
+  let maxGeneratedSketchEntityNumber = 0;
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_ENTITY",
+      `${path}.id`,
+      "Sketch entity id must be a non-empty string."
+    );
+  } else if (seenSketchEntityIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_ENTITY",
+      `${path}.id`,
+      `Duplicate sketch entity id: ${value.id}.`
+    );
+  } else {
+    seenSketchEntityIds.add(value.id);
+    maxGeneratedSketchEntityNumber = parseSketchEntityNumber(value.id);
+  }
+
+  if (value.kind === "point") {
+    validateVec2Field(value.point, `${path}.point`, issues);
+  } else if (value.kind === "line") {
+    validateVec2Field(value.start, `${path}.start`, issues);
+    validateVec2Field(value.end, `${path}.end`, issues);
+  } else if (value.kind === "rectangle") {
+    validateVec2Field(value.center, `${path}.center`, issues);
+    validatePositiveFiniteField(
+      value.width,
+      `${path}.width`,
+      "Rectangle width",
+      issues
+    );
+    validatePositiveFiniteField(
+      value.height,
+      `${path}.height`,
+      "Rectangle height",
+      issues
+    );
+  } else if (value.kind === "circle") {
+    validateVec2Field(value.center, `${path}.center`, issues);
+    validatePositiveFiniteField(
+      value.radius,
+      `${path}.radius`,
+      "Circle radius",
+      issues
+    );
+  } else {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_ENTITY",
+      `${path}.kind`,
+      "Sketch entity kind must be point, line, rectangle, or circle."
+    );
+  }
+
+  return maxGeneratedSketchEntityNumber;
 }
 
 function validateOptionalObjectName(
@@ -2891,6 +4195,49 @@ function validateVec3Field(
       "INVALID_TRANSFORM",
       path,
       "Transform vector must contain three finite numbers."
+    );
+  }
+}
+
+function validateVec2Field(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  if (!isVec2(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_ENTITY",
+      path,
+      "Sketch coordinate vector must contain two finite numbers."
+    );
+  }
+}
+
+function validateNextGeneratedNumber(
+  value: unknown,
+  path: string,
+  label: string,
+  generatedIdLabel: string,
+  maxGeneratedNumber: number,
+  issues: CadProjectImportIssue[]
+): void {
+  const isValid =
+    typeof value === "number" && Number.isInteger(value) && value > 0;
+
+  if (!isValid) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      path,
+      `${label} must be a positive integer.`
+    );
+  } else if (value <= maxGeneratedNumber) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      path,
+      `${label} must be greater than existing ${generatedIdLabel}.`
     );
   }
 }
@@ -3211,28 +4558,86 @@ function formatCadProjectImportIssues(
 function materializeGeneratedObjectIds(
   transaction: Transaction
 ): readonly CadOp[] {
-  let createdIndex = 0;
+  let createdObjectIndex = 0;
+  let createdSketchIndex = 0;
+  let createdSketchEntityIndex = 0;
 
   return transaction.ops.map((op) => {
-    if (
-      op.op !== "scene.createBox" &&
-      op.op !== "scene.createCylinder" &&
-      op.op !== "scene.createSphere" &&
-      op.op !== "scene.createCone" &&
-      op.op !== "scene.createTorus"
-    ) {
-      return op;
+    if (isSceneCreateOp(op)) {
+      if (op.id) {
+        return op;
+      }
+
+      const createdRef = transaction.diff.created[createdObjectIndex];
+      createdObjectIndex += 1;
+
+      return createdRef ? { ...op, id: createdRef.id } : op;
     }
 
-    if (op.id) {
-      return op;
+    if (op.op === "sketch.create") {
+      if (op.id) {
+        return op;
+      }
+
+      const createdRef =
+        transaction.diff.sketches?.created?.[createdSketchIndex];
+      createdSketchIndex += 1;
+
+      return createdRef ? { ...op, id: createdRef.id } : op;
     }
 
-    const createdRef = transaction.diff.created[createdIndex];
-    createdIndex += 1;
+    if (isSketchAddEntityOp(op)) {
+      if (op.id) {
+        return op;
+      }
 
-    return createdRef ? { ...op, id: createdRef.id } : op;
+      const createdRef =
+        transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex];
+      createdSketchEntityIndex += 1;
+
+      return createdRef ? { ...op, id: createdRef.id } : op;
+    }
+
+    return op;
   });
+}
+
+function isSceneCreateOp(op: CadOp): op is Extract<
+  CadOp,
+  {
+    readonly op:
+      | "scene.createBox"
+      | "scene.createCylinder"
+      | "scene.createSphere"
+      | "scene.createCone"
+      | "scene.createTorus";
+  }
+> {
+  return (
+    op.op === "scene.createBox" ||
+    op.op === "scene.createCylinder" ||
+    op.op === "scene.createSphere" ||
+    op.op === "scene.createCone" ||
+    op.op === "scene.createTorus"
+  );
+}
+
+function isSketchAddEntityOp(op: CadOp): op is Extract<
+  CadOp,
+  {
+    readonly op:
+      | "sketch.addPoint"
+      | "sketch.addLine"
+      | "sketch.addRectangle"
+      | "sketch.addCircle";
+  }
+> {
+  return (
+    op.op === "sketch.addPoint" ||
+    op.op === "sketch.addLine" ||
+    op.op === "sketch.addRectangle" ||
+    op.op === "sketch.addCircle"
+  );
 }
 
 function isCadOp(value: unknown): value is CadOp {
@@ -3330,6 +4735,71 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      isSketchPlane(value.plane)
+    );
+  }
+
+  if (value.op === "sketch.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "sketch.delete") {
+    return typeof value.id === "string";
+  }
+
+  if (value.op === "sketch.addPoint") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.point)
+    );
+  }
+
+  if (value.op === "sketch.addLine") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.start) &&
+      isVec2(value.end)
+    );
+  }
+
+  if (value.op === "sketch.addRectangle") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.center) &&
+      typeof value.width === "number" &&
+      isPositiveFiniteNumber(value.width) &&
+      typeof value.height === "number" &&
+      isPositiveFiniteNumber(value.height)
+    );
+  }
+
+  if (value.op === "sketch.addCircle") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      isPositiveFiniteNumber(value.radius)
+    );
+  }
+
+  if (value.op === "sketch.updateEntity") {
+    return typeof value.sketchId === "string" && isSketchEntity(value.entity);
+  }
+
+  if (value.op === "sketch.deleteEntity") {
+    return (
+      typeof value.sketchId === "string" && typeof value.entityId === "string"
+    );
+  }
+
   return false;
 }
 
@@ -3342,7 +4812,8 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     value.modified.every(isCadObjectRef) &&
     Array.isArray(value.deleted) &&
     value.deleted.every(isCadObjectRef) &&
-    (value.document === undefined || isDocumentSemanticDiff(value.document))
+    (value.document === undefined || isDocumentSemanticDiff(value.document)) &&
+    (value.sketches === undefined || isSketchSemanticDiff(value.sketches))
   );
 }
 
@@ -3362,6 +4833,28 @@ function isDocumentSemanticDiff(value: unknown): value is DocumentSemanticDiff {
   );
 }
 
+function isSketchSemanticDiff(value: unknown): value is SketchSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.created === undefined ||
+      (Array.isArray(value.created) && value.created.every(isCadSketchRef))) &&
+    (value.modified === undefined ||
+      (Array.isArray(value.modified) &&
+        value.modified.every(isCadSketchRef))) &&
+    (value.deleted === undefined ||
+      (Array.isArray(value.deleted) && value.deleted.every(isCadSketchRef))) &&
+    (value.entitiesCreated === undefined ||
+      (Array.isArray(value.entitiesCreated) &&
+        value.entitiesCreated.every(isCadSketchEntityRef))) &&
+    (value.entitiesModified === undefined ||
+      (Array.isArray(value.entitiesModified) &&
+        value.entitiesModified.every(isCadSketchEntityRef))) &&
+    (value.entitiesDeleted === undefined ||
+      (Array.isArray(value.entitiesDeleted) &&
+        value.entitiesDeleted.every(isCadSketchEntityRef)))
+  );
+}
+
 function isCadObjectRef(value: unknown): value is CadObjectRef {
   return (
     isRecord(value) &&
@@ -3371,6 +4864,19 @@ function isCadObjectRef(value: unknown): value is CadObjectRef {
       value.kind === "sphere" ||
       value.kind === "cone" ||
       value.kind === "torus")
+  );
+}
+
+function isCadSketchRef(value: unknown): value is CadSketchRef {
+  return isRecord(value) && typeof value.id === "string";
+}
+
+function isCadSketchEntityRef(value: unknown): value is CadSketchEntityRef {
+  return (
+    isRecord(value) &&
+    typeof value.sketchId === "string" &&
+    typeof value.id === "string" &&
+    isSketchEntityKind(value.kind)
   );
 }
 
@@ -3446,6 +4952,48 @@ function isVec3(value: unknown): value is readonly [number, number, number] {
   );
 }
 
+function isVec2(value: unknown): value is Vec2 {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
+function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    return false;
+  }
+
+  if (value.kind === "point") {
+    return isVec2(value.point);
+  }
+
+  if (value.kind === "line") {
+    return isVec2(value.start) && isVec2(value.end);
+  }
+
+  if (value.kind === "rectangle") {
+    return (
+      isVec2(value.center) &&
+      typeof value.width === "number" &&
+      isPositiveFiniteNumber(value.width) &&
+      typeof value.height === "number" &&
+      isPositiveFiniteNumber(value.height)
+    );
+  }
+
+  if (value.kind === "circle") {
+    return (
+      isVec2(value.center) &&
+      typeof value.radius === "number" &&
+      isPositiveFiniteNumber(value.radius)
+    );
+  }
+
+  return false;
+}
+
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
 }
@@ -3458,6 +5006,19 @@ function isDocumentUnitUpdateMode(
   value: unknown
 ): value is DocumentUnitUpdateMode {
   return value === "metadataOnly" || value === "preservePhysicalSize";
+}
+
+function isSketchPlane(value: unknown): value is SketchPlane {
+  return value === "XY" || value === "XZ" || value === "YZ";
+}
+
+function isSketchEntityKind(value: unknown): value is SketchEntityKind {
+  return (
+    value === "point" ||
+    value === "line" ||
+    value === "rectangle" ||
+    value === "circle"
+  );
 }
 
 function isCadActorType(value: unknown): value is CadActorMetadata["type"] {

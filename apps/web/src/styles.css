@@ -374,6 +374,7 @@ h3 {
 .project-panel,
 .geometry-panel,
 .history-panel,
+.sketch-panel,
 .command-card {
   display: grid;
   gap: 12px;
@@ -461,6 +462,10 @@ h3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.field-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .transform-fields {
   display: grid;
   gap: 8px;
@@ -485,6 +490,61 @@ h3 {
   background: #ffffff;
   color: #1f2933;
   cursor: pointer;
+}
+
+.compact-list,
+.entity-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compact-list button {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.compact-list button.selected {
+  border-color: #bf7c18;
+  background: #fff7e8;
+  box-shadow: inset 3px 0 0 #f2a541;
+}
+
+.compact-list span,
+.compact-list small {
+  overflow-wrap: anywhere;
+}
+
+.compact-list small,
+.entity-list span {
+  color: #617183;
+  font-size: 0.76rem;
+}
+
+.sketch-layout,
+.sketch-detail,
+.entity-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.entity-list li {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #d4dbe4;
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+
+.entity-list code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
 }
 
 .batch-list {

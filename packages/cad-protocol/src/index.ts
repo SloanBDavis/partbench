@@ -10,13 +10,17 @@ export type ObjectId = string;
 export type PartId = string;
 export type FeatureId = string;
 export type BodyId = string;
+export type SketchId = string;
+export type SketchEntityId = string;
 export type TransactionId = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
 export type CadActorType = "human" | "agent" | "script" | "system";
 export type CadRequestIntent = CadBatchMode;
 
+export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
+export type SketchPlane = "XY" | "XZ" | "YZ";
 
 export interface CadActorMetadata {
   readonly type: CadActorType;
@@ -64,6 +68,7 @@ export interface TorusDimensions {
 }
 
 export type CadObjectKind = "box" | "cylinder" | "sphere" | "cone" | "torus";
+export type SketchEntityKind = "point" | "line" | "rectangle" | "circle";
 
 export type CadOp =
   | DocumentUpdateUnitsOp
@@ -79,7 +84,16 @@ export type CadOp =
   | SceneUpdateSphereDimensionsOp
   | SceneUpdateConeDimensionsOp
   | SceneUpdateTorusDimensionsOp
-  | SceneRenameObjectOp;
+  | SceneRenameObjectOp
+  | SketchCreateOp
+  | SketchRenameOp
+  | SketchDeleteOp
+  | SketchAddPointOp
+  | SketchAddLineOp
+  | SketchAddRectangleOp
+  | SketchAddCircleOp
+  | SketchUpdateEntityOp
+  | SketchDeleteEntityOp;
 
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
@@ -174,9 +188,81 @@ export interface SceneRenameObjectOp {
   readonly name: string;
 }
 
+export interface SketchCreateOp {
+  readonly op: "sketch.create";
+  readonly id?: SketchId;
+  readonly name: string;
+  readonly plane: SketchPlane;
+}
+
+export interface SketchRenameOp {
+  readonly op: "sketch.rename";
+  readonly id: SketchId;
+  readonly name: string;
+}
+
+export interface SketchDeleteOp {
+  readonly op: "sketch.delete";
+  readonly id: SketchId;
+}
+
+export interface SketchAddPointOp {
+  readonly op: "sketch.addPoint";
+  readonly sketchId: SketchId;
+  readonly id?: SketchEntityId;
+  readonly point: Vec2;
+}
+
+export interface SketchAddLineOp {
+  readonly op: "sketch.addLine";
+  readonly sketchId: SketchId;
+  readonly id?: SketchEntityId;
+  readonly start: Vec2;
+  readonly end: Vec2;
+}
+
+export interface SketchAddRectangleOp {
+  readonly op: "sketch.addRectangle";
+  readonly sketchId: SketchId;
+  readonly id?: SketchEntityId;
+  readonly center: Vec2;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface SketchAddCircleOp {
+  readonly op: "sketch.addCircle";
+  readonly sketchId: SketchId;
+  readonly id?: SketchEntityId;
+  readonly center: Vec2;
+  readonly radius: number;
+}
+
+export interface SketchUpdateEntityOp {
+  readonly op: "sketch.updateEntity";
+  readonly sketchId: SketchId;
+  readonly entity: SketchEntitySnapshot;
+}
+
+export interface SketchDeleteEntityOp {
+  readonly op: "sketch.deleteEntity";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
+}
+
+export interface CadSketchRef {
+  readonly id: SketchId;
+}
+
+export interface CadSketchEntityRef {
+  readonly sketchId: SketchId;
+  readonly id: SketchEntityId;
+  readonly kind: SketchEntityKind;
 }
 
 export interface DocumentSemanticDiff {
@@ -188,11 +274,21 @@ export interface DocumentSemanticDiff {
   };
 }
 
+export interface SketchSemanticDiff {
+  readonly created?: readonly CadSketchRef[];
+  readonly modified?: readonly CadSketchRef[];
+  readonly deleted?: readonly CadSketchRef[];
+  readonly entitiesCreated?: readonly CadSketchEntityRef[];
+  readonly entitiesModified?: readonly CadSketchEntityRef[];
+  readonly entitiesDeleted?: readonly CadSketchEntityRef[];
+}
+
 export interface SemanticDiff {
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
   readonly deleted: readonly CadObjectRef[];
   readonly document?: DocumentSemanticDiff;
+  readonly sketches?: SketchSemanticDiff;
 }
 
 export type CadTransactionStatus = "committed" | "undone";
@@ -214,6 +310,13 @@ export type CadBatchValidationErrorCode =
   | "INVALID_UNITS"
   | "INVALID_UNIT_UPDATE_MODE"
   | "INVALID_OBJECT_NAME"
+  | "SKETCH_ALREADY_EXISTS"
+  | "SKETCH_NOT_FOUND"
+  | "SKETCH_ENTITY_ALREADY_EXISTS"
+  | "SKETCH_ENTITY_NOT_FOUND"
+  | "INVALID_SKETCH_NAME"
+  | "INVALID_SKETCH_PLANE"
+  | "INVALID_SKETCH_ENTITY"
   | "INVALID_ACTOR"
   | "INVALID_AUDIT";
 
@@ -223,6 +326,8 @@ export interface CadBatchValidationError {
   readonly opIndex?: number;
   readonly op?: CadOp["op"];
   readonly objectId?: ObjectId;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -242,6 +347,12 @@ export interface CadBatchSuccessResponse {
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
+  readonly createdSketchIds?: readonly SketchId[];
+  readonly modifiedSketchIds?: readonly SketchId[];
+  readonly deletedSketchIds?: readonly SketchId[];
+  readonly createdSketchEntityIds?: readonly SketchEntityId[];
+  readonly modifiedSketchEntityIds?: readonly SketchEntityId[];
+  readonly deletedSketchEntityIds?: readonly SketchEntityId[];
   readonly warnings: readonly string[];
   readonly transactionId?: TransactionId;
   readonly actor?: CadActorMetadata;
@@ -256,6 +367,12 @@ export interface CadBatchErrorResponse {
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
+  readonly createdSketchIds?: readonly SketchId[];
+  readonly modifiedSketchIds?: readonly SketchId[];
+  readonly deletedSketchIds?: readonly SketchId[];
+  readonly createdSketchEntityIds?: readonly SketchEntityId[];
+  readonly modifiedSketchEntityIds?: readonly SketchEntityId[];
+  readonly deletedSketchEntityIds?: readonly SketchEntityId[];
   readonly warnings: readonly string[];
 }
 
@@ -263,18 +380,22 @@ export type CadQueryKind =
   | "project.summary"
   | "project.features"
   | "project.structure"
+  | "project.sketches"
   | "object.get"
   | "object.measurements"
   | "project.extents"
+  | "sketch.get"
   | "transaction.history";
 
 export type CadQuery =
   | ProjectSummaryQuery
   | ProjectFeaturesQuery
   | ProjectStructureQuery
+  | ProjectSketchesQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
+  | SketchGetQuery
   | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
@@ -289,6 +410,10 @@ export interface ProjectStructureQuery {
   readonly query: "project.structure";
 }
 
+export interface ProjectSketchesQuery {
+  readonly query: "project.sketches";
+}
+
 export interface ObjectGetQuery {
   readonly query: "object.get";
   readonly id: ObjectId;
@@ -301,6 +426,11 @@ export interface ObjectMeasurementsQuery {
 
 export interface ProjectExtentsQuery {
   readonly query: "project.extents";
+}
+
+export interface SketchGetQuery {
+  readonly query: "sketch.get";
+  readonly id: SketchId;
 }
 
 export interface TransactionHistoryQuery {
@@ -357,6 +487,47 @@ export interface TorusObjectSnapshot {
   readonly name?: string;
   readonly dimensions: TorusDimensions;
   readonly transform: Transform;
+}
+
+export type SketchEntitySnapshot =
+  | SketchPointEntitySnapshot
+  | SketchLineEntitySnapshot
+  | SketchRectangleEntitySnapshot
+  | SketchCircleEntitySnapshot;
+
+export interface SketchPointEntitySnapshot {
+  readonly id: SketchEntityId;
+  readonly kind: "point";
+  readonly point: Vec2;
+}
+
+export interface SketchLineEntitySnapshot {
+  readonly id: SketchEntityId;
+  readonly kind: "line";
+  readonly start: Vec2;
+  readonly end: Vec2;
+}
+
+export interface SketchRectangleEntitySnapshot {
+  readonly id: SketchEntityId;
+  readonly kind: "rectangle";
+  readonly center: Vec2;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface SketchCircleEntitySnapshot {
+  readonly id: SketchEntityId;
+  readonly kind: "circle";
+  readonly center: Vec2;
+  readonly radius: number;
+}
+
+export interface SketchSnapshot {
+  readonly id: SketchId;
+  readonly name: string;
+  readonly plane: SketchPlane;
+  readonly entities: readonly SketchEntitySnapshot[];
 }
 
 export interface CadAxisAlignedBounds {
@@ -434,6 +605,7 @@ export interface CadPartSnapshot {
   readonly objectIds: readonly ObjectId[];
   readonly featureIds: readonly FeatureId[];
   readonly bodyIds: readonly BodyId[];
+  readonly sketchIds: readonly SketchId[];
 }
 
 export interface CadBodySource {
@@ -465,6 +637,9 @@ export interface CadOperationSummary {
   readonly label: string;
   readonly objectId?: ObjectId;
   readonly objectKind?: CadObjectKind;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly sketchEntityKind?: SketchEntityKind;
 }
 
 export interface CadSemanticDiffSummary {
@@ -475,6 +650,7 @@ export interface CadSemanticDiffSummary {
   readonly modifiedCount: number;
   readonly deletedCount: number;
   readonly document?: DocumentSemanticDiff;
+  readonly sketches?: SketchSemanticDiff;
 }
 
 export interface CadTransactionHistoryEntry {
@@ -487,21 +663,24 @@ export interface CadTransactionHistoryEntry {
   readonly diff: CadSemanticDiffSummary;
 }
 
-export type CadQueryErrorCode = "OBJECT_NOT_FOUND";
+export type CadQueryErrorCode = "OBJECT_NOT_FOUND" | "SKETCH_NOT_FOUND";
 
 export interface CadQueryError {
   readonly code: CadQueryErrorCode;
   readonly message: string;
   readonly objectId?: ObjectId;
+  readonly sketchId?: SketchId;
 }
 
 export type CadQueryResponse =
   | ProjectSummaryQueryResponse
   | ProjectFeaturesQueryResponse
   | ProjectStructureQueryResponse
+  | ProjectSketchesQueryResponse
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
+  | SketchGetQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -535,6 +714,14 @@ export interface ProjectStructureQueryResponse {
   readonly objectSources: readonly CadObjectModelSource[];
 }
 
+export interface ProjectSketchesQueryResponse {
+  readonly ok: true;
+  readonly query: "project.sketches";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketchCount: number;
+  readonly sketches: readonly SketchSnapshot[];
+}
+
 export interface ObjectGetQueryResponse {
   readonly ok: true;
   readonly query: "object.get";
@@ -566,6 +753,13 @@ export interface TransactionHistoryQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly transactionCount: number;
   readonly transactions: readonly CadTransactionHistoryEntry[];
+}
+
+export interface SketchGetQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.get";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketch: SketchSnapshot;
 }
 
 export interface CadQueryErrorResponse {

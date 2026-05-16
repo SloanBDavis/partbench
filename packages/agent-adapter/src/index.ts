@@ -16,6 +16,7 @@ import type {
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
+  SketchSnapshot,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   DocumentUnits,
@@ -65,6 +66,12 @@ export interface CadOpsAgentSuccessResponse {
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
+  readonly createdSketchIds?: readonly string[];
+  readonly modifiedSketchIds?: readonly string[];
+  readonly deletedSketchIds?: readonly string[];
+  readonly createdSketchEntityIds?: readonly string[];
+  readonly modifiedSketchEntityIds?: readonly string[];
+  readonly deletedSketchEntityIds?: readonly string[];
   readonly warnings: readonly string[];
   readonly transactionId?: string;
   readonly actor?: CadActorMetadata;
@@ -82,6 +89,12 @@ export interface CadOpsAgentErrorResponse {
   readonly createdIds: readonly ObjectId[];
   readonly modifiedIds: readonly ObjectId[];
   readonly deletedIds: readonly ObjectId[];
+  readonly createdSketchIds?: readonly string[];
+  readonly modifiedSketchIds?: readonly string[];
+  readonly deletedSketchIds?: readonly string[];
+  readonly createdSketchEntityIds?: readonly string[];
+  readonly modifiedSketchEntityIds?: readonly string[];
+  readonly deletedSketchEntityIds?: readonly string[];
   readonly warnings: readonly string[];
   readonly audit?: CadTransactionAuditMetadata;
 }
@@ -102,9 +115,11 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentProjectStructureQueryResponse
+  | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
+  | CadOpsAgentSketchGetQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
@@ -144,6 +159,16 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly objectSources: readonly CadObjectModelSource[];
 }
 
+export interface CadOpsAgentProjectSketchesQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.sketches";
+  readonly sketchCount: number;
+  readonly sketches: readonly SketchSnapshot[];
+}
+
 export interface CadOpsAgentObjectGetQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -175,6 +200,15 @@ export interface CadOpsAgentProjectExtentsQueryResponse {
   readonly objects: readonly ObjectExtentSnapshot[];
 }
 
+export interface CadOpsAgentSketchGetQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "sketch.get";
+  readonly sketch: SketchSnapshot;
+}
+
 export interface CadOpsAgentTransactionHistoryQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -194,9 +228,11 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.summary"
     | "project.features"
     | "project.structure"
+    | "project.sketches"
     | "object.get"
     | "object.measurements"
     | "project.extents"
+    | "sketch.get"
     | "transaction.history";
   readonly error: CadQueryError;
 }
@@ -313,6 +349,7 @@ function toAgentResponse(
       createdIds: response.createdIds,
       modifiedIds: response.modifiedIds,
       deletedIds: response.deletedIds,
+      ...toAgentSketchDiffIds(response),
       warnings: response.warnings,
       ...(request.batch.audit ? { audit: request.batch.audit } : {})
     };
@@ -327,10 +364,41 @@ function toAgentResponse(
     createdIds: response.createdIds,
     modifiedIds: response.modifiedIds,
     deletedIds: response.deletedIds,
+    ...toAgentSketchDiffIds(response),
     warnings: response.warnings,
     transactionId: response.transactionId,
     ...(response.actor ? { actor: response.actor } : {}),
     ...(response.audit ? { audit: response.audit } : {})
+  };
+}
+
+function toAgentSketchDiffIds(response: CadBatchResponse): {
+  readonly createdSketchIds?: readonly string[];
+  readonly modifiedSketchIds?: readonly string[];
+  readonly deletedSketchIds?: readonly string[];
+  readonly createdSketchEntityIds?: readonly string[];
+  readonly modifiedSketchEntityIds?: readonly string[];
+  readonly deletedSketchEntityIds?: readonly string[];
+} {
+  return {
+    ...(response.createdSketchIds
+      ? { createdSketchIds: response.createdSketchIds }
+      : {}),
+    ...(response.modifiedSketchIds
+      ? { modifiedSketchIds: response.modifiedSketchIds }
+      : {}),
+    ...(response.deletedSketchIds
+      ? { deletedSketchIds: response.deletedSketchIds }
+      : {}),
+    ...(response.createdSketchEntityIds
+      ? { createdSketchEntityIds: response.createdSketchEntityIds }
+      : {}),
+    ...(response.modifiedSketchEntityIds
+      ? { modifiedSketchEntityIds: response.modifiedSketchEntityIds }
+      : {}),
+    ...(response.deletedSketchEntityIds
+      ? { deletedSketchEntityIds: response.deletedSketchEntityIds }
+      : {})
   };
 }
 
@@ -462,6 +530,18 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.sketches") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      sketchCount: response.sketchCount,
+      sketches: response.sketches
+    };
+  }
+
   if (response.query === "object.measurements") {
     return {
       ok: true,
@@ -497,6 +577,17 @@ function toAgentQueryResponse(
       query: response.query,
       transactionCount: response.transactionCount,
       transactions: response.transactions
+    };
+  }
+
+  if (response.query === "sketch.get") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      sketch: response.sketch
     };
   }
 
@@ -602,12 +693,16 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.sketches" &&
+        Object.keys(value.query).length === 1) ||
       (value.query.query === "object.get" &&
         typeof value.query.id === "string") ||
       (value.query.query === "object.measurements" &&
         typeof value.query.id === "string") ||
       (value.query.query === "project.extents" &&
         Object.keys(value.query).length === 1) ||
+      (value.query.query === "sketch.get" &&
+        typeof value.query.id === "string") ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
   );
@@ -708,6 +803,68 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      (value.plane === "XY" || value.plane === "XZ" || value.plane === "YZ")
+    );
+  }
+
+  if (value.op === "sketch.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "sketch.delete") {
+    return typeof value.id === "string";
+  }
+
+  if (value.op === "sketch.addPoint") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.point)
+    );
+  }
+
+  if (value.op === "sketch.addLine") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.start) &&
+      isVec2(value.end)
+    );
+  }
+
+  if (value.op === "sketch.addRectangle") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.center) &&
+      typeof value.width === "number" &&
+      typeof value.height === "number"
+    );
+  }
+
+  if (value.op === "sketch.addCircle") {
+    return (
+      typeof value.sketchId === "string" &&
+      isOptionalString(value.id) &&
+      isVec2(value.center) &&
+      typeof value.radius === "number"
+    );
+  }
+
+  if (value.op === "sketch.updateEntity") {
+    return typeof value.sketchId === "string" && isSketchEntity(value.entity);
+  }
+
+  if (value.op === "sketch.deleteEntity") {
+    return (
+      typeof value.sketchId === "string" && typeof value.entityId === "string"
+    );
+  }
+
   return false;
 }
 
@@ -767,6 +924,42 @@ function isVec3(value: unknown): value is Vec3 {
     value.length === 3 &&
     value.every((item) => typeof item === "number")
   );
+}
+
+function isVec2(value: unknown): value is readonly [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((item) => typeof item === "number")
+  );
+}
+
+function isSketchEntity(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    return false;
+  }
+
+  if (value.kind === "point") {
+    return isVec2(value.point);
+  }
+
+  if (value.kind === "line") {
+    return isVec2(value.start) && isVec2(value.end);
+  }
+
+  if (value.kind === "rectangle") {
+    return (
+      isVec2(value.center) &&
+      typeof value.width === "number" &&
+      typeof value.height === "number"
+    );
+  }
+
+  if (value.kind === "circle") {
+    return isVec2(value.center) && typeof value.radius === "number";
+  }
+
+  return false;
 }
 
 function isOptionalString(value: unknown): value is string | undefined {

@@ -313,5 +313,34 @@ function summarizeOp(op: CadOp): string {
     return `${op.op} ${op.units} (${op.mode ?? "metadataOnly"})`;
   }
 
-  return `${op.op} ${op.id}`;
+  if (op.op === "sketch.create" || op.op === "sketch.rename") {
+    return `${op.op} ${op.id ?? ""}`.trim();
+  }
+
+  if (op.op === "sketch.delete") {
+    return `${op.op} ${op.id}`;
+  }
+
+  if (
+    op.op === "sketch.addPoint" ||
+    op.op === "sketch.addLine" ||
+    op.op === "sketch.addRectangle" ||
+    op.op === "sketch.addCircle"
+  ) {
+    return `${op.op} ${op.sketchId}${op.id ? ` / ${op.id}` : ""}`;
+  }
+
+  if (op.op === "sketch.updateEntity") {
+    return `${op.op} ${op.sketchId} / ${op.entity.id}`;
+  }
+
+  if (op.op === "sketch.deleteEntity") {
+    return `${op.op} ${op.sketchId} / ${op.entityId}`;
+  }
+
+  if ("id" in op) {
+    return `${op.op} ${op.id ?? ""}`.trim();
+  }
+
+  return "";
 }

@@ -41,8 +41,8 @@ packages:
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, derived
-  part/feature/body structure summaries for the current scene primitives, and
-  versioned project JSON import/export.
+  part/feature/body structure summaries for the current scene primitives,
+  source-of-truth sketches, and versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -80,8 +80,9 @@ Completed foundations:
   torus.
 - Dimension, transform, rename, delete, unit metadata change, and
   preserve-physical-size unit conversion commands.
-- Versioned source-of-truth JSON project import/export:
-  `web-cad.project.v1`.
+- Versioned source-of-truth JSON project import/export. V1 completed with
+  `web-cad.project.v1`; current V2 exports use `web-cad.project.v2` and still
+  import V1 projects through migration.
 - Browser command worker transport.
 - Isolated OCCT/WASM adapter, geometry-kernel facade, browser geometry worker,
   derived geometry service, renderer mesh bridge, and OCCT browser smoke.
@@ -143,7 +144,8 @@ Current limitations:
   kernel/B-rep measurements.
 - Document units are explicit but not a full unit system.
 - Object display names are optional and not unique.
-- There is no sketch model or constraint solver.
+- The first sketch model slice exists, but there is no sketch solver, constraint
+  system, profile recognition, or sketch-driven feature operation yet.
 - There is no stable topological naming system.
 - There are no extrude, revolve, boolean, fillet, chamfer, shell, loft, pattern,
   or direct modeling features.
@@ -206,9 +208,10 @@ Exit criteria:
 Goal: turn the current JSON interchange into a deliberate path toward a native
 project package without losing debuggability.
 
-Current status: storage decision documented. The V2 structural bridge is derived
-from V1 source-of-truth scene objects and transaction history, so it does not
-require a `web-cad.project.v2` format yet.
+Current status: storage decision implemented. The V2 structural bridge is still
+derived, but the sketch slice added authored source data, so current exports now
+use `web-cad.project.v2`. V1 project JSON remains importable through migration
+with empty sketch data.
 
 Deliverables:
 
@@ -224,13 +227,13 @@ Deliverables:
 
 Implemented decision:
 
-- Continue accepting/exporting only `web-cad.project.v1` while
-  `project.structure` is query-only derived data.
-- Do not persist `part:default`, `feature:<objectId>`, or `body:<objectId>` in
-  V1 JSON.
-- Introduce `web-cad.project.v2` only when the source-of-truth model adds data
-  that cannot be reconstructed from V1 objects and transaction history, such as
-  sketches, explicit authored parts, feature records, body definitions, topology
+- Continue deriving `part:default`, `feature:<objectId>`, and
+  `body:<objectId>` rather than persisting duplicate part/feature/body records.
+- Export `web-cad.project.v2` with source-of-truth sketches and sketch counters.
+- Accept `web-cad.project.v1` through migration with empty sketches.
+- Introduce a later project format only when source-of-truth data cannot be
+  represented cleanly in the current V2 shape, such as constraints, profiles,
+  explicit authored parts, feature records, body definitions, topology
   references, or assemblies.
 - Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
 
@@ -246,14 +249,22 @@ Exit criteria:
 Goal: add a minimal parametric sketch model that can support the first real
 feature operation.
 
-Deliverables:
+Current status: first source-of-truth slice implemented.
 
-- Add sketch containers on explicit planes.
-- Add the smallest useful sketch entities, likely points, lines, rectangles,
-  circles, and construction geometry.
-- Add dimensions/constraints only where needed for the first feature workflow.
-- Keep sketch edits transactional through CADOps.
-- Add structural sketch queries for UI and agents.
+Implemented:
+
+- Sketch containers on `XY`, `XZ`, and `YZ` planes.
+- Point, line, rectangle, and circle sketch entities.
+- CADOps commands for sketch create/rename/delete and entity
+  add/update/delete.
+- Validation for sketch names, planes, entity existence, coordinates, rectangle
+  sizes, and circle radius.
+- Semantic diffs, undo/redo, batch dry-run/commit, transaction history, and
+  project JSON round trip for sketches.
+- `project.sketches` and `sketch.get` queries through `cad-core`,
+  `agent-adapter`, and MCP wrappers.
+- Compact web UI panel for sketch creation and entity editing.
+- Current exports use `web-cad.project.v2`; V1 imports remain compatible.
 
 Exit criteria:
 
