@@ -1,9 +1,11 @@
-import type {
-  BoxObject,
-  ConeObject,
-  CylinderObject,
-  SphereObject,
-  TorusObject
+import {
+  CadEngine,
+  type BoxObject,
+  type CadFeatureSummary,
+  type ConeObject,
+  type CylinderObject,
+  type SphereObject,
+  type TorusObject
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
@@ -12,6 +14,7 @@ import {
   createEmptyDerivedGeometrySnapshot,
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
+  type DerivedExtrudeGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import type {
@@ -24,6 +27,7 @@ import type {
   DerivedGeometrySphereInput,
   DerivedGeometryTorusInput
 } from "./derivedGeometryRuntime";
+import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 
 type RuntimeInput =
   | DerivedGeometryBoxInput
@@ -182,6 +186,43 @@ describe("derivedGeometry", () => {
     expect(snapshot.meshes).toEqual([]);
   });
 
+  it("updates extrude sources across feature delete undo and redo", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_rect_1"]);
+
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    expect(getDerivedSourceIds(engine)).toEqual([]);
+
+    engine.undo();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_rect_1"]);
+
+    engine.redo();
+
+    expect(getDerivedSourceIds(engine)).toEqual([]);
+  });
+
+  it("invalidates deleted extrude bodies and removes derived meshes", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async (input) =>
+        createResult(input.id, createMesh(input.id))
+      ),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const source = createExtrudeSource("body_rect_1");
+
+    service.reconcile([source]);
+    await flushPromises();
+    service.reconcile([]);
+
+    const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
+    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.meshes).toEqual([]);
+  });
+
   it("ignores stale worker results after object deletion", async () => {
     const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -193,6 +234,24 @@ describe("derivedGeometry", () => {
     service.reconcile([createBoxObject("box_1", 2)]);
     service.reconcile([]);
     pending.resolve(createResult("box_1", createMesh("stale_mesh")));
+    await flushPromises();
+
+    const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
+    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.meshes).toEqual([]);
+  });
+
+  it("ignores stale worker results after extrude body deletion", async () => {
+    const pending = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(() => pending.promise),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([createExtrudeSource("body_rect_1")]);
+    service.reconcile([]);
+    pending.resolve(createResult("body_rect_1", createMesh("stale_mesh")));
     await flushPromises();
 
     const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
@@ -416,6 +475,69 @@ function createTorusObject(id = "torus_1"): TorusObject {
       scale: [1, 1, 1]
     }
   };
+}
+
+function createExtrudeSource(id = "body_rect_1"): DerivedExtrudeGeometrySource {
+  return {
+    id,
+    kind: "extrude",
+    sketchPlane: "XY",
+    profile: {
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    },
+    depth: 3
+  };
+}
+
+function createExtrudedRectangleEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    }
+  ]);
+  engine.apply({
+    op: "feature.extrude",
+    id: "feat_rect_1",
+    bodyId: "body_rect_1",
+    sketchId: "sketch_1",
+    entityId: "rect_1",
+    depth: 3
+  });
+
+  return engine;
+}
+
+function getDerivedSourceIds(engine: CadEngine): readonly string[] {
+  return createDerivedGeometrySourcesFromDocument(
+    engine.getDocument(),
+    getProjectStructureFeatures(engine)
+  ).map((source) => source.id);
+}
+
+function getProjectStructureFeatures(
+  engine: CadEngine
+): readonly CadFeatureSummary[] {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project.structure query response.");
+  }
+
+  return response.features;
 }
 
 function createRuntime(

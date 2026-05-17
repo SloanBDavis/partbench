@@ -8,8 +8,7 @@ import {
   type CadFeatureSummary,
   type CadTransactionHistoryEntry,
   type ObjectMeasurementsSnapshot,
-  type SceneObject,
-  type SketchSnapshot
+  type SceneObject
 } from "@web-cad/cad-core";
 import type {
   CadBatchMode,
@@ -69,13 +68,15 @@ import { ViewportCanvas } from "./components/ViewportCanvas";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createEmptyDerivedGeometrySnapshot,
-  createPrimitiveDerivedGeometrySource,
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
-  type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
+import {
+  createDerivedGeometrySourcesFromDocument,
+  createExtrudeDerivedGeometrySources
+} from "./derivedGeometrySources";
 import {
   formatDimensions,
   getObjectDisplayName,
@@ -212,81 +213,6 @@ function readProjectStructure(): {
     : { features: [], bodies: [] };
 }
 
-function createDerivedGeometrySourcesFromDocument(
-  document: CadDocument,
-  features: readonly CadFeatureSummary[]
-): readonly DerivedGeometrySource[] {
-  const sketches = [...document.sketches.values()].map((sketch) => ({
-    id: sketch.id,
-    name: sketch.name,
-    plane: sketch.plane,
-    entities: [...sketch.entities.values()]
-  }));
-
-  return [
-    ...[...document.objects.values()].map(createPrimitiveDerivedGeometrySource),
-    ...createExtrudeDerivedGeometrySources(features, sketches)
-  ];
-}
-
-function createExtrudeDerivedGeometrySources(
-  features: readonly CadFeatureSummary[],
-  sketches: readonly SketchSnapshot[]
-): readonly DerivedExtrudeGeometrySource[] {
-  return features
-    .filter(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-        feature.kind === "extrude"
-    )
-    .flatMap((feature) => {
-      const sketch = sketches.find(
-        (candidate) => candidate.id === feature.sketchId
-      );
-      const entity = sketch?.entities.find(
-        (candidate) => candidate.id === feature.entityId
-      );
-
-      if (!sketch || !entity) {
-        return [];
-      }
-
-      if (entity.kind === "rectangle") {
-        const source: DerivedExtrudeGeometrySource = {
-          id: feature.bodyId,
-          kind: "extrude",
-          sketchPlane: sketch.plane,
-          profile: {
-            kind: entity.kind,
-            center: entity.center,
-            width: entity.width,
-            height: entity.height
-          },
-          depth: feature.depth
-        };
-
-        return [source];
-      }
-
-      if (entity.kind === "circle") {
-        const source: DerivedExtrudeGeometrySource = {
-          id: feature.bodyId,
-          kind: "extrude",
-          sketchPlane: sketch.plane,
-          profile: {
-            kind: entity.kind,
-            center: entity.center,
-            radius: entity.radius
-          },
-          depth: feature.depth
-        };
-
-        return [source];
-      }
-
-      return [];
-    });
-}
-
 export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
@@ -364,11 +290,12 @@ export function App() {
     [projectStructure.features, sketches]
   );
   const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
-    () => [
-      ...sceneObjects.map(createPrimitiveDerivedGeometrySource),
-      ...extrudeSources
-    ],
-    [extrudeSources, sceneObjects]
+    () =>
+      createDerivedGeometrySourcesFromDocument(
+        document,
+        projectStructure.features
+      ),
+    [document, projectStructure.features]
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
