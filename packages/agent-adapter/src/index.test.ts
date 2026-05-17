@@ -397,6 +397,110 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes feature.delete through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_delete",
+      entityId: "rect_delete",
+      featureId: "feat_delete",
+      bodyId: "body_delete"
+    });
+
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_delete_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [{ op: "feature.delete", id: "feat_delete" }]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly deletedFeatureIds?: readonly string[];
+      readonly deletedBodyIds?: readonly string[];
+      readonly transactionId?: string;
+    };
+    const dryRunStructure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      deletedFeatureIds: ["feat_delete"],
+      deletedBodyIds: ["body_delete"],
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_delete_dry_run",
+        intent: "dryRun",
+        operationCount: 1
+      }
+    });
+    expect(dryRunStructure).toMatchObject({
+      ok: true,
+      features: [{ id: "feat_delete" }],
+      bodies: [{ id: "body_delete", featureId: "feat_delete" }]
+    });
+
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_delete_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          actor: {
+            type: "agent",
+            id: "feature-delete-agent",
+            name: "Feature Delete Agent"
+          },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [{ op: "feature.delete", id: "feat_delete" }]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly deletedFeatureIds?: readonly string[];
+      readonly deletedBodyIds?: readonly string[];
+      readonly transactionId?: string;
+    };
+    const committedStructure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      deletedFeatureIds: ["feat_delete"],
+      deletedBodyIds: ["body_delete"],
+      transactionId: "txn_2",
+      actor: {
+        type: "agent",
+        id: "feature-delete-agent",
+        name: "Feature Delete Agent"
+      },
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_delete_commit",
+        intent: "commit",
+        operationCount: 1
+      }
+    });
+    expect(committedStructure).toMatchObject({
+      ok: true,
+      features: [],
+      bodies: []
+    });
+  });
+
   it("returns project summary queries through the adapter", () => {
     const engine = new CadEngine();
 
@@ -1043,3 +1147,53 @@ describe("agent-adapter", () => {
     ).toThrow("Invalid CADOps agent adapter query request.");
   });
 });
+
+function seedExtrudeFeature(
+  adapter: CadOpsAgentAdapter,
+  ids: {
+    readonly sketchId: string;
+    readonly entityId: string;
+    readonly featureId: string;
+    readonly bodyId: string;
+  }
+): void {
+  const response = adapter.execute({
+    requestId: `agent_req_seed_${ids.featureId}`,
+    adapterVersion: "web-cad.agent-adapter.v1",
+    permissions: { allowCommit: true },
+    batch: {
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.create",
+          id: ids.sketchId,
+          name: "Profile",
+          plane: "XY"
+        },
+        {
+          op: "sketch.addRectangle",
+          sketchId: ids.sketchId,
+          id: ids.entityId,
+          center: [0, 0],
+          width: 2,
+          height: 3
+        },
+        {
+          op: "feature.extrude",
+          id: ids.featureId,
+          bodyId: ids.bodyId,
+          sketchId: ids.sketchId,
+          entityId: ids.entityId,
+          depth: 4
+        }
+      ]
+    }
+  });
+
+  expect(response).toMatchObject({
+    ok: true,
+    createdFeatureIds: [ids.featureId],
+    createdBodyIds: [ids.bodyId]
+  });
+}

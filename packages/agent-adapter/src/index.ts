@@ -913,6 +913,10 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.delete") {
+    return typeof value.id === "string";
+  }
+
   return false;
 }
 

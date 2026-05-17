@@ -148,8 +148,9 @@ Current limitations:
 - Document units are explicit but not a full unit system.
 - Object display names are optional and not unique.
 - The first sketch and extrude slices exist, but there is no sketch solver,
-  constraint system, automatic profile recognition, feature edit/delete command,
-  or broad feature graph yet.
+  constraint system, automatic profile recognition, feature edit command, or
+  broad feature graph yet. `feature.delete` exists only for authored
+  sketch-extrude features.
 - There is no stable topological naming system.
 - There are no revolve, boolean, fillet, chamfer, shell, loft, pattern, or
   direct modeling features.

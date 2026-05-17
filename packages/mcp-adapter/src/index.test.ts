@@ -577,6 +577,107 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes feature.delete through cad.batch dry-run and commit", () => {
+    const server = new CadMcpServer();
+    seedMcpExtrudeFeature(server, {
+      sketchId: "sketch_delete",
+      entityId: "circle_delete",
+      featureId: "feat_delete",
+      bodyId: "body_delete"
+    });
+
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_delete_dry_run",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [{ op: "feature.delete", id: "feat_delete" }]
+        }
+      }
+    });
+    const dryRunStructure = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_delete_dry_run_structure"
+    });
+
+    expect(dryRun).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_delete_dry_run",
+        mode: "dryRun",
+        deletedFeatureIds: ["feat_delete"],
+        deletedBodyIds: ["body_delete"],
+        audit: {
+          source: "mcp",
+          requestId: "mcp_req_delete_dry_run",
+          toolName: "cad.batch",
+          intent: "dryRun",
+          operationCount: 1
+        }
+      }
+    });
+    expect(dryRunStructure).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: [{ id: "feat_delete" }],
+        bodies: [{ id: "body_delete", featureId: "feat_delete" }]
+      }
+    });
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_delete_commit",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [{ op: "feature.delete", id: "feat_delete" }]
+        }
+      }
+    });
+    const committedStructure = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_delete_commit_structure"
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_delete_commit",
+        mode: "commit",
+        deletedFeatureIds: ["feat_delete"],
+        deletedBodyIds: ["body_delete"],
+        transactionId: "txn_2",
+        actor: {
+          type: "agent",
+          id: "mcp",
+          name: "MCP Client"
+        },
+        audit: {
+          source: "mcp",
+          requestId: "mcp_req_delete_commit",
+          toolName: "cad.batch",
+          intent: "commit",
+          operationCount: 1
+        }
+      }
+    });
+    expect(committedStructure).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: [],
+        bodies: []
+      }
+    });
+  });
+
   it("returns sketches through cad.project_sketches and cad.sketch_get", () => {
     const server = new CadMcpServer();
 
@@ -897,3 +998,58 @@ describe("mcp-adapter", () => {
     });
   });
 });
+
+function seedMcpExtrudeFeature(
+  server: CadMcpServer,
+  ids: {
+    readonly sketchId: string;
+    readonly entityId: string;
+    readonly featureId: string;
+    readonly bodyId: string;
+  }
+): void {
+  const result = server.callTool({
+    name: "cad.batch",
+    requestId: `mcp_req_seed_${ids.featureId}`,
+    arguments: {
+      allowCommit: true,
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: ids.sketchId,
+            name: "Profile",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addCircle",
+            sketchId: ids.sketchId,
+            id: ids.entityId,
+            center: [0, 0],
+            radius: 2
+          },
+          {
+            op: "feature.extrude",
+            id: ids.featureId,
+            bodyId: ids.bodyId,
+            sketchId: ids.sketchId,
+            entityId: ids.entityId,
+            depth: 5
+          }
+        ]
+      }
+    }
+  });
+
+  expect(result).toMatchObject({
+    toolName: "cad.batch",
+    isError: false,
+    structuredContent: {
+      ok: true,
+      createdFeatureIds: [ids.featureId],
+      createdBodyIds: [ids.bodyId]
+    }
+  });
+}
