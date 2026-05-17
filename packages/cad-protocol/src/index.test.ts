@@ -157,6 +157,11 @@ describe("cad-protocol", () => {
         side: "positive"
       },
       {
+        op: "feature.updateExtrude",
+        id: "feat_1",
+        depth: 7
+      },
+      {
         op: "feature.delete",
         id: "feat_1"
       }
@@ -187,6 +192,7 @@ describe("cad-protocol", () => {
       "sketch.rename",
       "sketch.delete",
       "feature.extrude",
+      "feature.updateExtrude",
       "feature.delete"
     ]);
     expect(ops[0]).toMatchObject({

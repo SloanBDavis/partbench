@@ -12,6 +12,32 @@ import {
   parseCadProjectJson
 } from "./index";
 
+function createRectangleExtrudeEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 3
+    }
+  ]);
+
+  return engine;
+}
+
 describe("cad-core", () => {
   it("exports package status", () => {
     expect(corePackage).toEqual({
@@ -2505,6 +2531,183 @@ describe("cad-core", () => {
       transactionId: "txn_2"
     });
     expect(engine.getDocument().features.has("feat_rect_1")).toBe(false);
+  });
+
+  it("updates authored extrude depth and marks feature bodies modified", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const result = engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(result.transaction.diff.features).toMatchObject({
+      modified: [
+        {
+          id: "feat_rect_1",
+          kind: "extrude",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle"
+        }
+      ],
+      bodiesModified: [
+        { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+      ]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: [{ id: "feat_rect_1", depth: 8 }],
+      bodies: [{ id: "body_rect_1", featureId: "feat_rect_1" }]
+    });
+  });
+
+  it("validates missing, primitive-derived, and invalid extrude depth updates", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const missing = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.updateExtrude", id: "missing_feature", depth: 4 }]
+    });
+    const primitive = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.updateExtrude", id: "feature:box_1", depth: 4 }]
+    });
+    const invalidDepth = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.updateExtrude", id: "feat_rect_1", depth: 0 }]
+    });
+
+    expect(missing).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_FOUND",
+        featureId: "missing_feature"
+      }
+    });
+    expect(primitive).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_EDITABLE",
+        featureId: "feature:box_1"
+      }
+    });
+    expect(invalidDepth).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_FEATURE",
+        path: "$.ops[0].depth"
+      }
+    });
+  });
+
+  it("undoes and redoes extrude depth updates", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+
+    engine.undo();
+    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
+
+    engine.redo();
+    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+  });
+
+  it("supports extrude depth updates through batch dry-run and commit", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.updateExtrude", id: "feat_rect_1", depth: 8 }]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      modifiedFeatureIds: ["feat_rect_1"],
+      modifiedBodyIds: ["body_rect_1"]
+    });
+    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
+
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "feature.updateExtrude", id: "feat_rect_1", depth: 8 }]
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      modifiedFeatureIds: ["feat_rect_1"],
+      modifiedBodyIds: ["body_rect_1"],
+      transactionId: "txn_2"
+    });
+    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+  });
+
+  it("round-trips extrude depth updates through project JSON and history summaries", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const history = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(history).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactionCount: 2
+    });
+
+    if (!history.ok || history.query !== "transaction.history") {
+      throw new Error("Expected transaction history response.");
+    }
+
+    expect(history.transactions[1]?.ops).toContainEqual(
+      expect.objectContaining({
+        op: "feature.updateExtrude",
+        label: "Update extrude feature feat_rect_1 depth to 8",
+        featureId: "feat_rect_1",
+        bodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        sketchEntityId: "rect_1"
+      })
+    );
+
+    restored.undo();
+    expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
+
+    restored.redo();
+    expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
   });
 
   it("keeps primitive feature summaries aligned with undo and redo", () => {

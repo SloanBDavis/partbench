@@ -241,10 +241,11 @@ derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. The first slice supports only positive-side
 extrusion and does not include a sketch solver, arbitrary profile recognition,
-topological references, feature edit commands, or exact B-rep checkpoint
+topological references, broad feature edit commands, or exact B-rep checkpoint
 persistence. Authored sketch-extrude features can be removed with
-`feature.delete`; primitive-derived compatibility features are not deletable
-through that command.
+`feature.delete` and can have depth updated with `feature.updateExtrude`.
+Primitive-derived compatibility features are not deletable through
+`feature.delete` or editable through `feature.updateExtrude`.
 
 ## V2/V3 Storage Decision
 

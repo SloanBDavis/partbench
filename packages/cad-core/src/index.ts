@@ -1369,6 +1369,11 @@ function applyOperation(
       deleteFeature(state, op.id, diff, opIndex);
       return;
     }
+
+    case "feature.updateExtrude": {
+      updateExtrudeFeatureDepth(state, op.id, op.depth, diff, opIndex);
+      return;
+    }
   }
 }
 
@@ -1595,6 +1600,50 @@ function deleteFeature(
   state.features.delete(featureId);
   pushFeatureDeleted(diff, featureRef(feature));
   pushBodyDeleted(diff, bodyRef(feature));
+}
+
+function updateExtrudeFeatureDepth(
+  state: MutableDocumentState,
+  id: FeatureId,
+  depthValue: number,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const featureId = validateFeatureId(id, opIndex);
+  const feature = state.features.get(featureId);
+
+  if (!feature) {
+    if (isPrimitiveFeatureId(state, featureId)) {
+      throwValidationError({
+        code: "FEATURE_NOT_EDITABLE",
+        message: `Primitive-derived feature cannot be edited through feature.updateExtrude: ${featureId}`,
+        opIndex,
+        featureId,
+        path: operationPath(opIndex, "id"),
+        expected: "authored extrude feature id",
+        received: featureId
+      });
+    }
+
+    throwValidationError({
+      code: "FEATURE_NOT_FOUND",
+      message: `Feature does not exist: ${featureId}`,
+      opIndex,
+      featureId,
+      path: operationPath(opIndex, "id"),
+      expected: "existing authored extrude feature id",
+      received: featureId
+    });
+  }
+
+  const updated: ExtrudeFeature = {
+    ...feature,
+    depth: validateExtrudeDepth(depthValue, opIndex)
+  };
+
+  state.features.set(featureId, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
 }
 
 function validateFeatureId(id: FeatureId, opIndex?: number): FeatureId {
@@ -3096,6 +3145,21 @@ function createOperationSummaries(
           bodyId: deletedFeatureRef?.bodyId,
           sketchId: deletedFeatureRef?.sketchId,
           sketchEntityId: deletedFeatureRef?.entityId
+        });
+      }
+
+      case "feature.updateExtrude": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update extrude feature ${op.id} depth to ${op.depth}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          sketchId: modifiedFeatureRef?.sketchId,
+          sketchEntityId: modifiedFeatureRef?.entityId
         });
       }
     }
@@ -6037,6 +6101,14 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
+  }
+
+  if (value.op === "feature.updateExtrude") {
+    return (
+      typeof value.id === "string" &&
+      typeof value.depth === "number" &&
+      isPositiveFiniteNumber(value.depth)
+    );
   }
 
   return false;

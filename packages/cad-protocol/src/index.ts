@@ -97,6 +97,7 @@ export type CadOp =
   | SketchUpdateEntityOp
   | SketchDeleteEntityOp
   | FeatureExtrudeOp
+  | FeatureUpdateExtrudeOp
   | FeatureDeleteOp;
 
 export interface DocumentUpdateUnitsOp {
@@ -270,6 +271,12 @@ export interface FeatureDeleteOp {
   readonly id: FeatureId;
 }
 
+export interface FeatureUpdateExtrudeOp {
+  readonly op: "feature.updateExtrude";
+  readonly id: FeatureId;
+  readonly depth: number;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
@@ -367,6 +374,7 @@ export type CadBatchValidationErrorCode =
   | "FEATURE_ALREADY_EXISTS"
   | "FEATURE_NOT_FOUND"
   | "FEATURE_NOT_DELETABLE"
+  | "FEATURE_NOT_EDITABLE"
   | "BODY_ALREADY_EXISTS"
   | "INVALID_FEATURE"
   | "UNSUPPORTED_SKETCH_PROFILE"
