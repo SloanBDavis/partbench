@@ -7,6 +7,7 @@ import type {
   DocumentUnits,
   DocumentUpdateUnitsOp,
   FeatureDeleteOp,
+  FeatureExtrudeSide,
   FeatureExtrudeOp,
   FeatureUpdateExtrudeOp,
   ObjectId,
@@ -121,6 +122,7 @@ export interface FeatureExtrudeForm {
   readonly bodyId: string;
   readonly name: string;
   readonly depth: number;
+  readonly side: FeatureExtrudeSide;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -425,7 +427,7 @@ export function buildFeatureExtrudeOp(
     sketchId,
     entityId,
     depth: form.depth,
-    side: "positive"
+    side: form.side
   };
 }
 
@@ -438,12 +440,14 @@ export function buildFeatureDeleteOp(id: string): FeatureDeleteOp {
 
 export function buildFeatureUpdateExtrudeOp(
   id: string,
-  depth: number
+  depth: number,
+  side?: FeatureExtrudeSide
 ): FeatureUpdateExtrudeOp {
   return {
     op: "feature.updateExtrude",
     id,
-    depth
+    depth,
+    ...(side ? { side } : {})
   };
 }
 

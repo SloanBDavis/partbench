@@ -22,7 +22,7 @@ export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
 export type SketchPlane = "XY" | "XZ" | "YZ";
 export type FeatureExtrudeProfileKind = "rectangle" | "circle";
-export type FeatureExtrudeSide = "positive";
+export type FeatureExtrudeSide = "positive" | "negative" | "symmetric";
 
 export interface CadActorMetadata {
   readonly type: CadActorType;
@@ -274,7 +274,8 @@ export interface FeatureDeleteOp {
 export interface FeatureUpdateExtrudeOp {
   readonly op: "feature.updateExtrude";
   readonly id: FeatureId;
-  readonly depth: number;
+  readonly depth?: number;
+  readonly side?: FeatureExtrudeSide;
 }
 
 export interface CadObjectRef {
@@ -299,6 +300,8 @@ export interface CadFeatureRef {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly profileKind: FeatureExtrudeProfileKind;
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
 }
 
 export interface CadBodyRef {

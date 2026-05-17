@@ -230,7 +230,7 @@ ExtrudeFeature {
   entityId: string
   profileKind: "rectangle" | "circle"
   depth: number
-  side: "positive"
+  side: "positive" | "negative" | "symmetric"
   bodyId: string
 }
 ```
@@ -239,11 +239,13 @@ Extrude features reference an existing rectangle or circle sketch entity. The
 saved feature record is the rebuild input. The body mesh produced from it is
 derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
-depth must be positive and finite. The first slice supports only positive-side
-extrusion and does not include a sketch solver, arbitrary profile recognition,
-topological references, broad feature edit commands, or exact B-rep checkpoint
-persistence. Authored sketch-extrude features can be removed with
-`feature.delete` and can have depth updated with `feature.updateExtrude`.
+depth must be positive and finite. Extrude side can be `positive`, `negative`,
+or `symmetric` relative to the sketch-plane normal. This slice does not include
+a sketch solver, arbitrary profile recognition, topological references, broad
+feature edit commands, or exact B-rep checkpoint persistence. Authored
+sketch-extrude features can be removed with `feature.delete` and can have depth
+and side updated with `feature.updateExtrude`. Missing side values in older
+compatible project data normalize to `positive`.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived

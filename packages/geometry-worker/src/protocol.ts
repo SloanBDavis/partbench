@@ -2,6 +2,7 @@ import type {
   GeometryKernelErrorResponse,
   GeometryKernelRequest,
   GeometryKernelResponse,
+  GeometryKernelExtrudeSide,
   GeometryKernelSketchPlane
 } from "@web-cad/geometry-kernel";
 
@@ -277,6 +278,7 @@ export function createExtrudeTessellationWorkerRequest(input: {
         readonly radius: number;
       };
   readonly depth: number;
+  readonly side?: GeometryKernelExtrudeSide;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }): GeometryWorkerRequest {
@@ -293,6 +295,7 @@ export function createExtrudeTessellationWorkerRequest(input: {
       sketchPlane: input.sketchPlane,
       profile: input.profile,
       depth: input.depth,
+      side: input.side,
       ...(tessellation ? { tessellation } : {})
     }
   };

@@ -154,12 +154,13 @@ describe("cad-protocol", () => {
         sketchId: "sketch_1",
         entityId: "rect_1",
         depth: 5,
-        side: "positive"
+        side: "negative"
       },
       {
         op: "feature.updateExtrude",
         id: "feat_1",
-        depth: 7
+        depth: 7,
+        side: "symmetric"
       },
       {
         op: "feature.delete",

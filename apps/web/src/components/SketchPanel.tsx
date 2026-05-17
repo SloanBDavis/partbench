@@ -61,7 +61,8 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
   id: "",
   bodyId: "",
   name: "",
-  depth: 1
+  depth: 1,
+  side: "positive"
 };
 
 export function SketchPanel({
@@ -346,6 +347,24 @@ export function SketchPanel({
                         setExtrudeForm({ ...extrudeForm, depth })
                       }
                     />
+                    <label>
+                      Side
+                      <select
+                        value={extrudeForm.side}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          setExtrudeForm({
+                            ...extrudeForm,
+                            side: event.currentTarget
+                              .value as FeatureExtrudeForm["side"]
+                          })
+                        }
+                      >
+                        <option value="positive">Positive</option>
+                        <option value="negative">Negative</option>
+                        <option value="symmetric">Symmetric</option>
+                      </select>
+                    </label>
                   </div>
                   <div className="field-grid two">
                     <label>

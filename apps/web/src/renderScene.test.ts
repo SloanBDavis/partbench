@@ -8,7 +8,10 @@ import type {
 } from "@web-cad/cad-core";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
-import type { DerivedGeometryEntry } from "./derivedGeometry";
+import type {
+  DerivedExtrudeGeometrySource,
+  DerivedGeometryEntry
+} from "./derivedGeometry";
 import {
   createMeshDisplayEdges,
   createRenderSceneInputs,
@@ -278,6 +281,34 @@ describe("renderScene", () => {
     expect(scene.meshes).toEqual([]);
   });
 
+  it("positions extrude primitive fallbacks from their side setting", () => {
+    const sources: DerivedExtrudeGeometrySource[] = [
+      createExtrudeSource("body_positive", "positive"),
+      createExtrudeSource("body_negative", "negative"),
+      createExtrudeSource("body_symmetric", "symmetric")
+    ];
+    const scene = createRenderSceneInputs([], new Map(), sources);
+
+    expect(scene.meshes).toEqual([]);
+    expect(scene.primitives).toMatchObject([
+      {
+        id: "body_positive",
+        kind: "box",
+        transform: { translation: [0, 0, 2] }
+      },
+      {
+        id: "body_negative",
+        kind: "box",
+        transform: { translation: [0, 0, -2] }
+      },
+      {
+        id: "body_symmetric",
+        kind: "box",
+        transform: { translation: [0, 0, 0] }
+      }
+    ]);
+  });
+
   it("adds sketch display edges so authored sketches are visible in the viewport", () => {
     const sketch: SketchSnapshot = {
       id: "sketch_1",
@@ -457,5 +488,24 @@ function createMesh(id: string): RenderTriangleMesh {
       rotation: [0, 0, 0],
       scale: [1, 1, 1]
     }
+  };
+}
+
+function createExtrudeSource(
+  id: string,
+  side: DerivedExtrudeGeometrySource["side"]
+): DerivedExtrudeGeometrySource {
+  return {
+    id,
+    kind: "extrude",
+    sketchPlane: "XY",
+    profile: {
+      kind: "rectangle",
+      center: [0, 0],
+      width: 2,
+      height: 3
+    },
+    depth: 4,
+    side
   };
 }

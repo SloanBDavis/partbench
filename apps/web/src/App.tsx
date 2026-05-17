@@ -15,6 +15,7 @@ import type {
   CadBatchResponse,
   CadOp,
   DocumentUnitUpdateMode,
+  FeatureExtrudeSide,
   SketchEntityKind,
   SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
@@ -637,7 +638,11 @@ export function App() {
     await commitOps([buildFeatureDeleteOp(feature.id)], () => undefined);
   }
 
-  async function updateAuthoredExtrudeDepth(featureId: string, depth: number) {
+  async function updateAuthoredExtrude(
+    featureId: string,
+    depth: number,
+    side: FeatureExtrudeSide
+  ) {
     const feature = projectStructure.features.find(
       (candidate) => candidate.id === featureId
     );
@@ -647,7 +652,7 @@ export function App() {
     }
 
     await commitOps(
-      [buildFeatureUpdateExtrudeOp(feature.id, depth)],
+      [buildFeatureUpdateExtrudeOp(feature.id, depth, side)],
       () => feature.bodyId
     );
   }
@@ -1045,8 +1050,8 @@ export function App() {
           onApplyTransform={(form) => void updateSelectedTransform(form)}
           onDelete={() => void deleteSelectedObject()}
           onDeleteFeature={(featureId) => void deleteAuthoredFeature(featureId)}
-          onUpdateExtrudeDepth={(featureId, depth) =>
-            void updateAuthoredExtrudeDepth(featureId, depth)
+          onUpdateExtrude={(featureId, depth, side) =>
+            void updateAuthoredExtrude(featureId, depth, side)
           }
         />
       </section>

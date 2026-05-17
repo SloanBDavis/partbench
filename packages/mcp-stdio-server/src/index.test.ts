@@ -223,7 +223,14 @@ describe("mcp stdio server", () => {
               batch: {
                 version: "cadops.v1",
                 mode: "commit",
-                ops: [{ op: "feature.updateExtrude", id: "feat_1", depth: 9 }]
+                ops: [
+                  {
+                    op: "feature.updateExtrude",
+                    id: "feat_1",
+                    depth: 9,
+                    side: "symmetric"
+                  }
+                ]
               }
             }
           }
@@ -266,7 +273,7 @@ describe("mcp stdio server", () => {
         isError: false,
         structuredContent: {
           ok: true,
-          features: [{ id: "feat_1", depth: 9 }],
+          features: [{ id: "feat_1", depth: 9, side: "symmetric" }],
           bodies: [{ id: "body_1", featureId: "feat_1" }]
         }
       }

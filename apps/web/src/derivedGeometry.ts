@@ -50,6 +50,7 @@ export interface DerivedExtrudeGeometrySource {
         readonly radius: number;
       };
   readonly depth: number;
+  readonly side: "positive" | "negative" | "symmetric";
 }
 
 export type DerivedGeometryEntry =
@@ -367,6 +368,7 @@ function deriveSourceMesh(
       sketchPlane: source.sketchPlane,
       profile: source.profile,
       depth: source.depth,
+      side: source.side,
       transform: {
         translation: [0, 0, 0],
         rotation: [0, 0, 0],
@@ -432,7 +434,8 @@ export function createDerivedGeometryCacheKey(
           kind: source.kind,
           sketchPlane: source.sketchPlane,
           profile: source.profile,
-          depth: source.depth
+          depth: source.depth,
+          side: source.side
         }
       : {
           kind: source.kind,

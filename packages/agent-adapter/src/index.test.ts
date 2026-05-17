@@ -414,7 +414,14 @@ describe("agent-adapter", () => {
           batch: {
             version: "cadops.v1",
             mode: "dryRun",
-            ops: [{ op: "feature.updateExtrude", id: "feat_update", depth: 9 }]
+            ops: [
+              {
+                op: "feature.updateExtrude",
+                id: "feat_update",
+                depth: 9,
+                side: "negative"
+              }
+            ]
           }
         })
       )
@@ -444,7 +451,7 @@ describe("agent-adapter", () => {
     expect(dryRun.transactionId).toBeUndefined();
     expect(dryRunStructure).toMatchObject({
       ok: true,
-      features: [{ id: "feat_update", depth: 4 }],
+      features: [{ id: "feat_update", depth: 4, side: "positive" }],
       bodies: [{ id: "body_update", featureId: "feat_update" }]
     });
 
@@ -462,7 +469,14 @@ describe("agent-adapter", () => {
           batch: {
             version: "cadops.v1",
             mode: "commit",
-            ops: [{ op: "feature.updateExtrude", id: "feat_update", depth: 9 }]
+            ops: [
+              {
+                op: "feature.updateExtrude",
+                id: "feat_update",
+                depth: 9,
+                side: "symmetric"
+              }
+            ]
           }
         })
       )
@@ -497,7 +511,7 @@ describe("agent-adapter", () => {
     });
     expect(committedStructure).toMatchObject({
       ok: true,
-      features: [{ id: "feat_update", depth: 9 }],
+      features: [{ id: "feat_update", depth: 9, side: "symmetric" }],
       bodies: [{ id: "body_update", featureId: "feat_update" }]
     });
   });

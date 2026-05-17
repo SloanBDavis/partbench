@@ -162,9 +162,9 @@ Current limitations:
 - The first sketch and extrude slices exist, but there is no sketch solver,
   constraint system, automatic profile recognition, broad feature edit command,
   or broad feature graph yet. `feature.delete` exists only for authored
-  sketch-extrude features, `feature.updateExtrude` currently supports only
-  authored extrude depth edits, and rectangle/circle source profile values are
-  edited through `sketch.updateEntity`.
+  sketch-extrude features, `feature.updateExtrude` supports authored extrude
+  depth and side edits, and rectangle/circle source profile values are edited
+  through `sketch.updateEntity`.
 - There is no stable topological naming system.
 - There are no revolve, boolean, fillet, chamfer, shell, loft, pattern, or
   direct modeling features.
@@ -306,10 +306,10 @@ Implemented:
 
 - `feature.extrude` CADOps command for rectangle and circle sketch entities.
 - Authored extrude feature records in `cad-core` with source sketch/entity,
-  profile kind, depth, positive side, generated feature ID, and generated body
-  ID.
+  profile kind, depth, side (`positive`, `negative`, or `symmetric`),
+  generated feature ID, and generated body ID.
 - Validation for source sketch/entity, supported profile, positive finite
-  depth, and unique feature/body IDs.
+  depth, supported side, and unique feature/body IDs.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
 - `web-cad.project.v3` source-of-truth export with V1/V2 import migration.

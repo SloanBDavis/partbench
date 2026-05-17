@@ -132,7 +132,8 @@ describe("geometry-worker", () => {
           width: 4,
           height: 3
         },
-        depth: 5
+        depth: 5,
+        side: "negative"
       })
     ).toEqual({
       id: "worker_req_extrude",
@@ -149,7 +150,8 @@ describe("geometry-worker", () => {
           width: 4,
           height: 3
         },
-        depth: 5
+        depth: 5,
+        side: "negative"
       }
     });
   });
@@ -332,7 +334,8 @@ describe("geometry-worker", () => {
           center: [0, 0],
           radius: 2
         },
-        depth: 5
+        depth: 5,
+        side: "symmetric"
       })
     );
 

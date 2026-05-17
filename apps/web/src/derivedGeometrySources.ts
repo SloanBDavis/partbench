@@ -58,7 +58,8 @@ export function createExtrudeDerivedGeometrySources(
             width: entity.width,
             height: entity.height
           },
-          depth: feature.depth
+          depth: feature.depth,
+          side: feature.side
         };
 
         return [source];
@@ -74,7 +75,8 @@ export function createExtrudeDerivedGeometrySources(
             center: entity.center,
             radius: entity.radius
           },
-          depth: feature.depth
+          depth: feature.depth,
+          side: feature.side
         };
 
         return [source];

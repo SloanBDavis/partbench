@@ -203,6 +203,53 @@ describe("geometry-kernel facade", () => {
     expect(circleBounds.min[2] + circleBounds.max[2]).toBeCloseTo(0, 6);
   });
 
+  it("maps extrude mesh bounds for negative and symmetric sides", async () => {
+    const negative = await executeGeometryKernelRequest({
+      id: "geometry_req_rect_negative_extrude",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateExtrude",
+      sketchPlane: "XY",
+      profile: {
+        kind: "rectangle",
+        center: [0, 0],
+        width: 2,
+        height: 2
+      },
+      depth: 4,
+      side: "negative"
+    });
+    const symmetric = await executeGeometryKernelRequest({
+      id: "geometry_req_rect_symmetric_extrude",
+      version: "geometry-kernel.v1",
+      op: "geometry.tessellateExtrude",
+      sketchPlane: "XY",
+      profile: {
+        kind: "rectangle",
+        center: [0, 0],
+        width: 2,
+        height: 2
+      },
+      depth: 4,
+      side: "symmetric"
+    });
+
+    expect(negative.ok).toBe(true);
+    expect(symmetric.ok).toBe(true);
+
+    if (!negative.ok || !symmetric.ok) {
+      throw new Error("Expected extrude side tessellation to succeed.");
+    }
+
+    expect(getMeshBounds(negative.mesh.positions)).toEqual({
+      min: [-1, -1, -4],
+      max: [1, 1, 0]
+    });
+    expect(getMeshBounds(symmetric.mesh.positions)).toEqual({
+      min: [-1, -1, -2],
+      max: [1, 1, 2]
+    });
+  });
+
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_bad_dimensions",

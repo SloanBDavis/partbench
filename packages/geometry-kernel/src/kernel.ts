@@ -15,6 +15,7 @@ export type GeometryKernelPrimitive =
   | "extrude";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
+export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -110,6 +111,7 @@ export interface TessellateExtrudeRequest {
   readonly sketchPlane: GeometryKernelSketchPlane;
   readonly profile: ExtrudeGeometryProfile;
   readonly depth: number;
+  readonly side?: GeometryKernelExtrudeSide;
   readonly tessellation?: TessellationOptions;
 }
 
@@ -286,12 +288,13 @@ function validateRequest(
     if (
       !isSketchPlane(request.sketchPlane) ||
       !isPositiveFiniteNumber(request.depth) ||
+      !isExtrudeSide(request.side ?? "positive") ||
       !isValidExtrudeProfile(request.profile)
     ) {
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Extrude requests require a supported sketch plane, rectangle or circle profile, and positive finite depth."
+          "Extrude requests require a supported sketch plane, side, rectangle or circle profile, and positive finite depth."
       };
     }
   } else if (
@@ -384,7 +387,9 @@ async function createExtrudeMesh(
     positions: mapExtrudePositions(
       mesh.positions,
       request.sketchPlane,
-      request.profile.center
+      request.profile.center,
+      request.depth,
+      request.side ?? "positive"
     ),
     indices: mesh.indices,
     vertexCount: mesh.vertexCount,
@@ -396,7 +401,9 @@ async function createExtrudeMesh(
 function mapExtrudePositions(
   positions: Float32Array,
   sketchPlane: GeometryKernelSketchPlane,
-  center: readonly [number, number]
+  center: readonly [number, number],
+  depth: number,
+  side: GeometryKernelExtrudeSide
 ): Float32Array {
   const mapped = new Float32Array(positions.length);
   const bounds = getPositionBounds(positions);
@@ -407,7 +414,11 @@ function mapExtrudePositions(
   for (let index = 0; index < positions.length; index += 3) {
     const profileX = positions[index] - profileCenterX + center[0];
     const profileY = positions[index + 1] - profileCenterY + center[1];
-    const normal = positions[index + 2] - normalOrigin;
+    const normal = mapExtrudeNormal(
+      positions[index + 2] - normalOrigin,
+      depth,
+      side
+    );
     const [x, y, z] = mapPlanePoint(sketchPlane, profileX, profileY, normal);
 
     mapped[index] = x;
@@ -416,6 +427,21 @@ function mapExtrudePositions(
   }
 
   return mapped;
+}
+
+function mapExtrudeNormal(
+  positiveNormal: number,
+  depth: number,
+  side: GeometryKernelExtrudeSide
+): number {
+  switch (side) {
+    case "positive":
+      return positiveNormal;
+    case "negative":
+      return -positiveNormal;
+    case "symmetric":
+      return positiveNormal - depth / 2;
+  }
 }
 
 function getPositionBounds(positions: Float32Array): {
@@ -500,6 +526,10 @@ function isPositiveFiniteNumber(value: number): boolean {
 
 function isSketchPlane(value: GeometryKernelSketchPlane): boolean {
   return value === "XY" || value === "XZ" || value === "YZ";
+}
+
+function isExtrudeSide(value: unknown): value is GeometryKernelExtrudeSide {
+  return value === "positive" || value === "negative" || value === "symmetric";
 }
 
 function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {

@@ -96,7 +96,9 @@ describe("transaction history display helpers", () => {
               bodyId: "body_1",
               sketchId: "sketch_1",
               entityId: "skent_1",
-              profileKind: "rectangle"
+              profileKind: "rectangle",
+              depth: 4,
+              side: "positive"
             }
           ],
           modified: [],
@@ -142,7 +144,9 @@ describe("transaction history display helpers", () => {
               bodyId: "body_1",
               sketchId: "sketch_1",
               entityId: "rect_1",
-              profileKind: "rectangle"
+              profileKind: "rectangle",
+              depth: 4,
+              side: "positive"
             }
           ],
           bodiesCreated: [],

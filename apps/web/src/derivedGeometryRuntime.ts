@@ -66,6 +66,7 @@ export interface DerivedGeometryExtrudeInput {
         readonly radius: number;
       };
   readonly depth: number;
+  readonly side: "positive" | "negative" | "symmetric";
   readonly transform: RenderTransform;
 }
 

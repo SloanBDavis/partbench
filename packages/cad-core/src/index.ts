@@ -1371,7 +1371,7 @@ function applyOperation(
     }
 
     case "feature.updateExtrude": {
-      updateExtrudeFeatureDepth(state, op.id, op.depth, diff, opIndex);
+      updateExtrudeFeature(state, op, diff, opIndex);
       return;
     }
   }
@@ -1602,14 +1602,13 @@ function deleteFeature(
   pushBodyDeleted(diff, bodyRef(feature));
 }
 
-function updateExtrudeFeatureDepth(
+function updateExtrudeFeature(
   state: MutableDocumentState,
-  id: FeatureId,
-  depthValue: number,
+  op: Extract<CadOp, { readonly op: "feature.updateExtrude" }>,
   diff: MutableSemanticDiff,
   opIndex?: number
 ): void {
-  const featureId = validateFeatureId(id, opIndex);
+  const featureId = validateFeatureId(op.id, opIndex);
   const feature = state.features.get(featureId);
 
   if (!feature) {
@@ -1636,9 +1635,28 @@ function updateExtrudeFeatureDepth(
     });
   }
 
+  if (op.depth === undefined && op.side === undefined) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "feature.updateExtrude requires depth or side.",
+      opIndex,
+      featureId,
+      path: operationPath(opIndex),
+      expected: "depth or side",
+      received: "no editable fields"
+    });
+  }
+
   const updated: ExtrudeFeature = {
     ...feature,
-    depth: validateExtrudeDepth(depthValue, opIndex)
+    depth:
+      op.depth === undefined
+        ? feature.depth
+        : validateExtrudeDepth(op.depth, opIndex),
+    side:
+      op.side === undefined
+        ? feature.side
+        : validateExtrudeSide(op.side, opIndex)
   };
 
   state.features.set(featureId, updated);
@@ -1808,12 +1826,16 @@ function validateExtrudeSide(
     return "positive";
   }
 
+  if (value === "negative" || value === "symmetric") {
+    return value;
+  }
+
   throwValidationError({
     code: "INVALID_FEATURE",
     message: `Unsupported extrude side: ${String(value)}.`,
     opIndex,
     path: operationPath(opIndex, "side"),
-    expected: "positive",
+    expected: "positive, negative, or symmetric",
     received: describeReceived(value)
   });
 }
@@ -2225,7 +2247,9 @@ function featureRef(feature: Feature): CadFeatureRef {
     bodyId: feature.bodyId,
     sketchId: feature.sketchId,
     entityId: feature.entityId,
-    profileKind: feature.profileKind
+    profileKind: feature.profileKind,
+    depth: feature.depth,
+    side: feature.side
   };
 }
 
@@ -2644,7 +2668,7 @@ function createFeatureFromSnapshot(
     entityId: snapshot.entityId,
     profileKind: snapshot.profileKind,
     depth: snapshot.depth,
-    side: snapshot.side,
+    side: snapshot.side ?? "positive",
     bodyId: snapshot.bodyId
   };
 }
@@ -3168,7 +3192,7 @@ function createOperationSummaries(
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Update extrude feature ${op.id} depth to ${op.depth}`,
+          label: `Update extrude feature ${op.id} ${formatExtrudeUpdateLabel(op)}`,
           featureId: op.id,
           bodyId: modifiedFeatureRef?.bodyId,
           sketchId: modifiedFeatureRef?.sketchId,
@@ -3183,6 +3207,17 @@ function formatUnitUpdateModeLabel(
   mode: DocumentUnitUpdateMode | undefined
 ): string {
   return mode === "preservePhysicalSize" ? "convert size" : "relabel values";
+}
+
+function formatExtrudeUpdateLabel(
+  op: Extract<CadOp, { readonly op: "feature.updateExtrude" }>
+): string {
+  const edits = [
+    ...(op.depth !== undefined ? [`depth to ${op.depth}`] : []),
+    ...(op.side !== undefined ? [`side to ${op.side}`] : [])
+  ];
+
+  return edits.join(" and ");
 }
 
 function createObjectOperationSummary(
@@ -4485,7 +4520,13 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 
 function normalizeCadProject(value: CadProject): CadProject {
   if (value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
-    return value;
+    return {
+      ...value,
+      document: {
+        ...value.document,
+        features: value.document.features.map(normalizeFeatureSnapshot)
+      }
+    };
   }
 
   if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2) {
@@ -4513,6 +4554,15 @@ function normalizeCadProject(value: CadProject): CadProject {
       nextFeatureNumber: 1,
       nextBodyNumber: 1
     }
+  };
+}
+
+function normalizeFeatureSnapshot(
+  feature: ExtrudeFeatureSnapshot
+): ExtrudeFeatureSnapshot {
+  return {
+    ...feature,
+    side: feature.side ?? "positive"
   };
 }
 
@@ -5223,12 +5273,12 @@ function validateFeatureSnapshot(
     issues
   );
 
-  if (value.side !== "positive") {
+  if (value.side !== undefined && !isExtrudeSide(value.side)) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.side`,
-      "Extrude feature side must be positive."
+      "Extrude feature side must be positive, negative, or symmetric."
     );
   }
 
@@ -6110,7 +6160,7 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.entityId === "string" &&
       typeof value.depth === "number" &&
       isPositiveFiniteNumber(value.depth) &&
-      (value.side === undefined || value.side === "positive")
+      (value.side === undefined || isExtrudeSide(value.side))
     );
   }
 
@@ -6121,8 +6171,11 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "feature.updateExtrude") {
     return (
       typeof value.id === "string" &&
-      typeof value.depth === "number" &&
-      isPositiveFiniteNumber(value.depth)
+      (value.depth === undefined ||
+        (typeof value.depth === "number" &&
+          isPositiveFiniteNumber(value.depth))) &&
+      (value.side === undefined || isExtrudeSide(value.side)) &&
+      (value.depth !== undefined || value.side !== undefined)
     );
   }
 
@@ -6389,6 +6442,10 @@ function isSketchEntityKind(value: unknown): value is SketchEntityKind {
     value === "rectangle" ||
     value === "circle"
   );
+}
+
+function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
+  return value === "positive" || value === "negative" || value === "symmetric";
 }
 
 function isCadActorType(value: unknown): value is CadActorMetadata["type"] {

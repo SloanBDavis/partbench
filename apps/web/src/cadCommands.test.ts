@@ -7,6 +7,7 @@ import {
   buildCreateSphereOp,
   buildCreateTorusOp,
   buildFeatureDeleteOp,
+  buildFeatureExtrudeOp,
   buildFeatureUpdateExtrudeOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
@@ -154,6 +155,12 @@ describe("cad command builders", () => {
       id: "feat_1",
       depth: 6
     });
+    expect(buildFeatureUpdateExtrudeOp("feat_1", 6, "symmetric")).toEqual({
+      op: "feature.updateExtrude",
+      id: "feat_1",
+      depth: 6,
+      side: "symmetric"
+    });
     expect(
       buildUpdateSketchEntityOp("sketch_1", {
         id: "rect_1",
@@ -172,6 +179,27 @@ describe("cad command builders", () => {
         width: 3,
         height: 4
       }
+    });
+  });
+
+  it("builds sketch extrude commands with explicit side", () => {
+    expect(
+      buildFeatureExtrudeOp("sketch_1", "rect_1", {
+        id: "feat_1",
+        bodyId: "body_1",
+        name: "Pad",
+        depth: 6,
+        side: "negative"
+      })
+    ).toEqual({
+      op: "feature.extrude",
+      id: "feat_1",
+      bodyId: "body_1",
+      name: "Pad",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 6,
+      side: "negative"
     });
   });
 

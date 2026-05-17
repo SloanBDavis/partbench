@@ -184,6 +184,7 @@ function toRectangleExtrudePrimitive(
   }
 
   const { center, height, width } = source.profile;
+  const normalOffset = getExtrudeNormalOffset(source.depth, source.side);
 
   switch (source.sketchPlane) {
     case "XY":
@@ -192,7 +193,7 @@ function toRectangleExtrudePrimitive(
         kind: "box",
         dimensions: { width, height, depth: source.depth },
         transform: {
-          translation: [center[0], center[1], source.depth / 2],
+          translation: [center[0], center[1], normalOffset],
           rotation: [0, 0, 0],
           scale: [1, 1, 1]
         }
@@ -203,7 +204,7 @@ function toRectangleExtrudePrimitive(
         kind: "box",
         dimensions: { width, height: source.depth, depth: height },
         transform: {
-          translation: [center[0], source.depth / 2, center[1]],
+          translation: [center[0], normalOffset, center[1]],
           rotation: [0, 0, 0],
           scale: [1, 1, 1]
         }
@@ -214,7 +215,7 @@ function toRectangleExtrudePrimitive(
         kind: "box",
         dimensions: { width: source.depth, height: width, depth: height },
         transform: {
-          translation: [source.depth / 2, center[0], center[1]],
+          translation: [normalOffset, center[0], center[1]],
           rotation: [0, 0, 0],
           scale: [1, 1, 1]
         }
@@ -230,6 +231,7 @@ function toCircleExtrudePrimitive(
   }
 
   const { center, radius } = source.profile;
+  const normalOffset = getExtrudeNormalOffset(source.depth, source.side);
 
   switch (source.sketchPlane) {
     case "XY":
@@ -238,7 +240,7 @@ function toCircleExtrudePrimitive(
         kind: "cylinder",
         dimensions: { radius, height: source.depth },
         transform: {
-          translation: [center[0], center[1], source.depth / 2],
+          translation: [center[0], center[1], normalOffset],
           rotation: [0, 0, 0],
           scale: [1, 1, 1]
         }
@@ -249,7 +251,7 @@ function toCircleExtrudePrimitive(
         kind: "cylinder",
         dimensions: { radius, height: source.depth },
         transform: {
-          translation: [center[0], source.depth / 2, center[1]],
+          translation: [center[0], normalOffset, center[1]],
           rotation: [-Math.PI / 2, 0, 0],
           scale: [1, 1, 1]
         }
@@ -260,11 +262,25 @@ function toCircleExtrudePrimitive(
         kind: "cylinder",
         dimensions: { radius, height: source.depth },
         transform: {
-          translation: [source.depth / 2, center[0], center[1]],
+          translation: [normalOffset, center[0], center[1]],
           rotation: [0, Math.PI / 2, 0],
           scale: [1, 1, 1]
         }
       };
+  }
+}
+
+function getExtrudeNormalOffset(
+  depth: number,
+  side: DerivedExtrudeGeometrySource["side"]
+): number {
+  switch (side) {
+    case "positive":
+      return depth / 2;
+    case "negative":
+      return -depth / 2;
+    case "symmetric":
+      return 0;
   }
 }
 

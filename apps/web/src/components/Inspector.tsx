@@ -2,6 +2,7 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   DocumentUnits,
+  FeatureExtrudeSide,
   ObjectMeasurementsSnapshot,
   SceneObject
 } from "@web-cad/cad-core";
@@ -47,7 +48,7 @@ export function Inspector({
   onApplyTransform,
   onDelete,
   onDeleteFeature,
-  onUpdateExtrudeDepth
+  onUpdateExtrude
 }: {
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
@@ -60,7 +61,11 @@ export function Inspector({
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
-  readonly onUpdateExtrudeDepth: (featureId: string, depth: number) => void;
+  readonly onUpdateExtrude: (
+    featureId: string,
+    depth: number,
+    side: FeatureExtrudeSide
+  ) => void;
 }) {
   return (
     <aside className="inspector" aria-label="Inspector">
@@ -76,7 +81,7 @@ export function Inspector({
         onApplyTransform,
         onDelete,
         onDeleteFeature,
-        onUpdateExtrudeDepth,
+        onUpdateExtrude,
         units
       })}
     </aside>
@@ -95,7 +100,11 @@ function renderInspectorSelection(input: {
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
-  readonly onUpdateExtrudeDepth: (featureId: string, depth: number) => void;
+  readonly onUpdateExtrude: (
+    featureId: string,
+    depth: number,
+    side: FeatureExtrudeSide
+  ) => void;
 }) {
   if (input.body) {
     return (
@@ -104,7 +113,7 @@ function renderInspectorSelection(input: {
         disabled={input.disabled}
         feature={input.feature}
         onDeleteFeature={input.onDeleteFeature}
-        onUpdateExtrudeDepth={input.onUpdateExtrudeDepth}
+        onUpdateExtrude={input.onUpdateExtrude}
         units={input.units}
       />
     );
@@ -178,14 +187,18 @@ function BodyInspector({
   disabled,
   feature,
   onDeleteFeature,
-  onUpdateExtrudeDepth,
+  onUpdateExtrude,
   units
 }: {
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
   readonly onDeleteFeature: (featureId: string) => void;
-  readonly onUpdateExtrudeDepth: (featureId: string, depth: number) => void;
+  readonly onUpdateExtrude: (
+    featureId: string,
+    depth: number,
+    side: FeatureExtrudeSide
+  ) => void;
   readonly units: DocumentUnits;
 }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -237,6 +250,10 @@ function BodyInspector({
               <dd>{feature.entityId}</dd>
             </div>
             <div>
+              <dt>Side</dt>
+              <dd>{feature.side}</dd>
+            </div>
+            <div>
               <dt>Depth</dt>
               <dd>
                 {feature.depth} {units}
@@ -247,10 +264,10 @@ function BodyInspector({
       </dl>
       {feature?.kind === "extrude" && (
         <ExtrudeDepthEditor
-          key={`${feature.id}-${feature.depth}`}
+          key={`${feature.id}-${feature.depth}-${feature.side}`}
           disabled={disabled}
           feature={feature}
-          onApply={onUpdateExtrudeDepth}
+          onApply={onUpdateExtrude}
           units={units}
         />
       )}
@@ -287,27 +304,33 @@ function ExtrudeDepthEditor({
 }: {
   readonly disabled: boolean;
   readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
-  readonly onApply: (featureId: string, depth: number) => void;
+  readonly onApply: (
+    featureId: string,
+    depth: number,
+    side: FeatureExtrudeSide
+  ) => void;
   readonly units: DocumentUnits;
 }) {
   const [depth, setDepth] = useState(feature.depth);
-  const hasChanges = depth !== feature.depth;
+  const [side, setSide] = useState<FeatureExtrudeSide>(feature.side);
+  const hasChanges = depth !== feature.depth || side !== feature.side;
   const isValid = Number.isFinite(depth) && depth > 0;
 
   function resetEdits() {
     setDepth(feature.depth);
+    setSide(feature.side);
   }
 
   function handleApply() {
     if (hasChanges && isValid) {
-      onApply(feature.id, depth);
+      onApply(feature.id, depth, side);
     }
   }
 
   return (
     <section className="command-card nested">
       <div className="command-card-heading">
-        <h3>Extrude depth</h3>
+        <h3>Extrude feature</h3>
         {hasChanges && <span>Edited</span>}
       </div>
       <label>
@@ -323,13 +346,27 @@ function ExtrudeDepthEditor({
           }}
         />
       </label>
+      <label>
+        Side
+        <select
+          value={side}
+          disabled={disabled}
+          onChange={(event) =>
+            setSide(event.currentTarget.value as FeatureExtrudeSide)
+          }
+        >
+          <option value="positive">Positive</option>
+          <option value="negative">Negative</option>
+          <option value="symmetric">Symmetric</option>
+        </select>
+      </label>
       <div className="button-row">
         <button
           type="button"
           onClick={handleApply}
           disabled={disabled || !hasChanges || !isValid}
         >
-          Apply depth
+          Apply extrude
         </button>
         <button
           type="button"

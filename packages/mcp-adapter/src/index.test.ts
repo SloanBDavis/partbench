@@ -593,7 +593,14 @@ describe("mcp-adapter", () => {
         batch: {
           version: "cadops.v1",
           mode: "dryRun",
-          ops: [{ op: "feature.updateExtrude", id: "feat_update", depth: 9 }]
+          ops: [
+            {
+              op: "feature.updateExtrude",
+              id: "feat_update",
+              depth: 9,
+              side: "negative"
+            }
+          ]
         }
       }
     });
@@ -623,7 +630,7 @@ describe("mcp-adapter", () => {
     expect(dryRunStructure).toMatchObject({
       structuredContent: {
         ok: true,
-        features: [{ id: "feat_update", depth: 5 }],
+        features: [{ id: "feat_update", depth: 5, side: "positive" }],
         bodies: [{ id: "body_update", featureId: "feat_update" }]
       }
     });
@@ -636,7 +643,14 @@ describe("mcp-adapter", () => {
         batch: {
           version: "cadops.v1",
           mode: "commit",
-          ops: [{ op: "feature.updateExtrude", id: "feat_update", depth: 9 }]
+          ops: [
+            {
+              op: "feature.updateExtrude",
+              id: "feat_update",
+              depth: 9,
+              side: "symmetric"
+            }
+          ]
         }
       }
     });
@@ -672,7 +686,7 @@ describe("mcp-adapter", () => {
     expect(committedStructure).toMatchObject({
       structuredContent: {
         ok: true,
-        features: [{ id: "feat_update", depth: 9 }],
+        features: [{ id: "feat_update", depth: 9, side: "symmetric" }],
         bodies: [{ id: "body_update", featureId: "feat_update" }]
       }
     });

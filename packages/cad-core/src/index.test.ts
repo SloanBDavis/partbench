@@ -2251,7 +2251,9 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           sketchId: "sketch_1",
           entityId: "rect_1",
-          profileKind: "rectangle"
+          profileKind: "rectangle",
+          depth: 5,
+          side: "positive"
         }
       ],
       bodiesCreated: [
@@ -2271,7 +2273,8 @@ describe("cad-core", () => {
           sketchId: "sketch_1",
           entityId: "rect_1",
           profileKind: "rectangle",
-          depth: 5
+          depth: 5,
+          side: "positive"
         }
       ],
       bodies: [
@@ -2297,6 +2300,60 @@ describe("cad-core", () => {
     expect(engine.getDocument().features.get("feat_rect_1")?.bodyId).toBe(
       "body_rect_1"
     );
+  });
+
+  it("creates explicit negative and symmetric extrude sides", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_negative",
+        bodyId: "body_negative",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 3,
+        side: "negative"
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_symmetric",
+        bodyId: "body_symmetric",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        depth: 5,
+        side: "symmetric"
+      }
+    ]);
+
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(structure).toMatchObject({
+      ok: true,
+      features: [
+        { id: "feat_negative", side: "negative" },
+        { id: "feat_symmetric", side: "symmetric" }
+      ]
+    });
   });
 
   it("validates sketch extrude source entities and batch responses", () => {
@@ -2558,13 +2615,14 @@ describe("cad-core", () => {
     expect(engine.getDocument().features.has("feat_rect_1")).toBe(false);
   });
 
-  it("updates authored extrude depth and marks feature bodies modified", () => {
+  it("updates authored extrude depth and side and marks feature bodies modified", () => {
     const engine = createRectangleExtrudeEngine();
 
     const result = engine.apply({
       op: "feature.updateExtrude",
       id: "feat_rect_1",
-      depth: 8
+      depth: 8,
+      side: "negative"
     });
     const structure = engine.executeQuery({
       version: "cadops.v1",
@@ -2572,6 +2630,9 @@ describe("cad-core", () => {
     });
 
     expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "negative"
+    );
     expect(result.transaction.diff.features).toMatchObject({
       modified: [
         {
@@ -2580,7 +2641,9 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           sketchId: "sketch_1",
           entityId: "rect_1",
-          profileKind: "rectangle"
+          profileKind: "rectangle",
+          depth: 8,
+          side: "negative"
         }
       ],
       bodiesModified: [
@@ -2590,12 +2653,12 @@ describe("cad-core", () => {
     expect(structure).toMatchObject({
       ok: true,
       query: "project.structure",
-      features: [{ id: "feat_rect_1", depth: 8 }],
+      features: [{ id: "feat_rect_1", depth: 8, side: "negative" }],
       bodies: [{ id: "body_rect_1", featureId: "feat_rect_1" }]
     });
   });
 
-  it("validates missing, primitive-derived, and invalid extrude depth updates", () => {
+  it("validates missing, primitive-derived, and invalid extrude updates", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.apply({
@@ -2619,6 +2682,22 @@ describe("cad-core", () => {
       mode: "dryRun",
       ops: [{ op: "feature.updateExtrude", id: "feat_rect_1", depth: 0 }]
     });
+    const invalidSide = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_rect_1",
+          side: "both" as never
+        }
+      ]
+    });
+    const noEditableFields = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.updateExtrude", id: "feat_rect_1" }]
+    });
 
     expect(missing).toMatchObject({
       ok: false,
@@ -2641,32 +2720,63 @@ describe("cad-core", () => {
         path: "$.ops[0].depth"
       }
     });
+    expect(invalidSide).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_FEATURE",
+        path: "$.ops[0].side"
+      }
+    });
+    expect(noEditableFields).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_FEATURE",
+        path: "$.ops[0]"
+      }
+    });
   });
 
-  it("undoes and redoes extrude depth updates", () => {
+  it("undoes and redoes extrude depth and side updates", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.apply({
       op: "feature.updateExtrude",
       id: "feat_rect_1",
-      depth: 8
+      depth: 8,
+      side: "symmetric"
     });
     expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "symmetric"
+    );
 
     engine.undo();
     expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
+    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "positive"
+    );
 
     engine.redo();
     expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "symmetric"
+    );
   });
 
-  it("supports extrude depth updates through batch dry-run and commit", () => {
+  it("supports extrude depth and side updates through batch dry-run and commit", () => {
     const engine = createRectangleExtrudeEngine();
 
     const dryRun = engine.executeBatch({
       version: "cadops.v1",
       mode: "dryRun",
-      ops: [{ op: "feature.updateExtrude", id: "feat_rect_1", depth: 8 }]
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_rect_1",
+          depth: 8,
+          side: "negative"
+        }
+      ]
     });
 
     expect(dryRun).toMatchObject({
@@ -2675,11 +2785,21 @@ describe("cad-core", () => {
       modifiedBodyIds: ["body_rect_1"]
     });
     expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
+    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "positive"
+    );
 
     const commit = engine.executeBatch({
       version: "cadops.v1",
       mode: "commit",
-      ops: [{ op: "feature.updateExtrude", id: "feat_rect_1", depth: 8 }]
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_rect_1",
+          depth: 8,
+          side: "symmetric"
+        }
+      ]
     });
 
     expect(commit).toMatchObject({
@@ -2689,15 +2809,19 @@ describe("cad-core", () => {
       transactionId: "txn_2"
     });
     expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "symmetric"
+    );
   });
 
-  it("round-trips extrude depth updates through project JSON and history summaries", () => {
+  it("round-trips extrude depth and side updates through project JSON and history summaries", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.apply({
       op: "feature.updateExtrude",
       id: "feat_rect_1",
-      depth: 8
+      depth: 8,
+      side: "negative"
     });
 
     const restored = importCadProjectJson(exportCadProjectJson(engine));
@@ -2707,6 +2831,9 @@ describe("cad-core", () => {
     });
 
     expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "negative"
+    );
     expect(history).toMatchObject({
       ok: true,
       query: "transaction.history",
@@ -2720,7 +2847,8 @@ describe("cad-core", () => {
     expect(history.transactions[1]?.ops).toContainEqual(
       expect.objectContaining({
         op: "feature.updateExtrude",
-        label: "Update extrude feature feat_rect_1 depth to 8",
+        label:
+          "Update extrude feature feat_rect_1 depth to 8 and side to negative",
         featureId: "feat_rect_1",
         bodyId: "body_rect_1",
         sketchId: "sketch_1",
@@ -2730,9 +2858,15 @@ describe("cad-core", () => {
 
     restored.undo();
     expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
+    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "positive"
+    );
 
     restored.redo();
     expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "negative"
+    );
   });
 
   it("updates rectangle extrude source profiles and marks dependent bodies modified", () => {
@@ -4123,7 +4257,8 @@ describe("cad-core", () => {
         bodyId: "body_circle_1",
         sketchId: "sketch_1",
         entityId: "circle_1",
-        depth: 6
+        depth: 6,
+        side: "symmetric"
       }
     ]);
 
@@ -4140,7 +4275,7 @@ describe("cad-core", () => {
         entityId: "circle_1",
         profileKind: "circle",
         depth: 6,
-        side: "positive",
+        side: "symmetric",
         bodyId: "body_circle_1"
       }
     ]);
@@ -4151,8 +4286,36 @@ describe("cad-core", () => {
       entityId: "circle_1",
       profileKind: "circle",
       depth: 6,
-      side: "positive",
+      side: "symmetric",
       bodyId: "body_circle_1"
+    });
+  });
+
+  it("defaults missing saved extrude side to positive during project import", () => {
+    const engine = createRectangleExtrudeEngine();
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const legacyProject = {
+      ...project,
+      document: {
+        ...project.document,
+        features: project.document.features.map((feature) => {
+          const legacyFeature: Record<string, unknown> = { ...feature };
+          delete legacyFeature.side;
+
+          return legacyFeature;
+        })
+      }
+    };
+
+    const restored = importCadProjectJson(JSON.stringify(legacyProject));
+    const restoredProject = parseCadProjectJson(exportCadProjectJson(restored));
+
+    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
+      "positive"
+    );
+    expect(restoredProject.document.features[0]).toMatchObject({
+      id: "feat_rect_1",
+      side: "positive"
     });
   });
 

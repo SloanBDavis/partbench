@@ -180,6 +180,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           sketchPlane: input.sketchPlane,
           profile: input.profile,
           depth: input.depth,
+          side: input.side,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })
