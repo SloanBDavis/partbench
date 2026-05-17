@@ -3074,7 +3074,9 @@ function createOperationSummaries(
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Extrude ${op.entityId} from ${op.sketchId}`,
+          label: `Create extrude feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId}${
+            bodyId ? ` -> body ${bodyId}` : ""
+          }`,
           sketchId: op.sketchId,
           sketchEntityId: op.entityId,
           featureId,
@@ -3082,15 +3084,20 @@ function createOperationSummaries(
         });
       }
 
-      case "feature.delete":
+      case "feature.delete": {
+        const bodyLabel = deletedFeatureRef?.bodyId
+          ? ` and body ${deletedFeatureRef.bodyId}`
+          : "";
+
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Delete feature ${op.id}`,
+          label: `Delete feature ${op.id}${bodyLabel}`,
           featureId: op.id,
           bodyId: deletedFeatureRef?.bodyId,
           sketchId: deletedFeatureRef?.sketchId,
           sketchEntityId: deletedFeatureRef?.entityId
         });
+      }
     }
   });
 }

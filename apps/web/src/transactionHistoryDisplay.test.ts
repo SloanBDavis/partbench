@@ -111,6 +111,54 @@ describe("transaction history display helpers", () => {
     );
   });
 
+  it("formats authored feature delete IDs in history summaries", () => {
+    expect(
+      formatTransactionOps([
+        {
+          op: "feature.delete",
+          label: "Delete feature feat_1 and body body_1",
+          featureId: "feat_1",
+          bodyId: "body_1",
+          sketchId: "sketch_1",
+          sketchEntityId: "rect_1"
+        }
+      ])
+    ).toBe("Delete feature feat_1 and body body_1");
+    expect(
+      formatTransactionDiffSummary({
+        created: [],
+        modified: [],
+        deleted: [],
+        createdCount: 0,
+        modifiedCount: 0,
+        deletedCount: 0,
+        features: {
+          created: [],
+          modified: [],
+          deleted: [
+            {
+              id: "feat_1",
+              kind: "extrude",
+              bodyId: "body_1",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              profileKind: "rectangle"
+            }
+          ],
+          bodiesCreated: [],
+          bodiesModified: [],
+          bodiesDeleted: [
+            {
+              id: "body_1",
+              kind: "solid",
+              featureId: "feat_1"
+            }
+          ]
+        }
+      })
+    ).toBe("1 feature deleted (feat_1), 1 body deleted (body_1)");
+  });
+
   it("returns recent transactions newest first", () => {
     const transactions = [
       createTransaction("txn_1"),

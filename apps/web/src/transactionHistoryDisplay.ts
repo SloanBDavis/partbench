@@ -126,9 +126,9 @@ export function formatTransactionDiffSummary(
     "feature modified",
     "features modified"
   );
-  pushCountSummary(
+  pushIdSummary(
     parts,
-    diff.features?.deleted?.length,
+    diff.features?.deleted?.map((feature) => feature.id),
     "feature deleted",
     "features deleted"
   );
@@ -144,9 +144,9 @@ export function formatTransactionDiffSummary(
     "body modified",
     "bodies modified"
   );
-  pushCountSummary(
+  pushIdSummary(
     parts,
-    diff.features?.bodiesDeleted?.length,
+    diff.features?.bodiesDeleted?.map((body) => body.id),
     "body deleted",
     "bodies deleted"
   );
@@ -175,4 +175,19 @@ function pushCountSummary(
   }
 
   parts.push(`${count} ${count === 1 ? singular : plural}`);
+}
+
+function pushIdSummary(
+  parts: string[],
+  ids: readonly string[] | undefined,
+  singular: string,
+  plural: string
+): void {
+  if (!ids?.length) {
+    return;
+  }
+
+  parts.push(
+    `${ids.length} ${ids.length === 1 ? singular : plural} (${ids.join(", ")})`
+  );
 }

@@ -3101,6 +3101,161 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns clear feature delete history with actor, audit, body, and status", () => {
+    const engine = new CadEngine();
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_1",
+          id: "rect_1",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        {
+          op: "feature.extrude",
+          id: "feat_rect_1",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 3
+        }
+      ]
+    });
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      actor: {
+        type: "agent",
+        id: "history-agent",
+        name: "History Agent"
+      },
+      audit: {
+        source: "mcp",
+        requestId: "delete-request",
+        toolName: "cad.batch",
+        intent: "commit",
+        operationCount: 1
+      },
+      ops: [{ op: "feature.delete", id: "feat_rect_1" }]
+    });
+
+    const committed = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(committed).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactionCount: 2
+    });
+
+    if (!committed.ok || committed.query !== "transaction.history") {
+      throw new Error("Expected transaction history response.");
+    }
+
+    const createTransaction = committed.transactions[0];
+    const deleteTransaction = committed.transactions[1];
+
+    expect(
+      createTransaction?.ops.find((op) => op.op === "feature.extrude")
+    ).toMatchObject({
+      op: "feature.extrude",
+      label:
+        "Create extrude feature feat_rect_1 from sketch_1/rect_1 -> body body_rect_1",
+      featureId: "feat_rect_1",
+      bodyId: "body_rect_1"
+    });
+    expect(createTransaction?.diff.features).toMatchObject({
+      created: [
+        expect.objectContaining({
+          id: "feat_rect_1",
+          bodyId: "body_rect_1"
+        })
+      ],
+      bodiesCreated: [
+        { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+      ]
+    });
+    expect(deleteTransaction).toMatchObject({
+      id: "txn_2",
+      status: "committed",
+      actor: {
+        type: "agent",
+        id: "history-agent",
+        name: "History Agent"
+      },
+      audit: {
+        source: "mcp",
+        requestId: "delete-request",
+        toolName: "cad.batch",
+        intent: "commit",
+        operationCount: 1
+      },
+      ops: [
+        {
+          op: "feature.delete",
+          label: "Delete feature feat_rect_1 and body body_rect_1",
+          featureId: "feat_rect_1",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          sketchEntityId: "rect_1"
+        }
+      ],
+      diff: {
+        features: {
+          deleted: [
+            expect.objectContaining({
+              id: "feat_rect_1",
+              bodyId: "body_rect_1",
+              sketchId: "sketch_1",
+              entityId: "rect_1"
+            })
+          ],
+          bodiesDeleted: [
+            { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+          ]
+        }
+      }
+    });
+
+    engine.undo();
+
+    const undone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(undone).toMatchObject({
+      ok: true,
+      transactions: [
+        { id: "txn_1", status: "committed" },
+        { id: "txn_2", status: "undone" }
+      ]
+    });
+
+    engine.redo();
+
+    const redone = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(redone).toMatchObject({
+      ok: true,
+      transactions: [
+        { id: "txn_1", status: "committed" },
+        { id: "txn_2", status: "committed" }
+      ]
+    });
+  });
+
   it("returns a structured query error for a missing object", () => {
     const engine = new CadEngine();
 
