@@ -958,6 +958,7 @@ export function App() {
           <SketchPanel
             disabled={commandPending}
             sketches={sketches}
+            features={projectStructure.features}
             onCreateSketch={(form) => void createSketch(form)}
             onRenameSketch={(sketchId, name) =>
               void renameSketch(sketchId, name)

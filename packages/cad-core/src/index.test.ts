@@ -38,6 +38,31 @@ function createRectangleExtrudeEngine(): CadEngine {
   return engine;
 }
 
+function createCircleExtrudeEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [0, 0],
+      radius: 2
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_circle_1",
+      bodyId: "body_circle_1",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      depth: 4
+    }
+  ]);
+
+  return engine;
+}
+
 describe("cad-core", () => {
   it("exports package status", () => {
     expect(corePackage).toEqual({
@@ -2708,6 +2733,183 @@ describe("cad-core", () => {
 
     restored.redo();
     expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
+  });
+
+  it("updates rectangle extrude source profiles and marks dependent bodies modified", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const result = engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 6,
+        height: 5
+      }
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("rect_1")
+    ).toEqual({
+      id: "rect_1",
+      kind: "rectangle",
+      center: [1, 2],
+      width: 6,
+      height: 5
+    });
+    expect(result.transaction.diff.sketches).toMatchObject({
+      entitiesModified: [
+        { sketchId: "sketch_1", id: "rect_1", kind: "rectangle" }
+      ]
+    });
+    expect(result.transaction.diff.features).toMatchObject({
+      modified: [
+        {
+          id: "feat_rect_1",
+          kind: "extrude",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle"
+        }
+      ],
+      bodiesModified: [
+        { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+      ]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: [
+        {
+          id: "feat_rect_1",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          depth: 3
+        }
+      ],
+      bodies: [{ id: "body_rect_1", featureId: "feat_rect_1" }]
+    });
+
+    if (!history.ok || history.query !== "transaction.history") {
+      throw new Error("Expected transaction history response.");
+    }
+
+    expect(history.transactions[1]?.ops).toContainEqual(
+      expect.objectContaining({
+        op: "sketch.updateEntity",
+        label:
+          "Update rectangle rect_1 in sketch_1 and rebuild body body_rect_1",
+        sketchId: "sketch_1",
+        sketchEntityId: "rect_1",
+        sketchEntityKind: "rectangle",
+        featureId: "feat_rect_1",
+        bodyId: "body_rect_1"
+      })
+    );
+
+    engine.undo();
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("rect_1")
+    ).toMatchObject({
+      center: [0, 0],
+      width: 4,
+      height: 2
+    });
+
+    engine.redo();
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("rect_1")
+    ).toMatchObject({
+      center: [1, 2],
+      width: 6,
+      height: 5
+    });
+  });
+
+  it("round-trips circle extrude source profile edits through project JSON", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "circle_1",
+        kind: "circle",
+        center: [2, 3],
+        radius: 5
+      }
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const restoredEntity = restored
+      .getDocument()
+      .sketches.get("sketch_1")
+      ?.entities.get("circle_1");
+    const restoredFeature = restored
+      .getDocument()
+      .features.get("feat_circle_1");
+    const history = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(restoredEntity).toEqual({
+      id: "circle_1",
+      kind: "circle",
+      center: [2, 3],
+      radius: 5
+    });
+    expect(restoredFeature).toMatchObject({
+      id: "feat_circle_1",
+      bodyId: "body_circle_1",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      profileKind: "circle"
+    });
+
+    if (!history.ok || history.query !== "transaction.history") {
+      throw new Error("Expected transaction history response.");
+    }
+
+    expect(history.transactions[1]?.ops).toContainEqual(
+      expect.objectContaining({
+        op: "sketch.updateEntity",
+        label:
+          "Update circle circle_1 in sketch_1 and rebuild body body_circle_1",
+        sketchEntityId: "circle_1",
+        featureId: "feat_circle_1",
+        bodyId: "body_circle_1"
+      })
+    );
+
+    restored.undo();
+    expect(
+      restored.getDocument().sketches.get("sketch_1")?.entities.get("circle_1")
+    ).toMatchObject({
+      center: [0, 0],
+      radius: 2
+    });
+
+    restored.redo();
+    expect(
+      restored.getDocument().sketches.get("sketch_1")?.entities.get("circle_1")
+    ).toMatchObject({
+      center: [2, 3],
+      radius: 5
+    });
   });
 
   it("keeps primitive feature summaries aligned with undo and redo", () => {

@@ -14,6 +14,7 @@ import {
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateSketchEntityOp,
   buildUpdateSphereDimensionsOp,
   buildUpdateTorusDimensionsOp,
   buildUpdateUnitsOp,
@@ -152,6 +153,25 @@ describe("cad command builders", () => {
       op: "feature.updateExtrude",
       id: "feat_1",
       depth: 6
+    });
+    expect(
+      buildUpdateSketchEntityOp("sketch_1", {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 3,
+        height: 4
+      })
+    ).toEqual({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 3,
+        height: 4
+      }
     });
   });
 

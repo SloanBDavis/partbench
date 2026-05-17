@@ -3095,14 +3095,27 @@ function createOperationSummaries(
         });
       }
 
-      case "sketch.updateEntity":
+      case "sketch.updateEntity": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) =>
+            feature.sketchId === op.sketchId &&
+            feature.entityId === op.entity.id
+        );
+
         return createSketchOperationSummary({
           op: op.op,
-          label: `Update ${op.entity.kind} ${op.entity.id} in ${op.sketchId}`,
+          label: `Update ${op.entity.kind} ${op.entity.id} in ${op.sketchId}${
+            modifiedFeatureRef?.bodyId
+              ? ` and rebuild body ${modifiedFeatureRef.bodyId}`
+              : ""
+          }`,
           sketchId: op.sketchId,
           sketchEntityId: op.entity.id,
-          sketchEntityKind: op.entity.kind
+          sketchEntityKind: op.entity.kind,
+          featureId: modifiedFeatureRef?.id,
+          bodyId: modifiedFeatureRef?.bodyId
         });
+      }
 
       case "sketch.deleteEntity":
         return createSketchOperationSummary({
@@ -3195,7 +3208,9 @@ function createSketchOperationSummary(
       : {}),
     ...(summary.sketchEntityKind
       ? { sketchEntityKind: summary.sketchEntityKind }
-      : {})
+      : {}),
+    ...(summary.featureId ? { featureId: summary.featureId } : {}),
+    ...(summary.bodyId ? { bodyId: summary.bodyId } : {})
   };
 }
 

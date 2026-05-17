@@ -502,6 +502,144 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes sketch.updateEntity profile edits through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_profile_update",
+      entityId: "rect_profile_update",
+      featureId: "feat_profile_update",
+      bodyId: "body_profile_update"
+    });
+
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_profile_update_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "sketch.updateEntity",
+                sketchId: "sketch_profile_update",
+                entity: {
+                  id: "rect_profile_update",
+                  kind: "rectangle",
+                  center: [1, 2],
+                  width: 7,
+                  height: 8
+                }
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly modifiedSketchEntityIds?: readonly string[];
+      readonly modifiedFeatureIds?: readonly string[];
+      readonly modifiedBodyIds?: readonly string[];
+    };
+    const dryRunSketch = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.get", id: "sketch_profile_update" }
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedSketchEntityIds: ["rect_profile_update"],
+      modifiedFeatureIds: ["feat_profile_update"],
+      modifiedBodyIds: ["body_profile_update"],
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_profile_update_dry_run",
+        intent: "dryRun",
+        operationCount: 1
+      }
+    });
+    expect(dryRunSketch).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "rect_profile_update",
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          }
+        ]
+      }
+    });
+
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_profile_update_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.updateEntity",
+                sketchId: "sketch_profile_update",
+                entity: {
+                  id: "rect_profile_update",
+                  kind: "rectangle",
+                  center: [1, 2],
+                  width: 7,
+                  height: 8
+                }
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly modifiedSketchEntityIds?: readonly string[];
+      readonly modifiedFeatureIds?: readonly string[];
+      readonly modifiedBodyIds?: readonly string[];
+    };
+    const committedSketch = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.get", id: "sketch_profile_update" }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      modifiedSketchEntityIds: ["rect_profile_update"],
+      modifiedFeatureIds: ["feat_profile_update"],
+      modifiedBodyIds: ["body_profile_update"],
+      transactionId: "txn_2",
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_profile_update_commit",
+        intent: "commit",
+        operationCount: 1
+      }
+    });
+    expect(committedSketch).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "rect_profile_update",
+            kind: "rectangle",
+            center: [1, 2],
+            width: 7,
+            height: 8
+          }
+        ]
+      }
+    });
+  });
+
   it("passes feature.delete through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
     seedExtrudeFeature(adapter, {

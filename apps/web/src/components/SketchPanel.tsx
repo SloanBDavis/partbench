@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type {
+  CadFeatureSummary,
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchPlane,
@@ -10,10 +11,15 @@ import type {
   SketchCreateForm,
   SketchEntityForm
 } from "../cadCommands";
+import {
+  formatSketchEntityUsageLabel,
+  getSketchEntityExtrudeUsages
+} from "../sketchEntityUsage";
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
+  readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
   readonly onRenameSketch: (sketchId: string, name: string) => void;
   readonly onDeleteSketch: (sketchId: string) => void;
@@ -61,6 +67,7 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
 export function SketchPanel({
   disabled,
   sketches,
+  features,
   onCreateSketch,
   onRenameSketch,
   onDeleteSketch,
@@ -263,41 +270,53 @@ export function SketchPanel({
               />
 
               <ul className="entity-list">
-                {selectedSketch.entities.map((entity) => (
-                  <li key={entity.id}>
-                    <code>{entity.id}</code>
-                    <span>{formatSketchEntity(entity)}</span>
-                    <div className="button-row compact">
-                      <button
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => editEntity(entity)}
-                      >
-                        Edit
-                      </button>
-                      {(entity.kind === "rectangle" ||
-                        entity.kind === "circle") && (
+                {selectedSketch.entities.map((entity) => {
+                  const usages = getSketchEntityExtrudeUsages(
+                    features,
+                    selectedSketch.id,
+                    entity.id
+                  );
+                  const usageLabel = formatSketchEntityUsageLabel(usages);
+
+                  return (
+                    <li key={entity.id}>
+                      <code>{entity.id}</code>
+                      <span>{formatSketchEntity(entity)}</span>
+                      {usageLabel && (
+                        <small className="entity-usage">{usageLabel}</small>
+                      )}
+                      <div className="button-row compact">
                         <button
                           type="button"
                           disabled={disabled}
-                          onClick={() => setExtrudeEntityId(entity.id)}
+                          onClick={() => editEntity(entity)}
                         >
-                          Use for extrude
+                          {usageLabel ? "Edit source" : "Edit"}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="danger"
-                        disabled={disabled}
-                        onClick={() =>
-                          onDeleteEntity(selectedSketch.id, entity.id)
-                        }
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                        {(entity.kind === "rectangle" ||
+                          entity.kind === "circle") && (
+                          <button
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => setExtrudeEntityId(entity.id)}
+                          >
+                            Use for extrude
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={disabled}
+                          onClick={() =>
+                            onDeleteEntity(selectedSketch.id, entity.id)
+                          }
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
 
               {extrudableEntities.length > 0 && (

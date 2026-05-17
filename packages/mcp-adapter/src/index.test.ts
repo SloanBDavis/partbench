@@ -678,6 +678,149 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes sketch.updateEntity profile edits through cad.batch dry-run and commit", () => {
+    const server = new CadMcpServer();
+    seedMcpExtrudeFeature(server, {
+      sketchId: "sketch_profile_update",
+      entityId: "circle_profile_update",
+      featureId: "feat_profile_update",
+      bodyId: "body_profile_update"
+    });
+
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_profile_update_dry_run",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.updateEntity",
+              sketchId: "sketch_profile_update",
+              entity: {
+                id: "circle_profile_update",
+                kind: "circle",
+                center: [2, 3],
+                radius: 5
+              }
+            }
+          ]
+        }
+      }
+    });
+    const dryRunSketch = server.callTool({
+      name: "cad.sketch_get",
+      requestId: "mcp_req_profile_update_dry_run_sketch",
+      arguments: { id: "sketch_profile_update" }
+    });
+
+    expect(dryRun).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_profile_update_dry_run",
+        mode: "dryRun",
+        modifiedSketchEntityIds: ["circle_profile_update"],
+        modifiedFeatureIds: ["feat_profile_update"],
+        modifiedBodyIds: ["body_profile_update"],
+        audit: {
+          source: "mcp",
+          requestId: "mcp_req_profile_update_dry_run",
+          toolName: "cad.batch",
+          intent: "dryRun",
+          operationCount: 1
+        }
+      }
+    });
+    expect(dryRunSketch).toMatchObject({
+      structuredContent: {
+        ok: true,
+        sketch: {
+          entities: [
+            {
+              id: "circle_profile_update",
+              kind: "circle",
+              center: [0, 0],
+              radius: 2
+            }
+          ]
+        }
+      }
+    });
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_profile_update_commit",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.updateEntity",
+              sketchId: "sketch_profile_update",
+              entity: {
+                id: "circle_profile_update",
+                kind: "circle",
+                center: [2, 3],
+                radius: 5
+              }
+            }
+          ]
+        }
+      }
+    });
+    const committedSketch = server.callTool({
+      name: "cad.sketch_get",
+      requestId: "mcp_req_profile_update_commit_sketch",
+      arguments: { id: "sketch_profile_update" }
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_profile_update_commit",
+        mode: "commit",
+        modifiedSketchEntityIds: ["circle_profile_update"],
+        modifiedFeatureIds: ["feat_profile_update"],
+        modifiedBodyIds: ["body_profile_update"],
+        transactionId: "txn_2",
+        actor: {
+          type: "agent",
+          id: "mcp",
+          name: "MCP Client"
+        },
+        audit: {
+          source: "mcp",
+          requestId: "mcp_req_profile_update_commit",
+          toolName: "cad.batch",
+          intent: "commit",
+          operationCount: 1
+        }
+      }
+    });
+    expect(committedSketch).toMatchObject({
+      structuredContent: {
+        ok: true,
+        sketch: {
+          entities: [
+            {
+              id: "circle_profile_update",
+              kind: "circle",
+              center: [2, 3],
+              radius: 5
+            }
+          ]
+        }
+      }
+    });
+  });
+
   it("passes feature.delete through cad.batch dry-run and commit", () => {
     const server = new CadMcpServer();
     seedMcpExtrudeFeature(server, {

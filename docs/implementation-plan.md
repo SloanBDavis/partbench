@@ -162,8 +162,9 @@ Current limitations:
 - The first sketch and extrude slices exist, but there is no sketch solver,
   constraint system, automatic profile recognition, broad feature edit command,
   or broad feature graph yet. `feature.delete` exists only for authored
-  sketch-extrude features, and `feature.updateExtrude` currently supports only
-  authored extrude depth edits.
+  sketch-extrude features, `feature.updateExtrude` currently supports only
+  authored extrude depth edits, and rectangle/circle source profile values are
+  edited through `sketch.updateEntity`.
 - There is no stable topological naming system.
 - There are no revolve, boolean, fillet, chamfer, shell, loft, pattern, or
   direct modeling features.

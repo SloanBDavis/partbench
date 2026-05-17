@@ -244,8 +244,11 @@ extrusion and does not include a sketch solver, arbitrary profile recognition,
 topological references, broad feature edit commands, or exact B-rep checkpoint
 persistence. Authored sketch-extrude features can be removed with
 `feature.delete` and can have depth updated with `feature.updateExtrude`.
-Primitive-derived compatibility features are not deletable through
-`feature.delete` or editable through `feature.updateExtrude`.
+Rectangle and circle source profile values can be edited through
+`sketch.updateEntity`; the feature keeps referencing the same sketch entity and
+the generated body is rebuilt as derived geometry. Primitive-derived
+compatibility features are not deletable through `feature.delete` or editable
+through `feature.updateExtrude`.
 
 ## V2/V3 Storage Decision
 

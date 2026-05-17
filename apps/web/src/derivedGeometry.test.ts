@@ -255,6 +255,82 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(redoneSource)).toBe(editedKey);
   });
 
+  it("updates extrude source cache keys across profile edits, undo, and redo", () => {
+    const engine = createExtrudedRectangleEngine();
+    const initialSource = getDerivedSources(engine)[0];
+
+    if (!initialSource || initialSource.kind !== "extrude") {
+      throw new Error("Expected an extrude derived source.");
+    }
+
+    const initialKey = createDerivedGeometryCacheKey(initialSource);
+    expect(initialSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    });
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 6,
+        height: 5
+      }
+    });
+
+    const editedSource = getDerivedSources(engine)[0];
+
+    if (!editedSource || editedSource.kind !== "extrude") {
+      throw new Error("Expected an edited extrude derived source.");
+    }
+
+    const editedKey = createDerivedGeometryCacheKey(editedSource);
+    expect(editedSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [1, 2],
+      width: 6,
+      height: 5
+    });
+    expect(editedKey).not.toBe(initialKey);
+
+    engine.undo();
+
+    const undoneSource = getDerivedSources(engine)[0];
+
+    if (!undoneSource || undoneSource.kind !== "extrude") {
+      throw new Error("Expected an undone extrude derived source.");
+    }
+
+    expect(undoneSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    });
+    expect(createDerivedGeometryCacheKey(undoneSource)).toBe(initialKey);
+
+    engine.redo();
+
+    const redoneSource = getDerivedSources(engine)[0];
+
+    if (!redoneSource || redoneSource.kind !== "extrude") {
+      throw new Error("Expected a redone extrude derived source.");
+    }
+
+    expect(redoneSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [1, 2],
+      width: 6,
+      height: 5
+    });
+    expect(createDerivedGeometryCacheKey(redoneSource)).toBe(editedKey);
+  });
+
   it("invalidates deleted extrude bodies and removes derived meshes", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
@@ -294,6 +370,66 @@ describe("derivedGeometry", () => {
     expect(
       runtime.inputs.map((input) => ("depth" in input ? input.depth : null))
     ).toEqual([3, 8]);
+
+    first.resolve(createResult("body_rect_1", createMesh("stale_extrude")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_rect_1",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_rect_1", createMesh("body_rect_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_rect_1",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_rect_1"
+    ]);
+  });
+
+  it("ignores stale worker results after extrude profile invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "profile" in input &&
+      input.profile.kind === "rectangle" &&
+      input.profile.width === 4
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource = createExtrudeSource("body_rect_1");
+    const editedSource: DerivedExtrudeGeometrySource = {
+      ...initialSource,
+      profile: {
+        kind: "rectangle",
+        center: [1, 2],
+        width: 6,
+        height: 5
+      }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "profile" in input && input.profile.kind === "rectangle"
+          ? input.profile.width
+          : null
+      )
+    ).toEqual([4, 6]);
 
     first.resolve(createResult("body_rect_1", createMesh("stale_extrude")));
     await flushPromises();
