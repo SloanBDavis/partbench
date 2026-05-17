@@ -397,6 +397,111 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes feature.updateExtrude through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_update",
+      entityId: "rect_update",
+      featureId: "feat_update",
+      bodyId: "body_update"
+    });
+
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_update_extrude_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [{ op: "feature.updateExtrude", id: "feat_update", depth: 9 }]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly modifiedFeatureIds?: readonly string[];
+      readonly modifiedBodyIds?: readonly string[];
+      readonly transactionId?: string;
+    };
+    const dryRunStructure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedFeatureIds: ["feat_update"],
+      modifiedBodyIds: ["body_update"],
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_update_extrude_dry_run",
+        intent: "dryRun",
+        operationCount: 1
+      }
+    });
+    expect(dryRun.transactionId).toBeUndefined();
+    expect(dryRunStructure).toMatchObject({
+      ok: true,
+      features: [{ id: "feat_update", depth: 4 }],
+      bodies: [{ id: "body_update", featureId: "feat_update" }]
+    });
+
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_update_extrude_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          actor: {
+            type: "agent",
+            id: "feature-update-agent",
+            name: "Feature Update Agent"
+          },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [{ op: "feature.updateExtrude", id: "feat_update", depth: 9 }]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly modifiedFeatureIds?: readonly string[];
+      readonly modifiedBodyIds?: readonly string[];
+      readonly transactionId?: string;
+    };
+    const committedStructure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      modifiedFeatureIds: ["feat_update"],
+      modifiedBodyIds: ["body_update"],
+      transactionId: "txn_2",
+      actor: {
+        type: "agent",
+        id: "feature-update-agent",
+        name: "Feature Update Agent"
+      },
+      audit: {
+        source: "agent-adapter",
+        requestId: "agent_req_update_extrude_commit",
+        intent: "commit",
+        operationCount: 1
+      }
+    });
+    expect(committedStructure).toMatchObject({
+      ok: true,
+      features: [{ id: "feat_update", depth: 9 }],
+      bodies: [{ id: "body_update", featureId: "feat_update" }]
+    });
+  });
+
   it("passes feature.delete through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
     seedExtrudeFeature(adapter, {

@@ -164,6 +164,115 @@ describe("mcp stdio server", () => {
     });
   });
 
+  it("handles extrude depth updates over line-delimited JSON-RPC", () => {
+    const session = createMcpStdioSession();
+
+    parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "commit-extrude",
+          method: "tools/call",
+          params: {
+            name: "cad.batch",
+            arguments: {
+              allowCommit: true,
+              batch: {
+                version: "cadops.v1",
+                mode: "commit",
+                ops: [
+                  {
+                    op: "sketch.create",
+                    id: "sketch_1",
+                    name: "Profile",
+                    plane: "XY"
+                  },
+                  {
+                    op: "sketch.addRectangle",
+                    sketchId: "sketch_1",
+                    id: "rect_1",
+                    center: [0, 0],
+                    width: 2,
+                    height: 3
+                  },
+                  {
+                    op: "feature.extrude",
+                    id: "feat_1",
+                    bodyId: "body_1",
+                    sketchId: "sketch_1",
+                    entityId: "rect_1",
+                    depth: 4
+                  }
+                ]
+              }
+            }
+          }
+        })
+      )
+    );
+    const update = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "update-extrude",
+          method: "tools/call",
+          params: {
+            name: "cad.batch",
+            arguments: {
+              allowCommit: true,
+              batch: {
+                version: "cadops.v1",
+                mode: "commit",
+                ops: [{ op: "feature.updateExtrude", id: "feat_1", depth: 9 }]
+              }
+            }
+          }
+        })
+      )
+    );
+    const structure = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "structure",
+          method: "tools/call",
+          params: {
+            name: "cad.project_structure",
+            arguments: {}
+          }
+        })
+      )
+    );
+
+    expect(update).toMatchObject({
+      jsonrpc: "2.0",
+      id: "update-extrude",
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          modifiedFeatureIds: ["feat_1"],
+          modifiedBodyIds: ["body_1"],
+          transactionId: "txn_2"
+        }
+      }
+    });
+    expect(structure).toMatchObject({
+      jsonrpc: "2.0",
+      id: "structure",
+      result: {
+        toolName: "cad.project_structure",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          features: [{ id: "feat_1", depth: 9 }],
+          bodies: [{ id: "body_1", featureId: "feat_1" }]
+        }
+      }
+    });
+  });
+
   it("returns JSON-RPC parse errors for malformed input", () => {
     const session = createMcpStdioSession();
     const response = parseLineResponse(session.handleLine("{bad json"));

@@ -913,6 +913,10 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.updateExtrude") {
+    return typeof value.id === "string" && typeof value.depth === "number";
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
