@@ -7,6 +7,7 @@ import {
   buildCreateSphereOp,
   buildCreateTorusOp,
   buildFeatureDeleteOp,
+  buildFeatureUpdateExtrudeOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
@@ -146,6 +147,11 @@ describe("cad command builders", () => {
     expect(buildFeatureDeleteOp("feat_1")).toEqual({
       op: "feature.delete",
       id: "feat_1"
+    });
+    expect(buildFeatureUpdateExtrudeOp("feat_1", 6)).toEqual({
+      op: "feature.updateExtrude",
+      id: "feat_1",
+      depth: 6
     });
   });
 

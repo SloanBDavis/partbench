@@ -46,7 +46,8 @@ export function Inspector({
   onApplyName,
   onApplyTransform,
   onDelete,
-  onDeleteFeature
+  onDeleteFeature,
+  onUpdateExtrudeDepth
 }: {
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
@@ -59,6 +60,7 @@ export function Inspector({
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
+  readonly onUpdateExtrudeDepth: (featureId: string, depth: number) => void;
 }) {
   return (
     <aside className="inspector" aria-label="Inspector">
@@ -74,6 +76,7 @@ export function Inspector({
         onApplyTransform,
         onDelete,
         onDeleteFeature,
+        onUpdateExtrudeDepth,
         units
       })}
     </aside>
@@ -92,6 +95,7 @@ function renderInspectorSelection(input: {
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
+  readonly onUpdateExtrudeDepth: (featureId: string, depth: number) => void;
 }) {
   if (input.body) {
     return (
@@ -100,6 +104,7 @@ function renderInspectorSelection(input: {
         disabled={input.disabled}
         feature={input.feature}
         onDeleteFeature={input.onDeleteFeature}
+        onUpdateExtrudeDepth={input.onUpdateExtrudeDepth}
         units={input.units}
       />
     );
@@ -173,12 +178,14 @@ function BodyInspector({
   disabled,
   feature,
   onDeleteFeature,
+  onUpdateExtrudeDepth,
   units
 }: {
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
   readonly onDeleteFeature: (featureId: string) => void;
+  readonly onUpdateExtrudeDepth: (featureId: string, depth: number) => void;
   readonly units: DocumentUnits;
 }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -238,6 +245,15 @@ function BodyInspector({
           </>
         )}
       </dl>
+      {feature?.kind === "extrude" && (
+        <ExtrudeDepthEditor
+          key={`${feature.id}-${feature.depth}`}
+          disabled={disabled}
+          feature={feature}
+          onApply={onUpdateExtrudeDepth}
+          units={units}
+        />
+      )}
       {canDeleteFeature && (
         <div className="button-row">
           <button
@@ -259,6 +275,71 @@ function BodyInspector({
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+function ExtrudeDepthEditor({
+  disabled,
+  feature,
+  onApply,
+  units
+}: {
+  readonly disabled: boolean;
+  readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
+  readonly onApply: (featureId: string, depth: number) => void;
+  readonly units: DocumentUnits;
+}) {
+  const [depth, setDepth] = useState(feature.depth);
+  const hasChanges = depth !== feature.depth;
+  const isValid = Number.isFinite(depth) && depth > 0;
+
+  function resetEdits() {
+    setDepth(feature.depth);
+  }
+
+  function handleApply() {
+    if (hasChanges && isValid) {
+      onApply(feature.id, depth);
+    }
+  }
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Extrude depth</h3>
+        {hasChanges && <span>Edited</span>}
+      </div>
+      <label>
+        Depth ({units})
+        <input
+          type="number"
+          step="0.1"
+          value={depth}
+          disabled={disabled}
+          onChange={(event) => {
+            const nextDepth = event.currentTarget.valueAsNumber;
+            setDepth(Number.isNaN(nextDepth) ? 0 : nextDepth);
+          }}
+        />
+      </label>
+      <div className="button-row">
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={disabled || !hasChanges || !isValid}
+        >
+          Apply depth
+        </button>
+        <button
+          type="button"
+          onClick={resetEdits}
+          disabled={disabled || !hasChanges}
+        >
+          Reset edits
+        </button>
+      </div>
+      {!isValid && <p className="error-text">Depth must be positive.</p>}
     </section>
   );
 }

@@ -8,6 +8,7 @@ import type {
   DocumentUpdateUnitsOp,
   FeatureDeleteOp,
   FeatureExtrudeOp,
+  FeatureUpdateExtrudeOp,
   ObjectId,
   SceneCreateBoxOp,
   SceneCreateConeOp,
@@ -432,6 +433,17 @@ export function buildFeatureDeleteOp(id: string): FeatureDeleteOp {
   return {
     op: "feature.delete",
     id
+  };
+}
+
+export function buildFeatureUpdateExtrudeOp(
+  id: string,
+  depth: number
+): FeatureUpdateExtrudeOp {
+  return {
+    op: "feature.updateExtrude",
+    id,
+    depth
   };
 }
 

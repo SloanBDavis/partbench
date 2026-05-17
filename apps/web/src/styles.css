@@ -938,6 +938,11 @@ canvas:active {
   margin-top: 14px;
 }
 
+.command-card.nested {
+  padding-top: 12px;
+  border-top: 1px solid #e1e6ed;
+}
+
 .command-card h3 {
   margin: 0;
   font-size: 0.88rem;

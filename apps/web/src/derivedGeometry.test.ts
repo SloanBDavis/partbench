@@ -15,6 +15,7 @@ import {
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
   type DerivedExtrudeGeometrySource,
+  type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import type {
@@ -204,6 +205,56 @@ describe("derivedGeometry", () => {
     expect(getDerivedSourceIds(engine)).toEqual([]);
   });
 
+  it("updates extrude source cache keys across depth edits, undo, and redo", () => {
+    const engine = createExtrudedRectangleEngine();
+    const initialSource = getDerivedSources(engine)[0];
+
+    if (!initialSource || initialSource.kind !== "extrude") {
+      throw new Error("Expected an extrude derived source.");
+    }
+
+    const initialKey = createDerivedGeometryCacheKey(initialSource);
+    expect(initialSource.depth).toBe(3);
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+
+    const editedSource = getDerivedSources(engine)[0];
+
+    if (!editedSource || editedSource.kind !== "extrude") {
+      throw new Error("Expected an edited extrude derived source.");
+    }
+
+    const editedKey = createDerivedGeometryCacheKey(editedSource);
+    expect(editedSource.depth).toBe(8);
+    expect(editedKey).not.toBe(initialKey);
+
+    engine.undo();
+
+    const undoneSource = getDerivedSources(engine)[0];
+
+    if (!undoneSource || undoneSource.kind !== "extrude") {
+      throw new Error("Expected an undone extrude derived source.");
+    }
+
+    expect(undoneSource.depth).toBe(3);
+    expect(createDerivedGeometryCacheKey(undoneSource)).toBe(initialKey);
+
+    engine.redo();
+
+    const redoneSource = getDerivedSources(engine)[0];
+
+    if (!redoneSource || redoneSource.kind !== "extrude") {
+      throw new Error("Expected a redone extrude derived source.");
+    }
+
+    expect(redoneSource.depth).toBe(8);
+    expect(createDerivedGeometryCacheKey(redoneSource)).toBe(editedKey);
+  });
+
   it("invalidates deleted extrude bodies and removes derived meshes", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
@@ -221,6 +272,50 @@ describe("derivedGeometry", () => {
     const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
     expect(snapshot.entries).toEqual([]);
     expect(snapshot.meshes).toEqual([]);
+  });
+
+  it("ignores stale worker results after extrude depth invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "depth" in input && input.depth === 3 ? first.promise : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource = createExtrudeSource("body_rect_1");
+    const editedSource = { ...initialSource, depth: 8 };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) => ("depth" in input ? input.depth : null))
+    ).toEqual([3, 8]);
+
+    first.resolve(createResult("body_rect_1", createMesh("stale_extrude")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_rect_1",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_rect_1", createMesh("body_rect_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_rect_1",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_rect_1"
+    ]);
   });
 
   it("ignores stale worker results after object deletion", async () => {
@@ -519,10 +614,16 @@ function createExtrudedRectangleEngine(): CadEngine {
 }
 
 function getDerivedSourceIds(engine: CadEngine): readonly string[] {
+  return getDerivedSources(engine).map((source) => source.id);
+}
+
+function getDerivedSources(
+  engine: CadEngine
+): readonly DerivedGeometrySource[] {
   return createDerivedGeometrySourcesFromDocument(
     engine.getDocument(),
     getProjectStructureFeatures(engine)
-  ).map((source) => source.id);
+  );
 }
 
 function getProjectStructureFeatures(

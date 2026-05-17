@@ -37,6 +37,7 @@ import {
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
+  buildFeatureUpdateExtrudeOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildRenameSketchOp,
@@ -636,6 +637,21 @@ export function App() {
     await commitOps([buildFeatureDeleteOp(feature.id)], () => undefined);
   }
 
+  async function updateAuthoredExtrudeDepth(featureId: string, depth: number) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "extrude") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateExtrudeOp(feature.id, depth)],
+      () => feature.bodyId
+    );
+  }
+
   function undo() {
     engine.undo();
     syncDocument();
@@ -1028,6 +1044,9 @@ export function App() {
           onApplyTransform={(form) => void updateSelectedTransform(form)}
           onDelete={() => void deleteSelectedObject()}
           onDeleteFeature={(featureId) => void deleteAuthoredFeature(featureId)}
+          onUpdateExtrudeDepth={(featureId, depth) =>
+            void updateAuthoredExtrudeDepth(featureId, depth)
+          }
         />
       </section>
     </main>
