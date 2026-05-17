@@ -45,7 +45,8 @@ export function Inspector({
   onApplyDimensions,
   onApplyName,
   onApplyTransform,
-  onDelete
+  onDelete,
+  onDeleteFeature
 }: {
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
@@ -57,6 +58,7 @@ export function Inspector({
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
+  readonly onDeleteFeature: (featureId: string) => void;
 }) {
   return (
     <aside className="inspector" aria-label="Inspector">
@@ -71,6 +73,7 @@ export function Inspector({
         onApplyName,
         onApplyTransform,
         onDelete,
+        onDeleteFeature,
         units
       })}
     </aside>
@@ -88,12 +91,15 @@ function renderInspectorSelection(input: {
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onDelete: () => void;
+  readonly onDeleteFeature: (featureId: string) => void;
 }) {
   if (input.body) {
     return (
       <BodyInspector
         body={input.body}
+        disabled={input.disabled}
         feature={input.feature}
+        onDeleteFeature={input.onDeleteFeature}
         units={input.units}
       />
     );
@@ -164,13 +170,33 @@ function renderInspectorSelection(input: {
 
 function BodyInspector({
   body,
+  disabled,
   feature,
+  onDeleteFeature,
   units
 }: {
   readonly body: CadBodySnapshot;
+  readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly onDeleteFeature: (featureId: string) => void;
   readonly units: DocumentUnits;
 }) {
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const canDeleteFeature = feature?.kind === "extrude";
+
+  function handleDeleteFeature() {
+    if (feature?.kind !== "extrude") {
+      return;
+    }
+
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+
+    onDeleteFeature(feature.id);
+  }
+
   return (
     <section className="command-card">
       <div className="command-card-heading">
@@ -212,6 +238,27 @@ function BodyInspector({
           </>
         )}
       </dl>
+      {canDeleteFeature && (
+        <div className="button-row">
+          <button
+            type="button"
+            className="danger"
+            disabled={disabled}
+            onClick={handleDeleteFeature}
+          >
+            {deleteArmed ? "Confirm delete feature" : "Delete feature"}
+          </button>
+          {deleteArmed && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => setDeleteArmed(false)}
+            >
+              Cancel delete
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

@@ -6,6 +6,7 @@ import {
   buildCreateConeOp,
   buildCreateSphereOp,
   buildCreateTorusOp,
+  buildFeatureDeleteOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
@@ -141,6 +142,10 @@ describe("cad command builders", () => {
     expect(buildDeleteObjectOp("box_1")).toEqual({
       op: "scene.deleteObject",
       id: "box_1"
+    });
+    expect(buildFeatureDeleteOp("feat_1")).toEqual({
+      op: "feature.delete",
+      id: "feat_1"
     });
   });
 

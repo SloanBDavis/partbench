@@ -6,6 +6,7 @@ import type {
   DocumentUnitUpdateMode,
   DocumentUnits,
   DocumentUpdateUnitsOp,
+  FeatureDeleteOp,
   FeatureExtrudeOp,
   ObjectId,
   SceneCreateBoxOp,
@@ -424,6 +425,13 @@ export function buildFeatureExtrudeOp(
     entityId,
     depth: form.depth,
     side: "positive"
+  };
+}
+
+export function buildFeatureDeleteOp(id: string): FeatureDeleteOp {
+  return {
+    op: "feature.delete",
+    id
   };
 }
 

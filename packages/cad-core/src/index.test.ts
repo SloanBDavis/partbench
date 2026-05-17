@@ -3596,6 +3596,114 @@ describe("cad-core", () => {
     });
   });
 
+  it("round-trips deleted sketch extrude features through project v3 history", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      }
+    ]);
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 3
+    });
+    engine.apply({
+      op: "feature.delete",
+      id: "feat_rect_1"
+    });
+
+    const projectJson = exportCadProjectJson(engine);
+    const project = parseCadProjectJson(projectJson);
+    const restored = importCadProjectJson(projectJson);
+    const restoredStructure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(project.schemaVersion).toBe("web-cad.project.v3");
+    expect(project.document.features).toEqual([]);
+    expect(project.history.flatMap((transaction) => transaction.ops)).toEqual([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_1",
+        bodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 3
+      },
+      {
+        op: "feature.delete",
+        id: "feat_rect_1"
+      }
+    ]);
+    expect(restored.getDocument().features.size).toBe(0);
+    expect(restoredStructure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      featureCount: 0,
+      bodyCount: 0,
+      features: [],
+      bodies: []
+    });
+
+    restored.undo();
+
+    const restoredAfterUndoStructure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(restored.getDocument().features.get("feat_rect_1")).toMatchObject({
+      id: "feat_rect_1",
+      bodyId: "body_rect_1"
+    });
+    expect(restoredAfterUndoStructure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      featureCount: 1,
+      bodyCount: 1,
+      features: [{ id: "feat_rect_1", bodyId: "body_rect_1" }],
+      bodies: [{ id: "body_rect_1", featureId: "feat_rect_1" }]
+    });
+
+    restored.redo();
+
+    const restoredAfterRedoStructure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(restored.getDocument().features.size).toBe(0);
+    expect(restoredAfterRedoStructure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      featureCount: 0,
+      bodyCount: 0,
+      features: [],
+      bodies: []
+    });
+  });
+
   it("rejects v3 extrude features with dangling sketch or entity references", () => {
     const engine = new CadEngine();
 
