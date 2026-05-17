@@ -7,7 +7,8 @@ geometry path.
 
 The completed V1 foundation supports creating and editing boxes, cylinders,
 spheres, cones, and tori through the shared command layer. Current V2 work adds
-source-of-truth sketches with point, line, rectangle, and circle entities.
+source-of-truth sketches with point, line, rectangle, and circle entities plus a
+first rectangle/circle `feature.extrude` workflow.
 OCCT-derived meshes are display data only; the source of truth remains the typed
 document and transaction history in `cad-core`.
 
@@ -115,6 +116,7 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `packages/cad-protocol` - typed CADOps command and query protocol
 - `packages/cad-core` - document model, transactions, undo/redo, project JSON
 - `packages/renderer` - simple renderer abstraction and canvas viewport support
+- `packages/occt-wasm` - isolated OCCT/WASM loading boundary
 - `packages/geometry-kernel` - isolated primitive tessellation facade
 - `packages/geometry-worker` - async worker boundary for tessellation
 - `packages/renderer-mesh-bridge` - mesh data adapter for the current renderer
@@ -122,13 +124,20 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter
 - `packages/mcp-stdio-server` - local stdio JSON-RPC MCP transport
 
+## Project Format
+
+Current project JSON exports use `web-cad.project.v3`. V1 and V2 project JSON
+remain importable through explicit migrations; derived meshes and geometry
+status are never saved as source-of-truth data.
+
 ## Current Limitations
 
 - The renderer still uses simple primitive drawing as fallback while OCCT-derived
   meshes are loading, disabled, unavailable, or failed.
 - OCCT/WASM is intentionally off the default production startup path and
   currently proves box, cylinder, sphere, cone, and torus tessellation.
-- Sketches are source-of-truth V2 data, but there is no solver, profile
-  recognition, or sketch-driven feature operation yet.
+- Sketches and rectangle/circle extrude features are source-of-truth V2 data,
+  but there is no sketch solver, automatic profile recognition, feature
+  editing/deleting, or topology naming yet.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.

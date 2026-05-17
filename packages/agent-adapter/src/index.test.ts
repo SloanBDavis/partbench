@@ -337,6 +337,66 @@ describe("agent-adapter", () => {
     expect(adapter.getEngine().getDocument().units).toBe("in");
   });
 
+  it("supports JSON feature extrude batches for external callers", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const request = {
+      requestId: "agent_req_json_extrude",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "sketch_1",
+            name: "Profile",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_1",
+            id: "rect_1",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          {
+            op: "feature.extrude",
+            id: "feat_1",
+            bodyId: "body_1",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            depth: 4
+          }
+        ]
+      }
+    };
+
+    const response = JSON.parse(
+      adapter.executeJson(JSON.stringify(request))
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+    };
+    const structure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_1"],
+      createdBodyIds: ["body_1"]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      features: [{ id: "feat_1", kind: "extrude" }],
+      bodies: [{ id: "body_1", featureId: "feat_1" }]
+    });
+  });
+
   it("returns project summary queries through the adapter", () => {
     const engine = new CadEngine();
 

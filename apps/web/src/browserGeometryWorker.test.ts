@@ -148,6 +148,33 @@ describe("BrowserGeometryWorker", () => {
     expect(isSettled).toBe(true);
   });
 
+  it("rejects duplicate pending request ids instead of overwriting handlers", async () => {
+    const transport = new FakeGeometryWorkerTransport(
+      () => new Promise<GeometryWorkerMessage>(() => undefined)
+    );
+    const worker = new BrowserGeometryWorker(transport);
+    const request = createBoxTessellationWorkerRequest({
+      id: "duplicate_request",
+      width: 1,
+      height: 1,
+      depth: 1
+    });
+    const firstRequest = worker.execute(request);
+    void firstRequest.catch(() => undefined);
+
+    await expect(worker.execute(request)).rejects.toMatchObject({
+      diagnostics: {
+        error: {
+          code: "WORKER_TRANSPORT_FAILED",
+          message: "Duplicate geometry worker request id: duplicate_request."
+        }
+      }
+    });
+    expect(transport.requests).toHaveLength(1);
+
+    worker.dispose();
+  });
+
   it("can run one box tessellation through the browser transport wrapper", async () => {
     const kernelWorker = new GeometryKernelWorker();
     const transport = new FakeGeometryWorkerTransport((request) =>

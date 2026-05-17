@@ -901,6 +901,18 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.extrude") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      typeof value.depth === "number" &&
+      (value.side === undefined || value.side === "positive")
+    );
+  }
+
   return false;
 }
 

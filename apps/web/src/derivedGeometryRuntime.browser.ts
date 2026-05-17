@@ -21,6 +21,13 @@ type DisposableGeometryWorker = GeometryWorker & {
 
 export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
   let geometryWorker: DisposableGeometryWorker | undefined;
+  let nextRequestNumber = 1;
+
+  function createRequestId(inputId: string): string {
+    const requestId = `occt_mesh_${inputId}_${nextRequestNumber}`;
+    nextRequestNumber += 1;
+    return requestId;
+  }
 
   async function getGeometryWorker(): Promise<DisposableGeometryWorker> {
     if (!geometryWorker) {
@@ -78,7 +85,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateBox(input: DerivedGeometryBoxInput) {
       const { createBoxTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
-      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+      const requestId = createRequestId(input.id);
 
       return executeTessellationRequest(
         input,
@@ -96,7 +103,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateCylinder(input: DerivedGeometryCylinderInput) {
       const { createCylinderTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
-      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+      const requestId = createRequestId(input.id);
 
       return executeTessellationRequest(
         input,
@@ -113,7 +120,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateSphere(input: DerivedGeometrySphereInput) {
       const { createSphereTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
-      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+      const requestId = createRequestId(input.id);
 
       return executeTessellationRequest(
         input,
@@ -129,7 +136,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateCone(input: DerivedGeometryConeInput) {
       const { createConeTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
-      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+      const requestId = createRequestId(input.id);
 
       return executeTessellationRequest(
         input,
@@ -146,7 +153,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateTorus(input: DerivedGeometryTorusInput) {
       const { createTorusTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
-      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+      const requestId = createRequestId(input.id);
 
       return executeTessellationRequest(
         input,
@@ -163,7 +170,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async tessellateExtrude(input: DerivedGeometryExtrudeInput) {
       const { createExtrudeTessellationWorkerRequest } =
         await import("@web-cad/geometry-worker/browser");
-      const requestId = `occt_mesh_${input.id}_${Date.now()}`;
+      const requestId = createRequestId(input.id);
 
       return executeTessellationRequest(
         input,

@@ -2,6 +2,7 @@ import type { CadTransactionHistoryEntry } from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
   formatTransactionActor,
+  formatTransactionAudit,
   formatTransactionDiffSummary,
   formatTransactionOps,
   formatTransactionStatus,
@@ -20,6 +21,18 @@ describe("transaction history display helpers", () => {
         name: "Fixture Agent"
       })
     ).toBe("Fixture Agent [agent-1] (agent)");
+    expect(formatTransactionAudit()).toBe("No audit source");
+    expect(
+      formatTransactionAudit({
+        source: "mcp",
+        requestId: "request-1",
+        toolName: "cad.batch",
+        intent: "commit",
+        operationCount: 3
+      })
+    ).toBe(
+      "source: mcp | tool: cad.batch | request: request-1 | intent: commit | ops: 3"
+    );
   });
 
   it("formats operation and diff summaries compactly", () => {

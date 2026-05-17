@@ -118,6 +118,19 @@ export class BrowserGeometryWorker implements GeometryWorker {
   }
 
   execute(request: GeometryWorkerRequest): Promise<GeometryWorkerResponse> {
+    if (this.#pendingRequests.has(request.id)) {
+      return Promise.reject(
+        new BrowserGeometryWorkerError(
+          createWorkerErrorDiagnostics({
+            stage: "transport",
+            code: "WORKER_TRANSPORT_FAILED",
+            message: `Duplicate geometry worker request id: ${request.id}.`,
+            workerStarted: false
+          })
+        )
+      );
+    }
+
     return new Promise((resolve, reject) => {
       this.#pendingRequests.set(request.id, { resolve, reject });
 

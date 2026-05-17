@@ -21,6 +21,26 @@ describe("viewport camera helpers", () => {
     });
   });
 
+  it("bounds rotated primitive objects without ignoring rotation", () => {
+    const bounds = getRenderSceneBounds([
+      {
+        ...createBoxPrimitive(),
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, Math.PI / 2],
+          scale: [1, 1, 1]
+        }
+      }
+    ]);
+
+    expect(bounds?.min[0]).toBeCloseTo(-1);
+    expect(bounds?.max[0]).toBeCloseTo(1);
+    expect(bounds?.min[1]).toBeCloseTo(-2);
+    expect(bounds?.max[1]).toBeCloseTo(2);
+    expect(bounds?.min[2]).toBeCloseTo(-3);
+    expect(bounds?.max[2]).toBeCloseTo(3);
+  });
+
   it("bounds sphere primitive objects", () => {
     const bounds = getRenderSceneBounds([
       {
@@ -128,6 +148,36 @@ describe("viewport camera helpers", () => {
     });
     expect(fitted.target).toEqual([4, 5, 6]);
     expect(fitted.distance).toBeCloseTo(11.54, 2);
+  });
+
+  it("bounds edge-only sketch display meshes for fit-all behavior", () => {
+    const bounds = getRenderSceneBounds(
+      [],
+      [
+        {
+          id: "sketch:sketch_1",
+          kind: "mesh",
+          vertices: [],
+          indices: [],
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          },
+          edgeSegments: [
+            {
+              start: [-2, -1, 0],
+              end: [2, 3, 0]
+            }
+          ]
+        }
+      ]
+    );
+
+    expect(bounds).toEqual({
+      min: [-2, -1, 0],
+      max: [2, 3, 0]
+    });
   });
 
   it("keeps the current camera when no selected renderable exists", () => {

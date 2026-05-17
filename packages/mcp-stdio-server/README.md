@@ -82,10 +82,11 @@ process through the existing adapter stack. Restarting the process resets that
 document.
 
 `cad.project_summary` returns document units and object names when present.
-`cad.project_features` returns read-only primitive feature summaries derived
-from the current scene objects and transaction history.
-`cad.project_structure` returns the derived default part, primitive features,
-solid bodies, and object source mappings for the current scene-object model.
+`cad.project_features` returns read-only primitive-derived feature summaries
+from current scene objects plus authored sketch-extrude feature summaries.
+`cad.project_structure` returns the default part, primitive-derived
+features/bodies, authored sketch-extrude features/bodies, and source mappings
+for the current model.
 `cad.project_sketches` and `cad.sketch_get` return source-of-truth sketch
 containers and entities from the authoritative document model.
 `cad.object_measurements` and `cad.project_extents` return read-only derived

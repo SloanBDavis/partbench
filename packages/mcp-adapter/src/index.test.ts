@@ -518,6 +518,65 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("commits sketch extrude batches through cad.batch", () => {
+    const server = new CadMcpServer();
+    const batchResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_extrude",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_1",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_1",
+              id: "circle_1",
+              center: [0, 0],
+              radius: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_1",
+              bodyId: "body_1",
+              sketchId: "sketch_1",
+              entityId: "circle_1",
+              depth: 5
+            }
+          ]
+        }
+      }
+    });
+    const structureResult = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_extrude_structure"
+    });
+
+    expect(batchResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_1"],
+        createdBodyIds: ["body_1"]
+      }
+    });
+    expect(structureResult).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: [{ id: "feat_1", kind: "extrude" }],
+        bodies: [{ id: "body_1", featureId: "feat_1" }]
+      }
+    });
+  });
+
   it("returns sketches through cad.project_sketches and cad.sketch_get", () => {
     const server = new CadMcpServer();
 

@@ -125,9 +125,9 @@ Measurement and extent queries use the same read-only query envelope:
 }
 ```
 
-Primitive feature summaries use the same read-only query envelope. The current
-implementation derives these from scene objects and transaction history; it does
-not require a persisted feature graph:
+Feature summaries use the same read-only query envelope. The current
+implementation returns primitive-derived features from scene objects and
+authored sketch-extrude features from the source-of-truth document:
 
 ```json
 {
@@ -140,9 +140,9 @@ not require a persisted feature graph:
 }
 ```
 
-The V2 structure bridge uses the same read-only envelope and returns the derived
-default part, primitive features, solid bodies, and object source mappings for
-the current scene-object model:
+The V2 structure bridge uses the same read-only envelope and returns the
+default part, primitive-derived features/bodies, authored sketch-extrude
+features/bodies, and source mappings for the current model:
 
 ```json
 {

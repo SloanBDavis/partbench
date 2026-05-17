@@ -2,6 +2,7 @@ import type {
   CadActorMetadata,
   CadOperationSummary,
   CadSemanticDiffSummary,
+  CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   CadTransactionStatus
 } from "@web-cad/cad-core";
@@ -26,6 +27,24 @@ export function formatTransactionActor(actor?: CadActorMetadata): string {
   const idSuffix = actor.name && actor.id ? ` [${actor.id}]` : "";
 
   return `${identity}${idSuffix} (${actor.type})`;
+}
+
+export function formatTransactionAudit(
+  audit?: CadTransactionAuditMetadata
+): string {
+  if (!audit) {
+    return "No audit source";
+  }
+
+  const parts = [
+    audit.source ? `source: ${audit.source}` : undefined,
+    audit.toolName ? `tool: ${audit.toolName}` : undefined,
+    audit.requestId ? `request: ${audit.requestId}` : undefined,
+    `intent: ${audit.intent}`,
+    `ops: ${audit.operationCount}`
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join(" | ");
 }
 
 export function formatTransactionOps(

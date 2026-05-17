@@ -46,6 +46,21 @@ describe("cad-core", () => {
     ]);
   });
 
+  it("returns document snapshots instead of live mutable engine state", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const documentSnapshot = engine.getDocument();
+    (documentSnapshot.objects as Map<string, unknown>).delete("box_1");
+
+    expect(engine.getDocument().objects.has("box_1")).toBe(true);
+  });
+
   it("creates a cylinder", () => {
     const engine = new CadEngine();
 
@@ -3037,6 +3052,48 @@ describe("cad-core", () => {
     expect(engine.getTransactions()).toHaveLength(1);
   });
 
+  it("serializes async command validation against the latest authoritative snapshot", async () => {
+    const engine = new CadEngine();
+    const executor = new AsyncCadCommandExecutor(
+      engine,
+      new MockCadCommandWorker({ delayMs: 5 })
+    );
+
+    const createResponsePromise = executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          dimensions: { width: 2, height: 2, depth: 2 }
+        }
+      ]
+    });
+    const updateResponsePromise = executor.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.updateTransform",
+          id: "obj_1",
+          transform: { translation: [4, 0, 0] }
+        }
+      ]
+    });
+
+    await expect(createResponsePromise).resolves.toMatchObject({
+      ok: true,
+      createdIds: ["obj_1"]
+    });
+    await expect(updateResponsePromise).resolves.toMatchObject({
+      ok: true,
+      modifiedIds: ["obj_1"]
+    });
+    expect(
+      engine.getDocument().objects.get("obj_1")?.transform.translation
+    ).toEqual([4, 0, 0]);
+  });
+
   it("does not mutate the authoritative engine when async validation fails", async () => {
     const engine = new CadEngine();
     const executor = new AsyncCadCommandExecutor(
@@ -3343,6 +3400,155 @@ describe("cad-core", () => {
     });
   });
 
+  it("rejects v3 extrude features with dangling sketch or entity references", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_1",
+        bodyId: "body_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 4
+      }
+    ]);
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [],
+            document: {
+              ...project.document,
+              sketches: [],
+              features: project.document.features
+            }
+          })
+        ),
+      {
+        code: "INVALID_FEATURE",
+        path: "$.document.features[0].sketchId"
+      }
+    );
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [],
+            document: {
+              ...project.document,
+              sketches: [
+                {
+                  id: "sketch_1",
+                  name: "Profile",
+                  plane: "XY",
+                  entities: []
+                }
+              ],
+              features: project.document.features
+            }
+          })
+        ),
+      {
+        code: "INVALID_FEATURE",
+        path: "$.document.features[0].entityId"
+      }
+    );
+  });
+
+  it("rejects mis-stamped older project versions with newer source fields", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            schemaVersion: "web-cad.project.v1",
+            document: {
+              units: project.document.units,
+              objects: project.document.objects,
+              sketches: [],
+              nextObjectNumber: project.document.nextObjectNumber
+            }
+          })
+        ),
+      {
+        code: "INVALID_DOCUMENT",
+        path: "$.document.sketches"
+      }
+    );
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            schemaVersion: "web-cad.project.v2",
+            document: {
+              ...project.document,
+              features: []
+            }
+          })
+        ),
+      {
+        code: "INVALID_DOCUMENT",
+        path: "$.document.features"
+      }
+    );
+  });
+
+  it("rejects imported transaction history when saved diffs do not match replay", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const firstTransaction = project.history[0];
+
+    if (!firstTransaction) {
+      throw new Error("Expected exported history transaction.");
+    }
+
+    const badProject = {
+      ...project,
+      history: [
+        {
+          ...firstTransaction,
+          diff: {
+            ...firstTransaction.diff,
+            created: []
+          }
+        }
+      ]
+    };
+
+    expectProjectImportError(
+      () => importCadProjectJson(JSON.stringify(badProject)),
+      {
+        code: "INVALID_TRANSACTION_HISTORY",
+        path: "$.history"
+      }
+    );
+  });
+
   it("round-trips converted unit values and undo history", () => {
     const engine = new CadEngine();
 
@@ -3397,6 +3603,72 @@ describe("cad-core", () => {
       depth: 30
     });
     expect(undoneBox.transform.translation).toEqual([40, 50, 60]);
+  });
+
+  it("converts sketch and extrude source values when preserving physical size", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [10, 20],
+        width: 30,
+        height: 40
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_1",
+        bodyId: "body_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 50
+      }
+    ]);
+    engine.apply({
+      op: "document.updateUnits",
+      units: "cm",
+      mode: "preservePhysicalSize"
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const convertedEntity = restored
+      .getDocument()
+      .sketches.get("sketch_1")
+      ?.entities.get("rect_1");
+    const convertedFeature = restored.getDocument().features.get("feat_1");
+
+    expect(convertedEntity).toEqual({
+      id: "rect_1",
+      kind: "rectangle",
+      center: [1, 2],
+      width: 3,
+      height: 4
+    });
+    expect(convertedFeature?.depth).toBe(5);
+    expect(restored.getTransactions()[1]?.diff.features).toMatchObject({
+      modified: [{ id: "feat_1" }],
+      bodiesModified: [{ id: "body_1" }]
+    });
+
+    restored.undo();
+
+    const undoneEntity = restored
+      .getDocument()
+      .sketches.get("sketch_1")
+      ?.entities.get("rect_1");
+    const undoneFeature = restored.getDocument().features.get("feat_1");
+
+    expect(undoneEntity).toEqual({
+      id: "rect_1",
+      kind: "rectangle",
+      center: [10, 20],
+      width: 30,
+      height: 40
+    });
+    expect(undoneFeature?.depth).toBe(50);
   });
 
   it("round-trips redo history for an undone generated-ID transaction", () => {

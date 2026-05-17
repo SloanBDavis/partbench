@@ -2,6 +2,7 @@ import {
   createDefaultCamera,
   type RenderCamera,
   type RenderPrimitive,
+  type RenderTransform,
   type RenderTriangleMesh,
   type Vec3
 } from "@web-cad/renderer";
@@ -105,47 +106,37 @@ export function getRenderSceneBounds(
 }
 
 function getPrimitiveBounds(primitive: RenderPrimitive): RenderSceneBounds {
-  const { scale, translation } = primitive.transform;
-
   if (primitive.kind === "box") {
-    const halfExtents: Vec3 = [
-      (primitive.dimensions.width * Math.abs(scale[0])) / 2,
-      (primitive.dimensions.height * Math.abs(scale[1])) / 2,
-      (primitive.dimensions.depth * Math.abs(scale[2])) / 2
-    ];
-
-    return boundsFromCenter(translation, halfExtents);
+    return getTransformedExtentsBounds(primitive.transform, [
+      primitive.dimensions.width / 2,
+      primitive.dimensions.height / 2,
+      primitive.dimensions.depth / 2
+    ]);
   }
 
   if (primitive.kind === "sphere") {
-    const halfExtents: Vec3 = [
-      primitive.dimensions.radius * Math.abs(scale[0]),
-      primitive.dimensions.radius * Math.abs(scale[1]),
-      primitive.dimensions.radius * Math.abs(scale[2])
-    ];
-
-    return boundsFromCenter(translation, halfExtents);
+    return getTransformedExtentsBounds(primitive.transform, [
+      primitive.dimensions.radius,
+      primitive.dimensions.radius,
+      primitive.dimensions.radius
+    ]);
   }
 
   if (primitive.kind === "torus") {
     const outerRadius =
       primitive.dimensions.majorRadius + primitive.dimensions.minorRadius;
-    const halfExtents: Vec3 = [
-      outerRadius * Math.abs(scale[0]),
-      outerRadius * Math.abs(scale[1]),
-      primitive.dimensions.minorRadius * Math.abs(scale[2])
-    ];
-
-    return boundsFromCenter(translation, halfExtents);
+    return getTransformedExtentsBounds(primitive.transform, [
+      outerRadius,
+      outerRadius,
+      primitive.dimensions.minorRadius
+    ]);
   }
 
-  const halfExtents: Vec3 = [
-    primitive.dimensions.radius * Math.abs(scale[0]),
-    primitive.dimensions.radius * Math.abs(scale[1]),
-    (primitive.dimensions.height * Math.abs(scale[2])) / 2
-  ];
-
-  return boundsFromCenter(translation, halfExtents);
+  return getTransformedExtentsBounds(primitive.transform, [
+    primitive.dimensions.radius,
+    primitive.dimensions.radius,
+    primitive.dimensions.height / 2
+  ]);
 }
 
 function getMeshBounds(
@@ -154,29 +145,35 @@ function getMeshBounds(
   let bounds: MutableBounds | undefined;
 
   for (const vertex of mesh.vertices) {
-    bounds = includePoint(bounds, [
-      mesh.transform.translation[0] + vertex[0] * mesh.transform.scale[0],
-      mesh.transform.translation[1] + vertex[1] * mesh.transform.scale[1],
-      mesh.transform.translation[2] + vertex[2] * mesh.transform.scale[2]
-    ]);
+    bounds = includePoint(bounds, transformPoint(vertex, mesh.transform));
+  }
+
+  for (const segment of mesh.edgeSegments ?? []) {
+    bounds = includePoint(
+      bounds,
+      transformPoint(segment.start, mesh.transform)
+    );
+    bounds = includePoint(bounds, transformPoint(segment.end, mesh.transform));
   }
 
   return bounds;
 }
 
-function boundsFromCenter(center: Vec3, halfExtents: Vec3): RenderSceneBounds {
-  return {
-    min: [
-      center[0] - halfExtents[0],
-      center[1] - halfExtents[1],
-      center[2] - halfExtents[2]
-    ],
-    max: [
-      center[0] + halfExtents[0],
-      center[1] + halfExtents[1],
-      center[2] + halfExtents[2]
-    ]
-  };
+function getTransformedExtentsBounds(
+  transform: RenderTransform,
+  halfExtents: Vec3
+): RenderSceneBounds {
+  let bounds: MutableBounds | undefined;
+
+  for (const x of [-halfExtents[0], halfExtents[0]]) {
+    for (const y of [-halfExtents[1], halfExtents[1]]) {
+      for (const z of [-halfExtents[2], halfExtents[2]]) {
+        bounds = includePoint(bounds, transformPoint([x, y, z], transform));
+      }
+    }
+  }
+
+  return bounds ?? { min: transform.translation, max: transform.translation };
 }
 
 interface MutableBounds {
@@ -214,4 +211,38 @@ function includePoint(
       Math.max(bounds.max[2], point[2])
     ]
   };
+}
+
+function transformPoint(point: Vec3, transform: RenderTransform): Vec3 {
+  const scaled: Vec3 = [
+    point[0] * transform.scale[0],
+    point[1] * transform.scale[1],
+    point[2] * transform.scale[2]
+  ];
+  const rotated = rotateEuler(scaled, transform.rotation);
+
+  return [
+    rotated[0] + transform.translation[0],
+    rotated[1] + transform.translation[1],
+    rotated[2] + transform.translation[2]
+  ];
+}
+
+function rotateEuler(point: Vec3, rotation: Vec3): Vec3 {
+  const [rx, ry, rz] = rotation;
+  const cosX = Math.cos(rx);
+  const sinX = Math.sin(rx);
+  const cosY = Math.cos(ry);
+  const sinY = Math.sin(ry);
+  const cosZ = Math.cos(rz);
+  const sinZ = Math.sin(rz);
+
+  const y1 = point[1] * cosX - point[2] * sinX;
+  const z1 = point[1] * sinX + point[2] * cosX;
+  const x2 = point[0] * cosY + z1 * sinY;
+  const z2 = -point[0] * sinY + z1 * cosY;
+  const x3 = x2 * cosZ - y1 * sinZ;
+  const y3 = x2 * sinZ + y1 * cosZ;
+
+  return [x3, y3, z2];
 }

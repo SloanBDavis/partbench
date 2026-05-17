@@ -443,7 +443,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_features",
     description:
-      "Returns read-only primitive feature summaries derived from current scene objects.",
+      "Returns read-only feature summaries, including primitive-derived and authored sketch-extrude features.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -453,7 +453,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_structure",
     description:
-      "Returns the derived default part, primitive features, bodies, and object source mappings.",
+      "Returns the default part, primitive-derived features/bodies, authored sketch-extrude features/bodies, and source mappings.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

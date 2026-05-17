@@ -1,6 +1,9 @@
-import { MockCadCommandWorker, type CadWorkerRequest } from "@web-cad/cad-core";
+import {
+  SnapshotCadCommandWorker,
+  type CadWorkerRequest
+} from "@web-cad/cad-core";
 
-const commandWorker = new MockCadCommandWorker({ delayMs: 75 });
+const commandWorker = new SnapshotCadCommandWorker({ delayMs: 75 });
 
 self.addEventListener("message", (event: MessageEvent<CadWorkerRequest>) => {
   void executeCommand(event.data);

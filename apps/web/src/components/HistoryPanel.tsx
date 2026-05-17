@@ -1,6 +1,7 @@
 import type { CadTransactionHistoryEntry } from "@web-cad/cad-core";
 import {
   formatTransactionActor,
+  formatTransactionAudit,
   formatTransactionDiffSummary,
   formatTransactionOps,
   formatTransactionStatus,
@@ -35,6 +36,7 @@ export function HistoryPanel({ transactions, limit = 6 }: HistoryPanelProps) {
                 <strong>{formatTransactionStatus(transaction.status)}</strong>
               </div>
               <p>{formatTransactionActor(transaction.actor)}</p>
+              <p>{formatTransactionAudit(transaction.audit)}</p>
               <p>{formatTransactionOps(transaction.ops)}</p>
               <p className="history-diff">
                 {formatTransactionDiffSummary(transaction.diff)}

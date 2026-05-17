@@ -69,6 +69,37 @@ describe("renderer", () => {
     expect(selectedId).toBe("box_1");
   });
 
+  it("does not double-apply scale when picking box primitives", () => {
+    const camera = createDefaultCamera();
+    const size = { width: 800, height: 600 };
+    const outsideCorrectBox = projectPoint([3.5, 0, 0], camera, size);
+
+    expect(outsideCorrectBox).toBeDefined();
+
+    const selectedId = pickPrimitive(
+      [
+        {
+          id: "box_1",
+          kind: "box",
+          dimensions: { width: 2, height: 2, depth: 2 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [2, 1, 1]
+          }
+        }
+      ],
+      camera,
+      size,
+      {
+        x: outsideCorrectBox?.x ?? 0,
+        y: outsideCorrectBox?.y ?? 0
+      }
+    );
+
+    expect(selectedId).toBeUndefined();
+  });
+
   it("picks a sphere primitive by projected bounds", () => {
     const selectedId = pickPrimitive(
       [

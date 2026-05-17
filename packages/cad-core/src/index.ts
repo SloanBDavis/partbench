@@ -250,9 +250,11 @@ export interface CadCommandWorker {
   execute(request: CadWorkerRequest): Promise<CadWorkerResponse>;
 }
 
-export interface MockCadCommandWorkerOptions {
+export interface SnapshotCadCommandWorkerOptions {
   readonly delayMs?: number;
 }
+
+export type MockCadCommandWorkerOptions = SnapshotCadCommandWorkerOptions;
 
 export const CAD_PROJECT_FORMAT_VERSION_V1 = "web-cad.project.v1";
 export const CAD_PROJECT_FORMAT_VERSION_V2 = "web-cad.project.v2";
@@ -379,7 +381,7 @@ export class CadEngine {
   }
 
   getDocument(): CadDocument {
-    return this.#document;
+    return cloneDocument(this.#document);
   }
 
   getTransactions(): readonly Transaction[] {
@@ -469,7 +471,7 @@ export class CadEngine {
 
     return {
       transaction,
-      document: this.#document
+      document: cloneDocument(this.#document)
     };
   }
 
@@ -745,7 +747,7 @@ export class CadEngine {
 
     return {
       transaction: entry.transaction,
-      document: this.#document
+      document: cloneDocument(this.#document)
     };
   }
 
@@ -766,7 +768,7 @@ export class CadEngine {
 
     return {
       transaction: entry.transaction,
-      document: this.#document
+      document: cloneDocument(this.#document)
     };
   }
 
@@ -789,10 +791,10 @@ export class CadEngine {
   }
 }
 
-export class MockCadCommandWorker implements CadCommandWorker {
+export class SnapshotCadCommandWorker implements CadCommandWorker {
   readonly #delayMs: number;
 
-  constructor(options: MockCadCommandWorkerOptions = {}) {
+  constructor(options: SnapshotCadCommandWorkerOptions = {}) {
     this.#delayMs = options.delayMs ?? 0;
   }
 
@@ -819,8 +821,11 @@ export class MockCadCommandWorker implements CadCommandWorker {
   }
 }
 
+export const MockCadCommandWorker = SnapshotCadCommandWorker;
+
 export class AsyncCadCommandExecutor {
   #nextRequestNumber = 1;
+  #queue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly engine: CadEngine,
@@ -828,6 +833,15 @@ export class AsyncCadCommandExecutor {
   ) {}
 
   async executeBatch(batch: CadBatch): Promise<CadBatchResponse> {
+    const response = this.#queue.then(() => this.#executeBatchNow(batch));
+    this.#queue = response.then(
+      () => undefined,
+      () => undefined
+    );
+    return response;
+  }
+
+  async #executeBatchNow(batch: CadBatch): Promise<CadBatchResponse> {
     const workerResponse = await this.worker.execute({
       id: this.#createRequestId(),
       batch,
@@ -2373,12 +2387,7 @@ function scaleLength(value: number, scaleFactor: number): number {
 }
 
 function cloneDocument(document: CadDocument): CadDocument {
-  return createCadDocument(
-    document.objects,
-    document.units,
-    document.sketches,
-    document.features
-  );
+  return createCadDocumentFromSnapshot(createCadDocumentSnapshot(document));
 }
 
 export function createCadDocumentSnapshot(
@@ -4081,6 +4090,13 @@ function createTransactionEntries(
     nextSketchEntityNumber = run.nextSketchEntityNumber;
     nextFeatureNumber = run.nextFeatureNumber;
     nextBodyNumber = run.nextBodyNumber;
+
+    if (!stableJsonEqual(transaction.diff, run.diff)) {
+      throw new Error(
+        `Saved transaction diff does not match replayed operations for ${transaction.id}.`
+      );
+    }
+
     entries.push({
       transaction: { ...transaction },
       before,
@@ -4322,6 +4338,30 @@ function normalizeCadProject(value: CadProject): CadProject {
   };
 }
 
+function stableJsonEqual(left: unknown, right: unknown): boolean {
+  return stableJsonStringify(left) === stableJsonStringify(right);
+}
+
+function stableJsonStringify(value: unknown): string {
+  return JSON.stringify(sortPlainJson(value));
+}
+
+function sortPlainJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortPlainJson);
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortPlainJson(value[key])])
+  );
+}
+
 function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
   const issues: CadProjectImportIssue[] = [];
 
@@ -4469,7 +4509,40 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures = schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
-  const sketchEntityKinds = new Map<SketchEntityId, SketchEntityKind>();
+  const seenSketchIds = new Set<string>();
+  const sketchEntityRefs = new Map<
+    SketchEntityId,
+    { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
+  >();
+
+  if (schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1) {
+    if ("sketches" in value) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.sketches`,
+        "V1 project documents must not include sketch source data."
+      );
+    }
+
+    if ("features" in value) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.features`,
+        "V1 project documents must not include authored feature source data."
+      );
+    }
+  }
+
+  if (schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 && "features" in value) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.features`,
+      "V2 project documents must not include authored feature source data."
+    );
+  }
 
   if (requiresSketches) {
     if (!Array.isArray(value.sketches)) {
@@ -4480,7 +4553,6 @@ function validateCadDocumentSnapshot(
         "Document sketches must be an array."
       );
     } else {
-      const seenSketchIds = new Set<string>();
       const seenSketchEntityIds = new Set<string>();
 
       for (const [index, sketch] of value.sketches.entries()) {
@@ -4499,7 +4571,7 @@ function validateCadDocumentSnapshot(
           maxGeneratedSketchEntityNumber,
           generatedNumbers.maxGeneratedSketchEntityNumber
         );
-        collectSketchEntityKinds(sketch, sketchEntityKinds);
+        collectSketchEntityRefs(sketch, sketchEntityRefs);
       }
     }
 
@@ -4540,7 +4612,8 @@ function validateCadDocumentSnapshot(
           issues,
           seenFeatureIds,
           seenBodyIds,
-          sketchEntityKinds
+          seenSketchIds,
+          sketchEntityRefs
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -4805,11 +4878,18 @@ function validateSketchEntitySnapshot(
   return maxGeneratedSketchEntityNumber;
 }
 
-function collectSketchEntityKinds(
+function collectSketchEntityRefs(
   value: unknown,
-  output: Map<SketchEntityId, SketchEntityKind>
+  output: Map<
+    SketchEntityId,
+    { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
+  >
 ): void {
-  if (!isRecord(value) || !Array.isArray(value.entities)) {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    !Array.isArray(value.entities)
+  ) {
     return;
   }
 
@@ -4819,7 +4899,7 @@ function collectSketchEntityKinds(
       typeof entity.id === "string" &&
       isSketchEntityKind(entity.kind)
     ) {
-      output.set(entity.id, entity.kind);
+      output.set(entity.id, { sketchId: value.id, kind: entity.kind });
     }
   }
 }
@@ -4830,7 +4910,11 @@ function validateFeatureSnapshot(
   issues: CadProjectImportIssue[],
   seenFeatureIds: Set<string>,
   seenBodyIds: Set<string>,
-  sketchEntityKinds: ReadonlyMap<SketchEntityId, SketchEntityKind>
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<
+    SketchEntityId,
+    { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
+  >
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -4885,6 +4969,13 @@ function validateFeatureSnapshot(
       `${path}.sketchId`,
       "Extrude feature sketchId must be a non-empty string."
     );
+  } else if (!seenSketchIds.has(value.sketchId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Extrude feature sketchId must reference an existing sketch."
+    );
   }
 
   if (typeof value.entityId !== "string" || value.entityId.length === 0) {
@@ -4894,6 +4985,37 @@ function validateFeatureSnapshot(
       `${path}.entityId`,
       "Extrude feature entityId must be a non-empty string."
     );
+  } else if (!sketchEntityRefs.has(value.entityId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Extrude feature entityId must reference an existing sketch entity."
+    );
+  } else {
+    const referencedEntity = sketchEntityRefs.get(value.entityId);
+
+    if (referencedEntity && referencedEntity.sketchId !== value.sketchId) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.entityId`,
+        "Extrude feature entityId must belong to the referenced sketch."
+      );
+    }
+
+    if (
+      referencedEntity &&
+      referencedEntity.kind !== "rectangle" &&
+      referencedEntity.kind !== "circle"
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.entityId`,
+        "Extrude feature entityId must reference a rectangle or circle sketch entity."
+      );
+    }
   }
 
   if (value.profileKind !== "rectangle" && value.profileKind !== "circle") {
@@ -4905,8 +5027,8 @@ function validateFeatureSnapshot(
     );
   } else if (
     typeof value.entityId === "string" &&
-    sketchEntityKinds.has(value.entityId) &&
-    sketchEntityKinds.get(value.entityId) !== value.profileKind
+    sketchEntityRefs.has(value.entityId) &&
+    sketchEntityRefs.get(value.entityId)?.kind !== value.profileKind
   ) {
     addProjectIssue(
       issues,

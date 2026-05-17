@@ -103,6 +103,67 @@ describe("mcp stdio server", () => {
     });
   });
 
+  it("handles sketch extrude cad.batch calls over line-delimited JSON-RPC", () => {
+    const session = createMcpStdioSession();
+    const commit = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "commit-extrude",
+          method: "tools/call",
+          params: {
+            name: "cad.batch",
+            arguments: {
+              allowCommit: true,
+              batch: {
+                version: "cadops.v1",
+                mode: "commit",
+                ops: [
+                  {
+                    op: "sketch.create",
+                    id: "sketch_1",
+                    name: "Profile",
+                    plane: "XY"
+                  },
+                  {
+                    op: "sketch.addRectangle",
+                    sketchId: "sketch_1",
+                    id: "rect_1",
+                    center: [0, 0],
+                    width: 2,
+                    height: 3
+                  },
+                  {
+                    op: "feature.extrude",
+                    id: "feat_1",
+                    bodyId: "body_1",
+                    sketchId: "sketch_1",
+                    entityId: "rect_1",
+                    depth: 4
+                  }
+                ]
+              }
+            }
+          }
+        })
+      )
+    );
+
+    expect(commit).toMatchObject({
+      jsonrpc: "2.0",
+      id: "commit-extrude",
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          createdFeatureIds: ["feat_1"],
+          createdBodyIds: ["body_1"]
+        }
+      }
+    });
+  });
+
   it("returns JSON-RPC parse errors for malformed input", () => {
     const session = createMcpStdioSession();
     const response = parseLineResponse(session.handleLine("{bad json"));

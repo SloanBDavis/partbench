@@ -795,10 +795,9 @@ function getPrimitiveDepth(
 
 function getBoxVertices(primitive: RenderBoxPrimitive): Vec3[] {
   const { depth, height, width } = primitive.dimensions;
-  const scale = primitive.transform.scale;
-  const halfX = (width * scale[0]) / 2;
-  const halfY = (height * scale[1]) / 2;
-  const halfZ = (depth * scale[2]) / 2;
+  const halfX = width / 2;
+  const halfY = height / 2;
+  const halfZ = depth / 2;
   const local: Vec3[] = [
     [-halfX, -halfY, -halfZ],
     [halfX, -halfY, -halfZ],
