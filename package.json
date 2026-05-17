@@ -12,6 +12,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "smoke:occt-browser": "pnpm build:geometry-worker && node scripts/smoke-occt-browser.mjs",
+    "smoke:feature-delete-ui": "pnpm build && node scripts/smoke-feature-delete-ui.mjs",
     "test": "pnpm -r test && pnpm test:scripts",
     "test:scripts": "vitest run scripts/**/*.test.mjs",
     "typecheck": "pnpm -r typecheck"

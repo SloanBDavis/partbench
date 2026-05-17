@@ -103,6 +103,7 @@ pnpm typecheck
 pnpm build
 pnpm lint
 pnpm format:check
+pnpm smoke:feature-delete-ui
 ```
 
 Derived geometry is enabled by default for local Vite serve:
@@ -131,6 +132,17 @@ pnpm smoke:occt-browser
 
 The smoke writes JSONL telemetry to `.metrics/occt-browser.jsonl`. Timing
 magnitude is tracked, not used as a pass/fail budget.
+
+Feature deletion UI smoke:
+
+```sh
+pnpm smoke:feature-delete-ui
+```
+
+This builds the web app, serves the static bundle locally, drives a
+Chromium-compatible browser through the authored sketch rectangle -> extrude ->
+feature delete -> undo -> redo workflow, and fails only on functional workflow
+breakage.
 
 ## Current Limitations
 
