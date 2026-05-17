@@ -4464,6 +4464,114 @@ describe("cad-core", () => {
     );
   });
 
+  it("rejects transaction history that deletes a missing authored feature", () => {
+    const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
+
+    expectProjectImportError(
+      () =>
+        importCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [
+              {
+                id: "txn_bad_feature_delete",
+                status: "committed",
+                ops: [{ op: "feature.delete", id: "missing_feature" }],
+                diff: {
+                  created: [],
+                  modified: [],
+                  deleted: [],
+                  features: {
+                    deleted: [
+                      {
+                        id: "missing_feature",
+                        kind: "extrude",
+                        bodyId: "missing_body",
+                        sketchId: "sketch_1",
+                        entityId: "rect_1",
+                        profileKind: "rectangle"
+                      }
+                    ],
+                    bodiesDeleted: [
+                      {
+                        id: "missing_body",
+                        kind: "solid",
+                        featureId: "missing_feature"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION_HISTORY",
+        path: "$.history",
+        message: "Feature does not exist: missing_feature"
+      }
+    );
+  });
+
+  it("rejects transaction history that deletes a primitive-derived feature", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        importCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [
+              ...project.history,
+              {
+                id: "txn_bad_primitive_feature_delete",
+                status: "committed",
+                ops: [{ op: "feature.delete", id: "feature:box_1" }],
+                diff: {
+                  created: [],
+                  modified: [],
+                  deleted: [],
+                  features: {
+                    deleted: [
+                      {
+                        id: "feature:box_1",
+                        kind: "extrude",
+                        bodyId: "body:box_1",
+                        sketchId: "sketch_1",
+                        entityId: "rect_1",
+                        profileKind: "rectangle"
+                      }
+                    ],
+                    bodiesDeleted: [
+                      {
+                        id: "body:box_1",
+                        kind: "solid",
+                        featureId: "feature:box_1"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          })
+        ),
+      {
+        code: "INVALID_TRANSACTION_HISTORY",
+        path: "$.history",
+        message:
+          "Primitive-derived feature cannot be deleted through feature.delete: feature:box_1"
+      }
+    );
+  });
+
   it("rejects malformed transaction actor metadata in project JSON", () => {
     const engine = new CadEngine();
 
@@ -4667,7 +4775,11 @@ describe("cad-core", () => {
 
 function expectProjectImportError(
   action: () => unknown,
-  expectedIssue: { readonly code: string; readonly path: string }
+  expectedIssue: {
+    readonly code: string;
+    readonly path: string;
+    readonly message?: string;
+  }
 ): void {
   try {
     action();
@@ -4679,7 +4791,10 @@ function expectProjectImportError(
       expect.arrayContaining([
         expect.objectContaining({
           code: expectedIssue.code,
-          path: expectedIssue.path
+          path: expectedIssue.path,
+          ...(expectedIssue.message
+            ? { message: expect.stringContaining(expectedIssue.message) }
+            : {})
         })
       ])
     );
