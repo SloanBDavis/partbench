@@ -96,7 +96,8 @@ export type CadOp =
   | SketchAddCircleOp
   | SketchUpdateEntityOp
   | SketchDeleteEntityOp
-  | FeatureExtrudeOp;
+  | FeatureExtrudeOp
+  | FeatureDeleteOp;
 
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
@@ -264,6 +265,11 @@ export interface FeatureExtrudeOp {
   readonly side?: FeatureExtrudeSide;
 }
 
+export interface FeatureDeleteOp {
+  readonly op: "feature.delete";
+  readonly id: FeatureId;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
@@ -359,6 +365,8 @@ export type CadBatchValidationErrorCode =
   | "INVALID_SKETCH_PLANE"
   | "INVALID_SKETCH_ENTITY"
   | "FEATURE_ALREADY_EXISTS"
+  | "FEATURE_NOT_FOUND"
+  | "FEATURE_NOT_DELETABLE"
   | "BODY_ALREADY_EXISTS"
   | "INVALID_FEATURE"
   | "UNSUPPORTED_SKETCH_PROFILE"

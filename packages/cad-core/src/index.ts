@@ -1364,6 +1364,11 @@ function applyOperation(
       addFeature(state, feature, diff, opIndex);
       return;
     }
+
+    case "feature.delete": {
+      deleteFeature(state, op.id, diff, opIndex);
+      return;
+    }
   }
 }
 
@@ -1554,11 +1559,72 @@ function addFeature(
   pushBodyCreated(diff, bodyRef(feature));
 }
 
+function deleteFeature(
+  state: MutableDocumentState,
+  id: FeatureId,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const featureId = validateFeatureId(id, opIndex);
+  const feature = state.features.get(featureId);
+
+  if (!feature) {
+    if (isPrimitiveFeatureId(state, featureId)) {
+      throwValidationError({
+        code: "FEATURE_NOT_DELETABLE",
+        message: `Primitive-derived feature cannot be deleted through feature.delete: ${featureId}`,
+        opIndex,
+        featureId,
+        path: operationPath(opIndex, "id"),
+        expected: "authored feature id",
+        received: featureId
+      });
+    }
+
+    throwValidationError({
+      code: "FEATURE_NOT_FOUND",
+      message: `Feature does not exist: ${featureId}`,
+      opIndex,
+      featureId,
+      path: operationPath(opIndex, "id"),
+      expected: "existing authored feature id",
+      received: featureId
+    });
+  }
+
+  state.features.delete(featureId);
+  pushFeatureDeleted(diff, featureRef(feature));
+  pushBodyDeleted(diff, bodyRef(feature));
+}
+
+function validateFeatureId(id: FeatureId, opIndex?: number): FeatureId {
+  if (typeof id === "string" && id.trim().length > 0) {
+    return id;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "Feature id must be a non-empty string.",
+    opIndex,
+    featureId: id,
+    path: operationPath(opIndex, "id"),
+    expected: "non-empty feature id",
+    received: describeReceived(id)
+  });
+}
+
 function hasFeatureId(state: MutableDocumentState, id: FeatureId): boolean {
   if (state.features.has(id)) {
     return true;
   }
 
+  return isPrimitiveFeatureId(state, id);
+}
+
+function isPrimitiveFeatureId(
+  state: MutableDocumentState,
+  id: FeatureId
+): boolean {
   for (const objectId of state.objects.keys()) {
     if (createPrimitiveFeatureId(objectId) === id) {
       return true;
@@ -2187,12 +2253,23 @@ function pushFeatureModified(
   ensureFeatureDiff(diff).modified.push(ref);
 }
 
+function pushFeatureDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadFeatureRef
+): void {
+  ensureFeatureDiff(diff).deleted.push(ref);
+}
+
 function pushBodyCreated(diff: MutableSemanticDiff, ref: CadBodyRef): void {
   ensureFeatureDiff(diff).bodiesCreated.push(ref);
 }
 
 function pushBodyModified(diff: MutableSemanticDiff, ref: CadBodyRef): void {
   ensureFeatureDiff(diff).bodiesModified.push(ref);
+}
+
+function pushBodyDeleted(diff: MutableSemanticDiff, ref: CadBodyRef): void {
+  ensureFeatureDiff(diff).bodiesDeleted.push(ref);
 }
 
 function ensureFeatureDiff(
@@ -2776,6 +2853,7 @@ function createOperationSummaries(
   let createdSketchIndex = 0;
   let createdSketchEntityIndex = 0;
   let createdFeatureIndex = 0;
+  let deletedFeatureIndex = 0;
 
   return transaction.ops.map((op) => {
     const createdRef =
@@ -2796,6 +2874,10 @@ function createOperationSummaries(
     const createdFeatureRef =
       op.op === "feature.extrude"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
+        : undefined;
+    const deletedFeatureRef =
+      op.op === "feature.delete"
+        ? transaction.diff.features?.deleted?.[deletedFeatureIndex++]
         : undefined;
 
     switch (op.op) {
@@ -2999,6 +3081,16 @@ function createOperationSummaries(
           bodyId
         });
       }
+
+      case "feature.delete":
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Delete feature ${op.id}`,
+          featureId: op.id,
+          bodyId: deletedFeatureRef?.bodyId,
+          sketchId: deletedFeatureRef?.sketchId,
+          sketchEntityId: deletedFeatureRef?.entityId
+        });
     }
   });
 }
@@ -5934,6 +6026,10 @@ function isCadOp(value: unknown): value is CadOp {
       isPositiveFiniteNumber(value.depth) &&
       (value.side === undefined || value.side === "positive")
     );
+  }
+
+  if (value.op === "feature.delete") {
+    return typeof value.id === "string";
   }
 
   return false;

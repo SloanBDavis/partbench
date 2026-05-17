@@ -155,6 +155,10 @@ describe("cad-protocol", () => {
         entityId: "rect_1",
         depth: 5,
         side: "positive"
+      },
+      {
+        op: "feature.delete",
+        id: "feat_1"
       }
     ];
 
@@ -182,7 +186,8 @@ describe("cad-protocol", () => {
       "sketch.deleteEntity",
       "sketch.rename",
       "sketch.delete",
-      "feature.extrude"
+      "feature.extrude",
+      "feature.delete"
     ]);
     expect(ops[0]).toMatchObject({
       op: "document.updateUnits",

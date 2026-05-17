@@ -2311,6 +2311,202 @@ describe("cad-core", () => {
     expect(engine.getDocument().features.size).toBe(0);
   });
 
+  it("deletes authored extrude features and removes their bodies from structure", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_1",
+        bodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 3
+      }
+    ]);
+
+    const result = engine.apply({
+      op: "feature.delete",
+      id: "feat_rect_1"
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(engine.getDocument().features.size).toBe(0);
+    expect(result.transaction.diff.features).toMatchObject({
+      deleted: [
+        {
+          id: "feat_rect_1",
+          kind: "extrude",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle"
+        }
+      ],
+      bodiesDeleted: [
+        {
+          id: "body_rect_1",
+          kind: "solid",
+          featureId: "feat_rect_1"
+        }
+      ]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      featureCount: 0,
+      bodyCount: 0,
+      features: [],
+      bodies: []
+    });
+  });
+
+  it("validates missing and primitive-derived feature deletes", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const missing = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.delete", id: "missing_feature" }]
+    });
+    const primitive = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.delete", id: "feature:box_1" }]
+    });
+    const empty = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.delete", id: "" }]
+    });
+
+    expect(missing).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_FOUND",
+        featureId: "missing_feature"
+      }
+    });
+    expect(primitive).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_DELETABLE",
+        featureId: "feature:box_1"
+      }
+    });
+    expect(empty).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_FEATURE",
+        path: "$.ops[0].id"
+      }
+    });
+  });
+
+  it("undoes and redoes feature deletes", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_1",
+        bodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        depth: 4
+      }
+    ]);
+
+    engine.apply({ op: "feature.delete", id: "feat_circle_1" });
+    expect(engine.getDocument().features.has("feat_circle_1")).toBe(false);
+
+    engine.undo();
+    expect(engine.getDocument().features.get("feat_circle_1")).toMatchObject({
+      id: "feat_circle_1",
+      bodyId: "body_circle_1"
+    });
+
+    engine.redo();
+    expect(engine.getDocument().features.has("feat_circle_1")).toBe(false);
+  });
+
+  it("supports feature delete through batch dry-run and commit", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_1",
+        bodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 3
+      }
+    ]);
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.delete", id: "feat_rect_1" }]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      deletedFeatureIds: ["feat_rect_1"],
+      deletedBodyIds: ["body_rect_1"]
+    });
+    expect(engine.getDocument().features.has("feat_rect_1")).toBe(true);
+
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "feature.delete", id: "feat_rect_1" }]
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      deletedFeatureIds: ["feat_rect_1"],
+      deletedBodyIds: ["body_rect_1"],
+      transactionId: "txn_2"
+    });
+    expect(engine.getDocument().features.has("feat_rect_1")).toBe(false);
+  });
+
   it("keeps primitive feature summaries aligned with undo and redo", () => {
     const engine = new CadEngine();
 
