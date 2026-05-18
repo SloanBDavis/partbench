@@ -398,7 +398,9 @@ Implemented:
 - `sketch.createOnFace` is the first reference-consuming mutation. It creates a
   source-of-truth sketch attached to an eligible generated planar face reference
   from an authored sketch-extrude body while keeping generated references
-  derived rather than persisted topology.
+  derived rather than persisted topology. The command accepts the original body
+  ID plus generated face stable ID pair, or a named reference that resolves to an
+  eligible generated planar face.
 - The web UI exposes eligible generated face references on selected authored
   bodies and creates attached sketches through the same `sketch.createOnFace`
   CADOps command. Ineligible references remain visible as inspection metadata

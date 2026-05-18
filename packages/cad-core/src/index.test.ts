@@ -873,6 +873,74 @@ describe("cad-core", () => {
     expect(engine.getDocument().sketches.has("sketch_side_1")).toBe(true);
   });
 
+  it("creates attached sketches from named generated face references", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+
+    const result = engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_named_face_1",
+      name: "Named face sketch",
+      referenceName: "Top face"
+    });
+
+    expect(result.document.sketches.get("sketch_named_face_1")).toMatchObject({
+      id: "sketch_named_face_1",
+      name: "Named face sketch",
+      plane: "XY",
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap",
+        sourceFeatureId: "feat_rect_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        faceRole: "endCap"
+      }
+    });
+
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: [
+        {},
+        {
+          ops: [
+            {
+              op: "reference.nameGenerated",
+              label: "Name generated face reference Top face"
+            }
+          ]
+        },
+        {
+          ops: [
+            {
+              op: "sketch.createOnFace",
+              label:
+                "Create sketch sketch_named_face_1 on named reference Top face"
+            }
+          ]
+        }
+      ]
+    });
+
+    engine.undo();
+    expect(engine.getDocument().sketches.has("sketch_named_face_1")).toBe(
+      false
+    );
+    engine.redo();
+    expect(engine.getDocument().sketches.has("sketch_named_face_1")).toBe(true);
+  });
+
   it("validates attached sketch generated face references", () => {
     const rectangleEngine = createRectangleExtrudeEngine();
 
@@ -999,6 +1067,120 @@ describe("cad-core", () => {
     });
   });
 
+  it("validates named generated references for attached sketch creation", () => {
+    const missingNameEngine = createRectangleExtrudeEngine();
+    expect(
+      missingNameEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Missing named face sketch",
+            referenceName: "Missing face"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        op: "sketch.createOnFace",
+        referenceName: "Missing face"
+      }
+    });
+
+    const staleNameEngine = createRectangleExtrudeEngine();
+    staleNameEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Old top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    staleNameEngine.apply({ op: "feature.delete", id: "feat_rect_1" });
+    expect(
+      staleNameEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Stale named face sketch",
+            referenceName: "Old top face"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "BODY_NOT_FOUND",
+        op: "sketch.createOnFace",
+        referenceName: "Old top face",
+        bodyId: "body_rect_1"
+      }
+    });
+
+    const nonFaceEngine = createRectangleExtrudeEngine();
+    nonFaceEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Whole body",
+      bodyId: "body_rect_1",
+      stableId: "generated:body:body_rect_1"
+    });
+    expect(
+      nonFaceEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Body named sketch",
+            referenceName: "Whole body"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        op: "sketch.createOnFace",
+        referenceName: "Whole body",
+        expected: "face",
+        received: "body"
+      }
+    });
+
+    const circularFaceEngine = createCircleExtrudeEngine();
+    circularFaceEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Circular wall",
+      bodyId: "body_circle_1",
+      stableId: "generated:face:body_circle_1:side:circular"
+    });
+    expect(
+      circularFaceEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Circular side sketch",
+            referenceName: "Circular wall"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        op: "sketch.createOnFace",
+        referenceName: "Circular wall",
+        expected: "feature.attachSketchPlane",
+        received: "face"
+      }
+    });
+  });
+
   it("supports attached sketch creation in batch dry-run and commit", () => {
     const engine = createRectangleExtrudeEngine();
     const batch = {
@@ -1029,6 +1211,52 @@ describe("cad-core", () => {
     });
     expect(engine.getDocument().sketches.get("sketch_2")).toMatchObject({
       attachment: {
+        faceStableId: "generated:face:body_rect_1:startCap",
+        faceRole: "startCap"
+      }
+    });
+  });
+
+  it("supports named face attached sketch creation in batch dry-run and commit", () => {
+    const engine = createRectangleExtrudeEngine();
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "reference.nameGenerated" as const,
+          name: "Start face",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap"
+        },
+        {
+          op: "sketch.createOnFace" as const,
+          id: "sketch_named_face_1",
+          name: "Named generated face sketch",
+          referenceName: "Start face"
+        }
+      ]
+    };
+
+    expect(engine.executeBatch(batch)).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_named_face_1"]
+    });
+    expect(engine.getDocument().sketches.has("sketch_named_face_1")).toBe(
+      false
+    );
+
+    expect(engine.executeBatch({ ...batch, mode: "commit" })).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_named_face_1"]
+    });
+    expect(
+      engine.getDocument().sketches.get("sketch_named_face_1")
+    ).toMatchObject({
+      attachment: {
+        bodyId: "body_rect_1",
         faceStableId: "generated:face:body_rect_1:startCap",
         faceRole: "startCap"
       }
@@ -1090,6 +1318,57 @@ describe("cad-core", () => {
           faceRole: "endCap"
         }
       }
+    });
+  });
+
+  it("round-trips named face attached sketches through project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "End face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_import_named_face",
+      name: "Imported named face sketch",
+      referenceName: "End face"
+    });
+
+    const imported = importCadProjectJson(exportCadProjectJson(engine));
+    expect(
+      imported.getDocument().sketches.get("sketch_import_named_face")
+    ).toMatchObject({
+      attachment: {
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap",
+        faceRole: "endCap"
+      }
+    });
+
+    const history = imported.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: [
+        {},
+        {
+          ops: [{ op: "reference.nameGenerated" }]
+        },
+        {
+          ops: [
+            {
+              op: "sketch.createOnFace",
+              label:
+                "Create sketch sketch_import_named_face on named reference End face"
+            }
+          ]
+        }
+      ]
     });
   });
 

@@ -489,14 +489,16 @@ discrete semantic vertices. These measurements are derived query results, not
 saved source data, and they are not exact persisted B-rep topology.
 
 `sketch.createOnFace` is the first command that consumes generated references.
-It accepts a body ID and generated face stable ID, resolves the reference through
-the same semantic generated-reference model, requires the reference to be a face,
-and requires eligibility for `feature.attachSketchPlane`. It currently supports
-only generated planar faces from authored sketch-extrude bodies. Circular side
-faces, edges, vertices, bodies, missing/stale references, and primitive-derived
-bodies fail with structured validation errors. The created sketch stores only
-the attachment metadata needed to round-trip its authored placement; it does not
-persist generated topology or exact B-rep data.
+It accepts either a body ID plus generated face stable ID, or a named reference
+that resolves to a generated reference. Both paths resolve through the same
+semantic generated-reference model, require the reference to be a face, and
+require eligibility for `feature.attachSketchPlane`. It currently supports only
+generated planar faces from authored sketch-extrude bodies. Circular side faces,
+edges, vertices, bodies, missing/stale references, missing/stale named
+references, and primitive-derived bodies fail with structured validation errors.
+The created sketch stores only the resolved attachment metadata needed to
+round-trip its authored placement; it does not persist generated topology,
+named-reference lookup results, or exact B-rep data.
 
 ## Future Format Version Triggers
 

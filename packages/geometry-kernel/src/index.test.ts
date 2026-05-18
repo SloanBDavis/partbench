@@ -4,251 +4,289 @@ import {
   getGeometryResponseTransferables
 } from "./index";
 
+const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
+
 describe("geometry-kernel facade", () => {
-  it("tessellates a box through the isolated OCCT WASM adapter", async () => {
-    const response = await executeGeometryKernelRequest({
-      id: "geometry_req_1",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateBox",
-      dimensions: {
-        width: 10,
-        height: 20,
-        depth: 30
+  it(
+    "tessellates a box through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_1",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateBox",
+        dimensions: {
+          width: 10,
+          height: 20,
+          depth: 30
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-    });
 
-    expect(response.ok).toBe(true);
+      expect(response).toMatchObject({
+        id: "geometry_req_1",
+        op: "geometry.tessellateBox",
+        warnings: []
+      });
+      expect(response.mesh.primitive).toBe("box");
+      expect(response.mesh.faceCount).toBe(6);
+      expect(response.mesh.vertexCount).toBe(24);
+      expect(response.mesh.triangleCount).toBe(12);
+      expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+      expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+      expect(response.mesh.positions).toHaveLength(
+        response.mesh.vertexCount * 3
+      );
+      expect(response.mesh.indices).toHaveLength(
+        response.mesh.triangleCount * 3
+      );
+      expect(getGeometryResponseTransferables(response)).toEqual([
+        response.mesh.positions.buffer,
+        response.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 
-    if (!response.ok) {
-      throw new Error(response.error.message);
-    }
+  it(
+    "tessellates a cylinder through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_cylinder",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateCylinder",
+        dimensions: {
+          radius: 10,
+          height: 30
+        }
+      });
 
-    expect(response).toMatchObject({
-      id: "geometry_req_1",
-      op: "geometry.tessellateBox",
-      warnings: []
-    });
-    expect(response.mesh.primitive).toBe("box");
-    expect(response.mesh.faceCount).toBe(6);
-    expect(response.mesh.vertexCount).toBe(24);
-    expect(response.mesh.triangleCount).toBe(12);
-    expect(response.mesh.positions).toBeInstanceOf(Float32Array);
-    expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
-    expect(response.mesh.positions).toHaveLength(response.mesh.vertexCount * 3);
-    expect(response.mesh.indices).toHaveLength(response.mesh.triangleCount * 3);
-    expect(getGeometryResponseTransferables(response)).toEqual([
-      response.mesh.positions.buffer,
-      response.mesh.indices.buffer
-    ]);
-  });
+      expect(response.ok).toBe(true);
 
-  it("tessellates a cylinder through the isolated OCCT WASM adapter", async () => {
-    const response = await executeGeometryKernelRequest({
-      id: "geometry_req_cylinder",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateCylinder",
-      dimensions: {
-        radius: 10,
-        height: 30
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-    });
 
-    expect(response.ok).toBe(true);
+      expect(response).toMatchObject({
+        id: "geometry_req_cylinder",
+        op: "geometry.tessellateCylinder",
+        warnings: []
+      });
+      expect(response.mesh.primitive).toBe("cylinder");
+      expect(response.mesh.faceCount).toBeGreaterThanOrEqual(3);
+      expect(response.mesh.vertexCount).toBeGreaterThan(0);
+      expect(response.mesh.triangleCount).toBeGreaterThan(0);
+      expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+      expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+      expect(response.mesh.positions).toHaveLength(
+        response.mesh.vertexCount * 3
+      );
+      expect(response.mesh.indices).toHaveLength(
+        response.mesh.triangleCount * 3
+      );
+      expect(getGeometryResponseTransferables(response)).toEqual([
+        response.mesh.positions.buffer,
+        response.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 
-    if (!response.ok) {
-      throw new Error(response.error.message);
-    }
+  it(
+    "tessellates a sphere through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_sphere",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateSphere",
+        dimensions: {
+          radius: 10
+        }
+      });
 
-    expect(response).toMatchObject({
-      id: "geometry_req_cylinder",
-      op: "geometry.tessellateCylinder",
-      warnings: []
-    });
-    expect(response.mesh.primitive).toBe("cylinder");
-    expect(response.mesh.faceCount).toBeGreaterThanOrEqual(3);
-    expect(response.mesh.vertexCount).toBeGreaterThan(0);
-    expect(response.mesh.triangleCount).toBeGreaterThan(0);
-    expect(response.mesh.positions).toBeInstanceOf(Float32Array);
-    expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
-    expect(response.mesh.positions).toHaveLength(response.mesh.vertexCount * 3);
-    expect(response.mesh.indices).toHaveLength(response.mesh.triangleCount * 3);
-    expect(getGeometryResponseTransferables(response)).toEqual([
-      response.mesh.positions.buffer,
-      response.mesh.indices.buffer
-    ]);
-  });
+      expect(response.ok).toBe(true);
 
-  it("tessellates a sphere through the isolated OCCT WASM adapter", async () => {
-    const response = await executeGeometryKernelRequest({
-      id: "geometry_req_sphere",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateSphere",
-      dimensions: {
-        radius: 10
+      if (!response.ok) {
+        throw new Error(response.error.message);
       }
-    });
 
-    expect(response.ok).toBe(true);
+      expect(response).toMatchObject({
+        id: "geometry_req_sphere",
+        op: "geometry.tessellateSphere",
+        warnings: []
+      });
+      expect(response.mesh.primitive).toBe("sphere");
+      expect(response.mesh.faceCount).toBeGreaterThan(0);
+      expect(response.mesh.vertexCount).toBeGreaterThan(0);
+      expect(response.mesh.triangleCount).toBeGreaterThan(0);
+      expect(response.mesh.positions).toBeInstanceOf(Float32Array);
+      expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
+      expect(response.mesh.positions).toHaveLength(
+        response.mesh.vertexCount * 3
+      );
+      expect(response.mesh.indices).toHaveLength(
+        response.mesh.triangleCount * 3
+      );
+      expect(getGeometryResponseTransferables(response)).toEqual([
+        response.mesh.positions.buffer,
+        response.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 
-    if (!response.ok) {
-      throw new Error(response.error.message);
-    }
+  it(
+    "tessellates cone and torus primitives through the isolated OCCT WASM adapter",
+    async () => {
+      const cone = await executeGeometryKernelRequest({
+        id: "geometry_req_cone",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateCone",
+        dimensions: {
+          radius: 2,
+          height: 5
+        }
+      });
+      const torus = await executeGeometryKernelRequest({
+        id: "geometry_req_torus",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateTorus",
+        dimensions: {
+          majorRadius: 3,
+          minorRadius: 0.5
+        }
+      });
 
-    expect(response).toMatchObject({
-      id: "geometry_req_sphere",
-      op: "geometry.tessellateSphere",
-      warnings: []
-    });
-    expect(response.mesh.primitive).toBe("sphere");
-    expect(response.mesh.faceCount).toBeGreaterThan(0);
-    expect(response.mesh.vertexCount).toBeGreaterThan(0);
-    expect(response.mesh.triangleCount).toBeGreaterThan(0);
-    expect(response.mesh.positions).toBeInstanceOf(Float32Array);
-    expect(response.mesh.indices).toBeInstanceOf(Uint32Array);
-    expect(response.mesh.positions).toHaveLength(response.mesh.vertexCount * 3);
-    expect(response.mesh.indices).toHaveLength(response.mesh.triangleCount * 3);
-    expect(getGeometryResponseTransferables(response)).toEqual([
-      response.mesh.positions.buffer,
-      response.mesh.indices.buffer
-    ]);
-  });
+      expect(cone.ok).toBe(true);
+      expect(torus.ok).toBe(true);
 
-  it("tessellates cone and torus primitives through the isolated OCCT WASM adapter", async () => {
-    const cone = await executeGeometryKernelRequest({
-      id: "geometry_req_cone",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateCone",
-      dimensions: {
-        radius: 2,
-        height: 5
+      if (!cone.ok || !torus.ok) {
+        throw new Error("Expected cone and torus tessellation to succeed.");
       }
-    });
-    const torus = await executeGeometryKernelRequest({
-      id: "geometry_req_torus",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateTorus",
-      dimensions: {
-        majorRadius: 3,
-        minorRadius: 0.5
+
+      expect(cone.mesh.primitive).toBe("cone");
+      expect(cone.mesh.vertexCount).toBeGreaterThan(0);
+      expect(cone.mesh.triangleCount).toBeGreaterThan(0);
+      expect(torus.mesh.primitive).toBe("torus");
+      expect(torus.mesh.vertexCount).toBeGreaterThan(0);
+      expect(torus.mesh.triangleCount).toBeGreaterThan(0);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "tessellates rectangle and circle extrudes through the isolated OCCT WASM adapter",
+    async () => {
+      const rectangle = await executeGeometryKernelRequest({
+        id: "geometry_req_rect_extrude",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [1, 2],
+          width: 4,
+          height: 3
+        },
+        depth: 5
+      });
+      const circle = await executeGeometryKernelRequest({
+        id: "geometry_req_circle_extrude",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XZ",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 2
+        },
+        depth: 6
+      });
+
+      expect(rectangle.ok).toBe(true);
+      expect(circle.ok).toBe(true);
+
+      if (!rectangle.ok || !circle.ok) {
+        throw new Error("Expected sketch extrude tessellation to succeed.");
       }
-    });
 
-    expect(cone.ok).toBe(true);
-    expect(torus.ok).toBe(true);
+      expect(rectangle.mesh.primitive).toBe("extrude");
+      expect(rectangle.mesh.vertexCount).toBeGreaterThan(0);
+      expect(rectangle.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getMeshBounds(rectangle.mesh.positions)).toEqual({
+        min: [-1, 0.5, 0],
+        max: [3, 3.5, 5]
+      });
+      const circleBounds = getMeshBounds(circle.mesh.positions);
 
-    if (!cone.ok || !torus.ok) {
-      throw new Error("Expected cone and torus tessellation to succeed.");
-    }
+      expect(circle.mesh.primitive).toBe("extrude");
+      expect(circle.mesh.vertexCount).toBeGreaterThan(0);
+      expect(circle.mesh.triangleCount).toBeGreaterThan(0);
+      expect(circleBounds.min[0]).toBeCloseTo(-2, 6);
+      expect(circleBounds.max[0]).toBeCloseTo(2, 6);
+      expect(circleBounds.min[1]).toBeCloseTo(0, 6);
+      expect(circleBounds.max[1]).toBeCloseTo(6, 6);
+      expect(circleBounds.min[2]).toBeGreaterThanOrEqual(-2);
+      expect(circleBounds.max[2]).toBeLessThanOrEqual(2);
+      expect(circleBounds.min[2] + circleBounds.max[2]).toBeCloseTo(0, 6);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 
-    expect(cone.mesh.primitive).toBe("cone");
-    expect(cone.mesh.vertexCount).toBeGreaterThan(0);
-    expect(cone.mesh.triangleCount).toBeGreaterThan(0);
-    expect(torus.mesh.primitive).toBe("torus");
-    expect(torus.mesh.vertexCount).toBeGreaterThan(0);
-    expect(torus.mesh.triangleCount).toBeGreaterThan(0);
-  });
+  it(
+    "maps extrude mesh bounds for negative and symmetric sides",
+    async () => {
+      const negative = await executeGeometryKernelRequest({
+        id: "geometry_req_rect_negative_extrude",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 2,
+          height: 2
+        },
+        depth: 4,
+        side: "negative"
+      });
+      const symmetric = await executeGeometryKernelRequest({
+        id: "geometry_req_rect_symmetric_extrude",
+        version: "geometry-kernel.v1",
+        op: "geometry.tessellateExtrude",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 2,
+          height: 2
+        },
+        depth: 4,
+        side: "symmetric"
+      });
 
-  it("tessellates rectangle and circle extrudes through the isolated OCCT WASM adapter", async () => {
-    const rectangle = await executeGeometryKernelRequest({
-      id: "geometry_req_rect_extrude",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateExtrude",
-      sketchPlane: "XY",
-      profile: {
-        kind: "rectangle",
-        center: [1, 2],
-        width: 4,
-        height: 3
-      },
-      depth: 5
-    });
-    const circle = await executeGeometryKernelRequest({
-      id: "geometry_req_circle_extrude",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateExtrude",
-      sketchPlane: "XZ",
-      profile: {
-        kind: "circle",
-        center: [0, 0],
-        radius: 2
-      },
-      depth: 6
-    });
+      expect(negative.ok).toBe(true);
+      expect(symmetric.ok).toBe(true);
 
-    expect(rectangle.ok).toBe(true);
-    expect(circle.ok).toBe(true);
+      if (!negative.ok || !symmetric.ok) {
+        throw new Error("Expected extrude side tessellation to succeed.");
+      }
 
-    if (!rectangle.ok || !circle.ok) {
-      throw new Error("Expected sketch extrude tessellation to succeed.");
-    }
-
-    expect(rectangle.mesh.primitive).toBe("extrude");
-    expect(rectangle.mesh.vertexCount).toBeGreaterThan(0);
-    expect(rectangle.mesh.triangleCount).toBeGreaterThan(0);
-    expect(getMeshBounds(rectangle.mesh.positions)).toEqual({
-      min: [-1, 0.5, 0],
-      max: [3, 3.5, 5]
-    });
-    const circleBounds = getMeshBounds(circle.mesh.positions);
-
-    expect(circle.mesh.primitive).toBe("extrude");
-    expect(circle.mesh.vertexCount).toBeGreaterThan(0);
-    expect(circle.mesh.triangleCount).toBeGreaterThan(0);
-    expect(circleBounds.min[0]).toBeCloseTo(-2, 6);
-    expect(circleBounds.max[0]).toBeCloseTo(2, 6);
-    expect(circleBounds.min[1]).toBeCloseTo(0, 6);
-    expect(circleBounds.max[1]).toBeCloseTo(6, 6);
-    expect(circleBounds.min[2]).toBeGreaterThanOrEqual(-2);
-    expect(circleBounds.max[2]).toBeLessThanOrEqual(2);
-    expect(circleBounds.min[2] + circleBounds.max[2]).toBeCloseTo(0, 6);
-  });
-
-  it("maps extrude mesh bounds for negative and symmetric sides", async () => {
-    const negative = await executeGeometryKernelRequest({
-      id: "geometry_req_rect_negative_extrude",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateExtrude",
-      sketchPlane: "XY",
-      profile: {
-        kind: "rectangle",
-        center: [0, 0],
-        width: 2,
-        height: 2
-      },
-      depth: 4,
-      side: "negative"
-    });
-    const symmetric = await executeGeometryKernelRequest({
-      id: "geometry_req_rect_symmetric_extrude",
-      version: "geometry-kernel.v1",
-      op: "geometry.tessellateExtrude",
-      sketchPlane: "XY",
-      profile: {
-        kind: "rectangle",
-        center: [0, 0],
-        width: 2,
-        height: 2
-      },
-      depth: 4,
-      side: "symmetric"
-    });
-
-    expect(negative.ok).toBe(true);
-    expect(symmetric.ok).toBe(true);
-
-    if (!negative.ok || !symmetric.ok) {
-      throw new Error("Expected extrude side tessellation to succeed.");
-    }
-
-    expect(getMeshBounds(negative.mesh.positions)).toEqual({
-      min: [-1, -1, -4],
-      max: [1, 1, 0]
-    });
-    expect(getMeshBounds(symmetric.mesh.positions)).toEqual({
-      min: [-1, -1, -2],
-      max: [1, 1, 2]
-    });
-  });
+      expect(getMeshBounds(negative.mesh.positions)).toEqual({
+        min: [-1, -1, -4],
+        max: [1, 1, 0]
+      });
+      expect(getMeshBounds(symmetric.mesh.positions)).toEqual({
+        min: [-1, -1, -2],
+        max: [1, 1, 2]
+      });
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({

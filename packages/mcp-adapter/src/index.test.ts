@@ -1175,6 +1175,65 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes sketch.createOnFace with a named face reference through cad.batch", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_on_named_face",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "named_profile_sketch",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "named_profile_sketch",
+              id: "named_profile_rect",
+              center: [0, 0],
+              width: 2,
+              height: 3
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_named_profile",
+              bodyId: "body_named_profile",
+              sketchId: "named_profile_sketch",
+              entityId: "named_profile_rect",
+              depth: 4
+            },
+            {
+              op: "reference.nameGenerated",
+              name: "Named end face",
+              bodyId: "body_named_profile",
+              stableId: "generated:face:body_named_profile:endCap"
+            },
+            {
+              op: "sketch.createOnFace",
+              id: "named_face_sketch",
+              name: "Named face sketch",
+              referenceName: "Named end face"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdSketchIds: ["named_profile_sketch", "named_face_sketch"],
+      createdFeatureIds: ["feat_named_profile"],
+      createdBodyIds: ["body_named_profile"]
+    });
+  });
+
   it("returns generated body references through cad.body_generated_references", () => {
     const server = new CadMcpServer();
 

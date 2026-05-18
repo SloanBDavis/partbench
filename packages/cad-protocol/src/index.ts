@@ -208,8 +208,9 @@ export interface SketchCreateOnFaceOp {
   readonly op: "sketch.createOnFace";
   readonly id?: SketchId;
   readonly name: string;
-  readonly bodyId: BodyId;
-  readonly faceStableId: string;
+  readonly bodyId?: BodyId;
+  readonly faceStableId?: string;
+  readonly referenceName?: NamedReferenceName;
 }
 
 export interface SketchRenameOp {

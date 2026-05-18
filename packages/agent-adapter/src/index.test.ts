@@ -1408,6 +1408,60 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes sketch.createOnFace with a named face reference through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_named_profile",
+      entityId: "rect_named_profile",
+      featureId: "feat_named_profile",
+      bodyId: "body_named_profile"
+    });
+
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "reference.nameGenerated" as const,
+          name: "Named end face",
+          bodyId: "body_named_profile",
+          stableId: "generated:face:body_named_profile:endCap"
+        },
+        {
+          op: "sketch.createOnFace" as const,
+          id: "sketch_named_face",
+          name: "Named face sketch",
+          referenceName: "Named end face"
+        }
+      ]
+    };
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_create_on_named_face_dry",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_named_face"]
+    });
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_create_on_named_face_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: { ...batch, mode: "commit" }
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_named_face"]
+    });
+  });
+
   it("returns generated body references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

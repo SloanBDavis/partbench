@@ -254,10 +254,13 @@ function createOperationSummaries(
 
       case "sketch.createOnFace": {
         const sketchId = op.id ?? createdSketchRef?.id;
+        const target = op.referenceName
+          ? `named reference ${op.referenceName}`
+          : op.faceStableId;
 
         return createSketchOperationSummary({
           op: op.op,
-          label: `Create sketch ${sketchId ?? "with generated ID"} on ${op.faceStableId}`,
+          label: `Create sketch ${sketchId ?? "with generated ID"} on ${target}`,
           sketchId
         });
       }

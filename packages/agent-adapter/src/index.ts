@@ -1045,11 +1045,19 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.createOnFace") {
+    const hasGeneratedReference =
+      typeof value.bodyId === "string" &&
+      typeof value.faceStableId === "string" &&
+      value.referenceName === undefined;
+    const hasNamedReference =
+      typeof value.referenceName === "string" &&
+      value.bodyId === undefined &&
+      value.faceStableId === undefined;
+
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      typeof value.bodyId === "string" &&
-      typeof value.faceStableId === "string"
+      (hasGeneratedReference || hasNamedReference)
     );
   }
 

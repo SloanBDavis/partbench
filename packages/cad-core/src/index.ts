@@ -2512,21 +2512,103 @@ function validateSketchAttachmentFace(
   op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
   opIndex?: number
 ): CadGeneratedFaceReference {
+  const target = resolveSketchAttachmentFaceTarget(state, op, opIndex);
   const result = validateGeneratedReference({
     document: state,
     ownerPartId: DEFAULT_PART_ID,
-    bodyId: op.bodyId,
-    stableId: op.faceStableId,
+    bodyId: target.bodyId,
+    stableId: target.stableId,
     bodyExists: (bodyId) => documentBodyExists(state, bodyId),
     expectedKind: "face",
     requiredOperation: "feature.attachSketchPlane"
   });
 
   if (!result.ok) {
-    throwGeneratedReferenceValidationError(result.error, opIndex);
+    throwGeneratedReferenceValidationError(
+      result.error,
+      opIndex,
+      target.path,
+      target.referenceName
+    );
   }
 
   return result.reference as CadGeneratedFaceReference;
+}
+
+function resolveSketchAttachmentFaceTarget(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
+  opIndex?: number
+): {
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly path: "faceStableId" | "referenceName";
+  readonly referenceName?: NamedReferenceName;
+} {
+  if (op.referenceName !== undefined) {
+    const name = normalizeNamedReferenceName(op.referenceName, opIndex);
+
+    if (op.bodyId !== undefined || op.faceStableId !== undefined) {
+      throwValidationError({
+        code: "INVALID_REFERENCE_NAME",
+        message:
+          "sketch.createOnFace must use either referenceName or bodyId with faceStableId.",
+        opIndex,
+        referenceName: name,
+        path: operationPath(opIndex, "referenceName"),
+        expected: "referenceName without bodyId or faceStableId",
+        received: "mixed generated reference inputs"
+      });
+    }
+
+    const reference = state.namedReferences.get(name);
+
+    if (!reference) {
+      throwValidationError({
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        message: `Named reference does not exist: ${name}`,
+        opIndex,
+        referenceName: name,
+        path: operationPath(opIndex, "referenceName"),
+        expected: "existing named reference",
+        received: name
+      });
+    }
+
+    return {
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      path: "referenceName",
+      referenceName: name
+    };
+  }
+
+  if (op.bodyId === undefined || op.faceStableId === undefined) {
+    throwValidationError({
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message:
+        "sketch.createOnFace requires bodyId with faceStableId, or referenceName.",
+      opIndex,
+      bodyId: op.bodyId,
+      stableId: op.faceStableId,
+      path: operationPath(
+        opIndex,
+        op.bodyId === undefined ? "bodyId" : "faceStableId"
+      ),
+      expected: "bodyId and faceStableId, or referenceName",
+      received: describeReceived({
+        bodyId: op.bodyId,
+        faceStableId: op.faceStableId,
+        referenceName: op.referenceName
+      })
+    });
+  }
+
+  return {
+    bodyId: op.bodyId,
+    stableId: op.faceStableId,
+    path: "faceStableId"
+  };
 }
 
 function documentBodyExists(
@@ -2592,7 +2674,8 @@ function createQueryErrorFromGeneratedReferenceError(
 function throwGeneratedReferenceValidationError(
   error: GeneratedReferenceValidationError,
   opIndex?: number,
-  stableIdPath: "faceStableId" | "stableId" = "faceStableId"
+  stableIdPath: "faceStableId" | "stableId" | "referenceName" = "faceStableId",
+  referenceName?: NamedReferenceName
 ): never {
   throwValidationError({
     code: error.code,
@@ -2600,11 +2683,14 @@ function throwGeneratedReferenceValidationError(
     opIndex,
     bodyId: error.bodyId,
     stableId: error.stableId,
+    ...(referenceName ? { referenceName } : {}),
     path: operationPath(
       opIndex,
       error.code === "BODY_NOT_FOUND" ||
         error.code === "UNSUPPORTED_BODY_REFERENCES"
-        ? "bodyId"
+        ? stableIdPath === "referenceName"
+          ? "referenceName"
+          : "bodyId"
         : stableIdPath
     ),
     expected: describeGeneratedReferenceValidationExpected(error),
@@ -6750,11 +6836,19 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.createOnFace") {
+    const hasGeneratedReference =
+      typeof value.bodyId === "string" &&
+      typeof value.faceStableId === "string" &&
+      value.referenceName === undefined;
+    const hasNamedReference =
+      typeof value.referenceName === "string" &&
+      value.bodyId === undefined &&
+      value.faceStableId === undefined;
+
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      typeof value.bodyId === "string" &&
-      typeof value.faceStableId === "string"
+      (hasGeneratedReference || hasNamedReference)
     );
   }
 

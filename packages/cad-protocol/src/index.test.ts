@@ -226,6 +226,16 @@ describe("cad-protocol", () => {
       op: "document.updateUnits",
       mode: "preservePhysicalSize"
     });
+    const namedFaceOp: CadOp = {
+      op: "sketch.createOnFace",
+      id: "sketch_named_face_1",
+      name: "Named face sketch",
+      referenceName: "Mounting face"
+    };
+    expect(namedFaceOp).toMatchObject({
+      op: "sketch.createOnFace",
+      referenceName: "Mounting face"
+    });
   });
 
   it("types CADOps batches", () => {
