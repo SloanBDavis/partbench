@@ -21,6 +21,14 @@ import {
   chooseSketchPanelSelection,
   getDefaultSketchEntityKind
 } from "../sketchPanelUi";
+import {
+  defaultSketchEntityForm,
+  entityToSketchEntityForm,
+  formatSketchEntity,
+  getSketchEntityFormLabels,
+  sketchEntityFormToEntity,
+  validateSketchEntityForm
+} from "../sketchEntityForms";
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
@@ -54,17 +62,6 @@ const defaultCreateForm: SketchCreateForm = {
   plane: "XY"
 };
 
-const defaultEntityForm: SketchEntityForm = {
-  id: "",
-  x: 0,
-  y: 0,
-  x2: 1,
-  y2: 1,
-  width: 1,
-  height: 1,
-  radius: 0.5
-};
-
 const defaultExtrudeForm: FeatureExtrudeForm = {
   id: "",
   bodyId: "",
@@ -92,8 +89,9 @@ export function SketchPanel({
   );
   const [createForm, setCreateForm] =
     useState<SketchCreateForm>(defaultCreateForm);
-  const [entityForm, setEntityForm] =
-    useState<SketchEntityForm>(defaultEntityForm);
+  const [entityForm, setEntityForm] = useState<SketchEntityForm>(
+    defaultSketchEntityForm
+  );
   const [entityKind, setEntityKind] = useState<SketchEntityKind>(() =>
     getDefaultSketchEntityKind(
       sketches.find((sketch) => sketch.id === focusedSketchId) ?? sketches[0]
@@ -111,6 +109,19 @@ export function SketchPanel({
   const selectedSketchDisplayStatus = selectedSketch
     ? displayStatuses?.get(selectedSketch.id)
     : undefined;
+  const [editingEntityId, setEditingEntityId] = useState<string | undefined>();
+  const editingEntity = selectedSketch?.entities.find(
+    (entity) => entity.id === editingEntityId
+  );
+  const editingEntityUsages =
+    selectedSketch && editingEntity
+      ? getSketchEntityExtrudeUsages(
+          features,
+          selectedSketch.id,
+          editingEntity.id
+        )
+      : [];
+  const entityFormValidation = validateSketchEntityForm(entityKind, entityForm);
   const [renameDraft, setRenameDraft] = useState<{
     readonly sketchId: string;
     readonly name: string;
@@ -119,7 +130,6 @@ export function SketchPanel({
     selectedSketch && renameDraft?.sketchId === selectedSketch.id
       ? renameDraft.name
       : (selectedSketch?.name ?? "");
-  const [editingEntityId, setEditingEntityId] = useState<string | undefined>();
   const [extrudeEntityId, setExtrudeEntityId] = useState<string | undefined>();
   const [extrudeForm, setExtrudeForm] =
     useState<FeatureExtrudeForm>(defaultExtrudeForm);
@@ -136,7 +146,7 @@ export function SketchPanel({
   function editEntity(entity: SketchEntitySnapshot) {
     setEditingEntityId(entity.id);
     setEntityKind(entity.kind);
-    setEntityForm(entityToForm(entity));
+    setEntityForm(entityToSketchEntityForm(entity));
   }
 
   function saveEntity() {
@@ -144,10 +154,14 @@ export function SketchPanel({
       return;
     }
 
+    if (!entityFormValidation.ok) {
+      return;
+    }
+
     if (editingEntityId) {
       onUpdateEntity(
         selectedSketch.id,
-        formToEntity(editingEntityId, entityKind, entityForm)
+        sketchEntityFormToEntity(editingEntityId, entityKind, entityForm)
       );
       setEditingEntityId(undefined);
       return;
@@ -323,6 +337,8 @@ export function SketchPanel({
                 editingEntityId={editingEntityId}
                 entityForm={entityForm}
                 entityKind={entityKind}
+                usageLabel={formatSketchEntityUsageLabel(editingEntityUsages)}
+                validation={entityFormValidation}
                 onCancelEdit={() => setEditingEntityId(undefined)}
                 onEntityFormChange={setEntityForm}
                 onEntityKindChange={setEntityKind}
@@ -498,6 +514,8 @@ function EntityEditor({
   editingEntityId,
   entityForm,
   entityKind,
+  usageLabel,
+  validation,
   onCancelEdit,
   onEntityFormChange,
   onEntityKindChange,
@@ -507,13 +525,26 @@ function EntityEditor({
   readonly editingEntityId: string | undefined;
   readonly entityForm: SketchEntityForm;
   readonly entityKind: SketchEntityKind;
+  readonly usageLabel?: string;
+  readonly validation: ReturnType<typeof validateSketchEntityForm>;
   readonly onCancelEdit: () => void;
   readonly onEntityFormChange: (form: SketchEntityForm) => void;
   readonly onEntityKindChange: (kind: SketchEntityKind) => void;
   readonly onSave: () => void;
 }) {
+  const labels = getSketchEntityFormLabels(entityKind);
+
   return (
     <section className="entity-editor" aria-label="Sketch entity editor">
+      <div className="command-card-heading">
+        <h3>{editingEntityId ? "Edit sketch entity" : "Add sketch entity"}</h3>
+      </div>
+      {usageLabel && (
+        <p className="project-message">
+          {usageLabel}. Updating this source profile rebuilds dependent body
+          display, measurements, extents, and generated references.
+        </p>
+      )}
       <div className="field-grid two">
         <label>
           Entity
@@ -548,13 +579,13 @@ function EntityEditor({
       <div className="field-grid four">
         <NumberField
           disabled={disabled}
-          label={entityKind === "line" ? "Start X" : "X"}
+          label={labels.x}
           value={entityForm.x}
           onChange={(x) => onEntityFormChange({ ...entityForm, x })}
         />
         <NumberField
           disabled={disabled}
-          label={entityKind === "line" ? "Start Y" : "Y"}
+          label={labels.y}
           value={entityForm.y}
           onChange={(y) => onEntityFormChange({ ...entityForm, y })}
         />
@@ -562,13 +593,13 @@ function EntityEditor({
           <>
             <NumberField
               disabled={disabled}
-              label="End X"
+              label={labels.x2 ?? "End X"}
               value={entityForm.x2}
               onChange={(x2) => onEntityFormChange({ ...entityForm, x2 })}
             />
             <NumberField
               disabled={disabled}
-              label="End Y"
+              label={labels.y2 ?? "End Y"}
               value={entityForm.y2}
               onChange={(y2) => onEntityFormChange({ ...entityForm, y2 })}
             />
@@ -578,13 +609,13 @@ function EntityEditor({
           <>
             <NumberField
               disabled={disabled}
-              label="Width"
+              label={labels.width ?? "Width"}
               value={entityForm.width}
               onChange={(width) => onEntityFormChange({ ...entityForm, width })}
             />
             <NumberField
               disabled={disabled}
-              label="Height"
+              label={labels.height ?? "Height"}
               value={entityForm.height}
               onChange={(height) =>
                 onEntityFormChange({ ...entityForm, height })
@@ -595,14 +626,19 @@ function EntityEditor({
         {entityKind === "circle" && (
           <NumberField
             disabled={disabled}
-            label="Radius"
+            label={labels.radius ?? "Radius"}
             value={entityForm.radius}
             onChange={(radius) => onEntityFormChange({ ...entityForm, radius })}
           />
         )}
       </div>
+      {!validation.ok && <p className="error-text">{validation.message}</p>}
       <div className="button-row">
-        <button type="button" disabled={disabled} onClick={onSave}>
+        <button
+          type="button"
+          disabled={disabled || !validation.ok}
+          onClick={onSave}
+        >
           {editingEntityId ? "Update entity" : "Add entity"}
         </button>
         {editingEntityId && (
@@ -632,84 +668,10 @@ function NumberField({
       <input
         type="number"
         step="0.1"
-        value={value}
+        value={Number.isFinite(value) ? value : ""}
         disabled={disabled}
         onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
       />
     </label>
   );
-}
-
-function entityToForm(entity: SketchEntitySnapshot): SketchEntityForm {
-  switch (entity.kind) {
-    case "point":
-      return {
-        ...defaultEntityForm,
-        id: entity.id,
-        x: entity.point[0],
-        y: entity.point[1]
-      };
-    case "line":
-      return {
-        ...defaultEntityForm,
-        id: entity.id,
-        x: entity.start[0],
-        y: entity.start[1],
-        x2: entity.end[0],
-        y2: entity.end[1]
-      };
-    case "rectangle":
-      return {
-        ...defaultEntityForm,
-        id: entity.id,
-        x: entity.center[0],
-        y: entity.center[1],
-        width: entity.width,
-        height: entity.height
-      };
-    case "circle":
-      return {
-        ...defaultEntityForm,
-        id: entity.id,
-        x: entity.center[0],
-        y: entity.center[1],
-        radius: entity.radius
-      };
-  }
-}
-
-function formToEntity(
-  id: string,
-  kind: SketchEntityKind,
-  form: SketchEntityForm
-): SketchEntitySnapshot {
-  switch (kind) {
-    case "point":
-      return { id, kind, point: [form.x, form.y] };
-    case "line":
-      return { id, kind, start: [form.x, form.y], end: [form.x2, form.y2] };
-    case "rectangle":
-      return {
-        id,
-        kind,
-        center: [form.x, form.y],
-        width: form.width,
-        height: form.height
-      };
-    case "circle":
-      return { id, kind, center: [form.x, form.y], radius: form.radius };
-  }
-}
-
-function formatSketchEntity(entity: SketchEntitySnapshot): string {
-  switch (entity.kind) {
-    case "point":
-      return `Point (${entity.point[0]}, ${entity.point[1]})`;
-    case "line":
-      return `Line (${entity.start[0]}, ${entity.start[1]}) -> (${entity.end[0]}, ${entity.end[1]})`;
-    case "rectangle":
-      return `Rectangle ${entity.width} x ${entity.height} at (${entity.center[0]}, ${entity.center[1]})`;
-    case "circle":
-      return `Circle r ${entity.radius} at (${entity.center[0]}, ${entity.center[1]})`;
-  }
 }

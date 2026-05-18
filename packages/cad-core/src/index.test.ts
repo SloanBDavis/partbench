@@ -4987,6 +4987,47 @@ describe("cad-core", () => {
     });
   });
 
+  it("reflects circle source profile edits in body measurements", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "circle_1",
+        kind: "circle",
+        center: [2, 3],
+        radius: 5
+      }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_circle_1" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        localBounds: {
+          min: [-3, -2, 0],
+          max: [7, 8, 4],
+          size: [10, 10, 4],
+          center: [2, 3, 2]
+        },
+        centroid: [2, 3, 2]
+      }
+    });
+
+    if (response.ok && response.query === "body.measurements") {
+      expect(response.measurements.volume).toBeCloseTo(100 * Math.PI);
+      expect(response.measurements.surfaceArea).toBeCloseTo(90 * Math.PI);
+    } else {
+      throw new Error("Expected body measurements response.");
+    }
+  });
+
   it("places attached sketch extrude measurements from the attached face", () => {
     const engine = createRectangleExtrudeEngine();
 
@@ -5718,6 +5759,86 @@ describe("cad-core", () => {
     }
   });
 
+  it("reflects rectangle and circle source profile edits in project extents", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+    const circleEngine = createCircleExtrudeEngine();
+
+    rectangleEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 6,
+        height: 4
+      }
+    });
+    circleEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "circle_1",
+        kind: "circle",
+        center: [2, 3],
+        radius: 5
+      }
+    });
+
+    const rectangle = rectangleEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+    const circle = circleEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(rectangle).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      bounds: {
+        min: [-2, 0, 0],
+        max: [4, 4, 3],
+        size: [6, 4, 3],
+        center: [1, 2, 1.5]
+      },
+      approximateVolume: 72,
+      bodies: [
+        {
+          bodyId: "body_rect_1",
+          worldBounds: { min: [-2, 0, 0], max: [4, 4, 3] },
+          volume: 72
+        }
+      ]
+    });
+    expect(circle).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      bounds: {
+        min: [-3, -2, 0],
+        max: [7, 8, 4],
+        size: [10, 10, 4],
+        center: [2, 3, 2]
+      },
+      bodies: [
+        {
+          bodyId: "body_circle_1",
+          worldBounds: { min: [-3, -2, 0], max: [7, 8, 4] }
+        }
+      ]
+    });
+
+    if (circle.ok && circle.query === "project.extents") {
+      expect(circle.approximateVolume).toBeCloseTo(100 * Math.PI);
+      expect(circle.bodies[0]?.volume).toBeCloseTo(100 * Math.PI);
+    } else {
+      throw new Error("Expected circle project extents response.");
+    }
+  });
+
   it("combines primitive and authored body extents", () => {
     const engine = createRectangleExtrudeEngine();
 
@@ -5923,6 +6044,72 @@ describe("cad-core", () => {
       approximateVolume: 24,
       bodies: [{ bodyId: "body_rect_1", volume: 24 }],
       warnings: []
+    });
+  });
+
+  it("round-trips edited source profiles for measurements and extents", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 6,
+        height: 4
+      }
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const measurements = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_rect_1" }
+    });
+    const extents = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+    const referenceMeasurements = restored.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:startCap"
+      }
+    });
+
+    expect(measurements).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        localBounds: {
+          min: [-2, 0, 0],
+          max: [4, 4, 3],
+          size: [6, 4, 3]
+        },
+        volume: 72
+      }
+    });
+    expect(extents).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bounds: {
+        min: [-2, 0, 0],
+        max: [4, 4, 3]
+      },
+      approximateVolume: 72
+    });
+    expect(referenceMeasurements).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      measurements: {
+        kind: "face",
+        role: "startCap",
+        area: 24,
+        center: [1, 2, 0]
+      }
     });
   });
 
