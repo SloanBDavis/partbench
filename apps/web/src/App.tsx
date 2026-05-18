@@ -11,8 +11,10 @@ import {
   type SceneObject
 } from "@web-cad/cad-core";
 import type {
+  BodyGeneratedReferencesQueryResponse,
   CadBatchMode,
   CadBatchResponse,
+  CadGeneratedFaceReference,
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
@@ -27,6 +29,7 @@ import {
   buildAddSketchLineOp,
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
+  buildCreateSketchOnFaceOp,
   buildCreateSketchOp,
   buildCreateBoxOp,
   buildCreateConeOp,
@@ -55,6 +58,7 @@ import {
   type DimensionCommandForm,
   type FeatureExtrudeForm,
   type PrimitiveCommandForm,
+  type SketchCreateOnFaceForm,
   type SketchCreateForm,
   type SketchEntityForm,
   type TransformCommandForm
@@ -87,6 +91,10 @@ import {
   formatObjectScale
 } from "./sceneObjectDisplay";
 import { createRenderSceneInputs } from "./renderScene";
+import {
+  createGeneratedFaceReferenceKey,
+  createSketchDisplayState
+} from "./sketchDisplayFrames";
 import {
   createProjectJsonPreview,
   formatProjectJsonSummary,
@@ -215,6 +223,47 @@ function readProjectStructure(): {
     : { features: [], bodies: [] };
 }
 
+function readBodyGeneratedReferences(bodyId: string | undefined): {
+  readonly references?: BodyGeneratedReferencesQueryResponse;
+  readonly error?: string;
+} {
+  if (!bodyId) {
+    return {};
+  }
+
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.generatedReferences", bodyId }
+  });
+
+  if (response.ok && response.query === "body.generatedReferences") {
+    return { references: response };
+  }
+
+  return !response.ok && response.query === "body.generatedReferences"
+    ? { error: response.error.message }
+    : {};
+}
+
+function readGeneratedFaceReferencesByKey(
+  bodies: readonly CadBodySnapshot[]
+): ReadonlyMap<string, CadGeneratedFaceReference> {
+  const facesByKey = new Map<string, CadGeneratedFaceReference>();
+
+  for (const body of bodies) {
+    const response = readBodyGeneratedReferences(body.id);
+
+    for (const face of response.references?.faces ?? []) {
+      facesByKey.set(
+        createGeneratedFaceReferenceKey(face.bodyId, face.stableId),
+        face
+      );
+    }
+  }
+
+  return facesByKey;
+}
+
 export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
@@ -274,6 +323,7 @@ export function App() {
         id: sketch.id,
         name: sketch.name,
         plane: sketch.plane,
+        attachment: sketch.attachment,
         entities: [...sketch.entities.values()]
       })),
     [document]
@@ -285,6 +335,14 @@ export function App() {
         (body) => body.source.type === "sketchExtrudeFeature"
       ),
     [projectStructure.bodies]
+  );
+  const generatedFacesByKey = useMemo(
+    () => readGeneratedFaceReferencesByKey(sketchExtrudeBodies),
+    [sketchExtrudeBodies]
+  );
+  const sketchDisplayState = useMemo(
+    () => createSketchDisplayState(sketches, generatedFacesByKey),
+    [generatedFacesByKey, sketches]
   );
   const extrudeSources = useMemo(
     () =>
@@ -310,6 +368,10 @@ export function App() {
         (feature) => feature.id === selectedBody.featureId
       )
     : undefined;
+  const selectedBodyGeneratedReferences =
+    selectedFeature?.kind === "extrude"
+      ? readBodyGeneratedReferences(selectedBody?.id)
+      : {};
   const transactionHistory = readTransactionHistory();
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
@@ -359,9 +421,16 @@ export function App() {
         sceneObjects,
         derivedGeometryBySourceId,
         extrudeSources,
-        sketches
+        sketches,
+        sketchDisplayState.frames
       ),
-    [derivedGeometryBySourceId, extrudeSources, sceneObjects, sketches]
+    [
+      derivedGeometryBySourceId,
+      extrudeSources,
+      sceneObjects,
+      sketchDisplayState.frames,
+      sketches
+    ]
   );
   const currentProjectSummary = summarizeCadProject(exportCadProject(engine));
   const projectJsonPreview = useMemo(
@@ -571,6 +640,10 @@ export function App() {
 
   async function createSketch(form: SketchCreateForm) {
     await commitOps([buildCreateSketchOp(form)], () => selectedId);
+  }
+
+  async function createSketchOnFace(form: SketchCreateOnFaceForm) {
+    await commitOps([buildCreateSketchOnFaceOp(form)], () => selectedId);
   }
 
   async function renameSketch(sketchId: string, name: string) {
@@ -963,6 +1036,7 @@ export function App() {
           <SketchPanel
             disabled={commandPending}
             sketches={sketches}
+            displayStatuses={sketchDisplayState.statuses}
             features={projectStructure.features}
             onCreateSketch={(form) => void createSketch(form)}
             onRenameSketch={(sketchId, name) =>
@@ -1043,6 +1117,8 @@ export function App() {
           measurements={selectedMeasurements}
           body={selectedBody}
           feature={selectedFeature}
+          generatedReferences={selectedBodyGeneratedReferences.references}
+          generatedReferencesError={selectedBodyGeneratedReferences.error}
           object={selectedObject}
           units={document.units}
           onApplyDimensions={(form) => void updateSelectedDimensions(form)}
@@ -1050,6 +1126,7 @@ export function App() {
           onApplyTransform={(form) => void updateSelectedTransform(form)}
           onDelete={() => void deleteSelectedObject()}
           onDeleteFeature={(featureId) => void deleteAuthoredFeature(featureId)}
+          onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
           onUpdateExtrude={(featureId, depth, side) =>
             void updateAuthoredExtrude(featureId, depth, side)
           }

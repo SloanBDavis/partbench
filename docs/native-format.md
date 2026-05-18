@@ -241,7 +241,10 @@ metadata pointing at an eligible generated planar face reference from an
 authored sketch-extrude body. That attachment is source-of-truth sketch
 placement metadata. The generated reference objects themselves remain derived
 and are not persisted. Sketches do not yet include constraints, solving,
-coordinate remapping for attached faces, or automatic profile recognition.
+source-level coordinate remapping for attached faces, or automatic profile
+recognition. The viewport may derive a display frame from the current generated
+face reference so attached sketches render on the referenced face, but that
+display frame is rebuildable view data and is not saved.
 
 Current authored features are source-of-truth V3 document data:
 
@@ -494,6 +497,7 @@ These are not source of truth and must not be required to load a project:
 - read-only generated reference resolver query results
 - read-only generated reference labels and descriptions
 - read-only generated reference eligibility metadata
+- attached sketch display frames derived from generated face references
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the

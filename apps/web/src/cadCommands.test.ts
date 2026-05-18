@@ -9,6 +9,7 @@ import {
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
   buildFeatureUpdateExtrudeOp,
+  buildCreateSketchOnFaceOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
@@ -183,6 +184,21 @@ describe("cad command builders", () => {
   });
 
   it("builds sketch extrude commands with explicit side", () => {
+    expect(
+      buildCreateSketchOnFaceOp({
+        id: "sketch_face_1",
+        name: " End cap sketch ",
+        bodyId: "body_1",
+        faceStableId: "generated:face:body_1:endCap"
+      })
+    ).toEqual({
+      op: "sketch.createOnFace",
+      id: "sketch_face_1",
+      name: "End cap sketch",
+      bodyId: "body_1",
+      faceStableId: "generated:face:body_1:endCap"
+    });
+
     expect(
       buildFeatureExtrudeOp("sketch_1", "rect_1", {
         id: "feat_1",

@@ -384,6 +384,14 @@ Implemented:
   source-of-truth sketch attached to an eligible generated planar face reference
   from an authored sketch-extrude body while keeping generated references
   derived rather than persisted topology.
+- The web UI exposes eligible generated face references on selected authored
+  bodies and creates attached sketches through the same `sketch.createOnFace`
+  CADOps command. Ineligible references remain visible as inspection metadata
+  but are not offered as sketch targets.
+- Attached sketches are displayed through a derived render-layer face frame from
+  the current generated face reference. If the reference is stale or unresolved,
+  the viewport falls back to the sketch's saved MVP plane and the sketch panel
+  shows an unresolved attachment status.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
 - Missing/stale generated reference IDs fail with a structured

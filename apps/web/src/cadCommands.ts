@@ -28,6 +28,7 @@ import type {
   SketchAddLineOp,
   SketchAddPointOp,
   SketchAddRectangleOp,
+  SketchCreateOnFaceOp,
   SketchCreateOp,
   SketchDeleteEntityOp,
   SketchDeleteOp,
@@ -104,6 +105,13 @@ export interface SketchCreateForm {
   readonly id: string;
   readonly name: string;
   readonly plane: SketchPlane;
+}
+
+export interface SketchCreateOnFaceForm {
+  readonly id: string;
+  readonly name: string;
+  readonly bodyId: string;
+  readonly faceStableId: string;
 }
 
 export interface SketchEntityForm {
@@ -319,6 +327,18 @@ export function buildCreateSketchOp(form: SketchCreateForm): SketchCreateOp {
     id: normalizeOptionalId(form.id),
     name: form.name.trim(),
     plane: form.plane
+  };
+}
+
+export function buildCreateSketchOnFaceOp(
+  form: SketchCreateOnFaceForm
+): SketchCreateOnFaceOp {
+  return {
+    op: "sketch.createOnFace",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    bodyId: form.bodyId,
+    faceStableId: form.faceStableId
   };
 }
 

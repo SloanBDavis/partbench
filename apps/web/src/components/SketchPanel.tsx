@@ -15,10 +15,13 @@ import {
   formatSketchEntityUsageLabel,
   getSketchEntityExtrudeUsages
 } from "../sketchEntityUsage";
+import { formatSketchAttachmentLabel } from "../generatedReferenceUi";
+import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
+  readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
   readonly onRenameSketch: (sketchId: string, name: string) => void;
@@ -68,6 +71,7 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
 export function SketchPanel({
   disabled,
   sketches,
+  displayStatuses,
   features,
   onCreateSketch,
   onRenameSketch,
@@ -94,6 +98,9 @@ export function SketchPanel({
     () => sketches.find((sketch) => sketch.id === effectiveSelectedSketchId),
     [effectiveSelectedSketchId, sketches]
   );
+  const selectedSketchDisplayStatus = selectedSketch
+    ? displayStatuses?.get(selectedSketch.id)
+    : undefined;
   const [renameDraft, setRenameDraft] = useState<{
     readonly sketchId: string;
     readonly name: string;
@@ -213,6 +220,9 @@ export function SketchPanel({
                   <span>{sketch.name}</span>
                   <small>
                     {sketch.plane} / {sketch.entities.length} entities
+                    {sketch.attachment
+                      ? ` / ${formatSketchAttachmentLabel(sketch.attachment)}`
+                      : ""}
                   </small>
                 </button>
               </li>
@@ -258,6 +268,42 @@ export function SketchPanel({
                   Delete sketch
                 </button>
               </div>
+              {selectedSketch.attachment && (
+                <section
+                  className="sketch-attachment"
+                  aria-label="Sketch attachment"
+                >
+                  <div className="command-card-heading">
+                    <h3>Attachment</h3>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>Face</dt>
+                      <dd>
+                        {formatSketchAttachmentLabel(selectedSketch.attachment)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Stable ID</dt>
+                      <dd>{selectedSketch.attachment.faceStableId}</dd>
+                    </div>
+                    <div>
+                      <dt>Source feature</dt>
+                      <dd>{selectedSketch.attachment.sourceFeatureId}</dd>
+                    </div>
+                  </dl>
+                  {selectedSketchDisplayStatus?.kind === "attached" && (
+                    <p className="project-message">
+                      {selectedSketchDisplayStatus.message}
+                    </p>
+                  )}
+                  {selectedSketchDisplayStatus?.kind === "unresolved" && (
+                    <p className="error-text">
+                      {selectedSketchDisplayStatus.message}
+                    </p>
+                  )}
+                </section>
+              )}
 
               <EntityEditor
                 disabled={disabled}

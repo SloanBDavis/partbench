@@ -493,7 +493,8 @@ h3 {
 }
 
 .compact-list,
-.entity-list {
+.entity-list,
+.reference-list {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -533,7 +534,9 @@ h3 {
   gap: 10px;
 }
 
-.entity-list li {
+.entity-list li,
+.reference-list li,
+.sketch-attachment {
   display: grid;
   gap: 6px;
   padding: 8px;
@@ -542,9 +545,77 @@ h3 {
   background: #fbfcfd;
 }
 
-.entity-list code {
+.entity-list code,
+.reference-list code,
+.sketch-attachment dd {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.reference-list p,
+.reference-list small {
+  margin: 0;
+  color: #617183;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.reference-list button {
+  min-height: 32px;
+  width: fit-content;
+  border: 1px solid #b8c3cf;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2933;
+  cursor: pointer;
+  padding: 0 10px;
+}
+
+.reference-list button:disabled {
+  border-color: #d5dbe3;
+  color: #8794a3;
+  cursor: not-allowed;
+}
+
+.reference-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reference-heading strong {
+  min-width: 0;
+  color: #1f2933;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.reference-heading span {
+  color: #607080;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.sketch-attachment dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.sketch-attachment dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.sketch-attachment dt {
+  color: #687789;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .entity-list .entity-usage {

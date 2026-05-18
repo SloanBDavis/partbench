@@ -6,6 +6,10 @@ import type {
   ObjectMeasurementsSnapshot,
   SceneObject
 } from "@web-cad/cad-core";
+import type {
+  BodyGeneratedReferencesQueryResponse,
+  CadGeneratedFaceReference
+} from "@web-cad/cad-protocol";
 import { useState } from "react";
 import {
   areBoxDimensionFormsEqual,
@@ -24,8 +28,14 @@ import {
   torusDimensionsToForm,
   transformToForm,
   type DimensionCommandForm,
+  type SketchCreateOnFaceForm,
   type TransformCommandForm
 } from "../cadCommands";
+import {
+  canCreateSketchOnFace,
+  createSketchOnFaceDefaultName,
+  formatGeneratedFaceEligibility
+} from "../generatedReferenceUi";
 import {
   formatDimensions,
   formatBounds,
@@ -40,12 +50,15 @@ export function Inspector({
   disabled = false,
   body,
   feature,
+  generatedReferences,
+  generatedReferencesError,
   measurements,
   object,
   units,
   onApplyDimensions,
   onApplyName,
   onApplyTransform,
+  onCreateSketchOnFace,
   onDelete,
   onDeleteFeature,
   onUpdateExtrude
@@ -53,12 +66,15 @@ export function Inspector({
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
   readonly feature?: CadFeatureSummary;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly generatedReferencesError?: string;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
+  readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
@@ -74,11 +90,14 @@ export function Inspector({
         body,
         disabled,
         feature,
+        generatedReferences,
+        generatedReferencesError,
         measurements,
         object,
         onApplyDimensions,
         onApplyName,
         onApplyTransform,
+        onCreateSketchOnFace,
         onDelete,
         onDeleteFeature,
         onUpdateExtrude,
@@ -92,12 +111,15 @@ function renderInspectorSelection(input: {
   readonly body?: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly generatedReferencesError?: string;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
+  readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
@@ -112,6 +134,9 @@ function renderInspectorSelection(input: {
         body={input.body}
         disabled={input.disabled}
         feature={input.feature}
+        generatedReferences={input.generatedReferences}
+        generatedReferencesError={input.generatedReferencesError}
+        onCreateSketchOnFace={input.onCreateSketchOnFace}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
         units={input.units}
@@ -186,6 +211,9 @@ function BodyInspector({
   body,
   disabled,
   feature,
+  generatedReferences,
+  generatedReferencesError,
+  onCreateSketchOnFace,
   onDeleteFeature,
   onUpdateExtrude,
   units
@@ -193,6 +221,9 @@ function BodyInspector({
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly generatedReferencesError?: string;
+  readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
     featureId: string,
@@ -271,6 +302,16 @@ function BodyInspector({
           units={units}
         />
       )}
+      {feature?.kind === "extrude" && (
+        <GeneratedFaceSketchPanel
+          key={`${body.id}-${generatedReferences?.faceCount ?? 0}`}
+          bodyId={body.id}
+          disabled={disabled}
+          error={generatedReferencesError}
+          faces={generatedReferences?.faces ?? []}
+          onCreateSketchOnFace={onCreateSketchOnFace}
+        />
+      )}
       {canDeleteFeature && (
         <div className="button-row">
           <button
@@ -291,6 +332,116 @@ function BodyInspector({
             </button>
           )}
         </div>
+      )}
+    </section>
+  );
+}
+
+function GeneratedFaceSketchPanel({
+  bodyId,
+  disabled,
+  error,
+  faces,
+  onCreateSketchOnFace
+}: {
+  readonly bodyId: string;
+  readonly disabled: boolean;
+  readonly error?: string;
+  readonly faces: readonly CadGeneratedFaceReference[];
+  readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+}) {
+  const firstEligibleFace = faces.find(canCreateSketchOnFace);
+  const [draft, setDraft] = useState({
+    id: "",
+    name: firstEligibleFace
+      ? createSketchOnFaceDefaultName(firstEligibleFace)
+      : "Face sketch"
+  });
+  const hasValidName = draft.name.trim().length > 0;
+
+  function createOnFace(face: CadGeneratedFaceReference) {
+    if (!canCreateSketchOnFace(face) || !hasValidName) {
+      return;
+    }
+
+    onCreateSketchOnFace({
+      id: draft.id,
+      name: draft.name,
+      bodyId,
+      faceStableId: face.stableId
+    });
+  }
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Generated faces</h3>
+        <span>{faces.length}</span>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      {faces.length === 0 && !error ? (
+        <p className="empty-state compact">No generated faces</p>
+      ) : (
+        <>
+          <div className="field-grid two">
+            <label>
+              Sketch name
+              <input
+                type="text"
+                value={draft.name}
+                disabled={disabled}
+                onChange={(event) =>
+                  setDraft({ ...draft, name: event.currentTarget.value })
+                }
+              />
+            </label>
+            <label>
+              Optional sketch ID
+              <input
+                type="text"
+                value={draft.id}
+                disabled={disabled}
+                onChange={(event) =>
+                  setDraft({ ...draft, id: event.currentTarget.value })
+                }
+              />
+            </label>
+          </div>
+          <ul className="reference-list">
+            {faces.map((face) => {
+              const eligible = canCreateSketchOnFace(face);
+
+              return (
+                <li key={face.stableId}>
+                  <div className="reference-heading">
+                    <strong>{face.label}</strong>
+                    <span>{formatGeneratedFaceEligibility(face)}</span>
+                  </div>
+                  {face.description && <p>{face.description}</p>}
+                  <code>{face.stableId}</code>
+                  {face.eligibilityNotes &&
+                    face.eligibilityNotes.length > 0 && (
+                      <small>{face.eligibilityNotes.join(" ")}</small>
+                    )}
+                  {eligible ? (
+                    <button
+                      type="button"
+                      disabled={disabled || !hasValidName}
+                      onClick={() => createOnFace(face)}
+                    >
+                      Create sketch on face
+                    </button>
+                  ) : (
+                    <small>Sketch creation unavailable</small>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {!hasValidName && (
+            <p className="error-text">Sketch name is required.</p>
+          )}
+        </>
       )}
     </section>
   );
