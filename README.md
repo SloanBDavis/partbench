@@ -126,8 +126,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 ## Project Format
 
-Current project JSON exports use `web-cad.project.v3`. V1 and V2 project JSON
-remain importable through explicit migrations; derived meshes and geometry
+Current project JSON exports use `web-cad.project.v4`. V1, V2, and V3 project
+JSON remain importable through explicit migrations; derived meshes and geometry
 status are never saved as source-of-truth data.
 
 ## Current Limitations
@@ -136,8 +136,9 @@ status are never saved as source-of-truth data.
   meshes are loading, disabled, unavailable, or failed.
 - OCCT/WASM is intentionally off the default production startup path and
   currently proves box, cylinder, sphere, cone, and torus tessellation.
-- Sketches and rectangle/circle extrude features are source-of-truth V2 data,
-  but there is no sketch solver, automatic profile recognition, feature
-  editing/deleting, or topology naming yet.
+- Sketches, rectangle/circle extrude features, and sketches attached to
+  generated planar face references are source-of-truth V2 data, but there is no
+  sketch solver, automatic profile recognition, broad feature editing, or full
+  topology naming yet.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.

@@ -86,7 +86,7 @@ function createOperationSummaries(
         ? transaction.diff.created[createdIndex++]
         : undefined;
     const createdSketchRef =
-      op.op === "sketch.create"
+      op.op === "sketch.create" || op.op === "sketch.createOnFace"
         ? transaction.diff.sketches?.created?.[createdSketchIndex++]
         : undefined;
     const createdSketchEntityRef = isSketchAddEntityOp(op)
@@ -233,6 +233,16 @@ function createOperationSummaries(
         return createSketchOperationSummary({
           op: op.op,
           label: `Create sketch ${sketchId ?? "with generated ID"}`,
+          sketchId
+        });
+      }
+
+      case "sketch.createOnFace": {
+        const sketchId = op.id ?? createdSketchRef?.id;
+
+        return createSketchOperationSummary({
+          op: op.op,
+          label: `Create sketch ${sketchId ?? "with generated ID"} on ${op.faceStableId}`,
           sketchId
         });
       }

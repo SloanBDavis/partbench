@@ -10,6 +10,7 @@ import type {
   CadBodySnapshot,
   CadFeatureRef,
   CadFeatureSummary,
+  CadGeneratedFaceReference,
   CadObjectSnapshot,
   CadObjectRef,
   CadOp,
@@ -35,6 +36,7 @@ import type {
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchId,
+  SketchAttachmentSnapshot,
   SketchPlane,
   SketchSemanticDiff,
   SketchSnapshot,
@@ -60,7 +62,9 @@ import {
 } from "./transactionHistory";
 import {
   createBodyGeneratedReferences,
-  resolveGeneratedReference
+  type GeneratedReferenceValidationError,
+  resolveGeneratedReference,
+  validateGeneratedReference
 } from "./generatedReferences";
 
 export type {
@@ -122,6 +126,8 @@ export type {
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchId,
+  SketchAttachmentSnapshot,
+  SketchGeneratedFaceAttachmentSnapshot,
   SketchPlane,
   SketchSemanticDiff,
   SketchSnapshot,
@@ -192,6 +198,7 @@ export interface Sketch {
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
+  readonly attachment?: SketchAttachmentSnapshot;
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntity>;
 }
 
@@ -278,11 +285,13 @@ export type MockCadCommandWorkerOptions = SnapshotCadCommandWorkerOptions;
 
 export const CAD_PROJECT_FORMAT_VERSION_V1 = "web-cad.project.v1";
 export const CAD_PROJECT_FORMAT_VERSION_V2 = "web-cad.project.v2";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v3";
+export const CAD_PROJECT_FORMAT_VERSION_V3 = "web-cad.project.v3";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v4";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
   | typeof CAD_PROJECT_FORMAT_VERSION_V2
+  | typeof CAD_PROJECT_FORMAT_VERSION_V3
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -1324,6 +1333,20 @@ function applyOperation(
       return;
     }
 
+    case "sketch.createOnFace": {
+      const face = validateSketchAttachmentFace(state, op, opIndex);
+      const sketch: Sketch = {
+        id: op.id ?? createSketchId(),
+        name: normalizeSketchName(op.name, opIndex, op.id),
+        plane: createSketchPlaneFromFaceReference(face, opIndex),
+        attachment: createSketchFaceAttachment(face),
+        entities: new Map()
+      };
+
+      addSketch(state.sketches, sketch, diff, opIndex);
+      return;
+    }
+
     case "sketch.rename": {
       const existing = getSketchOrThrow(state.sketches, op.id, opIndex);
       const updated: Sketch = {
@@ -2205,6 +2228,150 @@ function normalizeFeatureName(
   });
 }
 
+function validateSketchAttachmentFace(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
+  opIndex?: number
+): CadGeneratedFaceReference {
+  const result = validateGeneratedReference({
+    document: state,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: op.bodyId,
+    stableId: op.faceStableId,
+    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+    expectedKind: "face",
+    requiredOperation: "feature.attachSketchPlane"
+  });
+
+  if (!result.ok) {
+    throwGeneratedReferenceValidationError(result.error, opIndex);
+  }
+
+  return result.reference as CadGeneratedFaceReference;
+}
+
+function documentBodyExists(
+  state: MutableDocumentState,
+  bodyId: BodyId
+): boolean {
+  return createProjectStructure(state, []).bodies.some(
+    (body) => body.id === bodyId
+  );
+}
+
+function throwGeneratedReferenceValidationError(
+  error: GeneratedReferenceValidationError,
+  opIndex?: number
+): never {
+  throwValidationError({
+    code: error.code,
+    message: error.message,
+    opIndex,
+    bodyId: error.bodyId,
+    stableId: error.stableId,
+    path: operationPath(
+      opIndex,
+      error.code === "BODY_NOT_FOUND" ||
+        error.code === "UNSUPPORTED_BODY_REFERENCES"
+        ? "bodyId"
+        : "faceStableId"
+    ),
+    expected: describeGeneratedReferenceValidationExpected(error),
+    received: describeGeneratedReferenceValidationReceived(error)
+  });
+}
+
+function describeGeneratedReferenceValidationExpected(
+  error: GeneratedReferenceValidationError
+): string {
+  if (error.code === "BODY_NOT_FOUND") {
+    return "existing body id";
+  }
+
+  if (error.code === "UNSUPPORTED_BODY_REFERENCES") {
+    return "authored sketch-extrude body";
+  }
+
+  if (error.code === "GENERATED_REFERENCE_NOT_FOUND") {
+    return "existing generated reference stable id";
+  }
+
+  if (error.code === "GENERATED_REFERENCE_KIND_MISMATCH") {
+    return error.expectedKind ?? "expected generated reference kind";
+  }
+
+  return error.requiredOperation ?? "eligible generated reference operation";
+}
+
+function describeGeneratedReferenceValidationReceived(
+  error: GeneratedReferenceValidationError
+): string | undefined {
+  if (error.actualKind) {
+    return error.actualKind;
+  }
+
+  return error.stableId;
+}
+
+function createSketchPlaneFromFaceReference(
+  face: CadGeneratedFaceReference,
+  opIndex?: number
+): SketchPlane {
+  const normal = face.geometricSignature.normal;
+
+  if (!normal) {
+    throwValidationError({
+      code: "INVALID_SKETCH_PLANE",
+      message: `Generated face is not planar: ${face.stableId}`,
+      opIndex,
+      bodyId: face.bodyId,
+      stableId: face.stableId,
+      path: operationPath(opIndex, "faceStableId"),
+      expected: "planar generated face reference",
+      received: face.stableId
+    });
+  }
+
+  const [x, y, z] = normal.map((component) => Math.abs(component));
+
+  if (z === 1 && x === 0 && y === 0) {
+    return "XY";
+  }
+
+  if (y === 1 && x === 0 && z === 0) {
+    return "XZ";
+  }
+
+  if (x === 1 && y === 0 && z === 0) {
+    return "YZ";
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_PLANE",
+    message: `Generated face normal cannot be mapped to an MVP sketch plane: ${face.stableId}`,
+    opIndex,
+    bodyId: face.bodyId,
+    stableId: face.stableId,
+    path: operationPath(opIndex, "faceStableId"),
+    expected: "axis-aligned planar generated face reference",
+    received: JSON.stringify(normal)
+  });
+}
+
+function createSketchFaceAttachment(
+  face: CadGeneratedFaceReference
+): SketchAttachmentSnapshot {
+  return {
+    kind: "generatedFace",
+    bodyId: face.bodyId,
+    faceStableId: face.stableId,
+    sourceFeatureId: face.sourceFeatureId,
+    sourceSketchId: face.sourceSketchId,
+    sourceSketchEntityId: face.sourceSketchEntityId,
+    faceRole: face.role
+  };
+}
+
 function validateSketchPlane(
   plane: SketchPlane,
   opIndex?: number
@@ -2755,6 +2922,9 @@ function createSketchSnapshot(sketch: Sketch): SketchSnapshot {
     id: sketch.id,
     name: sketch.name,
     plane: sketch.plane,
+    attachment: sketch.attachment
+      ? cloneSketchAttachment(sketch.attachment)
+      : undefined,
     entities: [...sketch.entities.values()].map(cloneSketchEntity)
   };
 }
@@ -2764,9 +2934,20 @@ function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
     id: snapshot.id,
     name: snapshot.name,
     plane: snapshot.plane,
+    attachment: snapshot.attachment
+      ? cloneSketchAttachment(snapshot.attachment)
+      : undefined,
     entities: new Map(
       snapshot.entities.map((entity) => [entity.id, cloneSketchEntity(entity)])
     )
+  };
+}
+
+function cloneSketchAttachment(
+  attachment: SketchAttachmentSnapshot
+): SketchAttachmentSnapshot {
+  return {
+    ...attachment
   };
 }
 
@@ -4083,6 +4264,7 @@ function sketchesEqual(left: Sketch, right: Sketch): boolean {
     left.id !== right.id ||
     left.name !== right.name ||
     left.plane !== right.plane ||
+    !sketchAttachmentsEqual(left.attachment, right.attachment) ||
     left.entities.size !== right.entities.size
   ) {
     return false;
@@ -4097,6 +4279,13 @@ function sketchesEqual(left: Sketch, right: Sketch): boolean {
   }
 
   return true;
+}
+
+function sketchAttachmentsEqual(
+  left: SketchAttachmentSnapshot | undefined,
+  right: SketchAttachmentSnapshot | undefined
+): boolean {
+  return stableJsonEqual(left, right);
 }
 
 function sketchEntitiesEqual(left: SketchEntity, right: SketchEntity): boolean {
@@ -4162,6 +4351,17 @@ function normalizeCadProject(value: CadProject): CadProject {
   if (value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
     return {
       ...value,
+      document: {
+        ...value.document,
+        features: value.document.features.map(normalizeFeatureSnapshot)
+      }
+    };
+  }
+
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
         features: value.document.features.map(normalizeFeatureSnapshot)
@@ -4252,6 +4452,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   } else if (
     value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
   ) {
@@ -4375,13 +4576,22 @@ function validateCadDocumentSnapshot(
 
   const requiresSketches =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
-  const requiresFeatures = schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const requiresFeatures =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsSketchAttachments =
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const sketchEntityRefs = new Map<
     SketchEntityId,
     { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
   >();
+  const sketchAttachments: {
+    readonly path: string;
+    readonly attachment: SketchAttachmentSnapshot;
+  }[] = [];
 
   if (schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1) {
     if ("sketches" in value) {
@@ -4429,7 +4639,9 @@ function validateCadDocumentSnapshot(
           `${path}.sketches[${index}]`,
           issues,
           seenSketchIds,
-          seenSketchEntityIds
+          seenSketchEntityIds,
+          allowsSketchAttachments,
+          sketchAttachments
         );
         maxGeneratedSketchNumber = Math.max(
           maxGeneratedSketchNumber,
@@ -4472,6 +4684,7 @@ function validateCadDocumentSnapshot(
     } else {
       const seenFeatureIds = new Set<string>(primitiveFeatureIds);
       const seenBodyIds = new Set<string>(primitiveBodyIds);
+      const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
 
       for (const [index, feature] of value.features.entries()) {
         const generatedNumbers = validateFeatureSnapshot(
@@ -4491,7 +4704,14 @@ function validateCadDocumentSnapshot(
           maxGeneratedBodyNumber,
           generatedNumbers.maxGeneratedBodyNumber
         );
+        collectValidExtrudeFeatureByBodyId(feature, extrudeFeatureByBodyId);
       }
+
+      validateSketchAttachments(
+        sketchAttachments,
+        extrudeFeatureByBodyId,
+        issues
+      );
     }
 
     validateNextGeneratedNumber(
@@ -4588,7 +4808,12 @@ function validateSketchSnapshot(
   path: string,
   issues: CadProjectImportIssue[],
   seenSketchIds: Set<string>,
-  seenSketchEntityIds: Set<string>
+  seenSketchEntityIds: Set<string>,
+  allowsAttachment: boolean,
+  attachments: {
+    readonly path: string;
+    readonly attachment: SketchAttachmentSnapshot;
+  }[]
 ): {
   readonly maxGeneratedSketchNumber: number;
   readonly maxGeneratedSketchEntityNumber: number;
@@ -4646,6 +4871,28 @@ function validateSketchSnapshot(
     );
   }
 
+  if (value.attachment !== undefined) {
+    if (!allowsAttachment) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.attachment`,
+        "Sketch attachments require web-cad.project.v4."
+      );
+    } else if (
+      validateSketchAttachmentSnapshot(
+        value.attachment,
+        `${path}.attachment`,
+        issues
+      )
+    ) {
+      attachments.push({
+        path: `${path}.attachment`,
+        attachment: value.attachment
+      });
+    }
+  }
+
   if (!Array.isArray(value.entities)) {
     addProjectIssue(
       issues,
@@ -4668,6 +4915,158 @@ function validateSketchSnapshot(
   }
 
   return { maxGeneratedSketchNumber, maxGeneratedSketchEntityNumber };
+}
+
+function validateSketchAttachmentSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): value is SketchAttachmentSnapshot {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      path,
+      "Sketch attachment must be an object."
+    );
+    return false;
+  }
+
+  let valid = true;
+
+  if (value.kind !== "generatedFace") {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      `${path}.kind`,
+      "Sketch attachment kind must be generatedFace."
+    );
+    valid = false;
+  }
+
+  for (const field of [
+    "bodyId",
+    "faceStableId",
+    "sourceFeatureId",
+    "sourceSketchId",
+    "sourceSketchEntityId"
+  ] as const) {
+    if (typeof value[field] !== "string" || value[field].length === 0) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.${field}`,
+        `Sketch attachment ${field} must be a non-empty string.`
+      );
+      valid = false;
+    }
+  }
+
+  if (
+    !isGeneratedExtrudeFaceRole(value.faceRole) ||
+    value.faceRole === "side:circular"
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH",
+      `${path}.faceRole`,
+      "Sketch attachment faceRole must be a generated planar face role."
+    );
+    valid = false;
+  }
+
+  return valid;
+}
+
+function collectValidExtrudeFeatureByBodyId(
+  value: unknown,
+  featuresByBodyId: Map<BodyId, ExtrudeFeatureSnapshot>
+): void {
+  if (
+    isRecord(value) &&
+    value.kind === "extrude" &&
+    typeof value.id === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    typeof value.depth === "number" &&
+    isPositiveFiniteNumber(value.depth) &&
+    (value.side === undefined || isExtrudeSide(value.side)) &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "extrude",
+      name: typeof value.name === "string" ? value.name : undefined,
+      sketchId: value.sketchId,
+      entityId: value.entityId,
+      profileKind: value.profileKind,
+      depth: value.depth,
+      side: value.side ?? "positive",
+      bodyId: value.bodyId
+    });
+  }
+}
+
+function validateSketchAttachments(
+  attachments: readonly {
+    readonly path: string;
+    readonly attachment: SketchAttachmentSnapshot;
+  }[],
+  featuresByBodyId: ReadonlyMap<BodyId, ExtrudeFeatureSnapshot>,
+  issues: CadProjectImportIssue[]
+): void {
+  for (const { path, attachment } of attachments) {
+    const feature = featuresByBodyId.get(attachment.bodyId);
+
+    if (!feature) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.bodyId`,
+        "Sketch attachment bodyId must reference an authored extrude body."
+      );
+      continue;
+    }
+
+    if (attachment.sourceFeatureId !== feature.id) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.sourceFeatureId`,
+        "Sketch attachment sourceFeatureId must match the referenced body feature."
+      );
+    }
+
+    if (attachment.sourceSketchId !== feature.sketchId) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.sourceSketchId`,
+        "Sketch attachment sourceSketchId must match the referenced body feature."
+      );
+    }
+
+    if (attachment.sourceSketchEntityId !== feature.entityId) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.sourceSketchEntityId`,
+        "Sketch attachment sourceSketchEntityId must match the referenced body feature."
+      );
+    }
+
+    const expectedStableId = `generated:face:${attachment.bodyId}:${attachment.faceRole}`;
+
+    if (attachment.faceStableId !== expectedStableId) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.faceStableId`,
+        "Sketch attachment faceStableId must match the referenced generated face role."
+      );
+    }
+  }
 }
 
 function validateSketchEntitySnapshot(
@@ -5553,7 +5952,7 @@ function materializeGeneratedObjectIds(
       return createdRef ? { ...op, id: createdRef.id } : op;
     }
 
-    if (op.op === "sketch.create") {
+    if (op.op === "sketch.create" || op.op === "sketch.createOnFace") {
       if (op.id) {
         return op;
       }
@@ -5731,6 +6130,15 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
       isSketchPlane(value.plane)
+    );
+  }
+
+  if (value.op === "sketch.createOnFace") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.bodyId === "string" &&
+      typeof value.faceStableId === "string"
     );
   }
 
@@ -6086,6 +6494,20 @@ function isSketchEntityKind(value: unknown): value is SketchEntityKind {
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
+}
+
+function isGeneratedExtrudeFaceRole(
+  value: unknown
+): value is SketchAttachmentSnapshot["faceRole"] {
+  return (
+    value === "startCap" ||
+    value === "endCap" ||
+    value === "side:uMin" ||
+    value === "side:uMax" ||
+    value === "side:vMin" ||
+    value === "side:vMax" ||
+    value === "side:circular"
+  );
 }
 
 function isCadActorType(value: unknown): value is CadActorMetadata["type"] {

@@ -9,6 +9,7 @@ import {
   MockCadCommandWorker,
   corePackage,
   exportCadProjectJson,
+  importCadProject,
   importCadProjectJson,
   parseCadProjectJson
 } from "./index";
@@ -773,6 +774,377 @@ describe("cad-core", () => {
     });
     expect(engine.getDocument().sketches.get("sketch_1")?.entities.size).toBe(
       1
+    );
+  });
+
+  it("creates attached sketches on generated planar faces", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const result = engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_face_1",
+      name: "  End cap sketch  ",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+
+    expect(result.document.sketches.get("sketch_face_1")).toMatchObject({
+      id: "sketch_face_1",
+      name: "End cap sketch",
+      plane: "XY",
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap",
+        sourceFeatureId: "feat_rect_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        faceRole: "endCap"
+      }
+    });
+    expect(result.transaction.diff.sketches).toMatchObject({
+      created: [{ id: "sketch_face_1" }]
+    });
+
+    const sideResult = engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_side_1",
+      name: "Side sketch",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:side:uMin"
+    });
+
+    expect(sideResult.document.sketches.get("sketch_side_1")).toMatchObject({
+      plane: "YZ",
+      attachment: {
+        faceStableId: "generated:face:body_rect_1:side:uMin",
+        faceRole: "side:uMin"
+      }
+    });
+
+    const sketchResponse = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.get", id: "sketch_face_1" }
+    });
+    expect(sketchResponse).toMatchObject({
+      ok: true,
+      sketch: {
+        id: "sketch_face_1",
+        attachment: {
+          kind: "generatedFace",
+          bodyId: "body_rect_1",
+          faceRole: "endCap"
+        }
+      }
+    });
+
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: [
+        {},
+        {
+          ops: [
+            {
+              op: "sketch.createOnFace",
+              label:
+                "Create sketch sketch_face_1 on generated:face:body_rect_1:endCap"
+            }
+          ]
+        },
+        {
+          ops: [
+            {
+              op: "sketch.createOnFace",
+              label:
+                "Create sketch sketch_side_1 on generated:face:body_rect_1:side:uMin"
+            }
+          ]
+        }
+      ]
+    });
+
+    engine.undo();
+    expect(engine.getDocument().sketches.has("sketch_side_1")).toBe(false);
+    engine.redo();
+    expect(engine.getDocument().sketches.has("sketch_side_1")).toBe(true);
+  });
+
+  it("validates attached sketch generated face references", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+
+    expect(
+      rectangleEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Missing body sketch",
+            bodyId: "missing_body",
+            faceStableId: "generated:face:missing_body:endCap"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "BODY_NOT_FOUND",
+        op: "sketch.createOnFace",
+        bodyId: "missing_body"
+      }
+    });
+
+    expect(
+      rectangleEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Stale face sketch",
+            bodyId: "body_rect_1",
+            faceStableId: "generated:face:body_rect_1:missing"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        op: "sketch.createOnFace",
+        stableId: "generated:face:body_rect_1:missing"
+      }
+    });
+
+    expect(
+      rectangleEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Edge sketch",
+            bodyId: "body_rect_1",
+            faceStableId: "generated:edge:body_rect_1:start:uMin"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        op: "sketch.createOnFace",
+        stableId: "generated:edge:body_rect_1:start:uMin",
+        expected: "face",
+        received: "edge"
+      }
+    });
+
+    const circleEngine = createCircleExtrudeEngine();
+    expect(
+      circleEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Circular side sketch",
+            bodyId: "body_circle_1",
+            faceStableId: "generated:face:body_circle_1:side:circular"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        op: "sketch.createOnFace",
+        stableId: "generated:face:body_circle_1:side:circular",
+        expected: "feature.attachSketchPlane",
+        received: "face"
+      }
+    });
+
+    const primitiveEngine = new CadEngine();
+    primitiveEngine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    expect(
+      primitiveEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Primitive sketch",
+            bodyId: "body:box_1",
+            faceStableId: "generated:face:body:box_1:endCap"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        op: "sketch.createOnFace",
+        bodyId: "body:box_1"
+      }
+    });
+  });
+
+  it("supports attached sketch creation in batch dry-run and commit", () => {
+    const engine = createRectangleExtrudeEngine();
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "sketch.createOnFace" as const,
+          name: "Generated face sketch",
+          bodyId: "body_rect_1",
+          faceStableId: "generated:face:body_rect_1:startCap"
+        }
+      ]
+    };
+
+    expect(engine.executeBatch(batch)).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_2"]
+    });
+    expect(engine.getDocument().sketches.has("sketch_2")).toBe(false);
+
+    expect(engine.executeBatch({ ...batch, mode: "commit" })).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_2"],
+      transactionId: "txn_2"
+    });
+    expect(engine.getDocument().sketches.get("sketch_2")).toMatchObject({
+      attachment: {
+        faceStableId: "generated:face:body_rect_1:startCap",
+        faceRole: "startCap"
+      }
+    });
+  });
+
+  it("round-trips attached sketches through project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_face_1",
+      name: "Attached sketch",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    expect(project).toMatchObject({
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        sketches: [
+          { id: "sketch_1" },
+          {
+            id: "sketch_face_1",
+            attachment: {
+              kind: "generatedFace",
+              bodyId: "body_rect_1",
+              faceStableId: "generated:face:body_rect_1:endCap",
+              sourceFeatureId: "feat_rect_1",
+              sourceSketchId: "sketch_1",
+              sourceSketchEntityId: "rect_1",
+              faceRole: "endCap"
+            }
+          }
+        ]
+      }
+    });
+
+    const restored = importCadProject(project);
+    expect(restored.getDocument().sketches.get("sketch_face_1")).toMatchObject({
+      plane: "XY",
+      attachment: {
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_face_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        id: "sketch_face_1",
+        attachment: {
+          sourceFeatureId: "feat_rect_1",
+          faceRole: "endCap"
+        }
+      }
+    });
+  });
+
+  it("validates attached sketch metadata during project import", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_face_1",
+      name: "Attached sketch",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            schemaVersion: "web-cad.project.v3"
+          })
+        ),
+      {
+        code: "INVALID_SKETCH",
+        path: "$.document.sketches[1].attachment"
+      }
+    );
+    expectProjectImportError(
+      () =>
+        parseCadProjectJson(
+          JSON.stringify({
+            ...project,
+            history: [],
+            document: {
+              ...project.document,
+              sketches: project.document.sketches.map((sketch) =>
+                sketch.id === "sketch_face_1"
+                  ? {
+                      ...sketch,
+                      attachment: {
+                        ...sketch.attachment,
+                        bodyId: "missing_body"
+                      }
+                    }
+                  : sketch
+              )
+            }
+          })
+        ),
+      {
+        code: "INVALID_SKETCH",
+        path: "$.document.sketches[1].attachment.bodyId"
+      }
     );
   });
 
@@ -5085,7 +5457,7 @@ describe("cad-core", () => {
     expect(restored.getRedoStack()).toEqual([]);
   });
 
-  it("round-trips sketch source data through project v3 JSON", () => {
+  it("round-trips sketch source data through current project JSON", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
@@ -5104,7 +5476,7 @@ describe("cad-core", () => {
     const restored = importCadProjectJson(JSON.stringify(project));
     const sketch = restored.getDocument().sketches.get("sketch_1");
 
-    expect(project.schemaVersion).toBe("web-cad.project.v3");
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
     expect(project.document.sketches).toEqual([
       {
         id: "sketch_1",
@@ -5131,7 +5503,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("imports v1 project JSON through v3 migration compatibility", () => {
+  it("imports v1 project JSON through current migration compatibility", () => {
     const project = parseCadProjectJson(exportCadProjectJson(new CadEngine()));
     const v1Project = {
       ...project,
@@ -5146,13 +5518,15 @@ describe("cad-core", () => {
     const restoredProject = parseCadProjectJson(JSON.stringify(v1Project));
     const restored = importCadProjectJson(JSON.stringify(v1Project));
 
-    expect(restoredProject.schemaVersion).toBe("web-cad.project.v3");
+    expect(restoredProject.schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
     expect(restoredProject.document.sketches).toEqual([]);
     expect(restoredProject.document.features).toEqual([]);
     expect(restored.getDocument().sketches.size).toBe(0);
   });
 
-  it("round-trips sketch extrude source data through project v3 JSON", () => {
+  it("round-trips sketch extrude source data through current project JSON", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
@@ -5179,7 +5553,7 @@ describe("cad-core", () => {
     const restored = importCadProjectJson(JSON.stringify(project));
     const feature = restored.getDocument().features.get("feat_circle_1");
 
-    expect(project.schemaVersion).toBe("web-cad.project.v3");
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
     expect(project.document.features).toEqual([
       {
         id: "feat_circle_1",
@@ -5232,7 +5606,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("round-trips deleted sketch extrude features through project v3 history", () => {
+  it("round-trips deleted sketch extrude features through current project history", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
@@ -5267,7 +5641,7 @@ describe("cad-core", () => {
       query: { query: "project.structure" }
     });
 
-    expect(project.schemaVersion).toBe("web-cad.project.v3");
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
     expect(project.document.features).toEqual([]);
     expect(project.history.flatMap((transaction) => transaction.ops)).toEqual([
       { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
@@ -5340,7 +5714,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("rejects v3 extrude features with dangling sketch or entity references", () => {
+  it("rejects current extrude features with dangling sketch or entity references", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([

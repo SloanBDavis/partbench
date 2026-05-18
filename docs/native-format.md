@@ -3,11 +3,13 @@
 This document describes the current source-of-truth project format and the
 direction for the future native package format. The V1 format is complete as a
 JSON source-of-truth interchange format. V2 added source-of-truth sketches, and
-V3 added the first authored sketch-driven feature data. Current exports use
-`web-cad.project.v3` while the loader still accepts V1 and V2 projects through
-explicit migration. Future storage work should use this document to evolve
-toward a native package without prematurely introducing OPFS, File System Access
-API, STEP import/export, real topology, or a final `.wcad` implementation.
+V3 added the first authored sketch-driven feature data. V4 added source-of-truth
+sketch attachment metadata for sketches created on generated planar face
+references. Current exports use `web-cad.project.v4` while the loader still
+accepts V1, V2, and V3 projects through explicit migration. Future storage work
+should use this document to evolve toward a native package without prematurely
+introducing OPFS, File System Access API, STEP import/export, real topology, or
+a final `.wcad` implementation.
 
 ## Current Format
 
@@ -17,6 +19,7 @@ The current saved format is deliberate JSON:
 schemaVersion: web-cad.project.v1
 schemaVersion: web-cad.project.v2
 schemaVersion: web-cad.project.v3
+schemaVersion: web-cad.project.v4
 ```
 
 It is produced by:
@@ -43,8 +46,8 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV3 {
-  schemaVersion: "web-cad.project.v3"
+ProjectV4 {
+  schemaVersion: "web-cad.project.v4"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -193,7 +196,24 @@ Sketch {
   id: string
   name: string
   plane: "XY" | "XZ" | "YZ"
+  attachment?: SketchGeneratedFaceAttachment
   entities: SketchEntity[]
+}
+
+SketchGeneratedFaceAttachment {
+  kind: "generatedFace"
+  bodyId: string
+  faceStableId: string
+  sourceFeatureId: string
+  sourceSketchId: string
+  sourceSketchEntityId: string
+  faceRole:
+    | "startCap"
+    | "endCap"
+    | "side:uMin"
+    | "side:uMax"
+    | "side:vMin"
+    | "side:vMax"
 }
 
 SketchEntity =
@@ -216,8 +236,12 @@ SketchEntity =
 
 Sketch names must be non-empty after trimming. Sketch coordinates must be
 finite numbers. Rectangle width/height and circle radius must be positive finite
-numbers. Sketches do not yet include constraints, solving, or automatic profile
-recognition.
+numbers. Sketches created with `sketch.createOnFace` may store attachment
+metadata pointing at an eligible generated planar face reference from an
+authored sketch-extrude body. That attachment is source-of-truth sketch
+placement metadata. The generated reference objects themselves remain derived
+and are not persisted. Sketches do not yet include constraints, solving,
+coordinate remapping for attached faces, or automatic profile recognition.
 
 Current authored features are source-of-truth V3 document data:
 
@@ -252,7 +276,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## V2/V3 Storage Decision
+## V2/V3/V4 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -263,7 +287,14 @@ unless their commands remain in history forever. That introduced
 The first sketch-driven feature operation, `feature.extrude`, is also authored
 CAD source data. It cannot be represented faithfully by only primitive objects
 and sketches, so it introduced `web-cad.project.v3`. Current exports therefore
-use `web-cad.project.v3`.
+used `web-cad.project.v3`.
+
+The first reference-consuming command, `sketch.createOnFace`, adds authored
+sketch attachment metadata. The attachment records the body ID, generated face
+stable ID, source feature/sketch/entity IDs, and face role that the sketch was
+created on. That data is not derivable from a plain plane sketch, so it
+introduced `web-cad.project.v4`. Current exports therefore use
+`web-cad.project.v4`.
 
 The loader accepts:
 
@@ -271,6 +302,7 @@ The loader accepts:
 web-cad.project.v1
 web-cad.project.v2
 web-cad.project.v3
+web-cad.project.v4
 ```
 
 V1 projects migrate into the current in-memory model with unchanged units,
@@ -280,6 +312,9 @@ data, empty authored features, and fresh sketch/feature/body counters.
 V2 projects migrate with their sketch source data intact, plus empty authored
 features and fresh feature/body counters.
 
+V3 projects migrate with sketches and authored features intact, but without
+attached sketch metadata because that source data did not exist in V3.
+
 The derived mapping is deterministic:
 
 ```text
@@ -288,6 +323,7 @@ scene object <objectId>           -> feature:<objectId>
 feature:<objectId>                -> body:<objectId>
 document.features[] extrude       -> feat_N or caller-provided feature ID
 extrude feature body              -> body_N or caller-provided body ID
+sketch.createOnFace attachment    -> stored on the created sketch
 ```
 
 Primitive-derived IDs are query/API affordances and are not separately
@@ -297,7 +333,9 @@ are persisted because they are user-visible rebuild inputs.
 This avoids duplicating source-of-truth state. Duplicated saved part/feature/body
 records would create unnecessary consistency rules while primitive bodies remain
 derivable from scene objects and extrude bodies remain derivable from their
-feature records.
+feature records. Attached sketch metadata is persisted because it is authored
+placement data for that sketch; generated body/face/edge/vertex reference query
+results remain derived and are not persisted.
 
 ## Source Of Truth
 
@@ -314,6 +352,7 @@ The current source of truth is:
 - sketch IDs
 - sketch names
 - sketch planes
+- sketch generated-face attachment metadata
 - sketch entities and entity geometry
 - `document.nextSketchNumber`
 - `document.nextSketchEntityNumber`
@@ -342,7 +381,7 @@ Primitive summaries include the derived default part ID and derived body ID for
 each object. Extrude summaries include the source sketch/entity, profile kind,
 depth, side, and authored body ID.
 
-The `project.structure` query returns the current V2/V3 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -392,11 +431,21 @@ read-only derived query. Missing or stale stable IDs return a structured
 `GENERATED_REFERENCE_NOT_FOUND` error rather than exposing raw OCCT, mesh, or
 renderer indexes.
 
+`sketch.createOnFace` is the first command that consumes generated references.
+It accepts a body ID and generated face stable ID, resolves the reference through
+the same semantic generated-reference model, requires the reference to be a face,
+and requires eligibility for `feature.attachSketchPlane`. It currently supports
+only generated planar faces from authored sketch-extrude bodies. Circular side
+faces, edges, vertices, bodies, missing/stale references, and primitive-derived
+bodies fail with structured validation errors. The created sketch stores only
+the attachment metadata needed to round-trip its authored placement; it does not
+persist generated topology or exact B-rep data.
+
 ## Future Format Version Triggers
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v3`
+that cannot be faithfully represented by the current `web-cad.project.v4`
 document shape.
 
 Likely triggers:
@@ -407,10 +456,11 @@ Likely triggers:
   sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
   required rebuild inputs;
-- persisted durable topological references for faces, edges, vertices, bodies,
-  sketches, and features;
+- persisted durable topological references beyond the current sketch attachment
+  metadata, such as named faces, edges, vertices, bodies, sketches, and
+  features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level parameters/materials/named views that are not represented by V3;
+- project-level parameters/materials/named views that are not represented by V4;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -418,7 +468,7 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v4
+schemaVersion: web-cad.project.v5
 ```
 
 That format should include a migration from older accepted versions, not silent
@@ -509,12 +559,14 @@ The current loader accepts:
 web-cad.project.v1
 web-cad.project.v2
 web-cad.project.v3
+web-cad.project.v4
 ```
 
-V1 is migrated to V3 on parse/load by adding empty sketches, empty authored
-features, and fresh sketch/feature/body counters. V2 is migrated to V3 by
+V1 is migrated to V4 on parse/load by adding empty sketches, empty authored
+features, and fresh sketch/feature/body counters. V2 is migrated to V4 by
 preserving sketches and adding empty authored features plus fresh feature/body
-counters. Unsupported versions fail with a structured
+counters. V3 is migrated to V4 by preserving sketches/features and treating all
+sketches as unattached. Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 
 When another format is needed, add an explicit migration path rather than
@@ -568,8 +620,8 @@ Likely rebuildable cache files are:
 - geometry diagnostics
 
 The current JSON format is the source-of-truth interchange format for the active
-V2/V3 foundation. It is not the final storage backend and does not imply OPFS or
-File System Access API behavior.
+V2/V3/V4 foundation. It is not the final storage backend and does not imply OPFS
+or File System Access API behavior.
 
 JSON export/import remains the deliberate debuggable interchange path and
 `.wcad` remains a documented direction rather than a runtime storage feature.

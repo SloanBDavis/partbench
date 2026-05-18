@@ -83,8 +83,9 @@ Completed foundations:
   preserve-physical-size unit conversion commands.
 - Versioned source-of-truth JSON project import/export. V1 completed with
   `web-cad.project.v1`; sketches introduced `web-cad.project.v2`; authored
-  sketch extrudes introduced `web-cad.project.v3`; V1 and V2 projects still
-  import through migration.
+  sketch extrudes introduced `web-cad.project.v3`; attached face sketches
+  introduced `web-cad.project.v4`; V1, V2, and V3 projects still import through
+  migration.
 - Browser command worker transport.
 - Isolated OCCT/WASM adapter, geometry-kernel facade, browser geometry worker,
   derived geometry service, renderer mesh bridge, and OCCT browser smoke.
@@ -231,9 +232,10 @@ project package without losing debuggability.
 
 Current status: storage decision implemented and evolved. The V2 structural
 bridge is still derived, the sketch slice added authored source data in
-`web-cad.project.v2`, and the first extrude slice added authored feature/body
-source data in `web-cad.project.v3`. V1 and V2 project JSON remain importable
-through migration.
+`web-cad.project.v2`, the first extrude slice added authored feature/body source
+data in `web-cad.project.v3`, and `sketch.createOnFace` added persisted sketch
+attachment metadata in `web-cad.project.v4`. V1, V2, and V3 project JSON remain
+importable through migration.
 
 Deliverables:
 
@@ -251,13 +253,16 @@ Implemented decision:
 
 - Continue deriving `part:default`, `feature:<objectId>`, and
   `body:<objectId>` rather than persisting duplicate part/feature/body records.
-- Export `web-cad.project.v3` with source-of-truth sketches, authored extrude
-  features, sketch counters, feature counters, and body counters.
+- Export `web-cad.project.v4` with source-of-truth sketches, attached sketch
+  metadata, authored extrude features, sketch counters, feature counters, and
+  body counters.
 - Accept `web-cad.project.v1` through migration with empty sketches/features.
 - Accept `web-cad.project.v2` through migration with sketches and empty
   features.
+- Accept `web-cad.project.v3` through migration with sketches/features and no
+  attached sketch metadata.
 - Introduce a later project format only when source-of-truth data cannot be
-  represented cleanly in the current V3 shape, such as constraints, explicit
+  represented cleanly in the current V4 shape, such as constraints, explicit
   profiles, explicit authored parts, additional feature inputs, exact body
   checkpoints, topology references, or assemblies.
 - Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
@@ -289,7 +294,8 @@ Implemented:
 - `project.sketches` and `sketch.get` queries through `cad-core`,
   `agent-adapter`, and MCP wrappers.
 - Compact web UI panel for sketch creation and entity editing.
-- Current exports use `web-cad.project.v3`; V1 and V2 imports remain compatible.
+- Current exports use `web-cad.project.v4`; V1, V2, and V3 imports remain
+  compatible.
 
 Exit criteria:
 
@@ -314,7 +320,7 @@ Implemented:
   depth, supported side, and unique feature/body IDs.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
-- `web-cad.project.v3` source-of-truth export with V1/V2 import migration.
+- `web-cad.project.v4` source-of-truth export with V1/V2/V3 import migration.
 - `project.structure` and `project.features` show primitive-derived and
   sketch-extrude features/bodies.
 - Geometry-kernel and geometry-worker rectangle/circle extrude tessellation
@@ -371,6 +377,13 @@ Implemented:
   `feature.measureReference`, and `feature.selectReference`. Eligibility is
   advisory planning metadata derived from the reference kind and role, not an
   implemented mutation capability.
+- Internal generated-reference validation helpers resolve references by body ID
+  and stable ID, then check expected kind and operation eligibility for future
+  reference-consuming commands.
+- `sketch.createOnFace` is the first reference-consuming mutation. It creates a
+  source-of-truth sketch attached to an eligible generated planar face reference
+  from an authored sketch-extrude body while keeping generated references
+  derived rather than persisted topology.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
 - Missing/stale generated reference IDs fail with a structured

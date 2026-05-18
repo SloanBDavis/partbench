@@ -88,6 +88,7 @@ export type CadOp =
   | SceneUpdateTorusDimensionsOp
   | SceneRenameObjectOp
   | SketchCreateOp
+  | SketchCreateOnFaceOp
   | SketchRenameOp
   | SketchDeleteOp
   | SketchAddPointOp
@@ -198,6 +199,14 @@ export interface SketchCreateOp {
   readonly id?: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
+}
+
+export interface SketchCreateOnFaceOp {
+  readonly op: "sketch.createOnFace";
+  readonly id?: SketchId;
+  readonly name: string;
+  readonly bodyId: BodyId;
+  readonly faceStableId: string;
 }
 
 export interface SketchRenameOp {
@@ -374,6 +383,11 @@ export type CadBatchValidationErrorCode =
   | "INVALID_SKETCH_NAME"
   | "INVALID_SKETCH_PLANE"
   | "INVALID_SKETCH_ENTITY"
+  | "BODY_NOT_FOUND"
+  | "UNSUPPORTED_BODY_REFERENCES"
+  | "GENERATED_REFERENCE_NOT_FOUND"
+  | "GENERATED_REFERENCE_KIND_MISMATCH"
+  | "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
   | "FEATURE_ALREADY_EXISTS"
   | "FEATURE_NOT_FOUND"
   | "FEATURE_NOT_DELETABLE"
@@ -394,6 +408,7 @@ export interface CadBatchValidationError {
   readonly sketchEntityId?: SketchEntityId;
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
+  readonly stableId?: string;
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -616,10 +631,23 @@ export interface SketchCircleEntitySnapshot {
   readonly radius: number;
 }
 
+export type SketchAttachmentSnapshot = SketchGeneratedFaceAttachmentSnapshot;
+
+export interface SketchGeneratedFaceAttachmentSnapshot {
+  readonly kind: "generatedFace";
+  readonly bodyId: BodyId;
+  readonly faceStableId: string;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly faceRole: CadGeneratedExtrudeFaceRole;
+}
+
 export interface SketchSnapshot {
   readonly id: SketchId;
   readonly name: string;
   readonly plane: SketchPlane;
+  readonly attachment?: SketchAttachmentSnapshot;
   readonly entities: readonly SketchEntitySnapshot[];
 }
 

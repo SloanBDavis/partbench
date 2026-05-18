@@ -1270,6 +1270,76 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes sketch.createOnFace through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_profile",
+      entityId: "rect_profile",
+      featureId: "feat_profile",
+      bodyId: "body_profile"
+    });
+
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "dryRun" as const,
+      ops: [
+        {
+          op: "sketch.createOnFace" as const,
+          id: "sketch_face",
+          name: "Face sketch",
+          bodyId: "body_profile",
+          faceStableId: "generated:face:body_profile:endCap"
+        }
+      ]
+    };
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_create_on_face_dry",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_face"]
+    });
+
+    expect(
+      adapter.execute({
+        requestId: "agent_req_create_on_face_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: { ...batch, mode: "commit" }
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_face"]
+    });
+
+    const sketch = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_req_face_sketch_get",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_face" }
+      }
+    });
+
+    expect(sketch).toMatchObject({
+      ok: true,
+      sketch: {
+        id: "sketch_face",
+        attachment: {
+          kind: "generatedFace",
+          bodyId: "body_profile",
+          faceRole: "endCap"
+        }
+      }
+    });
+  });
+
   it("returns generated body references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

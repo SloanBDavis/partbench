@@ -13,7 +13,8 @@ import type {
   CadPrimitiveFeatureSummary,
   CadOp,
   CadQueryRequest,
-  CadQueryResponse
+  CadQueryResponse,
+  SketchSnapshot
 } from "./index";
 import { protocolPackage } from "./index";
 
@@ -103,6 +104,13 @@ describe("cad-protocol", () => {
         plane: "XY"
       },
       {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "Face sketch",
+        bodyId: "body_1",
+        faceStableId: "generated:face:body_1:endCap"
+      },
+      {
         op: "sketch.addPoint",
         sketchId: "sketch_1",
         id: "skent_1",
@@ -188,6 +196,7 @@ describe("cad-protocol", () => {
       "scene.renameObject",
       "scene.deleteObject",
       "sketch.create",
+      "sketch.createOnFace",
       "sketch.addPoint",
       "sketch.addLine",
       "sketch.addRectangle",
@@ -592,6 +601,30 @@ describe("cad-protocol", () => {
       partId: "part:default",
       featureId: "feature:box_1",
       bodyId: "body:box_1"
+    });
+  });
+
+  it("types attached sketch metadata", () => {
+    const sketch: SketchSnapshot = {
+      id: "sketch_face_1",
+      name: "Face sketch",
+      plane: "XY",
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_1",
+        faceStableId: "generated:face:body_1:endCap",
+        sourceFeatureId: "feat_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        faceRole: "endCap"
+      },
+      entities: []
+    };
+
+    expect(sketch.attachment).toMatchObject({
+      kind: "generatedFace",
+      faceStableId: "generated:face:body_1:endCap",
+      faceRole: "endCap"
     });
   });
 });

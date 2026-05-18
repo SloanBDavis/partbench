@@ -921,6 +921,15 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.createOnFace") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.bodyId === "string" &&
+      typeof value.faceStableId === "string"
+    );
+  }
+
   if (value.op === "sketch.rename") {
     return typeof value.id === "string" && typeof value.name === "string";
   }

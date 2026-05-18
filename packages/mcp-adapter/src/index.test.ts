@@ -1007,6 +1007,76 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes sketch.createOnFace through cad.batch", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_on_face",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "profile_sketch",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "profile_sketch",
+              id: "profile_rect",
+              center: [0, 0],
+              width: 2,
+              height: 3
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_profile",
+              bodyId: "body_profile",
+              sketchId: "profile_sketch",
+              entityId: "profile_rect",
+              depth: 4
+            },
+            {
+              op: "sketch.createOnFace",
+              id: "face_sketch",
+              name: "Face sketch",
+              bodyId: "body_profile",
+              faceStableId: "generated:face:body_profile:endCap"
+            }
+          ]
+        }
+      }
+    });
+    const get = server.callTool({
+      name: "cad.sketch_get",
+      requestId: "mcp_req_face_sketch_get",
+      arguments: { id: "face_sketch" }
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdSketchIds: ["profile_sketch", "face_sketch"],
+      createdFeatureIds: ["feat_profile"],
+      createdBodyIds: ["body_profile"]
+    });
+    expect(get.structuredContent).toMatchObject({
+      ok: true,
+      sketch: {
+        id: "face_sketch",
+        attachment: {
+          bodyId: "body_profile",
+          faceStableId: "generated:face:body_profile:endCap",
+          faceRole: "endCap"
+        }
+      }
+    });
+  });
+
   it("returns generated body references through cad.body_generated_references", () => {
     const server = new CadMcpServer();
 
