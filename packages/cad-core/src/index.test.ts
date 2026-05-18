@@ -4,6 +4,7 @@ import {
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
   CadProjectImportError,
+  DEFAULT_PART_ID,
   createCadDocument,
   MockCadCommandWorker,
   corePackage,
@@ -11,6 +12,7 @@ import {
   importCadProjectJson,
   parseCadProjectJson
 } from "./index";
+import { validateGeneratedReference } from "./generatedReferences";
 
 function createRectangleExtrudeEngine(): CadEngine {
   const engine = new CadEngine();
@@ -61,6 +63,30 @@ function createCircleExtrudeEngine(): CadEngine {
   ]);
 
   return engine;
+}
+
+function validateEngineGeneratedReference(
+  engine: CadEngine,
+  options: Omit<
+    Parameters<typeof validateGeneratedReference>[0],
+    "document" | "ownerPartId" | "bodyExists"
+  >
+): ReturnType<typeof validateGeneratedReference> {
+  const structure = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+
+  if (!structure.ok || structure.query !== "project.structure") {
+    throw new Error("Expected project structure response.");
+  }
+
+  return validateGeneratedReference({
+    ...options,
+    document: engine.getDocument(),
+    ownerPartId: DEFAULT_PART_ID,
+    bodyExists: (bodyId) => structure.bodies.some((body) => body.id === bodyId)
+  });
 }
 
 describe("cad-core", () => {
@@ -2638,6 +2664,132 @@ describe("cad-core", () => {
           "start:vMin",
           "longitudinal:uMin:vMin"
         ]
+      }
+    });
+  });
+
+  it("validates generated references by kind and eligibility internally", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+
+    expect(
+      validateEngineGeneratedReference(rectangleEngine, {
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:side:uMin",
+        expectedKind: "face",
+        requiredOperation: "feature.attachSketchPlane"
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "face",
+      reference: {
+        kind: "face",
+        role: "side:uMin",
+        eligibleOperations: [
+          "feature.attachSketchPlane",
+          "feature.measureReference",
+          "feature.selectReference"
+        ]
+      }
+    });
+
+    expect(
+      validateEngineGeneratedReference(rectangleEngine, {
+        bodyId: "body_rect_1",
+        stableId: "generated:edge:body_rect_1:start:uMin",
+        expectedKind: "edge",
+        requiredOperation: "feature.measureReference"
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "edge",
+      reference: {
+        kind: "edge",
+        role: "start:uMin"
+      }
+    });
+
+    expect(
+      validateEngineGeneratedReference(rectangleEngine, {
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:side:uMin",
+        expectedKind: "edge"
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:side:uMin",
+        expectedKind: "edge",
+        actualKind: "face"
+      }
+    });
+
+    const circleEngine = createCircleExtrudeEngine();
+
+    expect(
+      validateEngineGeneratedReference(circleEngine, {
+        bodyId: "body_circle_1",
+        stableId: "generated:face:body_circle_1:side:circular",
+        expectedKind: "face",
+        requiredOperation: "feature.attachSketchPlane"
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        bodyId: "body_circle_1",
+        stableId: "generated:face:body_circle_1:side:circular",
+        actualKind: "face",
+        requiredOperation: "feature.attachSketchPlane"
+      }
+    });
+
+    expect(
+      validateEngineGeneratedReference(rectangleEngine, {
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:missing"
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:missing"
+      }
+    });
+
+    const primitiveEngine = new CadEngine();
+    primitiveEngine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    expect(
+      validateEngineGeneratedReference(primitiveEngine, {
+        bodyId: "body:box_1",
+        stableId: "generated:body:body:box_1"
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        bodyId: "body:box_1",
+        stableId: "generated:body:body:box_1"
+      }
+    });
+    expect(
+      validateEngineGeneratedReference(primitiveEngine, {
+        bodyId: "missing_body",
+        stableId: "generated:body:missing_body"
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "BODY_NOT_FOUND",
+        bodyId: "missing_body",
+        stableId: "generated:body:missing_body"
       }
     });
   });

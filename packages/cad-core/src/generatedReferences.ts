@@ -2,6 +2,7 @@ import type {
   BodyId,
   CadGeneratedBodyReference,
   CadGeneratedEdgeReference,
+  CadGeneratedEntityKind,
   CadGeneratedExtrudeEdgeRole,
   CadGeneratedExtrudeFaceRole,
   CadGeneratedExtrudeVertexRole,
@@ -81,6 +82,45 @@ export interface BodyGeneratedReferenceResolution {
   readonly kind: CadGeneratedReference["kind"];
   readonly reference: CadGeneratedReference;
 }
+
+export type GeneratedReferenceValidationErrorCode =
+  | "BODY_NOT_FOUND"
+  | "UNSUPPORTED_BODY_REFERENCES"
+  | "GENERATED_REFERENCE_NOT_FOUND"
+  | "GENERATED_REFERENCE_KIND_MISMATCH"
+  | "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE";
+
+export interface GeneratedReferenceValidationError {
+  readonly code: GeneratedReferenceValidationErrorCode;
+  readonly message: string;
+  readonly bodyId: BodyId;
+  readonly stableId?: string;
+  readonly expectedKind?: CadGeneratedEntityKind;
+  readonly actualKind?: CadGeneratedEntityKind;
+  readonly requiredOperation?: CadGeneratedReferenceEligibleOperation;
+}
+
+export interface ValidateGeneratedReferenceOptions {
+  readonly document: GeneratedReferencesDocument;
+  readonly ownerPartId: PartId;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly bodyExists: (bodyId: BodyId) => boolean;
+  readonly expectedKind?: CadGeneratedEntityKind;
+  readonly requiredOperation?: CadGeneratedReferenceEligibleOperation;
+}
+
+export type GeneratedReferenceValidationResult =
+  | {
+      readonly ok: true;
+      readonly kind: CadGeneratedEntityKind;
+      readonly reference: CadGeneratedReference;
+      readonly references: BodyGeneratedReferencesSnapshot;
+    }
+  | {
+      readonly ok: false;
+      readonly error: GeneratedReferenceValidationError;
+    };
 
 export function createBodyGeneratedReferences(
   document: GeneratedReferencesDocument,
@@ -174,6 +214,91 @@ export function createBodyGeneratedReferences(
             ownerPartId
           )
         : []
+  };
+}
+
+export function validateGeneratedReference(
+  options: ValidateGeneratedReferenceOptions
+): GeneratedReferenceValidationResult {
+  const references = createBodyGeneratedReferences(
+    options.document,
+    options.bodyId,
+    options.ownerPartId
+  );
+
+  if (!references) {
+    return {
+      ok: false,
+      error: options.bodyExists(options.bodyId)
+        ? {
+            code: "UNSUPPORTED_BODY_REFERENCES",
+            message:
+              "Generated references are currently available only for authored sketch-extrude bodies.",
+            bodyId: options.bodyId,
+            stableId: options.stableId
+          }
+        : {
+            code: "BODY_NOT_FOUND",
+            message: `Body does not exist: ${options.bodyId}`,
+            bodyId: options.bodyId,
+            stableId: options.stableId
+          }
+    };
+  }
+
+  const resolution = resolveGeneratedReference(references, options.stableId);
+
+  if (!resolution) {
+    return {
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: `Generated reference does not exist on body ${options.bodyId}: ${options.stableId}`,
+        bodyId: options.bodyId,
+        stableId: options.stableId
+      }
+    };
+  }
+
+  if (
+    options.expectedKind !== undefined &&
+    resolution.kind !== options.expectedKind
+  ) {
+    return {
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        message: `Expected generated reference ${options.stableId} to be a ${options.expectedKind}, but found ${resolution.kind}.`,
+        bodyId: options.bodyId,
+        stableId: options.stableId,
+        expectedKind: options.expectedKind,
+        actualKind: resolution.kind
+      }
+    };
+  }
+
+  if (
+    options.requiredOperation !== undefined &&
+    !resolution.reference.eligibleOperations.includes(options.requiredOperation)
+  ) {
+    return {
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        message: `Generated reference ${options.stableId} is not eligible for ${options.requiredOperation}.`,
+        bodyId: options.bodyId,
+        stableId: options.stableId,
+        actualKind: resolution.kind,
+        requiredOperation: options.requiredOperation
+      }
+    };
+  }
+
+  return {
+    ok: true,
+    kind: resolution.kind,
+    reference: resolution.reference,
+    references
   };
 }
 
