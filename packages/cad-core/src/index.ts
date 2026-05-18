@@ -6,6 +6,7 @@ import type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  BodyExtentSnapshot,
   CadBodyRef,
   CadBodySnapshot,
   CadFeatureRef,
@@ -29,6 +30,7 @@ import type {
   DocumentUnitUpdateMode,
   DocumentUnits,
   ObjectMeasurementsSnapshot,
+  ProjectExtentsWarning,
   ObjectId,
   PartId,
   SemanticDiff,
@@ -673,6 +675,15 @@ export class CadEngine {
         const measurements = [...this.#document.objects.values()].map(
           (object) => createObjectMeasurements(object, this.#document.units)
         );
+        const bodyExtents = createBodyExtents(
+          this.#document,
+          this.#document.units,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const allBounds = [
+          ...measurements.map((measurement) => measurement.worldBounds),
+          ...bodyExtents.bodies.map((body) => body.worldBounds)
+        ];
 
         return {
           ok: true,
@@ -680,21 +691,24 @@ export class CadEngine {
           cadOpsVersion: request.version,
           units: this.#document.units,
           objectCount: measurements.length,
-          ...(measurements.length > 0
+          bodyCount: bodyExtents.bodies.length,
+          ...(allBounds.length > 0
             ? {
-                bounds: mergeBounds(
-                  measurements.map((measurement) => measurement.worldBounds)
-                )
+                bounds: mergeBounds(allBounds)
               }
             : {}),
-          approximateVolume: sumApproximateVolumes(measurements),
+          approximateVolume:
+            sumApproximateVolumes(measurements) +
+            sumBodyExtentVolumes(bodyExtents.bodies),
           objects: measurements.map((measurement) => ({
             id: measurement.id,
             kind: measurement.kind,
             name: measurement.name,
             worldBounds: measurement.worldBounds,
             approximateVolume: measurement.approximateVolume
-          }))
+          })),
+          bodies: bodyExtents.bodies,
+          warnings: bodyExtents.warnings
         };
       }
 
@@ -3376,6 +3390,54 @@ function mergeBounds(
   return createBounds(boundsList.flatMap((bounds) => [bounds.min, bounds.max]));
 }
 
+function createBodyExtents(
+  document: CadDocument,
+  units: DocumentUnits,
+  transactions: readonly Transaction[]
+): {
+  readonly bodies: readonly BodyExtentSnapshot[];
+  readonly warnings: readonly ProjectExtentsWarning[];
+} {
+  const structure = createProjectStructure(document, transactions);
+  const bodies: BodyExtentSnapshot[] = [];
+  const warnings: ProjectExtentsWarning[] = [];
+
+  for (const body of structure.bodies) {
+    if (body.source.type !== "sketchExtrudeFeature") {
+      continue;
+    }
+
+    const measurements = createBodyMeasurements(
+      document,
+      body.id,
+      units,
+      body.partId
+    );
+
+    if (!measurements) {
+      warnings.push({
+        code: "BODY_EXTENTS_UNAVAILABLE",
+        message: `Body extents are unavailable because the authored body source or attached sketch reference could not be resolved: ${body.id}`,
+        bodyId: body.id,
+        featureId: body.featureId
+      });
+      continue;
+    }
+
+    bodies.push({
+      bodyId: measurements.bodyId,
+      sourceFeatureId: measurements.sourceFeatureId,
+      sourceSketchId: measurements.sourceSketchId,
+      sourceSketchEntityId: measurements.sourceSketchEntityId,
+      profileKind: measurements.profileKind,
+      worldBounds: measurements.localBounds,
+      volume: measurements.volume
+    });
+  }
+
+  return { bodies, warnings };
+}
+
 function sumApproximateVolumes(
   measurements: readonly ObjectMeasurementsSnapshot[]
 ): number {
@@ -3383,6 +3445,10 @@ function sumApproximateVolumes(
     (total, measurement) => total + measurement.approximateVolume,
     0
   );
+}
+
+function sumBodyExtentVolumes(extents: readonly BodyExtentSnapshot[]): number {
+  return extents.reduce((total, extent) => total + extent.volume, 0);
 }
 
 function createBounds(points: readonly Vec3[]): CadAxisAlignedBounds {

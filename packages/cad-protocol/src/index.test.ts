@@ -673,4 +673,55 @@ describe("cad-protocol", () => {
       faceRole: "endCap"
     });
   });
+
+  it("types project extents with authored bodies and warnings", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "project.extents",
+      cadOpsVersion: "cadops.v1",
+      units: "mm",
+      objectCount: 0,
+      bodyCount: 1,
+      bounds: {
+        min: [-2, -1, 0],
+        max: [2, 1, 3],
+        size: [4, 2, 3],
+        center: [0, 0, 1.5]
+      },
+      approximateVolume: 24,
+      objects: [],
+      bodies: [
+        {
+          bodyId: "body_1",
+          sourceFeatureId: "feat_1",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          profileKind: "rectangle",
+          worldBounds: {
+            min: [-2, -1, 0],
+            max: [2, 1, 3],
+            size: [4, 2, 3],
+            center: [0, 0, 1.5]
+          },
+          volume: 24
+        }
+      ],
+      warnings: [
+        {
+          code: "BODY_EXTENTS_UNAVAILABLE",
+          message: "Skipped stale body.",
+          bodyId: "body_stale",
+          featureId: "feat_stale"
+        }
+      ]
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      bodies: [{ bodyId: "body_1", volume: 24 }],
+      warnings: [{ code: "BODY_EXTENTS_UNAVAILABLE" }]
+    });
+  });
 });

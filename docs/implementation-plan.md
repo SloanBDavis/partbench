@@ -156,9 +156,10 @@ Current limitations:
 - There is no authoritative B-rep topology in the document model.
 - The derived OCCT path tessellates current primitives and rectangle/circle
   sketch extrudes, but exact B-rep geometry is not persisted as source of truth.
-- Measurements include primitive object bounds/volumes and source-derived
-  rectangle/circle sketch-extrude body measurements. They are not exact
-  kernel/B-rep measurements yet.
+- Measurements include primitive object bounds/volumes, source-derived
+  rectangle/circle sketch-extrude body measurements, and project extents that
+  union primitive objects with measurable authored extrude bodies. They are not
+  exact kernel/B-rep measurements yet.
 - Document units are explicit but not a full unit system.
 - Object display names are optional and not unique.
 - The first sketch and extrude slices exist, but there is no sketch solver,

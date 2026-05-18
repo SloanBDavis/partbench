@@ -5169,6 +5169,7 @@ describe("cad-core", () => {
       cadOpsVersion: "cadops.v1",
       units: "mm",
       objectCount: 2,
+      bodyCount: 0,
       bounds: {
         min: [-3, -1, -2],
         max: [4, 1, 2],
@@ -5218,8 +5219,345 @@ describe("cad-core", () => {
       cadOpsVersion: "cadops.v1",
       units: "mm",
       objectCount: 0,
+      bodyCount: 0,
       approximateVolume: 0,
-      objects: []
+      objects: [],
+      bodies: [],
+      warnings: []
+    });
+  });
+
+  it("includes rectangle and circle authored body extents in project extents", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+    const circleEngine = createCircleExtrudeEngine();
+
+    const rectangle = rectangleEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+    const circle = circleEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(rectangle).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 1,
+      bounds: {
+        min: [-2, -1, 0],
+        max: [2, 1, 3],
+        size: [4, 2, 3],
+        center: [0, 0, 1.5]
+      },
+      approximateVolume: 24,
+      objects: [],
+      bodies: [
+        {
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          profileKind: "rectangle",
+          worldBounds: {
+            min: [-2, -1, 0],
+            max: [2, 1, 3]
+          },
+          volume: 24
+        }
+      ],
+      warnings: []
+    });
+    expect(circle).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 1,
+      bounds: {
+        min: [-2, -2, 0],
+        max: [2, 2, 4]
+      },
+      objects: [],
+      bodies: [
+        {
+          bodyId: "body_circle_1",
+          sourceFeatureId: "feat_circle_1",
+          profileKind: "circle",
+          worldBounds: {
+            min: [-2, -2, 0],
+            max: [2, 2, 4]
+          }
+        }
+      ],
+      warnings: []
+    });
+
+    if (circle.ok && circle.query === "project.extents") {
+      expect(circle.approximateVolume).toBeCloseTo(16 * Math.PI);
+      expect(circle.bodies[0]?.volume).toBeCloseTo(16 * Math.PI);
+    } else {
+      throw new Error("Expected circle project extents response.");
+    }
+  });
+
+  it("combines primitive and authored body extents", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "left_box",
+      dimensions: { width: 2, height: 2, depth: 2 },
+      transform: { translation: [-4, 0, 0] }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 1,
+      bodyCount: 1,
+      bounds: {
+        min: [-5, -1, -1],
+        max: [2, 1, 3],
+        size: [7, 2, 4],
+        center: [-1.5, 0, 1]
+      },
+      approximateVolume: 32,
+      objects: [{ id: "left_box", approximateVolume: 8 }],
+      bodies: [{ bodyId: "body_rect_1", volume: 24 }],
+      warnings: []
+    });
+  });
+
+  it("includes attached sketch extrude extents when the attachment resolves", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "End cap sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_face_1",
+        id: "face_rect_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_face_1",
+        bodyId: "body_face_1",
+        sketchId: "sketch_face_1",
+        entityId: "face_rect_1",
+        depth: 2
+      }
+    ]);
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 2,
+      bounds: {
+        min: [-2, -1, 0],
+        max: [2, 1, 5],
+        size: [4, 2, 5],
+        center: [0, 0, 2.5]
+      },
+      approximateVolume: 26,
+      bodies: [
+        { bodyId: "body_rect_1", volume: 24 },
+        {
+          bodyId: "body_face_1",
+          worldBounds: {
+            min: [-0.5, -0.5, 3],
+            max: [0.5, 0.5, 5]
+          },
+          volume: 2
+        }
+      ],
+      warnings: []
+    });
+  });
+
+  it("reflects extrude depth side behavior in project extents", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 6,
+      side: "negative"
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      bounds: {
+        min: [-2, -1, -6],
+        max: [2, 1, 0],
+        size: [4, 2, 6],
+        center: [0, 0, -3]
+      },
+      approximateVolume: 48,
+      bodies: [
+        {
+          bodyId: "body_rect_1",
+          worldBounds: {
+            min: [-2, -1, -6],
+            max: [2, 1, 0]
+          },
+          volume: 48
+        }
+      ]
+    });
+  });
+
+  it("updates project extents through feature delete undo and redo", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    const deleted = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(deleted).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 0,
+      approximateVolume: 0,
+      bodies: [],
+      warnings: []
+    });
+
+    engine.undo();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.extents" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      approximateVolume: 24,
+      bodies: [{ bodyId: "body_rect_1" }]
+    });
+
+    engine.redo();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.extents" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 0,
+      approximateVolume: 0,
+      bodies: []
+    });
+  });
+
+  it("round-trips authored body project extents through project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    const response = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 1,
+      bounds: {
+        min: [-2, -1, 0],
+        max: [2, 1, 3]
+      },
+      approximateVolume: 24,
+      bodies: [{ bodyId: "body_rect_1", volume: 24 }],
+      warnings: []
+    });
+  });
+
+  it("warns and excludes authored body extents with stale attachments", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "End cap sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_face_1",
+        id: "face_rect_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_face_1",
+        bodyId: "body_face_1",
+        sketchId: "sketch_face_1",
+        entityId: "face_rect_1",
+        depth: 2
+      }
+    ]);
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 0,
+      approximateVolume: 0,
+      bodies: [],
+      warnings: [
+        {
+          code: "BODY_EXTENTS_UNAVAILABLE",
+          bodyId: "body_face_1",
+          featureId: "feat_face_1"
+        }
+      ]
     });
   });
 

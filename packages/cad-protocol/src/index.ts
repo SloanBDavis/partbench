@@ -704,6 +704,25 @@ export interface ObjectExtentSnapshot {
 
 export type CadBodyMeasurementModel = "sourceAnalytic";
 
+export interface BodyExtentSnapshot {
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly worldBounds: CadAxisAlignedBounds;
+  readonly volume: number;
+}
+
+export type ProjectExtentsWarningCode = "BODY_EXTENTS_UNAVAILABLE";
+
+export interface ProjectExtentsWarning {
+  readonly code: ProjectExtentsWarningCode;
+  readonly message: string;
+  readonly bodyId: BodyId;
+  readonly featureId?: FeatureId;
+}
+
 export interface BodyMeasurementsSnapshot {
   readonly bodyId: BodyId;
   readonly sourceFeatureId: FeatureId;
@@ -1097,9 +1116,12 @@ export interface ProjectExtentsQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly units: DocumentUnits;
   readonly objectCount: number;
+  readonly bodyCount: number;
   readonly bounds?: CadAxisAlignedBounds;
   readonly approximateVolume: number;
   readonly objects: readonly ObjectExtentSnapshot[];
+  readonly bodies: readonly BodyExtentSnapshot[];
+  readonly warnings: readonly ProjectExtentsWarning[];
 }
 
 export interface TransactionHistoryQueryResponse {

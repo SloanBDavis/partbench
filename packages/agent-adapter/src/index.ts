@@ -7,6 +7,7 @@ import type {
   CadBatchValidationError,
   CadAxisAlignedBounds,
   BodyMeasurementsSnapshot,
+  BodyExtentSnapshot,
   CadBodySnapshot,
   CadFeatureSummary,
   CadGeneratedBodyReference,
@@ -31,6 +32,7 @@ import type {
   ObjectExtentSnapshot,
   ObjectMeasurementsSnapshot,
   ObjectId,
+  ProjectExtentsWarning,
   Transform,
   Vec3
 } from "@web-cad/cad-protocol";
@@ -227,9 +229,12 @@ export interface CadOpsAgentProjectExtentsQueryResponse {
   readonly query: "project.extents";
   readonly units: DocumentUnits;
   readonly objectCount: number;
+  readonly bodyCount: number;
   readonly bounds?: CadAxisAlignedBounds;
   readonly approximateVolume: number;
   readonly objects: readonly ObjectExtentSnapshot[];
+  readonly bodies: readonly BodyExtentSnapshot[];
+  readonly warnings: readonly ProjectExtentsWarning[];
 }
 
 export interface CadOpsAgentSketchGetQueryResponse {
@@ -659,9 +664,12 @@ function toAgentQueryResponse(
       query: response.query,
       units: response.units,
       objectCount: response.objectCount,
+      bodyCount: response.bodyCount,
       ...(response.bounds ? { bounds: response.bounds } : {}),
       approximateVolume: response.approximateVolume,
-      objects: response.objects
+      objects: response.objects,
+      bodies: response.bodies,
+      warnings: response.warnings
     };
   }
 
