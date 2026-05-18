@@ -836,6 +836,8 @@ export interface CadGeneratedReferenceSignature {
 export interface CadGeneratedBodyReference {
   readonly kind: "body";
   readonly stableId: string;
+  readonly label: string;
+  readonly description?: string;
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
@@ -848,6 +850,8 @@ export interface CadGeneratedBodyReference {
 export interface CadGeneratedFaceReference {
   readonly kind: "face";
   readonly stableId: string;
+  readonly label: string;
+  readonly description?: string;
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
@@ -860,6 +864,8 @@ export interface CadGeneratedFaceReference {
 export interface CadGeneratedEdgeReference {
   readonly kind: "edge";
   readonly stableId: string;
+  readonly label: string;
+  readonly description?: string;
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
@@ -873,6 +879,8 @@ export interface CadGeneratedEdgeReference {
 export interface CadGeneratedVertexReference {
   readonly kind: "vertex";
   readonly stableId: string;
+  readonly label: string;
+  readonly description?: string;
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;

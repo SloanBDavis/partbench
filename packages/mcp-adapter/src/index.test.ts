@@ -1032,6 +1032,7 @@ describe("mcp-adapter", () => {
         query: "body.generatedReferences",
         body: {
           stableId: "generated:body:mcp_refs_body",
+          label: "Circle extrude body",
           bodyId: "mcp_refs_body",
           sourceFeatureId: "mcp_refs_feature",
           sourceSketchId: "mcp_refs_sketch",
@@ -1042,17 +1043,19 @@ describe("mcp-adapter", () => {
         edgeCount: 2,
         vertexCount: 0,
         faces: [
-          { role: "startCap" },
+          { role: "startCap", label: "Start cap" },
           { role: "endCap" },
-          { role: "side:circular" }
+          { role: "side:circular", label: "Circular side face" }
         ],
         edges: [
           {
             role: "start:circular",
+            label: "Start circular edge",
             adjacentFaceRoles: ["startCap", "side:circular"]
           },
           {
             role: "end:circular",
+            label: "End circular edge",
             adjacentFaceRoles: ["endCap", "side:circular"]
           }
         ],
@@ -1092,6 +1095,7 @@ describe("mcp-adapter", () => {
         kind: "edge",
         reference: {
           kind: "edge",
+          label: "Start circular edge",
           role: "start:circular",
           adjacentFaceRoles: ["startCap", "side:circular"]
         }

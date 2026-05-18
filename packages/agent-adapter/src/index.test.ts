@@ -1295,6 +1295,7 @@ describe("agent-adapter", () => {
       query: "body.generatedReferences",
       body: {
         stableId: "generated:body:body_refs",
+        label: "Rectangle extrude body",
         bodyId: "body_refs",
         sourceFeatureId: "feat_refs",
         sourceSketchId: "sketch_refs",
@@ -1305,9 +1306,9 @@ describe("agent-adapter", () => {
       edgeCount: 12,
       vertexCount: 8,
       faces: [
-        { role: "startCap" },
+        { role: "startCap", label: "Start cap" },
         { role: "endCap" },
-        { role: "side:uMin" },
+        { role: "side:uMin", label: "uMin side face" },
         { role: "side:uMax" },
         { role: "side:vMin" },
         { role: "side:vMax" }
@@ -1323,6 +1324,7 @@ describe("agent-adapter", () => {
         { role: "end:vMax" },
         {
           role: "longitudinal:uMin:vMin",
+          label: "uMin/vMin longitudinal edge",
           adjacentFaceRoles: ["side:uMin", "side:vMin"]
         },
         { role: "longitudinal:uMin:vMax" },
@@ -1332,6 +1334,7 @@ describe("agent-adapter", () => {
       vertices: [
         {
           role: "start:uMin:vMin",
+          label: "Start uMin/vMin corner",
           adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
           adjacentEdgeRoles: [
             "start:uMin",
@@ -1382,6 +1385,7 @@ describe("agent-adapter", () => {
       kind: "vertex",
       reference: {
         kind: "vertex",
+        label: "Start uMin/vMin corner",
         role: "start:uMin:vMin",
         adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
         adjacentEdgeRoles: [

@@ -373,6 +373,10 @@ edges and vertices, adjacent edge roles for vertices, sketch plane, extrude
 side, profile kind, current source profile signature, and simple
 normal/axis/curve/profile-point roles. They are not raw OCCT, mesh, or renderer
 indexes and are not persisted as source-of-truth data.
+Each reference also includes a deterministic read-only `label` and, where
+useful, `description`. These are derived readability metadata for humans,
+scripts, agents, and future UI panels. They are not persisted user names and do
+not change stable IDs or resolver behavior.
 
 The companion `body.resolveGeneratedReference` query accepts a body ID and one
 generated stable ID, then resolves it to the current body, face, edge, or vertex
@@ -431,6 +435,7 @@ These are not source of truth and must not be required to load a project:
 - read-only project sketch query formatting
 - read-only generated body/face/edge/vertex reference query results
 - read-only generated reference resolver query results
+- read-only generated reference labels and descriptions
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the

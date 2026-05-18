@@ -363,6 +363,9 @@ Implemented:
   edges and vertices, adjacent edge roles for vertices, sketch plane, extrude
   side, profile kind, depth, current source profile signature, and simple
   normal/axis/profile-point roles where practical.
+- Generated references include deterministic read-only labels and descriptions
+  for human, script, and agent inspection. These labels are derived readability
+  metadata, not persisted user names.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
 - Missing/stale generated reference IDs fail with a structured

@@ -326,6 +326,8 @@ describe("cad-protocol", () => {
     const face: CadGeneratedFaceReference = {
       kind: "face",
       stableId: "generated:face:body_1:side:uMin",
+      label: "uMin side face",
+      description: "Side face generated from the rectangle uMin profile edge.",
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",
@@ -351,6 +353,7 @@ describe("cad-protocol", () => {
 
     expect(face).toMatchObject({
       kind: "face",
+      label: "uMin side face",
       role: "side:uMin",
       geometricSignature: {
         profileKind: "rectangle",
@@ -361,6 +364,8 @@ describe("cad-protocol", () => {
     const edge: CadGeneratedEdgeReference = {
       kind: "edge",
       stableId: "generated:edge:body_1:longitudinal:uMin:vMin",
+      label: "uMin/vMin longitudinal edge",
+      description: "Longitudinal edge joining the uMin/vMin rectangle corners.",
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",
@@ -387,6 +392,7 @@ describe("cad-protocol", () => {
 
     expect(edge).toMatchObject({
       kind: "edge",
+      label: "uMin/vMin longitudinal edge",
       role: "longitudinal:uMin:vMin",
       adjacentFaceRoles: ["side:uMin", "side:vMin"],
       geometricSignature: {
@@ -398,6 +404,9 @@ describe("cad-protocol", () => {
     const vertex: CadGeneratedVertexReference = {
       kind: "vertex",
       stableId: "generated:vertex:body_1:start:uMin:vMin",
+      label: "Start uMin/vMin corner",
+      description:
+        "Corner vertex where the start cap, uMin side face, and vMin side face meet.",
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",
@@ -426,6 +435,7 @@ describe("cad-protocol", () => {
 
     expect(vertex).toMatchObject({
       kind: "vertex",
+      label: "Start uMin/vMin corner",
       role: "start:uMin:vMin",
       adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
       adjacentEdgeRoles: ["start:uMin", "start:vMin", "longitudinal:uMin:vMin"],
@@ -450,7 +460,10 @@ describe("cad-protocol", () => {
       ok: true,
       query: "body.resolveGeneratedReference",
       kind: "vertex",
-      reference: { stableId: "generated:vertex:body_1:start:uMin:vMin" }
+      reference: {
+        stableId: "generated:vertex:body_1:start:uMin:vMin",
+        label: "Start uMin/vMin corner"
+      }
     });
   });
 
