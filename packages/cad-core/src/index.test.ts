@@ -2356,6 +2356,285 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns semantic generated references for rectangle extrude bodies", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
+    });
+
+    expect(references).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: {
+        kind: "body",
+        stableId: "generated:body:body_rect_1",
+        bodyId: "body_rect_1",
+        sourceFeatureId: "feat_rect_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        profileKind: "rectangle",
+        geometricSignature: {
+          profileKind: "rectangle",
+          sketchPlane: "XY",
+          extrudeSide: "positive",
+          depth: 3,
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 2
+          },
+          axis: [0, 0, 1],
+          axisRole: "sketchPlaneNormal"
+        }
+      },
+      faceCount: 6
+    });
+
+    if (!references.ok || references.query !== "body.generatedReferences") {
+      throw new Error("Expected generated references response.");
+    }
+
+    expect(references.faces.map((face) => face.role)).toEqual([
+      "startCap",
+      "endCap",
+      "side:uMin",
+      "side:uMax",
+      "side:vMin",
+      "side:vMax"
+    ]);
+    expect(references.faces[0]).toMatchObject({
+      stableId: "generated:face:body_rect_1:startCap",
+      geometricSignature: {
+        surfaceType: "plane",
+        normal: [0, 0, -1],
+        normalRole: "startCapOutward"
+      }
+    });
+    expect(references.faces[2]).toMatchObject({
+      stableId: "generated:face:body_rect_1:side:uMin",
+      geometricSignature: {
+        normal: [-1, 0, 0],
+        normalRole: "side:uMin"
+      }
+    });
+  });
+
+  it("returns semantic generated references for circle extrude bodies", () => {
+    const engine = createCircleExtrudeEngine();
+
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+    });
+
+    expect(references).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: {
+        stableId: "generated:body:body_circle_1",
+        bodyId: "body_circle_1",
+        sourceFeatureId: "feat_circle_1",
+        profileKind: "circle",
+        geometricSignature: {
+          profileKind: "circle",
+          depth: 4,
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 2
+          }
+        }
+      },
+      faceCount: 3,
+      faces: [
+        { role: "startCap" },
+        { role: "endCap" },
+        {
+          role: "side:circular",
+          geometricSignature: {
+            surfaceType: "cylinder",
+            axis: [0, 0, 1],
+            axisRole: "sketchPlaneNormal"
+          }
+        }
+      ]
+    });
+  });
+
+  it("updates generated reference signatures after extrude and source profile edits", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8,
+      side: "negative"
+    });
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 1],
+        width: 6,
+        height: 4
+      }
+    });
+
+    const updated = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
+    });
+
+    expect(updated).toMatchObject({
+      ok: true,
+      body: {
+        geometricSignature: {
+          depth: 8,
+          extrudeSide: "negative",
+          profile: {
+            kind: "rectangle",
+            center: [1, 1],
+            width: 6,
+            height: 4
+          }
+        }
+      }
+    });
+
+    if (!updated.ok || updated.query !== "body.generatedReferences") {
+      throw new Error("Expected generated references response.");
+    }
+
+    expect(
+      updated.faces.find((face) => face.role === "startCap")?.geometricSignature
+        .normal
+    ).toEqual([0, 0, 1]);
+    expect(
+      updated.faces.find((face) => face.role === "endCap")?.geometricSignature
+        .normal
+    ).toEqual([0, 0, -1]);
+
+    engine.undo();
+    const afterUndoProfile = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
+    });
+    expect(afterUndoProfile).toMatchObject({
+      ok: true,
+      body: {
+        geometricSignature: {
+          depth: 8,
+          profile: { kind: "rectangle", width: 4, height: 2 }
+        }
+      }
+    });
+
+    engine.undo();
+    const afterUndoExtrude = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
+    });
+    expect(afterUndoExtrude).toMatchObject({
+      ok: true,
+      body: {
+        geometricSignature: {
+          depth: 3,
+          extrudeSide: "positive"
+        }
+      }
+    });
+  });
+
+  it("reports missing and unsupported generated body references", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "missing_body" }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: {
+        code: "BODY_NOT_FOUND",
+        bodyId: "missing_body"
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body:box_1" }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        bodyId: "body:box_1"
+      }
+    });
+  });
+
+  it("round-trips generated references and updates them across feature delete undo redo", () => {
+    const engine = createCircleExtrudeEngine();
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      faceCount: 3
+    });
+
+    restored.apply({ op: "feature.delete", id: "feat_circle_1" });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND" }
+    });
+
+    restored.undo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      body: { sourceFeatureId: "feat_circle_1" }
+    });
+
+    restored.redo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND" }
+    });
+  });
+
   it("validates sketch extrude source entities and batch responses", () => {
     const engine = new CadEngine();
 

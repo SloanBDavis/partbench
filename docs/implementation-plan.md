@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the actual repo state and
 the next implementation roadmap.
 
-Last updated: 2026-05-16.
+Last updated: 2026-05-17.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for the long-term design, `docs/v1.md` for the completed
@@ -165,7 +165,9 @@ Current limitations:
   sketch-extrude features, `feature.updateExtrude` supports authored extrude
   depth and side edits, and rectangle/circle source profile values are edited
   through `sketch.updateEntity`.
-- There is no stable topological naming system.
+- There is a first read-only semantic generated-reference query for authored
+  rectangle/circle extrude bodies, but there is no broad stable topological
+  naming system yet.
 - There are no revolve, boolean, fillet, chamfer, shell, loft, pattern, or
   direct modeling features.
 - There is no OPFS storage, File System Access integration, native `.wcad`
@@ -331,6 +333,27 @@ Exit criteria:
 ### Phase 5: Topological Reference and Naming First Slice
 
 Goal: prevent future feature work from depending on unstable face/edge indexes.
+
+Current status: first read-only body/face reference slice implemented for
+authored sketch-extrude bodies.
+
+Implemented:
+
+- CADOps query `body.generatedReferences` returns semantic generated references
+  for authored sketch-extrude bodies.
+- Rectangle extrudes expose stable generated face roles for start cap, end cap,
+  and four profile-edge side faces: `side:uMin`, `side:uMax`, `side:vMin`, and
+  `side:vMax`.
+- Circle extrudes expose start cap, end cap, and `side:circular`.
+- Reference metadata includes owning body ID, source feature ID, source sketch
+  ID, source sketch entity ID, face role, sketch plane, extrude side, profile
+  kind, depth, current source profile signature, and simple normal/axis roles
+  where practical.
+- Agent adapter and MCP wrapper expose the same read path without defining new
+  internal architecture.
+- References are derived from source data and update across depth edits, side
+  edits, rectangle/circle profile edits, feature delete, undo/redo, and project
+  import/export.
 
 Deliverables:
 

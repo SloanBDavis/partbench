@@ -463,6 +463,7 @@ export type CadQueryKind =
   | "object.measurements"
   | "project.extents"
   | "sketch.get"
+  | "body.generatedReferences"
   | "transaction.history";
 
 export type CadQuery =
@@ -474,6 +475,7 @@ export type CadQuery =
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
   | SketchGetQuery
+  | BodyGeneratedReferencesQuery
   | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
@@ -509,6 +511,11 @@ export interface ProjectExtentsQuery {
 export interface SketchGetQuery {
   readonly query: "sketch.get";
   readonly id: SketchId;
+}
+
+export interface BodyGeneratedReferencesQuery {
+  readonly query: "body.generatedReferences";
+  readonly bodyId: BodyId;
 }
 
 export interface TransactionHistoryQuery {
@@ -749,6 +756,69 @@ export interface CadBodySnapshot {
   readonly source: CadBodySource;
 }
 
+export type CadGeneratedEntityKind = "body" | "face";
+
+export type CadGeneratedExtrudeFaceRole =
+  | "startCap"
+  | "endCap"
+  | "side:uMin"
+  | "side:uMax"
+  | "side:vMin"
+  | "side:vMax"
+  | "side:circular";
+
+export type CadGeneratedSurfaceType = "plane" | "cylinder";
+
+export type CadGeneratedReferenceProfileSignature =
+  | {
+      readonly kind: "rectangle";
+      readonly center: Vec2;
+      readonly width: number;
+      readonly height: number;
+    }
+  | {
+      readonly kind: "circle";
+      readonly center: Vec2;
+      readonly radius: number;
+    };
+
+export interface CadGeneratedReferenceSignature {
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly sketchPlane: SketchPlane;
+  readonly extrudeSide: FeatureExtrudeSide;
+  readonly depth: number;
+  readonly profile?: CadGeneratedReferenceProfileSignature;
+  readonly surfaceType?: CadGeneratedSurfaceType;
+  readonly normal?: Vec3;
+  readonly axis?: Vec3;
+  readonly normalRole?: string;
+  readonly axisRole?: string;
+}
+
+export interface CadGeneratedBodyReference {
+  readonly kind: "body";
+  readonly stableId: string;
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly geometricSignature: CadGeneratedReferenceSignature;
+}
+
+export interface CadGeneratedFaceReference {
+  readonly kind: "face";
+  readonly stableId: string;
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly role: CadGeneratedExtrudeFaceRole;
+  readonly geometricSignature: CadGeneratedReferenceSignature;
+}
+
 export interface CadObjectModelSource {
   readonly objectId: ObjectId;
   readonly partId: PartId;
@@ -790,13 +860,18 @@ export interface CadTransactionHistoryEntry {
   readonly diff: CadSemanticDiffSummary;
 }
 
-export type CadQueryErrorCode = "OBJECT_NOT_FOUND" | "SKETCH_NOT_FOUND";
+export type CadQueryErrorCode =
+  | "OBJECT_NOT_FOUND"
+  | "SKETCH_NOT_FOUND"
+  | "BODY_NOT_FOUND"
+  | "UNSUPPORTED_BODY_REFERENCES";
 
 export interface CadQueryError {
   readonly code: CadQueryErrorCode;
   readonly message: string;
   readonly objectId?: ObjectId;
   readonly sketchId?: SketchId;
+  readonly bodyId?: BodyId;
 }
 
 export type CadQueryResponse =
@@ -808,6 +883,7 @@ export type CadQueryResponse =
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
   | SketchGetQueryResponse
+  | BodyGeneratedReferencesQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -887,6 +963,15 @@ export interface SketchGetQueryResponse {
   readonly query: "sketch.get";
   readonly cadOpsVersion: CadOpsVersion;
   readonly sketch: SketchSnapshot;
+}
+
+export interface BodyGeneratedReferencesQueryResponse {
+  readonly ok: true;
+  readonly query: "body.generatedReferences";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly body: CadGeneratedBodyReference;
+  readonly faceCount: number;
+  readonly faces: readonly CadGeneratedFaceReference[];
 }
 
 export interface CadQueryErrorResponse {

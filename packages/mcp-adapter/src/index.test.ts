@@ -13,6 +13,7 @@ describe("mcp-adapter", () => {
       "cad.object_measurements",
       "cad.project_extents",
       "cad.sketch_get",
+      "cad.body_generated_references",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -1005,6 +1006,47 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns generated body references through cad.body_generated_references", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_refs_sketch",
+      entityId: "mcp_refs_rect",
+      featureId: "mcp_refs_feature",
+      bodyId: "mcp_refs_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.body_generated_references",
+      requestId: "mcp_req_body_refs",
+      arguments: { bodyId: "mcp_refs_body" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.body_generated_references",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_body_refs",
+        query: "body.generatedReferences",
+        body: {
+          stableId: "generated:body:mcp_refs_body",
+          bodyId: "mcp_refs_body",
+          sourceFeatureId: "mcp_refs_feature",
+          sourceSketchId: "mcp_refs_sketch",
+          sourceSketchEntityId: "mcp_refs_rect",
+          profileKind: "circle"
+        },
+        faceCount: 3,
+        faces: [
+          { role: "startCap" },
+          { role: "endCap" },
+          { role: "side:circular" }
+        ]
+      }
+    });
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
@@ -1193,6 +1235,7 @@ describe("mcp-adapter", () => {
           { name: "cad.object_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
+          { name: "cad.body_generated_references" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

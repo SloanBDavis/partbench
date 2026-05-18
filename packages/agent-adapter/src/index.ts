@@ -8,6 +8,8 @@ import type {
   CadAxisAlignedBounds,
   CadBodySnapshot,
   CadFeatureSummary,
+  CadGeneratedBodyReference,
+  CadGeneratedFaceReference,
   CadObjectSnapshot,
   CadObjectModelSource,
   CadOp,
@@ -133,6 +135,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
+  | CadOpsAgentBodyGeneratedReferencesQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
@@ -222,6 +225,17 @@ export interface CadOpsAgentSketchGetQueryResponse {
   readonly sketch: SketchSnapshot;
 }
 
+export interface CadOpsAgentBodyGeneratedReferencesQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "body.generatedReferences";
+  readonly body: CadGeneratedBodyReference;
+  readonly faceCount: number;
+  readonly faces: readonly CadGeneratedFaceReference[];
+}
+
 export interface CadOpsAgentTransactionHistoryQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -246,6 +260,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "object.measurements"
     | "project.extents"
     | "sketch.get"
+    | "body.generatedReferences"
     | "transaction.history";
   readonly error: CadQueryError;
 }
@@ -628,6 +643,19 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "body.generatedReferences") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      body: response.body,
+      faceCount: response.faceCount,
+      faces: response.faces
+    };
+  }
+
   return {
     ok: true,
     requestId: request.requestId,
@@ -740,6 +768,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "sketch.get" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "body.generatedReferences" &&
+        typeof value.query.bodyId === "string") ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
   );

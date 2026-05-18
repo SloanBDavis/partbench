@@ -58,6 +58,7 @@ import {
   parseTransactionNumber,
   sortTransactions
 } from "./transactionHistory";
+import { createBodyGeneratedReferences } from "./generatedReferences";
 
 export type {
   CadActorMetadata,
@@ -71,6 +72,11 @@ export type {
   CadBodySnapshot,
   CadFeatureRef,
   CadFeatureSummary,
+  CadGeneratedBodyReference,
+  CadGeneratedExtrudeFaceRole,
+  CadGeneratedFaceReference,
+  CadGeneratedReferenceProfileSignature,
+  CadGeneratedReferenceSignature,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
@@ -690,6 +696,49 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           sketch: createSketchSnapshot(sketch)
+        };
+      }
+
+      case "body.generatedReferences": {
+        const { bodyId } = request.query;
+        const references = createBodyGeneratedReferences(
+          this.#document,
+          bodyId,
+          DEFAULT_PART_ID
+        );
+
+        if (!references) {
+          const bodyExists = createProjectStructure(
+            this.#document,
+            this.#history.map((entry) => entry.transaction)
+          ).bodies.some((body) => body.id === bodyId);
+
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: bodyExists
+              ? {
+                  code: "UNSUPPORTED_BODY_REFERENCES",
+                  message:
+                    "Generated references are currently available only for authored sketch-extrude bodies.",
+                  bodyId
+                }
+              : {
+                  code: "BODY_NOT_FOUND",
+                  message: `Body does not exist: ${bodyId}`,
+                  bodyId
+                }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          body: references.body,
+          faceCount: references.faces.length,
+          faces: references.faces
         };
       }
 

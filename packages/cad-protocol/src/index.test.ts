@@ -5,6 +5,7 @@ import type {
   CadBatchValidationError,
   CadBodySnapshot,
   CadExtrudeFeatureSummary,
+  CadGeneratedFaceReference,
   CadObjectModelSource,
   CadPartSnapshot,
   CadPrimitiveFeatureSummary,
@@ -287,6 +288,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -300,8 +305,46 @@ describe("cad-protocol", () => {
       "object.measurements",
       "project.extents",
       "sketch.get",
+      "body.generatedReferences",
       "transaction.history"
     ]);
+  });
+
+  it("types generated body face references", () => {
+    const face: CadGeneratedFaceReference = {
+      kind: "face",
+      stableId: "generated:face:body_1:side:uMin",
+      bodyId: "body_1",
+      ownerPartId: "part:default",
+      sourceFeatureId: "feat_1",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "rect_1",
+      role: "side:uMin",
+      geometricSignature: {
+        profileKind: "rectangle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 5,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        surfaceType: "plane",
+        normal: [-1, 0, 0],
+        normalRole: "side:uMin"
+      }
+    };
+
+    expect(face).toMatchObject({
+      kind: "face",
+      role: "side:uMin",
+      geometricSignature: {
+        profileKind: "rectangle",
+        surfaceType: "plane"
+      }
+    });
   });
 
   it("types measurement bounds", () => {

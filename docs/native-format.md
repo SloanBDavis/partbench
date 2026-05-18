@@ -355,6 +355,17 @@ This structure is a migration bridge toward a fuller feature/body model. The
 primitive side remains derived; the authored extrude side is persisted because it
 is source-of-truth feature data.
 
+The `body.generatedReferences` query returns the first read-only semantic
+reference layer for authored sketch-extrude bodies. It derives a generated body
+reference and generated face references from the saved extrude feature plus its
+source sketch entity. Rectangle extrudes expose start/end caps and four side
+face roles tied to profile edge roles (`side:uMin`, `side:uMax`, `side:vMin`,
+`side:vMax`). Circle extrudes expose start/end caps and one cylindrical side
+role (`side:circular`). These references include source feature/sketch/entity
+IDs, face roles, sketch plane, extrude side, profile kind, current source
+profile signature, and simple normal/axis roles. They are not raw OCCT, mesh, or
+renderer indexes and are not persisted as source-of-truth data.
+
 ## Future Format Version Triggers
 
 Do not introduce another format version just because query shapes changed. A
@@ -370,8 +381,8 @@ Likely triggers:
   sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
   required rebuild inputs;
-- durable topological references for faces, edges, vertices, bodies, sketches,
-  and features;
+- persisted durable topological references for faces, edges, vertices, bodies,
+  sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
 - project-level parameters/materials/named views that are not represented by V3;
   or
@@ -403,6 +414,7 @@ These are not source of truth and must not be required to load a project:
 - read-only feature summary query results
 - read-only project structure query results
 - read-only project sketch query formatting
+- read-only generated body/face reference query results
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the

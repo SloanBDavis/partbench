@@ -17,6 +17,7 @@ export type CadMcpToolName =
   | "cad.object_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
+  | "cad.body_generated_references"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -136,6 +137,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.sketch_get") {
       return this.#callSketchGet(request);
+    }
+
+    if (request.name === "cad.body_generated_references") {
+      return this.#callBodyGeneratedReferences(request);
     }
 
     if (request.name === "cad.transaction_history") {
@@ -359,6 +364,33 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callBodyGeneratedReferences(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isBodyGeneratedReferencesToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.body_generated_references expects arguments shaped as { bodyId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.generatedReferences",
+            bodyId: request.arguments.bodyId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -512,6 +544,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.body_generated_references",
+    description:
+      "Returns read-only generated body and face references for an authored sketch-extrude body.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Authored sketch-extrude body ID to inspect."
+        }
+      }
+    }
+  },
+  {
     name: "cad.transaction_history",
     description:
       "Returns read-only transaction history with actor, operation, and semantic diff summaries.",
@@ -597,6 +645,14 @@ function isSketchGetToolArguments(
   value: unknown
 ): value is { readonly id: string } {
   return isRecord(value) && typeof value.id === "string" && value.id !== "";
+}
+
+function isBodyGeneratedReferencesToolArguments(
+  value: unknown
+): value is { readonly bodyId: string } {
+  return (
+    isRecord(value) && typeof value.bodyId === "string" && value.bodyId !== ""
+  );
 }
 
 function isEmptyObjectOrUndefined(value: unknown): boolean {
