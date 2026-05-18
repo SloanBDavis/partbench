@@ -104,6 +104,10 @@ import {
   type GeneratedReferenceMeasurementDisplay
 } from "./generatedReferenceUi";
 import {
+  reconcileSelectedGeneratedReferenceBody,
+  type SelectedGeneratedReference
+} from "./generatedReferenceSelection";
+import {
   createProjectJsonPreview,
   formatProjectJsonSummary,
   summarizeCadProject
@@ -362,6 +366,9 @@ export function App() {
     engine.getDocument()
   );
   const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
+    SelectedGeneratedReference | undefined
+  >();
   const [batchForm, setBatchForm] =
     useState<BatchOperationForm>(initialBatchForm);
   const [queuedOps, setQueuedOps] = useState<readonly CadOp[]>([]);
@@ -594,10 +601,16 @@ export function App() {
         ? nextSelectedId
         : undefined
     );
+    setSelectedGeneratedReference((current) =>
+      reconcileSelectedGeneratedReferenceBody(current, nextStructure.bodies)
+    );
   }
 
   function selectObject(objectId: string | undefined) {
     setSelectedId(objectId);
+    setSelectedGeneratedReference((current) =>
+      current?.bodyId === objectId ? current : undefined
+    );
   }
 
   function reconcileDerivedGeometry(
@@ -975,6 +988,7 @@ export function App() {
     setBatchResponse(undefined);
     setBatchError(undefined);
     setCommandError(undefined);
+    setSelectedGeneratedReference(undefined);
     setProjectMessage(`Imported ${formatProjectJsonSummary(preview.summary)}.`);
     setProjectMessageTone("info");
     syncDocument(undefined);
@@ -1233,6 +1247,7 @@ export function App() {
               selectedGeneratedReferenceMeasurements
             }
             object={selectedObject}
+            selectedGeneratedReference={selectedGeneratedReference}
             units={document.units}
             onApplyDimensions={(form) => void updateSelectedDimensions(form)}
             onApplyName={(name) => void renameSelectedObject(name)}
@@ -1242,6 +1257,7 @@ export function App() {
               void deleteAuthoredFeature(featureId)
             }
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+            onSelectGeneratedReference={setSelectedGeneratedReference}
             onUpdateExtrude={(featureId, depth, side) =>
               void updateAuthoredExtrude(featureId, depth, side)
             }

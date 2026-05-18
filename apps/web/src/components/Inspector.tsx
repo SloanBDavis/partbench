@@ -47,6 +47,13 @@ import {
   type GeneratedReferenceMeasurementDisplay
 } from "../generatedReferenceUi";
 import {
+  createSelectedGeneratedReference,
+  getGeneratedReferenceSelectionState,
+  isSelectedGeneratedReference,
+  type GeneratedReferenceSelectionState,
+  type SelectedGeneratedReference
+} from "../generatedReferenceSelection";
+import {
   formatDimensions,
   formatArea,
   formatBounds,
@@ -68,11 +75,13 @@ export function Inspector({
   generatedReferenceMeasurements,
   measurements,
   object,
+  selectedGeneratedReference,
   units,
   onApplyDimensions,
   onApplyName,
   onApplyTransform,
   onCreateSketchOnFace,
+  onSelectGeneratedReference,
   onDelete,
   onDeleteFeature,
   onUpdateExtrude
@@ -90,11 +99,15 @@ export function Inspector({
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
+  readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onSelectGeneratedReference: (
+    selection: SelectedGeneratedReference
+  ) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
@@ -117,10 +130,12 @@ export function Inspector({
         generatedReferenceMeasurements,
         measurements,
         object,
+        selectedGeneratedReference,
         onApplyDimensions,
         onApplyName,
         onApplyTransform,
         onCreateSketchOnFace,
+        onSelectGeneratedReference,
         onDelete,
         onDeleteFeature,
         onUpdateExtrude,
@@ -144,11 +159,15 @@ function renderInspectorSelection(input: {
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
+  readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onSelectGeneratedReference: (
+    selection: SelectedGeneratedReference
+  ) => void;
   readonly onDelete: () => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
@@ -169,8 +188,10 @@ function renderInspectorSelection(input: {
         generatedReferencesError={input.generatedReferencesError}
         generatedReferenceMeasurements={input.generatedReferenceMeasurements}
         onCreateSketchOnFace={input.onCreateSketchOnFace}
+        onSelectGeneratedReference={input.onSelectGeneratedReference}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
+        selectedGeneratedReference={input.selectedGeneratedReference}
         units={input.units}
       />
     );
@@ -249,8 +270,10 @@ function BodyInspector({
   measurements,
   measurementsError,
   onCreateSketchOnFace,
+  onSelectGeneratedReference,
   onDeleteFeature,
   onUpdateExtrude,
+  selectedGeneratedReference,
   units
 }: {
   readonly body: CadBodySnapshot;
@@ -265,12 +288,16 @@ function BodyInspector({
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly measurementsError?: string;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onSelectGeneratedReference: (
+    selection: SelectedGeneratedReference
+  ) => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
     featureId: string,
     depth: number,
     side: FeatureExtrudeSide
   ) => void;
+  readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly units: DocumentUnits;
 }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -356,7 +383,9 @@ function BodyInspector({
           error={generatedReferencesError}
           measurementByStableId={generatedReferenceMeasurements}
           onCreateSketchOnFace={onCreateSketchOnFace}
+          onSelectGeneratedReference={onSelectGeneratedReference}
           references={generatedReferences}
+          selectedGeneratedReference={selectedGeneratedReference}
           units={units}
         />
       )}
@@ -438,7 +467,9 @@ function GeneratedReferencesPanel({
   error,
   measurementByStableId,
   onCreateSketchOnFace,
+  onSelectGeneratedReference,
   references,
+  selectedGeneratedReference,
   units
 }: {
   readonly bodyId: string;
@@ -449,7 +480,11 @@ function GeneratedReferencesPanel({
     GeneratedReferenceMeasurementDisplay
   >;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onSelectGeneratedReference: (
+    selection: SelectedGeneratedReference
+  ) => void;
   readonly references?: BodyGeneratedReferencesQueryResponse;
+  readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly units: DocumentUnits;
 }) {
   const faces = references?.faces ?? [];
@@ -458,6 +493,12 @@ function GeneratedReferencesPanel({
   const referenceItems = references
     ? getGeneratedReferenceItems(references)
     : [];
+  const selectedReferenceState = getGeneratedReferenceSelectionState(
+    selectedGeneratedReference,
+    references,
+    measurementByStableId,
+    units
+  );
   const [selectedFaceStableId, setSelectedFaceStableId] = useState<
     string | undefined
   >(firstEligibleFace?.stableId);
@@ -571,15 +612,26 @@ function GeneratedReferencesPanel({
               )}
             </section>
           )}
+          <SelectedGeneratedReferencePanel
+            state={selectedReferenceState}
+            units={units}
+          />
           <ul className="reference-list">
             {referenceItems.map((reference) => {
               const face = asGeneratedFaceReference(reference);
               const measurementState = measurementByStableId?.get(
                 reference.stableId
               );
+              const isSelected = isSelectedGeneratedReference(
+                selectedGeneratedReference,
+                reference
+              );
 
               return (
-                <li key={reference.stableId}>
+                <li
+                  key={reference.stableId}
+                  className={isSelected ? "reference-selected" : ""}
+                >
                   <div className="reference-heading">
                     <strong>{reference.label}</strong>
                     <span>{formatGeneratedReferenceKind(reference.kind)}</span>
@@ -590,6 +642,17 @@ function GeneratedReferencesPanel({
                     {formatGeneratedReferenceOperationLabels(reference)}
                   </small>
                   <code>{reference.stableId}</code>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() =>
+                      onSelectGeneratedReference(
+                        createSelectedGeneratedReference(reference)
+                      )
+                    }
+                  >
+                    {isSelected ? "Selected" : "Select reference"}
+                  </button>
                   {reference.eligibilityNotes &&
                     reference.eligibilityNotes.length > 0 && (
                       <small>{reference.eligibilityNotes.join(" ")}</small>
@@ -610,6 +673,57 @@ function GeneratedReferencesPanel({
               );
             })}
           </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
+function SelectedGeneratedReferencePanel({
+  state,
+  units
+}: {
+  readonly state: GeneratedReferenceSelectionState;
+  readonly units: DocumentUnits;
+}) {
+  if (state.status === "none") {
+    return null;
+  }
+
+  return (
+    <section className="sketch-attachment selected-reference-detail">
+      <div className="command-card-heading">
+        <h3>Selected reference</h3>
+        <span>
+          {state.status === "selected"
+            ? formatGeneratedReferenceKind(state.reference.kind)
+            : "Stale"}
+        </span>
+      </div>
+      {state.status === "stale" ? (
+        <>
+          <p className="error-text">{state.message}</p>
+          <code>{state.selection.stableId}</code>
+        </>
+      ) : (
+        <>
+          <div className="reference-heading">
+            <strong>{state.reference.label}</strong>
+            <span>{formatGeneratedReferenceKind(state.reference.kind)}</span>
+          </div>
+          {state.reference.description && <p>{state.reference.description}</p>}
+          <small>
+            Eligible: {formatGeneratedReferenceOperationLabels(state.reference)}
+          </small>
+          <code>{state.reference.stableId}</code>
+          {state.reference.eligibilityNotes &&
+            state.reference.eligibilityNotes.length > 0 && (
+              <small>{state.reference.eligibilityNotes.join(" ")}</small>
+            )}
+          <GeneratedReferenceMeasurementRows
+            state={state.measurement}
+            units={units}
+          />
         </>
       )}
     </section>

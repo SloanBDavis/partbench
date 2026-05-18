@@ -908,32 +908,44 @@ canvas:active {
   background: rgba(255, 255, 255, 0.78);
 }
 
+.reference-list li.reference-selected,
+.selected-reference-detail {
+  border-color: #8aa4b8;
+  background: #f2f7fb;
+}
+
 .entity-list code,
 .reference-list code,
-.sketch-attachment dd {
+.sketch-attachment dd,
+.selected-reference-detail code {
   color: var(--ink);
   font-size: 0.76rem;
   overflow-wrap: anywhere;
 }
 
 .reference-list p,
-.reference-list small {
+.reference-list small,
+.selected-reference-detail p,
+.selected-reference-detail small {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.35;
 }
 
-.reference-list .reference-measurements {
+.reference-list .reference-measurements,
+.selected-reference-detail .reference-measurements {
   margin: 0;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.66);
 }
 
-.reference-list .reference-measurements div {
+.reference-list .reference-measurements div,
+.selected-reference-detail .reference-measurements div {
   padding: 7px 8px;
 }
 
-.reference-list .reference-measurements dd {
+.reference-list .reference-measurements dd,
+.selected-reference-detail .reference-measurements dd {
   font-size: 0.74rem;
 }
 
