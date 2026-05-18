@@ -6,6 +6,7 @@ import type {
   CadGeneratedExtrudeFaceRole,
   CadGeneratedExtrudeVertexRole,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
@@ -59,6 +60,11 @@ export interface BodyGeneratedReferencesSnapshot {
   readonly faces: readonly CadGeneratedFaceReference[];
   readonly edges: readonly CadGeneratedEdgeReference[];
   readonly vertices: readonly CadGeneratedVertexReference[];
+}
+
+export interface BodyGeneratedReferenceResolution {
+  readonly kind: CadGeneratedReference["kind"];
+  readonly reference: CadGeneratedReference;
 }
 
 export function createBodyGeneratedReferences(
@@ -149,6 +155,33 @@ export function createBodyGeneratedReferences(
             ownerPartId
           )
         : []
+  };
+}
+
+export function resolveGeneratedReference(
+  references: BodyGeneratedReferencesSnapshot,
+  stableId: string
+): BodyGeneratedReferenceResolution | undefined {
+  if (references.body.stableId === stableId) {
+    return {
+      kind: references.body.kind,
+      reference: references.body
+    };
+  }
+
+  const reference = [
+    ...references.faces,
+    ...references.edges,
+    ...references.vertices
+  ].find((candidate) => candidate.stableId === stableId);
+
+  if (!reference) {
+    return undefined;
+  }
+
+  return {
+    kind: reference.kind,
+    reference
   };
 }
 

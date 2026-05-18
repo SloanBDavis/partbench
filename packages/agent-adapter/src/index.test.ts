@@ -1350,6 +1350,49 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("resolves generated references through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_resolve_refs",
+      entityId: "rect_resolve_refs",
+      featureId: "feat_resolve_refs",
+      bodyId: "body_resolve_refs"
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_resolve_refs",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_resolve_refs",
+          stableId: "generated:vertex:body_resolve_refs:start:uMin:vMin"
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_resolve_refs",
+      query: "body.resolveGeneratedReference",
+      bodyId: "body_resolve_refs",
+      stableId: "generated:vertex:body_resolve_refs:start:uMin:vMin",
+      kind: "vertex",
+      reference: {
+        kind: "vertex",
+        role: "start:uMin:vMin",
+        adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+        adjacentEdgeRoles: [
+          "start:uMin",
+          "start:vMin",
+          "longitudinal:uMin:vMin"
+        ]
+      }
+    });
+  });
+
   it("returns transaction history through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

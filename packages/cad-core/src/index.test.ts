@@ -2486,6 +2486,93 @@ describe("cad-core", () => {
     });
   });
 
+  it("resolves generated body face edge and vertex references", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:body:body_rect_1"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.resolveGeneratedReference",
+      bodyId: "body_rect_1",
+      stableId: "generated:body:body_rect_1",
+      kind: "body",
+      reference: {
+        kind: "body",
+        stableId: "generated:body:body_rect_1",
+        sourceFeatureId: "feat_rect_1"
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:side:uMin"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "face",
+      reference: {
+        kind: "face",
+        role: "side:uMin",
+        geometricSignature: {
+          normalRole: "side:uMin"
+        }
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:edge:body_rect_1:longitudinal:uMin:vMin"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "edge",
+      reference: {
+        kind: "edge",
+        role: "longitudinal:uMin:vMin",
+        adjacentFaceRoles: ["side:uMin", "side:vMin"]
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:vertex:body_rect_1:start:uMin:vMin"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "vertex",
+      reference: {
+        kind: "vertex",
+        role: "start:uMin:vMin",
+        adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+        adjacentEdgeRoles: [
+          "start:uMin",
+          "start:vMin",
+          "longitudinal:uMin:vMin"
+        ]
+      }
+    });
+  });
+
   it("returns semantic generated references for circle extrude bodies", () => {
     const engine = createCircleExtrudeEngine();
 
@@ -2543,6 +2630,93 @@ describe("cad-core", () => {
         }
       ],
       vertices: []
+    });
+  });
+
+  it("reports stale or unsupported generated reference resolution", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:oldRole"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.resolveGeneratedReference",
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:oldRole"
+      }
+    });
+
+    const circleEngine = createCircleExtrudeEngine();
+
+    expect(
+      circleEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_circle_1",
+          stableId: "generated:vertex:body_circle_1:start:uMin:vMin"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.resolveGeneratedReference",
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_circle_1",
+        stableId: "generated:vertex:body_circle_1:start:uMin:vMin"
+      }
+    });
+
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "missing_body",
+          stableId: "generated:body:missing_body"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.resolveGeneratedReference",
+      error: {
+        code: "BODY_NOT_FOUND",
+        bodyId: "missing_body"
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body:box_1",
+          stableId: "generated:body:body:box_1"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.resolveGeneratedReference",
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        bodyId: "body:box_1"
+      }
     });
   });
 
@@ -2633,6 +2807,28 @@ describe("cad-core", () => {
       updated.vertices.find((vertex) => vertex.role === "end:uMax:vMax")
         ?.geometricSignature.positionRole
     ).toBe("end");
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:vertex:body_rect_1:end:uMax:vMax"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "vertex",
+      reference: {
+        stableId: "generated:vertex:body_rect_1:end:uMax:vMax",
+        geometricSignature: {
+          depth: 8,
+          extrudeSide: "negative",
+          profilePoint: [4, 3]
+        }
+      }
+    });
 
     engine.undo();
     const afterUndoProfile = engine.executeQuery({
@@ -2729,6 +2925,21 @@ describe("cad-core", () => {
       adjacentEdgeRoles: ["start:uMin", "start:vMin", "longitudinal:uMin:vMin"]
     });
 
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:edge:body_rect_1:start:uMin"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "edge",
+      reference: { role: "start:uMin" }
+    });
+
     restored.apply({ op: "feature.delete", id: "feat_rect_1" });
     expect(
       restored.executeQuery({
@@ -2750,6 +2961,20 @@ describe("cad-core", () => {
       ok: true,
       body: { sourceFeatureId: "feat_rect_1" },
       vertexCount: 8
+    });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:edge:body_rect_1:start:uMin"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "edge",
+      reference: { role: "start:uMin" }
     });
 
     restored.redo();

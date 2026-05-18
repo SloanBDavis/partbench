@@ -12,7 +12,8 @@ import type {
   CadPartSnapshot,
   CadPrimitiveFeatureSummary,
   CadOp,
-  CadQueryRequest
+  CadQueryRequest,
+  CadQueryResponse
 } from "./index";
 import { protocolPackage } from "./index";
 
@@ -294,6 +295,14 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_1",
+          stableId: "generated:face:body_1:startCap"
+        }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -308,6 +317,7 @@ describe("cad-protocol", () => {
       "project.extents",
       "sketch.get",
       "body.generatedReferences",
+      "body.resolveGeneratedReference",
       "transaction.history"
     ]);
   });
@@ -424,6 +434,23 @@ describe("cad-protocol", () => {
         profilePoint: [-2, -1],
         positionRole: "start"
       }
+    });
+
+    const resolverResponse: CadQueryResponse = {
+      ok: true,
+      query: "body.resolveGeneratedReference",
+      cadOpsVersion: "cadops.v1",
+      bodyId: "body_1",
+      stableId: "generated:vertex:body_1:start:uMin:vMin",
+      kind: "vertex",
+      reference: vertex
+    };
+
+    expect(resolverResponse).toMatchObject({
+      ok: true,
+      query: "body.resolveGeneratedReference",
+      kind: "vertex",
+      reference: { stableId: "generated:vertex:body_1:start:uMin:vMin" }
     });
   });
 

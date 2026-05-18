@@ -27,6 +27,7 @@ describe("mcp stdio server", () => {
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.body_generated_references" },
+          { name: "cad.resolve_generated_reference" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

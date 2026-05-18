@@ -58,7 +58,10 @@ import {
   parseTransactionNumber,
   sortTransactions
 } from "./transactionHistory";
-import { createBodyGeneratedReferences } from "./generatedReferences";
+import {
+  createBodyGeneratedReferences,
+  resolveGeneratedReference
+} from "./generatedReferences";
 
 export type {
   CadActorMetadata,
@@ -72,13 +75,15 @@ export type {
   CadBodySnapshot,
   CadFeatureRef,
   CadFeatureSummary,
-  CadGeneratedCurveType,
   CadGeneratedBodyReference,
+  CadGeneratedCurveType,
   CadGeneratedEdgeReference,
+  CadGeneratedEntityKind,
   CadGeneratedExtrudeEdgeRole,
   CadGeneratedExtrudeFaceRole,
   CadGeneratedExtrudeVertexRole,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
@@ -748,6 +753,66 @@ export class CadEngine {
           edges: references.edges,
           vertexCount: references.vertices.length,
           vertices: references.vertices
+        };
+      }
+
+      case "body.resolveGeneratedReference": {
+        const { bodyId, stableId } = request.query;
+        const references = createBodyGeneratedReferences(
+          this.#document,
+          bodyId,
+          DEFAULT_PART_ID
+        );
+
+        if (!references) {
+          const bodyExists = createProjectStructure(
+            this.#document,
+            this.#history.map((entry) => entry.transaction)
+          ).bodies.some((body) => body.id === bodyId);
+
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: bodyExists
+              ? {
+                  code: "UNSUPPORTED_BODY_REFERENCES",
+                  message:
+                    "Generated references are currently available only for authored sketch-extrude bodies.",
+                  bodyId
+                }
+              : {
+                  code: "BODY_NOT_FOUND",
+                  message: `Body does not exist: ${bodyId}`,
+                  bodyId
+                }
+          };
+        }
+
+        const resolution = resolveGeneratedReference(references, stableId);
+
+        if (!resolution) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "GENERATED_REFERENCE_NOT_FOUND",
+              message: `Generated reference does not exist on body ${bodyId}: ${stableId}`,
+              bodyId,
+              stableId
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          bodyId,
+          stableId,
+          kind: resolution.kind,
+          reference: resolution.reference
         };
       }
 

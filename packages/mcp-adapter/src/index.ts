@@ -18,6 +18,7 @@ export type CadMcpToolName =
   | "cad.project_extents"
   | "cad.sketch_get"
   | "cad.body_generated_references"
+  | "cad.resolve_generated_reference"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -141,6 +142,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.body_generated_references") {
       return this.#callBodyGeneratedReferences(request);
+    }
+
+    if (request.name === "cad.resolve_generated_reference") {
+      return this.#callResolveGeneratedReference(request);
     }
 
     if (request.name === "cad.transaction_history") {
@@ -391,6 +396,34 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callResolveGeneratedReference(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isResolveGeneratedReferenceToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.resolve_generated_reference expects arguments shaped as { bodyId: string, stableId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.resolveGeneratedReference",
+            bodyId: request.arguments.bodyId,
+            stableId: request.arguments.stableId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -546,7 +579,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.body_generated_references",
     description:
-      "Returns read-only generated body and face references for an authored sketch-extrude body.",
+      "Returns read-only generated body, face, edge, and vertex references for an authored sketch-extrude body.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -555,6 +588,26 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         bodyId: {
           type: "string",
           description: "Authored sketch-extrude body ID to inspect."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.resolve_generated_reference",
+    description:
+      "Resolves one generated reference stable ID for an authored sketch-extrude body.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId", "stableId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Authored sketch-extrude body ID to inspect."
+        },
+        stableId: {
+          type: "string",
+          description: "Generated reference stable ID to resolve."
         }
       }
     }
@@ -652,6 +705,18 @@ function isBodyGeneratedReferencesToolArguments(
 ): value is { readonly bodyId: string } {
   return (
     isRecord(value) && typeof value.bodyId === "string" && value.bodyId !== ""
+  );
+}
+
+function isResolveGeneratedReferenceToolArguments(
+  value: unknown
+): value is { readonly bodyId: string; readonly stableId: string } {
+  return (
+    isRecord(value) &&
+    typeof value.bodyId === "string" &&
+    value.bodyId !== "" &&
+    typeof value.stableId === "string" &&
+    value.stableId !== ""
   );
 }
 

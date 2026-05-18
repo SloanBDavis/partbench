@@ -10,7 +10,9 @@ import type {
   CadFeatureSummary,
   CadGeneratedBodyReference,
   CadGeneratedEdgeReference,
+  CadGeneratedEntityKind,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
   CadGeneratedVertexReference,
   CadObjectSnapshot,
   CadObjectModelSource,
@@ -138,6 +140,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
   | CadOpsAgentBodyGeneratedReferencesQueryResponse
+  | CadOpsAgentBodyResolveGeneratedReferenceQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
@@ -242,6 +245,18 @@ export interface CadOpsAgentBodyGeneratedReferencesQueryResponse {
   readonly vertices: readonly CadGeneratedVertexReference[];
 }
 
+export interface CadOpsAgentBodyResolveGeneratedReferenceQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "body.resolveGeneratedReference";
+  readonly bodyId: string;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly reference: CadGeneratedReference;
+}
+
 export interface CadOpsAgentTransactionHistoryQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -267,6 +282,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.extents"
     | "sketch.get"
     | "body.generatedReferences"
+    | "body.resolveGeneratedReference"
     | "transaction.history";
   readonly error: CadQueryError;
 }
@@ -666,6 +682,20 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "body.resolveGeneratedReference") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      bodyId: response.bodyId,
+      stableId: response.stableId,
+      kind: response.kind,
+      reference: response.reference
+    };
+  }
+
   return {
     ok: true,
     requestId: request.requestId,
@@ -780,6 +810,9 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         typeof value.query.id === "string") ||
       (value.query.query === "body.generatedReferences" &&
         typeof value.query.bodyId === "string") ||
+      (value.query.query === "body.resolveGeneratedReference" &&
+        typeof value.query.bodyId === "string" &&
+        typeof value.query.stableId === "string") ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
   );

@@ -342,6 +342,9 @@ Implemented:
 
 - CADOps query `body.generatedReferences` returns semantic generated references
   for authored sketch-extrude bodies.
+- CADOps query `body.resolveGeneratedReference` resolves one generated stable
+  ID on an authored sketch-extrude body to the current body, face, edge, or
+  vertex reference object.
 - Rectangle extrudes expose stable generated face roles for start cap, end cap,
   and four profile-edge side faces: `side:uMin`, `side:uMax`, `side:vMin`, and
   `side:vMax`.
@@ -362,6 +365,9 @@ Implemented:
   normal/axis/profile-point roles where practical.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
+- Missing/stale generated reference IDs fail with a structured
+  `GENERATED_REFERENCE_NOT_FOUND` query error instead of falling back to raw
+  kernel or mesh indexes.
 - References are derived from source data and update across depth edits, side
   edits, rectangle/circle profile edits, feature delete, undo/redo, and project
   import/export.

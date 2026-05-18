@@ -464,6 +464,7 @@ export type CadQueryKind =
   | "project.extents"
   | "sketch.get"
   | "body.generatedReferences"
+  | "body.resolveGeneratedReference"
   | "transaction.history";
 
 export type CadQuery =
@@ -476,6 +477,7 @@ export type CadQuery =
   | ProjectExtentsQuery
   | SketchGetQuery
   | BodyGeneratedReferencesQuery
+  | BodyResolveGeneratedReferenceQuery
   | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
@@ -516,6 +518,12 @@ export interface SketchGetQuery {
 export interface BodyGeneratedReferencesQuery {
   readonly query: "body.generatedReferences";
   readonly bodyId: BodyId;
+}
+
+export interface BodyResolveGeneratedReferenceQuery {
+  readonly query: "body.resolveGeneratedReference";
+  readonly bodyId: BodyId;
+  readonly stableId: string;
 }
 
 export interface TransactionHistoryQuery {
@@ -876,6 +884,12 @@ export interface CadGeneratedVertexReference {
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
+export type CadGeneratedReference =
+  | CadGeneratedBodyReference
+  | CadGeneratedFaceReference
+  | CadGeneratedEdgeReference
+  | CadGeneratedVertexReference;
+
 export interface CadObjectModelSource {
   readonly objectId: ObjectId;
   readonly partId: PartId;
@@ -921,7 +935,8 @@ export type CadQueryErrorCode =
   | "OBJECT_NOT_FOUND"
   | "SKETCH_NOT_FOUND"
   | "BODY_NOT_FOUND"
-  | "UNSUPPORTED_BODY_REFERENCES";
+  | "UNSUPPORTED_BODY_REFERENCES"
+  | "GENERATED_REFERENCE_NOT_FOUND";
 
 export interface CadQueryError {
   readonly code: CadQueryErrorCode;
@@ -929,6 +944,7 @@ export interface CadQueryError {
   readonly objectId?: ObjectId;
   readonly sketchId?: SketchId;
   readonly bodyId?: BodyId;
+  readonly stableId?: string;
 }
 
 export type CadQueryResponse =
@@ -941,6 +957,7 @@ export type CadQueryResponse =
   | ProjectExtentsQueryResponse
   | SketchGetQueryResponse
   | BodyGeneratedReferencesQueryResponse
+  | BodyResolveGeneratedReferenceQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -1033,6 +1050,16 @@ export interface BodyGeneratedReferencesQueryResponse {
   readonly edges: readonly CadGeneratedEdgeReference[];
   readonly vertexCount: number;
   readonly vertices: readonly CadGeneratedVertexReference[];
+}
+
+export interface BodyResolveGeneratedReferenceQueryResponse {
+  readonly ok: true;
+  readonly query: "body.resolveGeneratedReference";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly reference: CadGeneratedReference;
 }
 
 export interface CadQueryErrorResponse {

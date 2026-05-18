@@ -14,6 +14,7 @@ describe("mcp-adapter", () => {
       "cad.project_extents",
       "cad.sketch_get",
       "cad.body_generated_references",
+      "cad.resolve_generated_reference",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -1060,6 +1061,44 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("resolves generated references through cad.resolve_generated_reference", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_resolve_sketch",
+      entityId: "mcp_resolve_circle",
+      featureId: "mcp_resolve_feature",
+      bodyId: "mcp_resolve_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.resolve_generated_reference",
+      requestId: "mcp_req_resolve_ref",
+      arguments: {
+        bodyId: "mcp_resolve_body",
+        stableId: "generated:edge:mcp_resolve_body:start:circular"
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.resolve_generated_reference",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_resolve_ref",
+        query: "body.resolveGeneratedReference",
+        bodyId: "mcp_resolve_body",
+        stableId: "generated:edge:mcp_resolve_body:start:circular",
+        kind: "edge",
+        reference: {
+          kind: "edge",
+          role: "start:circular",
+          adjacentFaceRoles: ["startCap", "side:circular"]
+        }
+      }
+    });
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
@@ -1249,6 +1288,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.body_generated_references" },
+          { name: "cad.resolve_generated_reference" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

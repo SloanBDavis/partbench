@@ -374,6 +374,13 @@ side, profile kind, current source profile signature, and simple
 normal/axis/curve/profile-point roles. They are not raw OCCT, mesh, or renderer
 indexes and are not persisted as source-of-truth data.
 
+The companion `body.resolveGeneratedReference` query accepts a body ID and one
+generated stable ID, then resolves it to the current body, face, edge, or vertex
+reference object for that authored sketch-extrude body. This is still a
+read-only derived query. Missing or stale stable IDs return a structured
+`GENERATED_REFERENCE_NOT_FOUND` error rather than exposing raw OCCT, mesh, or
+renderer indexes.
+
 ## Future Format Version Triggers
 
 Do not introduce another format version just because query shapes changed. A
@@ -423,6 +430,7 @@ These are not source of truth and must not be required to load a project:
 - read-only project structure query results
 - read-only project sketch query formatting
 - read-only generated body/face/edge/vertex reference query results
+- read-only generated reference resolver query results
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the
