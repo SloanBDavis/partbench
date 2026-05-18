@@ -1559,6 +1559,54 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns generated reference measurements through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_measure_refs",
+      entityId: "rect_measure_refs",
+      featureId: "feat_measure_refs",
+      bodyId: "body_measure_refs"
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_measure_refs",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_measure_refs",
+          stableId: "generated:face:body_measure_refs:endCap"
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_measure_refs",
+      query: "body.generatedReferenceMeasurements",
+      bodyId: "body_measure_refs",
+      stableId: "generated:face:body_measure_refs:endCap",
+      kind: "face",
+      reference: {
+        kind: "face",
+        role: "endCap",
+        label: "End cap"
+      },
+      measurements: {
+        kind: "face",
+        role: "endCap",
+        area: 6,
+        center: [0, 0, 4],
+        bounds: {
+          min: [-1, -1.5, 4],
+          max: [1, 1.5, 4]
+        }
+      }
+    });
+  });
+
   it("returns transaction history through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

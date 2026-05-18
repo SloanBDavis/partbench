@@ -724,4 +724,67 @@ describe("cad-protocol", () => {
       warnings: [{ code: "BODY_EXTENTS_UNAVAILABLE" }]
     });
   });
+
+  it("types generated reference measurements", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      cadOpsVersion: "cadops.v1",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:endCap",
+      kind: "face",
+      reference: {
+        kind: "face",
+        stableId: "generated:face:body_1:endCap",
+        label: "End cap",
+        eligibleOperations: ["feature.measureReference"],
+        bodyId: "body_1",
+        ownerPartId: "part:default",
+        sourceFeatureId: "feat_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        role: "endCap",
+        geometricSignature: {
+          profileKind: "rectangle",
+          sketchPlane: "XY",
+          extrudeSide: "positive",
+          depth: 3
+        }
+      },
+      measurements: {
+        kind: "face",
+        stableId: "generated:face:body_1:endCap",
+        bodyId: "body_1",
+        sourceFeatureId: "feat_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        profileKind: "rectangle",
+        units: "mm",
+        measurementModel: "sourceAnalytic",
+        role: "endCap",
+        area: 8,
+        bounds: {
+          min: [-2, -1, 3],
+          max: [2, 1, 3],
+          size: [4, 2, 0],
+          center: [0, 0, 3]
+        },
+        center: [0, 0, 3],
+        surfaceType: "plane",
+        normal: [0, 0, 1],
+        normalRole: "endCapOutward"
+      }
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "face",
+      measurements: {
+        kind: "face",
+        role: "endCap",
+        area: 8
+      }
+    });
+  });
 });

@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the actual repo state and
 the next implementation roadmap.
 
-Last updated: 2026-05-17.
+Last updated: 2026-05-18.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for the long-term design, `docs/v1.md` for the completed
@@ -157,9 +157,10 @@ Current limitations:
 - The derived OCCT path tessellates current primitives and rectangle/circle
   sketch extrudes, but exact B-rep geometry is not persisted as source of truth.
 - Measurements include primitive object bounds/volumes, source-derived
-  rectangle/circle sketch-extrude body measurements, and project extents that
-  union primitive objects with measurable authored extrude bodies. They are not
-  exact kernel/B-rep measurements yet.
+  rectangle/circle sketch-extrude body measurements, source-derived generated
+  body/face/edge/rectangle-vertex reference measurements, and project extents
+  that union primitive objects with measurable authored extrude bodies. They are
+  not exact kernel/B-rep measurements yet.
 - Document units are explicit but not a full unit system.
 - Object display names are optional and not unique.
 - The first sketch and extrude slices exist, but there is no sketch solver,
@@ -430,12 +431,18 @@ queries where exact bodies exist.
 Current status: started. `body.measurements` returns read-only analytic
 measurements for authored rectangle/circle sketch-extrude bodies from
 source-of-truth sketch and feature data, including attached-sketch placement
-where the attachment resolves. Primitive object measurements remain unchanged.
+where the attachment resolves. `body.generatedReferenceMeasurements` measures
+one generated body, face, edge, or rectangle vertex reference from the same
+source-derived semantic reference model. Primitive object measurements remain
+unchanged.
 
 Deliverables:
 
 - Keep `body.measurements` source-derived until exact B-rep/kernel measurement
   data becomes authoritative enough to use.
+- Keep `body.generatedReferenceMeasurements` source-derived for current
+  rectangle/circle extrude references until exact topology-backed reference
+  measurements exist.
 - Add kernel-backed bounding boxes, volume, surface area, and centroid where
   practical.
 - Keep read/query separate from mutation.

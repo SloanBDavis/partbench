@@ -436,6 +436,16 @@ read-only derived query. Missing or stale stable IDs return a structured
 `GENERATED_REFERENCE_NOT_FOUND` error rather than exposing raw OCCT, mesh, or
 renderer indexes.
 
+The companion `body.generatedReferenceMeasurements` query accepts the same body
+ID and generated stable ID and returns source-derived analytic measurements for
+the matched semantic reference where practical. Current authored
+rectangle/circle sketch-extrude bodies support body bounds/volume/centroid,
+face area/bounds/center/normal-or-axis role, edge length and role-derived
+location data, and rectangle vertex points. Circle extrudes intentionally do not
+expose vertex measurements because the current circular profile has no stable
+discrete semantic vertices. These measurements are derived query results, not
+saved source data, and they are not exact persisted B-rep topology.
+
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts a body ID and generated face stable ID, resolves the reference through
 the same semantic generated-reference model, requires the reference to be a face,
@@ -500,6 +510,7 @@ These are not source of truth and must not be required to load a project:
 - read-only generated reference resolver query results
 - read-only generated reference labels and descriptions
 - read-only generated reference eligibility metadata
+- read-only generated reference measurement query results
 - attached sketch display frames derived from generated face references
 - attached-sketch extrude placement frames derived from generated face
   references

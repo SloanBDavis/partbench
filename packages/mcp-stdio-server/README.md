@@ -12,8 +12,12 @@ Only these existing tools are exposed:
 - `cad.project_structure`
 - `cad.project_sketches`
 - `cad.object_measurements`
+- `cad.body_measurements`
 - `cad.project_extents`
 - `cad.sketch_get`
+- `cad.body_generated_references`
+- `cad.resolve_generated_reference`
+- `cad.generated_reference_measurements`
 - `cad.transaction_history`
 - `cad.batch`
 
@@ -89,9 +93,12 @@ features/bodies, authored sketch-extrude features/bodies, and source mappings
 for the current model.
 `cad.project_sketches` and `cad.sketch_get` return source-of-truth sketch
 containers and entities from the authoritative document model.
-`cad.object_measurements` and `cad.project_extents` return read-only derived
-bounds and approximate volumes from the authoritative document. Unit changes go
-through CADOps: `metadataOnly` relabels numeric values, while
+`cad.object_measurements`, `cad.body_measurements`, `cad.project_extents`, and
+`cad.generated_reference_measurements` return read-only source-derived
+measurements from the authoritative document. Generated-reference measurements
+use semantic body/face/edge/vertex references for authored sketch-extrude bodies,
+not raw kernel, mesh, or renderer indexes. Unit changes go through CADOps:
+`metadataOnly` relabels numeric values, while
 `preservePhysicalSize` scales current dimensions and transform translations in
 `cad-core`.
 `cad.transaction_history` returns read-only summaries of the in-memory

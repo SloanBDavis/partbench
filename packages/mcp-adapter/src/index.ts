@@ -20,6 +20,7 @@ export type CadMcpToolName =
   | "cad.sketch_get"
   | "cad.body_generated_references"
   | "cad.resolve_generated_reference"
+  | "cad.generated_reference_measurements"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -151,6 +152,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.resolve_generated_reference") {
       return this.#callResolveGeneratedReference(request);
+    }
+
+    if (request.name === "cad.generated_reference_measurements") {
+      return this.#callGeneratedReferenceMeasurements(request);
     }
 
     if (request.name === "cad.transaction_history") {
@@ -454,6 +459,34 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callGeneratedReferenceMeasurements(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isResolveGeneratedReferenceToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.generated_reference_measurements expects arguments shaped as { bodyId: string, stableId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.generatedReferenceMeasurements",
+            bodyId: request.arguments.bodyId,
+            stableId: request.arguments.stableId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -654,6 +687,26 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         stableId: {
           type: "string",
           description: "Generated reference stable ID to resolve."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.generated_reference_measurements",
+    description:
+      "Returns source-derived measurements for one generated body, face, edge, or vertex reference.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId", "stableId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Authored sketch-extrude body ID to inspect."
+        },
+        stableId: {
+          type: "string",
+          description: "Generated reference stable ID to measure."
         }
       }
     }

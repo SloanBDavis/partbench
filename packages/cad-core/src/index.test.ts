@@ -5142,6 +5142,423 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns source-derived measurements for rectangle generated references", () => {
+    const engine = createRectangleExtrudeEngine();
+    const body = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:body:body_rect_1"
+      }
+    });
+    const face = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+    const edge = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:edge:body_rect_1:start:uMin"
+      }
+    });
+    const vertex = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:vertex:body_rect_1:end:uMax:vMax"
+      }
+    });
+
+    expect(body).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      bodyId: "body_rect_1",
+      stableId: "generated:body:body_rect_1",
+      kind: "body",
+      measurements: {
+        kind: "body",
+        bounds: {
+          min: [-2, -1, 0],
+          max: [2, 1, 3],
+          size: [4, 2, 3]
+        },
+        volume: 24,
+        centroid: [0, 0, 1.5]
+      }
+    });
+    expect(face).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "face",
+      measurements: {
+        kind: "face",
+        role: "endCap",
+        area: 8,
+        bounds: {
+          min: [-2, -1, 3],
+          max: [2, 1, 3],
+          size: [4, 2, 0]
+        },
+        center: [0, 0, 3],
+        surfaceType: "plane",
+        normal: [0, 0, 1],
+        normalRole: "endCapOutward"
+      }
+    });
+    expect(edge).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "edge",
+      measurements: {
+        kind: "edge",
+        role: "start:uMin",
+        length: 2,
+        curveType: "line",
+        startPoint: [-2, -1, 0],
+        endPoint: [-2, 1, 0]
+      }
+    });
+    expect(vertex).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "vertex",
+      measurements: {
+        kind: "vertex",
+        role: "end:uMax:vMax",
+        point: [2, 1, 3]
+      }
+    });
+  });
+
+  it("returns source-derived measurements for circle generated references", () => {
+    const engine = createCircleExtrudeEngine();
+    const sideFace = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_circle_1",
+        stableId: "generated:face:body_circle_1:side:circular"
+      }
+    });
+    const circularEdge = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_circle_1",
+        stableId: "generated:edge:body_circle_1:start:circular"
+      }
+    });
+    const missingVertex = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_circle_1",
+        stableId: "generated:vertex:body_circle_1:start:uMin:vMin"
+      }
+    });
+
+    expect(sideFace).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "face",
+      measurements: {
+        kind: "face",
+        role: "side:circular",
+        bounds: {
+          min: [-2, -2, 0],
+          max: [2, 2, 4]
+        },
+        center: [0, 0, 2],
+        surfaceType: "cylinder",
+        axis: [0, 0, 1],
+        axisRole: "sketchPlaneNormal"
+      }
+    });
+    expect(circularEdge).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "edge",
+      measurements: {
+        kind: "edge",
+        role: "start:circular",
+        curveType: "circle",
+        center: [0, 0, 0],
+        radius: 2,
+        axis: [0, 0, 1]
+      }
+    });
+    expect(missingVertex).toMatchObject({
+      ok: false,
+      query: "body.generatedReferenceMeasurements",
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_circle_1",
+        stableId: "generated:vertex:body_circle_1:start:uMin:vMin"
+      }
+    });
+
+    if (
+      sideFace.ok &&
+      sideFace.query === "body.generatedReferenceMeasurements" &&
+      sideFace.measurements.kind === "face"
+    ) {
+      expect(sideFace.measurements.area).toBeCloseTo(16 * Math.PI);
+    } else {
+      throw new Error("Expected circular side face measurements.");
+    }
+
+    if (
+      circularEdge.ok &&
+      circularEdge.query === "body.generatedReferenceMeasurements" &&
+      circularEdge.measurements.kind === "edge"
+    ) {
+      expect(circularEdge.measurements.length).toBeCloseTo(4 * Math.PI);
+    } else {
+      throw new Error("Expected circular edge measurements.");
+    }
+  });
+
+  it("updates generated reference measurements after depth, side, and profile edits", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 6,
+      side: "negative"
+    });
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 1],
+        width: 6,
+        height: 4
+      }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:startCap"
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      measurements: {
+        kind: "face",
+        role: "startCap",
+        area: 24,
+        bounds: {
+          min: [-2, -1, 0],
+          max: [4, 3, 0],
+          size: [6, 4, 0]
+        },
+        center: [1, 1, 0],
+        normal: [0, 0, 1]
+      }
+    });
+  });
+
+  it("measures generated references for attached sketch bodies", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "End cap sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_face_1",
+        id: "face_rect_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_face_1",
+        bodyId: "body_face_1",
+        sketchId: "sketch_face_1",
+        entityId: "face_rect_1",
+        depth: 2
+      }
+    ]);
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_face_1",
+        stableId: "generated:face:body_face_1:endCap"
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      measurements: {
+        kind: "face",
+        role: "endCap",
+        area: 1,
+        bounds: {
+          min: [-0.5, -0.5, 5],
+          max: [0.5, 0.5, 5],
+          size: [1, 1, 0]
+        },
+        center: [0, 0, 5]
+      }
+    });
+  });
+
+  it("handles generated reference measurement errors and feature delete undo/redo", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:missing"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferenceMeasurements",
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:missing"
+      }
+    });
+
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_rect_1",
+          stableId: "generated:body:body_rect_1"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferenceMeasurements",
+      error: { code: "BODY_NOT_FOUND", bodyId: "body_rect_1" }
+    });
+
+    engine.undo();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_rect_1",
+          stableId: "generated:body:body_rect_1"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      measurements: { kind: "body", volume: 24 }
+    });
+
+    engine.redo();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_rect_1",
+          stableId: "generated:body:body_rect_1"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferenceMeasurements",
+      error: { code: "BODY_NOT_FOUND", bodyId: "body_rect_1" }
+    });
+  });
+
+  it("round-trips generated reference measurements through project JSON", () => {
+    const restored = importCadProjectJson(
+      exportCadProjectJson(createRectangleExtrudeEngine())
+    );
+
+    const response = restored.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:edge:body_rect_1:longitudinal:uMin:vMin"
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      measurements: {
+        kind: "edge",
+        role: "longitudinal:uMin:vMin",
+        length: 3,
+        startPoint: [-2, -1, 0],
+        endPoint: [-2, -1, 3]
+      }
+    });
+  });
+
+  it("returns unsupported generated reference measurement errors for primitive-derived bodies", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body:box_1",
+        stableId: "generated:body:body:box_1"
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "body.generatedReferenceMeasurements",
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        bodyId: "body:box_1",
+        stableId: "generated:body:body:box_1"
+      }
+    });
+  });
+
   it("returns project extents from object world bounds", () => {
     const engine = new CadEngine();
 

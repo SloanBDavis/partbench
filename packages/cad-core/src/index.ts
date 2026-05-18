@@ -69,6 +69,7 @@ import {
   validateGeneratedReference
 } from "./generatedReferences";
 import { createBodyMeasurements } from "./bodyMeasurements";
+import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 
 export type {
   CadActorMetadata,
@@ -775,6 +776,42 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           measurements
+        };
+      }
+
+      case "body.generatedReferenceMeasurements": {
+        const { bodyId, stableId } = request.query;
+        const measurements = createGeneratedReferenceMeasurements({
+          document: this.#document,
+          bodyId,
+          stableId,
+          units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
+          bodyExists: (candidateBodyId) =>
+            createProjectStructure(
+              this.#document,
+              this.#history.map((entry) => entry.transaction)
+            ).bodies.some((body) => body.id === candidateBodyId)
+        });
+
+        if (!measurements.ok) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: measurements.error
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          bodyId,
+          stableId,
+          kind: measurements.kind,
+          reference: measurements.reference,
+          measurements: measurements.measurements
         };
       }
 

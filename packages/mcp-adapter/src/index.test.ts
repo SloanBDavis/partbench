@@ -16,6 +16,7 @@ describe("mcp-adapter", () => {
       "cad.sketch_get",
       "cad.body_generated_references",
       "cad.resolve_generated_reference",
+      "cad.generated_reference_measurements",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -1291,6 +1292,58 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns generated reference measurements through cad.generated_reference_measurements", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_measure_sketch",
+      entityId: "mcp_measure_circle",
+      featureId: "mcp_measure_feat",
+      bodyId: "mcp_measure_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.generated_reference_measurements",
+      requestId: "mcp_req_measure_ref",
+      arguments: {
+        bodyId: "mcp_measure_body",
+        stableId: "generated:edge:mcp_measure_body:start:circular"
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.generated_reference_measurements",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_measure_ref",
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "mcp_measure_body",
+        stableId: "generated:edge:mcp_measure_body:start:circular",
+        kind: "edge",
+        measurements: {
+          kind: "edge",
+          role: "start:circular",
+          curveType: "circle",
+          center: [0, 0, 0],
+          radius: 2
+        }
+      }
+    });
+
+    const structured = result.structuredContent;
+    if (
+      structured.ok &&
+      "query" in structured &&
+      structured.query === "body.generatedReferenceMeasurements" &&
+      structured.measurements.kind === "edge"
+    ) {
+      expect(structured.measurements.length).toBeCloseTo(4 * Math.PI);
+    } else {
+      throw new Error("Expected generated reference measurement response.");
+    }
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
@@ -1482,6 +1535,7 @@ describe("mcp-adapter", () => {
           { name: "cad.sketch_get" },
           { name: "cad.body_generated_references" },
           { name: "cad.resolve_generated_reference" },
+          { name: "cad.generated_reference_measurements" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

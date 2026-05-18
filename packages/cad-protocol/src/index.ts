@@ -481,6 +481,7 @@ export type CadQueryKind =
   | "body.generatedReferences"
   | "body.resolveGeneratedReference"
   | "body.measurements"
+  | "body.generatedReferenceMeasurements"
   | "transaction.history";
 
 export type CadQuery =
@@ -495,6 +496,7 @@ export type CadQuery =
   | BodyGeneratedReferencesQuery
   | BodyResolveGeneratedReferenceQuery
   | BodyMeasurementsQuery
+  | BodyGeneratedReferenceMeasurementsQuery
   | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
@@ -546,6 +548,12 @@ export interface BodyResolveGeneratedReferenceQuery {
 export interface BodyMeasurementsQuery {
   readonly query: "body.measurements";
   readonly bodyId: BodyId;
+}
+
+export interface BodyGeneratedReferenceMeasurementsQuery {
+  readonly query: "body.generatedReferenceMeasurements";
+  readonly bodyId: BodyId;
+  readonly stableId: string;
 }
 
 export interface TransactionHistoryQuery {
@@ -739,6 +747,65 @@ export interface BodyMeasurementsSnapshot {
   readonly centroid: Vec3;
   readonly volume: number;
   readonly surfaceArea: number;
+}
+
+export type GeneratedReferenceMeasurementModel = "sourceAnalytic";
+
+export type GeneratedReferenceMeasurement =
+  | GeneratedBodyReferenceMeasurement
+  | GeneratedFaceReferenceMeasurement
+  | GeneratedEdgeReferenceMeasurement
+  | GeneratedVertexReferenceMeasurement;
+
+export interface GeneratedReferenceMeasurementBase {
+  readonly kind: CadGeneratedEntityKind;
+  readonly stableId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly units: DocumentUnits;
+  readonly measurementModel: GeneratedReferenceMeasurementModel;
+}
+
+export interface GeneratedBodyReferenceMeasurement extends GeneratedReferenceMeasurementBase {
+  readonly kind: "body";
+  readonly bounds: CadAxisAlignedBounds;
+  readonly volume: number;
+  readonly centroid: Vec3;
+}
+
+export interface GeneratedFaceReferenceMeasurement extends GeneratedReferenceMeasurementBase {
+  readonly kind: "face";
+  readonly role: CadGeneratedExtrudeFaceRole;
+  readonly area: number;
+  readonly bounds: CadAxisAlignedBounds;
+  readonly center: Vec3;
+  readonly surfaceType: CadGeneratedSurfaceType;
+  readonly normal?: Vec3;
+  readonly normalRole?: string;
+  readonly axis?: Vec3;
+  readonly axisRole?: string;
+}
+
+export interface GeneratedEdgeReferenceMeasurement extends GeneratedReferenceMeasurementBase {
+  readonly kind: "edge";
+  readonly role: CadGeneratedExtrudeEdgeRole;
+  readonly length: number;
+  readonly curveType: CadGeneratedCurveType;
+  readonly startPoint?: Vec3;
+  readonly endPoint?: Vec3;
+  readonly center?: Vec3;
+  readonly radius?: number;
+  readonly axis?: Vec3;
+  readonly axisRole?: string;
+}
+
+export interface GeneratedVertexReferenceMeasurement extends GeneratedReferenceMeasurementBase {
+  readonly kind: "vertex";
+  readonly role: CadGeneratedExtrudeVertexRole;
+  readonly point: Vec3;
 }
 
 export type CadPrimitiveCreateOp =
@@ -1032,7 +1099,8 @@ export type CadQueryErrorCode =
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "UNSUPPORTED_BODY_MEASUREMENTS"
-  | "GENERATED_REFERENCE_NOT_FOUND";
+  | "GENERATED_REFERENCE_NOT_FOUND"
+  | "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS";
 
 export interface CadQueryError {
   readonly code: CadQueryErrorCode;
@@ -1055,6 +1123,7 @@ export type CadQueryResponse =
   | BodyGeneratedReferencesQueryResponse
   | BodyResolveGeneratedReferenceQueryResponse
   | BodyMeasurementsQueryResponse
+  | BodyGeneratedReferenceMeasurementsQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -1167,6 +1236,17 @@ export interface BodyMeasurementsQueryResponse {
   readonly query: "body.measurements";
   readonly cadOpsVersion: CadOpsVersion;
   readonly measurements: BodyMeasurementsSnapshot;
+}
+
+export interface BodyGeneratedReferenceMeasurementsQueryResponse {
+  readonly ok: true;
+  readonly query: "body.generatedReferenceMeasurements";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly reference: CadGeneratedReference;
+  readonly measurements: GeneratedReferenceMeasurement;
 }
 
 export interface CadQueryErrorResponse {
