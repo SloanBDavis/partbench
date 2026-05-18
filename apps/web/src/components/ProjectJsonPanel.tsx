@@ -92,12 +92,18 @@ export function ProjectJsonPanel({
         {getProjectImportStatusText(preview)}
       </p>
       <ProjectPreview preview={preview} />
-      <textarea
-        value={projectJson}
-        onChange={(event) => onProjectJsonChange(event.currentTarget.value)}
-        placeholder="Generate, load, or paste Web CAD project JSON"
-        spellCheck={false}
-      />
+      <details
+        className="advanced-options project-json-editor"
+        open={preview.status === "invalid"}
+      >
+        <summary>JSON editor</summary>
+        <textarea
+          value={projectJson}
+          onChange={(event) => onProjectJsonChange(event.currentTarget.value)}
+          placeholder="Generate, load, or paste Web CAD project JSON"
+          spellCheck={false}
+        />
+      </details>
       {message && (
         <p
           className={`project-message ${

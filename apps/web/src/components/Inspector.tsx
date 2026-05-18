@@ -516,6 +516,10 @@ function GeneratedReferencesPanel({
     ? buildSketchOnFaceForm(bodyId, selectedFace, draft)
     : undefined;
   const hasValidName = draft.name.trim().length > 0;
+  const selectedReferenceValue =
+    selectedReferenceState.status === "selected"
+      ? selectedReferenceState.reference.stableId
+      : "";
 
   function createOnSelectedFace() {
     if (!sketchOnFaceForm) {
@@ -576,7 +580,7 @@ function GeneratedReferencesPanel({
               {selectedFace && (
                 <small>{formatSketchOnFaceAvailability(selectedFace)}</small>
               )}
-              <div className="field-grid two">
+              <div className="field-grid">
                 <label>
                   Sketch name
                   <input
@@ -588,6 +592,9 @@ function GeneratedReferencesPanel({
                     }
                   />
                 </label>
+              </div>
+              <details className="advanced-options compact">
+                <summary>Advanced sketch options</summary>
                 <label>
                   Optional sketch ID
                   <input
@@ -599,7 +606,7 @@ function GeneratedReferencesPanel({
                     }
                   />
                 </label>
-              </div>
+              </details>
               <button
                 type="button"
                 disabled={disabled || !sketchOnFaceForm}
@@ -616,63 +623,81 @@ function GeneratedReferencesPanel({
             state={selectedReferenceState}
             units={units}
           />
-          <ul className="reference-list">
-            {referenceItems.map((reference) => {
-              const face = asGeneratedFaceReference(reference);
-              const measurementState = measurementByStableId?.get(
-                reference.stableId
-              );
-              const isSelected = isSelectedGeneratedReference(
-                selectedGeneratedReference,
-                reference
-              );
+          <label>
+            Inspect reference
+            <select
+              value={selectedReferenceValue}
+              disabled={disabled}
+              onChange={(event) => {
+                const reference = referenceItems.find(
+                  (item) => item.stableId === event.currentTarget.value
+                );
 
-              return (
-                <li
-                  key={reference.stableId}
-                  className={isSelected ? "reference-selected" : ""}
-                >
-                  <div className="reference-heading">
-                    <strong>{reference.label}</strong>
-                    <span>{formatGeneratedReferenceKind(reference.kind)}</span>
-                  </div>
-                  {reference.description && <p>{reference.description}</p>}
-                  <small>
-                    Eligible:{" "}
-                    {formatGeneratedReferenceOperationLabels(reference)}
-                  </small>
-                  <code>{reference.stableId}</code>
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() =>
-                      onSelectGeneratedReference(
-                        createSelectedGeneratedReference(reference)
-                      )
-                    }
+                if (reference) {
+                  onSelectGeneratedReference(
+                    createSelectedGeneratedReference(reference)
+                  );
+                }
+              }}
+            >
+              <option value="">Choose reference</option>
+              {referenceItems.map((reference) => (
+                <option key={reference.stableId} value={reference.stableId}>
+                  {formatGeneratedReferenceKind(reference.kind)} /{" "}
+                  {reference.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <details className="advanced-options">
+            <summary>Reference index</summary>
+            <ul className="reference-list compact">
+              {referenceItems.map((reference) => {
+                const face = asGeneratedFaceReference(reference);
+                const isSelected = isSelectedGeneratedReference(
+                  selectedGeneratedReference,
+                  reference
+                );
+
+                return (
+                  <li
+                    key={reference.stableId}
+                    className={isSelected ? "reference-selected" : ""}
                   >
-                    {isSelected ? "Selected" : "Select reference"}
-                  </button>
-                  {reference.eligibilityNotes &&
-                    reference.eligibilityNotes.length > 0 && (
-                      <small>{reference.eligibilityNotes.join(" ")}</small>
-                    )}
-                  {face && (
+                    <div className="reference-heading">
+                      <strong>{reference.label}</strong>
+                      <span>
+                        {formatGeneratedReferenceKind(reference.kind)}
+                      </span>
+                    </div>
                     <small>
-                      Sketch attachment:{" "}
-                      {canCreateSketchOnFace(face)
-                        ? formatGeneratedFaceEligibility(face)
-                        : "Unavailable"}
+                      Eligible:{" "}
+                      {formatGeneratedReferenceOperationLabels(reference)}
                     </small>
-                  )}
-                  <GeneratedReferenceMeasurementRows
-                    state={measurementState}
-                    units={units}
-                  />
-                </li>
-              );
-            })}
-          </ul>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() =>
+                        onSelectGeneratedReference(
+                          createSelectedGeneratedReference(reference)
+                        )
+                      }
+                    >
+                      {isSelected ? "Selected" : "Select"}
+                    </button>
+                    {face && (
+                      <small>
+                        Sketch attachment:{" "}
+                        {canCreateSketchOnFace(face)
+                          ? formatGeneratedFaceEligibility(face)
+                          : "Unavailable"}
+                      </small>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         </>
       )}
     </section>

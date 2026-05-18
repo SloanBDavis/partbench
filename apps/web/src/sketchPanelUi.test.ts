@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SketchSnapshot } from "@web-cad/cad-protocol";
 import {
+  chooseSketchEntitySelection,
   chooseSketchPanelSelection,
-  getDefaultSketchEntityKind
+  getDefaultSketchEntityKind,
+  getSketchEntityOptionLabel,
+  isExtrudableSketchEntity
 } from "./sketchPanelUi";
 
 describe("sketch panel UI helpers", () => {
@@ -71,6 +74,38 @@ describe("sketch panel UI helpers", () => {
         })
       )
     ).toBe("point");
+  });
+
+  it("keeps selected entities compact and falls back when stale", () => {
+    const entities: SketchSnapshot["entities"] = [
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      { id: "circle_1", kind: "circle", center: [1, 1], radius: 2 }
+    ];
+
+    expect(chooseSketchEntitySelection(entities, "circle_1")).toBe("circle_1");
+    expect(chooseSketchEntitySelection(entities, "missing")).toBe("rect_1");
+    expect(chooseSketchEntitySelection([], "missing")).toBeUndefined();
+    expect(getSketchEntityOptionLabel(entities[0])).toBe(
+      "rect_1 / rectangle 4 x 2"
+    );
+    expect(getSketchEntityOptionLabel(entities[1])).toBe(
+      "circle_1 / circle r 2"
+    );
+    expect(isExtrudableSketchEntity(entities[0])).toBe(true);
+    expect(isExtrudableSketchEntity(entities[1])).toBe(true);
+    expect(
+      isExtrudableSketchEntity({
+        id: "point_1",
+        kind: "point",
+        point: [0, 0]
+      })
+    ).toBe(false);
   });
 });
 

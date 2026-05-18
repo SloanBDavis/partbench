@@ -819,6 +819,15 @@ canvas:active {
   text-transform: uppercase;
 }
 
+.compact-heading {
+  margin-top: 2px;
+}
+
+.compact-heading h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
 .field-grid {
   display: grid;
   gap: 8px;
@@ -841,10 +850,108 @@ canvas:active {
 .transform-fields.compact,
 .sketch-layout,
 .sketch-detail,
-.entity-editor {
+.entity-editor,
+.entity-picker,
+.entity-summary {
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.entity-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
+.entity-picker-row button {
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.readonly-field {
+  display: grid;
+  gap: 4px;
+  align-content: end;
+  min-width: 0;
+}
+
+.readonly-field span {
+  color: var(--quiet);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.readonly-field strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.advanced-options {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.workflow-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.workflow-section summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.workflow-section > *:not(summary) {
+  margin-top: 10px;
+}
+
+.advanced-options.inline {
+  align-content: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.advanced-options.compact {
+  padding: 6px 8px;
+}
+
+.advanced-options summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.advanced-options > *:not(summary) {
+  margin-top: 8px;
+}
+
+.advanced-options code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.project-json-editor textarea {
+  min-height: 210px;
 }
 
 .button-row {
@@ -897,6 +1004,7 @@ canvas:active {
 
 .entity-list li,
 .reference-list li,
+.entity-summary,
 .sketch-attachment,
 .history-card,
 .geometry-status-list li {
@@ -914,8 +1022,17 @@ canvas:active {
   background: #f2f7fb;
 }
 
+.reference-list.compact {
+  gap: 6px;
+}
+
+.reference-list.compact li {
+  padding: 8px;
+}
+
 .entity-list code,
 .reference-list code,
+.entity-summary code,
 .sketch-attachment dd,
 .selected-reference-detail code {
   color: var(--ink);
@@ -925,6 +1042,8 @@ canvas:active {
 
 .reference-list p,
 .reference-list small,
+.entity-summary span,
+.entity-summary small,
 .selected-reference-detail p,
 .selected-reference-detail small {
   color: var(--muted);
@@ -1391,13 +1510,12 @@ canvas:active {
   }
 
   .quick-create {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .quick-create button {
-    min-width: 84px;
-    flex: 0 0 auto;
+    flex: 1 1 84px;
   }
 
   .history-controls {

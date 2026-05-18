@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CadFeatureSummary,
+  SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchPlane,
@@ -18,8 +19,11 @@ import {
 import { formatSketchAttachmentLabel } from "../generatedReferenceUi";
 import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
+  chooseSketchEntitySelection,
   chooseSketchPanelSelection,
-  getDefaultSketchEntityKind
+  getDefaultSketchEntityKind,
+  getSketchEntityOptionLabel,
+  isExtrudableSketchEntity
 } from "../sketchPanelUi";
 import {
   defaultSketchEntityForm,
@@ -87,11 +91,22 @@ export function SketchPanel({
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
     sketches[0]?.id
   );
+  const [selectedEntityId, setSelectedEntityId] = useState<
+    SketchEntityId | undefined
+  >();
   const [createForm, setCreateForm] =
     useState<SketchCreateForm>(defaultCreateForm);
   const [entityForm, setEntityForm] = useState<SketchEntityForm>(
     defaultSketchEntityForm
   );
+  const [isAddingEntity, setIsAddingEntity] = useState(false);
+  const pendingEntitySelection = useRef<
+    | {
+        readonly sketchId: string;
+        readonly previousCount: number;
+      }
+    | undefined
+  >(undefined);
   const [entityKind, setEntityKind] = useState<SketchEntityKind>(() =>
     getDefaultSketchEntityKind(
       sketches.find((sketch) => sketch.id === focusedSketchId) ?? sketches[0]
@@ -109,6 +124,23 @@ export function SketchPanel({
   const selectedSketchDisplayStatus = selectedSketch
     ? displayStatuses?.get(selectedSketch.id)
     : undefined;
+  const effectiveSelectedEntityId = chooseSketchEntitySelection(
+    selectedSketch?.entities ?? [],
+    selectedEntityId
+  );
+  const selectedEntity = selectedSketch?.entities.find(
+    (entity) => entity.id === effectiveSelectedEntityId
+  );
+  const selectedEntityUsages =
+    selectedSketch && selectedEntity
+      ? getSketchEntityExtrudeUsages(
+          features,
+          selectedSketch.id,
+          selectedEntity.id
+        )
+      : [];
+  const selectedEntityUsageLabel =
+    formatSketchEntityUsageLabel(selectedEntityUsages);
   const [editingEntityId, setEditingEntityId] = useState<string | undefined>();
   const editingEntity = selectedSketch?.entities.find(
     (entity) => entity.id === editingEntityId
@@ -130,23 +162,48 @@ export function SketchPanel({
     selectedSketch && renameDraft?.sketchId === selectedSketch.id
       ? renameDraft.name
       : (selectedSketch?.name ?? "");
-  const [extrudeEntityId, setExtrudeEntityId] = useState<string | undefined>();
   const [extrudeForm, setExtrudeForm] =
     useState<FeatureExtrudeForm>(defaultExtrudeForm);
-  const extrudableEntities =
-    selectedSketch?.entities.filter(
-      (entity) => entity.kind === "rectangle" || entity.kind === "circle"
-    ) ?? [];
-  const effectiveExtrudeEntityId =
-    extrudeEntityId &&
-    extrudableEntities.some((entity) => entity.id === extrudeEntityId)
-      ? extrudeEntityId
-      : extrudableEntities[0]?.id;
+  const selectedExtrudeEntity = isExtrudableSketchEntity(selectedEntity)
+    ? selectedEntity
+    : undefined;
+  const shouldShowEntityEditor =
+    Boolean(editingEntityId) ||
+    isAddingEntity ||
+    selectedSketch?.entities.length === 0;
+  const shouldShowInlineAddEntityEditor =
+    isAddingEntity && !editingEntityId && selectedSketch?.entities.length !== 0;
+  const shouldShowStandaloneEntityEditor =
+    Boolean(editingEntityId) || selectedSketch?.entities.length === 0;
+
+  useEffect(() => {
+    const pending = pendingEntitySelection.current;
+
+    if (!pending || !selectedSketch || selectedSketch.id !== pending.sketchId) {
+      return;
+    }
+
+    if (selectedSketch.entities.length > pending.previousCount) {
+      setSelectedEntityId(
+        selectedSketch.entities[selectedSketch.entities.length - 1]?.id
+      );
+      pendingEntitySelection.current = undefined;
+    }
+  }, [selectedSketch]);
 
   function editEntity(entity: SketchEntitySnapshot) {
+    setSelectedEntityId(entity.id);
     setEditingEntityId(entity.id);
+    setIsAddingEntity(false);
     setEntityKind(entity.kind);
     setEntityForm(entityToSketchEntityForm(entity));
+  }
+
+  function addEntity() {
+    setEditingEntityId(undefined);
+    setIsAddingEntity(true);
+    setEntityKind(getDefaultSketchEntityKind(selectedSketch));
+    setEntityForm(defaultSketchEntityForm);
   }
 
   function saveEntity() {
@@ -167,7 +224,12 @@ export function SketchPanel({
       return;
     }
 
+    pendingEntitySelection.current = {
+      sketchId: selectedSketch.id,
+      previousCount: selectedSketch.entities.length
+    };
     onAddEntity(selectedSketch.id, entityKind, entityForm);
+    setIsAddingEntity(false);
   }
 
   return (
@@ -177,90 +239,100 @@ export function SketchPanel({
         <span>{sketches.length}</span>
       </div>
 
-      <div className="field-grid two">
-        <label>
-          Name
-          <input
-            type="text"
-            value={createForm.name}
+      <details className="workflow-section" open={sketches.length === 0}>
+        <summary>New sketch</summary>
+        <div className="field-grid two">
+          <label>
+            Name
+            <input
+              type="text"
+              value={createForm.name}
+              disabled={disabled}
+              onChange={(event) =>
+                setCreateForm({
+                  ...createForm,
+                  name: event.currentTarget.value
+                })
+              }
+            />
+          </label>
+          <label>
+            Plane
+            <select
+              value={createForm.plane}
+              disabled={disabled}
+              onChange={(event) =>
+                setCreateForm({
+                  ...createForm,
+                  plane: event.currentTarget.value as SketchPlane
+                })
+              }
+            >
+              <option value="XY">XY</option>
+              <option value="XZ">XZ</option>
+              <option value="YZ">YZ</option>
+            </select>
+          </label>
+        </div>
+        <div className="button-row">
+          <button
+            type="button"
             disabled={disabled}
-            onChange={(event) =>
-              setCreateForm({ ...createForm, name: event.currentTarget.value })
-            }
-          />
-        </label>
-        <label>
-          Plane
-          <select
-            value={createForm.plane}
-            disabled={disabled}
-            onChange={(event) =>
-              setCreateForm({
-                ...createForm,
-                plane: event.currentTarget.value as SketchPlane
-              })
-            }
+            onClick={() => onCreateSketch(createForm)}
           >
-            <option value="XY">XY</option>
-            <option value="XZ">XZ</option>
-            <option value="YZ">YZ</option>
-          </select>
-        </label>
-      </div>
-      <label>
-        Optional ID
-        <input
-          type="text"
-          value={createForm.id}
-          disabled={disabled}
-          onChange={(event) =>
-            setCreateForm({ ...createForm, id: event.currentTarget.value })
-          }
-        />
-      </label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onCreateSketch(createForm)}
-      >
-        Create sketch
-      </button>
+            Create sketch
+          </button>
+        </div>
+        <details className="advanced-options">
+          <summary>Advanced sketch options</summary>
+          <label>
+            Optional ID
+            <input
+              type="text"
+              value={createForm.id}
+              disabled={disabled}
+              onChange={(event) =>
+                setCreateForm({ ...createForm, id: event.currentTarget.value })
+              }
+            />
+          </label>
+        </details>
+      </details>
 
       {sketches.length === 0 ? (
         <p className="empty-state compact">No sketches</p>
       ) : (
         <div className="sketch-layout">
-          <ul className="compact-list">
-            {sketches.map((sketch) => (
-              <li key={sketch.id}>
-                <button
-                  type="button"
-                  className={
-                    sketch.id === effectiveSelectedSketchId ? "selected" : ""
-                  }
-                  disabled={disabled}
-                  onClick={() => {
-                    setSelectedSketchId(sketch.id);
-                    setEntityKind(getDefaultSketchEntityKind(sketch));
-                  }}
-                >
-                  <span>{sketch.name}</span>
-                  <small>
-                    {sketch.plane} / {sketch.entities.length} entities
-                    {sketch.attachment
-                      ? ` / ${formatSketchAttachmentLabel(sketch.attachment)}`
-                      : ""}
-                  </small>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <label>
+            Active sketch
+            <select
+              value={effectiveSelectedSketchId ?? ""}
+              disabled={disabled}
+              onChange={(event) => {
+                const nextSketch = sketches.find(
+                  (sketch) => sketch.id === event.currentTarget.value
+                );
+
+                setSelectedSketchId(event.currentTarget.value);
+                setSelectedEntityId(undefined);
+                setEditingEntityId(undefined);
+                setIsAddingEntity(false);
+                setEntityKind(getDefaultSketchEntityKind(nextSketch));
+              }}
+            >
+              {sketches.map((sketch) => (
+                <option key={sketch.id} value={sketch.id}>
+                  {sketch.name} / {sketch.plane} / {sketch.entities.length}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {selectedSketch && (
             <div className="sketch-detail">
               <div className="field-grid two">
                 <label>
-                  Rename
+                  Name
                   <input
                     type="text"
                     value={renameValue}
@@ -273,18 +345,22 @@ export function SketchPanel({
                     }
                   />
                 </label>
-                <label>
-                  Selected
-                  <input type="text" value={selectedSketch.id} readOnly />
-                </label>
+                <div className="readonly-field">
+                  <span>Plane</span>
+                  <strong>{selectedSketch.plane}</strong>
+                </div>
               </div>
+              <details className="advanced-options compact">
+                <summary>Sketch ID</summary>
+                <code>{selectedSketch.id}</code>
+              </details>
               <div className="button-row">
                 <button
                   type="button"
                   disabled={disabled}
                   onClick={() => onRenameSketch(selectedSketch.id, renameValue)}
                 >
-                  Rename
+                  Save name
                 </button>
                 <button
                   type="button"
@@ -310,15 +386,20 @@ export function SketchPanel({
                         {formatSketchAttachmentLabel(selectedSketch.attachment)}
                       </dd>
                     </div>
-                    <div>
-                      <dt>Stable ID</dt>
-                      <dd>{selectedSketch.attachment.faceStableId}</dd>
-                    </div>
-                    <div>
-                      <dt>Source feature</dt>
-                      <dd>{selectedSketch.attachment.sourceFeatureId}</dd>
-                    </div>
                   </dl>
+                  <details className="advanced-options compact">
+                    <summary>Attachment IDs</summary>
+                    <dl>
+                      <div>
+                        <dt>Stable ID</dt>
+                        <dd>{selectedSketch.attachment.faceStableId}</dd>
+                      </div>
+                      <div>
+                        <dt>Source feature</dt>
+                        <dd>{selectedSketch.attachment.sourceFeatureId}</dd>
+                      </div>
+                    </dl>
+                  </details>
                   {selectedSketchDisplayStatus?.kind === "attached" && (
                     <p className="project-message">
                       {selectedSketchDisplayStatus.message}
@@ -332,173 +413,223 @@ export function SketchPanel({
                 </section>
               )}
 
-              <EntityEditor
-                disabled={disabled}
-                editingEntityId={editingEntityId}
-                entityForm={entityForm}
-                entityKind={entityKind}
-                usageLabel={formatSketchEntityUsageLabel(editingEntityUsages)}
-                validation={entityFormValidation}
-                onCancelEdit={() => setEditingEntityId(undefined)}
-                onEntityFormChange={setEntityForm}
-                onEntityKindChange={setEntityKind}
-                onSave={saveEntity}
-              />
-
-              <ul className="entity-list">
-                {selectedSketch.entities.map((entity) => {
-                  const usages = getSketchEntityExtrudeUsages(
-                    features,
-                    selectedSketch.id,
-                    entity.id
-                  );
-                  const usageLabel = formatSketchEntityUsageLabel(usages);
-
-                  return (
-                    <li key={entity.id}>
-                      <code>{entity.id}</code>
-                      <span>{formatSketchEntity(entity)}</span>
-                      {usageLabel && (
-                        <small className="entity-usage">{usageLabel}</small>
+              {selectedSketch.entities.length > 0 && (
+                <section className="entity-picker" aria-label="Sketch entities">
+                  <div className="command-card-heading">
+                    <h3>Selected entity</h3>
+                    <span>{selectedSketch.entities.length}</span>
+                  </div>
+                  <div className="entity-picker-row">
+                    <label>
+                      Entity
+                      <select
+                        value={effectiveSelectedEntityId ?? ""}
+                        disabled={disabled}
+                        onChange={(event) => {
+                          setSelectedEntityId(event.currentTarget.value);
+                          setEditingEntityId(undefined);
+                          setIsAddingEntity(false);
+                        }}
+                      >
+                        {selectedSketch.entities.map((entity) => (
+                          <option key={entity.id} value={entity.id}>
+                            {getSketchEntityOptionLabel(entity)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={addEntity}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {shouldShowInlineAddEntityEditor && (
+                    <EntityEditor
+                      disabled={disabled}
+                      canCancel
+                      editingEntityId={editingEntityId}
+                      entityForm={entityForm}
+                      entityKind={entityKind}
+                      usageLabel={formatSketchEntityUsageLabel(
+                        editingEntityUsages
+                      )}
+                      validation={entityFormValidation}
+                      onCancelEdit={() => {
+                        setEditingEntityId(undefined);
+                        setIsAddingEntity(false);
+                      }}
+                      onEntityFormChange={setEntityForm}
+                      onEntityKindChange={setEntityKind}
+                      onSave={saveEntity}
+                    />
+                  )}
+                  {selectedEntity && (
+                    <div className="entity-summary">
+                      <code>{selectedEntity.id}</code>
+                      <span>{formatSketchEntity(selectedEntity)}</span>
+                      {selectedEntityUsageLabel && (
+                        <small className="entity-usage">
+                          {selectedEntityUsageLabel}
+                        </small>
                       )}
                       <div className="button-row compact">
                         <button
                           type="button"
                           disabled={disabled}
-                          onClick={() => editEntity(entity)}
+                          onClick={() => editEntity(selectedEntity)}
                         >
-                          {usageLabel ? "Edit source" : "Edit"}
+                          {selectedEntityUsageLabel ? "Edit source" : "Edit"}
                         </button>
-                        {(entity.kind === "rectangle" ||
-                          entity.kind === "circle") && (
-                          <button
-                            type="button"
-                            disabled={disabled}
-                            onClick={() => setExtrudeEntityId(entity.id)}
-                          >
-                            Use for extrude
-                          </button>
-                        )}
                         <button
                           type="button"
                           className="danger"
                           disabled={disabled}
                           onClick={() =>
-                            onDeleteEntity(selectedSketch.id, entity.id)
+                            onDeleteEntity(selectedSketch.id, selectedEntity.id)
                           }
                         >
                           Delete
                         </button>
                       </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                    </div>
+                  )}
+                </section>
+              )}
 
-              {extrudableEntities.length > 0 && (
+              {shouldShowEntityEditor && shouldShowStandaloneEntityEditor && (
+                <EntityEditor
+                  disabled={disabled}
+                  canCancel={selectedSketch.entities.length > 0}
+                  editingEntityId={editingEntityId}
+                  entityForm={entityForm}
+                  entityKind={entityKind}
+                  usageLabel={formatSketchEntityUsageLabel(editingEntityUsages)}
+                  validation={entityFormValidation}
+                  onCancelEdit={() => {
+                    setEditingEntityId(undefined);
+                    setIsAddingEntity(false);
+                  }}
+                  onEntityFormChange={setEntityForm}
+                  onEntityKindChange={setEntityKind}
+                  onSave={saveEntity}
+                />
+              )}
+
+              {!shouldShowEntityEditor &&
+                selectedSketch.entities.length === 0 && (
+                  <p className="empty-state compact">No sketch entities</p>
+                )}
+
+              {selectedSketch.entities.length > 0 && (
                 <section className="entity-editor" aria-label="Extrude feature">
-                  <div className="field-grid two">
-                    <label>
-                      Profile
-                      <select
-                        value={effectiveExtrudeEntityId}
+                  <div className="command-card-heading">
+                    <h3>Extrude selected entity</h3>
+                  </div>
+                  {selectedExtrudeEntity ? (
+                    <>
+                      <div className="readonly-field">
+                        <span>Profile</span>
+                        <strong>
+                          {getSketchEntityOptionLabel(selectedExtrudeEntity)}
+                        </strong>
+                      </div>
+                      <div className="field-grid two">
+                        <NumberField
+                          disabled={disabled}
+                          label="Depth"
+                          value={extrudeForm.depth}
+                          onChange={(depth) =>
+                            setExtrudeForm({ ...extrudeForm, depth })
+                          }
+                        />
+                        <label>
+                          Side
+                          <select
+                            value={extrudeForm.side}
+                            disabled={disabled}
+                            onChange={(event) =>
+                              setExtrudeForm({
+                                ...extrudeForm,
+                                side: event.currentTarget
+                                  .value as FeatureExtrudeForm["side"]
+                              })
+                            }
+                          >
+                            <option value="positive">Positive</option>
+                            <option value="negative">Negative</option>
+                            <option value="symmetric">Symmetric</option>
+                          </select>
+                        </label>
+                      </div>
+                      <details className="advanced-options">
+                        <summary>Advanced extrude options</summary>
+                        <div className="field-grid two">
+                          <label>
+                            Optional feature ID
+                            <input
+                              type="text"
+                              value={extrudeForm.id}
+                              disabled={disabled}
+                              onChange={(event) =>
+                                setExtrudeForm({
+                                  ...extrudeForm,
+                                  id: event.currentTarget.value
+                                })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Optional body ID
+                            <input
+                              type="text"
+                              value={extrudeForm.bodyId}
+                              disabled={disabled}
+                              onChange={(event) =>
+                                setExtrudeForm({
+                                  ...extrudeForm,
+                                  bodyId: event.currentTarget.value
+                                })
+                              }
+                            />
+                          </label>
+                        </div>
+                        <label>
+                          Optional name
+                          <input
+                            type="text"
+                            value={extrudeForm.name}
+                            disabled={disabled}
+                            onChange={(event) =>
+                              setExtrudeForm({
+                                ...extrudeForm,
+                                name: event.currentTarget.value
+                              })
+                            }
+                          />
+                        </label>
+                      </details>
+                      <button
+                        type="button"
                         disabled={disabled}
-                        onChange={(event) =>
-                          setExtrudeEntityId(event.currentTarget.value)
+                        onClick={() =>
+                          onExtrudeEntity(
+                            selectedSketch.id,
+                            selectedExtrudeEntity.id,
+                            extrudeForm
+                          )
                         }
                       >
-                        {extrudableEntities.map((entity) => (
-                          <option key={entity.id} value={entity.id}>
-                            {entity.id} / {entity.kind}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <NumberField
-                      disabled={disabled}
-                      label="Depth"
-                      value={extrudeForm.depth}
-                      onChange={(depth) =>
-                        setExtrudeForm({ ...extrudeForm, depth })
-                      }
-                    />
-                    <label>
-                      Side
-                      <select
-                        value={extrudeForm.side}
-                        disabled={disabled}
-                        onChange={(event) =>
-                          setExtrudeForm({
-                            ...extrudeForm,
-                            side: event.currentTarget
-                              .value as FeatureExtrudeForm["side"]
-                          })
-                        }
-                      >
-                        <option value="positive">Positive</option>
-                        <option value="negative">Negative</option>
-                        <option value="symmetric">Symmetric</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div className="field-grid two">
-                    <label>
-                      Optional feature ID
-                      <input
-                        type="text"
-                        value={extrudeForm.id}
-                        disabled={disabled}
-                        onChange={(event) =>
-                          setExtrudeForm({
-                            ...extrudeForm,
-                            id: event.currentTarget.value
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Optional body ID
-                      <input
-                        type="text"
-                        value={extrudeForm.bodyId}
-                        disabled={disabled}
-                        onChange={(event) =>
-                          setExtrudeForm({
-                            ...extrudeForm,
-                            bodyId: event.currentTarget.value
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
-                  <label>
-                    Optional name
-                    <input
-                      type="text"
-                      value={extrudeForm.name}
-                      disabled={disabled}
-                      onChange={(event) =>
-                        setExtrudeForm({
-                          ...extrudeForm,
-                          name: event.currentTarget.value
-                        })
-                      }
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={disabled || !effectiveExtrudeEntityId}
-                    onClick={() =>
-                      effectiveExtrudeEntityId &&
-                      onExtrudeEntity(
-                        selectedSketch.id,
-                        effectiveExtrudeEntityId,
-                        extrudeForm
-                      )
-                    }
-                  >
-                    Create extrude
-                  </button>
+                        Create extrude
+                      </button>
+                    </>
+                  ) : (
+                    <p className="empty-state compact">
+                      Select a rectangle or circle to extrude.
+                    </p>
+                  )}
                 </section>
               )}
             </div>
@@ -511,6 +642,7 @@ export function SketchPanel({
 
 function EntityEditor({
   disabled,
+  canCancel,
   editingEntityId,
   entityForm,
   entityKind,
@@ -522,6 +654,7 @@ function EntityEditor({
   onSave
 }: {
   readonly disabled: boolean;
+  readonly canCancel: boolean;
   readonly editingEntityId: string | undefined;
   readonly entityForm: SketchEntityForm;
   readonly entityKind: SketchEntityKind;
@@ -561,20 +694,27 @@ function EntityEditor({
             <option value="circle">Circle</option>
           </select>
         </label>
-        <label>
-          Optional ID
-          <input
-            type="text"
-            value={entityForm.id}
-            disabled={disabled || Boolean(editingEntityId)}
-            onChange={(event) =>
-              onEntityFormChange({
-                ...entityForm,
-                id: event.currentTarget.value
-              })
-            }
-          />
-        </label>
+        {editingEntityId ? (
+          <div className="readonly-field">
+            <span>Editing</span>
+            <strong>{editingEntityId}</strong>
+          </div>
+        ) : (
+          <details className="advanced-options inline">
+            <summary>Optional ID</summary>
+            <input
+              type="text"
+              value={entityForm.id}
+              disabled={disabled}
+              onChange={(event) =>
+                onEntityFormChange({
+                  ...entityForm,
+                  id: event.currentTarget.value
+                })
+              }
+            />
+          </details>
+        )}
       </div>
       <div className="field-grid four">
         <NumberField
@@ -641,9 +781,9 @@ function EntityEditor({
         >
           {editingEntityId ? "Update entity" : "Add entity"}
         </button>
-        {editingEntityId && (
+        {canCancel && (
           <button type="button" disabled={disabled} onClick={onCancelEdit}>
-            Cancel edit
+            Cancel
           </button>
         )}
       </div>
