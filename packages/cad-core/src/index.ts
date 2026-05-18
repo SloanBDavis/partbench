@@ -66,6 +66,7 @@ import {
   resolveGeneratedReference,
   validateGeneratedReference
 } from "./generatedReferences";
+import { createBodyMeasurements } from "./bodyMeasurements";
 
 export type {
   CadActorMetadata,
@@ -139,6 +140,8 @@ export type {
   Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
+
+export type { BodyMeasurementsSnapshot } from "@web-cad/cad-protocol";
 
 export interface PackageInfo {
   readonly name: string;
@@ -716,6 +719,48 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           sketch: createSketchSnapshot(sketch)
+        };
+      }
+
+      case "body.measurements": {
+        const { bodyId } = request.query;
+        const measurements = createBodyMeasurements(
+          this.#document,
+          bodyId,
+          this.#document.units,
+          DEFAULT_PART_ID
+        );
+
+        if (!measurements) {
+          const bodyExists = createProjectStructure(
+            this.#document,
+            this.#history.map((entry) => entry.transaction)
+          ).bodies.some((body) => body.id === bodyId);
+
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: bodyExists
+              ? {
+                  code: "UNSUPPORTED_BODY_MEASUREMENTS",
+                  message:
+                    "Body measurements are currently available only for authored rectangle/circle sketch-extrude bodies.",
+                  bodyId
+                }
+              : {
+                  code: "BODY_NOT_FOUND",
+                  message: `Body does not exist: ${bodyId}`,
+                  bodyId
+                }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          measurements
         };
       }
 

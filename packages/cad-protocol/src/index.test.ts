@@ -312,6 +312,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -327,6 +331,7 @@ describe("cad-protocol", () => {
       "sketch.get",
       "body.generatedReferences",
       "body.resolveGeneratedReference",
+      "body.measurements",
       "transaction.history"
     ]);
   });
@@ -507,6 +512,47 @@ describe("cad-protocol", () => {
     };
 
     expect(bounds.size).toEqual([2, 4, 6]);
+  });
+
+  it("types authored body measurements", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "body.measurements",
+      cadOpsVersion: "cadops.v1",
+      measurements: {
+        bodyId: "body_1",
+        sourceFeatureId: "feat_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        profileKind: "rectangle",
+        units: "mm",
+        sketchPlane: "XY",
+        side: "positive",
+        depth: 3,
+        measurementModel: "sourceAnalytic",
+        localBounds: {
+          min: [-2, -1, 0],
+          max: [2, 1, 3],
+          size: [4, 2, 3],
+          center: [0, 0, 1.5]
+        },
+        localExtents: [4, 2, 3],
+        centroid: [0, 0, 1.5],
+        volume: 24,
+        surfaceArea: 52
+      }
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        profileKind: "rectangle",
+        measurementModel: "sourceAnalytic",
+        localExtents: [4, 2, 3],
+        volume: 24
+      }
+    });
   });
 
   it("types primitive feature summaries", () => {

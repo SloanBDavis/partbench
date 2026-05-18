@@ -156,8 +156,9 @@ Current limitations:
 - There is no authoritative B-rep topology in the document model.
 - The derived OCCT path tessellates current primitives and rectangle/circle
   sketch extrudes, but exact B-rep geometry is not persisted as source of truth.
-- Measurements are primitive-derived bounds and approximate volumes, not exact
-  kernel/B-rep measurements for feature bodies.
+- Measurements include primitive object bounds/volumes and source-derived
+  rectangle/circle sketch-extrude body measurements. They are not exact
+  kernel/B-rep measurements yet.
 - Document units are explicit but not a full unit system.
 - Object display names are optional and not unique.
 - The first sketch and extrude slices exist, but there is no sketch solver,
@@ -425,8 +426,15 @@ Exit criteria:
 Goal: replace primitive-derived measurement approximations with kernel-backed
 queries where exact bodies exist.
 
+Current status: started. `body.measurements` returns read-only analytic
+measurements for authored rectangle/circle sketch-extrude bodies from
+source-of-truth sketch and feature data, including attached-sketch placement
+where the attachment resolves. Primitive object measurements remain unchanged.
+
 Deliverables:
 
+- Keep `body.measurements` source-derived until exact B-rep/kernel measurement
+  data becomes authoritative enough to use.
 - Add kernel-backed bounding boxes, volume, surface area, and centroid where
   practical.
 - Keep read/query separate from mutation.

@@ -6,6 +6,7 @@ import type {
   CadBatchResponse,
   CadBatchValidationError,
   CadAxisAlignedBounds,
+  BodyMeasurementsSnapshot,
   CadBodySnapshot,
   CadFeatureSummary,
   CadGeneratedBodyReference,
@@ -137,6 +138,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
+  | CadOpsAgentBodyMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
   | CadOpsAgentBodyGeneratedReferencesQueryResponse
@@ -206,6 +208,15 @@ export interface CadOpsAgentObjectMeasurementsQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "object.measurements";
   readonly measurements: ObjectMeasurementsSnapshot;
+}
+
+export interface CadOpsAgentBodyMeasurementsQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "body.measurements";
+  readonly measurements: BodyMeasurementsSnapshot;
 }
 
 export interface CadOpsAgentProjectExtentsQueryResponse {
@@ -279,6 +290,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.sketches"
     | "object.get"
     | "object.measurements"
+    | "body.measurements"
     | "project.extents"
     | "sketch.get"
     | "body.generatedReferences"
@@ -617,6 +629,17 @@ function toAgentQueryResponse(
   }
 
   if (response.query === "object.measurements") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      measurements: response.measurements
+    };
+  }
+
+  if (response.query === "body.measurements") {
     return {
       ok: true,
       requestId: request.requestId,

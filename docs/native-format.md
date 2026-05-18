@@ -491,6 +491,7 @@ These are not source of truth and must not be required to load a project:
 - geometry-worker timing metrics
 - browser smoke metrics
 - read-only measurement and project extent query results
+- read-only authored body measurement query results
 - read-only transaction history summary query results
 - read-only feature summary query results
 - read-only project structure query results

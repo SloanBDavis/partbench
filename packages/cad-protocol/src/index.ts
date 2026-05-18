@@ -480,6 +480,7 @@ export type CadQueryKind =
   | "sketch.get"
   | "body.generatedReferences"
   | "body.resolveGeneratedReference"
+  | "body.measurements"
   | "transaction.history";
 
 export type CadQuery =
@@ -493,6 +494,7 @@ export type CadQuery =
   | SketchGetQuery
   | BodyGeneratedReferencesQuery
   | BodyResolveGeneratedReferenceQuery
+  | BodyMeasurementsQuery
   | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
@@ -539,6 +541,11 @@ export interface BodyResolveGeneratedReferenceQuery {
   readonly query: "body.resolveGeneratedReference";
   readonly bodyId: BodyId;
   readonly stableId: string;
+}
+
+export interface BodyMeasurementsQuery {
+  readonly query: "body.measurements";
+  readonly bodyId: BodyId;
 }
 
 export interface TransactionHistoryQuery {
@@ -693,6 +700,26 @@ export interface ObjectExtentSnapshot {
   readonly name?: string;
   readonly worldBounds: CadAxisAlignedBounds;
   readonly approximateVolume: number;
+}
+
+export type CadBodyMeasurementModel = "sourceAnalytic";
+
+export interface BodyMeasurementsSnapshot {
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly units: DocumentUnits;
+  readonly sketchPlane: SketchPlane;
+  readonly side: FeatureExtrudeSide;
+  readonly depth: number;
+  readonly measurementModel: CadBodyMeasurementModel;
+  readonly localBounds: CadAxisAlignedBounds;
+  readonly localExtents: Vec3;
+  readonly centroid: Vec3;
+  readonly volume: number;
+  readonly surfaceArea: number;
 }
 
 export type CadPrimitiveCreateOp =
@@ -985,6 +1012,7 @@ export type CadQueryErrorCode =
   | "SKETCH_NOT_FOUND"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
+  | "UNSUPPORTED_BODY_MEASUREMENTS"
   | "GENERATED_REFERENCE_NOT_FOUND";
 
 export interface CadQueryError {
@@ -1007,6 +1035,7 @@ export type CadQueryResponse =
   | SketchGetQueryResponse
   | BodyGeneratedReferencesQueryResponse
   | BodyResolveGeneratedReferenceQueryResponse
+  | BodyMeasurementsQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -1109,6 +1138,13 @@ export interface BodyResolveGeneratedReferenceQueryResponse {
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
   readonly reference: CadGeneratedReference;
+}
+
+export interface BodyMeasurementsQueryResponse {
+  readonly ok: true;
+  readonly query: "body.measurements";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly measurements: BodyMeasurementsSnapshot;
 }
 
 export interface CadQueryErrorResponse {
