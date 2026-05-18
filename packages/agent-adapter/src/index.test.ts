@@ -1607,6 +1607,43 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes through generated reference measurement errors through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_measure_error_refs",
+      entityId: "rect_measure_error_refs",
+      featureId: "feat_measure_error_refs",
+      bodyId: "body_measure_error_refs"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_measure_missing_ref",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_measure_error_refs",
+          stableId: "generated:face:body_measure_error_refs:missing"
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      requestId: "agent_measure_missing_ref",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "body.generatedReferenceMeasurements",
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_measure_error_refs",
+        stableId: "generated:face:body_measure_error_refs:missing"
+      }
+    });
+  });
+
   it("returns transaction history through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

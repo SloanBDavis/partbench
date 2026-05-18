@@ -1344,6 +1344,41 @@ describe("mcp-adapter", () => {
     }
   });
 
+  it("returns generated reference measurement errors through cad.generated_reference_measurements", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_measure_error_sketch",
+      entityId: "mcp_measure_error_rect",
+      featureId: "mcp_measure_error_feat",
+      bodyId: "mcp_measure_error_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.generated_reference_measurements",
+      requestId: "mcp_req_measure_missing_ref",
+      arguments: {
+        bodyId: "mcp_measure_error_body",
+        stableId: "generated:face:mcp_measure_error_body:missing"
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.generated_reference_measurements",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        requestId: "mcp_req_measure_missing_ref",
+        query: "body.generatedReferenceMeasurements",
+        error: {
+          code: "GENERATED_REFERENCE_NOT_FOUND",
+          bodyId: "mcp_measure_error_body",
+          stableId: "generated:face:mcp_measure_error_body:missing"
+        }
+      }
+    });
+  });
+
   it("returns project extents through cad.project_extents", () => {
     const server = new CadMcpServer();
 
