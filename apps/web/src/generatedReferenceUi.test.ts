@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedFaceReference,
-  GeneratedReferenceMeasurement
+  GeneratedReferenceMeasurement,
+  NamedGeneratedReferenceEntry
 } from "@web-cad/cad-protocol";
 import {
   buildSketchOnFaceForm,
@@ -14,9 +15,12 @@ import {
   formatGeneratedReferenceMeasurementError,
   formatGeneratedReferenceOperationLabels,
   formatGeneratedReferencesError,
+  formatNamedReferenceStatus,
+  formatNamedReferenceTarget,
   formatSketchOnFaceAvailability,
   formatSketchAttachmentLabel,
   getGeneratedReferenceItems,
+  getNamedReferencesForGeneratedReference,
   getSketchAttachableFaces
 } from "./generatedReferenceUi";
 
@@ -230,7 +234,80 @@ describe("generated reference UI helpers", () => {
       "Generated reference generated:face:body_1:stale is missing or stale."
     );
   });
+
+  it("filters named references for the selected generated reference", () => {
+    const selected = createNamedReference({
+      name: "Front face",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:startCap",
+      kind: "face",
+      status: "resolved",
+      reference: startCap
+    });
+    const sameTarget = createNamedReference({
+      name: "A face",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:startCap",
+      kind: "face",
+      status: "resolved",
+      reference: startCap
+    });
+    const other = createNamedReference({
+      name: "Generated body",
+      bodyId: "body_1",
+      stableId: "generated:body:body_1",
+      kind: "body",
+      status: "stale"
+    });
+
+    expect(
+      getNamedReferencesForGeneratedReference(
+        [selected, other, sameTarget],
+        startCap
+      ).map((reference) => reference.name)
+    ).toEqual(["A face", "Front face"]);
+  });
+
+  it("formats named reference targets and stale status", () => {
+    const resolved = createNamedReference({
+      name: "Front face",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:startCap",
+      kind: "face",
+      status: "resolved",
+      reference: startCap
+    });
+    const stale = createNamedReference({
+      name: "Old face",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:missing",
+      kind: "face",
+      status: "stale",
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: "Generated reference does not exist.",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:missing"
+      }
+    });
+
+    expect(formatNamedReferenceTarget(resolved)).toBe("Face / Start cap");
+    expect(formatNamedReferenceStatus(resolved)).toEqual({
+      tone: "resolved",
+      text: "Resolved"
+    });
+    expect(formatNamedReferenceStatus(stale)).toEqual({
+      tone: "stale",
+      text: "Target reference generated:face:body_1:missing is stale or missing."
+    });
+  });
 });
+
+function createNamedReference(
+  entry: NamedGeneratedReferenceEntry
+): NamedGeneratedReferenceEntry {
+  return entry;
+}
 
 function createFace(
   overrides: Pick<

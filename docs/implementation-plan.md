@@ -392,6 +392,9 @@ Implemented:
   and `reference.deleteName`, plus `reference.listNamed` and
   `reference.resolveNamed` read queries. Names store user/agent metadata that
   points at generated references; they do not persist B-rep topology.
+- The web UI can name the selected generated reference, delete named
+  references, list document named references, and show stale named targets
+  without changing generated stable IDs or resolver behavior.
 - `sketch.createOnFace` is the first reference-consuming mutation. It creates a
   source-of-truth sketch attached to an eligible generated planar face reference
   from an authored sketch-extrude body while keeping generated references

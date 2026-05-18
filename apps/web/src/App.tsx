@@ -17,6 +17,7 @@ import type {
   CadBatchResponse,
   CadGeneratedFaceReference,
   GeneratedReferenceMeasurement,
+  NamedGeneratedReferenceEntry,
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
@@ -38,12 +39,14 @@ import {
   buildCreateCylinderOp,
   buildCreateSphereOp,
   buildCreateTorusOp,
+  buildDeleteNamedReferenceOp,
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
   buildFeatureUpdateExtrudeOp,
+  buildNameGeneratedReferenceOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildRenameSketchOp,
@@ -104,6 +107,7 @@ import {
   type GeneratedReferenceMeasurementDisplay
 } from "./generatedReferenceUi";
 import {
+  createSelectedGeneratedReference,
   reconcileSelectedGeneratedReferenceBody,
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
@@ -314,6 +318,17 @@ function readGeneratedReferenceMeasurements(
   return measurements;
 }
 
+function readNamedReferences(): readonly NamedGeneratedReferenceEntry[] {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "reference.listNamed" }
+  });
+
+  return response.ok && response.query === "reference.listNamed"
+    ? response.references
+    : [];
+}
+
 function readBodyMeasurements(bodyId: string | undefined): {
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly error?: string;
@@ -484,6 +499,7 @@ export function App() {
     selectedFeature?.kind === "extrude"
       ? readBodyMeasurements(selectedBody?.id)
       : {};
+  const namedReferences = readNamedReferences();
   const transactionHistory = readTransactionHistory();
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
@@ -891,6 +907,40 @@ export function App() {
     );
   }
 
+  async function nameGeneratedReference(
+    name: string,
+    target: SelectedGeneratedReference
+  ) {
+    await commitOps(
+      [buildNameGeneratedReferenceOp(name, target.bodyId, target.stableId)],
+      () => selectedId
+    );
+  }
+
+  async function deleteNamedReference(name: string) {
+    await commitOps([buildDeleteNamedReferenceOp(name)], () => selectedId);
+  }
+
+  function inspectNamedReference(name: string) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "reference.resolveNamed", name }
+    });
+
+    if (!response.ok || response.query !== "reference.resolveNamed") {
+      setCommandError(
+        !response.ok ? response.error.message : "Named reference unavailable."
+      );
+      return;
+    }
+
+    setCommandError(undefined);
+    setSelectedId(response.reference.bodyId);
+    setSelectedGeneratedReference(
+      createSelectedGeneratedReference(response.reference)
+    );
+  }
+
   function undo() {
     engine.undo();
     syncDocument();
@@ -1246,6 +1296,7 @@ export function App() {
             generatedReferenceMeasurements={
               selectedGeneratedReferenceMeasurements
             }
+            namedReferences={namedReferences}
             object={selectedObject}
             selectedGeneratedReference={selectedGeneratedReference}
             units={document.units}
@@ -1257,6 +1308,11 @@ export function App() {
               void deleteAuthoredFeature(featureId)
             }
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+            onDeleteNamedReference={(name) => void deleteNamedReference(name)}
+            onNameGeneratedReference={(name, target) =>
+              void nameGeneratedReference(name, target)
+            }
+            onInspectNamedReference={inspectNamedReference}
             onSelectGeneratedReference={setSelectedGeneratedReference}
             onUpdateExtrude={(featureId, depth, side) =>
               void updateAuthoredExtrude(featureId, depth, side)

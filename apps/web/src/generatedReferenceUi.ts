@@ -6,6 +6,7 @@ import type {
   CadQueryError,
   DocumentUnits,
   GeneratedReferenceMeasurement,
+  NamedGeneratedReferenceEntry,
   SketchAttachmentSnapshot
 } from "@web-cad/cad-protocol";
 import type { SketchCreateOnFaceForm } from "./cadCommands";
@@ -26,6 +27,11 @@ export interface GeneratedReferenceMeasurementDisplay {
 export interface GeneratedReferenceMeasurementRow {
   readonly label: string;
   readonly value: string;
+}
+
+export interface NamedReferenceStatusDisplay {
+  readonly tone: "resolved" | "stale";
+  readonly text: string;
 }
 
 export interface SketchOnFaceDraft {
@@ -204,6 +210,73 @@ export function formatGeneratedReferenceMeasurementError(
 
   if (error.code === "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS") {
     return `Reference measurements unavailable for ${error.stableId ?? "selected reference"}. ${error.message}`;
+  }
+
+  return error.message;
+}
+
+export function getNamedReferencesForGeneratedReference(
+  references: readonly NamedGeneratedReferenceEntry[],
+  target: CadGeneratedReference
+): readonly NamedGeneratedReferenceEntry[] {
+  return references
+    .filter(
+      (reference) =>
+        reference.bodyId === target.bodyId &&
+        reference.stableId === target.stableId &&
+        reference.kind === target.kind
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function formatNamedReferenceTarget(
+  reference: NamedGeneratedReferenceEntry
+): string {
+  if (reference.status === "resolved" && reference.reference) {
+    return `${formatGeneratedReferenceKind(reference.kind)} / ${reference.reference.label}`;
+  }
+
+  return `${formatGeneratedReferenceKind(reference.kind)} / ${reference.stableId}`;
+}
+
+export function formatNamedReferenceStatus(
+  reference: NamedGeneratedReferenceEntry
+): NamedReferenceStatusDisplay {
+  if (reference.status === "resolved") {
+    return {
+      tone: "resolved",
+      text: "Resolved"
+    };
+  }
+
+  return {
+    tone: "stale",
+    text: formatNamedReferenceError(reference.error, reference)
+  };
+}
+
+export function formatNamedReferenceError(
+  error: CadQueryError | undefined,
+  reference: Pick<NamedGeneratedReferenceEntry, "bodyId" | "stableId">
+): string {
+  if (!error) {
+    return "Target is stale.";
+  }
+
+  if (error.code === "BODY_NOT_FOUND") {
+    return `Target body ${error.bodyId ?? reference.bodyId} is missing.`;
+  }
+
+  if (error.code === "GENERATED_REFERENCE_NOT_FOUND") {
+    return `Target reference ${error.stableId ?? reference.stableId} is stale or missing.`;
+  }
+
+  if (error.code === "UNSUPPORTED_BODY_REFERENCES") {
+    return `Target body ${error.bodyId ?? reference.bodyId} is not supported for generated references.`;
+  }
+
+  if (error.code === "NAMED_REFERENCE_NOT_FOUND") {
+    return `Named reference ${error.referenceName ?? "selected name"} is missing.`;
   }
 
   return error.message;

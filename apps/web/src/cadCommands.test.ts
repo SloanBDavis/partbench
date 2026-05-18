@@ -9,6 +9,8 @@ import {
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
   buildFeatureUpdateExtrudeOp,
+  buildDeleteNamedReferenceOp,
+  buildNameGeneratedReferenceOp,
   buildCreateSketchOnFaceOp,
   buildDeleteObjectOp,
   buildOperationFromBatchForm,
@@ -161,6 +163,22 @@ describe("cad command builders", () => {
       id: "feat_1",
       depth: 6,
       side: "symmetric"
+    });
+    expect(
+      buildNameGeneratedReferenceOp(
+        " Mounting face ",
+        "body_1",
+        "generated:face:body_1:endCap"
+      )
+    ).toEqual({
+      op: "reference.nameGenerated",
+      name: "Mounting face",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:endCap"
+    });
+    expect(buildDeleteNamedReferenceOp(" Mounting face ")).toEqual({
+      op: "reference.deleteName",
+      name: "Mounting face"
     });
     expect(
       buildUpdateSketchEntityOp("sketch_1", {

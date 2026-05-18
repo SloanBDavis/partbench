@@ -10,6 +10,8 @@ import type {
   FeatureExtrudeSide,
   FeatureExtrudeOp,
   FeatureUpdateExtrudeOp,
+  ReferenceDeleteNameOp,
+  ReferenceNameGeneratedOp,
   ObjectId,
   SceneCreateBoxOp,
   SceneCreateConeOp,
@@ -468,6 +470,28 @@ export function buildFeatureUpdateExtrudeOp(
     id,
     depth,
     ...(side ? { side } : {})
+  };
+}
+
+export function buildNameGeneratedReferenceOp(
+  name: string,
+  bodyId: string,
+  stableId: string
+): ReferenceNameGeneratedOp {
+  return {
+    op: "reference.nameGenerated",
+    name: name.trim(),
+    bodyId,
+    stableId
+  };
+}
+
+export function buildDeleteNamedReferenceOp(
+  name: string
+): ReferenceDeleteNameOp {
+  return {
+    op: "reference.deleteName",
+    name: name.trim()
   };
 }
 

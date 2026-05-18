@@ -1058,6 +1058,22 @@ canvas:active {
   background: rgba(255, 255, 255, 0.66);
 }
 
+.named-reference-editor,
+.named-reference-matches {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.named-reference-editor {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.named-reference-editor button {
+  padding: 0 10px;
+}
+
 .reference-list .reference-measurements div,
 .selected-reference-detail .reference-measurements div {
   padding: 7px 8px;
@@ -1557,6 +1573,7 @@ canvas:active {
   .field-grid.two,
   .field-grid.three,
   .field-grid.four,
+  .named-reference-editor,
   .project-summary-grid {
     grid-template-columns: 1fr;
   }

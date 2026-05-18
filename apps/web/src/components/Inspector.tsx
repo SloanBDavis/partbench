@@ -10,7 +10,8 @@ import type {
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedFaceReference,
-  CadGeneratedReference
+  CadGeneratedReference,
+  NamedGeneratedReferenceEntry
 } from "@web-cad/cad-protocol";
 import { useState } from "react";
 import {
@@ -41,7 +42,10 @@ import {
   formatGeneratedFaceEligibility,
   formatGeneratedReferenceKind,
   formatGeneratedReferenceOperationLabels,
+  formatNamedReferenceStatus,
+  formatNamedReferenceTarget,
   formatSketchOnFaceAvailability,
+  getNamedReferencesForGeneratedReference,
   getGeneratedReferenceItems,
   getSketchAttachableFaces,
   type GeneratedReferenceMeasurementDisplay
@@ -74,6 +78,7 @@ export function Inspector({
   generatedReferencesError,
   generatedReferenceMeasurements,
   measurements,
+  namedReferences,
   object,
   selectedGeneratedReference,
   units,
@@ -81,6 +86,9 @@ export function Inspector({
   onApplyName,
   onApplyTransform,
   onCreateSketchOnFace,
+  onDeleteNamedReference,
+  onNameGeneratedReference,
+  onInspectNamedReference,
   onSelectGeneratedReference,
   onDelete,
   onDeleteFeature,
@@ -98,6 +106,7 @@ export function Inspector({
     GeneratedReferenceMeasurementDisplay
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly object?: SceneObject;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly units: DocumentUnits;
@@ -105,6 +114,12 @@ export function Inspector({
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onDeleteNamedReference: (name: string) => void;
+  readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onInspectNamedReference: (name: string) => void;
   readonly onSelectGeneratedReference: (
     selection: SelectedGeneratedReference
   ) => void;
@@ -129,18 +144,29 @@ export function Inspector({
         generatedReferencesError,
         generatedReferenceMeasurements,
         measurements,
+        namedReferences,
         object,
         selectedGeneratedReference,
         onApplyDimensions,
         onApplyName,
         onApplyTransform,
         onCreateSketchOnFace,
+        onDeleteNamedReference,
+        onNameGeneratedReference,
+        onInspectNamedReference,
         onSelectGeneratedReference,
         onDelete,
         onDeleteFeature,
         onUpdateExtrude,
         units
       })}
+      <NamedReferencesPanel
+        disabled={disabled}
+        references={namedReferences}
+        selectedGeneratedReference={selectedGeneratedReference}
+        onInspectNamedReference={onInspectNamedReference}
+        onDeleteNamedReference={onDeleteNamedReference}
+      />
     </aside>
   );
 }
@@ -158,6 +184,7 @@ function renderInspectorSelection(input: {
     GeneratedReferenceMeasurementDisplay
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly object?: SceneObject;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly units: DocumentUnits;
@@ -165,6 +192,12 @@ function renderInspectorSelection(input: {
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onDeleteNamedReference: (name: string) => void;
+  readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onInspectNamedReference: (name: string) => void;
   readonly onSelectGeneratedReference: (
     selection: SelectedGeneratedReference
   ) => void;
@@ -188,7 +221,10 @@ function renderInspectorSelection(input: {
         generatedReferencesError={input.generatedReferencesError}
         generatedReferenceMeasurements={input.generatedReferenceMeasurements}
         onCreateSketchOnFace={input.onCreateSketchOnFace}
+        onDeleteNamedReference={input.onDeleteNamedReference}
+        onNameGeneratedReference={input.onNameGeneratedReference}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
+        namedReferences={input.namedReferences}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
         selectedGeneratedReference={input.selectedGeneratedReference}
@@ -269,7 +305,10 @@ function BodyInspector({
   generatedReferenceMeasurements,
   measurements,
   measurementsError,
+  namedReferences,
   onCreateSketchOnFace,
+  onDeleteNamedReference,
+  onNameGeneratedReference,
   onSelectGeneratedReference,
   onDeleteFeature,
   onUpdateExtrude,
@@ -287,7 +326,13 @@ function BodyInspector({
   >;
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly measurementsError?: string;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onDeleteNamedReference: (name: string) => void;
+  readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onSelectGeneratedReference: (
     selection: SelectedGeneratedReference
   ) => void;
@@ -382,7 +427,10 @@ function BodyInspector({
           disabled={disabled}
           error={generatedReferencesError}
           measurementByStableId={generatedReferenceMeasurements}
+          namedReferences={namedReferences}
           onCreateSketchOnFace={onCreateSketchOnFace}
+          onDeleteNamedReference={onDeleteNamedReference}
+          onNameGeneratedReference={onNameGeneratedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
           references={generatedReferences}
           selectedGeneratedReference={selectedGeneratedReference}
@@ -466,7 +514,10 @@ function GeneratedReferencesPanel({
   disabled,
   error,
   measurementByStableId,
+  namedReferences,
   onCreateSketchOnFace,
+  onDeleteNamedReference,
+  onNameGeneratedReference,
   onSelectGeneratedReference,
   references,
   selectedGeneratedReference,
@@ -479,7 +530,13 @@ function GeneratedReferencesPanel({
     string,
     GeneratedReferenceMeasurementDisplay
   >;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onDeleteNamedReference: (name: string) => void;
+  readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onSelectGeneratedReference: (
     selection: SelectedGeneratedReference
   ) => void;
@@ -520,6 +577,13 @@ function GeneratedReferencesPanel({
     selectedReferenceState.status === "selected"
       ? selectedReferenceState.reference.stableId
       : "";
+  const selectedNamedReferences =
+    selectedReferenceState.status === "selected"
+      ? getNamedReferencesForGeneratedReference(
+          namedReferences,
+          selectedReferenceState.reference
+        )
+      : [];
 
   function createOnSelectedFace() {
     if (!sketchOnFaceForm) {
@@ -620,6 +684,15 @@ function GeneratedReferencesPanel({
             </section>
           )}
           <SelectedGeneratedReferencePanel
+            key={
+              selectedReferenceState.status === "selected"
+                ? selectedReferenceState.reference.stableId
+                : selectedReferenceState.status
+            }
+            disabled={disabled}
+            namedReferences={selectedNamedReferences}
+            onDeleteNamedReference={onDeleteNamedReference}
+            onNameGeneratedReference={onNameGeneratedReference}
             state={selectedReferenceState}
             units={units}
           />
@@ -705,12 +778,30 @@ function GeneratedReferencesPanel({
 }
 
 function SelectedGeneratedReferencePanel({
+  disabled,
+  namedReferences,
+  onDeleteNamedReference,
+  onNameGeneratedReference,
   state,
   units
 }: {
+  readonly disabled: boolean;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly onDeleteNamedReference: (name: string) => void;
+  readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
   readonly state: GeneratedReferenceSelectionState;
   readonly units: DocumentUnits;
 }) {
+  const [name, setName] = useState(
+    state.status === "selected" ? state.reference.label : ""
+  );
+  const normalizedName = name.trim();
+  const canNameReference =
+    state.status === "selected" && normalizedName.length > 0;
+
   if (state.status === "none") {
     return null;
   }
@@ -749,8 +840,130 @@ function SelectedGeneratedReferencePanel({
             state={state.measurement}
             units={units}
           />
+          <div className="named-reference-editor">
+            <label>
+              Name this reference
+              <input
+                type="text"
+                value={name}
+                disabled={disabled}
+                onChange={(event) => setName(event.currentTarget.value)}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={disabled || !canNameReference}
+              onClick={() => {
+                if (state.status === "selected") {
+                  onNameGeneratedReference(normalizedName, state.selection);
+                }
+              }}
+            >
+              Save name
+            </button>
+          </div>
+          {namedReferences.length > 0 && (
+            <div className="named-reference-matches">
+              <strong>Names for this reference</strong>
+              <ul className="reference-list compact">
+                {namedReferences.map((reference) => (
+                  <li key={reference.name}>
+                    <div className="reference-heading">
+                      <strong>{reference.name}</strong>
+                      <span>{formatNamedReferenceStatus(reference).text}</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onDeleteNamedReference(reference.name)}
+                    >
+                      Delete name
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
+    </section>
+  );
+}
+
+function NamedReferencesPanel({
+  disabled,
+  references,
+  selectedGeneratedReference,
+  onInspectNamedReference,
+  onDeleteNamedReference
+}: {
+  readonly disabled: boolean;
+  readonly references: readonly NamedGeneratedReferenceEntry[];
+  readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly onInspectNamedReference: (name: string) => void;
+  readonly onDeleteNamedReference: (name: string) => void;
+}) {
+  if (references.length === 0) {
+    return null;
+  }
+
+  const staleCount = references.filter(
+    (reference) => reference.status === "stale"
+  ).length;
+
+  return (
+    <section className="command-card">
+      <div className="command-card-heading">
+        <h3>Named references</h3>
+        <span>
+          {staleCount > 0 ? `${staleCount} stale` : references.length}
+        </span>
+      </div>
+      <ul className="reference-list compact named-reference-list">
+        {references.map((reference) => {
+          const status = formatNamedReferenceStatus(reference);
+          const isSelected =
+            selectedGeneratedReference?.bodyId === reference.bodyId &&
+            selectedGeneratedReference.stableId === reference.stableId &&
+            selectedGeneratedReference.kind === reference.kind;
+
+          return (
+            <li
+              key={reference.name}
+              className={isSelected ? "reference-selected" : ""}
+            >
+              <div className="reference-heading">
+                <strong>{reference.name}</strong>
+                <span>{formatGeneratedReferenceKind(reference.kind)}</span>
+              </div>
+              <small>{formatNamedReferenceTarget(reference)}</small>
+              <small
+                className={
+                  status.tone === "stale" ? "error-text inline" : undefined
+                }
+              >
+                {status.text}
+              </small>
+              <div className="button-row compact">
+                <button
+                  type="button"
+                  disabled={disabled || reference.status !== "resolved"}
+                  onClick={() => onInspectNamedReference(reference.name)}
+                >
+                  Inspect
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onDeleteNamedReference(reference.name)}
+                >
+                  Delete name
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
