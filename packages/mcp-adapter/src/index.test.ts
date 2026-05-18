@@ -11,6 +11,7 @@ describe("mcp-adapter", () => {
       "cad.project_structure",
       "cad.project_sketches",
       "cad.object_measurements",
+      "cad.body_measurements",
       "cad.project_extents",
       "cad.sketch_get",
       "cad.body_generated_references",
@@ -261,6 +262,100 @@ describe("mcp-adapter", () => {
             min: [-1, -2, -3],
             max: [1, 2, 3]
           }
+        }
+      }
+    });
+  });
+
+  it("returns authored body measurements through cad.body_measurements", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_body_measure",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_body_measure",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_body_measure",
+              id: "rect_body_measure",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_body_measure",
+              bodyId: "body_measure",
+              sketchId: "sketch_body_measure",
+              entityId: "rect_body_measure",
+              depth: 3
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.body_measurements",
+      requestId: "mcp_req_body_measure",
+      arguments: { bodyId: "body_measure" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.body_measurements",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_body_measure",
+        cadOpsVersion: "cadops.v1",
+        query: "body.measurements",
+        measurements: {
+          bodyId: "body_measure",
+          sourceFeatureId: "feat_body_measure",
+          profileKind: "rectangle",
+          volume: 24,
+          surfaceArea: 52,
+          localBounds: {
+            min: [-2, -1, 0],
+            max: [2, 1, 3],
+            size: [4, 2, 3]
+          }
+        }
+      }
+    });
+  });
+
+  it("returns missing body measurement errors through cad.body_measurements", () => {
+    const server = new CadMcpServer();
+
+    const result = server.callTool({
+      name: "cad.body_measurements",
+      requestId: "mcp_req_missing_body_measure",
+      arguments: { bodyId: "missing_body" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.body_measurements",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        requestId: "mcp_req_missing_body_measure",
+        cadOpsVersion: "cadops.v1",
+        query: "body.measurements",
+        error: {
+          code: "BODY_NOT_FOUND",
+          bodyId: "missing_body"
         }
       }
     });
@@ -1382,6 +1477,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_structure" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
+          { name: "cad.body_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.body_generated_references" },
@@ -1441,6 +1537,19 @@ describe("mcp-adapter", () => {
       })
     ).toMatchObject({
       toolName: "cad.object_measurements",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.body_measurements",
+        arguments: {}
+      })
+    ).toMatchObject({
+      toolName: "cad.body_measurements",
       isError: true,
       structuredContent: {
         ok: false,

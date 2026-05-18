@@ -1,4 +1,5 @@
 import type { CadAxisAlignedBounds, SceneObject } from "@web-cad/cad-core";
+import type { CadQueryError } from "@web-cad/cad-protocol";
 
 export function formatObjectKind(kind: SceneObject["kind"]): string {
   switch (kind) {
@@ -71,6 +72,23 @@ export function formatBounds(
 export function formatVolume(value: number, units?: string): string {
   const suffix = units ? ` ${units}^3` : "";
   return `${formatNumber(value)}${suffix}`;
+}
+
+export function formatArea(value: number, units?: string): string {
+  const suffix = units ? ` ${units}^2` : "";
+  return `${formatNumber(value)}${suffix}`;
+}
+
+export function formatBodyMeasurementError(error: CadQueryError): string {
+  if (error.code === "BODY_NOT_FOUND") {
+    return `Body measurements unavailable: ${error.bodyId ?? "selected body"} was not found.`;
+  }
+
+  if (error.code === "UNSUPPORTED_BODY_MEASUREMENTS") {
+    return `Body measurements unavailable for ${error.bodyId ?? "selected body"}. Authored rectangle and circle extrude bodies are supported.`;
+  }
+
+  return error.message;
 }
 
 function formatVectorWithSuffix(

@@ -906,6 +906,74 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns authored body measurements through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_body_measure",
+      entityId: "rect_body_measure",
+      featureId: "feat_body_measure",
+      bodyId: "body_measure"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_body_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_measure" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_body_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "body.measurements",
+      measurements: {
+        bodyId: "body_measure",
+        sourceFeatureId: "feat_body_measure",
+        sourceSketchId: "sketch_body_measure",
+        sourceSketchEntityId: "rect_body_measure",
+        profileKind: "rectangle",
+        depth: 4,
+        volume: 24,
+        surfaceArea: 52,
+        localBounds: {
+          min: [-1, -1.5, 0],
+          max: [1, 1.5, 4],
+          size: [2, 3, 4]
+        }
+      }
+    });
+  });
+
+  it("returns body measurement errors through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.query({
+      requestId: "agent_missing_body_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "missing_body" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      requestId: "agent_missing_body_measure",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "body.measurements",
+      error: {
+        code: "BODY_NOT_FOUND",
+        bodyId: "missing_body"
+      }
+    });
+  });
+
   it("accepts sphere commands and exposes sphere measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

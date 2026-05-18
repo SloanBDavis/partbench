@@ -8,6 +8,8 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   formatBounds,
+  formatArea,
+  formatBodyMeasurementError,
   formatDimensions,
   getObjectDisplayName,
   formatObjectKind,
@@ -66,6 +68,27 @@ describe("scene object display helpers", () => {
       "min -1 mm, -2.35 mm, -3 mm; max 1 mm, 2.35 mm, 3 mm; size 2 mm, 4.69 mm, 6 mm"
     );
     expect(formatVolume(12.345, "mm")).toBe("12.35 mm^3");
+    expect(formatArea(12.345, "mm")).toBe("12.35 mm^2");
+  });
+
+  it("formats body measurement errors clearly", () => {
+    expect(
+      formatBodyMeasurementError({
+        code: "BODY_NOT_FOUND",
+        message: "Body not found.",
+        bodyId: "missing_body"
+      })
+    ).toBe("Body measurements unavailable: missing_body was not found.");
+
+    expect(
+      formatBodyMeasurementError({
+        code: "UNSUPPORTED_BODY_MEASUREMENTS",
+        message: "Body measurements are not supported.",
+        bodyId: "body:box_1"
+      })
+    ).toBe(
+      "Body measurements unavailable for body:box_1. Authored rectangle and circle extrude bodies are supported."
+    );
   });
 });
 

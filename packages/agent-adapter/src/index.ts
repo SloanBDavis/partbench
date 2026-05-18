@@ -827,6 +827,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         typeof value.query.id === "string") ||
       (value.query.query === "object.measurements" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "body.measurements" &&
+        typeof value.query.bodyId === "string") ||
       (value.query.query === "project.extents" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "sketch.get" &&

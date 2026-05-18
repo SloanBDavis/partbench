@@ -1,4 +1,5 @@
 import type {
+  BodyMeasurementsSnapshot,
   CadBodySnapshot,
   CadFeatureSummary,
   DocumentUnits,
@@ -38,6 +39,7 @@ import {
 } from "../generatedReferenceUi";
 import {
   formatDimensions,
+  formatArea,
   formatBounds,
   getObjectDisplayName,
   formatObjectKind,
@@ -49,6 +51,8 @@ import { DimensionFields, TextField, TransformFields } from "./FormFields";
 export function Inspector({
   disabled = false,
   body,
+  bodyMeasurements,
+  bodyMeasurementsError,
   feature,
   generatedReferences,
   generatedReferencesError,
@@ -65,6 +69,8 @@ export function Inspector({
 }: {
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
+  readonly bodyMeasurements?: BodyMeasurementsSnapshot;
+  readonly bodyMeasurementsError?: string;
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
@@ -88,6 +94,8 @@ export function Inspector({
       <h2>Inspector</h2>
       {renderInspectorSelection({
         body,
+        bodyMeasurements,
+        bodyMeasurementsError,
         disabled,
         feature,
         generatedReferences,
@@ -109,6 +117,8 @@ export function Inspector({
 
 function renderInspectorSelection(input: {
   readonly body?: CadBodySnapshot;
+  readonly bodyMeasurements?: BodyMeasurementsSnapshot;
+  readonly bodyMeasurementsError?: string;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
@@ -132,6 +142,8 @@ function renderInspectorSelection(input: {
     return (
       <BodyInspector
         body={input.body}
+        measurements={input.bodyMeasurements}
+        measurementsError={input.bodyMeasurementsError}
         disabled={input.disabled}
         feature={input.feature}
         generatedReferences={input.generatedReferences}
@@ -213,6 +225,8 @@ function BodyInspector({
   feature,
   generatedReferences,
   generatedReferencesError,
+  measurements,
+  measurementsError,
   onCreateSketchOnFace,
   onDeleteFeature,
   onUpdateExtrude,
@@ -223,6 +237,8 @@ function BodyInspector({
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
+  readonly measurements?: BodyMeasurementsSnapshot;
+  readonly measurementsError?: string;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteFeature: (featureId: string) => void;
   readonly onUpdateExtrude: (
@@ -293,6 +309,11 @@ function BodyInspector({
           </>
         )}
       </dl>
+      <BodyMeasurementPanel
+        error={measurementsError}
+        measurements={measurements}
+        units={units}
+      />
       {feature?.kind === "extrude" && (
         <ExtrudeDepthEditor
           key={`${feature.id}-${feature.depth}-${feature.side}`}
@@ -332,6 +353,53 @@ function BodyInspector({
             </button>
           )}
         </div>
+      )}
+    </section>
+  );
+}
+
+function BodyMeasurementPanel({
+  error,
+  measurements,
+  units
+}: {
+  readonly error?: string;
+  readonly measurements?: BodyMeasurementsSnapshot;
+  readonly units: DocumentUnits;
+}) {
+  if (!measurements && !error) {
+    return null;
+  }
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Measurements</h3>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      {measurements && (
+        <dl>
+          <div>
+            <dt>Volume</dt>
+            <dd>{formatVolume(measurements.volume, units)}</dd>
+          </div>
+          <div>
+            <dt>Surface area</dt>
+            <dd>{formatArea(measurements.surfaceArea, units)}</dd>
+          </div>
+          <div>
+            <dt>Local bounds</dt>
+            <dd>{formatBounds(measurements.localBounds, units)}</dd>
+          </div>
+          <div>
+            <dt>Centroid</dt>
+            <dd>{formatVector(measurements.centroid)}</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd>Source analytic</dd>
+          </div>
+        </dl>
       )}
     </section>
   );

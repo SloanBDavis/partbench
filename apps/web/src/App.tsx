@@ -7,6 +7,7 @@ import {
   type CadDocument,
   type CadFeatureSummary,
   type CadTransactionHistoryEntry,
+  type BodyMeasurementsSnapshot,
   type ObjectMeasurementsSnapshot,
   type SceneObject
 } from "@web-cad/cad-core";
@@ -85,6 +86,7 @@ import {
 } from "./derivedGeometrySources";
 import {
   formatDimensions,
+  formatBodyMeasurementError,
   getObjectDisplayName,
   formatObjectKind,
   formatObjectPosition,
@@ -251,6 +253,28 @@ function readBodyGeneratedReferences(bodyId: string | undefined): {
     : {};
 }
 
+function readBodyMeasurements(bodyId: string | undefined): {
+  readonly measurements?: BodyMeasurementsSnapshot;
+  readonly error?: string;
+} {
+  if (!bodyId) {
+    return {};
+  }
+
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.measurements", bodyId }
+  });
+
+  if (response.ok && response.query === "body.measurements") {
+    return { measurements: response.measurements };
+  }
+
+  return !response.ok && response.query === "body.measurements"
+    ? { error: formatBodyMeasurementError(response.error) }
+    : {};
+}
+
 function readGeneratedFaceReferencesByKey(
   bodies: readonly CadBodySnapshot[]
 ): ReadonlyMap<string, CadGeneratedFaceReference> {
@@ -384,6 +408,10 @@ export function App() {
   const selectedBodyGeneratedReferences =
     selectedFeature?.kind === "extrude"
       ? readBodyGeneratedReferences(selectedBody?.id)
+      : {};
+  const selectedBodyMeasurements =
+    selectedFeature?.kind === "extrude"
+      ? readBodyMeasurements(selectedBody?.id)
       : {};
   const transactionHistory = readTransactionHistory();
   const selectedMeasurements = useMemo<
@@ -1122,6 +1150,8 @@ export function App() {
           <Inspector
             disabled={commandPending}
             measurements={selectedMeasurements}
+            bodyMeasurements={selectedBodyMeasurements.measurements}
+            bodyMeasurementsError={selectedBodyMeasurements.error}
             body={selectedBody}
             feature={selectedFeature}
             generatedReferences={selectedBodyGeneratedReferences.references}

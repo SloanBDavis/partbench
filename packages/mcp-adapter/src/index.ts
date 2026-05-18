@@ -15,6 +15,7 @@ export type CadMcpToolName =
   | "cad.project_structure"
   | "cad.project_sketches"
   | "cad.object_measurements"
+  | "cad.body_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
   | "cad.body_generated_references"
@@ -130,6 +131,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.object_measurements") {
       return this.#callObjectMeasurements(request);
+    }
+
+    if (request.name === "cad.body_measurements") {
+      return this.#callBodyMeasurements(request);
     }
 
     if (request.name === "cad.project_extents") {
@@ -314,6 +319,31 @@ export class CadMcpServer {
           query: {
             query: "object.measurements",
             id: request.arguments.id
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callBodyMeasurements(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isBodyMeasurementsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.body_measurements expects arguments shaped as { bodyId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.measurements",
+            bodyId: request.arguments.bodyId
           }
         }
       })
@@ -552,6 +582,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.body_measurements",
+    description:
+      "Returns source-derived measurements for one authored sketch-extrude body.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Authored sketch-extrude body ID to measure."
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_extents",
     description:
       "Returns aggregate derived extents and approximate volume for the current CAD document.",
@@ -692,6 +738,14 @@ function isObjectMeasurementsToolArguments(
   value: unknown
 ): value is { readonly id: string } {
   return isRecord(value) && typeof value.id === "string" && value.id !== "";
+}
+
+function isBodyMeasurementsToolArguments(
+  value: unknown
+): value is { readonly bodyId: string } {
+  return (
+    isRecord(value) && typeof value.bodyId === "string" && value.bodyId !== ""
+  );
 }
 
 function isSketchGetToolArguments(
