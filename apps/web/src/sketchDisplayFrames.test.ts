@@ -10,7 +10,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import {
   ATTACHED_SKETCH_FACE_OFFSET,
-  createAttachedSketchDisplayFrame,
+  createAttachedSketchGeometryFrame,
   createGeneratedFaceReferenceKey,
   createSketchDisplayState,
   mapSketchPlanePointToDisplayFrame,
@@ -53,7 +53,7 @@ describe("sketch display frames", () => {
       normal: [0, 0, 1],
       depth: 3
     });
-    const frame = createAttachedSketchDisplayFrame(sketch, face, 0);
+    const frame = createAttachedSketchGeometryFrame(sketch, face);
 
     expect(frame?.origin).toEqual([0, 0, 3]);
   });

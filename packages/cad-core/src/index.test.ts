@@ -1093,6 +1093,136 @@ describe("cad-core", () => {
     });
   });
 
+  it("round-trips attached sketches with downstream extrudes through project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_face_1",
+      name: "Attached sketch",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+    engine.apply({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_face_1",
+      id: "rect_face_1",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    });
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_face_1",
+      bodyId: "body_face_1",
+      sketchId: "sketch_face_1",
+      entityId: "rect_face_1",
+      depth: 2,
+      side: "symmetric"
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expect(project.document.sketches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "sketch_face_1",
+          attachment: expect.objectContaining({
+            kind: "generatedFace",
+            bodyId: "body_rect_1",
+            faceStableId: "generated:face:body_rect_1:endCap",
+            sourceFeatureId: "feat_rect_1",
+            sourceSketchId: "sketch_1",
+            sourceSketchEntityId: "rect_1",
+            faceRole: "endCap"
+          })
+        })
+      ])
+    );
+    expect(project.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_face_1",
+          sketchId: "sketch_face_1",
+          entityId: "rect_face_1",
+          bodyId: "body_face_1",
+          depth: 2,
+          side: "symmetric"
+        })
+      ])
+    );
+
+    const restored = importCadProject(project);
+
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_face_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        attachment: {
+          bodyId: "body_rect_1",
+          faceStableId: "generated:face:body_rect_1:endCap"
+        }
+      }
+    });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({ id: "feat_face_1" })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({ id: "body_face_1" })
+      ])
+    });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_face_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      body: {
+        sourceFeatureId: "feat_face_1",
+        sourceSketchId: "sketch_face_1",
+        sourceSketchEntityId: "rect_face_1",
+        geometricSignature: {
+          depth: 2,
+          extrudeSide: "symmetric"
+        }
+      }
+    });
+
+    restored.undo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_face_1" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND" }
+    });
+
+    restored.redo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_face_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      body: { sourceFeatureId: "feat_face_1" }
+    });
+  });
+
   it("validates attached sketch metadata during project import", () => {
     const engine = createRectangleExtrudeEngine();
 

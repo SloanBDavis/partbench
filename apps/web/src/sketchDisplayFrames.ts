@@ -158,8 +158,26 @@ export function createSketchDisplayFrameNormal(
 
 export function createAttachedSketchDisplayFrame(
   sketch: SketchSnapshot,
+  face: CadGeneratedFaceReference
+): SketchDisplayFrame | undefined {
+  return createAttachedSketchFaceFrame(
+    sketch,
+    face,
+    ATTACHED_SKETCH_FACE_OFFSET
+  );
+}
+
+export function createAttachedSketchGeometryFrame(
+  sketch: SketchSnapshot,
+  face: CadGeneratedFaceReference
+): SketchDisplayFrame | undefined {
+  return createAttachedSketchFaceFrame(sketch, face, 0);
+}
+
+function createAttachedSketchFaceFrame(
+  sketch: SketchSnapshot,
   face: CadGeneratedFaceReference,
-  offset = ATTACHED_SKETCH_FACE_OFFSET
+  offset: number
 ): SketchDisplayFrame | undefined {
   if (face.geometricSignature.surfaceType !== "plane") {
     return undefined;

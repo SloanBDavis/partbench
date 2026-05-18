@@ -10,7 +10,7 @@ import {
   type DerivedGeometrySource
 } from "./derivedGeometry";
 import {
-  createAttachedSketchDisplayFrame,
+  createAttachedSketchGeometryFrame,
   createGeneratedFaceReferenceKey,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
@@ -135,7 +135,7 @@ function createAttachedSketchExtrudePlacement(
     };
   }
 
-  const frame = createAttachedSketchDisplayFrame(sketch, face, 0);
+  const frame = createAttachedSketchGeometryFrame(sketch, face);
 
   if (!frame) {
     return {
