@@ -72,7 +72,10 @@ export type {
   CadBodySnapshot,
   CadFeatureRef,
   CadFeatureSummary,
+  CadGeneratedCurveType,
   CadGeneratedBodyReference,
+  CadGeneratedEdgeReference,
+  CadGeneratedExtrudeEdgeRole,
   CadGeneratedExtrudeFaceRole,
   CadGeneratedFaceReference,
   CadGeneratedReferenceProfileSignature,
@@ -738,7 +741,9 @@ export class CadEngine {
           cadOpsVersion: request.version,
           body: references.body,
           faceCount: references.faces.length,
-          faces: references.faces
+          faces: references.faces,
+          edgeCount: references.edges.length,
+          edges: references.edges
         };
       }
 

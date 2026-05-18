@@ -1038,10 +1038,21 @@ describe("mcp-adapter", () => {
           profileKind: "circle"
         },
         faceCount: 3,
+        edgeCount: 2,
         faces: [
           { role: "startCap" },
           { role: "endCap" },
           { role: "side:circular" }
+        ],
+        edges: [
+          {
+            role: "start:circular",
+            adjacentFaceRoles: ["startCap", "side:circular"]
+          },
+          {
+            role: "end:circular",
+            adjacentFaceRoles: ["endCap", "side:circular"]
+          }
         ]
       }
     });

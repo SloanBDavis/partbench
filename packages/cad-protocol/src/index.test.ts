@@ -5,6 +5,7 @@ import type {
   CadBatchValidationError,
   CadBodySnapshot,
   CadExtrudeFeatureSummary,
+  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadObjectModelSource,
   CadPartSnapshot,
@@ -310,7 +311,7 @@ describe("cad-protocol", () => {
     ]);
   });
 
-  it("types generated body face references", () => {
+  it("types generated body face and edge references", () => {
     const face: CadGeneratedFaceReference = {
       kind: "face",
       stableId: "generated:face:body_1:side:uMin",
@@ -343,6 +344,43 @@ describe("cad-protocol", () => {
       geometricSignature: {
         profileKind: "rectangle",
         surfaceType: "plane"
+      }
+    });
+
+    const edge: CadGeneratedEdgeReference = {
+      kind: "edge",
+      stableId: "generated:edge:body_1:longitudinal:uMin:vMin",
+      bodyId: "body_1",
+      ownerPartId: "part:default",
+      sourceFeatureId: "feat_1",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "rect_1",
+      role: "longitudinal:uMin:vMin",
+      adjacentFaceRoles: ["side:uMin", "side:vMin"],
+      geometricSignature: {
+        profileKind: "rectangle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 5,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        curveType: "line",
+        axis: [0, 0, 1],
+        axisRole: "sketchPlaneNormal"
+      }
+    };
+
+    expect(edge).toMatchObject({
+      kind: "edge",
+      role: "longitudinal:uMin:vMin",
+      adjacentFaceRoles: ["side:uMin", "side:vMin"],
+      geometricSignature: {
+        profileKind: "rectangle",
+        curveType: "line"
       }
     });
   });

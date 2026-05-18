@@ -756,7 +756,7 @@ export interface CadBodySnapshot {
   readonly source: CadBodySource;
 }
 
-export type CadGeneratedEntityKind = "body" | "face";
+export type CadGeneratedEntityKind = "body" | "face" | "edge";
 
 export type CadGeneratedExtrudeFaceRole =
   | "startCap"
@@ -767,7 +767,24 @@ export type CadGeneratedExtrudeFaceRole =
   | "side:vMax"
   | "side:circular";
 
+export type CadGeneratedExtrudeEdgeRole =
+  | "start:uMin"
+  | "start:uMax"
+  | "start:vMin"
+  | "start:vMax"
+  | "end:uMin"
+  | "end:uMax"
+  | "end:vMin"
+  | "end:vMax"
+  | "longitudinal:uMin:vMin"
+  | "longitudinal:uMin:vMax"
+  | "longitudinal:uMax:vMin"
+  | "longitudinal:uMax:vMax"
+  | "start:circular"
+  | "end:circular";
+
 export type CadGeneratedSurfaceType = "plane" | "cylinder";
+export type CadGeneratedCurveType = "line" | "circle";
 
 export type CadGeneratedReferenceProfileSignature =
   | {
@@ -789,6 +806,7 @@ export interface CadGeneratedReferenceSignature {
   readonly depth: number;
   readonly profile?: CadGeneratedReferenceProfileSignature;
   readonly surfaceType?: CadGeneratedSurfaceType;
+  readonly curveType?: CadGeneratedCurveType;
   readonly normal?: Vec3;
   readonly axis?: Vec3;
   readonly normalRole?: string;
@@ -816,6 +834,19 @@ export interface CadGeneratedFaceReference {
   readonly sourceSketchId: SketchId;
   readonly sourceSketchEntityId: SketchEntityId;
   readonly role: CadGeneratedExtrudeFaceRole;
+  readonly geometricSignature: CadGeneratedReferenceSignature;
+}
+
+export interface CadGeneratedEdgeReference {
+  readonly kind: "edge";
+  readonly stableId: string;
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly role: CadGeneratedExtrudeEdgeRole;
+  readonly adjacentFaceRoles: readonly CadGeneratedExtrudeFaceRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
@@ -972,6 +1003,8 @@ export interface BodyGeneratedReferencesQueryResponse {
   readonly body: CadGeneratedBodyReference;
   readonly faceCount: number;
   readonly faces: readonly CadGeneratedFaceReference[];
+  readonly edgeCount: number;
+  readonly edges: readonly CadGeneratedEdgeReference[];
 }
 
 export interface CadQueryErrorResponse {

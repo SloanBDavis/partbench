@@ -2390,7 +2390,8 @@ describe("cad-core", () => {
           axisRole: "sketchPlaneNormal"
         }
       },
-      faceCount: 6
+      faceCount: 6,
+      edgeCount: 12
     });
 
     if (!references.ok || references.query !== "body.generatedReferences") {
@@ -2418,6 +2419,38 @@ describe("cad-core", () => {
       geometricSignature: {
         normal: [-1, 0, 0],
         normalRole: "side:uMin"
+      }
+    });
+    expect(references.edges.map((edge) => edge.role)).toEqual([
+      "start:uMin",
+      "start:uMax",
+      "start:vMin",
+      "start:vMax",
+      "end:uMin",
+      "end:uMax",
+      "end:vMin",
+      "end:vMax",
+      "longitudinal:uMin:vMin",
+      "longitudinal:uMin:vMax",
+      "longitudinal:uMax:vMin",
+      "longitudinal:uMax:vMax"
+    ]);
+    expect(references.edges[0]).toMatchObject({
+      stableId: "generated:edge:body_rect_1:start:uMin",
+      adjacentFaceRoles: ["startCap", "side:uMin"],
+      geometricSignature: {
+        curveType: "line",
+        axis: [0, 1, 0],
+        axisRole: "profileVAxis"
+      }
+    });
+    expect(references.edges[8]).toMatchObject({
+      stableId: "generated:edge:body_rect_1:longitudinal:uMin:vMin",
+      adjacentFaceRoles: ["side:uMin", "side:vMin"],
+      geometricSignature: {
+        curveType: "line",
+        axis: [0, 0, 1],
+        axisRole: "sketchPlaneNormal"
       }
     });
   });
@@ -2449,6 +2482,7 @@ describe("cad-core", () => {
         }
       },
       faceCount: 3,
+      edgeCount: 2,
       faces: [
         { role: "startCap" },
         { role: "endCap" },
@@ -2459,6 +2493,21 @@ describe("cad-core", () => {
             axis: [0, 0, 1],
             axisRole: "sketchPlaneNormal"
           }
+        }
+      ],
+      edges: [
+        {
+          role: "start:circular",
+          adjacentFaceRoles: ["startCap", "side:circular"],
+          geometricSignature: {
+            curveType: "circle",
+            axis: [0, 0, 1],
+            axisRole: "sketchPlaneNormal"
+          }
+        },
+        {
+          role: "end:circular",
+          adjacentFaceRoles: ["endCap", "side:circular"]
         }
       ]
     });
@@ -2518,6 +2567,19 @@ describe("cad-core", () => {
       updated.faces.find((face) => face.role === "endCap")?.geometricSignature
         .normal
     ).toEqual([0, 0, -1]);
+    expect(
+      updated.edges.find((edge) => edge.role === "start:uMin")
+        ?.geometricSignature.profile
+    ).toEqual({
+      kind: "rectangle",
+      center: [1, 1],
+      width: 6,
+      height: 4
+    });
+    expect(
+      updated.edges.find((edge) => edge.role === "longitudinal:uMin:vMin")
+        ?.geometricSignature.depth
+    ).toBe(8);
 
     engine.undo();
     const afterUndoProfile = engine.executeQuery({
@@ -2598,7 +2660,8 @@ describe("cad-core", () => {
       })
     ).toMatchObject({
       ok: true,
-      faceCount: 3
+      faceCount: 3,
+      edgeCount: 2
     });
 
     restored.apply({ op: "feature.delete", id: "feat_circle_1" });
