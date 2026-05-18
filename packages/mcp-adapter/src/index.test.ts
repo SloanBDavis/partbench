@@ -17,6 +17,8 @@ describe("mcp-adapter", () => {
       "cad.body_generated_references",
       "cad.resolve_generated_reference",
       "cad.generated_reference_measurements",
+      "cad.named_references",
+      "cad.resolve_named_reference",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -1292,6 +1294,86 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("lists and resolves named generated references through MCP tools", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_named_sketch",
+      entityId: "mcp_named_circle",
+      featureId: "mcp_named_feature",
+      bodyId: "mcp_named_body"
+    });
+
+    const nameResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_name_ref",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "reference.nameGenerated",
+              name: "Outside wall",
+              bodyId: "mcp_named_body",
+              stableId: "generated:face:mcp_named_body:side:circular"
+            }
+          ]
+        }
+      }
+    });
+    const listResult = server.callTool({
+      name: "cad.named_references",
+      requestId: "mcp_req_named_refs"
+    });
+    const resolveResult = server.callTool({
+      name: "cad.resolve_named_reference",
+      requestId: "mcp_req_resolve_named",
+      arguments: { name: "Outside wall" }
+    });
+
+    expect(nameResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: { ok: true }
+    });
+    expect(listResult).toMatchObject({
+      toolName: "cad.named_references",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_named_refs",
+        query: "reference.listNamed",
+        referenceCount: 1,
+        references: [
+          {
+            name: "Outside wall",
+            status: "resolved",
+            reference: {
+              kind: "face",
+              role: "side:circular"
+            }
+          }
+        ]
+      }
+    });
+    expect(resolveResult).toMatchObject({
+      toolName: "cad.resolve_named_reference",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_resolve_named",
+        query: "reference.resolveNamed",
+        name: "Outside wall",
+        reference: {
+          kind: "face",
+          role: "side:circular"
+        }
+      }
+    });
+  });
+
   it("returns generated reference measurements through cad.generated_reference_measurements", () => {
     const server = new CadMcpServer();
 
@@ -1571,6 +1653,8 @@ describe("mcp-adapter", () => {
           { name: "cad.body_generated_references" },
           { name: "cad.resolve_generated_reference" },
           { name: "cad.generated_reference_measurements" },
+          { name: "cad.named_references" },
+          { name: "cad.resolve_named_reference" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

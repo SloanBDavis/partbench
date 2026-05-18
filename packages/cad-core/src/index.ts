@@ -12,6 +12,8 @@ import type {
   CadFeatureRef,
   CadFeatureSummary,
   CadGeneratedFaceReference,
+  CadGeneratedEntityKind,
+  CadNamedReferenceRef,
   CadObjectSnapshot,
   CadObjectRef,
   CadOp,
@@ -19,6 +21,7 @@ import type {
   CadPartSnapshot,
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
+  CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
   CadSketchEntityRef,
@@ -51,6 +54,10 @@ import type {
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureSemanticDiff,
+  NamedGeneratedReferenceEntry,
+  NamedGeneratedReferenceSnapshot,
+  NamedReferenceName,
+  ReferenceSemanticDiff,
   TransactionId,
   Transform,
   Vec2,
@@ -96,6 +103,7 @@ export type {
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
+  CadNamedReferenceRef,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
@@ -105,6 +113,7 @@ export type {
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
   CadQueryRequest,
+  CadQueryError,
   CadQueryResponse,
   CadSemanticDiffSummary,
   CadSketchEntityRef,
@@ -112,6 +121,10 @@ export type {
   CadTransactionHistoryEntry,
   CadTransactionStatus,
   CadTransactionAuditMetadata,
+  NamedGeneratedReferenceEntry,
+  NamedGeneratedReferenceSnapshot,
+  NamedReferenceName,
+  ReferenceSemanticDiff,
   ExtrudeFeatureSnapshot,
   FeatureId,
   FeatureExtrudeProfileKind,
@@ -226,6 +239,10 @@ export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
   readonly features: ReadonlyMap<FeatureId, Feature>;
+  readonly namedReferences: ReadonlyMap<
+    NamedReferenceName,
+    NamedGeneratedReferenceSnapshot
+  >;
   readonly units: DocumentUnits;
 }
 
@@ -261,6 +278,7 @@ export interface CadDocumentSnapshot {
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
   readonly features: readonly ExtrudeFeatureSnapshot[];
+  readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
@@ -292,12 +310,14 @@ export type MockCadCommandWorkerOptions = SnapshotCadCommandWorkerOptions;
 export const CAD_PROJECT_FORMAT_VERSION_V1 = "web-cad.project.v1";
 export const CAD_PROJECT_FORMAT_VERSION_V2 = "web-cad.project.v2";
 export const CAD_PROJECT_FORMAT_VERSION_V3 = "web-cad.project.v3";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v4";
+export const CAD_PROJECT_FORMAT_VERSION_V4 = "web-cad.project.v4";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v5";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
   | typeof CAD_PROJECT_FORMAT_VERSION_V2
   | typeof CAD_PROJECT_FORMAT_VERSION_V3
+  | typeof CAD_PROJECT_FORMAT_VERSION_V4
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -312,6 +332,7 @@ export type CadProjectImportErrorCode =
   | "INVALID_SKETCH_NAME"
   | "INVALID_SKETCH_ENTITY"
   | "INVALID_FEATURE"
+  | "INVALID_NAMED_REFERENCE"
   | "INVALID_DIMENSIONS"
   | "INVALID_TRANSFORM"
   | "INVALID_TRANSACTION"
@@ -377,12 +398,16 @@ export function createCadDocument(
   objects: Iterable<readonly [ObjectId, SceneObject]> = [],
   units: DocumentUnits = DEFAULT_DOCUMENT_UNITS,
   sketches: Iterable<readonly [SketchId, Sketch]> = [],
-  features: Iterable<readonly [FeatureId, Feature]> = []
+  features: Iterable<readonly [FeatureId, Feature]> = [],
+  namedReferences: Iterable<
+    readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
+  > = []
 ): CadDocument {
   return {
     objects: new Map(objects),
     sketches: new Map(sketches),
     features: new Map(features),
+    namedReferences: new Map(namedReferences),
     units
   };
 }
@@ -922,6 +947,74 @@ export class CadEngine {
         };
       }
 
+      case "reference.listNamed": {
+        const references = [...this.#document.namedReferences.values()].map(
+          (reference) =>
+            createNamedReferenceEntry(
+              this.#document,
+              reference,
+              this.#history.map((entry) => entry.transaction)
+            )
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          referenceCount: references.length,
+          references
+        };
+      }
+
+      case "reference.resolveNamed": {
+        const reference = this.#document.namedReferences.get(
+          request.query.name
+        );
+
+        if (!reference) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "NAMED_REFERENCE_NOT_FOUND",
+              message: `Named reference does not exist: ${request.query.name}`,
+              referenceName: request.query.name
+            }
+          };
+        }
+
+        const entry = createNamedReferenceEntry(
+          this.#document,
+          reference,
+          this.#history.map((historyEntry) => historyEntry.transaction)
+        );
+
+        if (entry.status === "stale" || !entry.reference) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: entry.error ?? {
+              code: "GENERATED_REFERENCE_NOT_FOUND",
+              message: `Named reference target is stale: ${request.query.name}`,
+              bodyId: reference.bodyId,
+              stableId: reference.stableId,
+              referenceName: request.query.name
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          name: reference.name,
+          target: cloneNamedReferenceSnapshot(reference),
+          reference: entry.reference
+        };
+      }
+
       case "transaction.history": {
         const transactions = createTransactionHistoryEntries([
           ...this.#history.map((entry) => entry.transaction),
@@ -1148,6 +1241,7 @@ type MutableSemanticDiff = {
   document?: MutableDocumentSemanticDiff;
   sketches?: MutableSketchSemanticDiff;
   features?: MutableFeatureSemanticDiff;
+  references?: MutableReferenceSemanticDiff;
 };
 
 type MutableDocumentSemanticDiff = {
@@ -1177,10 +1271,16 @@ type MutableFeatureSemanticDiff = {
   bodiesDeleted: CadBodyRef[];
 };
 
+type MutableReferenceSemanticDiff = {
+  namedCreated: CadNamedReferenceRef[];
+  namedDeleted: CadNamedReferenceRef[];
+};
+
 interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
   features: Map<FeatureId, Feature>;
+  namedReferences: Map<NamedReferenceName, NamedGeneratedReferenceSnapshot>;
   units: DocumentUnits;
 }
 
@@ -1618,6 +1718,69 @@ function applyOperation(
 
     case "feature.updateExtrude": {
       updateExtrudeFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "reference.nameGenerated": {
+      const name = normalizeNamedReferenceName(op.name, opIndex);
+
+      if (state.namedReferences.has(name)) {
+        throwValidationError({
+          code: "NAMED_REFERENCE_ALREADY_EXISTS",
+          message: `Named reference already exists: ${name}`,
+          opIndex,
+          referenceName: name,
+          path: operationPath(opIndex, "name"),
+          expected: "unique named reference",
+          received: name
+        });
+      }
+
+      const validation = validateGeneratedReference({
+        document: state,
+        ownerPartId: DEFAULT_PART_ID,
+        bodyId: op.bodyId,
+        stableId: op.stableId,
+        bodyExists: (bodyId) => documentBodyExists(state, bodyId)
+      });
+
+      if (!validation.ok) {
+        throwGeneratedReferenceValidationError(
+          validation.error,
+          opIndex,
+          "stableId"
+        );
+      }
+
+      const reference: NamedGeneratedReferenceSnapshot = {
+        name,
+        bodyId: op.bodyId,
+        stableId: op.stableId,
+        kind: validation.kind
+      };
+      state.namedReferences.set(name, reference);
+      pushNamedReferenceCreated(diff, reference);
+      return;
+    }
+
+    case "reference.deleteName": {
+      const name = normalizeNamedReferenceName(op.name, opIndex);
+      const reference = state.namedReferences.get(name);
+
+      if (!reference) {
+        throwValidationError({
+          code: "NAMED_REFERENCE_NOT_FOUND",
+          message: `Named reference does not exist: ${name}`,
+          opIndex,
+          referenceName: name,
+          path: operationPath(opIndex, "name"),
+          expected: "existing named reference",
+          received: name
+        });
+      }
+
+      state.namedReferences.delete(name);
+      pushNamedReferenceDeleted(diff, reference);
       return;
     }
   }
@@ -2324,6 +2487,26 @@ function normalizeFeatureName(
   });
 }
 
+function normalizeNamedReferenceName(
+  name: string,
+  opIndex?: number
+): NamedReferenceName {
+  const normalized = name.trim();
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  throwValidationError({
+    code: "INVALID_REFERENCE_NAME",
+    message: "Named reference name must be non-empty.",
+    opIndex,
+    path: operationPath(opIndex, "name"),
+    expected: "non-empty string",
+    received: describeReceived(name)
+  });
+}
+
 function validateSketchAttachmentFace(
   state: MutableDocumentState,
   op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
@@ -2355,9 +2538,61 @@ function documentBodyExists(
   );
 }
 
+function createNamedReferenceEntry(
+  document: CadDocument,
+  reference: NamedGeneratedReferenceSnapshot,
+  transactions: readonly Transaction[]
+): NamedGeneratedReferenceEntry {
+  const result = validateGeneratedReference({
+    document,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: reference.bodyId,
+    stableId: reference.stableId,
+    bodyExists: (bodyId) =>
+      createProjectStructure(document, transactions).bodies.some(
+        (body) => body.id === bodyId
+      )
+  });
+
+  if (!result.ok) {
+    return {
+      ...cloneNamedReferenceSnapshot(reference),
+      status: "stale",
+      error: createQueryErrorFromGeneratedReferenceError(
+        result.error,
+        reference.name
+      )
+    };
+  }
+
+  return {
+    ...cloneNamedReferenceSnapshot(reference),
+    status: "resolved",
+    reference: result.reference
+  };
+}
+
+function createQueryErrorFromGeneratedReferenceError(
+  error: GeneratedReferenceValidationError,
+  referenceName?: NamedReferenceName
+): CadQueryError {
+  return {
+    code:
+      error.code === "GENERATED_REFERENCE_KIND_MISMATCH" ||
+      error.code === "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
+        ? "GENERATED_REFERENCE_NOT_FOUND"
+        : error.code,
+    message: error.message,
+    bodyId: error.bodyId,
+    stableId: error.stableId,
+    ...(referenceName ? { referenceName } : {})
+  };
+}
+
 function throwGeneratedReferenceValidationError(
   error: GeneratedReferenceValidationError,
-  opIndex?: number
+  opIndex?: number,
+  stableIdPath: "faceStableId" | "stableId" = "faceStableId"
 ): never {
   throwValidationError({
     code: error.code,
@@ -2370,7 +2605,7 @@ function throwGeneratedReferenceValidationError(
       error.code === "BODY_NOT_FOUND" ||
         error.code === "UNSUPPORTED_BODY_REFERENCES"
         ? "bodyId"
-        : "faceStableId"
+        : stableIdPath
     ),
     expected: describeGeneratedReferenceValidationExpected(error),
     received: describeGeneratedReferenceValidationReceived(error)
@@ -2651,6 +2886,17 @@ function bodyRef(feature: Feature): CadBodyRef {
   };
 }
 
+function namedReferenceRef(
+  reference: NamedGeneratedReferenceSnapshot
+): CadNamedReferenceRef {
+  return {
+    name: reference.name,
+    bodyId: reference.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind
+  };
+}
+
 function pushSketchCreated(diff: MutableSemanticDiff, ref: CadSketchRef): void {
   ensureSketchDiff(diff).created.push(ref);
 }
@@ -2748,6 +2994,31 @@ function ensureFeatureDiff(
   };
 
   return diff.features;
+}
+
+function pushNamedReferenceCreated(
+  diff: MutableSemanticDiff,
+  reference: NamedGeneratedReferenceSnapshot
+): void {
+  ensureReferenceDiff(diff).namedCreated.push(namedReferenceRef(reference));
+}
+
+function pushNamedReferenceDeleted(
+  diff: MutableSemanticDiff,
+  reference: NamedGeneratedReferenceSnapshot
+): void {
+  ensureReferenceDiff(diff).namedDeleted.push(namedReferenceRef(reference));
+}
+
+function ensureReferenceDiff(
+  diff: MutableSemanticDiff
+): MutableReferenceSemanticDiff {
+  diff.references ??= {
+    namedCreated: [],
+    namedDeleted: []
+  };
+
+  return diff.references;
 }
 
 function getUnitConversionScaleFactor(
@@ -2943,6 +3214,9 @@ export function createCadDocumentSnapshot(
     objects: [...document.objects.values()].map(createCadObjectSnapshot),
     sketches: [...document.sketches.values()].map(createSketchSnapshot),
     features: [...document.features.values()].map(createFeatureSnapshot),
+    namedReferences: [...document.namedReferences.values()].map(
+      cloneNamedReferenceSnapshot
+    ),
     nextObjectNumber,
     nextSketchNumber,
     nextSketchEntityNumber,
@@ -2964,6 +3238,10 @@ export function createCadDocumentFromSnapshot(
     ),
     snapshot.features.map(
       (feature) => [feature.id, createFeatureFromSnapshot(feature)] as const
+    ),
+    snapshot.namedReferences.map(
+      (reference) =>
+        [reference.name, cloneNamedReferenceSnapshot(reference)] as const
     )
   );
 }
@@ -3074,6 +3352,17 @@ function createFeatureFromSnapshot(
     depth: snapshot.depth,
     side: snapshot.side ?? "positive",
     bodyId: snapshot.bodyId
+  };
+}
+
+function cloneNamedReferenceSnapshot(
+  reference: NamedGeneratedReferenceSnapshot
+): NamedGeneratedReferenceSnapshot {
+  return {
+    name: reference.name,
+    bodyId: reference.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind
   };
 }
 
@@ -3580,6 +3869,7 @@ function runOperations(
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
     features: new Map(document.features),
+    namedReferences: new Map(document.namedReferences),
     units: document.units
   };
   let nextObjectNumber = initialObjectNumber;
@@ -3647,7 +3937,8 @@ function runOperations(
     state.objects,
     state.units,
     state.sketches,
-    state.features
+    state.features,
+    state.namedReferences
   );
 
   return {
@@ -4317,7 +4608,8 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     left.units !== right.units ||
     left.objects.size !== right.objects.size ||
     left.sketches.size !== right.sketches.size ||
-    left.features.size !== right.features.size
+    left.features.size !== right.features.size ||
+    left.namedReferences.size !== right.namedReferences.size
   ) {
     return false;
   }
@@ -4346,7 +4638,30 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     }
   }
 
+  for (const [name, leftReference] of left.namedReferences) {
+    const rightReference = right.namedReferences.get(name);
+
+    if (
+      !rightReference ||
+      !namedReferencesEqual(leftReference, rightReference)
+    ) {
+      return false;
+    }
+  }
+
   return true;
+}
+
+function namedReferencesEqual(
+  left: NamedGeneratedReferenceSnapshot,
+  right: NamedGeneratedReferenceSnapshot
+): boolean {
+  return (
+    left.name === right.name &&
+    left.bodyId === right.bodyId &&
+    left.stableId === right.stableId &&
+    left.kind === right.kind
+  );
 }
 
 function sceneObjectsEqual(left: SceneObject, right: SceneObject): boolean {
@@ -4501,7 +4816,22 @@ function normalizeCadProject(value: CadProject): CadProject {
       ...value,
       document: {
         ...value.document,
-        features: value.document.features.map(normalizeFeatureSnapshot)
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        )
+      }
+    };
+  }
+
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        ...value.document,
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: []
       }
     };
   }
@@ -4512,7 +4842,8 @@ function normalizeCadProject(value: CadProject): CadProject {
       schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
-        features: value.document.features.map(normalizeFeatureSnapshot)
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: []
       }
     };
   }
@@ -4524,6 +4855,7 @@ function normalizeCadProject(value: CadProject): CadProject {
       document: {
         ...value.document,
         features: [],
+        namedReferences: [],
         nextFeatureNumber: 1,
         nextBodyNumber: 1
       }
@@ -4537,6 +4869,7 @@ function normalizeCadProject(value: CadProject): CadProject {
       ...value.document,
       sketches: [],
       features: [],
+      namedReferences: [],
       nextSketchNumber: 1,
       nextSketchEntityNumber: 1,
       nextFeatureNumber: 1,
@@ -4600,6 +4933,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   } else if (
     value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
@@ -4725,13 +5059,25 @@ function validateCadDocumentSnapshot(
   const requiresSketches =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const requiresNamedReferences =
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const isKnownProjectVersion =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
+  const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
   const sketchEntityRefs = new Map<
     SketchEntityId,
     { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
@@ -4767,6 +5113,19 @@ function validateCadDocumentSnapshot(
       "INVALID_DOCUMENT",
       `${path}.features`,
       "V2 project documents must not include authored feature source data."
+    );
+  }
+
+  if (
+    isKnownProjectVersion &&
+    !requiresNamedReferences &&
+    "namedReferences" in value
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.namedReferences`,
+      "Project documents before V5 must not include named generated references."
     );
   }
 
@@ -4832,8 +5191,6 @@ function validateCadDocumentSnapshot(
     } else {
       const seenFeatureIds = new Set<string>(primitiveFeatureIds);
       const seenBodyIds = new Set<string>(primitiveBodyIds);
-      const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
-
       for (const [index, feature] of value.features.entries()) {
         const generatedNumbers = validateFeatureSnapshot(
           feature,
@@ -4878,6 +5235,23 @@ function validateCadDocumentSnapshot(
       maxGeneratedBodyNumber,
       issues
     );
+  }
+
+  if (requiresNamedReferences) {
+    if (!Array.isArray(value.namedReferences)) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${path}.namedReferences`,
+        "Document namedReferences must be an array."
+      );
+    } else {
+      validateNamedReferenceSnapshots(
+        value.namedReferences,
+        `${path}.namedReferences`,
+        issues
+      );
+    }
   }
 }
 
@@ -5315,6 +5689,100 @@ function collectSketchEntityRefs(
       isSketchEntityKind(entity.kind)
     ) {
       output.set(entity.id, { sketchId: value.id, kind: entity.kind });
+    }
+  }
+}
+
+function validateNamedReferenceSnapshots(
+  values: readonly unknown[],
+  path: string,
+  issues: CadProjectImportIssue[]
+): void {
+  const seenNames = new Set<NamedReferenceName>();
+
+  for (const [index, value] of values.entries()) {
+    const referencePath = `${path}[${index}]`;
+
+    if (!isRecord(value)) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        referencePath,
+        "Named reference must be an object."
+      );
+      continue;
+    }
+
+    const rawName = typeof value.name === "string" ? value.name : undefined;
+    const name = rawName?.trim();
+    const bodyId = typeof value.bodyId === "string" ? value.bodyId : undefined;
+    const stableId =
+      typeof value.stableId === "string" ? value.stableId : undefined;
+    const kind = isGeneratedEntityKind(value.kind) ? value.kind : undefined;
+
+    if (!name) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.name`,
+        "Named reference name must be a non-empty string."
+      );
+    } else if (rawName !== name) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.name`,
+        "Named reference name must not include leading or trailing whitespace."
+      );
+    } else if (seenNames.has(name)) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.name`,
+        `Duplicate named reference: ${name}.`
+      );
+    } else {
+      seenNames.add(name);
+    }
+
+    if (!bodyId) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.bodyId`,
+        "Named reference bodyId must be a non-empty string."
+      );
+    }
+
+    if (!stableId) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.stableId`,
+        "Named reference stableId must be a non-empty string."
+      );
+    }
+
+    if (!kind) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.kind`,
+        "Named reference kind must be body, face, edge, or vertex."
+      );
+    }
+
+    if (!bodyId || !stableId || !kind) {
+      continue;
+    }
+
+    if (!isGeneratedStableIdShapeForKind(bodyId, stableId, kind)) {
+      addProjectIssue(
+        issues,
+        "INVALID_NAMED_REFERENCE",
+        `${referencePath}.stableId`,
+        "Named reference stableId must match the stored generated reference kind and bodyId."
+      );
     }
   }
 }
@@ -6375,6 +6843,18 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "reference.nameGenerated") {
+    return (
+      typeof value.name === "string" &&
+      typeof value.bodyId === "string" &&
+      typeof value.stableId === "string"
+    );
+  }
+
+  if (value.op === "reference.deleteName") {
+    return typeof value.name === "string";
+  }
+
   return false;
 }
 
@@ -6389,7 +6869,9 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     value.deleted.every(isCadObjectRef) &&
     (value.document === undefined || isDocumentSemanticDiff(value.document)) &&
     (value.sketches === undefined || isSketchSemanticDiff(value.sketches)) &&
-    (value.features === undefined || isFeatureSemanticDiff(value.features))
+    (value.features === undefined || isFeatureSemanticDiff(value.features)) &&
+    (value.references === undefined ||
+      isReferenceSemanticDiff(value.references))
   );
 }
 
@@ -6453,6 +6935,20 @@ function isFeatureSemanticDiff(value: unknown): value is FeatureSemanticDiff {
   );
 }
 
+function isReferenceSemanticDiff(
+  value: unknown
+): value is ReferenceSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.namedCreated === undefined ||
+      (Array.isArray(value.namedCreated) &&
+        value.namedCreated.every(isCadNamedReferenceRef))) &&
+    (value.namedDeleted === undefined ||
+      (Array.isArray(value.namedDeleted) &&
+        value.namedDeleted.every(isCadNamedReferenceRef)))
+  );
+}
+
 function isCadObjectRef(value: unknown): value is CadObjectRef {
   return (
     isRecord(value) &&
@@ -6496,6 +6992,16 @@ function isCadBodyRef(value: unknown): value is CadBodyRef {
     typeof value.id === "string" &&
     value.kind === "solid" &&
     typeof value.featureId === "string"
+  );
+}
+
+function isCadNamedReferenceRef(value: unknown): value is CadNamedReferenceRef {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.bodyId === "string" &&
+    typeof value.stableId === "string" &&
+    isGeneratedEntityKind(value.kind)
   );
 }
 
@@ -6656,6 +7162,30 @@ function isGeneratedExtrudeFaceRole(
     value === "side:vMax" ||
     value === "side:circular"
   );
+}
+
+function isGeneratedEntityKind(
+  value: unknown
+): value is CadGeneratedEntityKind {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex"
+  );
+}
+
+function isGeneratedStableIdShapeForKind(
+  bodyId: BodyId,
+  stableId: string,
+  kind: CadGeneratedEntityKind
+): boolean {
+  if (kind === "body") {
+    return stableId === `generated:body:${bodyId}`;
+  }
+
+  const prefix = `generated:${kind}:${bodyId}:`;
+  return stableId.startsWith(prefix) && stableId.length > prefix.length;
 }
 
 function isCadActorType(value: unknown): value is CadActorMetadata["type"] {

@@ -84,7 +84,8 @@ Completed foundations:
 - Versioned source-of-truth JSON project import/export. V1 completed with
   `web-cad.project.v1`; sketches introduced `web-cad.project.v2`; authored
   sketch extrudes introduced `web-cad.project.v3`; attached face sketches
-  introduced `web-cad.project.v4`; V1, V2, and V3 projects still import through
+  introduced `web-cad.project.v4`; named generated references introduced
+  `web-cad.project.v5`; V1, V2, V3, and V4 projects still import through
   migration.
 - Browser command worker transport.
 - Isolated OCCT/WASM adapter, geometry-kernel facade, browser geometry worker,
@@ -237,8 +238,9 @@ Current status: storage decision implemented and evolved. The V2 structural
 bridge is still derived, the sketch slice added authored source data in
 `web-cad.project.v2`, the first extrude slice added authored feature/body source
 data in `web-cad.project.v3`, and `sketch.createOnFace` added persisted sketch
-attachment metadata in `web-cad.project.v4`. V1, V2, and V3 project JSON remain
-importable through migration.
+attachment metadata in `web-cad.project.v4`. Named generated references added
+persisted user/agent reference names in `web-cad.project.v5`. V1, V2, V3, and
+V4 project JSON remain importable through migration.
 
 Deliverables:
 
@@ -256,18 +258,20 @@ Implemented decision:
 
 - Continue deriving `part:default`, `feature:<objectId>`, and
   `body:<objectId>` rather than persisting duplicate part/feature/body records.
-- Export `web-cad.project.v4` with source-of-truth sketches, attached sketch
-  metadata, authored extrude features, sketch counters, feature counters, and
-  body counters.
+- Export `web-cad.project.v5` with source-of-truth sketches, attached sketch
+  metadata, authored extrude features, named generated references, sketch
+  counters, feature counters, and body counters.
 - Accept `web-cad.project.v1` through migration with empty sketches/features.
 - Accept `web-cad.project.v2` through migration with sketches and empty
   features.
 - Accept `web-cad.project.v3` through migration with sketches/features and no
   attached sketch metadata.
+- Accept `web-cad.project.v4` through migration with sketches/features and
+  attached sketch metadata, plus empty named references.
 - Introduce a later project format only when source-of-truth data cannot be
-  represented cleanly in the current V4 shape, such as constraints, explicit
+  represented cleanly in the current V5 shape, such as constraints, explicit
   profiles, explicit authored parts, additional feature inputs, exact body
-  checkpoints, topology references, or assemblies.
+  checkpoints, exact topology-backed references, or assemblies.
 - Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
 
 Exit criteria:
@@ -297,7 +301,7 @@ Implemented:
 - `project.sketches` and `sketch.get` queries through `cad-core`,
   `agent-adapter`, and MCP wrappers.
 - Compact web UI panel for sketch creation and entity editing.
-- Current exports use `web-cad.project.v4`; V1, V2, and V3 imports remain
+- Current exports use `web-cad.project.v5`; V1, V2, V3, and V4 imports remain
   compatible.
 
 Exit criteria:
@@ -323,7 +327,8 @@ Implemented:
   depth, supported side, and unique feature/body IDs.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
-- `web-cad.project.v4` source-of-truth export with V1/V2/V3 import migration.
+- `web-cad.project.v5` source-of-truth export with V1/V2/V3/V4 import
+  migration.
 - `project.structure` and `project.features` show primitive-derived and
   sketch-extrude features/bodies.
 - Geometry-kernel and geometry-worker rectangle/circle extrude tessellation
@@ -383,6 +388,10 @@ Implemented:
 - Internal generated-reference validation helpers resolve references by body ID
   and stable ID, then check expected kind and operation eligibility for future
   reference-consuming commands.
+- Source-of-truth named generated references through `reference.nameGenerated`
+  and `reference.deleteName`, plus `reference.listNamed` and
+  `reference.resolveNamed` read queries. Names store user/agent metadata that
+  points at generated references; they do not persist B-rep topology.
 - `sketch.createOnFace` is the first reference-consuming mutation. It creates a
   source-of-truth sketch attached to an eligible generated planar face reference
   from an authored sketch-extrude body while keeping generated references
@@ -413,7 +422,6 @@ Deliverables:
 - Add typed entity references for generated faces, edges, vertices, bodies,
   sketches, and features.
 - Track feature lineage and lightweight geometric signatures where practical.
-- Add user/agent-readable named references.
 - Make ambiguous references fail clearly instead of silently editing the wrong
   geometry.
 

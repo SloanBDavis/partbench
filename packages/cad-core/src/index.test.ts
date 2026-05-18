@@ -3771,6 +3771,322 @@ describe("cad-core", () => {
     });
   });
 
+  it("names and resolves generated references", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const result = engine.apply({
+      op: "reference.nameGenerated",
+      name: "  Front face  ",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    expect(result.transaction.diff.references).toMatchObject({
+      namedCreated: [
+        {
+          name: "Front face",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap",
+          kind: "face"
+        }
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.listNamed" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "reference.listNamed",
+      referenceCount: 1,
+      references: [
+        {
+          name: "Front face",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap",
+          kind: "face",
+          status: "resolved",
+          reference: {
+            kind: "face",
+            role: "startCap",
+            label: "Start cap"
+          }
+        }
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Front face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "reference.resolveNamed",
+      name: "Front face",
+      target: {
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:startCap",
+        kind: "face"
+      },
+      reference: {
+        kind: "face",
+        role: "startCap"
+      }
+    });
+  });
+
+  it("validates generated reference naming", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: " ",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:startCap"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_REFERENCE_NAME" }
+    });
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Front face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "Front face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "NAMED_REFERENCE_ALREADY_EXISTS" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "Missing face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:missing"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "GENERATED_REFERENCE_NOT_FOUND" }
+    });
+  });
+
+  it("deletes named references with undo redo and batch support", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "Front face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:startCap"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun"
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.listNamed" }
+      })
+    ).toMatchObject({ ok: true, referenceCount: 0 });
+
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "reference.nameGenerated",
+          name: "Front face",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap"
+        }
+      ]
+    });
+
+    const deleteResult = engine.apply({
+      op: "reference.deleteName",
+      name: "Front face"
+    });
+    expect(deleteResult.transaction.diff.references).toMatchObject({
+      namedDeleted: [
+        {
+          name: "Front face",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap",
+          kind: "face"
+        }
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.listNamed" }
+      })
+    ).toMatchObject({ ok: true, referenceCount: 0 });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Front face" }
+      })
+    ).toMatchObject({ ok: true, reference: { kind: "face" } });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Front face" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "NAMED_REFERENCE_NOT_FOUND" }
+    });
+  });
+
+  it("preserves named references through project export and reports stale targets", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Front face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    expect(restored.exportProject().schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Front face" }
+      })
+    ).toMatchObject({ ok: true, reference: { kind: "face" } });
+
+    restored.apply({ op: "feature.delete", id: "feat_rect_1" });
+    const staleProject = exportCadProjectJson(restored);
+    const staleRestored = importCadProjectJson(staleProject);
+
+    expect(
+      staleRestored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.listNamed" }
+      })
+    ).toMatchObject({
+      ok: true,
+      referenceCount: 1,
+      references: [
+        {
+          name: "Front face",
+          status: "stale",
+          error: { code: "BODY_NOT_FOUND" }
+        }
+      ]
+    });
+    expect(
+      staleRestored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Front face" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND", referenceName: "Front face" }
+    });
+  });
+
+  it("rejects malformed named references during project import", () => {
+    const project = createRectangleExtrudeEngine().exportProject();
+
+    expect(() =>
+      importCadProject({
+        ...project,
+        document: {
+          ...project.document,
+          namedReferences: [
+            {
+              name: "",
+              bodyId: "body_rect_1",
+              stableId: "generated:face:body_rect_1:startCap",
+              kind: "face"
+            }
+          ]
+        }
+      })
+    ).toThrow(CadProjectImportError);
+
+    try {
+      importCadProject({
+        ...project,
+        document: {
+          ...project.document,
+          namedReferences: [
+            {
+              name: "Broken reference",
+              bodyId: "body_rect_1",
+              stableId: "generated:edge:other_body:start:uMin",
+              kind: "edge"
+            }
+          ]
+        }
+      });
+    } catch (error) {
+      if (!(error instanceof CadProjectImportError)) {
+        throw error;
+      }
+
+      expect(error.issues).toContainEqual({
+        code: "INVALID_NAMED_REFERENCE",
+        path: "$.document.namedReferences[0].stableId",
+        message:
+          "Named reference stableId must match the stored generated reference kind and bodyId."
+      });
+      return;
+    }
+
+    throw new Error("Expected project import error.");
+  });
+
   it("validates sketch extrude source entities and batch responses", () => {
     const engine = new CadEngine();
 

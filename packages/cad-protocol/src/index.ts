@@ -13,6 +13,7 @@ export type BodyId = string;
 export type SketchId = string;
 export type SketchEntityId = string;
 export type TransactionId = string;
+export type NamedReferenceName = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
 export type CadActorType = "human" | "agent" | "script" | "system";
@@ -99,7 +100,9 @@ export type CadOp =
   | SketchDeleteEntityOp
   | FeatureExtrudeOp
   | FeatureUpdateExtrudeOp
-  | FeatureDeleteOp;
+  | FeatureDeleteOp
+  | ReferenceNameGeneratedOp
+  | ReferenceDeleteNameOp;
 
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
@@ -287,6 +290,18 @@ export interface FeatureUpdateExtrudeOp {
   readonly side?: FeatureExtrudeSide;
 }
 
+export interface ReferenceNameGeneratedOp {
+  readonly op: "reference.nameGenerated";
+  readonly name: NamedReferenceName;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+}
+
+export interface ReferenceDeleteNameOp {
+  readonly op: "reference.deleteName";
+  readonly name: NamedReferenceName;
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
@@ -319,6 +334,13 @@ export interface CadBodyRef {
   readonly featureId: FeatureId;
 }
 
+export interface CadNamedReferenceRef {
+  readonly name: NamedReferenceName;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+}
+
 export interface DocumentSemanticDiff {
   readonly units?: {
     readonly before: DocumentUnits;
@@ -346,6 +368,11 @@ export interface FeatureSemanticDiff {
   readonly bodiesDeleted?: readonly CadBodyRef[];
 }
 
+export interface ReferenceSemanticDiff {
+  readonly namedCreated?: readonly CadNamedReferenceRef[];
+  readonly namedDeleted?: readonly CadNamedReferenceRef[];
+}
+
 export interface SemanticDiff {
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
@@ -353,6 +380,7 @@ export interface SemanticDiff {
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
   readonly features?: FeatureSemanticDiff;
+  readonly references?: ReferenceSemanticDiff;
 }
 
 export type CadTransactionStatus = "committed" | "undone";
@@ -388,6 +416,9 @@ export type CadBatchValidationErrorCode =
   | "GENERATED_REFERENCE_NOT_FOUND"
   | "GENERATED_REFERENCE_KIND_MISMATCH"
   | "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
+  | "INVALID_REFERENCE_NAME"
+  | "NAMED_REFERENCE_ALREADY_EXISTS"
+  | "NAMED_REFERENCE_NOT_FOUND"
   | "FEATURE_ALREADY_EXISTS"
   | "FEATURE_NOT_FOUND"
   | "FEATURE_NOT_DELETABLE"
@@ -409,6 +440,7 @@ export interface CadBatchValidationError {
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -482,6 +514,8 @@ export type CadQueryKind =
   | "body.resolveGeneratedReference"
   | "body.measurements"
   | "body.generatedReferenceMeasurements"
+  | "reference.listNamed"
+  | "reference.resolveNamed"
   | "transaction.history";
 
 export type CadQuery =
@@ -497,6 +531,8 @@ export type CadQuery =
   | BodyResolveGeneratedReferenceQuery
   | BodyMeasurementsQuery
   | BodyGeneratedReferenceMeasurementsQuery
+  | ReferenceListNamedQuery
+  | ReferenceResolveNamedQuery
   | TransactionHistoryQuery;
 
 export interface ProjectSummaryQuery {
@@ -554,6 +590,15 @@ export interface BodyGeneratedReferenceMeasurementsQuery {
   readonly query: "body.generatedReferenceMeasurements";
   readonly bodyId: BodyId;
   readonly stableId: string;
+}
+
+export interface ReferenceListNamedQuery {
+  readonly query: "reference.listNamed";
+}
+
+export interface ReferenceResolveNamedQuery {
+  readonly query: "reference.resolveNamed";
+  readonly name: NamedReferenceName;
 }
 
 export interface TransactionHistoryQuery {
@@ -1052,6 +1097,21 @@ export type CadGeneratedReference =
   | CadGeneratedEdgeReference
   | CadGeneratedVertexReference;
 
+export interface NamedGeneratedReferenceSnapshot {
+  readonly name: NamedReferenceName;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+}
+
+export type NamedGeneratedReferenceStatus = "resolved" | "stale";
+
+export interface NamedGeneratedReferenceEntry extends NamedGeneratedReferenceSnapshot {
+  readonly status: NamedGeneratedReferenceStatus;
+  readonly reference?: CadGeneratedReference;
+  readonly error?: CadQueryError;
+}
+
 export interface CadObjectModelSource {
   readonly objectId: ObjectId;
   readonly partId: PartId;
@@ -1069,6 +1129,9 @@ export interface CadOperationSummary {
   readonly sketchEntityKind?: SketchEntityKind;
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly generatedReferenceKind?: CadGeneratedEntityKind;
 }
 
 export interface CadSemanticDiffSummary {
@@ -1081,6 +1144,7 @@ export interface CadSemanticDiffSummary {
   readonly document?: DocumentSemanticDiff;
   readonly sketches?: SketchSemanticDiff;
   readonly features?: FeatureSemanticDiff;
+  readonly references?: ReferenceSemanticDiff;
 }
 
 export interface CadTransactionHistoryEntry {
@@ -1100,6 +1164,7 @@ export type CadQueryErrorCode =
   | "UNSUPPORTED_BODY_REFERENCES"
   | "UNSUPPORTED_BODY_MEASUREMENTS"
   | "GENERATED_REFERENCE_NOT_FOUND"
+  | "NAMED_REFERENCE_NOT_FOUND"
   | "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS";
 
 export interface CadQueryError {
@@ -1109,6 +1174,7 @@ export interface CadQueryError {
   readonly sketchId?: SketchId;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
 }
 
 export type CadQueryResponse =
@@ -1124,6 +1190,8 @@ export type CadQueryResponse =
   | BodyResolveGeneratedReferenceQueryResponse
   | BodyMeasurementsQueryResponse
   | BodyGeneratedReferenceMeasurementsQueryResponse
+  | ReferenceListNamedQueryResponse
+  | ReferenceResolveNamedQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -1247,6 +1315,23 @@ export interface BodyGeneratedReferenceMeasurementsQueryResponse {
   readonly kind: CadGeneratedEntityKind;
   readonly reference: CadGeneratedReference;
   readonly measurements: GeneratedReferenceMeasurement;
+}
+
+export interface ReferenceListNamedQueryResponse {
+  readonly ok: true;
+  readonly query: "reference.listNamed";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly referenceCount: number;
+  readonly references: readonly NamedGeneratedReferenceEntry[];
+}
+
+export interface ReferenceResolveNamedQueryResponse {
+  readonly ok: true;
+  readonly query: "reference.resolveNamed";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly name: NamedReferenceName;
+  readonly target: NamedGeneratedReferenceSnapshot;
+  readonly reference: CadGeneratedReference;
 }
 
 export interface CadQueryErrorResponse {

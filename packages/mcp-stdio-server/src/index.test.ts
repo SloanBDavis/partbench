@@ -30,6 +30,8 @@ describe("mcp stdio server", () => {
           { name: "cad.body_generated_references" },
           { name: "cad.resolve_generated_reference" },
           { name: "cad.generated_reference_measurements" },
+          { name: "cad.named_references" },
+          { name: "cad.resolve_named_reference" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]

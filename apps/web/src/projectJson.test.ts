@@ -1,5 +1,6 @@
 import {
   CadEngine,
+  CURRENT_CAD_PROJECT_FORMAT_VERSION,
   exportCadProject,
   exportCadProjectJson
 } from "@web-cad/cad-core";
@@ -27,7 +28,7 @@ describe("projectJson helpers", () => {
     });
 
     expect(summarizeCadProject(exportCadProject(engine))).toEqual({
-      schemaVersion: "web-cad.project.v4",
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       units: "cm",
       objectCount: 1,
       objectKindSummary: "box 1",
@@ -57,7 +58,7 @@ describe("projectJson helpers", () => {
     }
 
     expect(preview.summary).toEqual({
-      schemaVersion: "web-cad.project.v4",
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       units: "mm",
       objectCount: 0,
       objectKindSummary: "none",
@@ -67,10 +68,10 @@ describe("projectJson helpers", () => {
       redoTransactionCount: 1
     });
     expect(formatProjectJsonSummary(preview.summary)).toBe(
-      "web-cad.project.v4, 0 object(s), 0 transaction(s), 1 redo"
+      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 0 transaction(s), 1 redo`
     );
     expect(getProjectImportStatusText(preview)).toBe(
-      "Ready to import web-cad.project.v4, 0 object(s), 0 transaction(s), 1 redo. Import replaces the current document and restores available undo/redo history."
+      `Ready to import ${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 0 transaction(s), 1 redo. Import replaces the current document and restores available undo/redo history.`
     );
   });
 
@@ -103,7 +104,7 @@ describe("projectJson helpers", () => {
 
     expect(summary.objectKindSummary).toBe("box 1, cone 1, torus 1");
     expect(formatProjectJsonSummary(summary)).toBe(
-      "web-cad.project.v4, 3 object(s) (box 1, cone 1, torus 1), 1 transaction(s)"
+      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 3 object(s) (box 1, cone 1, torus 1), 1 transaction(s)`
     );
   });
 
@@ -126,7 +127,7 @@ describe("projectJson helpers", () => {
     expect(summary.sketchCount).toBe(1);
     expect(summary.sketchEntityCount).toBe(1);
     expect(formatProjectJsonSummary(summary)).toBe(
-      "web-cad.project.v4, 0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 transaction(s)"
+      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 transaction(s)`
     );
   });
 

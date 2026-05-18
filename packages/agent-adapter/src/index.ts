@@ -25,6 +25,8 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   GeneratedReferenceMeasurement,
+  NamedGeneratedReferenceEntry,
+  NamedGeneratedReferenceSnapshot,
   SketchSnapshot,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
@@ -147,6 +149,8 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyGeneratedReferencesQueryResponse
   | CadOpsAgentBodyResolveGeneratedReferenceQueryResponse
   | CadOpsAgentBodyGeneratedReferenceMeasurementsQueryResponse
+  | CadOpsAgentReferenceListNamedQueryResponse
+  | CadOpsAgentReferenceResolveNamedQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
@@ -288,6 +292,27 @@ export interface CadOpsAgentBodyGeneratedReferenceMeasurementsQueryResponse {
   readonly measurements: GeneratedReferenceMeasurement;
 }
 
+export interface CadOpsAgentReferenceListNamedQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "reference.listNamed";
+  readonly referenceCount: number;
+  readonly references: readonly NamedGeneratedReferenceEntry[];
+}
+
+export interface CadOpsAgentReferenceResolveNamedQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "reference.resolveNamed";
+  readonly name: string;
+  readonly target: NamedGeneratedReferenceSnapshot;
+  readonly reference: CadGeneratedReference;
+}
+
 export interface CadOpsAgentTransactionHistoryQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -316,6 +341,8 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.generatedReferences"
     | "body.resolveGeneratedReference"
     | "body.generatedReferenceMeasurements"
+    | "reference.listNamed"
+    | "reference.resolveNamed"
     | "transaction.history";
   readonly error: CadQueryError;
 }
@@ -758,6 +785,31 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "reference.listNamed") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      referenceCount: response.referenceCount,
+      references: response.references
+    };
+  }
+
+  if (response.query === "reference.resolveNamed") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      name: response.name,
+      target: response.target,
+      reference: response.reference
+    };
+  }
+
   return {
     ok: true,
     requestId: request.requestId,
@@ -880,6 +932,10 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "body.generatedReferenceMeasurements" &&
         typeof value.query.bodyId === "string" &&
         typeof value.query.stableId === "string") ||
+      (value.query.query === "reference.listNamed" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "reference.resolveNamed" &&
+        typeof value.query.name === "string") ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
   );
@@ -1074,6 +1130,18 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
+  }
+
+  if (value.op === "reference.nameGenerated") {
+    return (
+      typeof value.name === "string" &&
+      typeof value.bodyId === "string" &&
+      typeof value.stableId === "string"
+    );
+  }
+
+  if (value.op === "reference.deleteName") {
+    return typeof value.name === "string";
   }
 
   return false;

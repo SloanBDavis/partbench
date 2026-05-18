@@ -1559,6 +1559,78 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes named generated references through adapter batch and queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_named_refs",
+      entityId: "rect_named_refs",
+      featureId: "feat_named_refs",
+      bodyId: "body_named_refs"
+    });
+
+    const commit = adapter.execute({
+      requestId: "agent_name_ref",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "Mounting face",
+            bodyId: "body_named_refs",
+            stableId: "generated:face:body_named_refs:startCap"
+          }
+        ]
+      }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit"
+    });
+
+    expect(
+      executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+        requestId: "agent_named_refs",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "reference.listNamed" }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "reference.listNamed",
+      referenceCount: 1,
+      references: [
+        {
+          name: "Mounting face",
+          status: "resolved",
+          reference: { kind: "face", role: "startCap" }
+        }
+      ]
+    });
+
+    expect(
+      executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+        requestId: "agent_resolve_named_ref",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "reference.resolveNamed", name: "Mounting face" }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "reference.resolveNamed",
+      name: "Mounting face",
+      reference: { kind: "face", role: "startCap" }
+    });
+  });
+
   it("returns generated reference measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

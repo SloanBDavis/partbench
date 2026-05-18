@@ -2,11 +2,12 @@
 
 This document describes the current source-of-truth project format and the
 direction for the future native package format. The V1 format is complete as a
-JSON source-of-truth interchange format. V2 added source-of-truth sketches, and
-V3 added the first authored sketch-driven feature data. V4 added source-of-truth
+JSON source-of-truth interchange format. V2 added source-of-truth sketches, V3
+added the first authored sketch-driven feature data, V4 added source-of-truth
 sketch attachment metadata for sketches created on generated planar face
-references. Current exports use `web-cad.project.v4` while the loader still
-accepts V1, V2, and V3 projects through explicit migration. Future storage work
+references, and V5 added source-of-truth user/agent names for generated
+references. Current exports use `web-cad.project.v5` while the loader still
+accepts V1, V2, V3, and V4 projects through explicit migration. Future storage work
 should use this document to evolve toward a native package without prematurely
 introducing OPFS, File System Access API, STEP import/export, real topology, or
 a final `.wcad` implementation.
@@ -20,6 +21,7 @@ schemaVersion: web-cad.project.v1
 schemaVersion: web-cad.project.v2
 schemaVersion: web-cad.project.v3
 schemaVersion: web-cad.project.v4
+schemaVersion: web-cad.project.v5
 ```
 
 It is produced by:
@@ -46,13 +48,14 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV4 {
-  schemaVersion: "web-cad.project.v4"
+ProjectV5 {
+  schemaVersion: "web-cad.project.v5"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
     sketches: Sketch[]
     features: ExtrudeFeature[]
+    namedReferences: NamedGeneratedReference[]
     nextObjectNumber: number
     nextSketchNumber: number
     nextSketchEntityNumber: number
@@ -63,6 +66,24 @@ ProjectV4 {
   redoStack: Transaction[]
 }
 ```
+
+Named generated references are source-of-truth user/agent metadata:
+
+```ts
+NamedGeneratedReference {
+  name: string
+  bodyId: string
+  stableId: string
+  kind: "body" | "face" | "edge" | "vertex"
+}
+```
+
+They store a human-readable name and the generated reference target that
+resolved at creation time. They do not persist B-rep topology, OCCT IDs, mesh
+indices, or renderer state. If the source feature is later deleted or changed
+so the target can no longer resolve, the named reference remains loadable but
+queries report it as stale until it is deleted or the target becomes resolvable
+again through undo/redo or later edits.
 
 Transactions may include optional actor metadata:
 
@@ -281,7 +302,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## V2/V3/V4 Storage Decision
+## V2/V3/V4/V5 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -298,8 +319,13 @@ The first reference-consuming command, `sketch.createOnFace`, adds authored
 sketch attachment metadata. The attachment records the body ID, generated face
 stable ID, source feature/sketch/entity IDs, and face role that the sketch was
 created on. That data is not derivable from a plain plane sketch, so it
-introduced `web-cad.project.v4`. Current exports therefore use
-`web-cad.project.v4`.
+introduced `web-cad.project.v4`.
+
+Named generated references are also authored source-of-truth metadata. They are
+not derivable from generated labels because labels are deterministic system
+metadata, while named references are chosen by a user, script, or agent. This
+introduced `web-cad.project.v5`. Current exports therefore use
+`web-cad.project.v5`.
 
 The loader accepts:
 
@@ -308,6 +334,7 @@ web-cad.project.v1
 web-cad.project.v2
 web-cad.project.v3
 web-cad.project.v4
+web-cad.project.v5
 ```
 
 V1 projects migrate into the current in-memory model with unchanged units,
@@ -319,6 +346,9 @@ features and fresh feature/body counters.
 
 V3 projects migrate with sketches and authored features intact, but without
 attached sketch metadata because that source data did not exist in V3.
+
+V4 projects migrate with sketches, authored features, and attached sketch
+metadata intact, plus an empty named-reference table.
 
 The derived mapping is deterministic:
 
@@ -386,7 +416,7 @@ Primitive summaries include the derived default part ID and derived body ID for
 each object. Extrude summaries include the source sketch/entity, profile kind,
 depth, side, and authored body ID.
 
-The `project.structure` query returns the current V2/V3/V4 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -429,6 +459,18 @@ faces can advertise sketch-plane attachment, while circular side faces cannot.
 This is derived planning metadata only and does not implement those future
 operations.
 
+`reference.nameGenerated` lets a human, script, or agent assign a stable
+source-of-truth name to an existing generated body, face, edge, or vertex
+reference. The command validates that the generated reference resolves at the
+time the name is created and stores the target body ID, generated stable ID, and
+resolved kind. `reference.deleteName` removes the source-of-truth name without
+mutating the generated reference or underlying geometry. `reference.listNamed`
+lists named references and marks each target as resolved or stale.
+`reference.resolveNamed` resolves one named reference to the current generated
+reference object or returns a structured stale/missing-target error. Named
+references are authored metadata; generated references and generated labels
+remain derived from feature source data.
+
 The companion `body.resolveGeneratedReference` query accepts a body ID and one
 generated stable ID, then resolves it to the current body, face, edge, or vertex
 reference object for that authored sketch-extrude body. This is still a
@@ -460,7 +502,7 @@ persist generated topology or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v4`
+that cannot be faithfully represented by the current `web-cad.project.v5`
 document shape.
 
 Likely triggers:
@@ -471,11 +513,11 @@ Likely triggers:
   sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
   required rebuild inputs;
-- persisted durable topological references beyond the current sketch attachment
-  metadata, such as named faces, edges, vertices, bodies, sketches, and
-  features;
+- persisted durable topological references beyond the current semantic named
+  generated references, such as exact topology-backed faces, edges, vertices,
+  sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level parameters/materials/named views that are not represented by V4;
+- project-level parameters/materials/named views that are not represented by V5;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -483,7 +525,7 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v5
+schemaVersion: web-cad.project.v6
 ```
 
 That format should include a migration from older accepted versions, not silent
@@ -580,13 +622,17 @@ web-cad.project.v1
 web-cad.project.v2
 web-cad.project.v3
 web-cad.project.v4
+web-cad.project.v5
 ```
 
-V1 is migrated to V4 on parse/load by adding empty sketches, empty authored
-features, and fresh sketch/feature/body counters. V2 is migrated to V4 by
-preserving sketches and adding empty authored features plus fresh feature/body
-counters. V3 is migrated to V4 by preserving sketches/features and treating all
-sketches as unattached. Unsupported versions fail with a structured
+V1 is migrated to V5 on parse/load by adding empty sketches, empty authored
+features, empty named references, and fresh sketch/feature/body counters. V2 is
+migrated to V5 by preserving sketches and adding empty authored features, empty
+named references, and fresh feature/body counters. V3 is migrated to V5 by
+preserving sketches/features, treating all sketches as unattached, and adding
+empty named references. V4 is migrated to V5 by preserving sketches, authored
+features, and attached sketch metadata, plus an empty named-reference table.
+Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 
 When another format is needed, add an explicit migration path rather than
@@ -640,7 +686,7 @@ Likely rebuildable cache files are:
 - geometry diagnostics
 
 The current JSON format is the source-of-truth interchange format for the active
-V2/V3/V4 foundation. It is not the final storage backend and does not imply OPFS
+V2/V3/V4/V5 foundation. It is not the final storage backend and does not imply OPFS
 or File System Access API behavior.
 
 JSON export/import remains the deliberate debuggable interchange path and

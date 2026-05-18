@@ -21,6 +21,8 @@ export type CadMcpToolName =
   | "cad.body_generated_references"
   | "cad.resolve_generated_reference"
   | "cad.generated_reference_measurements"
+  | "cad.named_references"
+  | "cad.resolve_named_reference"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -156,6 +158,14 @@ export class CadMcpServer {
 
     if (request.name === "cad.generated_reference_measurements") {
       return this.#callGeneratedReferenceMeasurements(request);
+    }
+
+    if (request.name === "cad.named_references") {
+      return this.#callNamedReferences(request);
+    }
+
+    if (request.name === "cad.resolve_named_reference") {
+      return this.#callResolveNamedReference(request);
     }
 
     if (request.name === "cad.transaction_history") {
@@ -487,6 +497,55 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callNamedReferences(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.named_references does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "reference.listNamed" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callResolveNamedReference(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isResolveNamedReferenceToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.resolve_named_reference expects arguments shaped as { name: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "reference.resolveNamed",
+            name: request.arguments.name
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -712,6 +771,32 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.named_references",
+    description:
+      "Lists source-of-truth user/agent names assigned to generated references.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.resolve_named_reference",
+    description:
+      "Resolves one source-of-truth named generated reference by name.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name"],
+      properties: {
+        name: {
+          type: "string",
+          description: "Named generated reference to resolve."
+        }
+      }
+    }
+  },
+  {
     name: "cad.transaction_history",
     description:
       "Returns read-only transaction history with actor, operation, and semantic diff summaries.",
@@ -825,6 +910,12 @@ function isResolveGeneratedReferenceToolArguments(
     typeof value.stableId === "string" &&
     value.stableId !== ""
   );
+}
+
+function isResolveNamedReferenceToolArguments(
+  value: unknown
+): value is { readonly name: string } {
+  return isRecord(value) && typeof value.name === "string" && value.name !== "";
 }
 
 function isEmptyObjectOrUndefined(value: unknown): boolean {

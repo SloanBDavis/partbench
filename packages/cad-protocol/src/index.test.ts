@@ -14,6 +14,7 @@ import type {
   CadOp,
   CadQueryRequest,
   CadQueryResponse,
+  NamedGeneratedReferenceEntry,
   SketchSnapshot
 } from "./index";
 import { protocolPackage } from "./index";
@@ -177,6 +178,16 @@ describe("cad-protocol", () => {
       {
         op: "feature.delete",
         id: "feat_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "Mounting face",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:startCap"
+      },
+      {
+        op: "reference.deleteName",
+        name: "Mounting face"
       }
     ];
 
@@ -207,7 +218,9 @@ describe("cad-protocol", () => {
       "sketch.delete",
       "feature.extrude",
       "feature.updateExtrude",
-      "feature.delete"
+      "feature.delete",
+      "reference.nameGenerated",
+      "reference.deleteName"
     ]);
     expect(ops[0]).toMatchObject({
       op: "document.updateUnits",
@@ -316,6 +329,14 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "reference.listNamed" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Mounting face" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -332,6 +353,8 @@ describe("cad-protocol", () => {
       "body.generatedReferences",
       "body.resolveGeneratedReference",
       "body.measurements",
+      "reference.listNamed",
+      "reference.resolveNamed",
       "transaction.history"
     ]);
   });
@@ -500,6 +523,35 @@ describe("cad-protocol", () => {
         stableId: "generated:vertex:body_1:start:uMin:vMin",
         label: "Start uMin/vMin corner"
       }
+    });
+
+    const namedReference: NamedGeneratedReferenceEntry = {
+      name: "Mounting face",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:side:uMin",
+      kind: "face",
+      status: "resolved",
+      reference: face
+    };
+
+    const namedReferencesResponse: CadQueryResponse = {
+      ok: true,
+      query: "reference.listNamed",
+      cadOpsVersion: "cadops.v1",
+      referenceCount: 1,
+      references: [namedReference]
+    };
+
+    expect(namedReferencesResponse).toMatchObject({
+      ok: true,
+      query: "reference.listNamed",
+      references: [
+        {
+          name: "Mounting face",
+          status: "resolved",
+          reference: { label: "uMin side face" }
+        }
+      ]
     });
   });
 

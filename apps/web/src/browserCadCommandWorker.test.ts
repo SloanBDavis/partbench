@@ -115,6 +115,7 @@ describe("BrowserCadCommandWorker", () => {
         objects: [],
         sketches: [],
         features: [],
+        namedReferences: [],
         nextObjectNumber: 1,
         nextSketchNumber: 1,
         nextSketchEntityNumber: 1,

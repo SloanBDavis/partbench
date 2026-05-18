@@ -9,6 +9,7 @@ import type {
   CadTransactionStatus,
   DocumentUnitUpdateMode,
   FeatureSemanticDiff,
+  ReferenceSemanticDiff,
   ObjectId,
   SemanticDiff,
   SketchEntityId,
@@ -75,6 +76,8 @@ function createOperationSummaries(
   let createdSketchEntityIndex = 0;
   let createdFeatureIndex = 0;
   let deletedFeatureIndex = 0;
+  let createdNamedReferenceIndex = 0;
+  let deletedNamedReferenceIndex = 0;
 
   return transaction.ops.map((op) => {
     const createdRef =
@@ -99,6 +102,18 @@ function createOperationSummaries(
     const deletedFeatureRef =
       op.op === "feature.delete"
         ? transaction.diff.features?.deleted?.[deletedFeatureIndex++]
+        : undefined;
+    const createdNamedReferenceRef =
+      op.op === "reference.nameGenerated"
+        ? transaction.diff.references?.namedCreated?.[
+            createdNamedReferenceIndex++
+          ]
+        : undefined;
+    const deletedNamedReferenceRef =
+      op.op === "reference.deleteName"
+        ? transaction.diff.references?.namedDeleted?.[
+            deletedNamedReferenceIndex++
+          ]
         : undefined;
 
     switch (op.op) {
@@ -357,6 +372,36 @@ function createOperationSummaries(
           sketchEntityId: modifiedFeatureRef?.entityId
         });
       }
+
+      case "reference.nameGenerated": {
+        const kindLabel = createdNamedReferenceRef?.kind
+          ? `${createdNamedReferenceRef.kind} `
+          : "";
+
+        return createReferenceOperationSummary({
+          op: op.op,
+          label: `Name generated ${kindLabel}reference ${op.name}`,
+          referenceName: op.name,
+          bodyId: op.bodyId,
+          stableId: op.stableId,
+          generatedReferenceKind: createdNamedReferenceRef?.kind
+        });
+      }
+
+      case "reference.deleteName": {
+        const targetLabel = deletedNamedReferenceRef?.stableId
+          ? ` for ${deletedNamedReferenceRef.stableId}`
+          : "";
+
+        return createReferenceOperationSummary({
+          op: op.op,
+          label: `Delete named reference ${op.name}${targetLabel}`,
+          referenceName: op.name,
+          bodyId: deletedNamedReferenceRef?.bodyId,
+          stableId: deletedNamedReferenceRef?.stableId,
+          generatedReferenceKind: deletedNamedReferenceRef?.kind
+        });
+      }
     }
   });
 }
@@ -422,6 +467,21 @@ function createFeatureOperationSummary(
   };
 }
 
+function createReferenceOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.referenceName ? { referenceName: summary.referenceName } : {}),
+    ...(summary.bodyId ? { bodyId: summary.bodyId } : {}),
+    ...(summary.stableId ? { stableId: summary.stableId } : {}),
+    ...(summary.generatedReferenceKind
+      ? { generatedReferenceKind: summary.generatedReferenceKind }
+      : {})
+  };
+}
+
 function findObjectKind(
   refs: readonly CadObjectRef[],
   id: ObjectId
@@ -475,6 +535,11 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
           features: cloneFeatureSemanticDiff(diff.features)
         }
       : {}),
+    ...(diff.references
+      ? {
+          references: cloneReferenceSemanticDiff(diff.references)
+        }
+      : {}),
     ...(diff.document
       ? {
           document: {
@@ -495,6 +560,15 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
           }
         }
       : {})
+  };
+}
+
+function cloneReferenceSemanticDiff(
+  diff: ReferenceSemanticDiff
+): ReferenceSemanticDiff {
+  return {
+    ...(diff.namedCreated ? { namedCreated: [...diff.namedCreated] } : {}),
+    ...(diff.namedDeleted ? { namedDeleted: [...diff.namedDeleted] } : {})
   };
 }
 
