@@ -5,6 +5,7 @@ import type {
   GeneratedReferenceMeasurement
 } from "@web-cad/cad-protocol";
 import {
+  buildSketchOnFaceForm,
   canCreateSketchOnFace,
   createGeneratedReferenceMeasurementRows,
   createSketchOnFaceDefaultName,
@@ -12,6 +13,8 @@ import {
   formatGeneratedReferenceKind,
   formatGeneratedReferenceMeasurementError,
   formatGeneratedReferenceOperationLabels,
+  formatGeneratedReferencesError,
+  formatSketchOnFaceAvailability,
   formatSketchAttachmentLabel,
   getGeneratedReferenceItems,
   getSketchAttachableFaces
@@ -50,9 +53,41 @@ describe("generated reference UI helpers", () => {
   it("formats generated face labels and eligibility text", () => {
     expect(createSketchOnFaceDefaultName(startCap)).toBe("Start cap sketch");
     expect(formatGeneratedFaceEligibility(startCap)).toBe("Sketch plane");
+    expect(formatSketchOnFaceAvailability(startCap)).toBe(
+      "Planar face available for attached sketches"
+    );
     expect(formatGeneratedFaceEligibility(circularSide)).toBe(
       "Circular side faces are not planar and are not eligible for sketch-plane attachment."
     );
+    expect(formatSketchOnFaceAvailability(circularSide)).toBe(
+      "Circular side faces are not planar and are not eligible for sketch-plane attachment."
+    );
+  });
+
+  it("builds sketch create-on-face forms only for eligible faces", () => {
+    expect(
+      buildSketchOnFaceForm("body_1", startCap, {
+        id: " sketch_face_1 ",
+        name: " End cap sketch "
+      })
+    ).toEqual({
+      id: " sketch_face_1 ",
+      name: "End cap sketch",
+      bodyId: "body_1",
+      faceStableId: "generated:face:body_1:startCap"
+    });
+    expect(
+      buildSketchOnFaceForm("body_1", circularSide, {
+        id: "",
+        name: "Circular sketch"
+      })
+    ).toBeUndefined();
+    expect(
+      buildSketchOnFaceForm("body_1", startCap, {
+        id: "",
+        name: "   "
+      })
+    ).toBeUndefined();
   });
 
   it("formats attached sketch metadata", () => {
@@ -173,6 +208,26 @@ describe("generated reference UI helpers", () => {
       })
     ).toBe(
       "Reference measurements unavailable for body:box_1. Authored rectangle and circle extrude bodies are supported."
+    );
+  });
+
+  it("formats generated reference query errors", () => {
+    expect(
+      formatGeneratedReferencesError({
+        code: "BODY_NOT_FOUND",
+        message: "Body not found.",
+        bodyId: "body_missing"
+      })
+    ).toBe("Generated references unavailable: body_missing was not found.");
+    expect(
+      formatGeneratedReferencesError({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: "Reference not found.",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:stale"
+      })
+    ).toBe(
+      "Generated reference generated:face:body_1:stale is missing or stale."
     );
   });
 });

@@ -217,6 +217,25 @@ describe("cad command builders", () => {
       depth: 6,
       side: "negative"
     });
+
+    expect(
+      buildFeatureExtrudeOp("sketch_face_1", "face_circle_1", {
+        id: "",
+        bodyId: "",
+        name: " Boss ",
+        depth: 2.5,
+        side: "positive"
+      })
+    ).toEqual({
+      op: "feature.extrude",
+      id: undefined,
+      bodyId: undefined,
+      name: "Boss",
+      sketchId: "sketch_face_1",
+      entityId: "face_circle_1",
+      depth: 2.5,
+      side: "positive"
+    });
   });
 
   it("builds dimension update commands", () => {

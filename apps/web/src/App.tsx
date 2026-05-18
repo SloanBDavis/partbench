@@ -100,6 +100,7 @@ import {
 } from "./sketchDisplayFrames";
 import {
   formatGeneratedReferenceMeasurementError,
+  formatGeneratedReferencesError,
   type GeneratedReferenceMeasurementDisplay
 } from "./generatedReferenceUi";
 import {
@@ -254,7 +255,7 @@ function readBodyGeneratedReferences(bodyId: string | undefined): {
   }
 
   return !response.ok && response.query === "body.generatedReferences"
-    ? { error: response.error.message }
+    ? { error: formatGeneratedReferencesError(response.error) }
     : {};
 }
 
@@ -372,6 +373,7 @@ export function App() {
   const [commandPending, setCommandPending] = useState(false);
   const [activeUtilityPanel, setActiveUtilityPanel] =
     useState<UtilityPanelId>("sketches");
+  const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [unitUpdateMode, setUnitUpdateMode] =
     useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
@@ -780,7 +782,16 @@ export function App() {
   }
 
   async function createSketchOnFace(form: SketchCreateOnFaceForm) {
-    await commitOps([buildCreateSketchOnFaceOp(form)], () => selectedId);
+    await commitOps([buildCreateSketchOnFaceOp(form)], (response) => {
+      const sketchId = response.createdSketchIds?.[0];
+
+      if (sketchId) {
+        setActiveUtilityPanel("sketches");
+        setFocusedSketchId(sketchId);
+      }
+
+      return selectedId;
+    });
   }
 
   async function renameSketch(sketchId: string, name: string) {
@@ -1266,9 +1277,11 @@ export function App() {
                 hidden={activeUtilityPanel !== "sketches"}
               >
                 <SketchPanel
+                  key={focusedSketchId ?? "sketch-panel"}
                   disabled={commandPending}
                   sketches={sketches}
                   displayStatuses={sketchDisplayState.statuses}
+                  focusedSketchId={focusedSketchId}
                   features={projectStructure.features}
                   onCreateSketch={(form) => void createSketch(form)}
                   onRenameSketch={(sketchId, name) =>

@@ -17,11 +17,16 @@ import {
 } from "../sketchEntityUsage";
 import { formatSketchAttachmentLabel } from "../generatedReferenceUi";
 import type { SketchDisplayStatus } from "../sketchDisplayFrames";
+import {
+  chooseSketchPanelSelection,
+  getDefaultSketchEntityKind
+} from "../sketchPanelUi";
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
+  readonly focusedSketchId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
   readonly onRenameSketch: (sketchId: string, name: string) => void;
@@ -72,6 +77,7 @@ export function SketchPanel({
   disabled,
   sketches,
   displayStatuses,
+  focusedSketchId,
   features,
   onCreateSketch,
   onRenameSketch,
@@ -88,12 +94,16 @@ export function SketchPanel({
     useState<SketchCreateForm>(defaultCreateForm);
   const [entityForm, setEntityForm] =
     useState<SketchEntityForm>(defaultEntityForm);
-  const [entityKind, setEntityKind] = useState<SketchEntityKind>("point");
-  const effectiveSelectedSketchId =
-    selectedSketchId &&
-    sketches.some((sketch) => sketch.id === selectedSketchId)
-      ? selectedSketchId
-      : sketches[0]?.id;
+  const [entityKind, setEntityKind] = useState<SketchEntityKind>(() =>
+    getDefaultSketchEntityKind(
+      sketches.find((sketch) => sketch.id === focusedSketchId) ?? sketches[0]
+    )
+  );
+  const effectiveSelectedSketchId = chooseSketchPanelSelection(
+    sketches,
+    selectedSketchId,
+    focusedSketchId
+  );
   const selectedSketch = useMemo(
     () => sketches.find((sketch) => sketch.id === effectiveSelectedSketchId),
     [effectiveSelectedSketchId, sketches]
@@ -215,7 +225,10 @@ export function SketchPanel({
                     sketch.id === effectiveSelectedSketchId ? "selected" : ""
                   }
                   disabled={disabled}
-                  onClick={() => setSelectedSketchId(sketch.id)}
+                  onClick={() => {
+                    setSelectedSketchId(sketch.id);
+                    setEntityKind(getDefaultSketchEntityKind(sketch));
+                  }}
                 >
                   <span>{sketch.name}</span>
                   <small>

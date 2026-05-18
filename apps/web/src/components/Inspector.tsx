@@ -34,12 +34,16 @@ import {
   type TransformCommandForm
 } from "../cadCommands";
 import {
+  buildSketchOnFaceForm,
   canCreateSketchOnFace,
   createGeneratedReferenceMeasurementRows,
   createSketchOnFaceDefaultName,
+  formatGeneratedFaceEligibility,
   formatGeneratedReferenceKind,
   formatGeneratedReferenceOperationLabels,
+  formatSketchOnFaceAvailability,
   getGeneratedReferenceItems,
+  getSketchAttachableFaces,
   type GeneratedReferenceMeasurementDisplay
 } from "../generatedReferenceUi";
 import {
@@ -449,29 +453,35 @@ function GeneratedReferencesPanel({
   readonly units: DocumentUnits;
 }) {
   const faces = references?.faces ?? [];
-  const firstEligibleFace = faces.find(canCreateSketchOnFace);
+  const sketchAttachableFaces = getSketchAttachableFaces(faces);
+  const firstEligibleFace = sketchAttachableFaces[0];
   const referenceItems = references
     ? getGeneratedReferenceItems(references)
     : [];
+  const [selectedFaceStableId, setSelectedFaceStableId] = useState<
+    string | undefined
+  >(firstEligibleFace?.stableId);
+  const selectedFace =
+    sketchAttachableFaces.find(
+      (face) => face.stableId === selectedFaceStableId
+    ) ?? firstEligibleFace;
   const [draft, setDraft] = useState({
     id: "",
     name: firstEligibleFace
       ? createSketchOnFaceDefaultName(firstEligibleFace)
       : "Face sketch"
   });
+  const sketchOnFaceForm = selectedFace
+    ? buildSketchOnFaceForm(bodyId, selectedFace, draft)
+    : undefined;
   const hasValidName = draft.name.trim().length > 0;
 
-  function createOnFace(face: CadGeneratedFaceReference) {
-    if (!canCreateSketchOnFace(face) || !hasValidName) {
+  function createOnSelectedFace() {
+    if (!sketchOnFaceForm) {
       return;
     }
 
-    onCreateSketchOnFace({
-      id: draft.id,
-      name: draft.name,
-      bodyId,
-      faceStableId: face.stableId
-    });
+    onCreateSketchOnFace(sketchOnFaceForm);
   }
 
   return (
@@ -485,36 +495,85 @@ function GeneratedReferencesPanel({
         <p className="empty-state compact">No generated references</p>
       ) : (
         <>
-          {faces.length > 0 && (
-            <div className="field-grid two">
+          {faces.length > 0 && sketchAttachableFaces.length === 0 && (
+            <p className="project-message">
+              No planar generated faces are available for attached sketches.
+            </p>
+          )}
+          {sketchAttachableFaces.length > 0 && (
+            <section className="sketch-attachment">
+              <div className="command-card-heading">
+                <h3>Create sketch on face</h3>
+                <span>{sketchAttachableFaces.length}</span>
+              </div>
               <label>
-                Sketch name
-                <input
-                  type="text"
-                  value={draft.name}
+                Face
+                <select
+                  value={selectedFace?.stableId ?? ""}
                   disabled={disabled}
-                  onChange={(event) =>
-                    setDraft({ ...draft, name: event.currentTarget.value })
-                  }
-                />
+                  onChange={(event) => {
+                    const nextFace = sketchAttachableFaces.find(
+                      (face) => face.stableId === event.currentTarget.value
+                    );
+
+                    setSelectedFaceStableId(event.currentTarget.value);
+                    if (nextFace) {
+                      setDraft({
+                        ...draft,
+                        name: createSketchOnFaceDefaultName(nextFace)
+                      });
+                    }
+                  }}
+                >
+                  {sketchAttachableFaces.map((face) => (
+                    <option key={face.stableId} value={face.stableId}>
+                      {face.label}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label>
-                Optional sketch ID
-                <input
-                  type="text"
-                  value={draft.id}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDraft({ ...draft, id: event.currentTarget.value })
-                  }
-                />
-              </label>
-            </div>
+              {selectedFace && (
+                <small>{formatSketchOnFaceAvailability(selectedFace)}</small>
+              )}
+              <div className="field-grid two">
+                <label>
+                  Sketch name
+                  <input
+                    type="text"
+                    value={draft.name}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      setDraft({ ...draft, name: event.currentTarget.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Optional sketch ID
+                  <input
+                    type="text"
+                    value={draft.id}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      setDraft({ ...draft, id: event.currentTarget.value })
+                    }
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={disabled || !sketchOnFaceForm}
+                onClick={createOnSelectedFace}
+              >
+                Create attached sketch
+              </button>
+              {!hasValidName && (
+                <p className="error-text">Sketch name is required.</p>
+              )}
+            </section>
           )}
           <ul className="reference-list">
             {referenceItems.map((reference) => {
               const face = asGeneratedFaceReference(reference);
-              const eligible = face ? canCreateSketchOnFace(face) : false;
               const measurementState = measurementByStableId?.get(
                 reference.stableId
               );
@@ -535,32 +594,22 @@ function GeneratedReferencesPanel({
                     reference.eligibilityNotes.length > 0 && (
                       <small>{reference.eligibilityNotes.join(" ")}</small>
                     )}
+                  {face && (
+                    <small>
+                      Sketch attachment:{" "}
+                      {canCreateSketchOnFace(face)
+                        ? formatGeneratedFaceEligibility(face)
+                        : "Unavailable"}
+                    </small>
+                  )}
                   <GeneratedReferenceMeasurementRows
                     state={measurementState}
                     units={units}
                   />
-                  {eligible ? (
-                    <button
-                      type="button"
-                      disabled={disabled || !hasValidName}
-                      onClick={() => {
-                        if (face) {
-                          createOnFace(face);
-                        }
-                      }}
-                    >
-                      Create sketch on face
-                    </button>
-                  ) : (
-                    face && <small>Sketch creation unavailable</small>
-                  )}
                 </li>
               );
             })}
           </ul>
-          {faces.length > 0 && !hasValidName && (
-            <p className="error-text">Sketch name is required.</p>
-          )}
         </>
       )}
     </section>

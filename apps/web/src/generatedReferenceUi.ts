@@ -8,6 +8,7 @@ import type {
   GeneratedReferenceMeasurement,
   SketchAttachmentSnapshot
 } from "@web-cad/cad-protocol";
+import type { SketchCreateOnFaceForm } from "./cadCommands";
 import {
   formatArea,
   formatBounds,
@@ -25,6 +26,11 @@ export interface GeneratedReferenceMeasurementDisplay {
 export interface GeneratedReferenceMeasurementRow {
   readonly label: string;
   readonly value: string;
+}
+
+export interface SketchOnFaceDraft {
+  readonly id: string;
+  readonly name: string;
 }
 
 export function canCreateSketchOnFace(
@@ -45,6 +51,25 @@ export function createSketchOnFaceDefaultName(
   return `${face.label} sketch`;
 }
 
+export function buildSketchOnFaceForm(
+  bodyId: string,
+  face: CadGeneratedFaceReference,
+  draft: SketchOnFaceDraft
+): SketchCreateOnFaceForm | undefined {
+  const name = draft.name.trim();
+
+  if (!canCreateSketchOnFace(face) || name.length === 0) {
+    return undefined;
+  }
+
+  return {
+    id: draft.id,
+    name,
+    bodyId,
+    faceStableId: face.stableId
+  };
+}
+
 export function formatGeneratedFaceEligibility(
   face: CadGeneratedFaceReference
 ): string {
@@ -53,6 +78,30 @@ export function formatGeneratedFaceEligibility(
   }
 
   return face.eligibilityNotes?.[0] ?? "Not eligible for sketch attachment";
+}
+
+export function formatSketchOnFaceAvailability(
+  face: CadGeneratedFaceReference
+): string {
+  return canCreateSketchOnFace(face)
+    ? "Planar face available for attached sketches"
+    : formatGeneratedFaceEligibility(face);
+}
+
+export function formatGeneratedReferencesError(error: CadQueryError): string {
+  if (error.code === "BODY_NOT_FOUND") {
+    return `Generated references unavailable: ${error.bodyId ?? "selected body"} was not found.`;
+  }
+
+  if (error.code === "UNSUPPORTED_BODY_REFERENCES") {
+    return `Generated references unavailable for ${error.bodyId ?? "selected body"}. Authored rectangle and circle extrude bodies are supported.`;
+  }
+
+  if (error.code === "GENERATED_REFERENCE_NOT_FOUND") {
+    return `Generated reference ${error.stableId ?? "selected reference"} is missing or stale.`;
+  }
+
+  return error.message;
 }
 
 export function formatSketchAttachmentLabel(
