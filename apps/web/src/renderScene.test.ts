@@ -6,7 +6,7 @@ import type {
   SphereObject,
   TorusObject
 } from "@web-cad/cad-core";
-import type { RenderTriangleMesh } from "@web-cad/renderer";
+import type { RenderEdgeSegment, RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type {
   DerivedExtrudeGeometrySource,
@@ -309,6 +309,70 @@ describe("renderScene", () => {
     ]);
   });
 
+  it("uses an aligned mesh fallback for attached extrude sources", () => {
+    const source: DerivedExtrudeGeometrySource = {
+      ...createExtrudeSource("body_attached", "positive"),
+      placementFrame: {
+        origin: [10, 20, 30],
+        uAxis: [0, 1, 0],
+        vAxis: [0, 0, 1]
+      }
+    };
+    const scene = createRenderSceneInputs([], new Map(), [source]);
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes).toHaveLength(1);
+    expect(scene.meshes[0]).toMatchObject({
+      id: "body_attached",
+      kind: "mesh",
+      indices: [],
+      source: "extrude-fallback"
+    });
+
+    const xValues = collectEdgeCoordinate(scene.meshes[0].edgeSegments, 0);
+    const yValues = collectEdgeCoordinate(scene.meshes[0].edgeSegments, 1);
+    const zValues = collectEdgeCoordinate(scene.meshes[0].edgeSegments, 2);
+
+    expect(Math.min(...xValues)).toBe(10);
+    expect(Math.max(...xValues)).toBe(14);
+    expect(Math.min(...yValues)).toBe(19);
+    expect(Math.max(...yValues)).toBe(21);
+    expect(Math.min(...zValues)).toBe(28.5);
+    expect(Math.max(...zValues)).toBe(31.5);
+  });
+
+  it("keeps attached extrude fallback side behavior in the attached frame normal", () => {
+    const sources: DerivedExtrudeGeometrySource[] = [
+      createAttachedExtrudeSource("body_positive", "positive"),
+      createAttachedExtrudeSource("body_negative", "negative"),
+      createAttachedExtrudeSource("body_symmetric", "symmetric")
+    ];
+    const scene = createRenderSceneInputs([], new Map(), sources);
+    const xRanges = scene.meshes.map((mesh) => {
+      const xValues = collectEdgeCoordinate(mesh.edgeSegments, 0);
+
+      return [Math.min(...xValues), Math.max(...xValues)];
+    });
+
+    expect(xRanges).toEqual([
+      [10, 14],
+      [6, 10],
+      [8, 12]
+    ]);
+  });
+
+  it("does not render attached extrudes when attachment placement is unresolved", () => {
+    const source: DerivedExtrudeGeometrySource = {
+      ...createExtrudeSource("body_attached", "positive"),
+      placementError:
+        "Attachment unresolved for Attached sketch; derived extrude mesh is unavailable."
+    };
+    const scene = createRenderSceneInputs([], new Map(), [source]);
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes).toEqual([]);
+  });
+
   it("adds sketch display edges so authored sketches are visible in the viewport", () => {
     const sketch: SketchSnapshot = {
       id: "sketch_1",
@@ -508,4 +572,28 @@ function createExtrudeSource(
     depth: 4,
     side
   };
+}
+
+function createAttachedExtrudeSource(
+  id: string,
+  side: DerivedExtrudeGeometrySource["side"]
+): DerivedExtrudeGeometrySource {
+  return {
+    ...createExtrudeSource(id, side),
+    placementFrame: {
+      origin: [10, 20, 30],
+      uAxis: [0, 1, 0],
+      vAxis: [0, 0, 1]
+    }
+  };
+}
+
+function collectEdgeCoordinate(
+  edges: readonly RenderEdgeSegment[] | undefined,
+  coordinateIndex: 0 | 1 | 2
+): readonly number[] {
+  return (edges ?? []).flatMap((edge) => [
+    edge.start[coordinateIndex],
+    edge.end[coordinateIndex]
+  ]);
 }

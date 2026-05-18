@@ -16,6 +16,7 @@ import type {
 } from "./derivedGeometry";
 import {
   createDefaultSketchDisplayFrame,
+  mapSketchPlanePointToDisplayFrame,
   mapSketchPointToDisplayFrame,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
@@ -47,10 +48,19 @@ export function createRenderSceneInputs(
   }
 
   for (const source of extrudeSources) {
+    if (source.placementError) {
+      continue;
+    }
+
     const derivedGeometry = derivedGeometryBySourceId.get(source.id);
 
     if (derivedGeometry?.status === "ready") {
       meshes.push(addExtrudeMeshDisplayEdges(derivedGeometry.mesh, source));
+      continue;
+    }
+
+    if (source.placementFrame) {
+      meshes.push(toExtrudeFallbackMesh(source));
       continue;
     }
 
@@ -300,22 +310,57 @@ function createExtrudeDisplayEdges(
   source: DerivedExtrudeGeometrySource
 ): readonly RenderEdgeSegment[] {
   const primitive = toExtrudeFallbackPrimitive(source);
+  let edges: readonly RenderEdgeSegment[];
 
   if (primitive.kind === "box") {
-    return transformEdges(
+    edges = transformEdges(
       createBoxDisplayEdges(primitive.dimensions),
       primitive.transform
     );
-  }
-
-  if (primitive.kind === "cylinder") {
-    return transformEdges(
+  } else if (primitive.kind === "cylinder") {
+    edges = transformEdges(
       createCylinderDisplayEdges(primitive.dimensions),
       primitive.transform
     );
+  } else {
+    edges = transformEdges([], primitive.transform);
   }
 
-  return transformEdges([], primitive.transform);
+  if (!source.placementFrame) {
+    return edges;
+  }
+
+  const { placementFrame } = source;
+
+  return edges.map((edge) => ({
+    start: mapSketchPlanePointToDisplayFrame(
+      placementFrame,
+      source.sketchPlane,
+      edge.start
+    ),
+    end: mapSketchPlanePointToDisplayFrame(
+      placementFrame,
+      source.sketchPlane,
+      edge.end
+    )
+  }));
+}
+
+function toExtrudeFallbackMesh(
+  source: DerivedExtrudeGeometrySource
+): RenderTriangleMesh {
+  const edgeSegments = createExtrudeDisplayEdges(source);
+
+  return {
+    id: source.id,
+    kind: "mesh",
+    vertices: edgeSegments.flatMap((edge) => [edge.start, edge.end]),
+    indices: [],
+    transform: createIdentityTransform(),
+    edgeSegments,
+    source: "extrude-fallback",
+    label: `${source.id} fallback`
+  };
 }
 
 function createSketchEntityDisplayEdges(

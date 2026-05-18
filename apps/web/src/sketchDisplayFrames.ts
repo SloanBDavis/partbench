@@ -126,9 +126,40 @@ export function mapSketchPointToDisplayFrame(
   ]);
 }
 
+export function mapSketchPlanePointToDisplayFrame(
+  frame: SketchDisplayFrame,
+  plane: SketchPlane,
+  point: Vec3
+): Vec3 {
+  const [u, v, normalDistance] = getSketchPlaneCoordinates(plane, point);
+  const normal = createSketchDisplayFrameNormal(frame);
+
+  return cleanVec3([
+    frame.origin[0] +
+      frame.uAxis[0] * u +
+      frame.vAxis[0] * v +
+      normal[0] * normalDistance,
+    frame.origin[1] +
+      frame.uAxis[1] * u +
+      frame.vAxis[1] * v +
+      normal[1] * normalDistance,
+    frame.origin[2] +
+      frame.uAxis[2] * u +
+      frame.vAxis[2] * v +
+      normal[2] * normalDistance
+  ]);
+}
+
+export function createSketchDisplayFrameNormal(
+  frame: SketchDisplayFrame
+): Vec3 {
+  return normalizeVec3(crossVec3(frame.uAxis, frame.vAxis));
+}
+
 export function createAttachedSketchDisplayFrame(
   sketch: SketchSnapshot,
-  face: CadGeneratedFaceReference
+  face: CadGeneratedFaceReference,
+  offset = ATTACHED_SKETCH_FACE_OFFSET
 ): SketchDisplayFrame | undefined {
   if (face.geometricSignature.surfaceType !== "plane") {
     return undefined;
@@ -169,8 +200,22 @@ export function createAttachedSketchDisplayFrame(
 
   return {
     ...createDefaultSketchDisplayFrame(sketch.plane),
-    origin: addVec3(frameOrigin, scaleVec3(normal, ATTACHED_SKETCH_FACE_OFFSET))
+    origin: addVec3(frameOrigin, scaleVec3(normal, offset))
   };
+}
+
+function getSketchPlaneCoordinates(
+  plane: SketchPlane,
+  point: Vec3
+): readonly [number, number, number] {
+  switch (plane) {
+    case "XY":
+      return [point[0], point[1], point[2]];
+    case "XZ":
+      return [point[0], point[2], point[1]];
+    case "YZ":
+      return [point[1], point[2], point[0]];
+  }
 }
 
 function mapProfileCenterToSourceFrame(
@@ -277,6 +322,28 @@ function createSketchPlaneNormal(plane: SketchPlane): Vec3 {
     case "YZ":
       return [1, 0, 0];
   }
+}
+
+function crossVec3(left: Vec3, right: Vec3): Vec3 {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0]
+  ];
+}
+
+function normalizeVec3(vector: Vec3): Vec3 {
+  const length = Math.hypot(vector[0], vector[1], vector[2]);
+
+  if (length === 0) {
+    return [0, 0, 0];
+  }
+
+  return cleanVec3([
+    vector[0] / length,
+    vector[1] / length,
+    vector[2] / length
+  ]);
 }
 
 function addVec3(left: Vec3, right: Vec3): Vec3 {

@@ -3,32 +3,51 @@ import type {
   CadFeatureSummary,
   SketchSnapshot
 } from "@web-cad/cad-core";
+import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import {
   createPrimitiveDerivedGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource
 } from "./derivedGeometry";
+import {
+  createAttachedSketchDisplayFrame,
+  createGeneratedFaceReferenceKey,
+  type SketchDisplayFrame
+} from "./sketchDisplayFrames";
 
 export function createDerivedGeometrySourcesFromDocument(
   document: CadDocument,
-  features: readonly CadFeatureSummary[]
+  features: readonly CadFeatureSummary[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map()
 ): readonly DerivedGeometrySource[] {
   const sketches = [...document.sketches.values()].map((sketch) => ({
     id: sketch.id,
     name: sketch.name,
     plane: sketch.plane,
+    attachment: sketch.attachment,
     entities: [...sketch.entities.values()]
   }));
 
   return [
     ...[...document.objects.values()].map(createPrimitiveDerivedGeometrySource),
-    ...createExtrudeDerivedGeometrySources(features, sketches)
+    ...createExtrudeDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey
+    )
   ];
 }
 
 export function createExtrudeDerivedGeometrySources(
   features: readonly CadFeatureSummary[],
-  sketches: readonly SketchSnapshot[]
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map()
 ): readonly DerivedExtrudeGeometrySource[] {
   return features
     .filter(
@@ -47,6 +66,11 @@ export function createExtrudeDerivedGeometrySources(
         return [];
       }
 
+      const placement = createAttachedSketchExtrudePlacement(
+        sketch,
+        generatedFacesByKey
+      );
+
       if (entity.kind === "rectangle") {
         const source: DerivedExtrudeGeometrySource = {
           id: feature.bodyId,
@@ -59,7 +83,8 @@ export function createExtrudeDerivedGeometrySources(
             height: entity.height
           },
           depth: feature.depth,
-          side: feature.side
+          side: feature.side,
+          ...placement
         };
 
         return [source];
@@ -76,7 +101,8 @@ export function createExtrudeDerivedGeometrySources(
             radius: entity.radius
           },
           depth: feature.depth,
-          side: feature.side
+          side: feature.side,
+          ...placement
         };
 
         return [source];
@@ -84,4 +110,38 @@ export function createExtrudeDerivedGeometrySources(
 
       return [];
     });
+}
+
+function createAttachedSketchExtrudePlacement(
+  sketch: SketchSnapshot,
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): {
+  readonly placementFrame?: SketchDisplayFrame;
+  readonly placementError?: string;
+} {
+  const attachment = sketch.attachment;
+
+  if (!attachment) {
+    return {};
+  }
+
+  const face = generatedFacesByKey.get(
+    createGeneratedFaceReferenceKey(attachment.bodyId, attachment.faceStableId)
+  );
+
+  if (!face) {
+    return {
+      placementError: `Attachment unresolved for ${sketch.name}; derived extrude mesh is unavailable.`
+    };
+  }
+
+  const frame = createAttachedSketchDisplayFrame(sketch, face, 0);
+
+  if (!frame) {
+    return {
+      placementError: `Attachment face cannot place ${sketch.name}; derived extrude mesh is unavailable.`
+    };
+  }
+
+  return { placementFrame: frame };
 }

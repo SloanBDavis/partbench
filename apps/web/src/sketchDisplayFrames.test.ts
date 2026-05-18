@@ -10,8 +10,10 @@ import type {
 } from "@web-cad/cad-protocol";
 import {
   ATTACHED_SKETCH_FACE_OFFSET,
+  createAttachedSketchDisplayFrame,
   createGeneratedFaceReferenceKey,
   createSketchDisplayState,
+  mapSketchPlanePointToDisplayFrame,
   mapSketchPointToDisplayFrame
 } from "./sketchDisplayFrames";
 
@@ -41,6 +43,30 @@ describe("sketch display frames", () => {
       1,
       2,
       3 + ATTACHED_SKETCH_FACE_OFFSET
+    ]);
+  });
+
+  it("can derive an exact attached frame without display offset for geometry placement", () => {
+    const sketch = createAttachedSketch("sketch_face_1", "endCap", "XY");
+    const face = createRectangleFace({
+      role: "endCap",
+      normal: [0, 0, 1],
+      depth: 3
+    });
+    const frame = createAttachedSketchDisplayFrame(sketch, face, 0);
+
+    expect(frame?.origin).toEqual([0, 0, 3]);
+  });
+
+  it("maps local sketch-plane 3D points into an attached display frame", () => {
+    const frame = {
+      origin: [10, 20, 30] satisfies Vec3,
+      uAxis: [0, 1, 0] satisfies Vec3,
+      vAxis: [0, 0, 1] satisfies Vec3
+    };
+
+    expect(mapSketchPlanePointToDisplayFrame(frame, "XY", [1, 2, 3])).toEqual([
+      13, 21, 32
     ]);
   });
 

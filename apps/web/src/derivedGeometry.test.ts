@@ -7,6 +7,7 @@ import {
   type SphereObject,
   type TorusObject
 } from "@web-cad/cad-core";
+import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
@@ -14,6 +15,7 @@ import {
   createEmptyDerivedGeometrySnapshot,
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
+  transformExtrudeMeshToPlacement,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
@@ -29,6 +31,7 @@ import type {
   DerivedGeometryTorusInput
 } from "./derivedGeometryRuntime";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
+import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
 
 type RuntimeInput =
   | DerivedGeometryBoxInput
@@ -379,6 +382,245 @@ describe("derivedGeometry", () => {
       height: 5
     });
     expect(createDerivedGeometryCacheKey(redoneSource)).toBe(editedKey);
+  });
+
+  it("derives attached extrude placement from generated face references", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_attached_1",
+      name: "Attached profile",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+    engine.apply({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_attached_1",
+      id: "rect_attached_1",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    });
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_attached_1",
+      bodyId: "body_attached_1",
+      sketchId: "sketch_attached_1",
+      entityId: "rect_attached_1",
+      depth: 2
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_rect_1"])
+    );
+    const attachedSource = sources.find(
+      (source): source is DerivedExtrudeGeometrySource =>
+        source.kind === "extrude" && source.id === "body_attached_1"
+    );
+
+    expect(attachedSource?.placementError).toBeUndefined();
+    expect(attachedSource?.placementFrame?.origin).toEqual([0, 0, 3]);
+  });
+
+  it("derives attached circle extrude placement from generated face references", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_attached_1",
+      name: "Attached circle profile",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+    engine.apply({
+      op: "sketch.addCircle",
+      sketchId: "sketch_attached_1",
+      id: "circle_attached_1",
+      center: [0.5, 0.25],
+      radius: 0.75
+    });
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_attached_1",
+      bodyId: "body_attached_1",
+      sketchId: "sketch_attached_1",
+      entityId: "circle_attached_1",
+      depth: 2
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_rect_1"])
+    );
+    const attachedSource = sources.find(
+      (source): source is DerivedExtrudeGeometrySource =>
+        source.kind === "extrude" && source.id === "body_attached_1"
+    );
+
+    expect(attachedSource?.profile).toMatchObject({
+      kind: "circle",
+      center: [0.5, 0.25],
+      radius: 0.75
+    });
+    expect(attachedSource?.placementFrame?.origin).toEqual([0, 0, 3]);
+  });
+
+  it("marks attached extrudes unsupported when their generated face is stale", () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const source: DerivedExtrudeGeometrySource = {
+      ...createExtrudeSource("body_attached_1"),
+      placementError:
+        "Attachment unresolved for Attached profile; derived extrude mesh is unavailable."
+    };
+
+    service.reconcile([source]);
+
+    expect(runtime.inputs).toEqual([]);
+    expect(snapshots.at(-1)?.entries).toEqual([
+      {
+        objectId: "body_attached_1",
+        objectKind: "extrude",
+        sourceId: "body_attached_1",
+        sourceKind: "extrude",
+        cacheKey: createDerivedGeometryCacheKey(source),
+        status: "unsupported",
+        message:
+          "Attachment unresolved for Attached profile; derived extrude mesh is unavailable."
+      }
+    ]);
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Attachment unresolved for Attached profile; derived extrude mesh is unavailable."
+    );
+  });
+
+  it("includes attached placement frames in extrude cache keys", () => {
+    const source = createExtrudeSource("body_attached_1");
+    const firstFrame = createPlacementFrame([0, 0, 3]);
+    const secondFrame = createPlacementFrame([10, 0, 3]);
+
+    expect(
+      createDerivedGeometryCacheKey({
+        ...source,
+        placementFrame: firstFrame
+      })
+    ).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
+        placementFrame: secondFrame
+      })
+    );
+  });
+
+  it("transforms attached extrude mesh results into the placement frame", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const source: DerivedExtrudeGeometrySource = {
+      ...createExtrudeSource("body_attached_1"),
+      placementFrame: {
+        origin: [10, 20, 30],
+        uAxis: [0, 1, 0],
+        vAxis: [0, 0, 1]
+      }
+    };
+    const runtime = createRuntime(async (input) =>
+      createResult(
+        input.id,
+        createMeshWithVertices(input.id, [
+          [0, 0, 0],
+          [1, 0, 0],
+          [0, 1, 1]
+        ])
+      )
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([source]);
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.meshes[0]?.vertices).toEqual([
+      [10, 20, 30],
+      [10, 21, 30],
+      [11, 20, 31]
+    ]);
+  });
+
+  it("ignores stale worker results after attached placement invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    let requestCount = 0;
+    const runtime = createRuntime(() => {
+      requestCount += 1;
+
+      return requestCount === 1 ? first.promise : second.promise;
+    });
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource: DerivedExtrudeGeometrySource = {
+      ...createExtrudeSource("body_attached_1"),
+      placementFrame: createPlacementFrame([0, 0, 3])
+    };
+    const movedSource: DerivedExtrudeGeometrySource = {
+      ...initialSource,
+      placementFrame: createPlacementFrame([0, 0, 6])
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([movedSource]);
+
+    first.resolve(createResult("body_attached_1", createMesh("stale_mesh")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_attached_1",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(movedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(
+      createResult("body_attached_1", createMesh("body_attached_1"))
+    );
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_attached_1",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(movedSource)
+    });
+  });
+
+  it("transforms standalone extrude meshes with placement frames", () => {
+    const mesh = createMeshWithVertices("body_attached_1", [
+      [0, 0, 0],
+      [0, 1, 2]
+    ]);
+
+    expect(
+      transformExtrudeMeshToPlacement(mesh, "XY", {
+        origin: [5, 6, 7],
+        uAxis: [0, 1, 0],
+        vAxis: [0, 0, 1]
+      }).vertices
+    ).toEqual([
+      [5, 6, 7],
+      [7, 6, 8]
+    ]);
   });
 
   it("invalidates deleted extrude bodies and removes derived meshes", async () => {
@@ -949,6 +1191,53 @@ function createMesh(id: string): RenderTriangleMesh {
       scale: [1, 1, 1]
     }
   };
+}
+
+function createMeshWithVertices(
+  id: string,
+  vertices: RenderTriangleMesh["vertices"]
+): RenderTriangleMesh {
+  return {
+    ...createMesh(id),
+    vertices
+  };
+}
+
+function createPlacementFrame(
+  origin: readonly [number, number, number]
+): DerivedExtrudeGeometrySource["placementFrame"] {
+  return {
+    origin: [origin[0], origin[1], origin[2]],
+    uAxis: [1, 0, 0],
+    vAxis: [0, 1, 0]
+  };
+}
+
+function getGeneratedFacesByKey(
+  engine: CadEngine,
+  bodyIds: readonly string[]
+): ReadonlyMap<string, CadGeneratedFaceReference> {
+  const faces = new Map<string, CadGeneratedFaceReference>();
+
+  for (const bodyId of bodyIds) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId }
+    });
+
+    if (!response.ok || response.query !== "body.generatedReferences") {
+      throw new Error("Expected body.generatedReferences query response.");
+    }
+
+    for (const face of response.faces) {
+      faces.set(
+        createGeneratedFaceReferenceKey(face.bodyId, face.stableId),
+        face
+      );
+    }
+  }
+
+  return faces;
 }
 
 function createDeferred<T>(): {

@@ -392,6 +392,10 @@ Implemented:
   the current generated face reference. If the reference is stale or unresolved,
   the viewport falls back to the sketch's saved MVP plane and the sketch panel
   shows an unresolved attachment status.
+- Existing `feature.extrude` derives rectangle/circle body display geometry
+  from attached sketches by resolving the current generated planar face frame.
+  Stale or unresolved attachments produce an explicit derived-geometry fallback
+  status instead of rendering the extrude on the wrong base plane.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
 - Missing/stale generated reference IDs fail with a structured

@@ -14,6 +14,10 @@ import {
   type DerivedGeometryResult,
   type DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
+import {
+  mapSketchPlanePointToDisplayFrame,
+  type SketchDisplayFrame
+} from "./sketchDisplayFrames";
 
 export type DerivedGeometryStatusKind =
   | "unsupported"
@@ -51,6 +55,8 @@ export interface DerivedExtrudeGeometrySource {
       };
   readonly depth: number;
   readonly side: "positive" | "negative" | "symmetric";
+  readonly placementFrame?: SketchDisplayFrame;
+  readonly placementError?: string;
 }
 
 export type DerivedGeometryEntry =
@@ -161,8 +167,7 @@ export class DerivedGeometryService {
           sourceKind: source.kind,
           cacheKey,
           status: "unsupported",
-          message:
-            "Derived OCCT mesh generation supports scene primitives and sketch extrudes."
+          message: getUnsupportedSourceMessage(source)
         };
 
         if (!isSameEntry(existing, unsupported)) {
@@ -343,9 +348,9 @@ function toDerivedGeometrySource(
 function isSupportedDerivedGeometrySource(
   source: DerivedGeometrySource
 ): boolean {
-  return (
-    source.kind === "extrude" || isSupportedDerivedGeometryObject(source.object)
-  );
+  return source.kind === "extrude"
+    ? !source.placementError
+    : isSupportedDerivedGeometryObject(source.object);
 }
 
 function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
@@ -363,18 +368,24 @@ function deriveSourceMesh(
   source: SupportedDerivedGeometrySource
 ): Promise<DerivedGeometryResult> {
   if (source.kind === "extrude") {
-    return runtime.tessellateExtrude({
-      id: source.id,
-      sketchPlane: source.sketchPlane,
-      profile: source.profile,
-      depth: source.depth,
-      side: source.side,
-      transform: {
-        translation: [0, 0, 0],
-        rotation: [0, 0, 0],
-        scale: [1, 1, 1]
-      }
-    });
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime
+      .tessellateExtrude({
+        id: source.id,
+        sketchPlane: source.sketchPlane,
+        profile: source.profile,
+        depth: source.depth,
+        side: source.side,
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      })
+      .then((result) => applyExtrudePlacement(source, result));
   }
 
   const object = source.object as SupportedDerivedGeometryObject;
@@ -413,6 +424,57 @@ function deriveSourceMesh(
   }
 }
 
+export function applyExtrudePlacement(
+  source: DerivedExtrudeGeometrySource,
+  result: DerivedGeometryResult
+): DerivedGeometryResult {
+  if (!source.placementFrame) {
+    return result;
+  }
+
+  return {
+    ...result,
+    mesh: transformExtrudeMeshToPlacement(
+      result.mesh,
+      source.sketchPlane,
+      source.placementFrame
+    )
+  };
+}
+
+export function transformExtrudeMeshToPlacement(
+  mesh: RenderTriangleMesh,
+  sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"],
+  placementFrame: SketchDisplayFrame
+): RenderTriangleMesh {
+  return {
+    ...mesh,
+    vertices: mesh.vertices.map((vertex) =>
+      mapSketchPlanePointToDisplayFrame(placementFrame, sketchPlane, vertex)
+    ),
+    edgeSegments: mesh.edgeSegments?.map((edge) => ({
+      start: mapSketchPlanePointToDisplayFrame(
+        placementFrame,
+        sketchPlane,
+        edge.start
+      ),
+      end: mapSketchPlanePointToDisplayFrame(
+        placementFrame,
+        sketchPlane,
+        edge.end
+      )
+    }))
+  };
+}
+
+function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
+  if (source.kind === "extrude" && source.placementError) {
+    return source.placementError;
+  }
+
+  return "Derived OCCT mesh generation supports scene primitives and sketch extrudes.";
+}
+
 export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {
   return {
     entries: [],
@@ -435,7 +497,9 @@ export function createDerivedGeometryCacheKey(
           sketchPlane: source.sketchPlane,
           profile: source.profile,
           depth: source.depth,
-          side: source.side
+          side: source.side,
+          placementFrame: source.placementFrame,
+          placementError: source.placementError
         }
       : {
           kind: source.kind,
@@ -461,6 +525,10 @@ export function getDerivedGeometryStatusLabel(
     case "error":
       return "Primitive fallback";
     case "unsupported":
+      if (entry.sourceKind === "extrude") {
+        return entry.message;
+      }
+
       return "Primitive fallback";
   }
 }

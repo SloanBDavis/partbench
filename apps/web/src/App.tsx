@@ -346,16 +346,21 @@ export function App() {
   );
   const extrudeSources = useMemo(
     () =>
-      createExtrudeDerivedGeometrySources(projectStructure.features, sketches),
-    [projectStructure.features, sketches]
+      createExtrudeDerivedGeometrySources(
+        projectStructure.features,
+        sketches,
+        generatedFacesByKey
+      ),
+    [generatedFacesByKey, projectStructure.features, sketches]
   );
   const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
     () =>
       createDerivedGeometrySourcesFromDocument(
         document,
-        projectStructure.features
+        projectStructure.features,
+        generatedFacesByKey
       ),
-    [document, projectStructure.features]
+    [document, generatedFacesByKey, projectStructure.features]
   );
   const selectedObject = selectedId
     ? document.objects.get(selectedId)
@@ -457,7 +462,7 @@ export function App() {
   function syncDocument(nextSelectedId = selectedId) {
     const nextDocument = engine.getDocument();
     const nextStructure = readProjectStructure();
-    reconcileDerivedGeometry(nextDocument, nextStructure.features);
+    reconcileDerivedGeometry(nextDocument, nextStructure);
     setDocument(nextDocument);
     setSelectedId(
       nextSelectedId &&
@@ -474,14 +479,25 @@ export function App() {
 
   function reconcileDerivedGeometry(
     nextDocument: CadDocument,
-    nextFeatures = readProjectStructure().features
+    nextStructure = readProjectStructure()
   ) {
     if (!derivedGeometryEnabled) {
       return;
     }
 
+    const nextSketchExtrudeBodies = nextStructure.bodies.filter(
+      (body) => body.source.type === "sketchExtrudeFeature"
+    );
+    const nextGeneratedFacesByKey = readGeneratedFaceReferencesByKey(
+      nextSketchExtrudeBodies
+    );
+
     getDerivedGeometryService().reconcile(
-      createDerivedGeometrySourcesFromDocument(nextDocument, nextFeatures)
+      createDerivedGeometrySourcesFromDocument(
+        nextDocument,
+        nextStructure.features,
+        nextGeneratedFacesByKey
+      )
     );
   }
 
