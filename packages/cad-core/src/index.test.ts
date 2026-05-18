@@ -2391,7 +2391,8 @@ describe("cad-core", () => {
         }
       },
       faceCount: 6,
-      edgeCount: 12
+      edgeCount: 12,
+      vertexCount: 8
     });
 
     if (!references.ok || references.query !== "body.generatedReferences") {
@@ -2453,6 +2454,36 @@ describe("cad-core", () => {
         axisRole: "sketchPlaneNormal"
       }
     });
+    expect(references.vertices.map((vertex) => vertex.role)).toEqual([
+      "start:uMin:vMin",
+      "start:uMin:vMax",
+      "start:uMax:vMin",
+      "start:uMax:vMax",
+      "end:uMin:vMin",
+      "end:uMin:vMax",
+      "end:uMax:vMin",
+      "end:uMax:vMax"
+    ]);
+    expect(references.vertices[0]).toMatchObject({
+      stableId: "generated:vertex:body_rect_1:start:uMin:vMin",
+      adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+      adjacentEdgeRoles: ["start:uMin", "start:vMin", "longitudinal:uMin:vMin"],
+      geometricSignature: {
+        axis: [0, 0, 1],
+        axisRole: "sketchPlaneNormal",
+        profilePoint: [-2, -1],
+        positionRole: "start"
+      }
+    });
+    expect(references.vertices[7]).toMatchObject({
+      stableId: "generated:vertex:body_rect_1:end:uMax:vMax",
+      adjacentFaceRoles: ["endCap", "side:uMax", "side:vMax"],
+      adjacentEdgeRoles: ["end:uMax", "end:vMax", "longitudinal:uMax:vMax"],
+      geometricSignature: {
+        profilePoint: [2, 1],
+        positionRole: "end"
+      }
+    });
   });
 
   it("returns semantic generated references for circle extrude bodies", () => {
@@ -2483,6 +2514,7 @@ describe("cad-core", () => {
       },
       faceCount: 3,
       edgeCount: 2,
+      vertexCount: 0,
       faces: [
         { role: "startCap" },
         { role: "endCap" },
@@ -2509,7 +2541,8 @@ describe("cad-core", () => {
           role: "end:circular",
           adjacentFaceRoles: ["endCap", "side:circular"]
         }
-      ]
+      ],
+      vertices: []
     });
   });
 
@@ -2580,6 +2613,26 @@ describe("cad-core", () => {
       updated.edges.find((edge) => edge.role === "longitudinal:uMin:vMin")
         ?.geometricSignature.depth
     ).toBe(8);
+    expect(
+      updated.vertices.find((vertex) => vertex.role === "start:uMin:vMin")
+        ?.geometricSignature.profilePoint
+    ).toEqual([-2, -1]);
+    expect(
+      updated.vertices.find((vertex) => vertex.role === "end:uMax:vMax")
+        ?.geometricSignature.profilePoint
+    ).toEqual([4, 3]);
+    expect(
+      updated.vertices.find((vertex) => vertex.role === "end:uMax:vMax")
+        ?.geometricSignature.depth
+    ).toBe(8);
+    expect(
+      updated.vertices.find((vertex) => vertex.role === "end:uMax:vMax")
+        ?.geometricSignature.extrudeSide
+    ).toBe("negative");
+    expect(
+      updated.vertices.find((vertex) => vertex.role === "end:uMax:vMax")
+        ?.geometricSignature.positionRole
+    ).toBe("end");
 
     engine.undo();
     const afterUndoProfile = engine.executeQuery({
@@ -2650,25 +2703,37 @@ describe("cad-core", () => {
   });
 
   it("round-trips generated references and updates them across feature delete undo redo", () => {
-    const engine = createCircleExtrudeEngine();
+    const engine = createRectangleExtrudeEngine();
     const restored = importCadProjectJson(exportCadProjectJson(engine));
 
-    expect(
-      restored.executeQuery({
-        version: "cadops.v1",
-        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
-      })
-    ).toMatchObject({
-      ok: true,
-      faceCount: 3,
-      edgeCount: 2
+    const restoredReferences = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
     });
 
-    restored.apply({ op: "feature.delete", id: "feat_circle_1" });
+    expect(restoredReferences).toMatchObject({
+      ok: true,
+      faceCount: 6,
+      edgeCount: 12,
+      vertexCount: 8
+    });
+    if (
+      !restoredReferences.ok ||
+      restoredReferences.query !== "body.generatedReferences"
+    ) {
+      throw new Error("Expected generated references response.");
+    }
+    expect(restoredReferences.vertices[0]).toMatchObject({
+      role: "start:uMin:vMin",
+      adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+      adjacentEdgeRoles: ["start:uMin", "start:vMin", "longitudinal:uMin:vMin"]
+    });
+
+    restored.apply({ op: "feature.delete", id: "feat_rect_1" });
     expect(
       restored.executeQuery({
         version: "cadops.v1",
-        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+        query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
       })
     ).toMatchObject({
       ok: false,
@@ -2679,18 +2744,19 @@ describe("cad-core", () => {
     expect(
       restored.executeQuery({
         version: "cadops.v1",
-        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+        query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
       })
     ).toMatchObject({
       ok: true,
-      body: { sourceFeatureId: "feat_circle_1" }
+      body: { sourceFeatureId: "feat_rect_1" },
+      vertexCount: 8
     });
 
     restored.redo();
     expect(
       restored.executeQuery({
         version: "cadops.v1",
-        query: { query: "body.generatedReferences", bodyId: "body_circle_1" }
+        query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
       })
     ).toMatchObject({
       ok: false,

@@ -77,9 +77,11 @@ export type {
   CadGeneratedEdgeReference,
   CadGeneratedExtrudeEdgeRole,
   CadGeneratedExtrudeFaceRole,
+  CadGeneratedExtrudeVertexRole,
   CadGeneratedFaceReference,
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
+  CadGeneratedVertexReference,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
@@ -743,7 +745,9 @@ export class CadEngine {
           faceCount: references.faces.length,
           faces: references.faces,
           edgeCount: references.edges.length,
-          edges: references.edges
+          edges: references.edges,
+          vertexCount: references.vertices.length,
+          vertices: references.vertices
         };
       }
 

@@ -357,16 +357,22 @@ is source-of-truth feature data.
 
 The `body.generatedReferences` query returns the first read-only semantic
 reference layer for authored sketch-extrude bodies. It derives a generated body
-reference plus generated face and edge references from the saved extrude feature
-and its source sketch entity. Rectangle extrudes expose start/end caps, four
-side face roles tied to profile edge roles (`side:uMin`, `side:uMax`,
-`side:vMin`, `side:vMax`), start/end profile edge roles, and four longitudinal
-corner edge roles. Circle extrudes expose start/end caps, one cylindrical side
-role (`side:circular`), and start/end circular edge roles. These references
-include source feature/sketch/entity IDs, face or edge roles, adjacent face
-roles for edges, sketch plane, extrude side, profile kind, current source
-profile signature, and simple normal/axis/curve roles. They are not raw OCCT,
-mesh, or renderer indexes and are not persisted as source-of-truth data.
+reference plus generated face, edge, and rectangle vertex references from the
+saved extrude feature and its source sketch entity. Rectangle extrudes expose
+start/end caps, four side face roles tied to profile edge roles (`side:uMin`,
+`side:uMax`, `side:vMin`, `side:vMax`), start/end profile edge roles, four
+longitudinal corner edge roles, and eight corner vertex roles
+(`start:uMin:vMin`, `start:uMin:vMax`, `start:uMax:vMin`,
+`start:uMax:vMax`, `end:uMin:vMin`, `end:uMin:vMax`, `end:uMax:vMin`, and
+`end:uMax:vMax`). Circle extrudes expose start/end caps, one cylindrical side
+role (`side:circular`), and start/end circular edge roles; they currently
+return an empty vertex set because there are no stable discrete semantic
+vertices for the circular profile. These references include source
+feature/sketch/entity IDs, face, edge, or vertex roles, adjacent face roles for
+edges and vertices, adjacent edge roles for vertices, sketch plane, extrude
+side, profile kind, current source profile signature, and simple
+normal/axis/curve/profile-point roles. They are not raw OCCT, mesh, or renderer
+indexes and are not persisted as source-of-truth data.
 
 ## Future Format Version Triggers
 
@@ -416,7 +422,7 @@ These are not source of truth and must not be required to load a project:
 - read-only feature summary query results
 - read-only project structure query results
 - read-only project sketch query formatting
-- read-only generated body/face/edge reference query results
+- read-only generated body/face/edge/vertex reference query results
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the

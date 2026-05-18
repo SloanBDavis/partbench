@@ -4,9 +4,11 @@ import type {
   CadGeneratedEdgeReference,
   CadGeneratedExtrudeEdgeRole,
   CadGeneratedExtrudeFaceRole,
+  CadGeneratedExtrudeVertexRole,
   CadGeneratedFaceReference,
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
+  CadGeneratedVertexReference,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureId,
@@ -18,6 +20,7 @@ import type {
   SketchLineEntitySnapshot,
   SketchRectangleEntitySnapshot,
   SketchId,
+  Vec2,
   Vec3
 } from "@web-cad/cad-protocol";
 
@@ -55,6 +58,7 @@ export interface BodyGeneratedReferencesSnapshot {
   readonly body: CadGeneratedBodyReference;
   readonly faces: readonly CadGeneratedFaceReference[];
   readonly edges: readonly CadGeneratedEdgeReference[];
+  readonly vertices: readonly CadGeneratedVertexReference[];
 }
 
 export function createBodyGeneratedReferences(
@@ -135,7 +139,16 @@ export function createBodyGeneratedReferences(
             sketch,
             profile,
             ownerPartId
+          ),
+    vertices:
+      feature.profileKind === "rectangle" && profile.kind === "rectangle"
+        ? createRectangleExtrudeVertexReferences(
+            feature,
+            sketch,
+            profile,
+            ownerPartId
           )
+        : []
   };
 }
 
@@ -361,6 +374,47 @@ function createCircleExtrudeEdgeReferences(
   ];
 }
 
+type RectangleProfileSignature = Extract<
+  CadGeneratedReferenceProfileSignature,
+  { readonly kind: "rectangle" }
+>;
+
+function createRectangleExtrudeVertexReferences(
+  feature: GeneratedReferencesFeature,
+  sketch: GeneratedReferencesSketch,
+  profile: RectangleProfileSignature,
+  ownerPartId: PartId
+): readonly CadGeneratedVertexReference[] {
+  const roles = [
+    "start:uMin:vMin",
+    "start:uMin:vMax",
+    "start:uMax:vMin",
+    "start:uMax:vMax",
+    "end:uMin:vMin",
+    "end:uMin:vMax",
+    "end:uMax:vMin",
+    "end:uMax:vMax"
+  ] satisfies readonly CadGeneratedExtrudeVertexRole[];
+
+  return roles.map((role) =>
+    createGeneratedVertexReference(
+      feature,
+      sketch,
+      profile,
+      role,
+      ownerPartId,
+      createVertexAdjacentFaceRoles(role),
+      createVertexAdjacentEdgeRoles(role),
+      {
+        axis: createSketchPlaneNormal(sketch.plane),
+        axisRole: "sketchPlaneNormal",
+        profilePoint: createRectangleVertexProfilePoint(profile, role),
+        positionRole: createVertexPositionRole(role)
+      }
+    )
+  );
+}
+
 function createGeneratedFaceReference(
   feature: GeneratedReferencesFeature,
   sketch: GeneratedReferencesSketch,
@@ -421,13 +475,53 @@ function createGeneratedEdgeReference(
   };
 }
 
+function createGeneratedVertexReference(
+  feature: GeneratedReferencesFeature,
+  sketch: GeneratedReferencesSketch,
+  profile: CadGeneratedReferenceProfileSignature,
+  role: CadGeneratedExtrudeVertexRole,
+  ownerPartId: PartId,
+  adjacentFaceRoles: readonly CadGeneratedExtrudeFaceRole[],
+  adjacentEdgeRoles: readonly CadGeneratedExtrudeEdgeRole[],
+  signature: Pick<
+    CadGeneratedReferenceSignature,
+    "axis" | "axisRole" | "profilePoint" | "positionRole"
+  >
+): CadGeneratedVertexReference {
+  return {
+    kind: "vertex",
+    stableId: `generated:vertex:${feature.bodyId}:${role}`,
+    bodyId: feature.bodyId,
+    ownerPartId,
+    sourceFeatureId: feature.id,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.entityId,
+    role,
+    adjacentFaceRoles,
+    adjacentEdgeRoles,
+    geometricSignature: createGeneratedReferenceSignature(
+      feature,
+      sketch,
+      profile,
+      signature
+    )
+  };
+}
+
 function createGeneratedReferenceSignature(
   feature: GeneratedReferencesFeature,
   sketch: GeneratedReferencesSketch,
   profile: CadGeneratedReferenceProfileSignature,
   signature: Pick<
     CadGeneratedReferenceSignature,
-    "surfaceType" | "curveType" | "normal" | "axis" | "normalRole" | "axisRole"
+    | "surfaceType"
+    | "curveType"
+    | "normal"
+    | "axis"
+    | "normalRole"
+    | "axisRole"
+    | "profilePoint"
+    | "positionRole"
   > = {}
 ): CadGeneratedReferenceSignature {
   return {
@@ -536,6 +630,63 @@ function createLongitudinalAdjacentFaceRoles(
   }
 
   return [];
+}
+
+function createVertexAdjacentFaceRoles(
+  role: CadGeneratedExtrudeVertexRole
+): readonly CadGeneratedExtrudeFaceRole[] {
+  const capRole = role.startsWith("start:") ? "startCap" : "endCap";
+  const profileRoles = createVertexProfileRoles(role);
+
+  return [capRole, ...profileRoles.map(createRectangleSideFaceRole)];
+}
+
+function createVertexAdjacentEdgeRoles(
+  role: CadGeneratedExtrudeVertexRole
+): readonly CadGeneratedExtrudeEdgeRole[] {
+  const capPrefix = createVertexPositionRole(role);
+  const [uRole, vRole] = createVertexProfileRoles(role);
+
+  return [
+    `${capPrefix}:${uRole}`,
+    `${capPrefix}:${vRole}`,
+    `longitudinal:${uRole}:${vRole}`
+  ];
+}
+
+function createRectangleVertexProfilePoint(
+  profile: RectangleProfileSignature,
+  role: CadGeneratedExtrudeVertexRole
+): Vec2 {
+  const [uRole, vRole] = createVertexProfileRoles(role);
+  const u =
+    uRole === "uMin"
+      ? profile.center[0] - profile.width / 2
+      : profile.center[0] + profile.width / 2;
+  const v =
+    vRole === "vMin"
+      ? profile.center[1] - profile.height / 2
+      : profile.center[1] + profile.height / 2;
+
+  return [u, v];
+}
+
+function createVertexPositionRole(
+  role: CadGeneratedExtrudeVertexRole
+): "start" | "end" {
+  return role.startsWith("start:") ? "start" : "end";
+}
+
+function createVertexProfileRoles(
+  role: CadGeneratedExtrudeVertexRole
+): readonly [
+  Extract<RectangleProfileEdgeRole, "uMin" | "uMax">,
+  Extract<RectangleProfileEdgeRole, "vMin" | "vMax">
+] {
+  const uRole = role.includes(":uMin:") ? "uMin" : "uMax";
+  const vRole = role.endsWith(":vMin") ? "vMin" : "vMax";
+
+  return [uRole, vRole];
 }
 
 function createSketchPlaneUAxis(plane: SketchPlane): Vec3 {

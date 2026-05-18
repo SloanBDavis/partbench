@@ -7,6 +7,7 @@ import type {
   CadExtrudeFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadGeneratedVertexReference,
   CadObjectModelSource,
   CadPartSnapshot,
   CadPrimitiveFeatureSummary,
@@ -381,6 +382,47 @@ describe("cad-protocol", () => {
       geometricSignature: {
         profileKind: "rectangle",
         curveType: "line"
+      }
+    });
+
+    const vertex: CadGeneratedVertexReference = {
+      kind: "vertex",
+      stableId: "generated:vertex:body_1:start:uMin:vMin",
+      bodyId: "body_1",
+      ownerPartId: "part:default",
+      sourceFeatureId: "feat_1",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "rect_1",
+      role: "start:uMin:vMin",
+      adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+      adjacentEdgeRoles: ["start:uMin", "start:vMin", "longitudinal:uMin:vMin"],
+      geometricSignature: {
+        profileKind: "rectangle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 5,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        axis: [0, 0, 1],
+        axisRole: "sketchPlaneNormal",
+        profilePoint: [-2, -1],
+        positionRole: "start"
+      }
+    };
+
+    expect(vertex).toMatchObject({
+      kind: "vertex",
+      role: "start:uMin:vMin",
+      adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+      adjacentEdgeRoles: ["start:uMin", "start:vMin", "longitudinal:uMin:vMin"],
+      geometricSignature: {
+        profileKind: "rectangle",
+        profilePoint: [-2, -1],
+        positionRole: "start"
       }
     });
   });

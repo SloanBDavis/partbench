@@ -1303,6 +1303,7 @@ describe("agent-adapter", () => {
       },
       faceCount: 6,
       edgeCount: 12,
+      vertexCount: 8,
       faces: [
         { role: "startCap" },
         { role: "endCap" },
@@ -1327,6 +1328,24 @@ describe("agent-adapter", () => {
         { role: "longitudinal:uMin:vMax" },
         { role: "longitudinal:uMax:vMin" },
         { role: "longitudinal:uMax:vMax" }
+      ],
+      vertices: [
+        {
+          role: "start:uMin:vMin",
+          adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
+          adjacentEdgeRoles: [
+            "start:uMin",
+            "start:vMin",
+            "longitudinal:uMin:vMin"
+          ]
+        },
+        { role: "start:uMin:vMax" },
+        { role: "start:uMax:vMin" },
+        { role: "start:uMax:vMax" },
+        { role: "end:uMin:vMin" },
+        { role: "end:uMin:vMax" },
+        { role: "end:uMax:vMin" },
+        { role: "end:uMax:vMax" }
       ]
     });
   });

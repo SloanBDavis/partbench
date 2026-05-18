@@ -335,7 +335,8 @@ Exit criteria:
 Goal: prevent future feature work from depending on unstable face/edge indexes.
 
 Current status: first read-only body/face/edge reference slices implemented for
-authored sketch-extrude bodies.
+authored sketch-extrude bodies, with rectangle vertex references implemented for
+simple authored rectangle extrudes.
 
 Implemented:
 
@@ -348,10 +349,17 @@ Implemented:
 - Rectangle extrudes expose stable generated edge roles for start-cap profile
   edges, end-cap profile edges, and four longitudinal corner edges.
 - Circle extrudes expose start and end circular edge roles.
+- Rectangle extrudes expose eight semantic generated vertex roles:
+  `start:uMin:vMin`, `start:uMin:vMax`, `start:uMax:vMin`,
+  `start:uMax:vMax`, `end:uMin:vMin`, `end:uMin:vMax`, `end:uMax:vMin`, and
+  `end:uMax:vMax`.
+- Circle extrudes intentionally return an empty vertex set because there are no
+  stable discrete semantic vertices on a circular profile in this first slice.
 - Reference metadata includes owning body ID, source feature ID, source sketch
-  ID, source sketch entity ID, face/edge role, adjacent face roles for edges,
-  sketch plane, extrude side, profile kind, depth, current source profile
-  signature, and simple normal/axis roles where practical.
+  ID, source sketch entity ID, face/edge/vertex role, adjacent face roles for
+  edges and vertices, adjacent edge roles for vertices, sketch plane, extrude
+  side, profile kind, depth, current source profile signature, and simple
+  normal/axis/profile-point roles where practical.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
 - References are derived from source data and update across depth edits, side

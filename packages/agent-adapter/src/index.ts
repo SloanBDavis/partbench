@@ -11,6 +11,7 @@ import type {
   CadGeneratedBodyReference,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadGeneratedVertexReference,
   CadObjectSnapshot,
   CadObjectModelSource,
   CadOp,
@@ -237,6 +238,8 @@ export interface CadOpsAgentBodyGeneratedReferencesQueryResponse {
   readonly faces: readonly CadGeneratedFaceReference[];
   readonly edgeCount: number;
   readonly edges: readonly CadGeneratedEdgeReference[];
+  readonly vertexCount: number;
+  readonly vertices: readonly CadGeneratedVertexReference[];
 }
 
 export interface CadOpsAgentTransactionHistoryQueryResponse {
@@ -657,7 +660,9 @@ function toAgentQueryResponse(
       faceCount: response.faceCount,
       faces: response.faces,
       edgeCount: response.edgeCount,
-      edges: response.edges
+      edges: response.edges,
+      vertexCount: response.vertexCount,
+      vertices: response.vertices
     };
   }
 

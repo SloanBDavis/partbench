@@ -756,7 +756,7 @@ export interface CadBodySnapshot {
   readonly source: CadBodySource;
 }
 
-export type CadGeneratedEntityKind = "body" | "face" | "edge";
+export type CadGeneratedEntityKind = "body" | "face" | "edge" | "vertex";
 
 export type CadGeneratedExtrudeFaceRole =
   | "startCap"
@@ -782,6 +782,16 @@ export type CadGeneratedExtrudeEdgeRole =
   | "longitudinal:uMax:vMax"
   | "start:circular"
   | "end:circular";
+
+export type CadGeneratedExtrudeVertexRole =
+  | "start:uMin:vMin"
+  | "start:uMin:vMax"
+  | "start:uMax:vMin"
+  | "start:uMax:vMax"
+  | "end:uMin:vMin"
+  | "end:uMin:vMax"
+  | "end:uMax:vMin"
+  | "end:uMax:vMax";
 
 export type CadGeneratedSurfaceType = "plane" | "cylinder";
 export type CadGeneratedCurveType = "line" | "circle";
@@ -811,6 +821,8 @@ export interface CadGeneratedReferenceSignature {
   readonly axis?: Vec3;
   readonly normalRole?: string;
   readonly axisRole?: string;
+  readonly profilePoint?: Vec2;
+  readonly positionRole?: string;
 }
 
 export interface CadGeneratedBodyReference {
@@ -847,6 +859,20 @@ export interface CadGeneratedEdgeReference {
   readonly sourceSketchEntityId: SketchEntityId;
   readonly role: CadGeneratedExtrudeEdgeRole;
   readonly adjacentFaceRoles: readonly CadGeneratedExtrudeFaceRole[];
+  readonly geometricSignature: CadGeneratedReferenceSignature;
+}
+
+export interface CadGeneratedVertexReference {
+  readonly kind: "vertex";
+  readonly stableId: string;
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly role: CadGeneratedExtrudeVertexRole;
+  readonly adjacentFaceRoles: readonly CadGeneratedExtrudeFaceRole[];
+  readonly adjacentEdgeRoles: readonly CadGeneratedExtrudeEdgeRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
@@ -1005,6 +1031,8 @@ export interface BodyGeneratedReferencesQueryResponse {
   readonly faces: readonly CadGeneratedFaceReference[];
   readonly edgeCount: number;
   readonly edges: readonly CadGeneratedEdgeReference[];
+  readonly vertexCount: number;
+  readonly vertices: readonly CadGeneratedVertexReference[];
 }
 
 export interface CadQueryErrorResponse {

@@ -1039,6 +1039,7 @@ describe("mcp-adapter", () => {
         },
         faceCount: 3,
         edgeCount: 2,
+        vertexCount: 0,
         faces: [
           { role: "startCap" },
           { role: "endCap" },
@@ -1053,7 +1054,8 @@ describe("mcp-adapter", () => {
             role: "end:circular",
             adjacentFaceRoles: ["endCap", "side:circular"]
           }
-        ]
+        ],
+        vertices: []
       }
     });
   });
