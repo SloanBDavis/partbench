@@ -198,6 +198,12 @@ const initialBatchForm: BatchOperationForm = {
   unitUpdateMode: "metadataOnly"
 };
 
+type UtilityPanelId = "sketches" | "history" | "batch" | "project" | "geometry";
+
+function formatSchemaBadge(schemaVersion: string): string {
+  return schemaVersion.replace("web-cad.project.", "").toUpperCase();
+}
+
 function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -284,6 +290,8 @@ export function App() {
   const [batchError, setBatchError] = useState<string | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
+  const [activeUtilityPanel, setActiveUtilityPanel] =
+    useState<UtilityPanelId>("sketches");
   const [unitUpdateMode, setUnitUpdateMode] =
     useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
@@ -442,6 +450,29 @@ export function App() {
     () => createProjectJsonPreview(projectJson),
     [projectJson]
   );
+  const utilityPanels: readonly {
+    readonly id: UtilityPanelId;
+    readonly label: string;
+    readonly count?: number | string;
+  }[] = [
+    { id: "sketches", label: "Sketch", count: sketches.length },
+    { id: "history", label: "Log", count: transactionHistory.length },
+    { id: "batch", label: "Batch", count: queuedOps.length },
+    {
+      id: "project",
+      label: "File",
+      count: formatSchemaBadge(currentProjectSummary.schemaVersion)
+    },
+    ...(derivedGeometryEnabled
+      ? [
+          {
+            id: "geometry" as const,
+            label: "Mesh",
+            count: derivedGeometry.readyCount
+          }
+        ]
+      : [])
+  ];
 
   useEffect(() => {
     return () => {
@@ -916,8 +947,14 @@ export function App() {
   return (
     <main className="app-shell">
       <header className="app-toolbar">
-        <div>
-          <h1>Web CAD</h1>
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden="true">
+            WC
+          </div>
+          <div className="brand-copy">
+            <h1>Web CAD</h1>
+            <span>V2 feature workspace</span>
+          </div>
         </div>
         <div className="toolbar-actions" aria-label="Command controls">
           {commandPending && (
@@ -925,198 +962,151 @@ export function App() {
               Worker running
             </span>
           )}
-          <label className="toolbar-field">
-            Units
-            <select
-              value={document.units}
+          <div className="toolbar-group toolbar-units">
+            <label className="toolbar-field">
+              Units
+              <select
+                value={document.units}
+                disabled={commandPending}
+                onChange={(event) =>
+                  void updateDocumentUnits(
+                    event.currentTarget.value as CadDocument["units"]
+                  )
+                }
+              >
+                <option value="mm">mm</option>
+                <option value="cm">cm</option>
+                <option value="m">m</option>
+                <option value="in">in</option>
+              </select>
+            </label>
+            <label className="toolbar-field wide">
+              Unit change
+              <select
+                value={unitUpdateMode}
+                disabled={commandPending}
+                onChange={(event) =>
+                  setUnitUpdateMode(
+                    event.currentTarget.value as DocumentUnitUpdateMode
+                  )
+                }
+              >
+                <option value="metadataOnly">Relabel values</option>
+                <option value="preservePhysicalSize">Convert size</option>
+              </select>
+            </label>
+          </div>
+          <div className="toolbar-group quick-create">
+            <button
+              type="button"
+              aria-label="Create box"
+              title="Create box"
+              onClick={() => void createBox()}
               disabled={commandPending}
-              onChange={(event) =>
-                void updateDocumentUnits(
-                  event.currentTarget.value as CadDocument["units"]
-                )
-              }
             >
-              <option value="mm">mm</option>
-              <option value="cm">cm</option>
-              <option value="m">m</option>
-              <option value="in">in</option>
-            </select>
-          </label>
-          <label className="toolbar-field wide">
-            Unit change
-            <select
-              value={unitUpdateMode}
+              Box
+            </button>
+            <button
+              type="button"
+              aria-label="Create cylinder"
+              title="Create cylinder"
+              onClick={() => void createCylinder()}
               disabled={commandPending}
-              onChange={(event) =>
-                setUnitUpdateMode(
-                  event.currentTarget.value as DocumentUnitUpdateMode
-                )
-              }
             >
-              <option value="metadataOnly">Relabel values</option>
-              <option value="preservePhysicalSize">Convert size</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={() => void createBox()}
-            disabled={commandPending}
-          >
-            Create box
-          </button>
-          <button
-            type="button"
-            onClick={() => void createCylinder()}
-            disabled={commandPending}
-          >
-            Create cylinder
-          </button>
-          <button
-            type="button"
-            onClick={() => void createSphere()}
-            disabled={commandPending}
-          >
-            Create sphere
-          </button>
-          <button
-            type="button"
-            onClick={() => void createCone()}
-            disabled={commandPending}
-          >
-            Create cone
-          </button>
-          <button
-            type="button"
-            onClick={() => void createTorus()}
-            disabled={commandPending}
-          >
-            Create torus
-          </button>
-          <button
-            type="button"
-            onClick={undo}
-            disabled={commandPending || engine.getTransactions().length === 0}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            onClick={redo}
-            disabled={commandPending || engine.getRedoStack().length === 0}
-          >
-            Redo
-          </button>
+              Cylinder
+            </button>
+            <button
+              type="button"
+              aria-label="Create sphere"
+              title="Create sphere"
+              onClick={() => void createSphere()}
+              disabled={commandPending}
+            >
+              Sphere
+            </button>
+            <button
+              type="button"
+              aria-label="Create cone"
+              title="Create cone"
+              onClick={() => void createCone()}
+              disabled={commandPending}
+            >
+              Cone
+            </button>
+            <button
+              type="button"
+              aria-label="Create torus"
+              title="Create torus"
+              onClick={() => void createTorus()}
+              disabled={commandPending}
+            >
+              Torus
+            </button>
+          </div>
+          <div className="toolbar-group history-controls">
+            <button
+              type="button"
+              onClick={undo}
+              disabled={commandPending || engine.getTransactions().length === 0}
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={commandPending || engine.getRedoStack().length === 0}
+            >
+              Redo
+            </button>
+          </div>
         </div>
         {commandError && <p className="toolbar-error">{commandError}</p>}
       </header>
 
       <section className="workspace" aria-label="CAD workspace">
-        <aside className="object-tree" aria-label="Scene objects">
-          <section>
-            <div className="section-heading">
-              <h2>Objects</h2>
-              <span>{sceneObjects.length}</span>
-            </div>
-            {sceneObjects.length === 0 ? (
-              <p className="empty-state">No objects</p>
-            ) : (
-              <ul>
-                {sceneObjects.map((object) => (
-                  <li key={object.id}>{renderObjectButton(object)}</li>
-                ))}
-              </ul>
-            )}
-            {!derivedGeometryEnabled && sceneObjects.length > 0 && (
-              <p className="project-message">
-                Showing primitive fallback geometry.
-              </p>
-            )}
-          </section>
+        <aside className="object-tree model-browser" aria-label="Model browser">
+          <div className="model-browser-header">
+            <h2>Model</h2>
+            <span>{sceneObjects.length + sketchExtrudeBodies.length}</span>
+          </div>
+          <div className="model-browser-sections">
+            <section className="model-section">
+              <div className="section-heading">
+                <h2>Objects</h2>
+                <span>{sceneObjects.length}</span>
+              </div>
+              {sceneObjects.length === 0 ? (
+                <p className="empty-state">No objects</p>
+              ) : (
+                <ul>
+                  {sceneObjects.map((object) => (
+                    <li key={object.id}>{renderObjectButton(object)}</li>
+                  ))}
+                </ul>
+              )}
+              {!derivedGeometryEnabled && sceneObjects.length > 0 && (
+                <p className="project-message">
+                  Showing primitive fallback geometry.
+                </p>
+              )}
+            </section>
 
-          <section>
-            <div className="section-heading">
-              <h2>Bodies</h2>
-              <span>{sketchExtrudeBodies.length}</span>
-            </div>
-            {sketchExtrudeBodies.length === 0 ? (
-              <p className="empty-state">No bodies</p>
-            ) : (
-              <ul>
-                {sketchExtrudeBodies.map((body) => (
-                  <li key={body.id}>{renderBodyButton(body)}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <SketchPanel
-            disabled={commandPending}
-            sketches={sketches}
-            displayStatuses={sketchDisplayState.statuses}
-            features={projectStructure.features}
-            onCreateSketch={(form) => void createSketch(form)}
-            onRenameSketch={(sketchId, name) =>
-              void renameSketch(sketchId, name)
-            }
-            onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
-            onAddEntity={(sketchId, kind, form) =>
-              void addSketchEntity(sketchId, kind, form)
-            }
-            onUpdateEntity={(sketchId, entity) =>
-              void updateSketchEntity(sketchId, entity)
-            }
-            onDeleteEntity={(sketchId, entityId) =>
-              void deleteSketchEntity(sketchId, entityId)
-            }
-            onExtrudeEntity={(sketchId, entityId, form) =>
-              void extrudeSketchEntity(sketchId, entityId, form)
-            }
-          />
-
-          <HistoryPanel transactions={transactionHistory} />
-
-          <BatchPanel
-            disabled={commandPending}
-            form={batchForm}
-            onChange={setBatchForm}
-            units={document.units}
-            queuedOps={queuedOps}
-            response={batchResponse}
-            error={batchError}
-            onAddOperation={addBatchOperation}
-            onDryRun={() => void runBatch("dryRun")}
-            onCommit={() => void runBatch("commit")}
-            onClear={clearBatch}
-          />
-
-          <ProjectJsonPanel
-            disabled={commandPending}
-            projectJson={projectJson}
-            currentSummary={currentProjectSummary}
-            message={projectMessage}
-            messageTone={projectMessageTone}
-            preview={projectJsonPreview}
-            onProjectJsonChange={(value) => {
-              setProjectJson(value);
-              setProjectMessage(undefined);
-            }}
-            onProjectFileLoaded={loadProjectFile}
-            onProjectFileError={(message) => {
-              setProjectMessage(message);
-              setProjectMessageTone("error");
-            }}
-            onExport={exportProjectJson}
-            onDownload={downloadProjectJson}
-            onImport={importProjectJson}
-          />
-
-          {derivedGeometryEnabled && (
-            <GeometryPanel
-              disabled={commandPending}
-              snapshot={derivedGeometry}
-              onRefresh={refreshDerivedGeometry}
-            />
-          )}
+            <section className="model-section">
+              <div className="section-heading">
+                <h2>Bodies</h2>
+                <span>{sketchExtrudeBodies.length}</span>
+              </div>
+              {sketchExtrudeBodies.length === 0 ? (
+                <p className="empty-state">No bodies</p>
+              ) : (
+                <ul>
+                  {sketchExtrudeBodies.map((body) => (
+                    <li key={body.id}>{renderBodyButton(body)}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         </aside>
 
         <ViewportCanvas
@@ -1128,25 +1118,162 @@ export function App() {
           onSelect={selectObject}
         />
 
-        <Inspector
-          disabled={commandPending}
-          measurements={selectedMeasurements}
-          body={selectedBody}
-          feature={selectedFeature}
-          generatedReferences={selectedBodyGeneratedReferences.references}
-          generatedReferencesError={selectedBodyGeneratedReferences.error}
-          object={selectedObject}
-          units={document.units}
-          onApplyDimensions={(form) => void updateSelectedDimensions(form)}
-          onApplyName={(name) => void renameSelectedObject(name)}
-          onApplyTransform={(form) => void updateSelectedTransform(form)}
-          onDelete={() => void deleteSelectedObject()}
-          onDeleteFeature={(featureId) => void deleteAuthoredFeature(featureId)}
-          onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
-          onUpdateExtrude={(featureId, depth, side) =>
-            void updateAuthoredExtrude(featureId, depth, side)
-          }
-        />
+        <div className="right-rail" aria-label="Inspector and tools">
+          <Inspector
+            disabled={commandPending}
+            measurements={selectedMeasurements}
+            body={selectedBody}
+            feature={selectedFeature}
+            generatedReferences={selectedBodyGeneratedReferences.references}
+            generatedReferencesError={selectedBodyGeneratedReferences.error}
+            object={selectedObject}
+            units={document.units}
+            onApplyDimensions={(form) => void updateSelectedDimensions(form)}
+            onApplyName={(name) => void renameSelectedObject(name)}
+            onApplyTransform={(form) => void updateSelectedTransform(form)}
+            onDelete={() => void deleteSelectedObject()}
+            onDeleteFeature={(featureId) =>
+              void deleteAuthoredFeature(featureId)
+            }
+            onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+            onUpdateExtrude={(featureId, depth, side) =>
+              void updateAuthoredExtrude(featureId, depth, side)
+            }
+          />
+
+          <section className="utility-dock" aria-label="Workspace tools">
+            <div className="utility-tabs" role="tablist" aria-label="Tool tabs">
+              {utilityPanels.map((panel) => (
+                <button
+                  key={panel.id}
+                  id={`utility-tab-${panel.id}`}
+                  type="button"
+                  role="tab"
+                  aria-controls={`utility-panel-${panel.id}`}
+                  aria-selected={activeUtilityPanel === panel.id}
+                  className={activeUtilityPanel === panel.id ? "active" : ""}
+                  onClick={() => setActiveUtilityPanel(panel.id)}
+                >
+                  <span>{panel.label}</span>
+                  {typeof panel.count === "string" && (
+                    <small>{panel.count}</small>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="utility-panels">
+              <div
+                id="utility-panel-sketches"
+                role="tabpanel"
+                aria-labelledby="utility-tab-sketches"
+                className="utility-panel"
+                hidden={activeUtilityPanel !== "sketches"}
+              >
+                <SketchPanel
+                  disabled={commandPending}
+                  sketches={sketches}
+                  displayStatuses={sketchDisplayState.statuses}
+                  features={projectStructure.features}
+                  onCreateSketch={(form) => void createSketch(form)}
+                  onRenameSketch={(sketchId, name) =>
+                    void renameSketch(sketchId, name)
+                  }
+                  onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
+                  onAddEntity={(sketchId, kind, form) =>
+                    void addSketchEntity(sketchId, kind, form)
+                  }
+                  onUpdateEntity={(sketchId, entity) =>
+                    void updateSketchEntity(sketchId, entity)
+                  }
+                  onDeleteEntity={(sketchId, entityId) =>
+                    void deleteSketchEntity(sketchId, entityId)
+                  }
+                  onExtrudeEntity={(sketchId, entityId, form) =>
+                    void extrudeSketchEntity(sketchId, entityId, form)
+                  }
+                />
+              </div>
+
+              <div
+                id="utility-panel-history"
+                role="tabpanel"
+                aria-labelledby="utility-tab-history"
+                className="utility-panel"
+                hidden={activeUtilityPanel !== "history"}
+              >
+                <HistoryPanel transactions={transactionHistory} />
+              </div>
+
+              <div
+                id="utility-panel-batch"
+                role="tabpanel"
+                aria-labelledby="utility-tab-batch"
+                className="utility-panel"
+                hidden={activeUtilityPanel !== "batch"}
+              >
+                <BatchPanel
+                  disabled={commandPending}
+                  form={batchForm}
+                  onChange={setBatchForm}
+                  units={document.units}
+                  queuedOps={queuedOps}
+                  response={batchResponse}
+                  error={batchError}
+                  onAddOperation={addBatchOperation}
+                  onDryRun={() => void runBatch("dryRun")}
+                  onCommit={() => void runBatch("commit")}
+                  onClear={clearBatch}
+                />
+              </div>
+
+              <div
+                id="utility-panel-project"
+                role="tabpanel"
+                aria-labelledby="utility-tab-project"
+                className="utility-panel"
+                hidden={activeUtilityPanel !== "project"}
+              >
+                <ProjectJsonPanel
+                  disabled={commandPending}
+                  projectJson={projectJson}
+                  currentSummary={currentProjectSummary}
+                  message={projectMessage}
+                  messageTone={projectMessageTone}
+                  preview={projectJsonPreview}
+                  onProjectJsonChange={(value) => {
+                    setProjectJson(value);
+                    setProjectMessage(undefined);
+                  }}
+                  onProjectFileLoaded={loadProjectFile}
+                  onProjectFileError={(message) => {
+                    setProjectMessage(message);
+                    setProjectMessageTone("error");
+                  }}
+                  onExport={exportProjectJson}
+                  onDownload={downloadProjectJson}
+                  onImport={importProjectJson}
+                />
+              </div>
+
+              {derivedGeometryEnabled && (
+                <div
+                  id="utility-panel-geometry"
+                  role="tabpanel"
+                  aria-labelledby="utility-tab-geometry"
+                  className="utility-panel"
+                  hidden={activeUtilityPanel !== "geometry"}
+                >
+                  <GeometryPanel
+                    disabled={commandPending}
+                    snapshot={derivedGeometry}
+                    onRefresh={refreshDerivedGeometry}
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </section>
     </main>
   );
