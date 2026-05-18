@@ -9,7 +9,8 @@ import type {
 } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
-  CadGeneratedFaceReference
+  CadGeneratedFaceReference,
+  CadGeneratedReference
 } from "@web-cad/cad-protocol";
 import { useState } from "react";
 import {
@@ -34,8 +35,12 @@ import {
 } from "../cadCommands";
 import {
   canCreateSketchOnFace,
+  createGeneratedReferenceMeasurementRows,
   createSketchOnFaceDefaultName,
-  formatGeneratedFaceEligibility
+  formatGeneratedReferenceKind,
+  formatGeneratedReferenceOperationLabels,
+  getGeneratedReferenceItems,
+  type GeneratedReferenceMeasurementDisplay
 } from "../generatedReferenceUi";
 import {
   formatDimensions,
@@ -56,6 +61,7 @@ export function Inspector({
   feature,
   generatedReferences,
   generatedReferencesError,
+  generatedReferenceMeasurements,
   measurements,
   object,
   units,
@@ -74,6 +80,10 @@ export function Inspector({
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
+  readonly generatedReferenceMeasurements?: ReadonlyMap<
+    string,
+    GeneratedReferenceMeasurementDisplay
+  >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
   readonly units: DocumentUnits;
@@ -100,6 +110,7 @@ export function Inspector({
         feature,
         generatedReferences,
         generatedReferencesError,
+        generatedReferenceMeasurements,
         measurements,
         object,
         onApplyDimensions,
@@ -123,6 +134,10 @@ function renderInspectorSelection(input: {
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
+  readonly generatedReferenceMeasurements?: ReadonlyMap<
+    string,
+    GeneratedReferenceMeasurementDisplay
+  >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly object?: SceneObject;
   readonly units: DocumentUnits;
@@ -148,6 +163,7 @@ function renderInspectorSelection(input: {
         feature={input.feature}
         generatedReferences={input.generatedReferences}
         generatedReferencesError={input.generatedReferencesError}
+        generatedReferenceMeasurements={input.generatedReferenceMeasurements}
         onCreateSketchOnFace={input.onCreateSketchOnFace}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
@@ -225,6 +241,7 @@ function BodyInspector({
   feature,
   generatedReferences,
   generatedReferencesError,
+  generatedReferenceMeasurements,
   measurements,
   measurementsError,
   onCreateSketchOnFace,
@@ -237,6 +254,10 @@ function BodyInspector({
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
+  readonly generatedReferenceMeasurements?: ReadonlyMap<
+    string,
+    GeneratedReferenceMeasurementDisplay
+  >;
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly measurementsError?: string;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
@@ -324,13 +345,15 @@ function BodyInspector({
         />
       )}
       {feature?.kind === "extrude" && (
-        <GeneratedFaceSketchPanel
-          key={`${body.id}-${generatedReferences?.faceCount ?? 0}`}
+        <GeneratedReferencesPanel
+          key={`${body.id}-${generatedReferences?.faceCount ?? 0}-${generatedReferences?.edgeCount ?? 0}-${generatedReferences?.vertexCount ?? 0}`}
           bodyId={body.id}
           disabled={disabled}
           error={generatedReferencesError}
-          faces={generatedReferences?.faces ?? []}
+          measurementByStableId={generatedReferenceMeasurements}
           onCreateSketchOnFace={onCreateSketchOnFace}
+          references={generatedReferences}
+          units={units}
         />
       )}
       {canDeleteFeature && (
@@ -405,20 +428,31 @@ function BodyMeasurementPanel({
   );
 }
 
-function GeneratedFaceSketchPanel({
+function GeneratedReferencesPanel({
   bodyId,
   disabled,
   error,
-  faces,
-  onCreateSketchOnFace
+  measurementByStableId,
+  onCreateSketchOnFace,
+  references,
+  units
 }: {
   readonly bodyId: string;
   readonly disabled: boolean;
   readonly error?: string;
-  readonly faces: readonly CadGeneratedFaceReference[];
+  readonly measurementByStableId?: ReadonlyMap<
+    string,
+    GeneratedReferenceMeasurementDisplay
+  >;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly references?: BodyGeneratedReferencesQueryResponse;
+  readonly units: DocumentUnits;
 }) {
+  const faces = references?.faces ?? [];
   const firstEligibleFace = faces.find(canCreateSketchOnFace);
+  const referenceItems = references
+    ? getGeneratedReferenceItems(references)
+    : [];
   const [draft, setDraft] = useState({
     id: "",
     name: firstEligibleFace
@@ -443,75 +477,132 @@ function GeneratedFaceSketchPanel({
   return (
     <section className="command-card nested">
       <div className="command-card-heading">
-        <h3>Generated faces</h3>
-        <span>{faces.length}</span>
+        <h3>Generated references</h3>
+        <span>{referenceItems.length}</span>
       </div>
       {error && <p className="error-text">{error}</p>}
-      {faces.length === 0 && !error ? (
-        <p className="empty-state compact">No generated faces</p>
+      {referenceItems.length === 0 && !error ? (
+        <p className="empty-state compact">No generated references</p>
       ) : (
         <>
-          <div className="field-grid two">
-            <label>
-              Sketch name
-              <input
-                type="text"
-                value={draft.name}
-                disabled={disabled}
-                onChange={(event) =>
-                  setDraft({ ...draft, name: event.currentTarget.value })
-                }
-              />
-            </label>
-            <label>
-              Optional sketch ID
-              <input
-                type="text"
-                value={draft.id}
-                disabled={disabled}
-                onChange={(event) =>
-                  setDraft({ ...draft, id: event.currentTarget.value })
-                }
-              />
-            </label>
-          </div>
+          {faces.length > 0 && (
+            <div className="field-grid two">
+              <label>
+                Sketch name
+                <input
+                  type="text"
+                  value={draft.name}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setDraft({ ...draft, name: event.currentTarget.value })
+                  }
+                />
+              </label>
+              <label>
+                Optional sketch ID
+                <input
+                  type="text"
+                  value={draft.id}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setDraft({ ...draft, id: event.currentTarget.value })
+                  }
+                />
+              </label>
+            </div>
+          )}
           <ul className="reference-list">
-            {faces.map((face) => {
-              const eligible = canCreateSketchOnFace(face);
+            {referenceItems.map((reference) => {
+              const face = asGeneratedFaceReference(reference);
+              const eligible = face ? canCreateSketchOnFace(face) : false;
+              const measurementState = measurementByStableId?.get(
+                reference.stableId
+              );
 
               return (
-                <li key={face.stableId}>
+                <li key={reference.stableId}>
                   <div className="reference-heading">
-                    <strong>{face.label}</strong>
-                    <span>{formatGeneratedFaceEligibility(face)}</span>
+                    <strong>{reference.label}</strong>
+                    <span>{formatGeneratedReferenceKind(reference.kind)}</span>
                   </div>
-                  {face.description && <p>{face.description}</p>}
-                  <code>{face.stableId}</code>
-                  {face.eligibilityNotes &&
-                    face.eligibilityNotes.length > 0 && (
-                      <small>{face.eligibilityNotes.join(" ")}</small>
+                  {reference.description && <p>{reference.description}</p>}
+                  <small>
+                    Eligible:{" "}
+                    {formatGeneratedReferenceOperationLabels(reference)}
+                  </small>
+                  <code>{reference.stableId}</code>
+                  {reference.eligibilityNotes &&
+                    reference.eligibilityNotes.length > 0 && (
+                      <small>{reference.eligibilityNotes.join(" ")}</small>
                     )}
+                  <GeneratedReferenceMeasurementRows
+                    state={measurementState}
+                    units={units}
+                  />
                   {eligible ? (
                     <button
                       type="button"
                       disabled={disabled || !hasValidName}
-                      onClick={() => createOnFace(face)}
+                      onClick={() => {
+                        if (face) {
+                          createOnFace(face);
+                        }
+                      }}
                     >
                       Create sketch on face
                     </button>
                   ) : (
-                    <small>Sketch creation unavailable</small>
+                    face && <small>Sketch creation unavailable</small>
                   )}
                 </li>
               );
             })}
           </ul>
-          {!hasValidName && (
+          {faces.length > 0 && !hasValidName && (
             <p className="error-text">Sketch name is required.</p>
           )}
         </>
       )}
     </section>
+  );
+}
+
+function asGeneratedFaceReference(
+  reference: CadGeneratedReference
+): CadGeneratedFaceReference | undefined {
+  return reference.kind === "face" ? reference : undefined;
+}
+
+function GeneratedReferenceMeasurementRows({
+  state,
+  units
+}: {
+  readonly state?: GeneratedReferenceMeasurementDisplay;
+  readonly units: DocumentUnits;
+}) {
+  if (!state) {
+    return <small>Measurements unavailable</small>;
+  }
+
+  if (state.error) {
+    return <small>{state.error}</small>;
+  }
+
+  if (!state.measurement) {
+    return <small>Measurements unavailable</small>;
+  }
+
+  return (
+    <dl className="reference-measurements">
+      {createGeneratedReferenceMeasurementRows(state.measurement, units).map(
+        (row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        )
+      )}
+    </dl>
   );
 }
 

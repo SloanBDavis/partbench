@@ -16,6 +16,7 @@ import type {
   CadBatchMode,
   CadBatchResponse,
   CadGeneratedFaceReference,
+  GeneratedReferenceMeasurement,
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
@@ -97,6 +98,10 @@ import {
   createGeneratedFaceReferenceKey,
   createSketchDisplayState
 } from "./sketchDisplayFrames";
+import {
+  formatGeneratedReferenceMeasurementError,
+  type GeneratedReferenceMeasurementDisplay
+} from "./generatedReferenceUi";
 import {
   createProjectJsonPreview,
   formatProjectJsonSummary,
@@ -251,6 +256,57 @@ function readBodyGeneratedReferences(bodyId: string | undefined): {
   return !response.ok && response.query === "body.generatedReferences"
     ? { error: response.error.message }
     : {};
+}
+
+function readGeneratedReferenceMeasurements(
+  references: BodyGeneratedReferencesQueryResponse | undefined
+): ReadonlyMap<string, GeneratedReferenceMeasurementDisplay> | undefined {
+  if (!references) {
+    return undefined;
+  }
+
+  const measurements = new Map<
+    string,
+    {
+      readonly measurement?: GeneratedReferenceMeasurement;
+      readonly error?: string;
+    }
+  >();
+  const referenceItems = [
+    references.body,
+    ...references.faces,
+    ...references.edges,
+    ...references.vertices
+  ];
+
+  for (const reference of referenceItems) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: reference.bodyId,
+        stableId: reference.stableId
+      }
+    });
+
+    if (
+      response.ok &&
+      response.query === "body.generatedReferenceMeasurements"
+    ) {
+      measurements.set(reference.stableId, {
+        measurement: response.measurements
+      });
+    } else if (
+      !response.ok &&
+      response.query === "body.generatedReferenceMeasurements"
+    ) {
+      measurements.set(reference.stableId, {
+        error: formatGeneratedReferenceMeasurementError(response.error)
+      });
+    }
+  }
+
+  return measurements;
 }
 
 function readBodyMeasurements(bodyId: string | undefined): {
@@ -409,6 +465,12 @@ export function App() {
     selectedFeature?.kind === "extrude"
       ? readBodyGeneratedReferences(selectedBody?.id)
       : {};
+  const selectedGeneratedReferenceMeasurements =
+    selectedFeature?.kind === "extrude"
+      ? readGeneratedReferenceMeasurements(
+          selectedBodyGeneratedReferences.references
+        )
+      : undefined;
   const selectedBodyMeasurements =
     selectedFeature?.kind === "extrude"
       ? readBodyMeasurements(selectedBody?.id)
@@ -1156,6 +1218,9 @@ export function App() {
             feature={selectedFeature}
             generatedReferences={selectedBodyGeneratedReferences.references}
             generatedReferencesError={selectedBodyGeneratedReferences.error}
+            generatedReferenceMeasurements={
+              selectedGeneratedReferenceMeasurements
+            }
             object={selectedObject}
             units={document.units}
             onApplyDimensions={(form) => void updateSelectedDimensions(form)}

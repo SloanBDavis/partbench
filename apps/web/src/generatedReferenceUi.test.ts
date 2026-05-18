@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
-import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
+import type {
+  BodyGeneratedReferencesQueryResponse,
+  CadGeneratedFaceReference,
+  GeneratedReferenceMeasurement
+} from "@web-cad/cad-protocol";
 import {
   canCreateSketchOnFace,
+  createGeneratedReferenceMeasurementRows,
   createSketchOnFaceDefaultName,
   formatGeneratedFaceEligibility,
+  formatGeneratedReferenceKind,
+  formatGeneratedReferenceMeasurementError,
+  formatGeneratedReferenceOperationLabels,
   formatSketchAttachmentLabel,
+  getGeneratedReferenceItems,
   getSketchAttachableFaces
 } from "./generatedReferenceUi";
 
@@ -58,6 +67,113 @@ describe("generated reference UI helpers", () => {
         faceRole: "endCap"
       })
     ).toBe("endCap on body_1");
+  });
+
+  it("collects and labels generated reference items", () => {
+    const references: BodyGeneratedReferencesQueryResponse = {
+      ok: true,
+      query: "body.generatedReferences",
+      cadOpsVersion: "cadops.v1",
+      body: {
+        kind: "body",
+        stableId: "generated:body:body_1",
+        label: "Generated body",
+        eligibleOperations: [
+          "feature.measureReference",
+          "feature.selectReference"
+        ],
+        bodyId: "body_1",
+        ownerPartId: "part:default",
+        sourceFeatureId: "feat_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        profileKind: "rectangle",
+        geometricSignature: {
+          profileKind: "rectangle",
+          sketchPlane: "XY",
+          extrudeSide: "positive",
+          depth: 2
+        }
+      },
+      faceCount: 1,
+      faces: [startCap],
+      edgeCount: 0,
+      edges: [],
+      vertexCount: 0,
+      vertices: []
+    };
+
+    expect(
+      getGeneratedReferenceItems(references).map((item) => item.kind)
+    ).toEqual(["body", "face"]);
+    expect(formatGeneratedReferenceKind("edge")).toBe("Edge");
+    expect(formatGeneratedReferenceOperationLabels(startCap)).toBe(
+      "Sketch plane, Measure, Select"
+    );
+  });
+
+  it("formats generated reference measurement rows", () => {
+    const faceMeasurement: GeneratedReferenceMeasurement = {
+      kind: "face",
+      stableId: "generated:face:body_1:endCap",
+      bodyId: "body_1",
+      sourceFeatureId: "feat_1",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "rect_1",
+      profileKind: "rectangle",
+      units: "mm",
+      measurementModel: "sourceAnalytic",
+      role: "endCap",
+      area: 6,
+      bounds: {
+        min: [-1, -1.5, 2],
+        max: [1, 1.5, 2],
+        size: [2, 3, 0],
+        center: [0, 0, 2]
+      },
+      center: [0, 0, 2],
+      surfaceType: "plane",
+      normal: [0, 0, 1],
+      normalRole: "endCap"
+    };
+
+    expect(
+      createGeneratedReferenceMeasurementRows(faceMeasurement, "mm")
+    ).toEqual([
+      { label: "Area", value: "6 mm^2" },
+      {
+        label: "Bounds",
+        value:
+          "min -1 mm, -1.50 mm, 2 mm; max 1 mm, 1.50 mm, 2 mm; size 2 mm, 3 mm, 0 mm"
+      },
+      { label: "Center", value: "0 mm, 0 mm, 2 mm" },
+      { label: "Surface", value: "plane" },
+      { label: "Normal", value: "0, 0, 1" },
+      { label: "Normal role", value: "endCap" }
+    ]);
+  });
+
+  it("formats generated reference measurement errors", () => {
+    expect(
+      formatGeneratedReferenceMeasurementError({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: "Reference not found.",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:missing"
+      })
+    ).toBe(
+      "Reference measurements unavailable: generated:face:body_1:missing is missing or stale."
+    );
+
+    expect(
+      formatGeneratedReferenceMeasurementError({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: "Unsupported body.",
+        bodyId: "body:box_1"
+      })
+    ).toBe(
+      "Reference measurements unavailable for body:box_1. Authored rectangle and circle extrude bodies are supported."
+    );
   });
 });
 

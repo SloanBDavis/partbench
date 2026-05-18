@@ -1,9 +1,31 @@
 import type {
+  BodyGeneratedReferencesQueryResponse,
+  CadGeneratedEntityKind,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
+  CadQueryError,
+  DocumentUnits,
+  GeneratedReferenceMeasurement,
   SketchAttachmentSnapshot
 } from "@web-cad/cad-protocol";
+import {
+  formatArea,
+  formatBounds,
+  formatVector,
+  formatVolume
+} from "./sceneObjectDisplay";
 
 const SKETCH_PLANE_OPERATION = "feature.attachSketchPlane";
+
+export interface GeneratedReferenceMeasurementDisplay {
+  readonly measurement?: GeneratedReferenceMeasurement;
+  readonly error?: string;
+}
+
+export interface GeneratedReferenceMeasurementRow {
+  readonly label: string;
+  readonly value: string;
+}
 
 export function canCreateSketchOnFace(
   face: CadGeneratedFaceReference
@@ -37,4 +59,163 @@ export function formatSketchAttachmentLabel(
   attachment: SketchAttachmentSnapshot
 ): string {
   return `${attachment.faceRole} on ${attachment.bodyId}`;
+}
+
+export function getGeneratedReferenceItems(
+  references: BodyGeneratedReferencesQueryResponse
+): readonly CadGeneratedReference[] {
+  return [
+    references.body,
+    ...references.faces,
+    ...references.edges,
+    ...references.vertices
+  ];
+}
+
+export function formatGeneratedReferenceKind(
+  kind: CadGeneratedEntityKind
+): string {
+  switch (kind) {
+    case "body":
+      return "Body";
+    case "face":
+      return "Face";
+    case "edge":
+      return "Edge";
+    case "vertex":
+      return "Vertex";
+  }
+}
+
+export function formatGeneratedReferenceOperationLabels(
+  reference: CadGeneratedReference
+): string {
+  if (reference.eligibleOperations.length === 0) {
+    return reference.eligibilityNotes?.[0] ?? "No eligible operations";
+  }
+
+  return reference.eligibleOperations.map(formatOperationLabel).join(", ");
+}
+
+export function createGeneratedReferenceMeasurementRows(
+  measurement: GeneratedReferenceMeasurement,
+  units: DocumentUnits
+): readonly GeneratedReferenceMeasurementRow[] {
+  switch (measurement.kind) {
+    case "body":
+      return [
+        { label: "Volume", value: formatVolume(measurement.volume, units) },
+        { label: "Bounds", value: formatBounds(measurement.bounds, units) },
+        {
+          label: "Centroid",
+          value: formatPoint(measurement.centroid, units)
+        }
+      ];
+    case "face":
+      return [
+        { label: "Area", value: formatArea(measurement.area, units) },
+        { label: "Bounds", value: formatBounds(measurement.bounds, units) },
+        { label: "Center", value: formatPoint(measurement.center, units) },
+        { label: "Surface", value: measurement.surfaceType },
+        ...optionalVectorRow("Normal", measurement.normal),
+        ...optionalTextRow("Normal role", measurement.normalRole),
+        ...optionalVectorRow("Axis", measurement.axis),
+        ...optionalTextRow("Axis role", measurement.axisRole)
+      ];
+    case "edge":
+      return [
+        { label: "Length", value: formatLength(measurement.length, units) },
+        { label: "Curve", value: measurement.curveType },
+        ...optionalPointRow("Start", measurement.startPoint, units),
+        ...optionalPointRow("End", measurement.endPoint, units),
+        ...optionalPointRow("Center", measurement.center, units),
+        ...optionalNumberRow("Radius", measurement.radius, units),
+        ...optionalVectorRow("Axis", measurement.axis),
+        ...optionalTextRow("Axis role", measurement.axisRole)
+      ];
+    case "vertex":
+      return [{ label: "Point", value: formatPoint(measurement.point, units) }];
+  }
+}
+
+export function formatGeneratedReferenceMeasurementError(
+  error: CadQueryError
+): string {
+  if (error.code === "BODY_NOT_FOUND") {
+    return `Reference measurements unavailable: ${error.bodyId ?? "selected body"} was not found.`;
+  }
+
+  if (error.code === "UNSUPPORTED_BODY_REFERENCES") {
+    return `Reference measurements unavailable for ${error.bodyId ?? "selected body"}. Authored rectangle and circle extrude bodies are supported.`;
+  }
+
+  if (error.code === "GENERATED_REFERENCE_NOT_FOUND") {
+    return `Reference measurements unavailable: ${error.stableId ?? "selected reference"} is missing or stale.`;
+  }
+
+  if (error.code === "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS") {
+    return `Reference measurements unavailable for ${error.stableId ?? "selected reference"}. ${error.message}`;
+  }
+
+  return error.message;
+}
+
+function formatOperationLabel(operation: string): string {
+  switch (operation) {
+    case "feature.attachSketchPlane":
+      return "Sketch plane";
+    case "feature.measureReference":
+      return "Measure";
+    case "feature.selectReference":
+      return "Select";
+    default:
+      return operation;
+  }
+}
+
+function optionalTextRow(
+  label: string,
+  value: string | undefined
+): readonly GeneratedReferenceMeasurementRow[] {
+  return value ? [{ label, value }] : [];
+}
+
+function optionalNumberRow(
+  label: string,
+  value: number | undefined,
+  units: DocumentUnits
+): readonly GeneratedReferenceMeasurementRow[] {
+  return value === undefined
+    ? []
+    : [{ label, value: formatLength(value, units) }];
+}
+
+function optionalVectorRow(
+  label: string,
+  value: readonly [number, number, number] | undefined
+): readonly GeneratedReferenceMeasurementRow[] {
+  return value ? [{ label, value: formatVector(value) }] : [];
+}
+
+function optionalPointRow(
+  label: string,
+  value: readonly [number, number, number] | undefined,
+  units: DocumentUnits
+): readonly GeneratedReferenceMeasurementRow[] {
+  return value ? [{ label, value: formatPoint(value, units) }] : [];
+}
+
+function formatPoint(
+  point: readonly [number, number, number],
+  units: DocumentUnits
+): string {
+  return point.map((value) => `${formatNumber(value)} ${units}`).join(", ");
+}
+
+function formatLength(value: number, units: DocumentUnits): string {
+  return `${formatNumber(value)} ${units}`;
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }
