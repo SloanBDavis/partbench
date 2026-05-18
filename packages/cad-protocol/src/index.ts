@@ -804,6 +804,11 @@ export type CadGeneratedExtrudeVertexRole =
 export type CadGeneratedSurfaceType = "plane" | "cylinder";
 export type CadGeneratedCurveType = "line" | "circle";
 
+export type CadGeneratedReferenceEligibleOperation =
+  | "feature.attachSketchPlane"
+  | "feature.measureReference"
+  | "feature.selectReference";
+
 export type CadGeneratedReferenceProfileSignature =
   | {
       readonly kind: "rectangle";
@@ -838,6 +843,8 @@ export interface CadGeneratedBodyReference {
   readonly stableId: string;
   readonly label: string;
   readonly description?: string;
+  readonly eligibleOperations: readonly CadGeneratedReferenceEligibleOperation[];
+  readonly eligibilityNotes?: readonly string[];
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
@@ -852,6 +859,8 @@ export interface CadGeneratedFaceReference {
   readonly stableId: string;
   readonly label: string;
   readonly description?: string;
+  readonly eligibleOperations: readonly CadGeneratedReferenceEligibleOperation[];
+  readonly eligibilityNotes?: readonly string[];
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
@@ -866,6 +875,8 @@ export interface CadGeneratedEdgeReference {
   readonly stableId: string;
   readonly label: string;
   readonly description?: string;
+  readonly eligibleOperations: readonly CadGeneratedReferenceEligibleOperation[];
+  readonly eligibilityNotes?: readonly string[];
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;
@@ -881,6 +892,8 @@ export interface CadGeneratedVertexReference {
   readonly stableId: string;
   readonly label: string;
   readonly description?: string;
+  readonly eligibleOperations: readonly CadGeneratedReferenceEligibleOperation[];
+  readonly eligibilityNotes?: readonly string[];
   readonly bodyId: BodyId;
   readonly ownerPartId: PartId;
   readonly sourceFeatureId: FeatureId;

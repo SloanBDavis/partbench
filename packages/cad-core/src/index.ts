@@ -84,6 +84,7 @@ export type {
   CadGeneratedExtrudeVertexRole,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadGeneratedReferenceEligibleOperation,
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,

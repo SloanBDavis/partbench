@@ -1033,6 +1033,10 @@ describe("mcp-adapter", () => {
         body: {
           stableId: "generated:body:mcp_refs_body",
           label: "Circle extrude body",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
           bodyId: "mcp_refs_body",
           sourceFeatureId: "mcp_refs_feature",
           sourceSketchId: "mcp_refs_sketch",
@@ -1045,12 +1049,27 @@ describe("mcp-adapter", () => {
         faces: [
           { role: "startCap", label: "Start cap" },
           { role: "endCap" },
-          { role: "side:circular", label: "Circular side face" }
+          {
+            role: "side:circular",
+            label: "Circular side face",
+            eligibleOperations: [
+              "feature.measureReference",
+              "feature.selectReference"
+            ],
+            eligibilityNotes: [
+              "Circular side faces are not planar and are not eligible for sketch-plane attachment.",
+              "Generated references are semantic first-slice references, not exact B-rep topology."
+            ]
+          }
         ],
         edges: [
           {
             role: "start:circular",
             label: "Start circular edge",
+            eligibleOperations: [
+              "feature.measureReference",
+              "feature.selectReference"
+            ],
             adjacentFaceRoles: ["startCap", "side:circular"]
           },
           {
@@ -1096,6 +1115,10 @@ describe("mcp-adapter", () => {
         reference: {
           kind: "edge",
           label: "Start circular edge",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
           role: "start:circular",
           adjacentFaceRoles: ["startCap", "side:circular"]
         }

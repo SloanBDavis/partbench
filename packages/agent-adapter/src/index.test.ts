@@ -1296,6 +1296,10 @@ describe("agent-adapter", () => {
       body: {
         stableId: "generated:body:body_refs",
         label: "Rectangle extrude body",
+        eligibleOperations: [
+          "feature.measureReference",
+          "feature.selectReference"
+        ],
         bodyId: "body_refs",
         sourceFeatureId: "feat_refs",
         sourceSketchId: "sketch_refs",
@@ -1306,7 +1310,15 @@ describe("agent-adapter", () => {
       edgeCount: 12,
       vertexCount: 8,
       faces: [
-        { role: "startCap", label: "Start cap" },
+        {
+          role: "startCap",
+          label: "Start cap",
+          eligibleOperations: [
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        },
         { role: "endCap" },
         { role: "side:uMin", label: "uMin side face" },
         { role: "side:uMax" },
@@ -1325,6 +1337,10 @@ describe("agent-adapter", () => {
         {
           role: "longitudinal:uMin:vMin",
           label: "uMin/vMin longitudinal edge",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
           adjacentFaceRoles: ["side:uMin", "side:vMin"]
         },
         { role: "longitudinal:uMin:vMax" },
@@ -1335,6 +1351,10 @@ describe("agent-adapter", () => {
         {
           role: "start:uMin:vMin",
           label: "Start uMin/vMin corner",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
           adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
           adjacentEdgeRoles: [
             "start:uMin",
@@ -1386,6 +1406,10 @@ describe("agent-adapter", () => {
       reference: {
         kind: "vertex",
         label: "Start uMin/vMin corner",
+        eligibleOperations: [
+          "feature.measureReference",
+          "feature.selectReference"
+        ],
         role: "start:uMin:vMin",
         adjacentFaceRoles: ["startCap", "side:uMin", "side:vMin"],
         adjacentEdgeRoles: [

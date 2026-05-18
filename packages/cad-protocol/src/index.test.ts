@@ -328,6 +328,14 @@ describe("cad-protocol", () => {
       stableId: "generated:face:body_1:side:uMin",
       label: "uMin side face",
       description: "Side face generated from the rectangle uMin profile edge.",
+      eligibleOperations: [
+        "feature.attachSketchPlane",
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      eligibilityNotes: [
+        "Generated references are semantic first-slice references, not exact B-rep topology."
+      ],
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",
@@ -366,6 +374,13 @@ describe("cad-protocol", () => {
       stableId: "generated:edge:body_1:longitudinal:uMin:vMin",
       label: "uMin/vMin longitudinal edge",
       description: "Longitudinal edge joining the uMin/vMin rectangle corners.",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      eligibilityNotes: [
+        "Generated references are semantic first-slice references, not exact B-rep topology."
+      ],
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",
@@ -407,6 +422,13 @@ describe("cad-protocol", () => {
       label: "Start uMin/vMin corner",
       description:
         "Corner vertex where the start cap, uMin side face, and vMin side face meet.",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      eligibilityNotes: [
+        "Generated references are semantic first-slice references, not exact B-rep topology."
+      ],
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",

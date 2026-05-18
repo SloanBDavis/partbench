@@ -366,6 +366,11 @@ Implemented:
 - Generated references include deterministic read-only labels and descriptions
   for human, script, and agent inspection. These labels are derived readability
   metadata, not persisted user names.
+- Generated references include deterministic read-only eligibility metadata for
+  currently planned future operations: `feature.attachSketchPlane`,
+  `feature.measureReference`, and `feature.selectReference`. Eligibility is
+  advisory planning metadata derived from the reference kind and role, not an
+  implemented mutation capability.
 - Agent adapter and MCP wrapper expose the same read path without defining new
   internal architecture.
 - Missing/stale generated reference IDs fail with a structured

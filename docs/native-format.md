@@ -377,6 +377,13 @@ Each reference also includes a deterministic read-only `label` and, where
 useful, `description`. These are derived readability metadata for humans,
 scripts, agents, and future UI panels. They are not persisted user names and do
 not change stable IDs or resolver behavior.
+Each reference also includes deterministic read-only `eligibleOperations` and,
+where useful, `eligibilityNotes`. These advertise whether the semantic
+reference is a plausible future candidate for `feature.attachSketchPlane`,
+`feature.measureReference`, or `feature.selectReference`. For example, planar
+faces can advertise sketch-plane attachment, while circular side faces cannot.
+This is derived planning metadata only and does not implement those future
+operations.
 
 The companion `body.resolveGeneratedReference` query accepts a body ID and one
 generated stable ID, then resolves it to the current body, face, edge, or vertex
@@ -436,6 +443,7 @@ These are not source of truth and must not be required to load a project:
 - read-only generated body/face/edge/vertex reference query results
 - read-only generated reference resolver query results
 - read-only generated reference labels and descriptions
+- read-only generated reference eligibility metadata
 - future LODs, BVHs, edge display buffers, and thumbnails
 
 Derived meshes are display/cache artifacts. They are regenerated from the
