@@ -6,10 +6,10 @@ import {
   type CadBodySnapshot,
   type CadDocument,
   type CadFeatureSummary,
+  type CadPartSnapshot,
   type CadTransactionHistoryEntry,
   type BodyMeasurementsSnapshot,
-  type ObjectMeasurementsSnapshot,
-  type SceneObject
+  type ObjectMeasurementsSnapshot
 } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
@@ -21,6 +21,7 @@ import type {
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
+  ProjectHealthQueryResponse,
   SketchEntityKind,
   SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
@@ -75,6 +76,7 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
+import { StructurePanel } from "./components/StructurePanel";
 import { ViewportCanvas } from "./components/ViewportCanvas";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
@@ -89,12 +91,9 @@ import {
   createExtrudeDerivedGeometrySources
 } from "./derivedGeometrySources";
 import {
-  formatDimensions,
   formatBodyMeasurementError,
   getObjectDisplayName,
-  formatObjectKind,
-  formatObjectPosition,
-  formatObjectScale
+  formatObjectKind
 } from "./sceneObjectDisplay";
 import { createRenderSceneInputs } from "./renderScene";
 import {
@@ -232,6 +231,7 @@ function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
 }
 
 function readProjectStructure(): {
+  readonly parts: readonly CadPartSnapshot[];
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
 } {
@@ -241,8 +241,35 @@ function readProjectStructure(): {
   });
 
   return response.ok && response.query === "project.structure"
-    ? { features: response.features, bodies: response.bodies }
-    : { features: [], bodies: [] };
+    ? {
+        parts: response.parts,
+        features: response.features,
+        bodies: response.bodies
+      }
+    : { parts: [], features: [], bodies: [] };
+}
+
+function readProjectHealth(): ProjectHealthQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.health" }
+  });
+
+  return response.ok && response.query === "project.health"
+    ? response
+    : {
+        ok: true,
+        query: "project.health",
+        cadOpsVersion: "cadops.v1",
+        status: "healthy",
+        issueCount: 0,
+        authoredExtrudeCount: 0,
+        attachedSketchCount: 0,
+        namedReferenceCount: 0,
+        authoredExtrudes: [],
+        attachedSketches: [],
+        namedReferences: []
+      };
 }
 
 function readBodyGeneratedReferences(bodyId: string | undefined): {
@@ -441,6 +468,7 @@ export function App() {
     [document]
   );
   const projectStructure = readProjectStructure();
+  const projectHealth = readProjectHealth();
   const sketchExtrudeBodies = useMemo(
     () =>
       projectStructure.bodies.filter(
@@ -523,6 +551,19 @@ export function App() {
         derivedGeometry.entries.map((entry) => [
           entry.sourceId ?? entry.objectId,
           entry
+        ])
+      ),
+    [derivedGeometry]
+  );
+  const geometryStatusBySourceId = useMemo(
+    () =>
+      new Map(
+        derivedGeometry.entries.map((entry) => [
+          entry.sourceId ?? entry.objectId,
+          {
+            label: getDerivedGeometryStatusLabel(entry),
+            status: entry.status
+          }
         ])
       ),
     [derivedGeometry]
@@ -823,6 +864,11 @@ export function App() {
     });
   }
 
+  function focusSketch(sketchId: string) {
+    setActiveUtilityPanel("sketches");
+    setFocusedSketchId(sketchId);
+  }
+
   async function renameSketch(sketchId: string, name: string) {
     await commitOps([buildRenameSketchOp(sketchId, name)], () => selectedId);
   }
@@ -1044,71 +1090,6 @@ export function App() {
     syncDocument(undefined);
   }
 
-  function renderObjectButton(object: SceneObject) {
-    const geometryEntry = derivedGeometryBySourceId.get(object.id);
-
-    return (
-      <button
-        type="button"
-        className={object.id === selectedId ? "selected" : ""}
-        onClick={() => selectObject(object.id)}
-      >
-        <span className="object-id">{getObjectDisplayName(object)}</span>
-        <strong>{formatObjectKind(object.kind)}</strong>
-        {object.name && <small className="object-meta">ID {object.id}</small>}
-        <small className="object-meta">
-          {formatDimensions(object, document.units)}
-        </small>
-        <small className="object-meta">{formatObjectPosition(object)}</small>
-        <small className="object-meta">{formatObjectScale(object)}</small>
-        {derivedGeometryEnabled && (
-          <small
-            className={`mesh-status geometry-${geometryEntry?.status ?? "idle"}`}
-          >
-            {getDerivedGeometryStatusLabel(geometryEntry)}
-          </small>
-        )}
-        {object.id === selectedId && (
-          <small className="selected-status">Selected</small>
-        )}
-      </button>
-    );
-  }
-
-  function renderBodyButton(body: CadBodySnapshot) {
-    const geometryEntry = derivedGeometryBySourceId.get(body.id);
-    const feature = projectStructure.features.find(
-      (candidate) => candidate.id === body.featureId
-    );
-
-    return (
-      <button
-        type="button"
-        className={body.id === selectedId ? "selected" : ""}
-        onClick={() => selectObject(body.id)}
-      >
-        <span className="object-id">{body.name ?? body.id}</span>
-        <strong>{feature?.kind === "extrude" ? "Extrude body" : "Body"}</strong>
-        <small className="object-meta">Feature {body.featureId}</small>
-        {feature?.kind === "extrude" && (
-          <small className="object-meta">
-            {feature.profileKind} / depth {feature.depth} {document.units}
-          </small>
-        )}
-        {derivedGeometryEnabled && (
-          <small
-            className={`mesh-status geometry-${geometryEntry?.status ?? "idle"}`}
-          >
-            {getDerivedGeometryStatusLabel(geometryEntry)}
-          </small>
-        )}
-        {body.id === selectedId && (
-          <small className="selected-status">Selected</small>
-        )}
-      </button>
-    );
-  }
-
   return (
     <main className="app-shell">
       <header className="app-toolbar">
@@ -1229,50 +1210,23 @@ export function App() {
       </header>
 
       <section className="workspace" aria-label="CAD workspace">
-        <aside className="object-tree model-browser" aria-label="Model browser">
-          <div className="model-browser-header">
-            <h2>Model</h2>
-            <span>{sceneObjects.length + sketchExtrudeBodies.length}</span>
-          </div>
-          <div className="model-browser-sections">
-            <section className="model-section">
-              <div className="section-heading">
-                <h2>Objects</h2>
-                <span>{sceneObjects.length}</span>
-              </div>
-              {sceneObjects.length === 0 ? (
-                <p className="empty-state">No objects</p>
-              ) : (
-                <ul>
-                  {sceneObjects.map((object) => (
-                    <li key={object.id}>{renderObjectButton(object)}</li>
-                  ))}
-                </ul>
-              )}
-              {!derivedGeometryEnabled && sceneObjects.length > 0 && (
-                <p className="project-message">
-                  Showing primitive fallback geometry.
-                </p>
-              )}
-            </section>
-
-            <section className="model-section">
-              <div className="section-heading">
-                <h2>Bodies</h2>
-                <span>{sketchExtrudeBodies.length}</span>
-              </div>
-              {sketchExtrudeBodies.length === 0 ? (
-                <p className="empty-state">No bodies</p>
-              ) : (
-                <ul>
-                  {sketchExtrudeBodies.map((body) => (
-                    <li key={body.id}>{renderBodyButton(body)}</li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          </div>
-        </aside>
+        <StructurePanel
+          bodies={projectStructure.bodies}
+          features={projectStructure.features}
+          geometryStatuses={
+            derivedGeometryEnabled ? geometryStatusBySourceId : undefined
+          }
+          health={projectHealth}
+          namedReferences={namedReferences}
+          objects={sceneObjects}
+          parts={projectStructure.parts}
+          selectedId={selectedId}
+          sketches={sketches}
+          units={document.units}
+          onFocusSketch={focusSketch}
+          onInspectNamedReference={inspectNamedReference}
+          onSelect={selectObject}
+        />
 
         <ViewportCanvas
           primitives={renderScene.primitives}
