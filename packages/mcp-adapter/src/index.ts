@@ -13,6 +13,7 @@ export type CadMcpToolName =
   | "cad.project_summary"
   | "cad.project_features"
   | "cad.project_structure"
+  | "cad.project_health"
   | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.body_measurements"
@@ -126,6 +127,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_structure") {
       return this.#callProjectStructure(request);
+    }
+
+    if (request.name === "cad.project_health") {
+      return this.#callProjectHealth(request);
     }
 
     if (request.name === "cad.project_sketches") {
@@ -286,6 +291,28 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.structure" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectHealth(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_health does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.health" }
         }
       })
     );
@@ -641,6 +668,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_structure",
     description:
       "Returns the default part, primitive-derived features/bodies, authored sketch-extrude features/bodies, and source mappings.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.project_health",
+    description:
+      "Returns read-only dependency and health status for authored sketches, extrudes, generated bodies, and named references.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

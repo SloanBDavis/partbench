@@ -8,8 +8,12 @@ import type {
   CadAxisAlignedBounds,
   BodyMeasurementsSnapshot,
   BodyExtentSnapshot,
+  CadAttachedSketchHealth,
+  CadAuthoredExtrudeHealth,
   CadBodySnapshot,
+  CadDependencyHealthStatus,
   CadFeatureSummary,
+  CadNamedReferenceHealth,
   CadGeneratedBodyReference,
   CadGeneratedEdgeReference,
   CadGeneratedEntityKind,
@@ -140,6 +144,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentProjectStructureQueryResponse
+  | CadOpsAgentProjectHealthQueryResponse
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
@@ -188,6 +193,22 @@ export interface CadOpsAgentProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+}
+
+export interface CadOpsAgentProjectHealthQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.health";
+  readonly status: CadDependencyHealthStatus;
+  readonly issueCount: number;
+  readonly authoredExtrudeCount: number;
+  readonly attachedSketchCount: number;
+  readonly namedReferenceCount: number;
+  readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
+  readonly attachedSketches: readonly CadAttachedSketchHealth[];
+  readonly namedReferences: readonly CadNamedReferenceHealth[];
 }
 
 export interface CadOpsAgentProjectSketchesQueryResponse {
@@ -332,6 +353,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.summary"
     | "project.features"
     | "project.structure"
+    | "project.health"
     | "project.sketches"
     | "object.get"
     | "object.measurements"
@@ -664,6 +686,24 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.health") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      status: response.status,
+      issueCount: response.issueCount,
+      authoredExtrudeCount: response.authoredExtrudeCount,
+      attachedSketchCount: response.attachedSketchCount,
+      namedReferenceCount: response.namedReferenceCount,
+      authoredExtrudes: response.authoredExtrudes,
+      attachedSketches: response.attachedSketches,
+      namedReferences: response.namedReferences
+    };
+  }
+
   if (response.query === "project.sketches") {
     return {
       ok: true,
@@ -911,6 +951,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.features" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.structure" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.health" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.sketches" &&
         Object.keys(value.query).length === 1) ||

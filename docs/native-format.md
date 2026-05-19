@@ -429,6 +429,14 @@ This structure is a migration bridge toward a fuller feature/body model. The
 primitive side remains derived; the authored extrude side is persisted because it
 is source-of-truth feature data.
 
+The `project.health` query returns read-only dependency health derived from the
+same source-of-truth document. It reports authored extrude source sketch/entity
+status, attached sketch generated-face resolution and eligibility, and named
+generated reference target status. Health entries may be `healthy`, `stale`,
+`missing-source`, or `unsupported`, with concise structured issues. These
+results are diagnostic query data only; they are not persisted and do not form a
+separate parametric regeneration graph.
+
 The `body.generatedReferences` query returns the first read-only semantic
 reference layer for authored sketch-extrude bodies. It derives a generated body
 reference plus generated face, edge, and rectangle vertex references from the
@@ -549,6 +557,7 @@ These are not source of truth and must not be required to load a project:
 - read-only transaction history summary query results
 - read-only feature summary query results
 - read-only project structure query results
+- read-only project health/dependency query results
 - read-only project sketch query formatting
 - read-only generated body/face/edge/vertex reference query results
 - read-only generated reference resolver query results

@@ -77,6 +77,7 @@ import {
 } from "./generatedReferences";
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
+import { createProjectHealth } from "./projectHealth";
 
 export type {
   CadActorMetadata,
@@ -88,6 +89,11 @@ export type {
   CadAxisAlignedBounds,
   CadBodyRef,
   CadBodySnapshot,
+  CadAttachedSketchHealth,
+  CadAuthoredExtrudeHealth,
+  CadDependencyHealthIssue,
+  CadDependencyHealthIssueCode,
+  CadDependencyHealthStatus,
   CadFeatureRef,
   CadFeatureSummary,
   CadGeneratedBodyReference,
@@ -122,6 +128,7 @@ export type {
   CadTransactionStatus,
   CadTransactionAuditMetadata,
   NamedGeneratedReferenceEntry,
+  CadNamedReferenceHealth,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
   ReferenceSemanticDiff,
@@ -633,6 +640,21 @@ export class CadEngine {
           bodies: structure.bodies,
           objectSources: structure.objectSources
         };
+      }
+
+      case "project.health": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createProjectHealth({
+          document: this.#document,
+          cadOpsVersion: request.version,
+          ownerPartId: DEFAULT_PART_ID,
+          bodyExists: (bodyId) =>
+            structure.bodies.some((body) => body.id === bodyId)
+        });
       }
 
       case "project.sketches": {

@@ -506,6 +506,7 @@ export type CadQueryKind =
   | "project.summary"
   | "project.features"
   | "project.structure"
+  | "project.health"
   | "project.sketches"
   | "object.get"
   | "object.measurements"
@@ -523,6 +524,7 @@ export type CadQuery =
   | ProjectSummaryQuery
   | ProjectFeaturesQuery
   | ProjectStructureQuery
+  | ProjectHealthQuery
   | ProjectSketchesQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
@@ -546,6 +548,10 @@ export interface ProjectFeaturesQuery {
 
 export interface ProjectStructureQuery {
   readonly query: "project.structure";
+}
+
+export interface ProjectHealthQuery {
+  readonly query: "project.health";
 }
 
 export interface ProjectSketchesQuery {
@@ -1113,6 +1119,75 @@ export interface NamedGeneratedReferenceEntry extends NamedGeneratedReferenceSna
   readonly error?: CadQueryError;
 }
 
+export type CadDependencyHealthStatus =
+  | "healthy"
+  | "stale"
+  | "missing-source"
+  | "unsupported";
+
+export type CadDependencyHealthIssueCode =
+  | "SKETCH_NOT_FOUND"
+  | "SKETCH_ENTITY_NOT_FOUND"
+  | "PROFILE_KIND_MISMATCH"
+  | "BODY_NOT_FOUND"
+  | "UNSUPPORTED_BODY_REFERENCES"
+  | "GENERATED_REFERENCE_NOT_FOUND"
+  | "GENERATED_REFERENCE_KIND_MISMATCH"
+  | "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
+  | "ATTACHMENT_SOURCE_MISMATCH"
+  | "NAMED_REFERENCE_KIND_CHANGED";
+
+export interface CadDependencyHealthIssue {
+  readonly code: CadDependencyHealthIssueCode;
+  readonly message: string;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadAuthoredExtrudeHealth {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly status: CadDependencyHealthStatus;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadAttachedSketchHealth {
+  readonly sketchId: SketchId;
+  readonly sketchName: string;
+  readonly plane: SketchPlane;
+  readonly bodyId: BodyId;
+  readonly faceStableId: string;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly faceRole: CadGeneratedExtrudeFaceRole;
+  readonly status: CadDependencyHealthStatus;
+  readonly resolves: boolean;
+  readonly eligibleForSketchPlane: boolean;
+  readonly resolvedKind?: CadGeneratedEntityKind;
+  readonly resolvedFaceRole?: CadGeneratedExtrudeFaceRole;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadNamedReferenceHealth {
+  readonly name: NamedReferenceName;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly status: CadDependencyHealthStatus;
+  readonly resolvedKind?: CadGeneratedEntityKind;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
 export interface CadObjectModelSource {
   readonly objectId: ObjectId;
   readonly partId: PartId;
@@ -1182,6 +1257,7 @@ export type CadQueryResponse =
   | ProjectSummaryQueryResponse
   | ProjectFeaturesQueryResponse
   | ProjectStructureQueryResponse
+  | ProjectHealthQueryResponse
   | ProjectSketchesQueryResponse
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
@@ -1224,6 +1300,20 @@ export interface ProjectStructureQueryResponse {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+}
+
+export interface ProjectHealthQueryResponse {
+  readonly ok: true;
+  readonly query: "project.health";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadDependencyHealthStatus;
+  readonly issueCount: number;
+  readonly authoredExtrudeCount: number;
+  readonly attachedSketchCount: number;
+  readonly namedReferenceCount: number;
+  readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
+  readonly attachedSketches: readonly CadAttachedSketchHealth[];
+  readonly namedReferences: readonly CadNamedReferenceHealth[];
 }
 
 export interface ProjectSketchesQueryResponse {

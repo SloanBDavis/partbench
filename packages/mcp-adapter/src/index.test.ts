@@ -9,6 +9,7 @@ describe("mcp-adapter", () => {
       "cad.project_summary",
       "cad.project_features",
       "cad.project_structure",
+      "cad.project_health",
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
@@ -1433,6 +1434,42 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns project dependency health through MCP tools", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_health_sketch",
+      entityId: "mcp_health_circle",
+      featureId: "mcp_health_feature",
+      bodyId: "mcp_health_body"
+    });
+
+    const healthResult = server.callTool({
+      name: "cad.project_health",
+      requestId: "mcp_req_project_health"
+    });
+
+    expect(healthResult).toMatchObject({
+      toolName: "cad.project_health",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_project_health",
+        query: "project.health",
+        status: "healthy",
+        issueCount: 0,
+        authoredExtrudeCount: 1,
+        authoredExtrudes: [
+          {
+            featureId: "mcp_health_feature",
+            bodyId: "mcp_health_body",
+            status: "healthy"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns generated reference measurements through cad.generated_reference_measurements", () => {
     const server = new CadMcpServer();
 
@@ -1704,6 +1741,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
+          { name: "cad.project_health" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },

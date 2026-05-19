@@ -1565,6 +1565,44 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns project dependency health through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_health",
+      entityId: "rect_health",
+      featureId: "feat_health",
+      bodyId: "body_health"
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_project_health",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_project_health",
+      query: "project.health",
+      status: "healthy",
+      issueCount: 0,
+      authoredExtrudeCount: 1,
+      authoredExtrudes: [
+        {
+          featureId: "feat_health",
+          bodyId: "body_health",
+          sketchId: "sketch_health",
+          entityId: "rect_health",
+          status: "healthy"
+        }
+      ]
+    });
+  });
+
   it("resolves generated references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

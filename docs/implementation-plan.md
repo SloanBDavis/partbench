@@ -446,8 +446,11 @@ measurements for authored rectangle/circle sketch-extrude bodies from
 source-of-truth sketch and feature data, including attached-sketch placement
 where the attachment resolves. `body.generatedReferenceMeasurements` measures
 one generated body, face, edge, or rectangle vertex reference from the same
-source-derived semantic reference model. Primitive object measurements remain
-unchanged.
+source-derived semantic reference model. `project.health` reports read-only
+dependency health for authored extrudes, attached sketches, and named generated
+references so humans, agents, and future commands can detect stale or broken
+source relationships before mutating the model. Primitive object measurements
+remain unchanged.
 
 Deliverables:
 
@@ -459,6 +462,8 @@ Deliverables:
 - Add kernel-backed bounding boxes, volume, surface area, and centroid where
   practical.
 - Keep read/query separate from mutation.
+- Keep `project.health` source-derived and non-persistent. It reports current
+  dependency status; it is not a parametric regeneration graph.
 - Preserve primitive-derived measurements as fallback for V1 objects or
   migrated objects without exact bodies.
 - Expose through CADOps, agent adapter, and MCP wrappers.

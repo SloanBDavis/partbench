@@ -303,6 +303,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "project.health" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "project.sketches" }
       },
       {
@@ -355,6 +359,7 @@ describe("cad-protocol", () => {
       "project.summary",
       "project.features",
       "project.structure",
+      "project.health",
       "project.sketches",
       "object.get",
       "object.measurements",

@@ -4366,6 +4366,263 @@ describe("cad-core", () => {
     throw new Error("Expected project import error.");
   });
 
+  it("reports healthy authored extrude dependency health", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_circle", name: "Circle", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_circle",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_1",
+        bodyId: "body_circle_1",
+        sketchId: "sketch_circle",
+        entityId: "circle_1",
+        depth: 4
+      }
+    ]);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      issueCount: 0,
+      authoredExtrudeCount: 2,
+      attachedSketchCount: 0,
+      namedReferenceCount: 0,
+      authoredExtrudes: [
+        {
+          featureId: "feat_rect_1",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          status: "healthy",
+          issues: []
+        },
+        {
+          featureId: "feat_circle_1",
+          bodyId: "body_circle_1",
+          sketchId: "sketch_circle",
+          entityId: "circle_1",
+          profileKind: "circle",
+          status: "healthy",
+          issues: []
+        }
+      ]
+    });
+  });
+
+  it("reports healthy attached sketch and downstream extrude dependencies", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "Face sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_face_1",
+        id: "rect_face_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_face_1",
+        bodyId: "body_face_1",
+        sketchId: "sketch_face_1",
+        entityId: "rect_face_1",
+        depth: 2
+      }
+    ]);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      issueCount: 0,
+      authoredExtrudeCount: 2,
+      attachedSketchCount: 1,
+      attachedSketches: [
+        {
+          sketchId: "sketch_face_1",
+          sketchName: "Face sketch",
+          bodyId: "body_rect_1",
+          faceStableId: "generated:face:body_rect_1:endCap",
+          sourceFeatureId: "feat_rect_1",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          faceRole: "endCap",
+          status: "healthy",
+          resolves: true,
+          eligibleForSketchPlane: true,
+          resolvedKind: "face",
+          resolvedFaceRole: "endCap",
+          issues: []
+        }
+      ],
+      authoredExtrudes: [
+        { featureId: "feat_rect_1", status: "healthy" },
+        { featureId: "feat_face_1", status: "healthy" }
+      ]
+    });
+  });
+
+  it("reports stale named references and attached sketches after feature deletion", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "reference.nameGenerated",
+        name: "Top face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "Face sketch",
+        referenceName: "Top face"
+      }
+    ]);
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "stale",
+      issueCount: 2,
+      authoredExtrudeCount: 0,
+      attachedSketches: [
+        {
+          sketchId: "sketch_face_1",
+          status: "stale",
+          resolves: false,
+          eligibleForSketchPlane: false,
+          issues: [{ code: "BODY_NOT_FOUND", bodyId: "body_rect_1" }]
+        }
+      ],
+      namedReferences: [
+        {
+          name: "Top face",
+          status: "stale",
+          issues: [
+            {
+              code: "BODY_NOT_FOUND",
+              bodyId: "body_rect_1",
+              referenceName: "Top face"
+            }
+          ]
+        }
+      ]
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      authoredExtrudeCount: 1,
+      attachedSketches: [{ sketchId: "sketch_face_1", status: "healthy" }],
+      namedReferences: [{ name: "Top face", status: "healthy" }]
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "stale",
+      authoredExtrudeCount: 0
+    });
+  });
+
+  it("round-trips project health through project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "Face sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_face_1",
+        id: "circle_face_1",
+        center: [0, 0],
+        radius: 0.5
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_face_1",
+        bodyId: "body_face_1",
+        sketchId: "sketch_face_1",
+        entityId: "circle_face_1",
+        depth: 2
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "Small body",
+        bodyId: "body_face_1",
+        stableId: "generated:body:body_face_1"
+      }
+    ]);
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      issueCount: 0,
+      authoredExtrudeCount: 2,
+      attachedSketchCount: 1,
+      namedReferenceCount: 1,
+      attachedSketches: [{ sketchId: "sketch_face_1", status: "healthy" }],
+      namedReferences: [{ name: "Small body", status: "healthy" }]
+    });
+  });
+
   it("validates sketch extrude source entities and batch responses", () => {
     const engine = new CadEngine();
 
