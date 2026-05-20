@@ -24,6 +24,7 @@ export type Vec3 = readonly [number, number, number];
 export type SketchPlane = "XY" | "XZ" | "YZ";
 export type FeatureExtrudeProfileKind = "rectangle" | "circle";
 export type FeatureExtrudeSide = "positive" | "negative" | "symmetric";
+export type FeatureExtrudeOperationMode = "newBody" | "add" | "cut";
 
 export interface CadActorMetadata {
   readonly type: CadActorType;
@@ -272,11 +273,13 @@ export interface FeatureExtrudeOp {
   readonly op: "feature.extrude";
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
   readonly name?: string;
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly depth: number;
   readonly side?: FeatureExtrudeSide;
+  readonly operationMode?: FeatureExtrudeOperationMode;
 }
 
 export interface FeatureDeleteOp {
@@ -327,6 +330,8 @@ export interface CadFeatureRef {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
+  readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
 }
 
 export interface CadBodyRef {
@@ -425,7 +430,10 @@ export type CadBatchValidationErrorCode =
   | "FEATURE_NOT_DELETABLE"
   | "FEATURE_NOT_EDITABLE"
   | "BODY_ALREADY_EXISTS"
+  | "TARGET_BODY_REQUIRED"
+  | "TARGET_BODY_NOT_SUPPORTED"
   | "INVALID_FEATURE"
+  | "UNSUPPORTED_FEATURE_OPERATION"
   | "UNSUPPORTED_SKETCH_PROFILE"
   | "INVALID_ACTOR"
   | "INVALID_AUDIT";
@@ -727,6 +735,8 @@ export interface ExtrudeFeatureSnapshot {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
+  readonly operationMode?: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
   readonly bodyId: BodyId;
 }
 
@@ -908,6 +918,8 @@ export interface CadExtrudeFeatureSummary {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
+  readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
   readonly source: CadExtrudeFeatureSource;
 }
 
@@ -1156,6 +1168,8 @@ export interface CadAuthoredExtrudeHealth {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly profileKind: FeatureExtrudeProfileKind;
+  readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];
 }
@@ -1208,6 +1222,8 @@ export interface CadOperationSummary {
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly generatedReferenceKind?: CadGeneratedEntityKind;
+  readonly operationMode?: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
 }
 
 export interface CadSemanticDiffSummary {

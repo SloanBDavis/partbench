@@ -333,16 +333,21 @@ function createOperationSummaries(
       case "feature.extrude": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const operationMode = op.operationMode ?? "newBody";
+        const operationLabel =
+          operationMode === "newBody" ? "new body" : operationMode;
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create extrude feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId}${
+          label: `Create ${operationLabel} extrude feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId}${
             bodyId ? ` -> body ${bodyId}` : ""
           }`,
           sketchId: op.sketchId,
           sketchEntityId: op.entityId,
           featureId,
-          bodyId
+          bodyId,
+          targetBodyId: op.targetBodyId,
+          operationMode
         });
       }
 
@@ -466,7 +471,9 @@ function createFeatureOperationSummary(
       ? { sketchEntityId: summary.sketchEntityId }
       : {}),
     ...(summary.featureId ? { featureId: summary.featureId } : {}),
-    ...(summary.bodyId ? { bodyId: summary.bodyId } : {})
+    ...(summary.bodyId ? { bodyId: summary.bodyId } : {}),
+    ...(summary.targetBodyId ? { targetBodyId: summary.targetBodyId } : {}),
+    ...(summary.operationMode ? { operationMode: summary.operationMode } : {})
   };
 }
 

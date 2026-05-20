@@ -34,6 +34,7 @@ describe("sketch entity usage helpers", () => {
         profileKind: "rectangle",
         depth: 2,
         side: "positive",
+        operationMode: "newBody",
         source: {
           type: "sketchEntity",
           sketchId: "sketch_1",

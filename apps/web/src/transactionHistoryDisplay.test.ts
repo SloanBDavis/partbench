@@ -98,7 +98,8 @@ describe("transaction history display helpers", () => {
               entityId: "skent_1",
               profileKind: "rectangle",
               depth: 4,
-              side: "positive"
+              side: "positive",
+              operationMode: "newBody"
             }
           ],
           modified: [],
@@ -146,7 +147,8 @@ describe("transaction history display helpers", () => {
               entityId: "rect_1",
               profileKind: "rectangle",
               depth: 4,
-              side: "positive"
+              side: "positive",
+              operationMode: "newBody"
             }
           ],
           bodiesCreated: [],

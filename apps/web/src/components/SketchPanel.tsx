@@ -71,7 +71,8 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
   bodyId: "",
   name: "",
   depth: 1,
-  side: "positive"
+  side: "positive",
+  operationMode: "newBody"
 };
 
 export function SketchPanel({
@@ -563,6 +564,10 @@ export function SketchPanel({
                             <option value="symmetric">Symmetric</option>
                           </select>
                         </label>
+                      </div>
+                      <div className="readonly-field">
+                        <span>Operation</span>
+                        <strong>New body</strong>
                       </div>
                       <details className="advanced-options">
                         <summary>Advanced extrude options</summary>

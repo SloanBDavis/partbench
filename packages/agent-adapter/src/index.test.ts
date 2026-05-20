@@ -367,7 +367,8 @@ describe("agent-adapter", () => {
             bodyId: "body_1",
             sketchId: "sketch_1",
             entityId: "rect_1",
-            depth: 4
+            depth: 4,
+            operationMode: "newBody"
           }
         ]
       }
@@ -392,8 +393,53 @@ describe("agent-adapter", () => {
     });
     expect(structure).toMatchObject({
       ok: true,
-      features: [{ id: "feat_1", kind: "extrude" }],
+      features: [{ id: "feat_1", kind: "extrude", operationMode: "newBody" }],
       bodies: [{ id: "body_1", featureId: "feat_1" }]
+    });
+  });
+
+  it("passes unsupported extrude operation mode errors through JSON batches", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_unsupported",
+      entityId: "rect_unsupported",
+      featureId: "feat_seed_unsupported",
+      bodyId: "body_seed_unsupported"
+    });
+
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_unsupported_operation",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "feature.extrude",
+                id: "feat_add",
+                bodyId: "body_add",
+                targetBodyId: "body_seed_unsupported",
+                sketchId: "sketch_unsupported",
+                entityId: "rect_unsupported",
+                depth: 2,
+                operationMode: "add"
+              }
+            ]
+          }
+        })
+      )
+    );
+
+    expect(response).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode",
+        received: "add"
+      }
     });
   });
 

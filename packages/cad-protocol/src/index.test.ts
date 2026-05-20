@@ -167,7 +167,9 @@ describe("cad-protocol", () => {
         sketchId: "sketch_1",
         entityId: "rect_1",
         depth: 5,
-        side: "negative"
+        side: "negative",
+        operationMode: "cut",
+        targetBodyId: "body_target"
       },
       {
         op: "feature.updateExtrude",
@@ -661,6 +663,7 @@ describe("cad-protocol", () => {
       profileKind: "rectangle",
       depth: 5,
       side: "positive",
+      operationMode: "newBody",
       source: {
         type: "sketchEntity",
         sketchId: "sketch_1",

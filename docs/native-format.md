@@ -6,8 +6,9 @@ JSON source-of-truth interchange format. V2 added source-of-truth sketches, V3
 added the first authored sketch-driven feature data, V4 added source-of-truth
 sketch attachment metadata for sketches created on generated planar face
 references, and V5 added source-of-truth user/agent names for generated
-references. Current exports use `web-cad.project.v5` while the loader still
-accepts V1, V2, V3, and V4 projects through explicit migration. Future storage work
+references. V6 added explicit authored extrude operation mode. Current exports
+use `web-cad.project.v6` while the loader still accepts V1, V2, V3, V4, and V5
+projects through explicit migration. Future storage work
 should use this document to evolve toward a native package without prematurely
 introducing OPFS, File System Access API, STEP import/export, real topology, or
 a final `.wcad` implementation.
@@ -22,6 +23,7 @@ schemaVersion: web-cad.project.v2
 schemaVersion: web-cad.project.v3
 schemaVersion: web-cad.project.v4
 schemaVersion: web-cad.project.v5
+schemaVersion: web-cad.project.v6
 ```
 
 It is produced by:
@@ -48,8 +50,8 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV5 {
-  schemaVersion: "web-cad.project.v5"
+ProjectV6 {
+  schemaVersion: "web-cad.project.v6"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -281,6 +283,8 @@ ExtrudeFeature {
   profileKind: "rectangle" | "circle"
   depth: number
   side: "positive" | "negative" | "symmetric"
+  operationMode?: "newBody" | "add" | "cut"
+  targetBodyId?: string
   bodyId: string
 }
 ```
@@ -290,19 +294,27 @@ saved feature record is the rebuild input. The body mesh produced from it is
 derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. Extrude side can be `positive`, `negative`,
-or `symmetric` relative to the sketch-plane normal. This slice does not include
-a sketch solver, arbitrary profile recognition, topological references, broad
-feature edit commands, or exact B-rep checkpoint persistence. Authored
+or `symmetric` relative to the sketch-plane normal. Extrude operation mode
+defaults to `newBody` when omitted, and current V6 exports include
+`operationMode: "newBody"` for authored extrudes. `newBody` records must not
+include `targetBodyId`. `add` and `cut` are recognized reserved modes that
+require an existing authored `targetBodyId`, reject primitive-derived targets,
+and are still unsupported until boolean-backed topology operations exist. This
+slice does not include a sketch solver, arbitrary profile recognition,
+topological mutation features, boolean join/cut operations, broad feature edit
+commands, or exact B-rep checkpoint persistence.
+Authored
 sketch-extrude features can be removed with `feature.delete` and can have depth
 and side updated with `feature.updateExtrude`. Missing side values in older
-compatible project data normalize to `positive`.
+compatible project data normalize to `positive`; missing operation mode values
+normalize to `newBody`.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## V2/V3/V4/V5 Storage Decision
+## V2/V3/V4/V5/V6 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -324,8 +336,13 @@ introduced `web-cad.project.v4`.
 Named generated references are also authored source-of-truth metadata. They are
 not derivable from generated labels because labels are deterministic system
 metadata, while named references are chosen by a user, script, or agent. This
-introduced `web-cad.project.v5`. Current exports therefore use
-`web-cad.project.v5`.
+introduced `web-cad.project.v5`.
+
+Extrude operation mode is also authored source-of-truth feature intent. It
+distinguishes the currently supported `newBody` behavior from future boolean
+join/cut modes, including the `targetBodyId` contract those future modes will
+need. That persisted intent introduced `web-cad.project.v6`. Current exports
+therefore use `web-cad.project.v6`.
 
 The loader accepts:
 
@@ -335,6 +352,7 @@ web-cad.project.v2
 web-cad.project.v3
 web-cad.project.v4
 web-cad.project.v5
+web-cad.project.v6
 ```
 
 V1 projects migrate into the current in-memory model with unchanged units,
@@ -349,6 +367,10 @@ attached sketch metadata because that source data did not exist in V3.
 
 V4 projects migrate with sketches, authored features, and attached sketch
 metadata intact, plus an empty named-reference table.
+
+V5 projects migrate with sketches, authored features, attached sketch metadata,
+and named references intact. Authored extrude features without an operation mode
+normalize to `newBody` and therefore must not include `targetBodyId`.
 
 The derived mapping is deterministic:
 
@@ -395,6 +417,7 @@ The current source of truth is:
 - authored feature names
 - authored feature kind, source sketch, source entity, profile kind, depth, and
   side
+- authored extrude operation mode and optional target body ID
 - authored feature body IDs
 - `document.nextFeatureNumber`
 - `document.nextBodyNumber`
@@ -414,9 +437,9 @@ includes primitive feature summaries derived from `document.objects` and
 authored sketch-extrude feature summaries derived from `document.features`.
 Primitive summaries include the derived default part ID and derived body ID for
 each object. Extrude summaries include the source sketch/entity, profile kind,
-depth, side, and authored body ID.
+depth, side, operation mode, optional target body ID, and authored body ID.
 
-The `project.structure` query returns the current V2/V3/V4/V5 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5/V6 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -512,7 +535,7 @@ named-reference lookup results, or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v5`
+that cannot be faithfully represented by the current `web-cad.project.v6`
 document shape.
 
 Likely triggers:
@@ -527,7 +550,7 @@ Likely triggers:
   generated references, such as exact topology-backed faces, edges, vertices,
   sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level parameters/materials/named views that are not represented by V5;
+- project-level parameters/materials/named views that are not represented by V6;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -535,7 +558,7 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v6
+schemaVersion: web-cad.project.v7
 ```
 
 That format should include a migration from older accepted versions, not silent
@@ -634,15 +657,23 @@ web-cad.project.v2
 web-cad.project.v3
 web-cad.project.v4
 web-cad.project.v5
+web-cad.project.v6
 ```
 
-V1 is migrated to V5 on parse/load by adding empty sketches, empty authored
+V1 is migrated to V6 on parse/load by adding empty sketches, empty authored
 features, empty named references, and fresh sketch/feature/body counters. V2 is
-migrated to V5 by preserving sketches and adding empty authored features, empty
-named references, and fresh feature/body counters. V3 is migrated to V5 by
-preserving sketches/features, treating all sketches as unattached, and adding
-empty named references. V4 is migrated to V5 by preserving sketches, authored
-features, and attached sketch metadata, plus an empty named-reference table.
+migrated to V6 by preserving sketches and adding empty authored features, empty
+named references, and fresh feature/body counters. V3 is migrated to V6 by
+preserving sketches/features, treating all sketches as unattached, adding empty
+named references, and defaulting authored extrude operation mode to `newBody`.
+V4 is migrated to V6 by preserving sketches, authored features, and attached
+sketch metadata, plus an empty named-reference table and `newBody` operation
+mode. V5 is migrated to V6 by preserving sketches, authored features, attached
+sketch metadata, and named references while defaulting missing operation mode to
+`newBody`. Current imports reject inconsistent or unsupported extrude
+operation-mode contracts, such as `newBody` with `targetBodyId`, `add`/`cut`
+without `targetBodyId`, or persisted `add`/`cut` features before
+boolean-backed topology support exists.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 
@@ -697,7 +728,7 @@ Likely rebuildable cache files are:
 - geometry diagnostics
 
 The current JSON format is the source-of-truth interchange format for the active
-V2/V3/V4/V5 foundation. It is not the final storage backend and does not imply OPFS
+V2/V3/V4/V5/V6 foundation. It is not the final storage backend and does not imply OPFS
 or File System Access API behavior.
 
 JSON export/import remains the deliberate debuggable interchange path and

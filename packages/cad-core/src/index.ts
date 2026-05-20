@@ -50,6 +50,7 @@ import type {
   BodyId,
   CadTransactionAuditMetadata,
   ExtrudeFeatureSnapshot,
+  FeatureExtrudeOperationMode,
   FeatureId,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
@@ -134,6 +135,7 @@ export type {
   ReferenceSemanticDiff,
   ExtrudeFeatureSnapshot,
   FeatureId,
+  FeatureExtrudeOperationMode,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureSemanticDiff,
@@ -239,6 +241,8 @@ export interface ExtrudeFeature {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
+  readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
   readonly bodyId: BodyId;
 }
 
@@ -318,13 +322,15 @@ export const CAD_PROJECT_FORMAT_VERSION_V1 = "web-cad.project.v1";
 export const CAD_PROJECT_FORMAT_VERSION_V2 = "web-cad.project.v2";
 export const CAD_PROJECT_FORMAT_VERSION_V3 = "web-cad.project.v3";
 export const CAD_PROJECT_FORMAT_VERSION_V4 = "web-cad.project.v4";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v5";
+export const CAD_PROJECT_FORMAT_VERSION_V5 = "web-cad.project.v5";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v6";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
   | typeof CAD_PROJECT_FORMAT_VERSION_V2
   | typeof CAD_PROJECT_FORMAT_VERSION_V3
   | typeof CAD_PROJECT_FORMAT_VERSION_V4
+  | typeof CAD_PROJECT_FORMAT_VERSION_V5
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -1717,6 +1723,17 @@ function applyOperation(
       );
       const depth = validateExtrudeDepth(op.depth, opIndex);
       const side = validateExtrudeSide(op.side, opIndex);
+      const operationMode = parseExtrudeOperationMode(
+        op.operationMode,
+        opIndex
+      );
+      const targetBodyId = validateExtrudeTargetBodyId(
+        state,
+        operationMode,
+        op.targetBodyId,
+        opIndex
+      );
+      assertSupportedExtrudeOperationMode(operationMode, opIndex);
       const feature: ExtrudeFeature = {
         id: op.id ?? createFeatureId(),
         kind: "extrude",
@@ -1726,6 +1743,8 @@ function applyOperation(
         profileKind,
         depth,
         side,
+        operationMode,
+        targetBodyId,
         bodyId: op.bodyId ?? createBodyId()
       };
 
@@ -2148,6 +2167,23 @@ function hasBodyId(state: MutableDocumentState, id: BodyId): boolean {
   return false;
 }
 
+function findFeatureByBodyId(
+  features: ReadonlyMap<FeatureId, Feature>,
+  bodyId: BodyId
+): Feature | undefined {
+  return [...features.values()].find((feature) => feature.bodyId === bodyId);
+}
+
+function isPrimitiveBodyId(state: MutableDocumentState, id: BodyId): boolean {
+  for (const objectId of state.objects.keys()) {
+    if (createPrimitiveBodyId(objectId) === id) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function assertSketchNotInUse(
   features: ReadonlyMap<FeatureId, Feature>,
   sketchId: SketchId,
@@ -2268,6 +2304,106 @@ function validateExtrudeSide(
     path: operationPath(opIndex, "side"),
     expected: "positive, negative, or symmetric",
     received: describeReceived(value)
+  });
+}
+
+function parseExtrudeOperationMode(
+  value: FeatureExtrudeOperationMode | undefined,
+  opIndex?: number
+): FeatureExtrudeOperationMode {
+  if (value === undefined || value === "newBody") {
+    return "newBody";
+  }
+
+  if (value === "add" || value === "cut") {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `Unsupported extrude operation mode: ${String(value)}.`,
+    opIndex,
+    path: operationPath(opIndex, "operationMode"),
+    expected: "newBody, add, or cut",
+    received: describeReceived(value)
+  });
+}
+
+function validateExtrudeTargetBodyId(
+  state: MutableDocumentState,
+  operationMode: FeatureExtrudeOperationMode,
+  targetBodyId: BodyId | undefined,
+  opIndex?: number
+): BodyId | undefined {
+  if (operationMode === "newBody") {
+    if (targetBodyId === undefined) {
+      return undefined;
+    }
+
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "newBody extrudes must not include targetBodyId.",
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "omitted targetBodyId for newBody",
+      received: describeReceived(targetBodyId)
+    });
+  }
+
+  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "TARGET_BODY_REQUIRED",
+      message: `Extrude operation mode ${operationMode} requires targetBodyId.`,
+      opIndex,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing authored target body id",
+      received: describeReceived(targetBodyId)
+    });
+  }
+
+  if (findFeatureByBodyId(state.features, targetBodyId)) {
+    return targetBodyId;
+  }
+
+  if (isPrimitiveBodyId(state, targetBodyId)) {
+    throwValidationError({
+      code: "TARGET_BODY_NOT_SUPPORTED",
+      message: `Primitive-derived body cannot be targeted by feature.extrude ${operationMode}: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "authored sketch-extrude target body id",
+      received: targetBodyId
+    });
+  }
+
+  throwValidationError({
+    code: "BODY_NOT_FOUND",
+    message: `Target body does not exist: ${targetBodyId}`,
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "targetBodyId"),
+    expected: "existing authored target body id",
+    received: targetBodyId
+  });
+}
+
+function assertSupportedExtrudeOperationMode(
+  operationMode: FeatureExtrudeOperationMode,
+  opIndex?: number
+): void {
+  if (operationMode === "newBody") {
+    return;
+  }
+
+  throwValidationError({
+    code: "UNSUPPORTED_FEATURE_OPERATION",
+    message: `Extrude operation mode ${operationMode} requires boolean-backed topology support and is not implemented yet.`,
+    opIndex,
+    path: operationPath(opIndex, "operationMode"),
+    expected: "newBody",
+    received: operationMode
   });
 }
 
@@ -2982,7 +3118,9 @@ function featureRef(feature: Feature): CadFeatureRef {
     entityId: feature.entityId,
     profileKind: feature.profileKind,
     depth: feature.depth,
-    side: feature.side
+    side: feature.side,
+    operationMode: feature.operationMode,
+    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
   };
 }
 
@@ -3443,6 +3581,8 @@ function createFeatureSnapshot(feature: Feature): ExtrudeFeatureSnapshot {
     profileKind: feature.profileKind,
     depth: feature.depth,
     side: feature.side,
+    operationMode: feature.operationMode,
+    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     bodyId: feature.bodyId
   };
 }
@@ -3459,6 +3599,8 @@ function createFeatureFromSnapshot(
     profileKind: snapshot.profileKind,
     depth: snapshot.depth,
     side: snapshot.side ?? "positive",
+    operationMode: snapshot.operationMode ?? "newBody",
+    targetBodyId: snapshot.targetBodyId,
     bodyId: snapshot.bodyId
   };
 }
@@ -3619,6 +3761,8 @@ function createExtrudeFeatureSummary(feature: Feature): CadFeatureSummary {
     profileKind: feature.profileKind,
     depth: feature.depth,
     side: feature.side,
+    operationMode: feature.operationMode,
+    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     source: {
       type: "sketchEntity",
       sketchId: feature.sketchId,
@@ -4901,6 +5045,8 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     left.profileKind === right.profileKind &&
     left.depth === right.depth &&
     left.side === right.side &&
+    left.operationMode === right.operationMode &&
+    left.targetBodyId === right.targetBodyId &&
     left.bodyId === right.bodyId
   );
 }
@@ -4922,6 +5068,20 @@ function normalizeCadProject(value: CadProject): CadProject {
   if (value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
     return {
       ...value,
+      document: {
+        ...value.document,
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        )
+      }
+    };
+  }
+
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
         features: value.document.features.map(normalizeFeatureSnapshot),
@@ -4991,7 +5151,8 @@ function normalizeFeatureSnapshot(
 ): ExtrudeFeatureSnapshot {
   return {
     ...feature,
-    side: feature.side ?? "positive"
+    side: feature.side ?? "positive",
+    operationMode: feature.operationMode ?? "newBody"
   };
 }
 
@@ -5041,6 +5202,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   } else if (
     value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V5 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
@@ -5168,21 +5330,26 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -5622,6 +5789,8 @@ function collectValidExtrudeFeatureByBodyId(
     typeof value.depth === "number" &&
     isPositiveFiniteNumber(value.depth) &&
     (value.side === undefined || isExtrudeSide(value.side)) &&
+    (value.operationMode === undefined || value.operationMode === "newBody") &&
+    value.targetBodyId === undefined &&
     typeof value.bodyId === "string"
   ) {
     featuresByBodyId.set(value.bodyId, {
@@ -5633,6 +5802,7 @@ function collectValidExtrudeFeatureByBodyId(
       profileKind: value.profileKind,
       depth: value.depth,
       side: value.side ?? "positive",
+      operationMode: value.operationMode ?? "newBody",
       bodyId: value.bodyId
     });
   }
@@ -6042,6 +6212,55 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.side`,
       "Extrude feature side must be positive, negative, or symmetric."
+    );
+  }
+
+  if (
+    value.operationMode !== undefined &&
+    !isExtrudeOperationMode(value.operationMode)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.operationMode`,
+      "Extrude feature operationMode must be newBody, add, or cut."
+    );
+  } else if (value.operationMode === "add" || value.operationMode === "cut") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.operationMode`,
+      `Extrude operationMode ${value.operationMode} requires boolean-backed topology support and is not implemented yet.`
+    );
+  }
+
+  if (value.targetBodyId !== undefined) {
+    if (typeof value.targetBodyId !== "string" || value.targetBodyId === "") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.targetBodyId`,
+        "Extrude feature targetBodyId must be a non-empty string when present."
+      );
+    }
+
+    if (
+      value.operationMode === undefined ||
+      value.operationMode === "newBody"
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.targetBodyId`,
+        "newBody extrude features must not include targetBodyId."
+      );
+    }
+  } else if (value.operationMode === "add" || value.operationMode === "cut") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      `Extrude operationMode ${value.operationMode} requires targetBodyId.`
     );
   }
 
@@ -6935,12 +7154,15 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
+      isOptionalString(value.targetBodyId) &&
       isOptionalString(value.name) &&
       typeof value.sketchId === "string" &&
       typeof value.entityId === "string" &&
       typeof value.depth === "number" &&
       isPositiveFiniteNumber(value.depth) &&
-      (value.side === undefined || isExtrudeSide(value.side))
+      (value.side === undefined || isExtrudeSide(value.side)) &&
+      (value.operationMode === undefined ||
+        isExtrudeOperationMode(value.operationMode))
     );
   }
 
@@ -7098,7 +7320,11 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     typeof value.bodyId === "string" &&
     typeof value.sketchId === "string" &&
     typeof value.entityId === "string" &&
-    (value.profileKind === "rectangle" || value.profileKind === "circle")
+    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    (value.targetBodyId === undefined ||
+      typeof value.targetBodyId === "string") &&
+    (value.operationMode === undefined ||
+      isExtrudeOperationMode(value.operationMode))
   );
 }
 
@@ -7264,6 +7490,12 @@ function isSketchEntityKind(value: unknown): value is SketchEntityKind {
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
+}
+
+function isExtrudeOperationMode(
+  value: unknown
+): value is FeatureExtrudeOperationMode {
+  return value === "newBody" || value === "add" || value === "cut";
 }
 
 function isGeneratedExtrudeFaceRole(

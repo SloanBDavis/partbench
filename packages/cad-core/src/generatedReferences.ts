@@ -12,6 +12,7 @@ import type {
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
+  FeatureExtrudeOperationMode,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureId,
@@ -68,6 +69,8 @@ export interface GeneratedReferencesFeature {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
+  readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
   readonly bodyId: BodyId;
 }
 

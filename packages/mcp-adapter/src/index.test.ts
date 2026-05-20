@@ -649,7 +649,8 @@ describe("mcp-adapter", () => {
               bodyId: "body_1",
               sketchId: "sketch_1",
               entityId: "circle_1",
-              depth: 5
+              depth: 5,
+              operationMode: "newBody"
             }
           ]
         }
@@ -672,8 +673,54 @@ describe("mcp-adapter", () => {
     expect(structureResult).toMatchObject({
       structuredContent: {
         ok: true,
-        features: [{ id: "feat_1", kind: "extrude" }],
+        features: [{ id: "feat_1", kind: "extrude", operationMode: "newBody" }],
         bodies: [{ id: "body_1", featureId: "feat_1" }]
+      }
+    });
+  });
+
+  it("passes unsupported extrude operation mode errors through cad.batch", () => {
+    const server = new CadMcpServer();
+    seedMcpExtrudeFeature(server, {
+      sketchId: "sketch_unsupported",
+      entityId: "circle_unsupported",
+      featureId: "feat_seed_unsupported",
+      bodyId: "body_seed_unsupported"
+    });
+
+    const result = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_unsupported_operation",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "feature.extrude",
+              id: "feat_cut",
+              bodyId: "body_cut",
+              targetBodyId: "body_seed_unsupported",
+              sketchId: "sketch_unsupported",
+              entityId: "circle_unsupported",
+              depth: 3,
+              operationMode: "cut"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: {
+          code: "UNSUPPORTED_FEATURE_OPERATION",
+          path: "$.ops[0].operationMode",
+          received: "cut"
+        }
       }
     });
   });

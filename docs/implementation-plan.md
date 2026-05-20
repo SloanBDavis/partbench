@@ -85,7 +85,8 @@ Completed foundations:
   `web-cad.project.v1`; sketches introduced `web-cad.project.v2`; authored
   sketch extrudes introduced `web-cad.project.v3`; attached face sketches
   introduced `web-cad.project.v4`; named generated references introduced
-  `web-cad.project.v5`; V1, V2, V3, and V4 projects still import through
+  `web-cad.project.v5`; explicit extrude operation mode introduced
+  `web-cad.project.v6`; V1, V2, V3, V4, and V5 projects still import through
   migration.
 - Browser command worker transport.
 - Isolated OCCT/WASM adapter, geometry-kernel facade, browser geometry worker,
@@ -240,7 +241,9 @@ bridge is still derived, the sketch slice added authored source data in
 data in `web-cad.project.v3`, and `sketch.createOnFace` added persisted sketch
 attachment metadata in `web-cad.project.v4`. Named generated references added
 persisted user/agent reference names in `web-cad.project.v5`. V1, V2, V3, and
-V4 project JSON remain importable through migration.
+V4 project JSON remain importable through migration. Explicit extrude
+operation mode is now source data in `web-cad.project.v6`, with V1 through V5
+remaining importable through migration.
 
 Deliverables:
 
@@ -258,9 +261,10 @@ Implemented decision:
 
 - Continue deriving `part:default`, `feature:<objectId>`, and
   `body:<objectId>` rather than persisting duplicate part/feature/body records.
-- Export `web-cad.project.v5` with source-of-truth sketches, attached sketch
+- Export `web-cad.project.v6` with source-of-truth sketches, attached sketch
   metadata, authored extrude features, named generated references, sketch
-  counters, feature counters, and body counters.
+  counters, feature counters, body counters, and explicit authored extrude
+  operation mode.
 - Accept `web-cad.project.v1` through migration with empty sketches/features.
 - Accept `web-cad.project.v2` through migration with sketches and empty
   features.
@@ -268,8 +272,11 @@ Implemented decision:
   attached sketch metadata.
 - Accept `web-cad.project.v4` through migration with sketches/features and
   attached sketch metadata, plus empty named references.
+- Accept `web-cad.project.v5` through migration with sketches/features,
+  attached sketch metadata, named references, and defaulted `newBody` extrude
+  operation mode.
 - Introduce a later project format only when source-of-truth data cannot be
-  represented cleanly in the current V5 shape, such as constraints, explicit
+  represented cleanly in the current V6 shape, such as constraints, explicit
   profiles, explicit authored parts, additional feature inputs, exact body
   checkpoints, exact topology-backed references, or assemblies.
 - Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
@@ -301,8 +308,8 @@ Implemented:
 - `project.sketches` and `sketch.get` queries through `cad-core`,
   `agent-adapter`, and MCP wrappers.
 - Compact web UI panel for sketch creation and entity editing.
-- Current exports use `web-cad.project.v5`; V1, V2, V3, and V4 imports remain
-  compatible.
+- Current exports use `web-cad.project.v6`; V1, V2, V3, V4, and V5 imports
+  remain compatible.
 
 Exit criteria:
 
@@ -321,13 +328,20 @@ Implemented:
 
 - `feature.extrude` CADOps command for rectangle and circle sketch entities.
 - Authored extrude feature records in `cad-core` with source sketch/entity,
-  profile kind, depth, side (`positive`, `negative`, or `symmetric`),
-  generated feature ID, and generated body ID.
+  profile kind, depth, side (`positive`, `negative`, or `symmetric`), explicit
+  operation mode, optional target body ID for future boolean modes, generated
+  feature ID, and generated body ID.
 - Validation for source sketch/entity, supported profile, positive finite
-  depth, supported side, and unique feature/body IDs.
+  depth, supported side, supported operation mode, target-body contract, and
+  unique feature/body IDs.
+- Operation mode is modeled as `newBody`, `add`, or `cut`, but only `newBody`
+  is implemented. `newBody` rejects `targetBodyId`; `add` and `cut` require an
+  existing authored `targetBodyId`, reject primitive-derived targets, and then
+  fail with structured unsupported errors until boolean-backed topology
+  operations exist.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
-- `web-cad.project.v5` source-of-truth export with V1/V2/V3/V4 import
+- `web-cad.project.v6` source-of-truth export with V1/V2/V3/V4/V5 import
   migration.
 - `project.structure` and `project.features` show primitive-derived and
   sketch-extrude features/bodies.

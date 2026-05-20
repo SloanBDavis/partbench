@@ -223,7 +223,8 @@ describe("cad command builders", () => {
         bodyId: "body_1",
         name: "Pad",
         depth: 6,
-        side: "negative"
+        side: "negative",
+        operationMode: "newBody"
       })
     ).toEqual({
       op: "feature.extrude",
@@ -233,7 +234,8 @@ describe("cad command builders", () => {
       sketchId: "sketch_1",
       entityId: "rect_1",
       depth: 6,
-      side: "negative"
+      side: "negative",
+      operationMode: "newBody"
     });
 
     expect(
@@ -242,7 +244,8 @@ describe("cad command builders", () => {
         bodyId: "",
         name: " Boss ",
         depth: 2.5,
-        side: "positive"
+        side: "positive",
+        operationMode: "newBody"
       })
     ).toEqual({
       op: "feature.extrude",
@@ -252,7 +255,8 @@ describe("cad command builders", () => {
       sketchId: "sketch_face_1",
       entityId: "face_circle_1",
       depth: 2.5,
-      side: "positive"
+      side: "positive",
+      operationMode: "newBody"
     });
   });
 

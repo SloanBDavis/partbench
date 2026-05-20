@@ -61,6 +61,7 @@ describe("structure panel UI helpers", () => {
           sketchId: "sketch_1",
           entityId: "rect_1",
           profileKind: "rectangle",
+          operationMode: "newBody",
           status: "missing-source",
           issues: [
             {
@@ -131,7 +132,7 @@ describe("structure panel UI helpers", () => {
       "1 sketches / 2 features / 2 bodies"
     );
     expect(formatFeatureLine(createExtrudeFeature(), "mm")).toBe(
-      "rectangle / 4 mm / positive"
+      "new body / rectangle / 4 mm / positive"
     );
   });
 });
@@ -209,6 +210,7 @@ function createExtrudeFeature(): Extract<
     profileKind: "rectangle",
     depth: 4,
     side: "positive",
+    operationMode: "newBody",
     source: {
       type: "sketchEntity",
       sketchId: "sketch_1",

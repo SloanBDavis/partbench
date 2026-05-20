@@ -398,6 +398,10 @@ function BodyInspector({
               <dd>{feature.side}</dd>
             </div>
             <div>
+              <dt>Operation</dt>
+              <dd>{formatExtrudeOperationMode(feature.operationMode)}</dd>
+            </div>
+            <div>
               <dt>Depth</dt>
               <dd>
                 {feature.depth} {units}
@@ -1007,6 +1011,19 @@ function GeneratedReferenceMeasurementRows({
   );
 }
 
+function formatExtrudeOperationMode(
+  operationMode: Extract<
+    CadFeatureSummary,
+    { readonly kind: "extrude" }
+  >["operationMode"]
+): string {
+  if (operationMode === "newBody") {
+    return "New body";
+  }
+
+  return operationMode;
+}
+
 function ExtrudeDepthEditor({
   disabled,
   feature,
@@ -1044,6 +1061,14 @@ function ExtrudeDepthEditor({
         <h3>Extrude feature</h3>
         {hasChanges && <span>Edited</span>}
       </div>
+      <label>
+        Operation
+        <input
+          type="text"
+          value={formatExtrudeOperationMode(feature.operationMode)}
+          readOnly
+        />
+      </label>
       <label>
         Depth ({units})
         <input

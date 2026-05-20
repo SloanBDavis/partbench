@@ -35,6 +35,7 @@ import type {
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   DocumentUnits,
+  FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
   ObjectExtentSnapshot,
   ObjectMeasurementsSnapshot,
@@ -1161,11 +1162,14 @@ function isCadOp(value: unknown): value is CadOp {
     return (
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
+      isOptionalString(value.targetBodyId) &&
       isOptionalString(value.name) &&
       typeof value.sketchId === "string" &&
       typeof value.entityId === "string" &&
       typeof value.depth === "number" &&
-      (value.side === undefined || isExtrudeSide(value.side))
+      (value.side === undefined || isExtrudeSide(value.side)) &&
+      (value.operationMode === undefined ||
+        isExtrudeOperationMode(value.operationMode))
     );
   }
 
@@ -1297,6 +1301,12 @@ function isOptionalString(value: unknown): value is string | undefined {
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
+}
+
+function isExtrudeOperationMode(
+  value: unknown
+): value is FeatureExtrudeOperationMode {
+  return value === "newBody" || value === "add" || value === "cut";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

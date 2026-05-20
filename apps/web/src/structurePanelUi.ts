@@ -150,7 +150,20 @@ export function formatFeatureLine(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   units: DocumentUnits
 ): string {
-  return `${feature.profileKind} / ${feature.depth} ${units} / ${feature.side}`;
+  return `${formatExtrudeOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.depth} ${units} / ${feature.side}`;
+}
+
+function formatExtrudeOperationMode(
+  operationMode: Extract<
+    CadFeatureSummary,
+    { readonly kind: "extrude" }
+  >["operationMode"]
+): string {
+  if (operationMode === "newBody") {
+    return "new body";
+  }
+
+  return operationMode;
 }
 
 export function formatPartLine(part: CadPartSnapshot): string {

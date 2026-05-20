@@ -146,6 +146,8 @@ function createAuthoredExtrudeHealth(
     sketchId: feature.sketchId,
     entityId: feature.entityId,
     profileKind: feature.profileKind,
+    operationMode: feature.operationMode,
+    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     status: statusFromIssues(issues),
     issues
   };
