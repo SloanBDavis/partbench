@@ -491,10 +491,20 @@ Exit criteria:
 
 Goal: improve visual correctness and performance based on actual V2 workloads.
 
+Current status: started. A geometry-only OCCT boolean feasibility path exists
+for rectangle-extrude add and rectangle-extrude cut through
+`geometry.booleanExtrudes`, `@web-cad/geometry-kernel`,
+`@web-cad/geometry-worker`, and `@web-cad/occt-wasm`. It returns serializable
+mesh data only and leaves `cad-core`, CADOps mutation semantics, project JSON,
+and UI behavior unchanged.
+
 Deliverables:
 
 - Add better edge display, normals, face highlighting, and body/feature
   selection feedback in the current renderer where practical.
+- Keep boolean add/cut geometry experiments behind the geometry boundary until
+  topology naming, empty-result behavior, tolerance handling, performance, and
+  generated-reference invalidation are intentionally designed.
 - Define benchmark scenes before starting WebGPU.
 - Introduce WebGPU only with clear requirements for buffers, picking, culling,
   instancing, and LOD.

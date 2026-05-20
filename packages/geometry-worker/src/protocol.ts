@@ -1,7 +1,9 @@
 import type {
+  BooleanExtrudeSource,
   GeometryKernelErrorResponse,
   GeometryKernelRequest,
   GeometryKernelResponse,
+  GeometryKernelBooleanOperation,
   GeometryKernelExtrudeSide,
   GeometryKernelSketchPlane
 } from "@web-cad/geometry-kernel";
@@ -9,7 +11,8 @@ import type {
 export type GeometryWorkerVersion = "geometry-worker.v1";
 export type GeometryWorkerRequestKind =
   | "geometry-worker.tessellatePrimitive"
-  | "geometry-worker.tessellateFeature";
+  | "geometry-worker.tessellateFeature"
+  | "geometry-worker.booleanFeature";
 
 export interface GeometryWorkerRequest {
   readonly id: string;
@@ -296,6 +299,33 @@ export function createExtrudeTessellationWorkerRequest(input: {
       profile: input.profile,
       depth: input.depth,
       side: input.side,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createExtrudeBooleanWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly target: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudeSource;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.booleanFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: input.operation,
+      target: input.target,
+      tool: input.tool,
       ...(tessellation ? { tessellation } : {})
     }
   };

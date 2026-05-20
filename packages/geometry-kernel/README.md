@@ -14,8 +14,10 @@ Input:
 - `GeometryKernelRequest`
 - Currently supports `geometry.tessellateBox`,
   `geometry.tessellateCylinder`, `geometry.tessellateSphere`,
-  `geometry.tessellateCone`, and `geometry.tessellateTorus`
-- Includes dimensions and optional tessellation settings
+  `geometry.tessellateCone`, `geometry.tessellateTorus`,
+  `geometry.tessellateExtrude`, and the isolated feasibility request
+  `geometry.booleanExtrudes`
+- Includes dimensions/source profiles and optional tessellation settings
 
 Output:
 
@@ -25,6 +27,13 @@ Output:
   - `Uint32Array` triangle indices
   - face, vertex, and triangle counts
 - Failure returns a structured error code and message
+
+`geometry.booleanExtrudes` is intentionally geometry-only. It accepts two
+source-derived rectangle/circle extrude inputs plus `operation: "add" | "cut"`,
+but the current OCCT-backed implementation supports only rectangle extrude add
+and rectangle extrude cut. It returns mesh data for feasibility tests, not
+document mutations, topology maps, stable generated references, or project
+source data.
 
 Typed arrays are structured-clone compatible, so this response shape can cross a
 browser Worker boundary. `getGeometryResponseTransferables()` exposes the mesh

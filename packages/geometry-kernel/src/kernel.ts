@@ -5,17 +5,20 @@ export type GeometryKernelOp =
   | "geometry.tessellateSphere"
   | "geometry.tessellateCone"
   | "geometry.tessellateTorus"
-  | "geometry.tessellateExtrude";
+  | "geometry.tessellateExtrude"
+  | "geometry.booleanExtrudes";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
   | "sphere"
   | "cone"
   | "torus"
-  | "extrude";
+  | "extrude"
+  | "boolean";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
+export type GeometryKernelBooleanOperation = "add" | "cut";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -58,6 +61,13 @@ export interface CircleExtrudeProfile {
 export type ExtrudeGeometryProfile =
   | RectangleExtrudeProfile
   | CircleExtrudeProfile;
+
+export interface BooleanExtrudeSource {
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: ExtrudeGeometryProfile;
+  readonly depth: number;
+  readonly side?: GeometryKernelExtrudeSide;
+}
 
 export interface TessellationOptions {
   readonly linearDeflection?: number;
@@ -115,13 +125,24 @@ export interface TessellateExtrudeRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface BooleanExtrudesRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.booleanExtrudes";
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly target: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudeSource;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
   | TessellateCylinderRequest
   | TessellateSphereRequest
   | TessellateConeRequest
   | TessellateTorusRequest
-  | TessellateExtrudeRequest;
+  | TessellateExtrudeRequest
+  | BooleanExtrudesRequest;
 
 export interface SerializableMeshData {
   readonly primitive: GeometryKernelPrimitive;
@@ -155,7 +176,9 @@ export interface GeometryKernelErrorResponse {
 export type GeometryKernelErrorCode =
   | "INVALID_DIMENSIONS"
   | "INVALID_TESSELLATION_OPTIONS"
-  | "KERNEL_FAILURE";
+  | "UNSUPPORTED_PROFILE"
+  | "KERNEL_FAILURE"
+  | "EMPTY_RESULT";
 
 export interface GeometryKernelError {
   readonly code: GeometryKernelErrorCode;
@@ -191,12 +214,18 @@ export type GeometryKernelTorusMeshFactory = (
   input: TorusGeometryDimensions & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelBooleanExtrudeMeshFactory = (
+  input: Omit<BooleanExtrudesRequest, "id" | "version" | "op"> &
+    TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
   readonly createSphereMesh: GeometryKernelSphereMeshFactory;
   readonly createConeMesh: GeometryKernelConeMeshFactory;
   readonly createTorusMesh: GeometryKernelTorusMeshFactory;
+  readonly createBooleanExtrudeMesh: GeometryKernelBooleanExtrudeMeshFactory;
 }
 
 export async function executeGeometryKernelRequestWithMeshFactory(
@@ -211,6 +240,13 @@ export async function executeGeometryKernelRequestWithMeshFactory(
 
   try {
     const mesh = await createMesh(factories, request);
+
+    if (isEmptyMesh(mesh)) {
+      return errorResponse(request, {
+        code: "EMPTY_RESULT",
+        message: "The geometry kernel returned an empty or invalid mesh."
+      });
+    }
 
     return {
       ok: true,
@@ -297,6 +333,35 @@ function validateRequest(
           "Extrude requests require a supported sketch plane, side, rectangle or circle profile, and positive finite depth."
       };
     }
+  } else if (request.op === "geometry.booleanExtrudes") {
+    if (!isBooleanOperation(request.operation)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "Boolean extrude requests require operation add or cut."
+      };
+    }
+
+    if (
+      !isValidBooleanExtrudeSource(request.target) ||
+      !isValidBooleanExtrudeSource(request.tool)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Boolean extrude requests require target/tool sources with supported sketch plane, side, profile dimensions, and positive finite depth."
+      };
+    }
+
+    if (
+      request.target.profile.kind !== "rectangle" ||
+      request.tool.profile.kind !== "rectangle"
+    ) {
+      return {
+        code: "UNSUPPORTED_PROFILE",
+        message:
+          "Boolean extrude feasibility currently supports rectangle extrude sources only."
+      };
+    }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -359,6 +424,14 @@ function createMesh(
       });
     case "geometry.tessellateExtrude":
       return createExtrudeMesh(factories, request);
+    case "geometry.booleanExtrudes":
+      return factories.createBooleanExtrudeMesh({
+        operation: request.operation,
+        target: request.target,
+        tool: request.tool,
+        linearDeflection: request.tessellation?.linearDeflection,
+        angularDeflection: request.tessellation?.angularDeflection
+      });
   }
 }
 
@@ -500,6 +573,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Torus";
     case "geometry.tessellateExtrude":
       return "Extrude";
+    case "geometry.booleanExtrudes":
+      return "Boolean extrude";
   }
 }
 
@@ -532,6 +607,12 @@ function isExtrudeSide(value: unknown): value is GeometryKernelExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
 }
 
+function isBooleanOperation(
+  value: unknown
+): value is GeometryKernelBooleanOperation {
+  return value === "add" || value === "cut";
+}
+
 function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
   if (profile.kind === "rectangle") {
     return (
@@ -546,6 +627,24 @@ function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
   }
 
   return false;
+}
+
+function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
+  return (
+    isSketchPlane(source.sketchPlane) &&
+    isPositiveFiniteNumber(source.depth) &&
+    isExtrudeSide(source.side ?? "positive") &&
+    isValidExtrudeProfile(source.profile)
+  );
+}
+
+function isEmptyMesh(mesh: GeometryKernelMeshResult): boolean {
+  return (
+    mesh.vertexCount <= 0 ||
+    mesh.triangleCount <= 0 ||
+    mesh.positions.length === 0 ||
+    mesh.indices.length === 0
+  );
 }
 
 function isVec2(value: readonly [number, number]): boolean {

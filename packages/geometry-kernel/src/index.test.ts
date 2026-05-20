@@ -288,6 +288,130 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it(
+    "runs add and cut boolean feasibility requests for rectangle extrude sources",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 4,
+          height: 4
+        },
+        depth: 4
+      };
+      const tool = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [2, 0] as const,
+          width: 2,
+          height: 2
+        },
+        depth: 4
+      };
+      const add = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_add",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "add",
+        target,
+        tool
+      });
+      const cut = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_cut",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target,
+        tool
+      });
+
+      expect(add.ok).toBe(true);
+      expect(cut.ok).toBe(true);
+
+      if (!add.ok || !cut.ok) {
+        throw new Error("Expected rectangle boolean feasibility to succeed.");
+      }
+
+      expect(add.mesh.primitive).toBe("boolean");
+      expect(add.mesh.vertexCount).toBeGreaterThan(0);
+      expect(add.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getMeshBounds(add.mesh.positions)).toEqual({
+        min: [-2, -2, 0],
+        max: [3, 2, 4]
+      });
+      expect(cut.mesh.primitive).toBe("boolean");
+      expect(cut.mesh.vertexCount).toBeGreaterThan(0);
+      expect(cut.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getGeometryResponseTransferables(add)).toEqual([
+        add.mesh.positions.buffer,
+        add.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it("returns structured boolean feasibility errors", async () => {
+    const rectangleSource = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 2,
+        height: 2
+      },
+      depth: 2
+    };
+    const unsupportedProfile = await executeGeometryKernelRequest({
+      id: "geometry_req_boolean_unsupported_profile",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "add",
+      target: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 1
+        },
+        depth: 2
+      },
+      tool: rectangleSource
+    });
+    const emptyResult = await executeGeometryKernelRequest({
+      id: "geometry_req_boolean_empty_result",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "cut",
+      target: rectangleSource,
+      tool: rectangleSource
+    });
+
+    expect(unsupportedProfile).toEqual({
+      ok: false,
+      id: "geometry_req_boolean_unsupported_profile",
+      op: "geometry.booleanExtrudes",
+      error: {
+        code: "UNSUPPORTED_PROFILE",
+        message:
+          "Boolean extrude feasibility currently supports rectangle extrude sources only."
+      },
+      warnings: []
+    });
+    expect(emptyResult).toEqual({
+      ok: false,
+      id: "geometry_req_boolean_empty_result",
+      op: "geometry.booleanExtrudes",
+      error: {
+        code: "EMPTY_RESULT",
+        message: "The geometry kernel returned an empty or invalid mesh."
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured validation errors before calling the kernel", async () => {
     const response = await executeGeometryKernelRequest({
       id: "geometry_req_bad_dimensions",

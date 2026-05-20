@@ -18,6 +18,11 @@ The OCCT path remains isolated:
 - meshes remain derived renderer data;
 - the current app still falls back to primitive rendering.
 
+The same boundary now contains an isolated boolean feasibility request for
+source-derived rectangle extrude add/cut. That path proves OCCT can combine two
+simple extrude-like solids and return mesh data, but it is not used by
+`cad-core` commands, project storage, generated references, or normal startup.
+
 ## Baseline
 
 The current dependency is `opencascade.js@2.0.0-beta.b5ff984`, using the full
@@ -152,3 +157,19 @@ box/cylinder/sphere/cone/torus smoke correctness
 
 That experiment should stay behind the existing geometry-worker boundary until
 it proves smaller, stable, and compatible with the current smoke path.
+
+## Boolean Feasibility Risks
+
+The rectangle-extrude boolean feasibility path does not change the binary-size
+recommendation, but it does make the future OCCT API surface broader than
+primitive tessellation alone. Before add/cut become authoritative CADOps
+behavior, the project still needs explicit handling for:
+
+- topological naming and generated-reference invalidation after boolean edits;
+- empty or invalid results, such as cutting away an entire target body;
+- tolerance-sensitive failures and near-coplanar/intersecting solids;
+- operation performance on real feature/body workloads;
+- exact source/body checkpoint strategy if boolean results become persisted or
+  replay-critical; and
+- custom OCCT build symbol coverage for `BRepAlgoAPI_Fuse`,
+  `BRepAlgoAPI_Cut`, `BRepPrimAPI_MakeBox`, tessellation, and shape traversal.

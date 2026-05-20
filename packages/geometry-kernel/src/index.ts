@@ -3,14 +3,18 @@ import {
   createOcctCylinderMesh,
   createOcctSphereMesh,
   createOcctConeMesh,
-  createOcctTorusMesh
+  createOcctTorusMesh,
+  createOcctBooleanExtrudeMesh
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
+  type BooleanExtrudeSource,
+  type BooleanExtrudesRequest,
   type BoxGeometryDimensions,
   type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
+  type GeometryKernelBooleanOperation,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
   type GeometryKernelExtrudeSide,
@@ -39,9 +43,12 @@ import {
 } from "./kernel";
 
 export type {
+  BooleanExtrudeSource,
+  BooleanExtrudesRequest,
   BoxGeometryDimensions,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
+  GeometryKernelBooleanOperation,
   GeometryKernelError,
   GeometryKernelErrorCode,
   GeometryKernelExtrudeSide,
@@ -79,7 +86,8 @@ export async function executeGeometryKernelRequest(
       createCylinderMesh: createOcctCylinderMesh,
       createSphereMesh: createOcctSphereMesh,
       createConeMesh: createOcctConeMesh,
-      createTorusMesh: createOcctTorusMesh
+      createTorusMesh: createOcctTorusMesh,
+      createBooleanExtrudeMesh: createOcctBooleanExtrudeMesh
     },
     request
   );

@@ -4,14 +4,18 @@ import {
   createOcctCylinderMeshWithInstance,
   createOcctSphereMeshWithInstance,
   createOcctTorusMeshWithInstance,
-  loadBrowserOcct
+  loadBrowserOcct,
+  createOcctBooleanExtrudeMeshWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
+  type BooleanExtrudesRequest,
+  type BooleanExtrudeSource,
   type BoxGeometryDimensions,
   type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
+  type GeometryKernelBooleanOperation,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
   type GeometryKernelOp,
@@ -34,12 +38,18 @@ import {
   type TessellationOptions
 } from "./kernel";
 
-type BrowserOcctPrimitive = Exclude<GeometryKernelPrimitive, "extrude">;
+type BrowserOcctPrimitive = Exclude<
+  GeometryKernelPrimitive,
+  "extrude" | "boolean"
+>;
 
 export type {
+  BooleanExtrudesRequest,
+  BooleanExtrudeSource,
   BoxGeometryDimensions,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
+  GeometryKernelBooleanOperation,
   GeometryKernelError,
   GeometryKernelErrorCode,
   GeometryKernelExtrudeProfileKind,
@@ -97,7 +107,8 @@ export async function executeTimedBrowserGeometryKernelRequest(
         createMeshWithBrowserOcct(input, "cylinder"),
       createSphereMesh: (input) => createMeshWithBrowserOcct(input, "sphere"),
       createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
-      createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus")
+      createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus"),
+      createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct
     },
     request
   );
@@ -164,6 +175,35 @@ export async function executeTimedBrowserGeometryKernelRequest(
             input as TorusGeometryDimensions & TessellationOptions
           );
       }
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createBooleanExtrudeMeshWithBrowserOcct(
+    input: Omit<BooleanExtrudesRequest, "id" | "version" | "op"> &
+      TessellationOptions
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctBooleanExtrudeMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

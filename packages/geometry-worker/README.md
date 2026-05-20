@@ -53,6 +53,12 @@ that can be rebuilt from authoritative document state.
 `createTorusTessellationWorkerRequest()` build these shapes for the current
 primitive tessellation path.
 
+`createExtrudeTessellationWorkerRequest()` builds the current sketch-extrude
+mesh request. `createExtrudeBooleanWorkerRequest()` builds an isolated
+geometry-only feasibility request for rectangle extrude add/cut. That boolean
+request does not mutate `cad-core`, does not update project JSON, and does not
+claim stable topology or generated-reference invalidation.
+
 ## Response Shape
 
 Success returns the underlying `GeometryKernelResponse`, optional timing data,
@@ -135,6 +141,8 @@ uses `cad-core` and the renderer can keep showing primitives.
   cache or invalidation strategy is implemented here.
 - Five primitive paths are proven: box, cylinder, sphere, cone, and torus
   tessellation.
+- Rectangle-extrude add/cut feasibility is proven as a geometry-worker request,
+  but it is not wired into CADOps feature mutation yet.
 - This package is the typed geometry worker boundary; production mesh cache
   ownership remains in the app-layer derived geometry service.
 - Tests cover the browser transport wrapper and an in-process worker-backed

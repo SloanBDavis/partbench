@@ -29,8 +29,14 @@ import {
   createOcctTorusMeshWithLoader,
   type OcctTorusInput
 } from "./tessellateTorus";
+import {
+  createOcctBooleanExtrudeMeshWithInstance,
+  createOcctBooleanExtrudeMeshWithLoader,
+  type OcctBooleanExtrudeInput
+} from "./booleanExtrudes";
 
 export type {
+  OcctBooleanExtrudeInput,
   OcctBoxInput,
   OcctCylinderInput,
   OcctSphereInput,
@@ -48,7 +54,9 @@ export {
   createOcctConeMeshWithInstance,
   createOcctConeMeshWithLoader,
   createOcctTorusMeshWithInstance,
-  createOcctTorusMeshWithLoader
+  createOcctTorusMeshWithLoader,
+  createOcctBooleanExtrudeMeshWithInstance,
+  createOcctBooleanExtrudeMeshWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;
@@ -152,4 +160,10 @@ export async function createOcctTorusMesh(
   input: OcctTorusInput
 ): Promise<OcctMeshData> {
   return createOcctTorusMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctBooleanExtrudeMesh(
+  input: OcctBooleanExtrudeInput
+): Promise<OcctMeshData> {
+  return createOcctBooleanExtrudeMeshWithLoader(loadBrowserOcct, input);
 }

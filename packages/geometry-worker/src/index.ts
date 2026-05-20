@@ -16,6 +16,7 @@ export {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,

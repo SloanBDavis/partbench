@@ -20,7 +20,7 @@ CAD DSL so the integration risk is visible at the kernel boundary.
 ## What The Adapter Does
 
 The adapter currently exposes mesh creation for boxes, cylinders, spheres,
-cones, and tori:
+cones, tori, and an isolated rectangle-extrude boolean feasibility path:
 
 1. Loads OpenCascade.js WASM.
 2. Creates a primitive with `BRepPrimAPI_MakeBox`,
@@ -35,6 +35,12 @@ cones, and tori:
 
 For the default box, the current smoke test observes 6 faces, 24 per-face
 vertices, and 12 triangles.
+
+The boolean feasibility path builds two source-derived rectangle extrude solids
+with `BRepPrimAPI_MakeBox`, combines them with `BRepAlgoAPI_Fuse` or
+`BRepAlgoAPI_Cut`, tessellates the result, and returns only serializable mesh
+data. It intentionally does not expose OCCT shape handles, topology maps,
+generated-reference updates, or authoritative document changes.
 
 ## Setup
 
@@ -87,6 +93,10 @@ request, and adapts the mesh into renderer data.
   boundaries.
 - The current mesh is per-face triangulation data, not a renderer-ready shared
   vertex buffer with normals, topology references, or stable face IDs.
+- Boolean results introduce additional risks that are not solved in this
+  package: empty results, tolerance-sensitive failures, operation performance,
+  topological naming, and invalidation of generated references after
+  add/cut-style feature edits.
 
 ## Integration Concerns
 
