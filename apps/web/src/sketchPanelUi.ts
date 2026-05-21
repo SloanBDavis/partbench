@@ -11,6 +11,7 @@ import type {
 export interface CutTargetBodyOption {
   readonly bodyId: string;
   readonly featureId: string;
+  readonly profileKind: "rectangle" | "circle";
   readonly label: string;
   readonly detail: string;
 }
@@ -107,7 +108,7 @@ export function createCutTargetBodyOptions(
       if (
         !feature ||
         feature.operationMode !== "newBody" ||
-        feature.profileKind !== "rectangle"
+        !isSupportedCutTargetProfileKind(feature.profileKind)
       ) {
         return [];
       }
@@ -116,8 +117,9 @@ export function createCutTargetBodyOptions(
         {
           bodyId: body.id,
           featureId: feature.id,
+          profileKind: feature.profileKind,
           label: `${body.name ?? body.id} / ${feature.id}`,
-          detail: `Rectangle new body / ${feature.depth} / ${feature.side}`
+          detail: `${formatProfileKind(feature.profileKind)} new body / ${feature.depth} / ${feature.side}`
         }
       ];
     });
@@ -161,7 +163,8 @@ export function getCutOperationStatus(
   if (cutTargets.length === 0) {
     return {
       available: false,
-      message: "Create an active rectangle new body before using Cut body."
+      message:
+        "Create an active rectangle or circle new body before using Cut body."
     };
   }
 
@@ -169,7 +172,19 @@ export function getCutOperationStatus(
     available: true,
     message:
       cutTargets.length === 1
-        ? "1 eligible rectangle target body."
-        : `${cutTargets.length} eligible rectangle target bodies.`
+        ? "1 eligible cut target body."
+        : `${cutTargets.length} eligible cut target bodies.`
   };
+}
+
+function isSupportedCutTargetProfileKind(
+  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
+): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
+}
+
+function formatProfileKind(
+  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
+): string {
+  return profileKind === "rectangle" ? "Rectangle" : "Circle";
 }

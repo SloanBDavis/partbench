@@ -114,7 +114,7 @@ describe("sketch panel UI helpers", () => {
     ).toBe(false);
   });
 
-  it("offers only active rectangle newBody authored bodies as cut targets", () => {
+  it("offers active rectangle and circle newBody authored bodies as cut targets", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
       createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
@@ -131,8 +131,16 @@ describe("sketch panel UI helpers", () => {
       {
         bodyId: "body_rect",
         featureId: "feat_rect",
+        profileKind: "rectangle",
         label: "body_rect / feat_rect",
         detail: "Rectangle new body / 1 / positive"
+      },
+      {
+        bodyId: "body_circle",
+        featureId: "feat_circle",
+        profileKind: "circle",
+        label: "body_circle / feat_circle",
+        detail: "Circle new body / 1 / positive"
       }
     ]);
   });
@@ -155,6 +163,7 @@ describe("sketch panel UI helpers", () => {
       {
         bodyId: "body_rect",
         featureId: "feat_rect",
+        profileKind: "rectangle" as const,
         label: "body_rect / feat_rect",
         detail: "Rectangle new body / 1 / positive"
       }
@@ -171,11 +180,12 @@ describe("sketch panel UI helpers", () => {
     });
     expect(getCutOperationStatus(rectangle, [])).toEqual({
       available: false,
-      message: "Create an active rectangle new body before using Cut body."
+      message:
+        "Create an active rectangle or circle new body before using Cut body."
     });
     expect(getCutOperationStatus(rectangle, targets)).toEqual({
       available: true,
-      message: "1 eligible rectangle target body."
+      message: "1 eligible cut target body."
     });
   });
 });

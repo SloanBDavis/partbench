@@ -607,9 +607,16 @@ export function getDerivedGeometryStatusLabel(
     case "pending":
       return "Building OCCT mesh";
     case "error":
+      if (entry.sourceKind === "extrudeBoolean") {
+        return "Cut mesh error";
+      }
+
       return "Primitive fallback";
     case "unsupported":
-      if (entry.sourceKind === "extrude") {
+      if (
+        entry.sourceKind === "extrude" ||
+        entry.sourceKind === "extrudeBoolean"
+      ) {
         return entry.message;
       }
 

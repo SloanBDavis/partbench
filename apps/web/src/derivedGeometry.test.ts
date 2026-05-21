@@ -697,6 +697,80 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("ignores stale worker results after circle cut target source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "target" in input && input.target.profile.kind === "circle"
+        ? input.target.profile.radius === 2
+          ? first.promise
+          : second.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_circle_cut_1",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: createCircleExtrudeSource("body_circle_1"),
+      tool: createExtrudeSource("body_circle_cut_1")
+    };
+    const editedSource: DerivedBooleanExtrudeGeometrySource = {
+      ...initialSource,
+      target: {
+        ...initialSource.target,
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 3
+        }
+      }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "target" in input && input.target.profile.kind === "circle"
+          ? input.target.profile.radius
+          : null
+      )
+    ).toEqual([2, 3]);
+
+    first.resolve(
+      createResult("body_circle_cut_1", createMesh("stale_circle_cut"))
+    );
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_circle_cut_1",
+      objectKind: "extrudeBoolean",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(
+      createResult("body_circle_cut_1", createMesh("body_circle_cut_1"))
+    );
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_circle_cut_1",
+      objectKind: "extrudeBoolean",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_circle_cut_1"
+    ]);
+  });
+
   it("marks attached extrudes unsupported when their generated face is stale", () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -1142,7 +1216,7 @@ describe("derivedGeometry", () => {
     });
   });
 
-  it("labels error and unsupported states as primitive fallback", async () => {
+  it("labels fallback-capable errors separately from unsupported cut results", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
       runtime: createRuntime(async () => {
@@ -1168,6 +1242,45 @@ describe("derivedGeometry", () => {
 
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
       "Primitive fallback"
+    );
+
+    service.reconcile([
+      {
+        id: "body_cut_unsupported",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createExtrudeSource("body_target"),
+        tool: createCircleExtrudeSource("body_circle_tool")
+      }
+    ]);
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Boolean cut display currently supports rectangle/circle target and rectangle tool extrudes only."
+    );
+  });
+
+  it("labels cut mesh errors without implying primitive fallback", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async () => {
+        throw new Error("boolean worker failed");
+      }),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([
+      {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createCircleExtrudeSource("body_circle_1"),
+        tool: createExtrudeSource("body_cut_1")
+      }
+    ]);
+    await flushPromises();
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Cut mesh error"
     );
   });
 
@@ -1287,6 +1400,21 @@ function createExtrudeSource(id = "body_rect_1"): DerivedExtrudeGeometrySource {
       center: [0, 0],
       width: 4,
       height: 2
+    },
+    depth: 3,
+    side: "positive"
+  };
+}
+
+function createCircleExtrudeSource(id: string): DerivedExtrudeGeometrySource {
+  return {
+    id,
+    kind: "extrude",
+    sketchPlane: "XY",
+    profile: {
+      kind: "circle",
+      center: [0, 0],
+      radius: 2
     },
     depth: 3,
     side: "positive"
