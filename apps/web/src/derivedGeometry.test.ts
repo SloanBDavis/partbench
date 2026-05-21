@@ -17,11 +17,13 @@ import {
   getDerivedGeometryStatusLabel,
   transformExtrudeMeshToPlacement,
   type DerivedExtrudeGeometrySource,
+  type DerivedBooleanExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import type {
   DerivedGeometryBoxInput,
+  DerivedGeometryBooleanExtrudeInput,
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
   DerivedGeometryExtrudeInput,
@@ -39,7 +41,8 @@ type RuntimeInput =
   | DerivedGeometrySphereInput
   | DerivedGeometryConeInput
   | DerivedGeometryTorusInput
-  | DerivedGeometryExtrudeInput;
+  | DerivedGeometryExtrudeInput
+  | DerivedGeometryBooleanExtrudeInput;
 
 describe("derivedGeometry", () => {
   it("creates cache keys that change when object geometry inputs change", () => {
@@ -467,6 +470,67 @@ describe("derivedGeometry", () => {
       radius: 0.75
     });
     expect(attachedSource?.placementFrame?.origin).toEqual([0, 0, 3]);
+  });
+
+  it("derives cut result sources from active rectangle target and tool extrudes", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_cut_1",
+      bodyId: "body_cut_1",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "cut"
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const cutSource = sources.find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_cut_1"]);
+    expect(cutSource).toMatchObject({
+      id: "body_cut_1",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+      tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_cut_1",
+        operation: "cut",
+        target: expect.objectContaining({ depth: 3 }),
+        tool: expect.objectContaining({ depth: 1 })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_cut_1",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      }
+    ]);
   });
 
   it("marks attached extrudes unsupported when their generated face is stale", () => {
@@ -1154,6 +1218,10 @@ function createRuntime(
       return handler(input);
     },
     tessellateExtrude(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    booleanExtrudes(input) {
       inputs.push(input);
       return handler(input);
     },

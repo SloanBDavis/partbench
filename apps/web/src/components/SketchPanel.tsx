@@ -38,6 +38,10 @@ export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
+  readonly cutTargetBodies?: readonly {
+    readonly bodyId: string;
+    readonly label: string;
+  }[];
   readonly focusedSketchId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -78,6 +82,7 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
 export function SketchPanel({
   disabled,
   sketches,
+  cutTargetBodies = [],
   displayStatuses,
   focusedSketchId,
   features,
@@ -168,6 +173,8 @@ export function SketchPanel({
   const selectedExtrudeEntity = isExtrudableSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
+  const canCreateCut =
+    selectedExtrudeEntity?.kind === "rectangle" && cutTargetBodies.length > 0;
   const shouldShowEntityEditor =
     Boolean(editingEntityId) ||
     isAddingEntity ||
@@ -565,10 +572,65 @@ export function SketchPanel({
                           </select>
                         </label>
                       </div>
-                      <div className="readonly-field">
-                        <span>Operation</span>
-                        <strong>New body</strong>
+                      <div className="field-grid two">
+                        <label>
+                          Operation
+                          <select
+                            value={extrudeForm.operationMode}
+                            disabled={disabled}
+                            onChange={(event) => {
+                              const operationMode = event.currentTarget
+                                .value as FeatureExtrudeForm["operationMode"];
+
+                              setExtrudeForm({
+                                ...extrudeForm,
+                                operationMode,
+                                targetBodyId:
+                                  operationMode === "cut"
+                                    ? (extrudeForm.targetBodyId ??
+                                      cutTargetBodies[0]?.bodyId)
+                                    : undefined
+                              });
+                            }}
+                          >
+                            <option value="newBody">New body</option>
+                            <option value="cut" disabled={!canCreateCut}>
+                              Cut body
+                            </option>
+                          </select>
+                        </label>
+                        {extrudeForm.operationMode === "cut" ? (
+                          <label>
+                            Target body
+                            <select
+                              value={extrudeForm.targetBodyId ?? ""}
+                              disabled={disabled || !canCreateCut}
+                              onChange={(event) =>
+                                setExtrudeForm({
+                                  ...extrudeForm,
+                                  targetBodyId: event.currentTarget.value
+                                })
+                              }
+                            >
+                              {cutTargetBodies.map((body) => (
+                                <option key={body.bodyId} value={body.bodyId}>
+                                  {body.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <div className="readonly-field">
+                            <span>Target</span>
+                            <strong>Standalone body</strong>
+                          </div>
+                        )}
                       </div>
+                      {selectedExtrudeEntity.kind !== "rectangle" && (
+                        <p className="project-message">
+                          Cut currently supports rectangle profiles only.
+                        </p>
+                      )}
                       <details className="advanced-options">
                         <summary>Advanced extrude options</summary>
                         <div className="field-grid two">
@@ -618,7 +680,10 @@ export function SketchPanel({
                       </details>
                       <button
                         type="button"
-                        disabled={disabled}
+                        disabled={
+                          disabled ||
+                          (extrudeForm.operationMode === "cut" && !canCreateCut)
+                        }
                         onClick={() =>
                           onExtrudeEntity(
                             selectedSketch.id,

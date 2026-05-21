@@ -295,14 +295,18 @@ derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
-defaults to `newBody` when omitted, and current V6 exports include
-`operationMode: "newBody"` for authored extrudes. `newBody` records must not
-include `targetBodyId`. `add` and `cut` are recognized reserved modes that
-require an existing authored `targetBodyId`, reject primitive-derived targets,
-and are still unsupported until boolean-backed topology operations exist. This
-slice does not include a sketch solver, arbitrary profile recognition,
-topological mutation features, boolean join/cut operations, broad feature edit
-commands, or exact B-rep checkpoint persistence.
+defaults to `newBody` when omitted, and current V6 exports include an explicit
+`operationMode` for authored extrudes. `newBody` records must not include
+`targetBodyId`. `cut` is supported only for the first narrow boolean-backed
+slice: a rectangle sketch-extrude tool cutting one active authored rectangle
+`newBody` target body. `cut` records require an existing authored
+`targetBodyId` and reject primitive-derived, consumed, circular, or unsupported
+targets. The cut result body is rebuilt as derived geometry through the OCCT
+geometry-worker path; exact B-rep checkpoints and generated topology maps are
+not persisted. `add` is still recognized but unsupported until boolean join
+semantics are deliberately scoped. This slice does not include a sketch solver,
+arbitrary profile recognition, broad topology mutation features, boolean join,
+broad feature edit commands, or exact B-rep checkpoint persistence.
 Authored
 sketch-extrude features can be removed with `feature.delete` and can have depth
 and side updated with `feature.updateExtrude`. Missing side values in older
@@ -339,10 +343,9 @@ metadata, while named references are chosen by a user, script, or agent. This
 introduced `web-cad.project.v5`.
 
 Extrude operation mode is also authored source-of-truth feature intent. It
-distinguishes the currently supported `newBody` behavior from future boolean
-join/cut modes, including the `targetBodyId` contract those future modes will
-need. That persisted intent introduced `web-cad.project.v6`. Current exports
-therefore use `web-cad.project.v6`.
+distinguishes standalone `newBody` features from boolean-backed feature intent
+that needs a target body. That persisted intent introduced
+`web-cad.project.v6`. Current exports therefore use `web-cad.project.v6`.
 
 The loader accepts:
 
@@ -448,6 +451,12 @@ The `project.structure` query returns the current V2/V3/V4/V5/V6 compatibility b
 - authored sketch-extrude bodies referenced by those features; and
 - object-to-part/feature/body source mappings.
 
+When a supported `cut` feature targets an authored body, the target body remains
+listed as source/intermediate structure and is marked with
+`consumedByFeatureId`. Current display and project extents treat the cut result
+body as the active result and skip the consumed target body so the model is not
+double-counted.
+
 This structure is a migration bridge toward a fuller feature/body model. The
 primitive side remains derived; the authored extrude side is persisted because it
 is source-of-truth feature data.
@@ -463,8 +472,13 @@ separate parametric regeneration graph.
 The `body.generatedReferences` query returns the first read-only semantic
 reference layer for authored sketch-extrude bodies. It derives a generated body
 reference plus generated face, edge, and rectangle vertex references from the
-saved extrude feature and its source sketch entity. Rectangle extrudes expose
-start/end caps, four side face roles tied to profile edge roles (`side:uMin`,
+saved extrude feature and its source sketch entity. These references are
+currently available for standalone `newBody` authored rectangle/circle extrudes.
+Cut result bodies intentionally return an unsupported generated-reference
+response until boolean result topology and reference invalidation are designed.
+The pre-cut target body's generated references can still resolve as source
+references for rebuild inputs and existing attached sketches. Rectangle
+extrudes expose start/end caps, four side face roles tied to profile edge roles (`side:uMin`,
 `side:uMax`, `side:vMin`, `side:vMax`), start/end profile edge roles, four
 longitudinal corner edge roles, and eight corner vertex roles
 (`start:uMin:vMin`, `start:uMin:vMax`, `start:uMax:vMin`,
@@ -671,9 +685,10 @@ sketch metadata, plus an empty named-reference table and `newBody` operation
 mode. V5 is migrated to V6 by preserving sketches, authored features, attached
 sketch metadata, and named references while defaulting missing operation mode to
 `newBody`. Current imports reject inconsistent or unsupported extrude
-operation-mode contracts, such as `newBody` with `targetBodyId`, `add`/`cut`
-without `targetBodyId`, or persisted `add`/`cut` features before
-boolean-backed topology support exists.
+operation-mode contracts, such as `newBody` with `targetBodyId`, `add`
+features, `cut` without `targetBodyId`, `cut` targeting missing or
+primitive-derived bodies, and `cut` records outside the currently supported
+rectangle-tool/active-rectangle-target contract.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 

@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the actual repo state and
 the next implementation roadmap.
 
-Last updated: 2026-05-18.
+Last updated: 2026-05-19.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for the long-term design, `docs/v1.md` for the completed
@@ -174,8 +174,9 @@ Current limitations:
 - There is a first read-only semantic generated-reference query for authored
   rectangle/circle extrude bodies, but there is no broad stable topological
   naming system yet.
-- There are no revolve, boolean, fillet, chamfer, shell, loft, pattern, or
-  direct modeling features.
+- There is a first narrow rectangle-extrude cut slice, but there are no general
+  booleans, add/join operations, revolve, fillet, chamfer, shell, loft,
+  pattern, or direct modeling features.
 - There is no OPFS storage, File System Access integration, native `.wcad`
   package, STEP import/export, WebGPU renderer, large-assembly pipeline, hosted
   collaboration, or production MCP auth system.
@@ -329,16 +330,16 @@ Implemented:
 - `feature.extrude` CADOps command for rectangle and circle sketch entities.
 - Authored extrude feature records in `cad-core` with source sketch/entity,
   profile kind, depth, side (`positive`, `negative`, or `symmetric`), explicit
-  operation mode, optional target body ID for future boolean modes, generated
+  operation mode, optional target body ID for boolean modes, generated
   feature ID, and generated body ID.
 - Validation for source sketch/entity, supported profile, positive finite
   depth, supported side, supported operation mode, target-body contract, and
   unique feature/body IDs.
-- Operation mode is modeled as `newBody`, `add`, or `cut`, but only `newBody`
-  is implemented. `newBody` rejects `targetBodyId`; `add` and `cut` require an
-  existing authored `targetBodyId`, reject primitive-derived targets, and then
-  fail with structured unsupported errors until boolean-backed topology
-  operations exist.
+- Operation mode is modeled as `newBody`, `add`, or `cut`. `newBody` remains
+  the default standalone behavior. The first narrow `cut` slice is implemented
+  for a rectangle sketch-extrude tool cutting one active authored rectangle
+  `newBody` target body. `add` remains unsupported, and broader cut cases fail
+  with structured unsupported errors until boolean/topology behavior is scoped.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
 - `web-cad.project.v6` source-of-truth export with V1/V2/V3/V4/V5 import
@@ -491,18 +492,19 @@ Exit criteria:
 
 Goal: improve visual correctness and performance based on actual V2 workloads.
 
-Current status: started. A geometry-only OCCT boolean feasibility path exists
-for rectangle-extrude add and rectangle-extrude cut through
-`geometry.booleanExtrudes`, `@web-cad/geometry-kernel`,
-`@web-cad/geometry-worker`, and `@web-cad/occt-wasm`. It returns serializable
-mesh data only and leaves `cad-core`, CADOps mutation semantics, project JSON,
-and UI behavior unchanged.
+Current status: started. The OCCT rectangle-extrude boolean feasibility path now
+backs the first narrow authoritative `feature.extrude` cut slice. Cut features
+store source-of-truth feature intent in `cad-core`, then rebuild the cut result
+as derived mesh/cache data through `geometry.booleanExtrudes`,
+`@web-cad/geometry-kernel`, `@web-cad/geometry-worker`, and
+`@web-cad/occt-wasm`. The cut scope remains rectangle tool against one active
+authored rectangle `newBody` target body.
 
 Deliverables:
 
 - Add better edge display, normals, face highlighting, and body/feature
   selection feedback in the current renderer where practical.
-- Keep boolean add/cut geometry experiments behind the geometry boundary until
+- Keep general boolean/add geometry work behind the geometry boundary until
   topology naming, empty-result behavior, tolerance handling, performance, and
   generated-reference invalidation are intentionally designed.
 - Define benchmark scenes before starting WebGPU.
@@ -519,7 +521,8 @@ Exit criteria:
 These should wait until feature/body and topology foundations exist:
 
 - STEP import/export.
-- Fillets, chamfers, booleans, shell, patterns, lofts, sweeps, and direct edits.
+- Fillets, chamfers, general booleans/add, shell, patterns, lofts, sweeps, and
+  direct edits.
 - Assemblies, instancing, mates, LOD, and large-model benchmarks.
 - Production MCP auth/approval flows and hosted collaboration.
 - Natural-language command entry, if added at all, after structured operations

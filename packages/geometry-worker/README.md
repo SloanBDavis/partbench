@@ -54,10 +54,10 @@ that can be rebuilt from authoritative document state.
 primitive tessellation path.
 
 `createExtrudeTessellationWorkerRequest()` builds the current sketch-extrude
-mesh request. `createExtrudeBooleanWorkerRequest()` builds an isolated
-geometry-only feasibility request for rectangle extrude add/cut. That boolean
-request does not mutate `cad-core`, does not update project JSON, and does not
-claim stable topology or generated-reference invalidation.
+mesh request. `createExtrudeBooleanWorkerRequest()` builds the derived geometry
+request used by the first narrow rectangle-extrude cut path. That boolean
+request still does not mutate `cad-core`, does not update project JSON, and does
+not claim stable topology or generated-reference invalidation.
 
 ## Response Shape
 

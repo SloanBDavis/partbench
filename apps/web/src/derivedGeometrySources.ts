@@ -6,6 +6,7 @@ import type {
 import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import {
   createPrimitiveDerivedGeometrySource,
+  type DerivedBooleanExtrudeGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource
 } from "./derivedGeometry";
@@ -48,68 +49,170 @@ export function createExtrudeDerivedGeometrySources(
     string,
     CadGeneratedFaceReference
   > = new Map()
-): readonly DerivedExtrudeGeometrySource[] {
-  return features
-    .filter(
-      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-        feature.kind === "extrude"
-    )
-    .flatMap((feature) => {
-      const sketch = sketches.find(
-        (candidate) => candidate.id === feature.sketchId
-      );
-      const entity = sketch?.entities.find(
-        (candidate) => candidate.id === feature.entityId
-      );
+): readonly (
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource
+)[] {
+  const extrudeFeatures = features.filter(
+    (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+      feature.kind === "extrude"
+  );
+  const featuresByBodyId = new Map(
+    extrudeFeatures.map((feature) => [feature.bodyId, feature])
+  );
+  const consumedBodyIds = new Set(
+    extrudeFeatures
+      .filter((feature) => feature.operationMode === "cut")
+      .map((feature) => feature.targetBodyId)
+      .filter((bodyId): bodyId is string => Boolean(bodyId))
+  );
+  const sources: (
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource
+  )[] = [];
 
-      if (!sketch || !entity) {
-        return [];
-      }
-
-      const placement = createAttachedSketchExtrudePlacement(
-        sketch,
+  for (const feature of extrudeFeatures) {
+    if (feature.operationMode === "cut") {
+      const targetFeature = feature.targetBodyId
+        ? featuresByBodyId.get(feature.targetBodyId)
+        : undefined;
+      const target = targetFeature
+        ? createExtrudeSourceForFeature(
+            targetFeature,
+            sketches,
+            generatedFacesByKey
+          )
+        : undefined;
+      const tool = createExtrudeSourceForFeature(
+        feature,
+        sketches,
         generatedFacesByKey
       );
 
-      if (entity.kind === "rectangle") {
-        const source: DerivedExtrudeGeometrySource = {
-          id: feature.bodyId,
-          kind: "extrude",
-          sketchPlane: sketch.plane,
-          profile: {
-            kind: entity.kind,
-            center: entity.center,
-            width: entity.width,
-            height: entity.height
-          },
-          depth: feature.depth,
-          side: feature.side,
-          ...placement
-        };
+      sources.push({
+        id: feature.bodyId,
+        kind: "extrudeBoolean",
+        operation: "cut",
+        ...(target && tool
+          ? { target, tool }
+          : {
+              target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+              tool: tool ?? createUnavailableExtrudeSource(feature.bodyId)
+            }),
+        ...createBooleanPlacementError(feature, target, tool)
+      });
+      continue;
+    }
 
-        return [source];
-      }
+    if (consumedBodyIds.has(feature.bodyId)) {
+      continue;
+    }
 
-      if (entity.kind === "circle") {
-        const source: DerivedExtrudeGeometrySource = {
-          id: feature.bodyId,
-          kind: "extrude",
-          sketchPlane: sketch.plane,
-          profile: {
-            kind: entity.kind,
-            center: entity.center,
-            radius: entity.radius
-          },
-          depth: feature.depth,
-          side: feature.side,
-          ...placement
-        };
+    const source = createExtrudeSourceForFeature(
+      feature,
+      sketches,
+      generatedFacesByKey
+    );
 
-        return [source];
-      }
+    if (source) {
+      sources.push(source);
+    }
+  }
 
-      return [];
-    });
+  return sources;
+}
+
+function createExtrudeSourceForFeature(
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): DerivedExtrudeGeometrySource | undefined {
+  const sketch = sketches.find(
+    (candidate) => candidate.id === feature.sketchId
+  );
+  const entity = sketch?.entities.find(
+    (candidate) => candidate.id === feature.entityId
+  );
+
+  if (!sketch || !entity) {
+    return undefined;
+  }
+
+  const placement = createAttachedSketchExtrudePlacement(
+    sketch,
+    generatedFacesByKey
+  );
+
+  if (entity.kind === "rectangle") {
+    return {
+      id: feature.bodyId,
+      kind: "extrude",
+      sketchPlane: sketch.plane,
+      profile: {
+        kind: entity.kind,
+        center: entity.center,
+        width: entity.width,
+        height: entity.height
+      },
+      depth: feature.depth,
+      side: feature.side,
+      ...placement
+    };
+  }
+
+  if (entity.kind === "circle") {
+    return {
+      id: feature.bodyId,
+      kind: "extrude",
+      sketchPlane: sketch.plane,
+      profile: {
+        kind: entity.kind,
+        center: entity.center,
+        radius: entity.radius
+      },
+      depth: feature.depth,
+      side: feature.side,
+      ...placement
+    };
+  }
+
+  return undefined;
+}
+
+function createBooleanPlacementError(
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
+  target: DerivedExtrudeGeometrySource | undefined,
+  tool: DerivedExtrudeGeometrySource | undefined
+): { readonly placementError?: string } {
+  if (!target || !tool) {
+    return {
+      placementError: `Cut feature ${feature.id} cannot be displayed because its target or tool source is unavailable.`
+    };
+  }
+
+  if (target.placementError) {
+    return { placementError: target.placementError };
+  }
+
+  if (tool.placementError) {
+    return { placementError: tool.placementError };
+  }
+
+  return {};
+}
+
+function createUnavailableExtrudeSource(
+  id: string
+): DerivedExtrudeGeometrySource {
+  return {
+    id,
+    kind: "extrude",
+    sketchPlane: "XY",
+    profile: { kind: "rectangle", center: [0, 0], width: 1, height: 1 },
+    depth: 1,
+    side: "positive",
+    placementError: "Extrude source is unavailable."
+  };
 }
 
 function createAttachedSketchExtrudePlacement(

@@ -11,6 +11,7 @@ import type {
   Vec3
 } from "@web-cad/renderer";
 import type {
+  DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry
 } from "./derivedGeometry";
@@ -29,7 +30,10 @@ export interface RenderSceneInputs {
 export function createRenderSceneInputs(
   objects: readonly SceneObject[],
   derivedGeometryBySourceId: ReadonlyMap<string, DerivedGeometryEntry>,
-  extrudeSources: readonly DerivedExtrudeGeometrySource[] = [],
+  extrudeSources: readonly (
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource
+  )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
 ): RenderSceneInputs {
@@ -55,7 +59,15 @@ export function createRenderSceneInputs(
     const derivedGeometry = derivedGeometryBySourceId.get(source.id);
 
     if (derivedGeometry?.status === "ready") {
-      meshes.push(addExtrudeMeshDisplayEdges(derivedGeometry.mesh, source));
+      meshes.push(
+        source.kind === "extrude"
+          ? addExtrudeMeshDisplayEdges(derivedGeometry.mesh, source)
+          : derivedGeometry.mesh
+      );
+      continue;
+    }
+
+    if (source.kind === "extrudeBoolean") {
       continue;
     }
 

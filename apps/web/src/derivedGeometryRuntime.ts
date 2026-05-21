@@ -70,6 +70,27 @@ export interface DerivedGeometryExtrudeInput {
   readonly transform: RenderTransform;
 }
 
+export interface DerivedGeometryExtrudePlacementFrame {
+  readonly origin: readonly [number, number, number];
+  readonly uAxis: readonly [number, number, number];
+  readonly vAxis: readonly [number, number, number];
+}
+
+export interface DerivedGeometryBooleanExtrudeInputSource {
+  readonly sketchPlane: "XY" | "XZ" | "YZ";
+  readonly profile: DerivedGeometryExtrudeInput["profile"];
+  readonly depth: number;
+  readonly side: "positive" | "negative" | "symmetric";
+  readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+}
+
+export interface DerivedGeometryBooleanExtrudeInput {
+  readonly id: string;
+  readonly operation: "cut";
+  readonly target: DerivedGeometryBooleanExtrudeInputSource;
+  readonly tool: DerivedGeometryBooleanExtrudeInputSource;
+}
+
 export interface DerivedGeometryMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
@@ -111,6 +132,9 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedGeometryResult>;
   tessellateExtrude(
     input: DerivedGeometryExtrudeInput
+  ): Promise<DerivedGeometryResult>;
+  booleanExtrudes(
+    input: DerivedGeometryBooleanExtrudeInput
   ): Promise<DerivedGeometryResult>;
   dispose(): void;
 }

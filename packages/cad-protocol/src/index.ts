@@ -963,6 +963,7 @@ export interface CadBodySnapshot {
   readonly kind: "solid";
   readonly partId: PartId;
   readonly featureId: FeatureId;
+  readonly consumedByFeatureId?: FeatureId;
   readonly objectId?: ObjectId;
   readonly primitive?: CadObjectKind;
   readonly name?: string;

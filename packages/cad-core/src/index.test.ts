@@ -4686,7 +4686,7 @@ describe("cad-core", () => {
     expect(engine.getDocument().features.size).toBe(0);
   });
 
-  it("defaults extrudes to newBody and rejects unsupported add and cut modes", () => {
+  it("defaults extrudes to newBody, supports rectangle cut, and rejects unsupported modes", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
@@ -4936,34 +4936,135 @@ describe("cad-core", () => {
       }
     });
 
-    for (const operationMode of ["add", "cut"] as const) {
-      const unsupported = engine.executeBatch({
-        version: "cadops.v1",
-        mode: "dryRun",
-        ops: [
-          {
-            op: "feature.extrude",
-            id: `feat_${operationMode}`,
-            bodyId: `body_${operationMode}`,
-            targetBodyId: "body_rect_1",
-            sketchId: "sketch_1",
-            entityId: "rect_1",
-            depth: 2,
-            operationMode
-          }
-        ]
-      });
-
-      expect(unsupported).toMatchObject({
-        ok: false,
-        error: {
-          code: "UNSUPPORTED_FEATURE_OPERATION",
-          path: "$.ops[0].operationMode",
-          expected: "newBody",
-          received: operationMode
+    const cutDryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_cut",
+          bodyId: "body_cut",
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 2,
+          operationMode: "cut"
         }
-      });
-    }
+      ]
+    });
+    const cutCommit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_cut",
+          bodyId: "body_cut",
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 2,
+          operationMode: "cut"
+        }
+      ]
+    });
+    const cutStructure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const cutReferences = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_cut" }
+    });
+    const cutHealth = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(cutDryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_cut"],
+      createdBodyIds: ["body_cut"]
+    });
+    expect(cutCommit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_cut"],
+      createdBodyIds: ["body_cut"]
+    });
+    expect(cutStructure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_cut",
+          operationMode: "cut",
+          targetBodyId: "body_rect_1",
+          bodyId: "body_cut"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_cut"
+        }),
+        expect.objectContaining({
+          id: "body_cut",
+          featureId: "feat_cut"
+        })
+      ])
+    });
+    expect(cutReferences).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: { code: "UNSUPPORTED_BODY_REFERENCES", bodyId: "body_cut" }
+    });
+    expect(cutHealth).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_cut",
+          bodyId: "body_cut",
+          targetBodyId: "body_rect_1",
+          operationMode: "cut",
+          status: "healthy"
+        })
+      ])
+    });
+
+    engine.undo();
+    expect(engine.getDocument().features.has("feat_cut")).toBe(false);
+    engine.redo();
+    expect(engine.getDocument().features.get("feat_cut")).toMatchObject({
+      operationMode: "cut",
+      targetBodyId: "body_rect_1"
+    });
+
+    const unsupportedAdd = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_add",
+          bodyId: "body_add",
+          targetBodyId: "body_rect_2",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 2,
+          operationMode: "add"
+        }
+      ]
+    });
+
+    expect(unsupportedAdd).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode",
+        received: "add"
+      }
+    });
   });
 
   it("deletes authored extrude features and removes their bodies from structure", () => {
@@ -8187,18 +8288,203 @@ describe("cad-core", () => {
         expect.arrayContaining([
           {
             code: "INVALID_FEATURE",
-            path: "$.document.features[0].operationMode",
-            message:
-              "Extrude operationMode cut requires boolean-backed topology support and is not implemented yet."
-          },
-          {
-            code: "INVALID_FEATURE",
             path: "$.document.features[0].targetBodyId",
             message: "Extrude operationMode cut requires targetBodyId."
           }
         ])
       );
     }
+
+    const addFeature = {
+      ...project,
+      document: {
+        ...project.document,
+        features: project.document.features.map((feature) => ({
+          ...feature,
+          operationMode: "add",
+          targetBodyId: "body_rect_1"
+        }))
+      }
+    };
+
+    expect(() => importCadProjectJson(JSON.stringify(addFeature))).toThrow(
+      CadProjectImportError
+    );
+
+    try {
+      importCadProjectJson(JSON.stringify(addFeature));
+    } catch (error) {
+      expect(error).toBeInstanceOf(CadProjectImportError);
+      expect((error as CadProjectImportError).issues).toEqual(
+        expect.arrayContaining([
+          {
+            code: "INVALID_FEATURE",
+            path: "$.document.features[0].operationMode",
+            message:
+              "Extrude operationMode add requires boolean-backed topology support and is not implemented yet."
+          }
+        ])
+      );
+    }
+  });
+
+  it("round-trips rectangle cut features through current project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_cut",
+      bodyId: "body_cut",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "cut"
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const project = parseCadProjectJson(exportCadProjectJson(restored));
+    const structure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const history = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_cut",
+          operationMode: "cut",
+          targetBodyId: "body_rect_1",
+          bodyId: "body_cut"
+        })
+      ])
+    );
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_cut"
+        }),
+        expect.objectContaining({ id: "body_cut", featureId: "feat_cut" })
+      ])
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.extrude",
+              featureId: "feat_cut",
+              operationMode: "cut",
+              targetBodyId: "body_rect_1"
+            })
+          ])
+        })
+      ])
+    });
+
+    restored.undo();
+    expect(restored.getDocument().features.has("feat_cut")).toBe(false);
+    restored.redo();
+    expect(restored.getDocument().features.get("feat_cut")).toMatchObject({
+      operationMode: "cut",
+      targetBodyId: "body_rect_1"
+    });
+  });
+
+  it("rejects cut features for unsupported profiles and consumed targets", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [0, 0],
+      radius: 1
+    });
+
+    const circleTool = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_circle_cut",
+          bodyId: "body_circle_cut",
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "circle_1",
+          depth: 1,
+          operationMode: "cut"
+        }
+      ]
+    });
+
+    expect(circleTool).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_cut",
+      bodyId: "body_cut",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "cut"
+    });
+
+    const consumedTarget = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_cut_again",
+          bodyId: "body_cut_again",
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 1,
+          operationMode: "cut"
+        }
+      ]
+    });
+    const deleteTarget = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.delete", id: "feat_rect_1" }]
+    });
+
+    expect(consumedTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+    expect(deleteTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_DELETABLE",
+        featureId: "feat_rect_1",
+        bodyId: "body_rect_1"
+      }
+    });
   });
 
   it("round-trips deleted sketch extrude features through current project history", () => {

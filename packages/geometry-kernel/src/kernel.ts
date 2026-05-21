@@ -67,6 +67,13 @@ export interface BooleanExtrudeSource {
   readonly profile: ExtrudeGeometryProfile;
   readonly depth: number;
   readonly side?: GeometryKernelExtrudeSide;
+  readonly placementFrame?: BooleanExtrudePlacementFrame;
+}
+
+export interface BooleanExtrudePlacementFrame {
+  readonly origin: readonly [number, number, number];
+  readonly uAxis: readonly [number, number, number];
+  readonly vAxis: readonly [number, number, number];
 }
 
 export interface TessellationOptions {
@@ -634,7 +641,9 @@ function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
     isSketchPlane(source.sketchPlane) &&
     isPositiveFiniteNumber(source.depth) &&
     isExtrudeSide(source.side ?? "positive") &&
-    isValidExtrudeProfile(source.profile)
+    isValidExtrudeProfile(source.profile) &&
+    (source.placementFrame === undefined ||
+      isValidBooleanExtrudePlacementFrame(source.placementFrame))
   );
 }
 
@@ -651,6 +660,20 @@ function isVec2(value: readonly [number, number]): boolean {
   return (
     Array.isArray(value) &&
     value.length === 2 &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
+function isValidBooleanExtrudePlacementFrame(
+  frame: BooleanExtrudePlacementFrame
+): boolean {
+  return isVec3(frame.origin) && isVec3(frame.uAxis) && isVec3(frame.vAxis);
+}
+
+function isVec3(value: readonly [number, number, number]): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
     value.every((item) => typeof item === "number" && Number.isFinite(item))
   );
 }

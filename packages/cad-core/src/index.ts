@@ -1733,7 +1733,13 @@ function applyOperation(
         op.targetBodyId,
         opIndex
       );
-      assertSupportedExtrudeOperationMode(operationMode, opIndex);
+      assertSupportedExtrudeOperation(
+        state,
+        operationMode,
+        profileKind,
+        targetBodyId,
+        opIndex
+      );
       const feature: ExtrudeFeature = {
         id: op.id ?? createFeatureId(),
         kind: "extrude",
@@ -2047,6 +2053,24 @@ function deleteFeature(
     });
   }
 
+  const consumingFeature = findConsumingCutFeatureByTargetBodyId(
+    state.features,
+    feature.bodyId
+  );
+
+  if (consumingFeature) {
+    throwValidationError({
+      code: "FEATURE_NOT_DELETABLE",
+      message: `Feature ${featureId} cannot be deleted because its body is targeted by cut feature ${consumingFeature.id}.`,
+      opIndex,
+      featureId,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "id"),
+      expected: "feature body not targeted by a cut feature",
+      received: consumingFeature.id
+    });
+  }
+
   state.features.delete(featureId);
   pushFeatureDeleted(diff, featureRef(feature));
   pushBodyDeleted(diff, bodyRef(feature));
@@ -2172,6 +2196,16 @@ function findFeatureByBodyId(
   bodyId: BodyId
 ): Feature | undefined {
   return [...features.values()].find((feature) => feature.bodyId === bodyId);
+}
+
+function findConsumingCutFeatureByTargetBodyId(
+  features: ReadonlyMap<FeatureId, Feature>,
+  targetBodyId: BodyId
+): Feature | undefined {
+  return [...features.values()].find(
+    (feature) =>
+      feature.operationMode === "cut" && feature.targetBodyId === targetBodyId
+  );
 }
 
 function isPrimitiveBodyId(state: MutableDocumentState, id: BodyId): boolean {
@@ -2389,12 +2423,55 @@ function validateExtrudeTargetBodyId(
   });
 }
 
-function assertSupportedExtrudeOperationMode(
+function assertSupportedExtrudeOperation(
+  state: MutableDocumentState,
   operationMode: FeatureExtrudeOperationMode,
+  profileKind: FeatureExtrudeProfileKind,
+  targetBodyId: BodyId | undefined,
   opIndex?: number
 ): void {
   if (operationMode === "newBody") {
     return;
+  }
+
+  if (operationMode === "cut") {
+    const targetFeature =
+      targetBodyId === undefined
+        ? undefined
+        : findFeatureByBodyId(state.features, targetBodyId);
+
+    if (
+      targetBodyId &&
+      targetFeature &&
+      profileKind === "rectangle" &&
+      targetFeature.profileKind === "rectangle" &&
+      targetFeature.operationMode === "newBody" &&
+      findConsumingCutFeatureByTargetBodyId(state.features, targetBodyId) ===
+        undefined
+    ) {
+      return;
+    }
+
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message:
+        "Cut extrudes currently support rectangle tools cutting one active rectangle newBody target body.",
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "operationMode"),
+      expected: "cut with rectangle source and active rectangle newBody target",
+      received: describeReceived({
+        operationMode,
+        profileKind,
+        targetBodyId,
+        targetProfileKind: targetFeature?.profileKind,
+        targetOperationMode: targetFeature?.operationMode,
+        targetConsumedByFeatureId: targetBodyId
+          ? findConsumingCutFeatureByTargetBodyId(state.features, targetBodyId)
+              ?.id
+          : undefined
+      })
+    });
   }
 
   throwValidationError({
@@ -2402,7 +2479,7 @@ function assertSupportedExtrudeOperationMode(
     message: `Extrude operation mode ${operationMode} requires boolean-backed topology support and is not implemented yet.`,
     opIndex,
     path: operationPath(opIndex, "operationMode"),
-    expected: "newBody",
+    expected: "newBody or supported cut",
     received: operationMode
   });
 }
@@ -3674,13 +3751,16 @@ function createProjectStructure(
   const extrudeFeatures = [...document.features.values()].map(
     createExtrudeFeatureSummary
   );
+  const consumedBodyIds = createConsumedBodyMap(document.features);
   const features: readonly CadFeatureSummary[] = [
     ...primitiveFeatures,
     ...extrudeFeatures
   ];
   const bodies = [
     ...objects.map(createPrimitiveBodySnapshot),
-    ...[...document.features.values()].map(createExtrudeBodySnapshot)
+    ...[...document.features.values()].map((feature) =>
+      createExtrudeBodySnapshot(feature, consumedBodyIds.get(feature.bodyId))
+    )
   ];
   const objectSources = objects.map(createObjectModelSource);
   const part: CadPartSnapshot = {
@@ -3771,12 +3851,16 @@ function createExtrudeFeatureSummary(feature: Feature): CadFeatureSummary {
   };
 }
 
-function createExtrudeBodySnapshot(feature: Feature): CadBodySnapshot {
+function createExtrudeBodySnapshot(
+  feature: Feature,
+  consumedByFeatureId?: FeatureId
+): CadBodySnapshot {
   return {
     id: feature.bodyId,
     kind: "solid",
     partId: DEFAULT_PART_ID,
     featureId: feature.id,
+    ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
     name: feature.name,
     source: {
       type: "sketchExtrudeFeature",
@@ -3786,6 +3870,20 @@ function createExtrudeBodySnapshot(feature: Feature): CadBodySnapshot {
       profileKind: feature.profileKind
     }
   };
+}
+
+function createConsumedBodyMap(
+  features: ReadonlyMap<FeatureId, Feature>
+): ReadonlyMap<BodyId, FeatureId> {
+  const consumed = new Map<BodyId, FeatureId>();
+
+  for (const feature of features.values()) {
+    if (feature.operationMode === "cut" && feature.targetBodyId) {
+      consumed.set(feature.targetBodyId, feature.id);
+    }
+  }
+
+  return consumed;
 }
 
 function createObjectModelSource(object: SceneObject): CadObjectModelSource {
@@ -3982,6 +4080,10 @@ function createBodyExtents(
 
   for (const body of structure.bodies) {
     if (body.source.type !== "sketchExtrudeFeature") {
+      continue;
+    }
+
+    if (body.consumedByFeatureId) {
       continue;
     }
 
@@ -5353,6 +5455,10 @@ function validateCadDocumentSnapshot(
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
+  const authoredFeatureByBodyId = new Map<
+    BodyId,
+    ExtrudeFeatureSnapshot & { readonly path: string }
+  >();
   const sketchEntityRefs = new Map<
     SketchEntityId,
     { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
@@ -5485,8 +5591,14 @@ function validateCadDocumentSnapshot(
           generatedNumbers.maxGeneratedBodyNumber
         );
         collectValidExtrudeFeatureByBodyId(feature, extrudeFeatureByBodyId);
+        collectValidAuthoredFeatureByBodyId(
+          feature,
+          `${path}.features[${index}]`,
+          authoredFeatureByBodyId
+        );
       }
 
+      validateFeatureTargetBodyReferences(authoredFeatureByBodyId, issues);
       validateSketchAttachments(
         sketchAttachments,
         extrudeFeatureByBodyId,
@@ -5805,6 +5917,109 @@ function collectValidExtrudeFeatureByBodyId(
       operationMode: value.operationMode ?? "newBody",
       bodyId: value.bodyId
     });
+  }
+}
+
+function collectValidAuthoredFeatureByBodyId(
+  value: unknown,
+  path: string,
+  featuresByBodyId: Map<
+    BodyId,
+    ExtrudeFeatureSnapshot & { readonly path: string }
+  >
+): void {
+  if (
+    isRecord(value) &&
+    value.kind === "extrude" &&
+    typeof value.id === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    typeof value.depth === "number" &&
+    isPositiveFiniteNumber(value.depth) &&
+    (value.side === undefined || isExtrudeSide(value.side)) &&
+    (value.operationMode === undefined ||
+      isExtrudeOperationMode(value.operationMode)) &&
+    (value.targetBodyId === undefined ||
+      typeof value.targetBodyId === "string") &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "extrude",
+      name: typeof value.name === "string" ? value.name : undefined,
+      sketchId: value.sketchId,
+      entityId: value.entityId,
+      profileKind: value.profileKind,
+      depth: value.depth,
+      side: value.side ?? "positive",
+      operationMode: value.operationMode ?? "newBody",
+      targetBodyId: value.targetBodyId,
+      bodyId: value.bodyId,
+      path
+    });
+  }
+}
+
+function validateFeatureTargetBodyReferences(
+  featuresByBodyId: ReadonlyMap<
+    BodyId,
+    ExtrudeFeatureSnapshot & { readonly path: string }
+  >,
+  issues: CadProjectImportIssue[]
+): void {
+  for (const feature of featuresByBodyId.values()) {
+    if (feature.operationMode !== "cut") {
+      continue;
+    }
+
+    const targetBodyId = feature.targetBodyId;
+
+    if (!targetBodyId) {
+      continue;
+    }
+
+    const target = featuresByBodyId.get(targetBodyId);
+
+    if (!target) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.targetBodyId`,
+        "Cut extrude targetBodyId must reference an existing authored extrude body."
+      );
+      continue;
+    }
+
+    const consumedBy = [...featuresByBodyId.values()].find(
+      (candidate) =>
+        candidate.id !== feature.id &&
+        candidate.operationMode === "cut" &&
+        candidate.targetBodyId === targetBodyId
+    );
+
+    if (consumedBy) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.targetBodyId`,
+        "Cut extrude targetBodyId must reference an active authored body that is not already consumed by another cut."
+      );
+      continue;
+    }
+
+    if (
+      feature.profileKind !== "rectangle" ||
+      target.profileKind !== "rectangle" ||
+      target.operationMode !== "newBody"
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.operationMode`,
+        "Cut extrudes currently support rectangle tools cutting one active rectangle newBody target body."
+      );
+    }
   }
 }
 
@@ -6225,12 +6440,12 @@ function validateFeatureSnapshot(
       `${path}.operationMode`,
       "Extrude feature operationMode must be newBody, add, or cut."
     );
-  } else if (value.operationMode === "add" || value.operationMode === "cut") {
+  } else if (value.operationMode === "add") {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.operationMode`,
-      `Extrude operationMode ${value.operationMode} requires boolean-backed topology support and is not implemented yet.`
+      "Extrude operationMode add requires boolean-backed topology support and is not implemented yet."
     );
   }
 

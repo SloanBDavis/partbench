@@ -6,6 +6,7 @@ import {
   createDerivedGeometryErrorFromWorkerResponse,
   createDerivedGeometryMetrics,
   type DerivedGeometryBoxInput,
+  type DerivedGeometryBooleanExtrudeInput,
   type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
   type DerivedGeometryExtrudeInput,
@@ -45,7 +46,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometrySphereInput
       | DerivedGeometryConeInput
       | DerivedGeometryTorusInput
-      | DerivedGeometryExtrudeInput,
+      | DerivedGeometryExtrudeInput
+      | DerivedGeometryBooleanExtrudeInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
     const { createRenderMeshFromGeometryWorkerResponse } =
@@ -62,10 +64,18 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     const bridgeResult = createRenderMeshFromGeometryWorkerResponse(response, {
       id: input.id,
       alignment:
-        request.payload.op === "geometry.tessellateExtrude"
+        request.payload.op === "geometry.tessellateExtrude" ||
+        request.payload.op === "geometry.booleanExtrudes"
           ? "source"
           : "boundsCenter",
-      transform: input.transform,
+      transform:
+        "transform" in input
+          ? input.transform
+          : {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            },
       label: `${input.id} OCCT mesh`
     });
 
@@ -181,6 +191,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           profile: input.profile,
           depth: input.depth,
           side: input.side,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async booleanExtrudes(input: DerivedGeometryBooleanExtrudeInput) {
+      const { createExtrudeBooleanWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createExtrudeBooleanWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          operation: input.operation,
+          target: input.target,
+          tool: input.tool,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

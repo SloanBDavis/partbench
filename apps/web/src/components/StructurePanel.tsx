@@ -272,6 +272,9 @@ export function StructurePanel({
                       {feature && (
                         <small>{formatFeatureLine(feature, units)}</small>
                       )}
+                      {body.consumedByFeatureId && (
+                        <small>Consumed by {body.consumedByFeatureId}</small>
+                      )}
                       <GeometryStatus status={geometryStatuses?.get(body.id)} />
                       <HealthStatus status={status} />
                       <HealthIssues issues={issues} />

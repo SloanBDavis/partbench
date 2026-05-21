@@ -140,6 +140,46 @@ function createAuthoredExtrudeHealth(
     }
   }
 
+  if (feature.operationMode === "cut") {
+    if (!feature.targetBodyId) {
+      issues.push({
+        code: "BODY_NOT_FOUND",
+        message: `Cut feature ${feature.id} is missing its target body.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        expected: "targetBodyId",
+        received: "missing"
+      });
+    } else {
+      const targetFeature = [...document.features.values()].find(
+        (candidate) => candidate.bodyId === feature.targetBodyId
+      );
+
+      if (!targetFeature) {
+        issues.push({
+          code: "BODY_NOT_FOUND",
+          message: `Cut feature ${feature.id} targets a missing body: ${feature.targetBodyId}`,
+          featureId: feature.id,
+          bodyId: feature.targetBodyId
+        });
+      } else if (
+        feature.profileKind !== "rectangle" ||
+        targetFeature.profileKind !== "rectangle" ||
+        targetFeature.operationMode !== "newBody"
+      ) {
+        issues.push({
+          code: "UNSUPPORTED_BODY_REFERENCES",
+          message:
+            "Cut features currently require a rectangle source and an active rectangle newBody target body.",
+          featureId: feature.id,
+          bodyId: feature.targetBodyId,
+          expected: "rectangle newBody target",
+          received: `${targetFeature.profileKind} ${targetFeature.operationMode}`
+        });
+      }
+    }
+  }
+
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,

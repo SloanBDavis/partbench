@@ -1,10 +1,18 @@
 import type {
+  CadBodySnapshot,
+  CadFeatureSummary,
   SketchEntityId,
   SketchEntityKind,
   SketchId,
   SketchEntitySnapshot,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
+
+export interface CutTargetBodyOption {
+  readonly bodyId: string;
+  readonly featureId: string;
+  readonly label: string;
+}
 
 export function chooseSketchPanelSelection(
   sketches: readonly SketchSnapshot[],
@@ -69,4 +77,57 @@ export function isExtrudableSketchEntity(
   entity: SketchEntitySnapshot | undefined
 ): entity is SketchEntitySnapshot & { kind: "rectangle" | "circle" } {
   return entity?.kind === "rectangle" || entity?.kind === "circle";
+}
+
+export function createCutTargetBodyOptions(
+  bodies: readonly CadBodySnapshot[],
+  features: readonly CadFeatureSummary[],
+  preferredBodyId?: string
+): readonly CutTargetBodyOption[] {
+  const options = bodies
+    .filter(
+      (body) =>
+        body.source.type === "sketchExtrudeFeature" &&
+        body.consumedByFeatureId === undefined
+    )
+    .flatMap((body) => {
+      const feature = features.find(
+        (
+          candidate
+        ): candidate is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          candidate.kind === "extrude" && candidate.id === body.featureId
+      );
+
+      if (
+        !feature ||
+        feature.operationMode !== "newBody" ||
+        feature.profileKind !== "rectangle"
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          bodyId: body.id,
+          featureId: feature.id,
+          label: `${body.name ?? body.id} / ${feature.id}`
+        }
+      ];
+    });
+
+  if (!preferredBodyId) {
+    return options;
+  }
+
+  return [...options].sort((left, right) => {
+    if (left.bodyId === preferredBodyId) {
+      return -1;
+    }
+
+    if (right.bodyId === preferredBodyId) {
+      return 1;
+    }
+
+    return 0;
+  });
 }

@@ -718,9 +718,101 @@ describe("mcp-adapter", () => {
         ok: false,
         error: {
           code: "UNSUPPORTED_FEATURE_OPERATION",
-          path: "$.ops[0].operationMode",
-          received: "cut"
+          path: "$.ops[0].operationMode"
         }
+      }
+    });
+  });
+
+  it("passes rectangle cut extrudes through cad.batch dry-run and commit", () => {
+    const server = new CadMcpServer();
+    const seedResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_seed_cut_target",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_cut",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_cut",
+              id: "rect_cut",
+              center: [0, 0],
+              width: 3,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_seed_cut",
+              bodyId: "body_seed_cut",
+              sketchId: "sketch_cut",
+              entityId: "rect_cut",
+              depth: 4
+            }
+          ]
+        }
+      }
+    });
+
+    expect(seedResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false
+    });
+
+    const cutBatch = {
+      version: "cadops.v1" as const,
+      mode: "commit" as const,
+      ops: [
+        {
+          op: "feature.extrude" as const,
+          id: "feat_cut",
+          bodyId: "body_cut",
+          targetBodyId: "body_seed_cut",
+          sketchId: "sketch_cut",
+          entityId: "rect_cut",
+          depth: 1,
+          operationMode: "cut" as const
+        }
+      ]
+    };
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_cut_dry_run",
+      arguments: { batch: { ...cutBatch, mode: "dryRun" } }
+    });
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_cut_commit",
+      arguments: {
+        allowCommit: true,
+        batch: cutBatch
+      }
+    });
+
+    expect(dryRun).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_cut"],
+        createdBodyIds: ["body_cut"]
+      }
+    });
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_cut"],
+        createdBodyIds: ["body_cut"]
       }
     });
   });

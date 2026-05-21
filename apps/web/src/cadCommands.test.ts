@@ -258,6 +258,29 @@ describe("cad command builders", () => {
       side: "positive",
       operationMode: "newBody"
     });
+
+    expect(
+      buildFeatureExtrudeOp("sketch_1", "rect_1", {
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        targetBodyId: "body_rect_1",
+        name: "Cut",
+        depth: 1,
+        side: "positive",
+        operationMode: "cut"
+      })
+    ).toEqual({
+      op: "feature.extrude",
+      id: "feat_cut_1",
+      bodyId: "body_cut_1",
+      targetBodyId: "body_rect_1",
+      name: "Cut",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      side: "positive",
+      operationMode: "cut"
+    });
   });
 
   it("builds dimension update commands", () => {

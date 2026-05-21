@@ -20,8 +20,11 @@ The OCCT path remains isolated:
 
 The same boundary now contains an isolated boolean feasibility request for
 source-derived rectangle extrude add/cut. That path proves OCCT can combine two
-simple extrude-like solids and return mesh data, but it is not used by
-`cad-core` commands, project storage, generated references, or normal startup.
+simple extrude-like solids and return mesh data. The first narrow rectangle cut
+slice now uses this derived-geometry path for display, while `cad-core` still
+stores only source feature intent and no B-rep/mesh result. It is still not part
+of normal startup and does not provide generated-reference topology for cut
+results.
 
 ## Baseline
 
@@ -160,10 +163,10 @@ it proves smaller, stable, and compatible with the current smoke path.
 
 ## Boolean Feasibility Risks
 
-The rectangle-extrude boolean feasibility path does not change the binary-size
-recommendation, but it does make the future OCCT API surface broader than
-primitive tessellation alone. Before add/cut become authoritative CADOps
-behavior, the project still needs explicit handling for:
+The rectangle-extrude boolean path does not change the binary-size
+recommendation, but it does make the OCCT API surface broader than primitive
+tessellation alone. Before expanding beyond the first narrow rectangle cut
+slice, the project still needs explicit handling for:
 
 - topological naming and generated-reference invalidation after boolean edits;
 - empty or invalid results, such as cutting away an entire target body;

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { SketchSnapshot } from "@web-cad/cad-protocol";
+import type {
+  CadBodySnapshot,
+  CadFeatureSummary,
+  SketchSnapshot
+} from "@web-cad/cad-protocol";
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createCutTargetBodyOptions,
   getDefaultSketchEntityKind,
   getSketchEntityOptionLabel,
   isExtrudableSketchEntity
@@ -107,6 +112,28 @@ describe("sketch panel UI helpers", () => {
       })
     ).toBe(false);
   });
+
+  it("offers only active rectangle newBody authored bodies as cut targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut")
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect"),
+      createBody("body_circle", "feat_circle"),
+      createBody("body_consumed", "feat_consumed", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+
+    expect(createCutTargetBodyOptions(bodies, features, "body_rect")).toEqual([
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        label: "body_rect / feat_rect"
+      }
+    ]);
+  });
 });
 
 function createSketch(
@@ -119,5 +146,52 @@ function createSketch(
     plane: "XY",
     entities: [],
     ...overrides
+  };
+}
+
+function createExtrudeFeature(
+  id: string,
+  bodyId: string,
+  profileKind: "rectangle" | "circle",
+  operationMode: "newBody" | "cut"
+): Extract<CadFeatureSummary, { kind: "extrude" }> {
+  return {
+    id,
+    kind: "extrude",
+    partId: "part:default",
+    bodyId,
+    sketchId: "sketch_1",
+    entityId: profileKind === "rectangle" ? "rect_1" : "circle_1",
+    profileKind,
+    depth: 1,
+    side: "positive",
+    operationMode,
+    ...(operationMode === "cut" ? { targetBodyId: "body_rect" } : {}),
+    source: {
+      type: "sketchEntity",
+      sketchId: "sketch_1",
+      entityId: profileKind === "rectangle" ? "rect_1" : "circle_1"
+    }
+  };
+}
+
+function createBody(
+  id: string,
+  featureId: string,
+  consumedByFeatureId?: string
+): CadBodySnapshot {
+  return {
+    id,
+    kind: "solid",
+    partId: "part:default",
+    featureId,
+    ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+    source: {
+      type: "sketchExtrudeFeature",
+      featureId,
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle"
+    }
   };
 }

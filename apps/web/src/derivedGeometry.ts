@@ -24,11 +24,15 @@ export type DerivedGeometryStatusKind =
   | "pending"
   | "ready"
   | "error";
-export type DerivedGeometrySourceKind = SceneObject["kind"] | "extrude";
+export type DerivedGeometrySourceKind =
+  | SceneObject["kind"]
+  | "extrude"
+  | "extrudeBoolean";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
-  | DerivedExtrudeGeometrySource;
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -56,6 +60,15 @@ export interface DerivedExtrudeGeometrySource {
   readonly depth: number;
   readonly side: "positive" | "negative" | "symmetric";
   readonly placementFrame?: SketchDisplayFrame;
+  readonly placementError?: string;
+}
+
+export interface DerivedBooleanExtrudeGeometrySource {
+  readonly id: string;
+  readonly kind: "extrudeBoolean";
+  readonly operation: "cut";
+  readonly target: DerivedExtrudeGeometrySource;
+  readonly tool: DerivedExtrudeGeometrySource;
   readonly placementError?: string;
 }
 
@@ -116,7 +129,8 @@ type SupportedDerivedGeometryObject =
   | TorusObject;
 type SupportedDerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
-  | DerivedExtrudeGeometrySource;
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -338,7 +352,11 @@ export function createPrimitiveDerivedGeometrySource(
 function toDerivedGeometrySource(
   input: DerivedGeometryInput
 ): DerivedGeometrySource {
-  if ("object" in input || input.kind === "extrude") {
+  if (
+    "object" in input ||
+    input.kind === "extrude" ||
+    input.kind === "extrudeBoolean"
+  ) {
     return input;
   }
 
@@ -348,9 +366,19 @@ function toDerivedGeometrySource(
 function isSupportedDerivedGeometrySource(
   source: DerivedGeometrySource
 ): boolean {
-  return source.kind === "extrude"
-    ? !source.placementError
-    : isSupportedDerivedGeometryObject(source.object);
+  if (source.kind === "extrude") {
+    return !source.placementError;
+  }
+
+  if (source.kind === "extrudeBoolean") {
+    return (
+      !source.placementError &&
+      source.target.profile.kind === "rectangle" &&
+      source.tool.profile.kind === "rectangle"
+    );
+  }
+
+  return isSupportedDerivedGeometryObject(source.object);
 }
 
 function isSupportedDerivedGeometryObject(object: SceneObject): boolean {
@@ -386,6 +414,40 @@ function deriveSourceMesh(
         }
       })
       .then((result) => applyExtrudePlacement(source, result));
+  }
+
+  if (source.kind === "extrudeBoolean") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    if (
+      source.target.profile.kind !== "rectangle" ||
+      source.tool.profile.kind !== "rectangle"
+    ) {
+      throw new Error(
+        "Boolean cut display currently supports rectangle target and tool extrudes only."
+      );
+    }
+
+    return runtime.booleanExtrudes({
+      id: source.id,
+      operation: source.operation,
+      target: {
+        sketchPlane: source.target.sketchPlane,
+        profile: source.target.profile,
+        depth: source.target.depth,
+        side: source.target.side,
+        placementFrame: source.target.placementFrame
+      },
+      tool: {
+        sketchPlane: source.tool.sketchPlane,
+        profile: source.tool.profile,
+        depth: source.tool.depth,
+        side: source.tool.side,
+        placementFrame: source.tool.placementFrame
+      }
+    });
   }
 
   const object = source.object as SupportedDerivedGeometryObject;
@@ -472,7 +534,14 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     return source.placementError;
   }
 
-  return "Derived OCCT mesh generation supports scene primitives and sketch extrudes.";
+  if (source.kind === "extrudeBoolean") {
+    return (
+      source.placementError ??
+      "Boolean cut display currently supports rectangle target and tool extrudes only."
+    );
+  }
+
+  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, and rectangle cut results.";
 }
 
 export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {
@@ -501,11 +570,19 @@ export function createDerivedGeometryCacheKey(
           placementFrame: source.placementFrame,
           placementError: source.placementError
         }
-      : {
-          kind: source.kind,
-          dimensions: source.object.dimensions,
-          transform: source.object.transform
-        };
+      : source.kind === "extrudeBoolean"
+        ? {
+            kind: source.kind,
+            operation: source.operation,
+            target: createDerivedGeometryCacheKey(source.target),
+            tool: createDerivedGeometryCacheKey(source.tool),
+            placementError: source.placementError
+          }
+        : {
+            kind: source.kind,
+            dimensions: source.object.dimensions,
+            transform: source.object.transform
+          };
 
   return JSON.stringify(base);
 }

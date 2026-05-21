@@ -29,6 +29,10 @@ export function createBodyMeasurements(
     return undefined;
   }
 
+  if (feature.operationMode !== "newBody") {
+    return undefined;
+  }
+
   const sketch = document.sketches.get(feature.sketchId);
   const entity = sketch?.entities.get(feature.entityId);
 

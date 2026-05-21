@@ -31,6 +31,13 @@ export interface OcctBooleanExtrudeSource {
   readonly profile: OcctExtrudeProfile;
   readonly depth: number;
   readonly side?: OcctExtrudeSide;
+  readonly placementFrame?: OcctBooleanExtrudePlacementFrame;
+}
+
+export interface OcctBooleanExtrudePlacementFrame {
+  readonly origin: readonly [number, number, number];
+  readonly uAxis: readonly [number, number, number];
+  readonly vAxis: readonly [number, number, number];
 }
 
 export interface OcctBooleanExtrudeInput {
@@ -149,14 +156,20 @@ function getRectangleExtrudeBounds(
     source.side ?? "positive"
   );
 
-  switch (source.sketchPlane) {
-    case "XY":
-      return { min: [uMin, vMin, normalMin], max: [uMax, vMax, normalMax] };
-    case "XZ":
-      return { min: [uMin, normalMin, vMin], max: [uMax, normalMax, vMax] };
-    case "YZ":
-      return { min: [normalMin, uMin, vMin], max: [normalMax, uMax, vMax] };
-  }
+  return createBounds(
+    (
+      [
+        [uMin, vMin, normalMin],
+        [uMax, vMin, normalMin],
+        [uMax, vMax, normalMin],
+        [uMin, vMax, normalMin],
+        [uMin, vMin, normalMax],
+        [uMax, vMin, normalMax],
+        [uMax, vMax, normalMax],
+        [uMin, vMax, normalMax]
+      ] as const
+    ).map((point) => mapSketchPlanePointToBooleanFrame(source, point))
+  );
 }
 
 function getCenteredRange(
@@ -178,4 +191,72 @@ function getNormalRange(
     case "symmetric":
       return [-depth / 2, depth / 2];
   }
+}
+
+function mapSketchPlanePointToBooleanFrame(
+  source: OcctBooleanExtrudeSource,
+  point: readonly [number, number, number]
+): readonly [number, number, number] {
+  if (!source.placementFrame) {
+    return mapPlanePoint(source.sketchPlane, point[0], point[1], point[2]);
+  }
+
+  const [u, v, normalDistance] = point;
+  const frame = source.placementFrame;
+  const normal = crossVec3(frame.uAxis, frame.vAxis);
+
+  return [
+    frame.origin[0] +
+      frame.uAxis[0] * u +
+      frame.vAxis[0] * v +
+      normal[0] * normalDistance,
+    frame.origin[1] +
+      frame.uAxis[1] * u +
+      frame.vAxis[1] * v +
+      normal[1] * normalDistance,
+    frame.origin[2] +
+      frame.uAxis[2] * u +
+      frame.vAxis[2] * v +
+      normal[2] * normalDistance
+  ];
+}
+
+function mapPlanePoint(
+  plane: OcctSketchPlane,
+  u: number,
+  v: number,
+  normal: number
+): readonly [number, number, number] {
+  switch (plane) {
+    case "XY":
+      return [u, v, normal];
+    case "XZ":
+      return [u, normal, v];
+    case "YZ":
+      return [normal, u, v];
+  }
+}
+
+function createBounds(
+  points: readonly (readonly [number, number, number])[]
+): BoxBounds {
+  const xs = points.map((point) => point[0]);
+  const ys = points.map((point) => point[1]);
+  const zs = points.map((point) => point[2]);
+
+  return {
+    min: [Math.min(...xs), Math.min(...ys), Math.min(...zs)],
+    max: [Math.max(...xs), Math.max(...ys), Math.max(...zs)]
+  };
+}
+
+function crossVec3(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number]
+): readonly [number, number, number] {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0]
+  ];
 }

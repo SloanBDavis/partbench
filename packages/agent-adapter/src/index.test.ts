@@ -443,6 +443,64 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes rectangle cut extrudes through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_cut",
+      entityId: "rect_cut",
+      featureId: "feat_seed_cut",
+      bodyId: "body_seed_cut"
+    });
+
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "commit" as const,
+      ops: [
+        {
+          op: "feature.extrude" as const,
+          id: "feat_cut",
+          bodyId: "body_cut",
+          targetBodyId: "body_seed_cut",
+          sketchId: "sketch_cut",
+          entityId: "rect_cut",
+          depth: 1,
+          operationMode: "cut" as const
+        }
+      ]
+    };
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_cut_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: { ...batch, mode: "dryRun" }
+        })
+      )
+    );
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_cut_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch
+        })
+      )
+    );
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_cut"],
+      createdBodyIds: ["body_cut"]
+    });
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_cut"],
+      createdBodyIds: ["body_cut"]
+    });
+  });
+
   it("passes feature.updateExtrude through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
     seedExtrudeFeature(adapter, {
