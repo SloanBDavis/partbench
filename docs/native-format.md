@@ -453,9 +453,10 @@ The `project.structure` query returns the current V2/V3/V4/V5/V6 compatibility b
 
 When a supported `cut` feature targets an authored body, the target body remains
 listed as source/intermediate structure and is marked with
-`consumedByFeatureId`. Current display and project extents treat the cut result
-body as the active result and skip the consumed target body so the model is not
-double-counted.
+`consumedByFeatureId`. Current display treats the cut result body as the active
+result and skips the consumed target body so the model is not double-rendered.
+Project extents skip the consumed target body and return a structured warning
+for the cut result until analytic boolean result extents are implemented.
 
 This structure is a migration bridge toward a fuller feature/body model. The
 primitive side remains derived; the authored extrude side is persisted because it

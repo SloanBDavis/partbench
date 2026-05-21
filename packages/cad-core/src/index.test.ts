@@ -8393,16 +8393,53 @@ describe("cad-core", () => {
     });
 
     restored.undo();
+    const undoneStructure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
     expect(restored.getDocument().features.has("feat_cut")).toBe(false);
+    expect(undoneStructure).toMatchObject({
+      ok: true,
+      query: "project.structure"
+    });
+    if (!undoneStructure.ok || undoneStructure.query !== "project.structure") {
+      throw new Error("Expected project.structure response.");
+    }
+    expect(
+      undoneStructure.bodies.find((body) => body.id === "body_rect_1")
+        ?.consumedByFeatureId
+    ).toBeUndefined();
+    expect(
+      undoneStructure.bodies.find((body) => body.id === "body_cut")
+    ).toBeUndefined();
+
     restored.redo();
     expect(restored.getDocument().features.get("feat_cut")).toMatchObject({
       operationMode: "cut",
       targetBodyId: "body_rect_1"
     });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_cut"
+        }),
+        expect.objectContaining({ id: "body_cut", featureId: "feat_cut" })
+      ])
+    });
   });
 
   it("rejects cut features for unsupported profiles and consumed targets", () => {
     const engine = createRectangleExtrudeEngine();
+    const circleTargetEngine = createCircleExtrudeEngine();
 
     engine.apply({
       op: "sketch.addCircle",
@@ -8430,6 +8467,39 @@ describe("cad-core", () => {
     });
 
     expect(circleTool).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+
+    circleTargetEngine.apply({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_tool",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    });
+    const circleTarget = circleTargetEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_rect_cut",
+          bodyId: "body_rect_cut",
+          targetBodyId: "body_circle_1",
+          sketchId: "sketch_1",
+          entityId: "rect_tool",
+          depth: 1,
+          operationMode: "cut"
+        }
+      ]
+    });
+
+    expect(circleTarget).toMatchObject({
       ok: false,
       error: {
         code: "UNSUPPORTED_FEATURE_OPERATION",
@@ -8485,6 +8555,43 @@ describe("cad-core", () => {
         bodyId: "body_rect_1"
       }
     });
+  });
+
+  it("warns and excludes cut result extents without double-counting consumed targets", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_cut",
+      bodyId: "body_cut",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "cut"
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      objectCount: 0,
+      bodyCount: 0,
+      approximateVolume: 0,
+      bodies: [],
+      warnings: [
+        {
+          code: "BODY_EXTENTS_UNAVAILABLE",
+          bodyId: "body_cut",
+          featureId: "feat_cut"
+        }
+      ]
+    });
+    expect(response).not.toHaveProperty("bounds");
   });
 
   it("round-trips deleted sketch extrude features through current project history", () => {

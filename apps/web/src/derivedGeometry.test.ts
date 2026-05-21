@@ -533,6 +533,77 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("ignores stale worker results after cut target source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "target" in input && input.target.profile.kind === "rectangle"
+        ? input.target.profile.width === 4
+          ? first.promise
+          : second.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_cut_1",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: createExtrudeSource("body_rect_1"),
+      tool: createExtrudeSource("body_cut_1")
+    };
+    const editedSource: DerivedBooleanExtrudeGeometrySource = {
+      ...initialSource,
+      target: {
+        ...initialSource.target,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 8,
+          height: 2
+        }
+      }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "target" in input && input.target.profile.kind === "rectangle"
+          ? input.target.profile.width
+          : null
+      )
+    ).toEqual([4, 8]);
+
+    first.resolve(createResult("body_cut_1", createMesh("stale_cut")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_cut_1",
+      objectKind: "extrudeBoolean",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_cut_1", createMesh("body_cut_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_cut_1",
+      objectKind: "extrudeBoolean",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_cut_1"
+    ]);
+  });
+
   it("marks attached extrudes unsupported when their generated face is stale", () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime(async (input) =>

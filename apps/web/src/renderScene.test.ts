@@ -9,6 +9,7 @@ import type {
 import type { RenderEdgeSegment, RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type {
+  DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry
 } from "./derivedGeometry";
@@ -373,6 +374,57 @@ describe("renderScene", () => {
     expect(scene.meshes).toEqual([]);
   });
 
+  it("renders ready cut meshes without an honest-looking pending fallback", () => {
+    const cutSource = createCutSource();
+    const readyMesh = createMesh("body_cut");
+    const readyScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          "body_cut",
+          {
+            objectId: "body_cut",
+            objectKind: "extrudeBoolean",
+            sourceId: "body_cut",
+            sourceKind: "extrudeBoolean",
+            cacheKey: "cut-ready",
+            status: "ready",
+            mesh: readyMesh,
+            metrics: {
+              objectId: "body_cut",
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ]),
+      [cutSource]
+    );
+    const pendingScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          "body_cut",
+          {
+            objectId: "body_cut",
+            objectKind: "extrudeBoolean",
+            sourceId: "body_cut",
+            sourceKind: "extrudeBoolean",
+            cacheKey: "cut-pending",
+            status: "pending"
+          }
+        ]
+      ]),
+      [cutSource]
+    );
+
+    expect(readyScene.primitives).toEqual([]);
+    expect(readyScene.meshes).toEqual([readyMesh]);
+    expect(pendingScene.primitives).toEqual([]);
+    expect(pendingScene.meshes).toEqual([]);
+  });
+
   it("adds sketch display edges so authored sketches are visible in the viewport", () => {
     const sketch: SketchSnapshot = {
       id: "sketch_1",
@@ -585,6 +637,16 @@ function createAttachedExtrudeSource(
       uAxis: [0, 1, 0],
       vAxis: [0, 0, 1]
     }
+  };
+}
+
+function createCutSource(): DerivedBooleanExtrudeGeometrySource {
+  return {
+    id: "body_cut",
+    kind: "extrudeBoolean",
+    operation: "cut",
+    target: createExtrudeSource("body_target", "positive"),
+    tool: createExtrudeSource("body_cut", "positive")
   };
 }
 
