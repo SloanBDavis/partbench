@@ -703,7 +703,14 @@ function isVec2(value: readonly [number, number]): boolean {
 function isValidBooleanExtrudePlacementFrame(
   frame: BooleanExtrudePlacementFrame
 ): boolean {
-  return isVec3(frame.origin) && isVec3(frame.uAxis) && isVec3(frame.vAxis);
+  return (
+    isVec3(frame.origin) &&
+    isVec3(frame.uAxis) &&
+    isVec3(frame.vAxis) &&
+    vectorLength(frame.uAxis) > 0 &&
+    vectorLength(frame.vAxis) > 0 &&
+    vectorLength(crossVec3(frame.uAxis, frame.vAxis)) > 0
+  );
 }
 
 function isVec3(value: readonly [number, number, number]): boolean {
@@ -712,4 +719,19 @@ function isVec3(value: readonly [number, number, number]): boolean {
     value.length === 3 &&
     value.every((item) => typeof item === "number" && Number.isFinite(item))
   );
+}
+
+function vectorLength(vector: readonly [number, number, number]): number {
+  return Math.hypot(vector[0], vector[1], vector[2]);
+}
+
+function crossVec3(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number]
+): readonly [number, number, number] {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0]
+  ];
 }

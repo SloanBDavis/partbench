@@ -43,6 +43,9 @@ with `BRepPrimAPI_MakeBox`, circle extrude solids with
 data. The current isolated support covers rectangle add/cut and circle target
 cut by rectangle tool. It intentionally does not expose OCCT shape handles,
 topology maps, generated-reference updates, or authoritative document changes.
+The circle-target feasibility slice has smoke coverage for extrusion sides,
+base sketch planes, placement frames, non-overlap, full target removal, and
+unsupported source-profile combinations.
 
 ## Setup
 

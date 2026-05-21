@@ -34,6 +34,10 @@ The current OCCT-backed implementation supports rectangle extrude add,
 rectangle extrude cut, and the next feasibility case: a circle target cut by a
 rectangle tool. It returns mesh data for feasibility tests, not document
 mutations, topology maps, stable generated references, or project source data.
+The circle-target cut feasibility path is covered for positive, negative, and
+symmetric sides; XY, XZ, and YZ sketch planes; placement-frame inputs;
+non-overlapping tools; fully removed targets; and unsupported profile
+combinations.
 
 Typed arrays are structured-clone compatible, so this response shape can cross a
 browser Worker boundary. `getGeometryResponseTransferables()` exposes the mesh

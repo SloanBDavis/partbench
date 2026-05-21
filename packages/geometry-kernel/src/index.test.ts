@@ -407,6 +407,205 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it(
+    "runs circle-target cut feasibility requests for sides and planes",
+    async () => {
+      const cases = [
+        {
+          id: "circle_cut_positive_xy",
+          targetPlane: "XY" as const,
+          targetSide: "positive" as const,
+          toolPlane: "XY" as const,
+          toolSide: "positive" as const,
+          expectedBounds: {
+            min: [-3, -3, 0] as const,
+            max: [3, 3, 4] as const
+          },
+          exactAxes: [2] as const
+        },
+        {
+          id: "circle_cut_negative_xy",
+          targetPlane: "XY" as const,
+          targetSide: "negative" as const,
+          toolPlane: "XY" as const,
+          toolSide: "negative" as const,
+          expectedBounds: {
+            min: [-3, -3, -4] as const,
+            max: [3, 3, 0] as const
+          },
+          exactAxes: [2] as const
+        },
+        {
+          id: "circle_cut_symmetric_xy",
+          targetPlane: "XY" as const,
+          targetSide: "symmetric" as const,
+          toolPlane: "XY" as const,
+          toolSide: "symmetric" as const,
+          expectedBounds: {
+            min: [-3, -3, -2] as const,
+            max: [3, 3, 2] as const
+          },
+          exactAxes: [2] as const
+        },
+        {
+          id: "circle_cut_positive_xz",
+          targetPlane: "XZ" as const,
+          targetSide: "positive" as const,
+          toolPlane: "XZ" as const,
+          toolSide: "positive" as const,
+          expectedBounds: {
+            min: [-3, 0, -3] as const,
+            max: [3, 4, 3] as const
+          },
+          exactAxes: [1] as const
+        },
+        {
+          id: "circle_cut_positive_yz",
+          targetPlane: "YZ" as const,
+          targetSide: "positive" as const,
+          toolPlane: "YZ" as const,
+          toolSide: "positive" as const,
+          expectedBounds: {
+            min: [0, -3, -3] as const,
+            max: [4, 3, 3] as const
+          },
+          exactAxes: [0] as const
+        }
+      ];
+
+      for (const testCase of cases) {
+        const response = await executeGeometryKernelRequest({
+          id: testCase.id,
+          version: "geometry-kernel.v1",
+          op: "geometry.booleanExtrudes",
+          operation: "cut",
+          target: {
+            sketchPlane: testCase.targetPlane,
+            profile: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 3
+            },
+            depth: 4,
+            side: testCase.targetSide
+          },
+          tool: {
+            sketchPlane: testCase.toolPlane,
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 6
+            },
+            depth: 4,
+            side: testCase.toolSide
+          }
+        });
+
+        expect(response.ok, testCase.id).toBe(true);
+
+        if (!response.ok) {
+          throw new Error(response.error.message);
+        }
+
+        expectBooleanBounds(
+          getMeshBounds(response.mesh.positions),
+          testCase.expectedBounds,
+          testCase.exactAxes
+        );
+      }
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "runs circle-target cut feasibility requests for placement frames and non-overlap",
+    async () => {
+      const placementFrame = {
+        origin: [10, 20, 30] as const,
+        uAxis: [0, 1, 0] as const,
+        vAxis: [0, 0, 1] as const
+      };
+      const placedCut = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_cut_placed",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          placementFrame,
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          placementFrame,
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 6
+          },
+          depth: 4
+        }
+      });
+      const nonOverlappingCut = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_cut_non_overlap",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [10, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 4
+        }
+      });
+
+      expect(placedCut.ok).toBe(true);
+      expect(nonOverlappingCut.ok).toBe(true);
+
+      if (!placedCut.ok || !nonOverlappingCut.ok) {
+        throw new Error("Expected placement and non-overlap cuts to succeed.");
+      }
+
+      expectBooleanBounds(
+        getMeshBounds(placedCut.mesh.positions),
+        {
+          min: [10, 17, 27],
+          max: [14, 23, 33]
+        },
+        [0]
+      );
+      expectBooleanBounds(
+        getMeshBounds(nonOverlappingCut.mesh.positions),
+        {
+          min: [-3, -3, 0],
+          max: [3, 3, 4]
+        },
+        [2]
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it("returns structured boolean feasibility errors", async () => {
     const rectangleSource = {
       sketchPlane: "XY" as const,
@@ -434,6 +633,22 @@ describe("geometry-kernel facade", () => {
       },
       tool: rectangleSource
     });
+    const unsupportedCircleTool = await executeGeometryKernelRequest({
+      id: "geometry_req_boolean_unsupported_circle_tool",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "cut",
+      target: rectangleSource,
+      tool: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 1
+        },
+        depth: 2
+      }
+    });
     const emptyResult = await executeGeometryKernelRequest({
       id: "geometry_req_boolean_empty_result",
       version: "geometry-kernel.v1",
@@ -442,10 +657,61 @@ describe("geometry-kernel facade", () => {
       target: rectangleSource,
       tool: rectangleSource
     });
+    const circleTargetRemoved = await executeGeometryKernelRequest({
+      id: "geometry_req_boolean_circle_removed",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "cut",
+      target: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 2
+        },
+        depth: 2
+      },
+      tool: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 6,
+          height: 6
+        },
+        depth: 2
+      }
+    });
+    const invalidPlacementFrame = await executeGeometryKernelRequest({
+      id: "geometry_req_boolean_invalid_frame",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: "cut",
+      target: {
+        ...rectangleSource,
+        placementFrame: {
+          origin: [0, 0, 0],
+          uAxis: [1, 0, 0],
+          vAxis: [2, 0, 0]
+        }
+      },
+      tool: rectangleSource
+    });
 
     expect(unsupportedProfile).toEqual({
       ok: false,
       id: "geometry_req_boolean_unsupported_profile",
+      op: "geometry.booleanExtrudes",
+      error: {
+        code: "UNSUPPORTED_PROFILE",
+        message:
+          "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
+      },
+      warnings: []
+    });
+    expect(unsupportedCircleTool).toEqual({
+      ok: false,
+      id: "geometry_req_boolean_unsupported_circle_tool",
       op: "geometry.booleanExtrudes",
       error: {
         code: "UNSUPPORTED_PROFILE",
@@ -461,6 +727,27 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "EMPTY_RESULT",
         message: "The geometry kernel returned an empty or invalid mesh."
+      },
+      warnings: []
+    });
+    expect(circleTargetRemoved).toEqual({
+      ok: false,
+      id: "geometry_req_boolean_circle_removed",
+      op: "geometry.booleanExtrudes",
+      error: {
+        code: "EMPTY_RESULT",
+        message: "The geometry kernel returned an empty or invalid mesh."
+      },
+      warnings: []
+    });
+    expect(invalidPlacementFrame).toEqual({
+      ok: false,
+      id: "geometry_req_boolean_invalid_frame",
+      op: "geometry.booleanExtrudes",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Boolean extrude requests require target/tool sources with supported sketch plane, side, profile dimensions, and positive finite depth."
       },
       warnings: []
     });
@@ -668,6 +955,34 @@ function getMeshBounds(positions: Float32Array): {
       Math.max(...points.map((point) => point[2]))
     ]
   };
+}
+
+function expectBooleanBounds(
+  actual: {
+    readonly min: readonly [number, number, number];
+    readonly max: readonly [number, number, number];
+  },
+  expected: {
+    readonly min: readonly [number, number, number];
+    readonly max: readonly [number, number, number];
+  },
+  exactAxes: readonly number[]
+): void {
+  for (let index = 0; index < 3; index += 1) {
+    if (exactAxes.includes(index)) {
+      expect(actual.min[index]).toBeCloseTo(expected.min[index], 6);
+      expect(actual.max[index]).toBeCloseTo(expected.max[index], 6);
+    } else {
+      expect(actual.min[index]).toBeGreaterThanOrEqual(expected.min[index]);
+      expect(actual.max[index]).toBeLessThanOrEqual(expected.max[index]);
+      expect(Math.abs(actual.min[index] - expected.min[index])).toBeLessThan(
+        0.25
+      );
+      expect(Math.abs(actual.max[index] - expected.max[index])).toBeLessThan(
+        0.25
+      );
+    }
+  }
 }
 
 function cleanNumber(value: number): number {

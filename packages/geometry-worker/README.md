@@ -59,6 +59,8 @@ request used by the first narrow rectangle-extrude cut path and isolated
 boolean feasibility checks such as circle target cut by rectangle tool. That
 boolean request still does not mutate `cad-core`, does not update project JSON,
 and does not claim stable topology or generated-reference invalidation.
+The worker path passes through the same structured success and error responses
+from `@web-cad/geometry-kernel`.
 
 ## Response Shape
 

@@ -180,6 +180,27 @@ mesh and structured errors, but it is not ready to become an authoritative
 CADOps slice until source-model semantics and topology/reference behavior are
 deliberately scoped.
 
+Current geometry-only support matrix:
+
+| Operation | Target profile | Tool profile | Status |
+| --------- | -------------- | ------------ | ------ |
+| add       | rectangle      | rectangle    | Works as isolated feasibility mesh |
+| cut       | rectangle      | rectangle    | Promoted for the first narrow CADOps cut slice |
+| cut       | circle         | rectangle    | Works as isolated feasibility mesh only |
+| add       | circle         | rectangle    | Unsupported |
+| add/cut   | rectangle      | circle       | Unsupported |
+| add/cut   | circle         | circle       | Unsupported |
+
+Circle-target cut has focused coverage for:
+
+- positive, negative, and symmetric extrusion sides;
+- XY, XZ, and YZ sketch planes;
+- placement-frame sources used by attached-sketch-style display;
+- non-overlapping tools, which preserve the target mesh result;
+- tool fully removing the target, which returns structured `EMPTY_RESULT`; and
+- invalid mesh or invalid placement-frame failures through structured geometry
+  errors.
+
 Before expanding beyond the first narrow rectangle cut slice in `cad-core`, the
 project still needs explicit handling for:
 
