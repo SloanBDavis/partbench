@@ -8,6 +8,7 @@ import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
   createCutTargetBodyOptions,
+  getCutOperationStatus,
   getDefaultSketchEntityKind,
   getSketchEntityOptionLabel,
   isExtrudableSketchEntity
@@ -130,9 +131,52 @@ describe("sketch panel UI helpers", () => {
       {
         bodyId: "body_rect",
         featureId: "feat_rect",
-        label: "body_rect / feat_rect"
+        label: "body_rect / feat_rect",
+        detail: "Rectangle new body / 1 / positive"
       }
     ]);
+  });
+
+  it("explains cut availability without requiring React state", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const targets = [
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        label: "body_rect / feat_rect",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ];
+
+    expect(getCutOperationStatus(undefined, targets)).toEqual({
+      available: false,
+      message: "Select a rectangle profile to cut an existing body."
+    });
+    expect(getCutOperationStatus(circle, targets)).toEqual({
+      available: false,
+      message:
+        "Cut currently supports rectangle profiles only. This profile can still create a new body."
+    });
+    expect(getCutOperationStatus(rectangle, [])).toEqual({
+      available: false,
+      message: "Create an active rectangle new body before using Cut body."
+    });
+    expect(getCutOperationStatus(rectangle, targets)).toEqual({
+      available: true,
+      message: "1 eligible rectangle target body."
+    });
   });
 });
 

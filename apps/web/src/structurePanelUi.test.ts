@@ -9,6 +9,9 @@ import type {
 import type { CadBodySnapshot } from "@web-cad/cad-core";
 import {
   createStructureTreeSummary,
+  formatBodyRole,
+  formatBodyStatusLine,
+  formatExtrudeOperationMode,
   formatFeatureLine,
   formatHealthStatus,
   formatPartLine,
@@ -134,6 +137,35 @@ describe("structure panel UI helpers", () => {
     expect(formatFeatureLine(createExtrudeFeature(), "mm")).toBe(
       "new body / rectangle / 4 mm / positive"
     );
+    expect(formatExtrudeOperationMode("cut")).toBe("cut body");
+    expect(formatFeatureLine(createCutFeature(), "mm")).toBe(
+      "cut body / rectangle / 2 mm / positive / target body_target"
+    );
+  });
+
+  it("formats generated body roles for standalone, cut result, and consumed targets", () => {
+    const standalone = createExtrudeBody("body_1", "feature_1");
+    const consumed = createExtrudeBody("body_target", "feature_target", {
+      consumedByFeatureId: "feature_cut"
+    });
+    const cutResult = createExtrudeBody("body_cut", "feature_cut");
+
+    expect(formatBodyRole(standalone, createExtrudeFeature())).toBe(
+      "Generated body"
+    );
+    expect(formatBodyStatusLine(standalone, createExtrudeFeature())).toBe(
+      "Feature feature_1"
+    );
+    expect(formatBodyRole(consumed, createExtrudeFeature())).toBe(
+      "Consumed target"
+    );
+    expect(formatBodyStatusLine(consumed, createExtrudeFeature())).toBe(
+      "Consumed by feature_cut"
+    );
+    expect(formatBodyRole(cutResult, createCutFeature())).toBe("Cut result");
+    expect(formatBodyStatusLine(cutResult, createCutFeature())).toBe(
+      "Cuts body_target"
+    );
   });
 });
 
@@ -219,6 +251,17 @@ function createExtrudeFeature(): Extract<
   };
 }
 
+function createCutFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
+  return {
+    ...createExtrudeFeature(),
+    id: "feature_cut",
+    bodyId: "body_cut",
+    depth: 2,
+    operationMode: "cut",
+    targetBodyId: "body_target"
+  };
+}
+
 function createPrimitiveBody(): CadBodySnapshot {
   return {
     id: "body:box_1",
@@ -235,19 +278,24 @@ function createPrimitiveBody(): CadBodySnapshot {
   };
 }
 
-function createExtrudeBody(): CadBodySnapshot {
+function createExtrudeBody(
+  id = "body_1",
+  featureId = "feature_1",
+  overrides: Partial<CadBodySnapshot> = {}
+): CadBodySnapshot {
   return {
-    id: "body_1",
+    id,
     kind: "solid",
     partId: "part:default",
-    featureId: "feature_1",
+    featureId,
     source: {
       type: "sketchExtrudeFeature",
-      featureId: "feature_1",
+      featureId,
       sketchId: "sketch_1",
       entityId: "rect_1",
       profileKind: "rectangle"
-    }
+    },
+    ...overrides
   };
 }
 

@@ -21,6 +21,8 @@ import {
 } from "../sceneObjectDisplay";
 import {
   createStructureTreeSummary,
+  formatBodyRole,
+  formatBodyStatusLine,
   formatFeatureLine,
   formatHealthStatus,
   formatPartLine,
@@ -267,13 +269,10 @@ export function StructurePanel({
                       onClick={() => onSelect(body.id)}
                     >
                       <span className="object-id">{body.name ?? body.id}</span>
-                      <strong>Generated body</strong>
-                      <small>Feature {body.featureId}</small>
+                      <strong>{formatBodyRole(body, feature)}</strong>
+                      <small>{formatBodyStatusLine(body, feature)}</small>
                       {feature && (
                         <small>{formatFeatureLine(feature, units)}</small>
-                      )}
-                      {body.consumedByFeatureId && (
-                        <small>Consumed by {body.consumedByFeatureId}</small>
                       )}
                       <GeometryStatus status={geometryStatuses?.get(body.id)} />
                       <HealthStatus status={status} />

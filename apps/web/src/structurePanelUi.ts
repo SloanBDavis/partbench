@@ -150,10 +150,45 @@ export function formatFeatureLine(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   units: DocumentUnits
 ): string {
-  return `${formatExtrudeOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.depth} ${units} / ${feature.side}`;
+  const target =
+    feature.operationMode === "cut" && feature.targetBodyId
+      ? ` / target ${feature.targetBodyId}`
+      : "";
+
+  return `${formatExtrudeOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.depth} ${units} / ${feature.side}${target}`;
 }
 
-function formatExtrudeOperationMode(
+export function formatBodyRole(
+  body: CadBodySnapshot,
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }> | undefined
+): string {
+  if (body.consumedByFeatureId) {
+    return "Consumed target";
+  }
+
+  if (feature?.operationMode === "cut") {
+    return "Cut result";
+  }
+
+  return "Generated body";
+}
+
+export function formatBodyStatusLine(
+  body: CadBodySnapshot,
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }> | undefined
+): string {
+  if (body.consumedByFeatureId) {
+    return `Consumed by ${body.consumedByFeatureId}`;
+  }
+
+  if (feature?.operationMode === "cut" && feature.targetBodyId) {
+    return `Cuts ${feature.targetBodyId}`;
+  }
+
+  return `Feature ${body.featureId}`;
+}
+
+export function formatExtrudeOperationMode(
   operationMode: Extract<
     CadFeatureSummary,
     { readonly kind: "extrude" }
@@ -161,6 +196,10 @@ function formatExtrudeOperationMode(
 ): string {
   if (operationMode === "newBody") {
     return "new body";
+  }
+
+  if (operationMode === "cut") {
+    return "cut body";
   }
 
   return operationMode;

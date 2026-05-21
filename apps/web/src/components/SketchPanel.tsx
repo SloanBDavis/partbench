@@ -21,9 +21,11 @@ import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  getCutOperationStatus,
   getDefaultSketchEntityKind,
   getSketchEntityOptionLabel,
-  isExtrudableSketchEntity
+  isExtrudableSketchEntity,
+  type CutTargetBodyOption
 } from "../sketchPanelUi";
 import {
   defaultSketchEntityForm,
@@ -38,10 +40,7 @@ export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
-  readonly cutTargetBodies?: readonly {
-    readonly bodyId: string;
-    readonly label: string;
-  }[];
+  readonly cutTargetBodies?: readonly CutTargetBodyOption[];
   readonly focusedSketchId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -173,8 +172,14 @@ export function SketchPanel({
   const selectedExtrudeEntity = isExtrudableSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
-  const canCreateCut =
-    selectedExtrudeEntity?.kind === "rectangle" && cutTargetBodies.length > 0;
+  const cutStatus = getCutOperationStatus(
+    selectedExtrudeEntity,
+    cutTargetBodies
+  );
+  const canCreateCut = cutStatus.available;
+  const selectedCutTarget = cutTargetBodies.find(
+    (body) => body.bodyId === extrudeForm.targetBodyId
+  );
   const shouldShowEntityEditor =
     Boolean(editingEntityId) ||
     isAddingEntity ||
@@ -595,7 +600,7 @@ export function SketchPanel({
                           >
                             <option value="newBody">New body</option>
                             <option value="cut" disabled={!canCreateCut}>
-                              Cut body
+                              Cut existing body
                             </option>
                           </select>
                         </label>
@@ -622,13 +627,24 @@ export function SketchPanel({
                         ) : (
                           <div className="readonly-field">
                             <span>Target</span>
-                            <strong>Standalone body</strong>
+                            <strong>Creates standalone body</strong>
                           </div>
                         )}
                       </div>
-                      {selectedExtrudeEntity.kind !== "rectangle" && (
-                        <p className="project-message">
-                          Cut currently supports rectangle profiles only.
+                      {extrudeForm.operationMode === "cut" &&
+                        selectedCutTarget && (
+                          <div className="readonly-field">
+                            <span>Cut target</span>
+                            <strong>{selectedCutTarget.detail}</strong>
+                          </div>
+                        )}
+                      {(!cutStatus.available ||
+                        extrudeForm.operationMode === "cut") && (
+                        <p className="project-message compact">
+                          {extrudeForm.operationMode === "cut" &&
+                          selectedCutTarget
+                            ? "Creates a cut result body. The target stays in structure as consumed."
+                            : cutStatus.message}
                         </p>
                       )}
                       <details className="advanced-options">

@@ -66,6 +66,7 @@ import {
   formatVector,
   formatVolume
 } from "../sceneObjectDisplay";
+import { formatExtrudeOperationMode } from "../structurePanelUi";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function Inspector({
@@ -401,6 +402,12 @@ function BodyInspector({
               <dt>Operation</dt>
               <dd>{formatExtrudeOperationMode(feature.operationMode)}</dd>
             </div>
+            {feature.targetBodyId && (
+              <div>
+                <dt>Target body</dt>
+                <dd>{feature.targetBodyId}</dd>
+              </div>
+            )}
             <div>
               <dt>Depth</dt>
               <dd>
@@ -1009,19 +1016,6 @@ function GeneratedReferenceMeasurementRows({
       )}
     </dl>
   );
-}
-
-function formatExtrudeOperationMode(
-  operationMode: Extract<
-    CadFeatureSummary,
-    { readonly kind: "extrude" }
-  >["operationMode"]
-): string {
-  if (operationMode === "newBody") {
-    return "New body";
-  }
-
-  return operationMode;
 }
 
 function ExtrudeDepthEditor({

@@ -12,6 +12,12 @@ export interface CutTargetBodyOption {
   readonly bodyId: string;
   readonly featureId: string;
   readonly label: string;
+  readonly detail: string;
+}
+
+export interface CutOperationStatus {
+  readonly available: boolean;
+  readonly message: string;
 }
 
 export function chooseSketchPanelSelection(
@@ -110,7 +116,8 @@ export function createCutTargetBodyOptions(
         {
           bodyId: body.id,
           featureId: feature.id,
-          label: `${body.name ?? body.id} / ${feature.id}`
+          label: `${body.name ?? body.id} / ${feature.id}`,
+          detail: `Rectangle new body / ${feature.depth} / ${feature.side}`
         }
       ];
     });
@@ -130,4 +137,39 @@ export function createCutTargetBodyOptions(
 
     return 0;
   });
+}
+
+export function getCutOperationStatus(
+  entity: SketchEntitySnapshot | undefined,
+  cutTargets: readonly CutTargetBodyOption[]
+): CutOperationStatus {
+  if (!entity) {
+    return {
+      available: false,
+      message: "Select a rectangle profile to cut an existing body."
+    };
+  }
+
+  if (entity.kind !== "rectangle") {
+    return {
+      available: false,
+      message:
+        "Cut currently supports rectangle profiles only. This profile can still create a new body."
+    };
+  }
+
+  if (cutTargets.length === 0) {
+    return {
+      available: false,
+      message: "Create an active rectangle new body before using Cut body."
+    };
+  }
+
+  return {
+    available: true,
+    message:
+      cutTargets.length === 1
+        ? "1 eligible rectangle target body."
+        : `${cutTargets.length} eligible rectangle target bodies.`
+  };
 }
