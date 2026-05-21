@@ -38,7 +38,7 @@ describe("occt smoke records", () => {
       gitSha: "abc123",
       nodeVersion: "v23.3.0",
       remoteDebuggingPort: 3001,
-      scenarioName: "box-cylinder-sphere-cone-torus",
+      scenarioName: "primitive-and-boolean-meshes",
       timestamp: "2026-05-14T00:00:00.000Z",
       smokeResult: {
         vertexCount: 24,
@@ -97,7 +97,7 @@ describe("occt smoke records", () => {
       timestamp: "2026-05-14T00:00:00.000Z",
       gitSha: "abc123",
       nodeVersion: "v23.3.0",
-      scenario: "box-cylinder-sphere-cone-torus",
+      scenario: "primitive-and-boolean-meshes",
       browser: {
         remoteDebuggingPort: 3001,
         name: "Chrome/148.0.7778.97"

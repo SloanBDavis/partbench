@@ -156,7 +156,7 @@ describe("projectJson helpers", () => {
         message: "Project JSON could not be parsed."
       }
     ]);
-    expect(preview.message).toContain("Invalid Web CAD project JSON");
+    expect(preview.message).toContain("Invalid Partbench project JSON");
     expect(getProjectImportStatusText(preview)).toBe(
       "Import is blocked until the project JSON validates successfully."
     );

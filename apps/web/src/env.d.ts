@@ -1,1 +1,1 @@
-declare const __WEB_CAD_DERIVED_GEOMETRY_ENABLED__: boolean;
+declare const __PARTBENCH_DERIVED_GEOMETRY_ENABLED__: boolean;

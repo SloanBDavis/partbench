@@ -149,6 +149,48 @@ describe("renderer mesh bridge", () => {
     expect(torus.triangleCount).toBeGreaterThan(0);
   });
 
+  it("adapts boolean mesh responses from the geometry worker", () => {
+    const result = createRenderMeshFromGeometryWorkerResponse(
+      {
+        id: "mesh_bridge_req_boolean",
+        version: "geometry-worker.v1",
+        kind: "geometry-worker.booleanFeature",
+        payloadId: "mesh_bridge_boolean_payload",
+        response: {
+          ok: true,
+          id: "mesh_bridge_boolean_payload",
+          op: "geometry.booleanExtrudes",
+          mesh: {
+            primitive: "boolean",
+            positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            indices: new Uint32Array([0, 1, 2]),
+            vertexCount: 3,
+            triangleCount: 1,
+            faceCount: 1
+          },
+          warnings: []
+        },
+        transferables: []
+      },
+      { id: "mesh_boolean_from_worker", alignment: "source" }
+    );
+
+    expect(result).toMatchObject({
+      vertexCount: 3,
+      triangleCount: 1,
+      bounds: {
+        min: [0, 0, 0],
+        max: [1, 1, 0]
+      },
+      mesh: {
+        id: "mesh_boolean_from_worker",
+        kind: "mesh",
+        indices: [0, 1, 2],
+        source: "geometry-worker.booleanFeature"
+      }
+    });
+  });
+
   it("can center corner-origin box meshes for the current primitive renderer", async () => {
     const worker = new GeometryKernelWorker();
     const response = await worker.execute(

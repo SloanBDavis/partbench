@@ -123,7 +123,7 @@ const commandExecutor = new AsyncCadCommandExecutor(
   engine,
   new BrowserCadCommandWorker()
 );
-const derivedGeometryEnabled = __WEB_CAD_DERIVED_GEOMETRY_ENABLED__;
+const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
 
 const quickBoxForm: PrimitiveCommandForm = {
   id: "",
@@ -1058,7 +1058,7 @@ export function App() {
     const url = URL.createObjectURL(blob);
     const link = window.document.createElement("a");
     link.href = url;
-    link.download = "web-cad-project.json";
+    link.download = "partbench-project.json";
     window.document.body.append(link);
     link.click();
     link.remove();
@@ -1108,7 +1108,7 @@ export function App() {
             WC
           </div>
           <div className="brand-copy">
-            <h1>Web CAD</h1>
+            <h1>Partbench</h1>
             <span>V2 feature workspace</span>
           </div>
         </div>

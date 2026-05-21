@@ -2,7 +2,8 @@
 
 ## Project
 
-This repository is building an open-source, browser-native, AI-native CAD application.
+This repository is building Partbench, an open-source, browser-native,
+AI-native CAD application.
 
 The long-term architecture is in:
 

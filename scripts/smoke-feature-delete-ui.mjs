@@ -22,7 +22,7 @@ const browserExecutable = findBrowserExecutable();
 
 if (!browserExecutable) {
   throw new Error(
-    "No Chromium-compatible browser was found. Set WEB_CAD_SMOKE_BROWSER to a Chrome/Chromium executable path."
+    "No Chromium-compatible browser was found. Set PARTBENCH_SMOKE_BROWSER to a Chrome/Chromium executable path."
   );
 }
 
@@ -133,7 +133,7 @@ async function featureDeleteUiSmoke({ timeoutMs }) {
   const checks = [];
 
   await waitFor(
-    () => document.querySelector("h1")?.textContent?.includes("Web CAD"),
+    () => document.querySelector("h1")?.textContent?.includes("Partbench"),
     "app shell"
   );
   checks.push("app loaded");

@@ -7088,13 +7088,13 @@ function formatCadProjectImportIssues(
   const firstIssue = issues[0];
 
   if (!firstIssue) {
-    return "Invalid Web CAD project JSON.";
+    return "Invalid Partbench project JSON.";
   }
 
   const suffix =
     issues.length > 1 ? `; ${issues.length - 1} more issue(s).` : ".";
 
-  return `Invalid Web CAD project JSON: ${firstIssue.message} (${firstIssue.path})${suffix}`;
+  return `Invalid Partbench project JSON: ${firstIssue.message} (${firstIssue.path})${suffix}`;
 }
 
 function materializeGeneratedObjectIds(

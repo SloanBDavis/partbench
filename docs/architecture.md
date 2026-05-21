@@ -1,6 +1,7 @@
 # Architecture
 
-This document describes the long-term architecture for an open-source, browser-native, AI-native CAD application.
+This document describes the long-term architecture for Partbench, an
+open-source, browser-native, AI-native CAD application.
 
 This is not an implementation checklist. Codex should use this as architectural context and should not attempt to implement the entire system at once.
 

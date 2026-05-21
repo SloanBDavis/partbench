@@ -13,7 +13,7 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     define: {
-      __WEB_CAD_DERIVED_GEOMETRY_ENABLED__: JSON.stringify(
+      __PARTBENCH_DERIVED_GEOMETRY_ENABLED__: JSON.stringify(
         derivedGeometryFlags.enabled
       )
     },

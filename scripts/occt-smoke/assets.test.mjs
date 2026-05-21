@@ -6,7 +6,7 @@ import { getAssetMetrics } from "./assets.mjs";
 
 describe("occt smoke asset metrics", () => {
   it("records and writes precompressed OCCT WASM assets", async () => {
-    const root = await mkdtemp(join(tmpdir(), "web-cad-occt-assets-"));
+    const root = await mkdtemp(join(tmpdir(), "partbench-occt-assets-"));
 
     try {
       const assetsDir = join(root, "assets");

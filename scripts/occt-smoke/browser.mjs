@@ -183,6 +183,10 @@ async function getEncodedAsset(filePath, request) {
 }
 
 export function findBrowserExecutable() {
+  if (process.env.PARTBENCH_SMOKE_BROWSER) {
+    return process.env.PARTBENCH_SMOKE_BROWSER;
+  }
+
   if (process.env.WEB_CAD_SMOKE_BROWSER) {
     return process.env.WEB_CAD_SMOKE_BROWSER;
   }

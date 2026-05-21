@@ -31,8 +31,8 @@ These constraints remain active:
 
 ## Current Repo State
 
-The repo is a TypeScript pnpm workspace with a Vite React app and focused
-packages:
+Partbench is implemented as a TypeScript pnpm workspace with a Vite React app
+and focused packages:
 
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
   derived-geometry orchestration, project panel, batch panel, viewport, and
@@ -58,6 +58,14 @@ packages:
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
 - `scripts/smoke-occt-browser.mjs` and `scripts/occt-smoke` - non-gating
   browser smoke/metrics runner for the OCCT worker path.
+
+Compatibility identifiers retained during the Partbench rename:
+
+- `@web-cad/*` workspace package names remain stable to avoid broad import and
+  lockfile churn.
+- `web-cad.project.v1` through `web-cad.project.v6` remain the project-format
+  schema identifiers. Renaming them would be a storage migration.
+- `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Completed Baseline
 

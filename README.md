@@ -1,9 +1,9 @@
-# Web CAD
+# Partbench
 
-An open-source, browser-native, AI-native CAD application. The current app has
-a typed CADOps command layer, in-memory document model, viewport, project JSON
-serialization, structured agent/MCP adapters, and an isolated OCCT/WASM derived
-geometry path.
+Partbench is an open-source, browser-native, AI-native CAD application. The
+current app has a typed CADOps command layer, in-memory document model,
+viewport, project JSON serialization, structured agent/MCP adapters, and an
+isolated OCCT/WASM derived geometry path.
 
 The completed V1 foundation supports creating and editing boxes, cylinders,
 spheres, cones, and tori through the shared command layer. Current V2 work adds
@@ -95,7 +95,9 @@ metadata where available, worker startup/WASM load outcome, timing metrics,
 asset-size metrics, Brotli/gzip delivery metrics, and structured error details
 on failure. Timing values are recorded for tracking, but the smoke fails only
 when the path breaks or required metrics are missing. Set
-`WEB_CAD_SMOKE_BROWSER=/path/to/chrome` if the script cannot find a browser.
+`PARTBENCH_SMOKE_BROWSER=/path/to/chrome` if the script cannot find a browser.
+The older `WEB_CAD_SMOKE_BROWSER` name remains accepted as a compatibility
+alias.
 
 Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
@@ -126,9 +128,14 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 ## Project Format
 
-Current project JSON exports use `web-cad.project.v4`. V1, V2, and V3 project
-JSON remain importable through explicit migrations; derived meshes and geometry
-status are never saved as source-of-truth data.
+Current project JSON exports use `web-cad.project.v6`. V1, V2, V3, V4, and V5
+project JSON remain importable through explicit migrations; derived meshes and
+geometry status are never saved as source-of-truth data.
+
+`web-cad.project.*`, `web-cad.agent-adapter.v1`, and the `@web-cad/*`
+workspace package scope are retained as compatibility identifiers. They are not
+current product branding and should not be changed without a deliberate
+protocol/package migration.
 
 ## Current Limitations
 

@@ -1,14 +1,16 @@
 # Native Project Format
 
-This document describes the current source-of-truth project format and the
-direction for the future native package format. The V1 format is complete as a
-JSON source-of-truth interchange format. V2 added source-of-truth sketches, V3
-added the first authored sketch-driven feature data, V4 added source-of-truth
+This document describes Partbench's current source-of-truth project format and
+the direction for the future native package format. The V1 format is complete
+as a JSON source-of-truth interchange format. V2 added source-of-truth sketches,
+V3 added the first authored sketch-driven feature data, V4 added source-of-truth
 sketch attachment metadata for sketches created on generated planar face
 references, and V5 added source-of-truth user/agent names for generated
 references. V6 added explicit authored extrude operation mode. Current exports
 use `web-cad.project.v6` while the loader still accepts V1, V2, V3, V4, and V5
-projects through explicit migration. Future storage work
+projects through explicit migration. The `web-cad.project.*` names are retained
+as compatibility schema identifiers after the Partbench product rename; changing
+them would require a deliberate project-format migration. Future storage work
 should use this document to evolve toward a native package without prematurely
 introducing OPFS, File System Access API, STEP import/export, real topology, or
 a final `.wcad` implementation.

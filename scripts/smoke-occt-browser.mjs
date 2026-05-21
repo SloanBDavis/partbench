@@ -24,14 +24,14 @@ const smokeHtmlPath = join(smokeDistDir, "geometry-worker-smoke.html");
 const metricsDir = join(repoRoot, ".metrics");
 const metricsPath = join(metricsDir, "occt-browser.jsonl");
 const smokeTimeoutMs = 60_000;
-const scenarioName = "box-cylinder-sphere-cone-torus";
+const scenarioName = "primitive-and-boolean-meshes";
 
 await mkdir(metricsDir, { recursive: true });
 const browserExecutable = findBrowserExecutable();
 
 if (!browserExecutable) {
   const error = new Error(
-    "No Chromium-compatible browser was found. Set WEB_CAD_SMOKE_BROWSER to a Chrome/Chromium executable path."
+    "No Chromium-compatible browser was found. Set PARTBENCH_SMOKE_BROWSER to a Chrome/Chromium executable path."
   );
   const record = createFailureRecord({
     error,

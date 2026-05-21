@@ -2,6 +2,7 @@ import {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExtrudeBooleanWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest
 } from "@web-cad/geometry-worker/browser";
@@ -66,6 +67,65 @@ async function runGeometryWorkerSmoke(): Promise<void> {
           majorRadius: 1.5,
           minorRadius: 0.35
         })
+      },
+      {
+        scenario: "boolean-rectangle-cut",
+        request: createExtrudeBooleanWorkerRequest({
+          id: "browser_occt_smoke_boolean_rectangle_cut",
+          payloadId: "browser_occt_smoke_boolean_rectangle_cut_payload",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 4,
+              height: 4
+            },
+            depth: 4,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 1,
+              height: 5
+            },
+            depth: 4,
+            side: "positive"
+          }
+        })
+      },
+      {
+        scenario: "boolean-circle-target-rectangle-cut",
+        request: createExtrudeBooleanWorkerRequest({
+          id: "browser_occt_smoke_boolean_circle_cut",
+          payloadId: "browser_occt_smoke_boolean_circle_cut_payload",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 2
+            },
+            depth: 4,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 1,
+              height: 5
+            },
+            depth: 4,
+            side: "positive"
+          }
+        })
       }
     ];
 
@@ -80,7 +140,10 @@ async function runGeometryWorkerSmoke(): Promise<void> {
 
       const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {
         id: `${item.request.id}_mesh`,
-        alignment: "boundsCenter"
+        alignment:
+          item.request.payload.op === "geometry.booleanExtrudes"
+            ? "source"
+            : "boundsCenter"
       });
 
       meshResults.push({

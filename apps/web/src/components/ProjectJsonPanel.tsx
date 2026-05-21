@@ -100,7 +100,7 @@ export function ProjectJsonPanel({
         <textarea
           value={projectJson}
           onChange={(event) => onProjectJsonChange(event.currentTarget.value)}
-          placeholder="Generate, load, or paste Web CAD project JSON"
+          placeholder="Generate, load, or paste Partbench project JSON"
           spellCheck={false}
         />
       </details>

@@ -434,8 +434,8 @@ code {
 }
 
 .structure-browser-sections {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   min-height: 0;
   padding: 10px;
@@ -445,6 +445,7 @@ code {
 
 .structure-group {
   min-width: 0;
+  flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.66);
@@ -478,11 +479,6 @@ code {
   font-size: 0.68rem;
 }
 
-.structure-group ul {
-  padding: 0 8px 8px;
-  overflow: visible;
-}
-
 .structure-row.readonly {
   display: grid;
   gap: 4px;
@@ -510,6 +506,13 @@ code {
   overflow: auto;
   list-style: none;
   scrollbar-width: thin;
+}
+
+.object-tree .structure-group ul {
+  max-height: min(260px, 38dvh);
+  padding: 0 8px 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .object-tree li {
