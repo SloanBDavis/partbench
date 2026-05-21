@@ -497,8 +497,11 @@ backs the first narrow authoritative `feature.extrude` cut slice. Cut features
 store source-of-truth feature intent in `cad-core`, then rebuild the cut result
 as derived mesh/cache data through `geometry.booleanExtrudes`,
 `@web-cad/geometry-kernel`, `@web-cad/geometry-worker`, and
-`@web-cad/occt-wasm`. The cut scope remains rectangle tool against one active
-authored rectangle `newBody` target body.
+`@web-cad/occt-wasm`. The authoritative cut scope remains rectangle tool
+against one active authored rectangle `newBody` target body. The geometry-only
+boundary also now proves circle target cut by rectangle tool, but that remains a
+feasibility result until source-model, topology/reference, and UX semantics are
+scoped.
 
 Deliverables:
 

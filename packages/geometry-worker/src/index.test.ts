@@ -479,6 +479,60 @@ describe("geometry-worker", () => {
     ]);
   });
 
+  it("runs a circle-target boolean cut through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExtrudeBooleanWorkerRequest({
+        id: "worker_req_boolean_circle_cut",
+        payloadId: "geometry_req_boolean_circle_cut",
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 6
+          },
+          depth: 4
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_boolean_circle_cut",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.booleanFeature",
+      payloadId: "geometry_req_boolean_circle_cut",
+      response: {
+        ok: true,
+        id: "geometry_req_boolean_circle_cut",
+        op: "geometry.booleanExtrudes"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("boolean");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
   it("returns structured kernel validation errors without transferables", async () => {
     const worker = new GeometryKernelWorker();
 

@@ -55,9 +55,10 @@ primitive tessellation path.
 
 `createExtrudeTessellationWorkerRequest()` builds the current sketch-extrude
 mesh request. `createExtrudeBooleanWorkerRequest()` builds the derived geometry
-request used by the first narrow rectangle-extrude cut path. That boolean
-request still does not mutate `cad-core`, does not update project JSON, and does
-not claim stable topology or generated-reference invalidation.
+request used by the first narrow rectangle-extrude cut path and isolated
+boolean feasibility checks such as circle target cut by rectangle tool. That
+boolean request still does not mutate `cad-core`, does not update project JSON,
+and does not claim stable topology or generated-reference invalidation.
 
 ## Response Shape
 

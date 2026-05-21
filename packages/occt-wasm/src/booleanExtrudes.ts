@@ -48,9 +48,11 @@ export interface OcctBooleanExtrudeInput {
   readonly angularDeflection?: number;
 }
 
-interface BoxBounds {
-  readonly min: readonly [number, number, number];
-  readonly max: readonly [number, number, number];
+interface ExtrudeFrame {
+  readonly origin: readonly [number, number, number];
+  readonly uAxis: readonly [number, number, number];
+  readonly vAxis: readonly [number, number, number];
+  readonly normalAxis: readonly [number, number, number];
 }
 
 export async function createOcctBooleanExtrudeMeshWithLoader(
@@ -68,8 +70,8 @@ export function createOcctBooleanExtrudeMeshWithInstance(
 ): OcctMeshData {
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
-  const targetBox = makeRectangleExtrudeBox(oc, input.target);
-  const toolBox = makeRectangleExtrudeBox(oc, input.tool);
+  const targetShape = makeBooleanExtrudeShape(oc, input.target);
+  const toolShape = makeBooleanExtrudeShape(oc, input.tool);
   const range = new oc.Message_ProgressRange_1();
   let booleanOperation:
     | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
@@ -79,8 +81,16 @@ export function createOcctBooleanExtrudeMeshWithInstance(
   try {
     booleanOperation =
       input.operation === "add"
-        ? new oc.BRepAlgoAPI_Fuse_3(targetBox.Shape(), toolBox.Shape(), range)
-        : new oc.BRepAlgoAPI_Cut_3(targetBox.Shape(), toolBox.Shape(), range);
+        ? new oc.BRepAlgoAPI_Fuse_3(
+            targetShape.Shape(),
+            toolShape.Shape(),
+            range
+          )
+        : new oc.BRepAlgoAPI_Cut_3(
+            targetShape.Shape(),
+            toolShape.Shape(),
+            range
+          );
 
     if (booleanOperation.HasErrors()) {
       throw new Error(`Open CASCADE boolean ${input.operation} failed.`);
@@ -109,74 +119,183 @@ export function createOcctBooleanExtrudeMeshWithInstance(
   } finally {
     booleanOperation?.delete();
     range.delete();
-    targetBox.delete();
-    toolBox.delete();
+    targetShape.delete();
+    toolShape.delete();
+  }
+}
+
+function makeBooleanExtrudeShape(
+  oc: OpenCascadeInstance,
+  source: OcctBooleanExtrudeSource
+):
+  | InstanceType<typeof oc.BRepPrimAPI_MakeBox_5>
+  | InstanceType<typeof oc.BRepPrimAPI_MakeCylinder_3> {
+  switch (source.profile.kind) {
+    case "rectangle":
+      return makeRectangleExtrudeBox(oc, source);
+    case "circle":
+      return makeCircleExtrudeCylinder(oc, source);
   }
 }
 
 function makeRectangleExtrudeBox(
   oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeSource
-): InstanceType<typeof oc.BRepPrimAPI_MakeBox_4> {
+): InstanceType<typeof oc.BRepPrimAPI_MakeBox_5> {
   if (source.profile.kind !== "rectangle") {
     throw new Error(
       "Boolean extrude feasibility currently supports rectangle sources only."
     );
   }
 
-  const bounds = getRectangleExtrudeBounds(source);
-  const minPoint = new oc.gp_Pnt_3(bounds.min[0], bounds.min[1], bounds.min[2]);
-  const maxPoint = new oc.gp_Pnt_3(bounds.max[0], bounds.max[1], bounds.max[2]);
+  const { normalMin, normalMax } = getExtrudeNormalRange(source);
+  const frame = getExtrudeFrame(source);
+  const origin = mapFramePoint(
+    frame,
+    source.profile.center[0] - source.profile.width / 2,
+    source.profile.center[1] - source.profile.height / 2,
+    normalMin
+  );
+  const axes = createOcctAxes(oc, origin, frame.normalAxis, frame.uAxis);
 
   try {
-    return new oc.BRepPrimAPI_MakeBox_4(minPoint, maxPoint);
+    return new oc.BRepPrimAPI_MakeBox_5(
+      axes.axis,
+      source.profile.width,
+      source.profile.height,
+      normalMax - normalMin
+    );
   } finally {
-    minPoint.delete();
-    maxPoint.delete();
+    axes.delete();
   }
 }
 
-function getRectangleExtrudeBounds(
+function makeCircleExtrudeCylinder(
+  oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeSource
-): BoxBounds {
-  if (source.profile.kind !== "rectangle") {
-    throw new Error("Only rectangle extrude bounds are supported.");
+): InstanceType<typeof oc.BRepPrimAPI_MakeCylinder_3> {
+  if (source.profile.kind !== "circle") {
+    throw new Error(
+      "Boolean extrude feasibility currently supports circle sources only."
+    );
   }
 
-  const [uMin, uMax] = getCenteredRange(
+  const { normalMin, normalMax } = getExtrudeNormalRange(source);
+  const frame = getExtrudeFrame(source);
+  const origin = mapFramePoint(
+    frame,
     source.profile.center[0],
-    source.profile.width
-  );
-  const [vMin, vMax] = getCenteredRange(
     source.profile.center[1],
-    source.profile.height
+    normalMin
   );
+  const axes = createOcctAxes(oc, origin, frame.normalAxis, frame.uAxis);
+
+  try {
+    return new oc.BRepPrimAPI_MakeCylinder_3(
+      axes.axis,
+      source.profile.radius,
+      normalMax - normalMin
+    );
+  } finally {
+    axes.delete();
+  }
+}
+
+function getExtrudeNormalRange(source: OcctBooleanExtrudeSource): {
+  readonly normalMin: number;
+  readonly normalMax: number;
+} {
   const [normalMin, normalMax] = getNormalRange(
     source.depth,
     source.side ?? "positive"
   );
 
-  return createBounds(
-    (
-      [
-        [uMin, vMin, normalMin],
-        [uMax, vMin, normalMin],
-        [uMax, vMax, normalMin],
-        [uMin, vMax, normalMin],
-        [uMin, vMin, normalMax],
-        [uMax, vMin, normalMax],
-        [uMax, vMax, normalMax],
-        [uMin, vMax, normalMax]
-      ] as const
-    ).map((point) => mapSketchPlanePointToBooleanFrame(source, point))
-  );
+  return { normalMin, normalMax };
 }
 
-function getCenteredRange(
-  center: number,
-  size: number
-): readonly [number, number] {
-  return [center - size / 2, center + size / 2];
+function getExtrudeFrame(source: OcctBooleanExtrudeSource): ExtrudeFrame {
+  if (source.placementFrame) {
+    const uAxis = normalizeVec3(source.placementFrame.uAxis);
+    const vAxis = normalizeVec3(source.placementFrame.vAxis);
+
+    return {
+      origin: source.placementFrame.origin,
+      uAxis,
+      vAxis,
+      normalAxis: normalizeVec3(crossVec3(uAxis, vAxis))
+    };
+  }
+
+  switch (source.sketchPlane) {
+    case "XY":
+      return {
+        origin: [0, 0, 0],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 1, 0],
+        normalAxis: [0, 0, 1]
+      };
+    case "XZ":
+      return {
+        origin: [0, 0, 0],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 0, 1],
+        normalAxis: [0, 1, 0]
+      };
+    case "YZ":
+      return {
+        origin: [0, 0, 0],
+        uAxis: [0, 1, 0],
+        vAxis: [0, 0, 1],
+        normalAxis: [1, 0, 0]
+      };
+  }
+}
+
+function mapFramePoint(
+  frame: ExtrudeFrame,
+  u: number,
+  v: number,
+  normalDistance: number
+): readonly [number, number, number] {
+  return [
+    frame.origin[0] +
+      frame.uAxis[0] * u +
+      frame.vAxis[0] * v +
+      frame.normalAxis[0] * normalDistance,
+    frame.origin[1] +
+      frame.uAxis[1] * u +
+      frame.vAxis[1] * v +
+      frame.normalAxis[1] * normalDistance,
+    frame.origin[2] +
+      frame.uAxis[2] * u +
+      frame.vAxis[2] * v +
+      frame.normalAxis[2] * normalDistance
+  ];
+}
+
+function createOcctAxes(
+  oc: OpenCascadeInstance,
+  origin: readonly [number, number, number],
+  normalAxis: readonly [number, number, number],
+  uAxis: readonly [number, number, number]
+): {
+  readonly axis: InstanceType<typeof oc.gp_Ax2_2>;
+  readonly delete: () => void;
+} {
+  const point = new oc.gp_Pnt_3(origin[0], origin[1], origin[2]);
+  const normal = new oc.gp_Dir_4(normalAxis[0], normalAxis[1], normalAxis[2]);
+  const xDirection = new oc.gp_Dir_4(uAxis[0], uAxis[1], uAxis[2]);
+  const axis = new oc.gp_Ax2_2(point, normal, xDirection);
+
+  return {
+    axis,
+    delete: () => {
+      axis.delete();
+      xDirection.delete();
+      normal.delete();
+      point.delete();
+    }
+  };
 }
 
 function getNormalRange(
@@ -193,63 +312,6 @@ function getNormalRange(
   }
 }
 
-function mapSketchPlanePointToBooleanFrame(
-  source: OcctBooleanExtrudeSource,
-  point: readonly [number, number, number]
-): readonly [number, number, number] {
-  if (!source.placementFrame) {
-    return mapPlanePoint(source.sketchPlane, point[0], point[1], point[2]);
-  }
-
-  const [u, v, normalDistance] = point;
-  const frame = source.placementFrame;
-  const normal = crossVec3(frame.uAxis, frame.vAxis);
-
-  return [
-    frame.origin[0] +
-      frame.uAxis[0] * u +
-      frame.vAxis[0] * v +
-      normal[0] * normalDistance,
-    frame.origin[1] +
-      frame.uAxis[1] * u +
-      frame.vAxis[1] * v +
-      normal[1] * normalDistance,
-    frame.origin[2] +
-      frame.uAxis[2] * u +
-      frame.vAxis[2] * v +
-      normal[2] * normalDistance
-  ];
-}
-
-function mapPlanePoint(
-  plane: OcctSketchPlane,
-  u: number,
-  v: number,
-  normal: number
-): readonly [number, number, number] {
-  switch (plane) {
-    case "XY":
-      return [u, v, normal];
-    case "XZ":
-      return [u, normal, v];
-    case "YZ":
-      return [normal, u, v];
-  }
-}
-
-function createBounds(
-  points: readonly (readonly [number, number, number])[]
-): BoxBounds {
-  const xs = points.map((point) => point[0]);
-  const ys = points.map((point) => point[1]);
-  const zs = points.map((point) => point[2]);
-
-  return {
-    min: [Math.min(...xs), Math.min(...ys), Math.min(...zs)],
-    max: [Math.max(...xs), Math.max(...ys), Math.max(...zs)]
-  };
-}
-
 function crossVec3(
   left: readonly [number, number, number],
   right: readonly [number, number, number]
@@ -259,4 +321,16 @@ function crossVec3(
     left[2] * right[0] - left[0] * right[2],
     left[0] * right[1] - left[1] * right[0]
   ];
+}
+
+function normalizeVec3(
+  vector: readonly [number, number, number]
+): readonly [number, number, number] {
+  const length = Math.hypot(vector[0], vector[1], vector[2]);
+
+  if (length === 0) {
+    throw new Error("Boolean extrude placement frame axes must be non-zero.");
+  }
+
+  return [vector[0] / length, vector[1] / length, vector[2] / length];
 }

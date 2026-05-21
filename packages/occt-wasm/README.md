@@ -36,11 +36,13 @@ cones, tori, and an isolated rectangle-extrude boolean feasibility path:
 For the default box, the current smoke test observes 6 faces, 24 per-face
 vertices, and 12 triangles.
 
-The boolean feasibility path builds two source-derived rectangle extrude solids
-with `BRepPrimAPI_MakeBox`, combines them with `BRepAlgoAPI_Fuse` or
+The boolean feasibility path builds source-derived rectangle extrude solids
+with `BRepPrimAPI_MakeBox`, circle extrude solids with
+`BRepPrimAPI_MakeCylinder`, combines supported pairs with `BRepAlgoAPI_Fuse` or
 `BRepAlgoAPI_Cut`, tessellates the result, and returns only serializable mesh
-data. It intentionally does not expose OCCT shape handles, topology maps,
-generated-reference updates, or authoritative document changes.
+data. The current isolated support covers rectangle add/cut and circle target
+cut by rectangle tool. It intentionally does not expose OCCT shape handles,
+topology maps, generated-reference updates, or authoritative document changes.
 
 ## Setup
 

@@ -185,7 +185,8 @@ export type GeometryKernelErrorCode =
   | "INVALID_TESSELLATION_OPTIONS"
   | "UNSUPPORTED_PROFILE"
   | "KERNEL_FAILURE"
-  | "EMPTY_RESULT";
+  | "EMPTY_RESULT"
+  | "INVALID_RESULT";
 
 export interface GeometryKernelError {
   readonly code: GeometryKernelErrorCode;
@@ -252,6 +253,14 @@ export async function executeGeometryKernelRequestWithMeshFactory(
       return errorResponse(request, {
         code: "EMPTY_RESULT",
         message: "The geometry kernel returned an empty or invalid mesh."
+      });
+    }
+
+    if (isInvalidMesh(mesh)) {
+      return errorResponse(request, {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned mesh data with inconsistent counts or invalid values."
       });
     }
 
@@ -359,14 +368,11 @@ function validateRequest(
       };
     }
 
-    if (
-      request.target.profile.kind !== "rectangle" ||
-      request.tool.profile.kind !== "rectangle"
-    ) {
+    if (!isSupportedBooleanExtrudeProfilePair(request)) {
       return {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle extrude sources only."
+          "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
       };
     }
   } else if (
@@ -653,6 +659,36 @@ function isEmptyMesh(mesh: GeometryKernelMeshResult): boolean {
     mesh.triangleCount <= 0 ||
     mesh.positions.length === 0 ||
     mesh.indices.length === 0
+  );
+}
+
+function isInvalidMesh(mesh: GeometryKernelMeshResult): boolean {
+  return (
+    mesh.faceCount < 0 ||
+    mesh.positions.length !== mesh.vertexCount * 3 ||
+    mesh.indices.length !== mesh.triangleCount * 3 ||
+    !Array.from(mesh.positions).every(Number.isFinite) ||
+    !Array.from(mesh.indices).every(
+      (index) =>
+        Number.isInteger(index) && index >= 0 && index < mesh.vertexCount
+    )
+  );
+}
+
+function isSupportedBooleanExtrudeProfilePair(
+  request: BooleanExtrudesRequest
+): boolean {
+  const targetProfile = request.target.profile.kind;
+  const toolProfile = request.tool.profile.kind;
+
+  if (targetProfile === "rectangle" && toolProfile === "rectangle") {
+    return true;
+  }
+
+  return (
+    request.operation === "cut" &&
+    targetProfile === "circle" &&
+    toolProfile === "rectangle"
   );
 }
 

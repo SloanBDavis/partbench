@@ -3,6 +3,10 @@ import {
   executeGeometryKernelRequest,
   getGeometryResponseTransferables
 } from "./index";
+import {
+  executeGeometryKernelRequestWithMeshFactory,
+  type GeometryKernelMeshFactories
+} from "./kernel";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
@@ -353,6 +357,56 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it(
+    "runs a circle-target cut by rectangle tool feasibility request",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_boolean_circle_cut",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 6
+          },
+          depth: 4
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      const bounds = getMeshBounds(response.mesh.positions);
+
+      expect(response.mesh.primitive).toBe("boolean");
+      expect(response.mesh.vertexCount).toBeGreaterThan(0);
+      expect(response.mesh.triangleCount).toBeGreaterThan(0);
+      expect(bounds.min[0]).toBeCloseTo(-3, 6);
+      expect(bounds.max[0]).toBeCloseTo(3, 6);
+      expect(bounds.min[1]).toBeGreaterThanOrEqual(-3);
+      expect(bounds.max[1]).toBeLessThanOrEqual(3);
+      expect(bounds.min[2]).toBeCloseTo(0, 6);
+      expect(bounds.max[2]).toBeCloseTo(4, 6);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it("returns structured boolean feasibility errors", async () => {
     const rectangleSource = {
       sketchPlane: "XY" as const,
@@ -396,7 +450,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "UNSUPPORTED_PROFILE",
         message:
-          "Boolean extrude feasibility currently supports rectangle extrude sources only."
+          "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
       },
       warnings: []
     });
@@ -407,6 +461,69 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "EMPTY_RESULT",
         message: "The geometry kernel returned an empty or invalid mesh."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured invalid mesh result errors", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: async () => ({
+        primitive: "boolean",
+        positions: new Float32Array([0, 0, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 2,
+        triangleCount: 1,
+        faceCount: 1
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_invalid_boolean_result",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 2
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 1,
+            height: 1
+          },
+          depth: 2
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_invalid_boolean_result",
+      op: "geometry.booleanExtrudes",
+      error: {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned mesh data with inconsistent counts or invalid values."
       },
       warnings: []
     });

@@ -1,6 +1,6 @@
 # OCCT/WASM Load-Size Investigation
 
-Last updated: 2026-05-15.
+Last updated: 2026-05-20.
 
 This note tracks the current OCCT/WASM load-size position and the near-term
 recommendation. It does not change the production app architecture.
@@ -19,12 +19,14 @@ The OCCT path remains isolated:
 - the current app still falls back to primitive rendering.
 
 The same boundary now contains an isolated boolean feasibility request for
-source-derived rectangle extrude add/cut. That path proves OCCT can combine two
-simple extrude-like solids and return mesh data. The first narrow rectangle cut
+source-derived extrude-like solids. That path proves OCCT can combine two
+simple solids and return mesh data for rectangle add/cut plus the next
+experiment: circle target cut by rectangle tool. The first narrow rectangle cut
 slice now uses this derived-geometry path for display, while `cad-core` still
-stores only source feature intent and no B-rep/mesh result. It is still not part
-of normal startup and does not provide generated-reference topology for cut
-results.
+stores only source feature intent and no B-rep/mesh result. The circle-target
+cut remains geometry-only and is not promoted to CADOps/project behavior. It is
+still not part of normal startup and does not provide generated-reference
+topology for cut results.
 
 ## Baseline
 
@@ -163,10 +165,23 @@ it proves smaller, stable, and compatible with the current smoke path.
 
 ## Boolean Feasibility Risks
 
-The rectangle-extrude boolean path does not change the binary-size
-recommendation, but it does make the OCCT API surface broader than primitive
-tessellation alone. Before expanding beyond the first narrow rectangle cut
-slice, the project still needs explicit handling for:
+The extrude boolean path does not change the binary-size recommendation, but it
+does make the OCCT API surface broader than primitive tessellation alone. The
+current geometry-only feasibility coverage now includes:
+
+- rectangle extrude add/fuse with rectangle extrude;
+- rectangle extrude cut by rectangle extrude; and
+- circle extrude target cut by rectangle extrude tool.
+
+The circle-target cut worked through the same geometry-kernel/worker boundary
+by constructing the target with `BRepPrimAPI_MakeCylinder` and the tool with
+`BRepPrimAPI_MakeBox`, then using `BRepAlgoAPI_Cut`. It returns a serializable
+mesh and structured errors, but it is not ready to become an authoritative
+CADOps slice until source-model semantics and topology/reference behavior are
+deliberately scoped.
+
+Before expanding beyond the first narrow rectangle cut slice in `cad-core`, the
+project still needs explicit handling for:
 
 - topological naming and generated-reference invalidation after boolean edits;
 - empty or invalid results, such as cutting away an entire target body;
@@ -175,4 +190,5 @@ slice, the project still needs explicit handling for:
 - exact source/body checkpoint strategy if boolean results become persisted or
   replay-critical; and
 - custom OCCT build symbol coverage for `BRepAlgoAPI_Fuse`,
-  `BRepAlgoAPI_Cut`, `BRepPrimAPI_MakeBox`, tessellation, and shape traversal.
+  `BRepAlgoAPI_Cut`, `BRepPrimAPI_MakeBox`, `BRepPrimAPI_MakeCylinder`,
+  tessellation, and shape traversal.

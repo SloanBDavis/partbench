@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createOcctBooleanExtrudeMesh,
   createOcctBoxMesh,
   createOcctConeMesh,
   createOcctCylinderMesh,
@@ -90,6 +91,42 @@ describe("occt-wasm", () => {
       expect(torus.primitive).toBe("torus");
       expect(torus.vertexCount).toBeGreaterThan(0);
       expect(torus.triangleCount).toBeGreaterThan(0);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "creates a circle-target rectangle-tool boolean cut through Open CASCADE WASM",
+    async () => {
+      const mesh = await createOcctBooleanExtrudeMesh({
+        operation: "cut",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 6
+          },
+          depth: 4
+        }
+      });
+
+      expect(mesh.primitive).toBe("boolean");
+      expect(mesh.faceCount).toBeGreaterThan(0);
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
+      expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
