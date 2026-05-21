@@ -20,13 +20,11 @@ The OCCT path remains isolated:
 
 The same boundary now contains an isolated boolean feasibility request for
 source-derived extrude-like solids. That path proves OCCT can combine two
-simple solids and return mesh data for rectangle add/cut plus the next
-experiment: circle target cut by rectangle tool. The first narrow rectangle cut
-slice now uses this derived-geometry path for display, while `cad-core` still
-stores only source feature intent and no B-rep/mesh result. The circle-target
-cut remains geometry-only and is not promoted to CADOps/project behavior. It is
-still not part of normal startup and does not provide generated-reference
-topology for cut results.
+simple solids and return mesh data for rectangle add/cut plus circle target cut
+by rectangle tool. The narrow rectangle-tool cut slices now use this
+derived-geometry path where enabled, while `cad-core` still stores only source
+feature intent and no B-rep/mesh result. Cut results still do not provide
+generated-reference topology.
 
 ## Baseline
 
@@ -176,9 +174,10 @@ current geometry-only feasibility coverage now includes:
 The circle-target cut worked through the same geometry-kernel/worker boundary
 by constructing the target with `BRepPrimAPI_MakeCylinder` and the tool with
 `BRepPrimAPI_MakeBox`, then using `BRepAlgoAPI_Cut`. It returns a serializable
-mesh and structured errors, but it is not ready to become an authoritative
-CADOps slice until source-model semantics and topology/reference behavior are
-deliberately scoped.
+mesh and structured errors. It has now been promoted into the narrow
+authoritative CADOps cut contract for a rectangle tool cutting one active
+authored circle `newBody` target; generated references for cut results and
+broader boolean/topology behavior remain deliberately unsupported.
 
 Current geometry-only support matrix:
 
@@ -186,7 +185,7 @@ Current geometry-only support matrix:
 | --------- | -------------- | ------------ | ------ |
 | add       | rectangle      | rectangle    | Works as isolated feasibility mesh |
 | cut       | rectangle      | rectangle    | Promoted for the first narrow CADOps cut slice |
-| cut       | circle         | rectangle    | Works as isolated feasibility mesh only |
+| cut       | circle         | rectangle    | Promoted for the narrow CADOps circle-target cut slice |
 | add       | circle         | rectangle    | Unsupported |
 | add/cut   | rectangle      | circle       | Unsupported |
 | add/cut   | circle         | circle       | Unsupported |
@@ -201,7 +200,7 @@ Circle-target cut has focused coverage for:
 - invalid mesh or invalid placement-frame failures through structured geometry
   errors.
 
-Before expanding beyond the first narrow rectangle cut slice in `cad-core`, the
+Before expanding beyond the narrow rectangle-tool cut slices in `cad-core`, the
 project still needs explicit handling for:
 
 - topological naming and generated-reference invalidation after boolean edits;

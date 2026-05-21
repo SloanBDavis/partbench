@@ -533,6 +533,99 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives cut result sources from active circle target and rectangle tool extrudes", async () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_1",
+        bodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        depth: 4
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_cut",
+        bodyId: "body_circle_cut",
+        targetBodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "cut"
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const cutSource = sources.find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_circle_cut"]);
+    expect(cutSource).toMatchObject({
+      id: "body_circle_cut",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: { id: "body_circle_1", profile: { kind: "circle" } },
+      tool: { id: "body_circle_cut", profile: { kind: "rectangle" } }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_circle_cut",
+        operation: "cut",
+        target: expect.objectContaining({
+          depth: 4,
+          profile: expect.objectContaining({ kind: "circle" })
+        }),
+        tool: expect.objectContaining({
+          depth: 1,
+          profile: expect.objectContaining({ kind: "rectangle" })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_circle_cut",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("ignores stale worker results after cut target source invalidation", async () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();

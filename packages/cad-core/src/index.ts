@@ -2208,6 +2208,12 @@ function findConsumingCutFeatureByTargetBodyId(
   );
 }
 
+function isSupportedCutTargetProfileKind(
+  profileKind: FeatureExtrudeProfileKind
+): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
+}
+
 function isPrimitiveBodyId(state: MutableDocumentState, id: BodyId): boolean {
   for (const objectId of state.objects.keys()) {
     if (createPrimitiveBodyId(objectId) === id) {
@@ -2444,7 +2450,7 @@ function assertSupportedExtrudeOperation(
       targetBodyId &&
       targetFeature &&
       profileKind === "rectangle" &&
-      targetFeature.profileKind === "rectangle" &&
+      isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
       targetFeature.operationMode === "newBody" &&
       findConsumingCutFeatureByTargetBodyId(state.features, targetBodyId) ===
         undefined
@@ -2455,11 +2461,12 @@ function assertSupportedExtrudeOperation(
     throwValidationError({
       code: "UNSUPPORTED_FEATURE_OPERATION",
       message:
-        "Cut extrudes currently support rectangle tools cutting one active rectangle newBody target body.",
+        "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.",
       opIndex,
       bodyId: targetBodyId,
       path: operationPath(opIndex, "operationMode"),
-      expected: "cut with rectangle source and active rectangle newBody target",
+      expected:
+        "cut with rectangle source and active rectangle/circle newBody target",
       received: describeReceived({
         operationMode,
         profileKind,
@@ -6010,14 +6017,14 @@ function validateFeatureTargetBodyReferences(
 
     if (
       feature.profileKind !== "rectangle" ||
-      target.profileKind !== "rectangle" ||
+      !isSupportedCutTargetProfileKind(target.profileKind) ||
       target.operationMode !== "newBody"
     ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.operationMode`,
-        "Cut extrudes currently support rectangle tools cutting one active rectangle newBody target body."
+        "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body."
       );
     }
   }

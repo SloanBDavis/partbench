@@ -8437,9 +8437,215 @@ describe("cad-core", () => {
     });
   });
 
+  it("supports rectangle cut features targeting authored circle newBody bodies", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_tool",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    });
+
+    const cutOp = {
+      op: "feature.extrude" as const,
+      id: "feat_circle_cut",
+      bodyId: "body_circle_cut",
+      targetBodyId: "body_circle_1",
+      sketchId: "sketch_1",
+      entityId: "rect_tool",
+      depth: 1,
+      operationMode: "cut" as const
+    };
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [cutOp]
+    });
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [cutOp]
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferences",
+        bodyId: "body_circle_cut"
+      }
+    });
+    const extents = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+    const cutTransaction = engine
+      .getTransactions()
+      .find((transaction) =>
+        transaction.ops.some(
+          (op) => op.op === "feature.extrude" && op.id === "feat_circle_cut"
+        )
+      );
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_cut"],
+      createdBodyIds: ["body_circle_cut"]
+    });
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_cut"],
+      createdBodyIds: ["body_circle_cut"]
+    });
+    expect(cutTransaction?.diff).toMatchObject({
+      features: {
+        created: [
+          expect.objectContaining({
+            id: "feat_circle_cut",
+            operationMode: "cut",
+            targetBodyId: "body_circle_1",
+            bodyId: "body_circle_cut"
+          })
+        ],
+        bodiesCreated: [{ id: "body_circle_cut", kind: "solid" }]
+      }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_circle_cut",
+          profileKind: "rectangle",
+          operationMode: "cut",
+          targetBodyId: "body_circle_1",
+          bodyId: "body_circle_cut"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_circle_1",
+          consumedByFeatureId: "feat_circle_cut"
+        }),
+        expect.objectContaining({
+          id: "body_circle_cut",
+          featureId: "feat_circle_cut"
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_circle_cut",
+          bodyId: "body_circle_cut",
+          targetBodyId: "body_circle_1",
+          operationMode: "cut",
+          status: "healthy",
+          issues: []
+        })
+      ])
+    });
+    expect(references).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        bodyId: "body_circle_cut"
+      }
+    });
+    expect(extents).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 0,
+      warnings: [
+        {
+          code: "BODY_EXTENTS_UNAVAILABLE",
+          bodyId: "body_circle_cut",
+          featureId: "feat_circle_cut"
+        }
+      ]
+    });
+
+    const consumedTarget = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          ...cutOp,
+          id: "feat_circle_cut_again",
+          bodyId: "body_circle_cut_again"
+        }
+      ]
+    });
+    expect(consumedTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    expect(
+      restored.getDocument().features.get("feat_circle_cut")
+    ).toMatchObject({
+      operationMode: "cut",
+      targetBodyId: "body_circle_1",
+      profileKind: "rectangle"
+    });
+
+    restored.undo();
+    const undoneStructure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(restored.getDocument().features.has("feat_circle_cut")).toBe(false);
+    expect(undoneStructure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      bodies: [expect.objectContaining({ id: "body_circle_1" })]
+    });
+    if (!undoneStructure.ok || undoneStructure.query !== "project.structure") {
+      throw new Error("Expected project.structure response.");
+    }
+    expect(
+      undoneStructure.bodies.find((body) => body.id === "body_circle_1")
+        ?.consumedByFeatureId
+    ).toBeUndefined();
+
+    restored.redo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_circle_1",
+          consumedByFeatureId: "feat_circle_cut"
+        }),
+        expect.objectContaining({ id: "body_circle_cut" })
+      ])
+    });
+  });
+
   it("rejects cut features for unsupported profiles and consumed targets", () => {
     const engine = createRectangleExtrudeEngine();
-    const circleTargetEngine = createCircleExtrudeEngine();
 
     engine.apply({
       op: "sketch.addCircle",
@@ -8467,39 +8673,6 @@ describe("cad-core", () => {
     });
 
     expect(circleTool).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode"
-      }
-    });
-
-    circleTargetEngine.apply({
-      op: "sketch.addRectangle",
-      sketchId: "sketch_1",
-      id: "rect_tool",
-      center: [0, 0],
-      width: 1,
-      height: 1
-    });
-    const circleTarget = circleTargetEngine.executeBatch({
-      version: "cadops.v1",
-      mode: "dryRun",
-      ops: [
-        {
-          op: "feature.extrude",
-          id: "feat_rect_cut",
-          bodyId: "body_rect_cut",
-          targetBodyId: "body_circle_1",
-          sketchId: "sketch_1",
-          entityId: "rect_tool",
-          depth: 1,
-          operationMode: "cut"
-        }
-      ]
-    });
-
-    expect(circleTarget).toMatchObject({
       ok: false,
       error: {
         code: "UNSUPPORTED_FEATURE_OPERATION",

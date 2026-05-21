@@ -373,7 +373,7 @@ function isSupportedDerivedGeometrySource(
   if (source.kind === "extrudeBoolean") {
     return (
       !source.placementError &&
-      source.target.profile.kind === "rectangle" &&
+      isSupportedBooleanTargetProfile(source.target.profile.kind) &&
       source.tool.profile.kind === "rectangle"
     );
   }
@@ -421,12 +421,15 @@ function deriveSourceMesh(
       throw new Error(source.placementError);
     }
 
-    if (
-      source.target.profile.kind !== "rectangle" ||
-      source.tool.profile.kind !== "rectangle"
-    ) {
+    if (!isSupportedBooleanTargetProfile(source.target.profile.kind)) {
       throw new Error(
-        "Boolean cut display currently supports rectangle target and tool extrudes only."
+        "Boolean cut display currently supports rectangle or circle target extrudes only."
+      );
+    }
+
+    if (source.tool.profile.kind !== "rectangle") {
+      throw new Error(
+        "Boolean cut display currently supports rectangle tool extrudes only."
       );
     }
 
@@ -537,11 +540,15 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
   if (source.kind === "extrudeBoolean") {
     return (
       source.placementError ??
-      "Boolean cut display currently supports rectangle target and tool extrudes only."
+      "Boolean cut display currently supports rectangle/circle target and rectangle tool extrudes only."
     );
   }
 
-  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, and rectangle cut results.";
+  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, and rectangle-tool cut results.";
+}
+
+function isSupportedBooleanTargetProfile(profileKind: string): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
 }
 
 export function createEmptyDerivedGeometrySnapshot(): DerivedGeometrySnapshot {

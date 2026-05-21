@@ -297,13 +297,14 @@ depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
 defaults to `newBody` when omitted, and current V6 exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
-`targetBodyId`. `cut` is supported only for the first narrow boolean-backed
-slice: a rectangle sketch-extrude tool cutting one active authored rectangle
+`targetBodyId`. `cut` is supported only for narrow boolean-backed slices: a
+rectangle sketch-extrude tool cutting one active authored rectangle or circle
 `newBody` target body. `cut` records require an existing authored
-`targetBodyId` and reject primitive-derived, consumed, circular, or unsupported
-targets. The cut result body is rebuilt as derived geometry through the OCCT
-geometry-worker path; exact B-rep checkpoints and generated topology maps are
-not persisted. `add` is still recognized but unsupported until boolean join
+`targetBodyId` and reject primitive-derived, consumed, circle-tool, `add`,
+or otherwise unsupported targets. The cut result body is rebuilt as derived
+geometry through the OCCT geometry-worker path where the app/runtime has that
+path enabled; exact B-rep checkpoints and generated topology maps are not
+persisted. `add` is still recognized but unsupported until boolean join
 semantics are deliberately scoped. This slice does not include a sketch solver,
 arbitrary profile recognition, broad topology mutation features, boolean join,
 broad feature edit commands, or exact B-rep checkpoint persistence.
@@ -689,7 +690,7 @@ sketch metadata, and named references while defaulting missing operation mode to
 operation-mode contracts, such as `newBody` with `targetBodyId`, `add`
 features, `cut` without `targetBodyId`, `cut` targeting missing or
 primitive-derived bodies, and `cut` records outside the currently supported
-rectangle-tool/active-rectangle-target contract.
+rectangle-tool/active-rectangle-or-circle-target contract.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 

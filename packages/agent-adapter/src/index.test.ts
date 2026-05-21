@@ -501,6 +501,118 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes circle-target cut extrudes through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const seed = adapter.execute({
+      requestId: "agent_req_seed_circle_cut_target",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "sketch_circle_cut",
+            name: "Profile",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addCircle",
+            sketchId: "sketch_circle_cut",
+            id: "circle_target",
+            center: [0, 0],
+            radius: 2
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_circle_cut",
+            id: "rect_tool",
+            center: [0, 0],
+            width: 1,
+            height: 1
+          },
+          {
+            op: "feature.extrude",
+            id: "feat_circle_target",
+            bodyId: "body_circle_target",
+            sketchId: "sketch_circle_cut",
+            entityId: "circle_target",
+            depth: 4
+          }
+        ]
+      }
+    });
+
+    expect(seed).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_target"],
+      createdBodyIds: ["body_circle_target"]
+    });
+
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "commit" as const,
+      ops: [
+        {
+          op: "feature.extrude" as const,
+          id: "feat_circle_cut",
+          bodyId: "body_circle_cut",
+          targetBodyId: "body_circle_target",
+          sketchId: "sketch_circle_cut",
+          entityId: "rect_tool",
+          depth: 1,
+          operationMode: "cut" as const
+        }
+      ]
+    };
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_circle_cut_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: { ...batch, mode: "dryRun" }
+        })
+      )
+    );
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_circle_cut_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch
+        })
+      )
+    );
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_cut"],
+      createdBodyIds: ["body_circle_cut"]
+    });
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_cut"],
+      createdBodyIds: ["body_circle_cut"]
+    });
+    expect(
+      adapter.getEngine().executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_circle_target",
+          consumedByFeatureId: "feat_circle_cut"
+        }),
+        expect.objectContaining({ id: "body_circle_cut" })
+      ])
+    });
+  });
+
   it("passes feature.updateExtrude through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
     seedExtrudeFeature(adapter, {

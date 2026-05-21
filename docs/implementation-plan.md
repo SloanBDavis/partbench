@@ -337,9 +337,10 @@ Implemented:
   unique feature/body IDs.
 - Operation mode is modeled as `newBody`, `add`, or `cut`. `newBody` remains
   the default standalone behavior. The first narrow `cut` slice is implemented
-  for a rectangle sketch-extrude tool cutting one active authored rectangle
-  `newBody` target body. `add` remains unsupported, and broader cut cases fail
-  with structured unsupported errors until boolean/topology behavior is scoped.
+  for a rectangle sketch-extrude tool cutting one active authored rectangle or
+  circle `newBody` target body. `add`, circle-tool cuts, and broader cut cases
+  fail with structured unsupported errors until boolean/topology behavior is
+  scoped.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
 - `web-cad.project.v6` source-of-truth export with V1/V2/V3/V4/V5 import
@@ -497,11 +498,10 @@ backs the first narrow authoritative `feature.extrude` cut slice. Cut features
 store source-of-truth feature intent in `cad-core`, then rebuild the cut result
 as derived mesh/cache data through `geometry.booleanExtrudes`,
 `@web-cad/geometry-kernel`, `@web-cad/geometry-worker`, and
-`@web-cad/occt-wasm`. The authoritative cut scope remains rectangle tool
-against one active authored rectangle `newBody` target body. The geometry-only
-boundary also now proves circle target cut by rectangle tool, but that remains a
-feasibility result until source-model, topology/reference, and UX semantics are
-scoped.
+`@web-cad/occt-wasm`. The authoritative cut scope is now rectangle tool against
+one active authored rectangle or circle `newBody` target body. Circle-tool cuts,
+add/join, and general booleans remain unsupported until source-model,
+topology/reference, and UX semantics are scoped.
 
 Deliverables:
 

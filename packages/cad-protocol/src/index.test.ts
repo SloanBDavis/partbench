@@ -271,6 +271,30 @@ describe("cad-protocol", () => {
     expect(batch.ops).toHaveLength(1);
   });
 
+  it("types rectangle-tool cut commands with authored target body ids", () => {
+    const op: CadOp = {
+      op: "feature.extrude",
+      id: "feat_circle_cut",
+      bodyId: "body_circle_cut",
+      targetBodyId: "body_circle_target",
+      sketchId: "sketch_1",
+      entityId: "rect_tool",
+      depth: 1,
+      operationMode: "cut"
+    };
+    const batch: CadBatch = {
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [op]
+    };
+
+    expect(batch.ops[0]).toMatchObject({
+      op: "feature.extrude",
+      operationMode: "cut",
+      targetBodyId: "body_circle_target"
+    });
+  });
+
   it("types structured validation errors", () => {
     const error: CadBatchValidationError = {
       code: "INVALID_DIMENSIONS",

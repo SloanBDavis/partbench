@@ -164,16 +164,16 @@ function createAuthoredExtrudeHealth(
         });
       } else if (
         feature.profileKind !== "rectangle" ||
-        targetFeature.profileKind !== "rectangle" ||
+        !isSupportedCutTargetProfileKind(targetFeature.profileKind) ||
         targetFeature.operationMode !== "newBody"
       ) {
         issues.push({
           code: "UNSUPPORTED_BODY_REFERENCES",
           message:
-            "Cut features currently require a rectangle source and an active rectangle newBody target body.",
+            "Cut features currently require a rectangle source and an active rectangle or circle newBody target body.",
           featureId: feature.id,
           bodyId: feature.targetBodyId,
-          expected: "rectangle newBody target",
+          expected: "rectangle or circle newBody target",
           received: `${targetFeature.profileKind} ${targetFeature.operationMode}`
         });
       }
@@ -381,6 +381,12 @@ function entityMatchesProfileKind(
     (profileKind === "rectangle" && entity.kind === "rectangle") ||
     (profileKind === "circle" && entity.kind === "circle")
   );
+}
+
+function isSupportedCutTargetProfileKind(
+  profileKind: FeatureExtrudeProfileKind
+): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
 }
 
 function statusFromIssues(
