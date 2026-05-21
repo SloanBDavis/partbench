@@ -8484,6 +8484,22 @@ describe("cad-core", () => {
         bodyId: "body_circle_cut"
       }
     });
+    const targetMeasurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_circle_1" }
+    });
+    const cutMeasurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_circle_cut" }
+    });
+    const targetFaceMeasurement = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_circle_1",
+        stableId: "generated:face:body_circle_1:endCap"
+      }
+    });
     const extents = engine.executeQuery({
       version: "cadops.v1",
       query: { query: "project.extents" }
@@ -8563,6 +8579,42 @@ describe("cad-core", () => {
       error: {
         code: "UNSUPPORTED_BODY_REFERENCES",
         bodyId: "body_circle_cut"
+      }
+    });
+    expect(targetMeasurements).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        bodyId: "body_circle_1",
+        profileKind: "circle"
+      }
+    });
+    if (
+      targetMeasurements.ok &&
+      targetMeasurements.query === "body.measurements"
+    ) {
+      expect(targetMeasurements.measurements.volume).toBeCloseTo(16 * Math.PI);
+    } else {
+      throw new Error(
+        "Expected source measurements for consumed circle target."
+      );
+    }
+    expect(cutMeasurements).toMatchObject({
+      ok: false,
+      query: "body.measurements",
+      error: {
+        code: "UNSUPPORTED_BODY_MEASUREMENTS",
+        bodyId: "body_circle_cut"
+      }
+    });
+    expect(targetFaceMeasurement).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      bodyId: "body_circle_1",
+      stableId: "generated:face:body_circle_1:endCap",
+      kind: "face",
+      measurements: {
+        kind: "face"
       }
     });
     expect(extents).toMatchObject({

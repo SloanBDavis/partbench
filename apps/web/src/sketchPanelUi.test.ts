@@ -118,11 +118,18 @@ describe("sketch panel UI helpers", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
       createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
+      createExtrudeFeature(
+        "feat_circle_consumed",
+        "body_circle_consumed",
+        "circle",
+        "newBody"
+      ),
       createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut")
     ];
     const bodies: CadBodySnapshot[] = [
       createBody("body_rect", "feat_rect"),
       createBody("body_circle", "feat_circle"),
+      createBody("body_circle_consumed", "feat_circle_consumed", "feat_cut"),
       createBody("body_consumed", "feat_consumed", "feat_cut"),
       createBody("body_cut", "feat_cut")
     ];

@@ -626,6 +626,81 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("keeps attached circle target cut tools placed from consumed target source references", async () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_1",
+        bodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        depth: 4
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_face_1",
+        name: "Cut sketch",
+        bodyId: "body_circle_1",
+        faceStableId: "generated:face:body_circle_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_face_1",
+        id: "rect_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_cut",
+        bodyId: "body_circle_cut",
+        targetBodyId: "body_circle_1",
+        sketchId: "sketch_face_1",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "cut"
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_circle_1"])
+    );
+    const cutSource = sources.find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_circle_cut"]);
+    expect(cutSource).toMatchObject({
+      id: "body_circle_cut",
+      kind: "extrudeBoolean",
+      target: {
+        id: "body_circle_1",
+        profile: { kind: "circle" }
+      },
+      tool: {
+        id: "body_circle_cut",
+        profile: { kind: "rectangle" },
+        placementFrame: {
+          origin: [0, 0, 4]
+        }
+      }
+    });
+  });
+
   it("ignores stale worker results after cut target source invalidation", async () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
