@@ -7,11 +7,19 @@ import type {
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createAvailableSketchDimensionTargetOptions,
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
+  createParameterBindingOptions,
+  createSketchDimensionTargetOptions,
+  formatSketchDimensionStatus,
+  formatSketchDimensionValueSource,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
+  getParameterDimensionUsageCount,
+  getSketchDimensionTargetLabel,
+  getSketchDimensionTargetValue,
   getSketchEntityOptionLabel,
   isExtrudableSketchEntity
 } from "./sketchPanelUi";
@@ -114,6 +122,106 @@ describe("sketch panel UI helpers", () => {
         point: [0, 0]
       })
     ).toBe(false);
+  });
+
+  it("derives supported dimension targets from the active sketch entity", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 3
+    };
+
+    expect(createSketchDimensionTargetOptions(rectangle)).toEqual([
+      {
+        target: { entityKind: "rectangle", role: "width" },
+        label: "Width",
+        currentValue: 4
+      },
+      {
+        target: { entityKind: "rectangle", role: "height" },
+        label: "Height",
+        currentValue: 2
+      }
+    ]);
+    expect(createSketchDimensionTargetOptions(circle)).toEqual([
+      {
+        target: { entityKind: "circle", role: "radius" },
+        label: "Radius",
+        currentValue: 3
+      }
+    ]);
+    expect(
+      createSketchDimensionTargetOptions({
+        id: "point_1",
+        kind: "point",
+        point: [0, 0]
+      })
+    ).toEqual([]);
+    expect(
+      getSketchDimensionTargetLabel({ entityKind: "rectangle", role: "height" })
+    ).toBe("Height");
+    expect(
+      getSketchDimensionTargetValue(rectangle, {
+        entityKind: "rectangle",
+        role: "width"
+      })
+    ).toBe(4);
+  });
+
+  it("filters already-driven dimension targets and formats binding state", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const dimensions = [
+      {
+        id: "dim_width",
+        name: "Width",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle" as const, role: "width" as const },
+        valueSource: { type: "parameter" as const, parameterId: "p_width" },
+        status: "healthy" as const,
+        issues: [],
+        effectiveValue: 6
+      }
+    ];
+
+    expect(
+      createAvailableSketchDimensionTargetOptions(rectangle, dimensions)
+    ).toEqual([
+      {
+        target: { entityKind: "rectangle", role: "height" },
+        label: "Height",
+        currentValue: 2
+      }
+    ]);
+    expect(
+      createParameterBindingOptions([
+        { id: "p_width", name: "Width", value: 6 }
+      ])
+    ).toEqual([{ parameterId: "p_width", label: "Width (6)" }]);
+    expect(getParameterDimensionUsageCount("p_width", dimensions)).toBe(1);
+    expect(
+      formatSketchDimensionValueSource(dimensions[0], [
+        { id: "p_width", name: "Width", value: 6 }
+      ])
+    ).toBe("Width = 6");
+    expect(formatSketchDimensionStatus(dimensions[0])).toBe("Healthy / 6");
+    expect(formatSketchDimensionValueSource(dimensions[0], [])).toBe(
+      "Missing parameter p_width"
+    );
   });
 
   it("offers active rectangle newBody authored bodies as add targets", () => {

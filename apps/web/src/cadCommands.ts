@@ -3,6 +3,7 @@ import type {
   CadBatch,
   CadBatchMode,
   CadOp,
+  CadParameterSnapshot,
   DocumentUnitUpdateMode,
   DocumentUnits,
   DocumentUpdateUnitsOp,
@@ -11,6 +12,11 @@ import type {
   FeatureExtrudeSide,
   FeatureExtrudeOp,
   FeatureUpdateExtrudeOp,
+  ParameterCreateOp,
+  ParameterDeleteOp,
+  ParameterId,
+  ParameterRenameOp,
+  ParameterUpdateOp,
   ReferenceDeleteNameOp,
   ReferenceNameGeneratedOp,
   ObjectId,
@@ -35,6 +41,13 @@ import type {
   SketchCreateOp,
   SketchDeleteEntityOp,
   SketchDeleteOp,
+  SketchDimensionCreateOp,
+  SketchDimensionDeleteOp,
+  SketchDimensionEntry,
+  SketchDimensionId,
+  SketchDimensionRenameOp,
+  SketchDimensionTarget,
+  SketchDimensionUpdateOp,
   SketchEntitySnapshot,
   SketchId,
   SketchPlane,
@@ -115,6 +128,27 @@ export interface SketchCreateOnFaceForm {
   readonly name: string;
   readonly bodyId: string;
   readonly faceStableId: string;
+}
+
+export interface ParameterCreateForm {
+  readonly id: string;
+  readonly name: string;
+  readonly value: number;
+  readonly description: string;
+}
+
+export interface ParameterEditForm {
+  readonly name: string;
+  readonly value: number;
+  readonly description: string;
+}
+
+export interface SketchDimensionForm {
+  readonly id: string;
+  readonly name: string;
+  readonly valueSourceType: "literal" | "parameter";
+  readonly value: number;
+  readonly parameterId: string;
 }
 
 export interface SketchEntityForm {
@@ -347,6 +381,74 @@ export function buildCreateSketchOnFaceOp(
   };
 }
 
+export function buildCreateParameterOp(
+  form: ParameterCreateForm
+): ParameterCreateOp {
+  const description = normalizeOptionalText(form.description);
+
+  return {
+    op: "parameter.create",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    value: form.value,
+    ...(description ? { description } : {})
+  };
+}
+
+export function buildUpdateParameterOp(
+  id: ParameterId,
+  form: ParameterEditForm
+): ParameterUpdateOp {
+  const description = normalizeOptionalText(form.description);
+
+  return {
+    op: "parameter.update",
+    id,
+    value: form.value,
+    ...(description ? { description } : {})
+  };
+}
+
+export function buildRenameParameterOp(
+  id: ParameterId,
+  name: string
+): ParameterRenameOp {
+  return {
+    op: "parameter.rename",
+    id,
+    name: name.trim()
+  };
+}
+
+export function buildDeleteParameterOp(id: ParameterId): ParameterDeleteOp {
+  return {
+    op: "parameter.delete",
+    id
+  };
+}
+
+export function buildParameterEditOps(
+  parameter: CadParameterSnapshot,
+  form: ParameterEditForm
+): readonly (ParameterRenameOp | ParameterUpdateOp)[] {
+  const ops: (ParameterRenameOp | ParameterUpdateOp)[] = [];
+  const nextName = form.name.trim();
+  const nextDescription = normalizeOptionalText(form.description);
+
+  if (nextName !== parameter.name) {
+    ops.push(buildRenameParameterOp(parameter.id, nextName));
+  }
+
+  if (
+    form.value !== parameter.value ||
+    (nextDescription !== undefined && nextDescription !== parameter.description)
+  ) {
+    ops.push(buildUpdateParameterOp(parameter.id, form));
+  }
+
+  return ops;
+}
+
 export function buildRenameSketchOp(
   id: SketchId,
   name: string
@@ -437,6 +539,80 @@ export function buildDeleteSketchEntityOp(
     sketchId,
     entityId
   };
+}
+
+export function buildCreateSketchDimensionOp(
+  sketchId: SketchId,
+  entityId: string,
+  target: SketchDimensionTarget,
+  form: SketchDimensionForm
+): SketchDimensionCreateOp {
+  return {
+    op: "sketch.dimension.create",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    sketchId,
+    entityId,
+    target,
+    ...buildSketchDimensionValueInput(form)
+  };
+}
+
+export function buildUpdateSketchDimensionOp(
+  id: SketchDimensionId,
+  form: SketchDimensionForm
+): SketchDimensionUpdateOp {
+  return {
+    op: "sketch.dimension.update",
+    id,
+    ...buildSketchDimensionValueInput(form)
+  };
+}
+
+export function buildRenameSketchDimensionOp(
+  id: SketchDimensionId,
+  name: string
+): SketchDimensionRenameOp {
+  return {
+    op: "sketch.dimension.rename",
+    id,
+    name: name.trim()
+  };
+}
+
+export function buildDeleteSketchDimensionOp(
+  id: SketchDimensionId
+): SketchDimensionDeleteOp {
+  return {
+    op: "sketch.dimension.delete",
+    id
+  };
+}
+
+export function buildSketchDimensionEditOps(
+  dimension: SketchDimensionEntry,
+  form: SketchDimensionForm
+): readonly (SketchDimensionRenameOp | SketchDimensionUpdateOp)[] {
+  const ops: (SketchDimensionRenameOp | SketchDimensionUpdateOp)[] = [];
+  const nextName = form.name.trim();
+
+  if (nextName !== dimension.name) {
+    ops.push(buildRenameSketchDimensionOp(dimension.id, nextName));
+  }
+
+  const nextValueSource = buildSketchDimensionValueInput(form);
+  if (
+    (form.valueSourceType === "literal" &&
+      (dimension.valueSource.type !== "literal" ||
+        dimension.valueSource.value !== nextValueSource.value)) ||
+    (form.valueSourceType === "parameter" &&
+      (dimension.valueSource.type !== "parameter" ||
+        dimension.valueSource.parameterId !== nextValueSource.parameterId))
+  ) {
+    ops.push(buildUpdateSketchDimensionOp(dimension.id, form));
+  }
+
+  return ops;
 }
 
 export function buildFeatureExtrudeOp(
@@ -753,6 +929,19 @@ function toVec2(x: number, y: number): Vec2 {
 function normalizeOptionalId(id: string): string | undefined {
   const normalized = id.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeOptionalText(value: string): string | undefined {
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function buildSketchDimensionValueInput(
+  form: SketchDimensionForm
+): Pick<SketchDimensionCreateOp, "value" | "parameterId"> {
+  return form.valueSourceType === "parameter"
+    ? { parameterId: form.parameterId.trim() }
+    : { value: form.value };
 }
 
 function requireTargetId(id: string): string {

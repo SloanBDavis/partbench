@@ -16,12 +16,15 @@ import type {
   CadBatchMode,
   CadBatchResponse,
   CadGeneratedFaceReference,
+  CadParameterSnapshot,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
   ProjectHealthQueryResponse,
+  SketchDimensionEntry,
+  SketchDimensionTarget,
   SketchEntityKind,
   SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
@@ -38,8 +41,12 @@ import {
   buildCreateBoxOp,
   buildCreateConeOp,
   buildCreateCylinderOp,
+  buildCreateParameterOp,
   buildCreateSphereOp,
+  buildCreateSketchDimensionOp,
   buildCreateTorusOp,
+  buildDeleteParameterOp,
+  buildDeleteSketchDimensionOp,
   buildDeleteNamedReferenceOp,
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
@@ -49,8 +56,10 @@ import {
   buildFeatureUpdateExtrudeOp,
   buildNameGeneratedReferenceOp,
   buildOperationFromBatchForm,
+  buildParameterEditOps,
   buildRenameObjectOp,
   buildRenameSketchOp,
+  buildSketchDimensionEditOps,
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
@@ -63,7 +72,10 @@ import {
   type BatchOperationForm,
   type DimensionCommandForm,
   type FeatureExtrudeForm,
+  type ParameterCreateForm,
+  type ParameterEditForm,
   type PrimitiveCommandForm,
+  type SketchDimensionForm,
   type SketchCreateOnFaceForm,
   type SketchCreateForm,
   type SketchEntityForm,
@@ -360,6 +372,42 @@ function readNamedReferences(): readonly NamedGeneratedReferenceEntry[] {
     : [];
 }
 
+function readParameters(): readonly CadParameterSnapshot[] {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "parameter.list" }
+  });
+
+  return response.ok && response.query === "parameter.list"
+    ? response.parameters
+    : [];
+}
+
+function readSketchDimensionsBySketchId(
+  sketches: readonly { readonly id: string }[]
+): ReadonlyMap<string, readonly SketchDimensionEntry[]> {
+  const dimensionsBySketchId = new Map<
+    string,
+    readonly SketchDimensionEntry[]
+  >();
+
+  for (const sketch of sketches) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.dimensions", sketchId: sketch.id }
+    });
+
+    dimensionsBySketchId.set(
+      sketch.id,
+      response.ok && response.query === "sketch.dimensions"
+        ? response.dimensions
+        : []
+    );
+  }
+
+  return dimensionsBySketchId;
+}
+
 function readBodyMeasurements(bodyId: string | undefined): {
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly error?: string;
@@ -551,6 +599,8 @@ export function App() {
       : {};
   const namedReferences = readNamedReferences();
   const transactionHistory = readTransactionHistory();
+  const parameters = readParameters();
+  const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
   >(() => {
@@ -873,6 +923,27 @@ export function App() {
     await commitOps([buildCreateSketchOp(form)], () => selectedId);
   }
 
+  async function createParameter(form: ParameterCreateForm) {
+    await commitOps([buildCreateParameterOp(form)], () => selectedId);
+  }
+
+  async function applyParameterEdit(
+    parameter: CadParameterSnapshot,
+    form: ParameterEditForm
+  ) {
+    const ops = buildParameterEditOps(parameter, form);
+
+    if (ops.length === 0) {
+      return;
+    }
+
+    await commitOps(ops, () => selectedId);
+  }
+
+  async function deleteParameter(parameterId: string) {
+    await commitOps([buildDeleteParameterOp(parameterId)], () => selectedId);
+  }
+
   async function createSketchOnFace(form: SketchCreateOnFaceForm) {
     await commitOps([buildCreateSketchOnFaceOp(form)], (response) => {
       const sketchId = response.createdSketchIds?.[0];
@@ -929,6 +1000,38 @@ export function App() {
   async function deleteSketchEntity(sketchId: string, entityId: string) {
     await commitOps(
       [buildDeleteSketchEntityOp(sketchId, entityId)],
+      () => selectedId
+    );
+  }
+
+  async function createSketchDimension(
+    sketchId: string,
+    entityId: string,
+    target: SketchDimensionTarget,
+    form: SketchDimensionForm
+  ) {
+    await commitOps(
+      [buildCreateSketchDimensionOp(sketchId, entityId, target, form)],
+      () => selectedId
+    );
+  }
+
+  async function applySketchDimensionEdit(
+    dimension: SketchDimensionEntry,
+    form: SketchDimensionForm
+  ) {
+    const ops = buildSketchDimensionEditOps(dimension, form);
+
+    if (ops.length === 0) {
+      return;
+    }
+
+    await commitOps(ops, () => selectedId);
+  }
+
+  async function deleteSketchDimension(dimensionId: string) {
+    await commitOps(
+      [buildDeleteSketchDimensionOp(dimensionId)],
       () => selectedId
     );
   }
@@ -1325,12 +1428,21 @@ export function App() {
                   key={focusedSketchId ?? "sketch-panel"}
                   disabled={commandPending}
                   sketches={sketches}
+                  parameters={parameters}
+                  sketchDimensionsBySketchId={sketchDimensionsBySketchId}
                   addTargetBodies={addTargetBodyOptions}
                   cutTargetBodies={cutTargetBodyOptions}
                   displayStatuses={sketchDisplayState.statuses}
                   focusedSketchId={focusedSketchId}
                   features={projectStructure.features}
                   onCreateSketch={(form) => void createSketch(form)}
+                  onCreateParameter={(form) => void createParameter(form)}
+                  onApplyParameterEdit={(parameter, form) =>
+                    void applyParameterEdit(parameter, form)
+                  }
+                  onDeleteParameter={(parameterId) =>
+                    void deleteParameter(parameterId)
+                  }
                   onRenameSketch={(sketchId, name) =>
                     void renameSketch(sketchId, name)
                   }
@@ -1343,6 +1455,15 @@ export function App() {
                   }
                   onDeleteEntity={(sketchId, entityId) =>
                     void deleteSketchEntity(sketchId, entityId)
+                  }
+                  onCreateDimension={(sketchId, entityId, target, form) =>
+                    void createSketchDimension(sketchId, entityId, target, form)
+                  }
+                  onApplyDimensionEdit={(dimension, form) =>
+                    void applySketchDimensionEdit(dimension, form)
+                  }
+                  onDeleteDimension={(dimensionId) =>
+                    void deleteSketchDimension(dimensionId)
                   }
                   onExtrudeEntity={(sketchId, entityId, form) =>
                     void extrudeSketchEntity(sketchId, entityId, form)

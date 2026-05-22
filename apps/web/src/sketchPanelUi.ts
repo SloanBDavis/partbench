@@ -1,6 +1,9 @@
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
+  CadParameterSnapshot,
+  SketchDimensionEntry,
+  SketchDimensionTarget,
   SketchEntityId,
   SketchEntityKind,
   SketchId,
@@ -19,6 +22,17 @@ export interface BooleanTargetBodyOption {
 export interface BooleanOperationStatus {
   readonly available: boolean;
   readonly message: string;
+}
+
+export interface SketchDimensionTargetOption {
+  readonly target: SketchDimensionTarget;
+  readonly label: string;
+  readonly currentValue: number;
+}
+
+export interface ParameterBindingOption {
+  readonly parameterId: string;
+  readonly label: string;
 }
 
 export function chooseSketchPanelSelection(
@@ -84,6 +98,138 @@ export function isExtrudableSketchEntity(
   entity: SketchEntitySnapshot | undefined
 ): entity is SketchEntitySnapshot & { kind: "rectangle" | "circle" } {
   return entity?.kind === "rectangle" || entity?.kind === "circle";
+}
+
+export function createSketchDimensionTargetOptions(
+  entity: SketchEntitySnapshot | undefined
+): readonly SketchDimensionTargetOption[] {
+  if (!entity) {
+    return [];
+  }
+
+  if (entity.kind === "rectangle") {
+    return [
+      {
+        target: { entityKind: "rectangle", role: "width" },
+        label: "Width",
+        currentValue: entity.width
+      },
+      {
+        target: { entityKind: "rectangle", role: "height" },
+        label: "Height",
+        currentValue: entity.height
+      }
+    ];
+  }
+
+  if (entity.kind === "circle") {
+    return [
+      {
+        target: { entityKind: "circle", role: "radius" },
+        label: "Radius",
+        currentValue: entity.radius
+      }
+    ];
+  }
+
+  return [];
+}
+
+export function createAvailableSketchDimensionTargetOptions(
+  entity: SketchEntitySnapshot | undefined,
+  dimensions: readonly SketchDimensionEntry[]
+): readonly SketchDimensionTargetOption[] {
+  return createSketchDimensionTargetOptions(entity).filter(
+    (option) =>
+      !dimensions.some(
+        (dimension) =>
+          dimension.entityId === entity?.id &&
+          sketchDimensionTargetsEqual(dimension.target, option.target)
+      )
+  );
+}
+
+export function getSketchDimensionTargetLabel(
+  target: SketchDimensionTarget
+): string {
+  switch (target.role) {
+    case "width":
+      return "Width";
+    case "height":
+      return "Height";
+    case "radius":
+      return "Radius";
+  }
+}
+
+export function getSketchDimensionTargetValue(
+  entity: SketchEntitySnapshot | undefined,
+  target: SketchDimensionTarget | undefined
+): number {
+  if (!entity || !target) {
+    return 1;
+  }
+
+  if (entity.kind === "rectangle" && target.entityKind === "rectangle") {
+    return target.role === "width" ? entity.width : entity.height;
+  }
+
+  if (entity.kind === "circle" && target.entityKind === "circle") {
+    return entity.radius;
+  }
+
+  return 1;
+}
+
+export function formatSketchDimensionValueSource(
+  dimension: SketchDimensionEntry,
+  parameters: readonly CadParameterSnapshot[]
+): string {
+  const valueSource = dimension.valueSource;
+
+  if (valueSource.type === "literal") {
+    return `${valueSource.value}`;
+  }
+
+  const parameter = parameters.find(
+    (candidate) => candidate.id === valueSource.parameterId
+  );
+
+  return parameter
+    ? `${parameter.name} = ${parameter.value}`
+    : `Missing parameter ${valueSource.parameterId}`;
+}
+
+export function formatSketchDimensionStatus(
+  dimension: SketchDimensionEntry
+): string {
+  if (dimension.status === "healthy") {
+    return dimension.effectiveValue !== undefined
+      ? `Healthy / ${dimension.effectiveValue}`
+      : "Healthy";
+  }
+
+  return dimension.issues[0]?.message ?? dimension.status;
+}
+
+export function createParameterBindingOptions(
+  parameters: readonly CadParameterSnapshot[]
+): readonly ParameterBindingOption[] {
+  return parameters.map((parameter) => ({
+    parameterId: parameter.id,
+    label: `${parameter.name} (${parameter.value})`
+  }));
+}
+
+export function getParameterDimensionUsageCount(
+  parameterId: string,
+  dimensions: readonly SketchDimensionEntry[]
+): number {
+  return dimensions.filter(
+    (dimension) =>
+      dimension.valueSource.type === "parameter" &&
+      dimension.valueSource.parameterId === parameterId
+  ).length;
 }
 
 export function createAddTargetBodyOptions(
@@ -258,6 +404,17 @@ function isSupportedTargetProfileKind(
   return operationMode === "add"
     ? isSupportedAddTargetProfileKind(profileKind)
     : isSupportedCutTargetProfileKind(profileKind);
+}
+
+export function sketchDimensionTargetsEqual(
+  left: SketchDimensionTarget,
+  right: SketchDimensionTarget | undefined
+): boolean {
+  if (!right) {
+    return false;
+  }
+
+  return left.entityKind === right.entityKind && left.role === right.role;
 }
 
 function formatProfileKind(

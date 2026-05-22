@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CadParameterSnapshot,
   CadFeatureSummary,
+  SketchDimensionEntry,
+  SketchDimensionTarget,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -9,6 +12,9 @@ import type {
 } from "@web-cad/cad-protocol";
 import type {
   FeatureExtrudeForm,
+  ParameterCreateForm,
+  ParameterEditForm,
+  SketchDimensionForm,
   SketchCreateForm,
   SketchEntityForm
 } from "../cadCommands";
@@ -21,11 +27,18 @@ import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createAvailableSketchDimensionTargetOptions,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
+  createParameterBindingOptions,
+  formatSketchDimensionStatus,
+  formatSketchDimensionValueSource,
+  getParameterDimensionUsageCount,
+  getSketchDimensionTargetLabel,
   getSketchEntityOptionLabel,
   isExtrudableSketchEntity,
+  sketchDimensionTargetsEqual,
   type BooleanTargetBodyOption
 } from "../sketchPanelUi";
 import {
@@ -40,12 +53,23 @@ import {
 export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
+  readonly parameters: readonly CadParameterSnapshot[];
+  readonly sketchDimensionsBySketchId: ReadonlyMap<
+    string,
+    readonly SketchDimensionEntry[]
+  >;
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
   readonly addTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly cutTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly focusedSketchId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
+  readonly onCreateParameter: (form: ParameterCreateForm) => void;
+  readonly onApplyParameterEdit: (
+    parameter: CadParameterSnapshot,
+    form: ParameterEditForm
+  ) => void;
+  readonly onDeleteParameter: (parameterId: string) => void;
   readonly onRenameSketch: (sketchId: string, name: string) => void;
   readonly onDeleteSketch: (sketchId: string) => void;
   readonly onAddEntity: (
@@ -58,6 +82,17 @@ export interface SketchPanelProps {
     entity: SketchEntitySnapshot
   ) => void;
   readonly onDeleteEntity: (sketchId: string, entityId: string) => void;
+  readonly onCreateDimension: (
+    sketchId: string,
+    entityId: string,
+    target: SketchDimensionTarget,
+    form: SketchDimensionForm
+  ) => void;
+  readonly onApplyDimensionEdit: (
+    dimension: SketchDimensionEntry,
+    form: SketchDimensionForm
+  ) => void;
+  readonly onDeleteDimension: (dimensionId: string) => void;
   readonly onExtrudeEntity: (
     sketchId: string,
     entityId: string,
@@ -69,6 +104,21 @@ const defaultCreateForm: SketchCreateForm = {
   id: "",
   name: "Sketch 1",
   plane: "XY"
+};
+
+const defaultParameterCreateForm: ParameterCreateForm = {
+  id: "",
+  name: "Length",
+  value: 10,
+  description: ""
+};
+
+const defaultSketchDimensionForm: SketchDimensionForm = {
+  id: "",
+  name: "Dimension",
+  valueSourceType: "literal",
+  value: 1,
+  parameterId: ""
 };
 
 const defaultExtrudeForm: FeatureExtrudeForm = {
@@ -83,17 +133,25 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
 export function SketchPanel({
   disabled,
   sketches,
+  parameters,
+  sketchDimensionsBySketchId,
   addTargetBodies = [],
   cutTargetBodies = [],
   displayStatuses,
   focusedSketchId,
   features,
   onCreateSketch,
+  onCreateParameter,
+  onApplyParameterEdit,
+  onDeleteParameter,
   onRenameSketch,
   onDeleteSketch,
   onAddEntity,
   onUpdateEntity,
   onDeleteEntity,
+  onCreateDimension,
+  onApplyDimensionEdit,
+  onDeleteDimension,
   onExtrudeEntity
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
@@ -104,6 +162,18 @@ export function SketchPanel({
   >();
   const [createForm, setCreateForm] =
     useState<SketchCreateForm>(defaultCreateForm);
+  const [parameterCreateForm, setParameterCreateForm] =
+    useState<ParameterCreateForm>(defaultParameterCreateForm);
+  const [selectedParameterId, setSelectedParameterId] = useState<
+    string | undefined
+  >(parameters[0]?.id);
+  const [parameterEditDraft, setParameterEditDraft] = useState<
+    | {
+        readonly parameterId: string;
+        readonly form: ParameterEditForm;
+      }
+    | undefined
+  >();
   const [entityForm, setEntityForm] = useState<SketchEntityForm>(
     defaultSketchEntityForm
   );
@@ -132,6 +202,13 @@ export function SketchPanel({
   const selectedSketchDisplayStatus = selectedSketch
     ? displayStatuses?.get(selectedSketch.id)
     : undefined;
+  const selectedSketchDimensions = useMemo(
+    () =>
+      selectedSketch
+        ? (sketchDimensionsBySketchId.get(selectedSketch.id) ?? [])
+        : [],
+    [selectedSketch, sketchDimensionsBySketchId]
+  );
   const effectiveSelectedEntityId = chooseSketchEntitySelection(
     selectedSketch?.entities ?? [],
     selectedEntityId
@@ -139,6 +216,90 @@ export function SketchPanel({
   const selectedEntity = selectedSketch?.entities.find(
     (entity) => entity.id === effectiveSelectedEntityId
   );
+  const selectedEntityDimensions = useMemo(
+    () =>
+      selectedEntity
+        ? selectedSketchDimensions.filter(
+            (dimension) => dimension.entityId === selectedEntity.id
+          )
+        : [],
+    [selectedEntity, selectedSketchDimensions]
+  );
+  const parameterBindingOptions = createParameterBindingOptions(parameters);
+  const parameterUsageCounts = useMemo(
+    () =>
+      new Map(
+        parameters.map((parameter) => [
+          parameter.id,
+          getParameterDimensionUsageCount(
+            parameter.id,
+            [...sketchDimensionsBySketchId.values()].flat()
+          )
+        ])
+      ),
+    [parameters, sketchDimensionsBySketchId]
+  );
+  const selectedParameter =
+    parameters.find((parameter) => parameter.id === selectedParameterId) ??
+    parameters[0];
+  const parameterEditForm =
+    selectedParameter &&
+    parameterEditDraft?.parameterId === selectedParameter.id
+      ? parameterEditDraft.form
+      : parameterToEditForm(selectedParameter);
+  const availableDimensionTargets = useMemo(
+    () =>
+      createAvailableSketchDimensionTargetOptions(
+        selectedEntity,
+        selectedEntityDimensions
+      ),
+    [selectedEntity, selectedEntityDimensions]
+  );
+  const [dimensionCreateTarget, setDimensionCreateTarget] = useState<
+    SketchDimensionTarget | undefined
+  >();
+  const [dimensionCreateForm, setDimensionCreateForm] =
+    useState<SketchDimensionForm>(defaultSketchDimensionForm);
+  const [selectedDimensionId, setSelectedDimensionId] = useState<
+    string | undefined
+  >();
+  const selectedDimension =
+    selectedEntityDimensions.find(
+      (dimension) => dimension.id === selectedDimensionId
+    ) ?? selectedEntityDimensions[0];
+  const [dimensionEditDraft, setDimensionEditDraft] = useState<
+    | {
+        readonly dimensionId: string;
+        readonly form: SketchDimensionForm;
+      }
+    | undefined
+  >();
+  const selectedCreateTargetOption =
+    availableDimensionTargets.find((option) =>
+      sketchDimensionTargetsEqual(option.target, dimensionCreateTarget)
+    ) ?? availableDimensionTargets[0];
+  const effectiveDimensionCreateTarget = selectedCreateTargetOption?.target;
+  const effectiveDimensionCreateForm: SketchDimensionForm = {
+    ...dimensionCreateForm,
+    name:
+      dimensionCreateTarget && selectedCreateTargetOption
+        ? dimensionCreateForm.name
+        : (selectedCreateTargetOption?.label ?? "Dimension"),
+    value:
+      dimensionCreateTarget && selectedCreateTargetOption
+        ? dimensionCreateForm.value
+        : (selectedCreateTargetOption?.currentValue ?? 1),
+    parameterId:
+      dimensionCreateForm.parameterId &&
+      parameters.some((item) => item.id === dimensionCreateForm.parameterId)
+        ? dimensionCreateForm.parameterId
+        : (parameters[0]?.id ?? "")
+  };
+  const dimensionEditForm =
+    selectedDimension &&
+    dimensionEditDraft?.dimensionId === selectedDimension.id
+      ? dimensionEditDraft.form
+      : sketchDimensionToForm(selectedDimension);
   const selectedEntityUsages =
     selectedSketch && selectedEntity
       ? getSketchEntityExtrudeUsages(
@@ -259,6 +420,35 @@ export function SketchPanel({
     setIsAddingEntity(false);
   }
 
+  function createDimension() {
+    if (!selectedSketch || !selectedEntity || !effectiveDimensionCreateTarget) {
+      return;
+    }
+
+    onCreateDimension(
+      selectedSketch.id,
+      selectedEntity.id,
+      effectiveDimensionCreateTarget,
+      effectiveDimensionCreateForm
+    );
+  }
+
+  function applyParameterEdit() {
+    if (!selectedParameter) {
+      return;
+    }
+
+    onApplyParameterEdit(selectedParameter, parameterEditForm);
+  }
+
+  function applyDimensionEdit() {
+    if (!selectedDimension) {
+      return;
+    }
+
+    onApplyDimensionEdit(selectedDimension, dimensionEditForm);
+  }
+
   return (
     <section className="sketch-panel" aria-label="Sketches">
       <div className="section-heading">
@@ -325,6 +515,28 @@ export function SketchPanel({
           </label>
         </details>
       </details>
+
+      <ParameterControls
+        disabled={disabled}
+        parameters={parameters}
+        selectedParameter={selectedParameter}
+        selectedParameterId={selectedParameter?.id}
+        createForm={parameterCreateForm}
+        editForm={parameterEditForm}
+        usageCounts={parameterUsageCounts}
+        onCreateFormChange={setParameterCreateForm}
+        onEditFormChange={(form) =>
+          selectedParameter &&
+          setParameterEditDraft({ parameterId: selectedParameter.id, form })
+        }
+        onSelectParameter={(parameterId) => {
+          setSelectedParameterId(parameterId);
+          setParameterEditDraft(undefined);
+        }}
+        onCreateParameter={() => onCreateParameter(parameterCreateForm)}
+        onApplyParameterEdit={applyParameterEdit}
+        onDeleteParameter={onDeleteParameter}
+      />
 
       {sketches.length === 0 ? (
         <p className="empty-state compact">No sketches</p>
@@ -522,6 +734,48 @@ export function SketchPanel({
                         </button>
                       </div>
                     </div>
+                  )}
+                  {selectedEntity && (
+                    <SketchDimensionControls
+                      disabled={disabled}
+                      entity={selectedEntity}
+                      dimensions={selectedEntityDimensions}
+                      availableTargets={availableDimensionTargets}
+                      createTarget={effectiveDimensionCreateTarget}
+                      createForm={effectiveDimensionCreateForm}
+                      selectedDimension={selectedDimension}
+                      selectedDimensionId={selectedDimension?.id}
+                      editForm={dimensionEditForm}
+                      parameterBindingOptions={parameterBindingOptions}
+                      parameters={parameters}
+                      onCreateTargetChange={setDimensionCreateTarget}
+                      onCreateFormChange={(form) => {
+                        if (
+                          effectiveDimensionCreateTarget &&
+                          !dimensionCreateTarget
+                        ) {
+                          setDimensionCreateTarget(
+                            effectiveDimensionCreateTarget
+                          );
+                        }
+
+                        setDimensionCreateForm(form);
+                      }}
+                      onSelectDimension={(dimensionId) => {
+                        setSelectedDimensionId(dimensionId);
+                        setDimensionEditDraft(undefined);
+                      }}
+                      onEditFormChange={(form) =>
+                        selectedDimension &&
+                        setDimensionEditDraft({
+                          dimensionId: selectedDimension.id,
+                          form
+                        })
+                      }
+                      onCreateDimension={createDimension}
+                      onApplyDimensionEdit={applyDimensionEdit}
+                      onDeleteDimension={onDeleteDimension}
+                    />
                   )}
                 </section>
               )}
@@ -770,6 +1024,516 @@ export function SketchPanel({
   );
 }
 
+function ParameterControls({
+  disabled,
+  parameters,
+  selectedParameter,
+  selectedParameterId,
+  createForm,
+  editForm,
+  usageCounts,
+  onCreateFormChange,
+  onEditFormChange,
+  onSelectParameter,
+  onCreateParameter,
+  onApplyParameterEdit,
+  onDeleteParameter
+}: {
+  readonly disabled: boolean;
+  readonly parameters: readonly CadParameterSnapshot[];
+  readonly selectedParameter: CadParameterSnapshot | undefined;
+  readonly selectedParameterId: string | undefined;
+  readonly createForm: ParameterCreateForm;
+  readonly editForm: ParameterEditForm;
+  readonly usageCounts: ReadonlyMap<string, number>;
+  readonly onCreateFormChange: (form: ParameterCreateForm) => void;
+  readonly onEditFormChange: (form: ParameterEditForm) => void;
+  readonly onSelectParameter: (parameterId: string | undefined) => void;
+  readonly onCreateParameter: () => void;
+  readonly onApplyParameterEdit: () => void;
+  readonly onDeleteParameter: (parameterId: string) => void;
+}) {
+  const selectedUsageCount = selectedParameter
+    ? (usageCounts.get(selectedParameter.id) ?? 0)
+    : 0;
+
+  return (
+    <details className="workflow-section">
+      <summary>Parameters ({parameters.length})</summary>
+      <div className="field-grid two">
+        <label>
+          Name
+          <input
+            type="text"
+            value={createForm.name}
+            disabled={disabled}
+            onChange={(event) =>
+              onCreateFormChange({
+                ...createForm,
+                name: event.currentTarget.value
+              })
+            }
+          />
+        </label>
+        <NumberField
+          disabled={disabled}
+          label="Value"
+          value={createForm.value}
+          onChange={(value) => onCreateFormChange({ ...createForm, value })}
+        />
+      </div>
+      <details className="advanced-options compact">
+        <summary>Parameter details</summary>
+        <div className="field-grid two">
+          <label>
+            Optional ID
+            <input
+              type="text"
+              value={createForm.id}
+              disabled={disabled}
+              onChange={(event) =>
+                onCreateFormChange({
+                  ...createForm,
+                  id: event.currentTarget.value
+                })
+              }
+            />
+          </label>
+          <label>
+            Description
+            <input
+              type="text"
+              value={createForm.description}
+              disabled={disabled}
+              onChange={(event) =>
+                onCreateFormChange({
+                  ...createForm,
+                  description: event.currentTarget.value
+                })
+              }
+            />
+          </label>
+        </div>
+      </details>
+      <div className="button-row">
+        <button type="button" disabled={disabled} onClick={onCreateParameter}>
+          Create parameter
+        </button>
+      </div>
+
+      {parameters.length === 0 ? (
+        <p className="empty-state compact">No parameters</p>
+      ) : (
+        <div className="parameter-editor">
+          <label>
+            Edit parameter
+            <select
+              value={selectedParameterId ?? ""}
+              disabled={disabled}
+              onChange={(event) => onSelectParameter(event.currentTarget.value)}
+            >
+              {parameters.map((parameter) => (
+                <option key={parameter.id} value={parameter.id}>
+                  {parameter.name} / {parameter.value}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedParameter && (
+            <>
+              <div className="field-grid two">
+                <label>
+                  Name
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onEditFormChange({
+                        ...editForm,
+                        name: event.currentTarget.value
+                      })
+                    }
+                  />
+                </label>
+                <NumberField
+                  disabled={disabled}
+                  label="Value"
+                  value={editForm.value}
+                  onChange={(value) => onEditFormChange({ ...editForm, value })}
+                />
+              </div>
+              <details className="advanced-options compact">
+                <summary>Description</summary>
+                <input
+                  type="text"
+                  value={editForm.description}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onEditFormChange({
+                      ...editForm,
+                      description: event.currentTarget.value
+                    })
+                  }
+                />
+              </details>
+              {selectedUsageCount > 0 && (
+                <p className="project-message compact">
+                  Used by {selectedUsageCount} driving dimension
+                  {selectedUsageCount === 1 ? "" : "s"}.
+                </p>
+              )}
+              <div className="button-row compact">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={onApplyParameterEdit}
+                >
+                  Apply parameter
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={disabled || selectedUsageCount > 0}
+                  onClick={() => onDeleteParameter(selectedParameter.id)}
+                >
+                  Delete unused
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </details>
+  );
+}
+
+function SketchDimensionControls({
+  disabled,
+  entity,
+  dimensions,
+  availableTargets,
+  createTarget,
+  createForm,
+  selectedDimension,
+  selectedDimensionId,
+  editForm,
+  parameterBindingOptions,
+  parameters,
+  onCreateTargetChange,
+  onCreateFormChange,
+  onSelectDimension,
+  onEditFormChange,
+  onCreateDimension,
+  onApplyDimensionEdit,
+  onDeleteDimension
+}: {
+  readonly disabled: boolean;
+  readonly entity: SketchEntitySnapshot;
+  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly availableTargets: readonly {
+    readonly target: SketchDimensionTarget;
+    readonly label: string;
+    readonly currentValue: number;
+  }[];
+  readonly createTarget: SketchDimensionTarget | undefined;
+  readonly createForm: SketchDimensionForm;
+  readonly selectedDimension: SketchDimensionEntry | undefined;
+  readonly selectedDimensionId: string | undefined;
+  readonly editForm: SketchDimensionForm;
+  readonly parameterBindingOptions: readonly {
+    readonly parameterId: string;
+    readonly label: string;
+  }[];
+  readonly parameters: readonly CadParameterSnapshot[];
+  readonly onCreateTargetChange: (target: SketchDimensionTarget) => void;
+  readonly onCreateFormChange: (form: SketchDimensionForm) => void;
+  readonly onSelectDimension: (dimensionId: string | undefined) => void;
+  readonly onEditFormChange: (form: SketchDimensionForm) => void;
+  readonly onCreateDimension: () => void;
+  readonly onApplyDimensionEdit: () => void;
+  readonly onDeleteDimension: (dimensionId: string) => void;
+}) {
+  const supportsDimensions =
+    entity.kind === "rectangle" || entity.kind === "circle";
+
+  if (!supportsDimensions) {
+    return (
+      <section className="entity-editor" aria-label="Driving dimensions">
+        <div className="command-card-heading">
+          <h3>Driving dimensions</h3>
+        </div>
+        <p className="empty-state compact">
+          Point and line dimensions are not supported yet.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="entity-editor" aria-label="Driving dimensions">
+      <div className="command-card-heading">
+        <h3>Driving dimensions</h3>
+        <span>{dimensions.length}</span>
+      </div>
+
+      {availableTargets.length > 0 ? (
+        <div className="dimension-create-row">
+          <div className="field-grid two">
+            <label>
+              Target
+              <select
+                value={targetToValue(createTarget)}
+                disabled={disabled}
+                onChange={(event) => {
+                  const next = availableTargets.find(
+                    (option) =>
+                      targetToValue(option.target) === event.currentTarget.value
+                  );
+
+                  if (next) {
+                    onCreateTargetChange(next.target);
+                    onCreateFormChange({
+                      ...createForm,
+                      name: next.label,
+                      value: next.currentValue
+                    });
+                  }
+                }}
+              >
+                {availableTargets.map((option) => (
+                  <option
+                    key={targetToValue(option.target)}
+                    value={targetToValue(option.target)}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <DimensionValueSourceFields
+              disabled={disabled}
+              form={createForm}
+              parameterBindingOptions={parameterBindingOptions}
+              onChange={onCreateFormChange}
+            />
+          </div>
+          <details className="advanced-options compact">
+            <summary>Dimension details</summary>
+            <div className="field-grid two">
+              <label>
+                Name
+                <input
+                  type="text"
+                  value={createForm.name}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onCreateFormChange({
+                      ...createForm,
+                      name: event.currentTarget.value
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Optional ID
+                <input
+                  type="text"
+                  value={createForm.id}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onCreateFormChange({
+                      ...createForm,
+                      id: event.currentTarget.value
+                    })
+                  }
+                />
+              </label>
+            </div>
+          </details>
+          <div className="button-row compact">
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                !createTarget ||
+                (createForm.valueSourceType === "parameter" &&
+                  parameterBindingOptions.length === 0)
+              }
+              onClick={onCreateDimension}
+            >
+              Create dimension
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="project-message compact">
+          Supported targets for this entity already have driving dimensions.
+        </p>
+      )}
+
+      {dimensions.length > 0 && (
+        <div className="dimension-editor">
+          <label>
+            Edit dimension
+            <select
+              value={selectedDimensionId ?? ""}
+              disabled={disabled}
+              onChange={(event) => onSelectDimension(event.currentTarget.value)}
+            >
+              {dimensions.map((dimension) => (
+                <option key={dimension.id} value={dimension.id}>
+                  {dimension.name} /{" "}
+                  {getSketchDimensionTargetLabel(dimension.target)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedDimension && (
+            <>
+              <div className="readonly-field">
+                <span>Current</span>
+                <strong>
+                  {getSketchDimensionTargetLabel(selectedDimension.target)} /{" "}
+                  {formatSketchDimensionValueSource(
+                    selectedDimension,
+                    parameters
+                  )}
+                </strong>
+              </div>
+              <p
+                className={
+                  selectedDimension.status === "healthy"
+                    ? "project-message compact"
+                    : "error-text"
+                }
+              >
+                {formatSketchDimensionStatus(selectedDimension)}
+              </p>
+              <div className="field-grid two">
+                <label>
+                  Name
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      onEditFormChange({
+                        ...editForm,
+                        name: event.currentTarget.value
+                      })
+                    }
+                  />
+                </label>
+                <DimensionValueSourceFields
+                  disabled={disabled}
+                  form={editForm}
+                  parameterBindingOptions={parameterBindingOptions}
+                  onChange={onEditFormChange}
+                />
+              </div>
+              <div className="button-row compact">
+                <button
+                  type="button"
+                  disabled={
+                    disabled ||
+                    (editForm.valueSourceType === "parameter" &&
+                      parameterBindingOptions.length === 0)
+                  }
+                  onClick={onApplyDimensionEdit}
+                >
+                  Apply dimension
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={disabled}
+                  onClick={() => onDeleteDimension(selectedDimension.id)}
+                >
+                  Delete dimension
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DimensionValueSourceFields({
+  disabled,
+  form,
+  parameterBindingOptions,
+  onChange
+}: {
+  readonly disabled: boolean;
+  readonly form: SketchDimensionForm;
+  readonly parameterBindingOptions: readonly {
+    readonly parameterId: string;
+    readonly label: string;
+  }[];
+  readonly onChange: (form: SketchDimensionForm) => void;
+}) {
+  return (
+    <div className="dimension-value-source">
+      <label>
+        Source
+        <select
+          value={form.valueSourceType}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({
+              ...form,
+              valueSourceType: event.currentTarget
+                .value as SketchDimensionForm["valueSourceType"],
+              parameterId:
+                event.currentTarget.value === "parameter"
+                  ? form.parameterId ||
+                    parameterBindingOptions[0]?.parameterId ||
+                    ""
+                  : form.parameterId
+            })
+          }
+        >
+          <option value="literal">Literal</option>
+          <option
+            value="parameter"
+            disabled={parameterBindingOptions.length === 0}
+          >
+            Parameter
+          </option>
+        </select>
+      </label>
+      {form.valueSourceType === "parameter" ? (
+        <label>
+          Parameter
+          <select
+            value={form.parameterId}
+            disabled={disabled || parameterBindingOptions.length === 0}
+            onChange={(event) =>
+              onChange({ ...form, parameterId: event.currentTarget.value })
+            }
+          >
+            {parameterBindingOptions.map((option) => (
+              <option key={option.parameterId} value={option.parameterId}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <NumberField
+          disabled={disabled}
+          label="Value"
+          value={form.value}
+          onChange={(value) => onChange({ ...form, value })}
+        />
+      )}
+    </div>
+  );
+}
+
 function EntityEditor({
   disabled,
   canCancel,
@@ -919,6 +1683,42 @@ function EntityEditor({
       </div>
     </section>
   );
+}
+
+function parameterToEditForm(
+  parameter: CadParameterSnapshot | undefined
+): ParameterEditForm {
+  return {
+    name: parameter?.name ?? "",
+    value: parameter?.value ?? 1,
+    description: parameter?.description ?? ""
+  };
+}
+
+function sketchDimensionToForm(
+  dimension: SketchDimensionEntry | undefined
+): SketchDimensionForm {
+  if (!dimension) {
+    return defaultSketchDimensionForm;
+  }
+
+  return {
+    id: "",
+    name: dimension.name,
+    valueSourceType: dimension.valueSource.type,
+    value:
+      dimension.valueSource.type === "literal"
+        ? dimension.valueSource.value
+        : (dimension.effectiveValue ?? 1),
+    parameterId:
+      dimension.valueSource.type === "parameter"
+        ? dimension.valueSource.parameterId
+        : ""
+  };
+}
+
+function targetToValue(target: SketchDimensionTarget | undefined): string {
+  return target ? `${target.entityKind}:${target.role}` : "";
 }
 
 function NumberField({

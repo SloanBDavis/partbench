@@ -4,7 +4,9 @@ import {
   buildBatch,
   buildCreateBoxOp,
   buildCreateConeOp,
+  buildCreateParameterOp,
   buildCreateSphereOp,
+  buildCreateSketchDimensionOp,
   buildCreateSketchOp,
   buildCreateTorusOp,
   buildAddSketchCircleOp,
@@ -15,17 +17,25 @@ import {
   buildFeatureExtrudeOp,
   buildFeatureUpdateExtrudeOp,
   buildDeleteNamedReferenceOp,
+  buildDeleteParameterOp,
+  buildDeleteSketchDimensionOp,
   buildNameGeneratedReferenceOp,
+  buildParameterEditOps,
   buildCreateSketchOnFaceOp,
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
   buildDeleteSketchOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
+  buildRenameParameterOp,
   buildRenameSketchOp,
+  buildRenameSketchDimensionOp,
+  buildSketchDimensionEditOps,
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
+  buildUpdateParameterOp,
+  buildUpdateSketchDimensionOp,
   buildUpdateSketchEntityOp,
   buildUpdateSphereDimensionsOp,
   buildUpdateTorusDimensionsOp,
@@ -275,6 +285,175 @@ describe("cad command builders", () => {
       sketchId: "sketch_1",
       entityId: "entity_1"
     });
+  });
+
+  it("builds parameter commands and edit batches", () => {
+    expect(
+      buildCreateParameterOp({
+        id: " p_width ",
+        name: " Width ",
+        value: 12,
+        description: " Main width "
+      })
+    ).toEqual({
+      op: "parameter.create",
+      id: "p_width",
+      name: "Width",
+      value: 12,
+      description: "Main width"
+    });
+
+    expect(
+      buildCreateParameterOp({
+        id: "",
+        name: "Radius",
+        value: 3,
+        description: "   "
+      })
+    ).toEqual({
+      op: "parameter.create",
+      id: undefined,
+      name: "Radius",
+      value: 3
+    });
+
+    expect(
+      buildUpdateParameterOp("p_width", {
+        name: "Ignored by update",
+        value: 14,
+        description: " Updated "
+      })
+    ).toEqual({
+      op: "parameter.update",
+      id: "p_width",
+      value: 14,
+      description: "Updated"
+    });
+    expect(buildRenameParameterOp("p_width", " Plate width ")).toEqual({
+      op: "parameter.rename",
+      id: "p_width",
+      name: "Plate width"
+    });
+    expect(buildDeleteParameterOp("p_width")).toEqual({
+      op: "parameter.delete",
+      id: "p_width"
+    });
+    expect(
+      buildParameterEditOps(
+        { id: "p_width", name: "Width", value: 12 },
+        { name: "Plate width", value: 14, description: "" }
+      )
+    ).toEqual([
+      {
+        op: "parameter.rename",
+        id: "p_width",
+        name: "Plate width"
+      },
+      {
+        op: "parameter.update",
+        id: "p_width",
+        value: 14
+      }
+    ]);
+  });
+
+  it("builds sketch dimension commands and edit batches", () => {
+    const widthTarget = {
+      entityKind: "rectangle" as const,
+      role: "width" as const
+    };
+
+    expect(
+      buildCreateSketchDimensionOp("sketch_1", "rect_1", widthTarget, {
+        id: " dim_width ",
+        name: " Width ",
+        valueSourceType: "literal",
+        value: 8,
+        parameterId: ""
+      })
+    ).toEqual({
+      op: "sketch.dimension.create",
+      id: "dim_width",
+      name: "Width",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: widthTarget,
+      value: 8
+    });
+
+    expect(
+      buildCreateSketchDimensionOp("sketch_1", "rect_1", widthTarget, {
+        id: "",
+        name: "Width",
+        valueSourceType: "parameter",
+        value: 8,
+        parameterId: " p_width "
+      })
+    ).toEqual({
+      op: "sketch.dimension.create",
+      id: undefined,
+      name: "Width",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: widthTarget,
+      parameterId: "p_width"
+    });
+
+    expect(
+      buildUpdateSketchDimensionOp("dim_width", {
+        id: "",
+        name: "Width",
+        valueSourceType: "parameter",
+        value: 8,
+        parameterId: " p_width "
+      })
+    ).toEqual({
+      op: "sketch.dimension.update",
+      id: "dim_width",
+      parameterId: "p_width"
+    });
+    expect(buildRenameSketchDimensionOp("dim_width", " Plate width ")).toEqual({
+      op: "sketch.dimension.rename",
+      id: "dim_width",
+      name: "Plate width"
+    });
+    expect(buildDeleteSketchDimensionOp("dim_width")).toEqual({
+      op: "sketch.dimension.delete",
+      id: "dim_width"
+    });
+    expect(
+      buildSketchDimensionEditOps(
+        {
+          id: "dim_width",
+          name: "Width",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: widthTarget,
+          valueSource: { type: "literal", value: 8 },
+          status: "healthy",
+          issues: [],
+          effectiveValue: 8
+        },
+        {
+          id: "",
+          name: "Plate width",
+          valueSourceType: "parameter",
+          value: 8,
+          parameterId: "p_width"
+        }
+      )
+    ).toEqual([
+      {
+        op: "sketch.dimension.rename",
+        id: "dim_width",
+        name: "Plate width"
+      },
+      {
+        op: "sketch.dimension.update",
+        id: "dim_width",
+        parameterId: "p_width"
+      }
+    ]);
   });
 
   it("builds sketch extrude commands with explicit side", () => {
