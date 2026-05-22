@@ -1116,12 +1116,9 @@ export function App() {
     <main className="app-shell">
       <header className="app-toolbar">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            WC
-          </div>
+          <img className="brand-mark" src="/favicon.svg" alt="" aria-hidden />
           <div className="brand-copy">
             <h1>Partbench</h1>
-            <span>V2 feature workspace</span>
           </div>
         </div>
         <div className="toolbar-actions" aria-label="Command controls">

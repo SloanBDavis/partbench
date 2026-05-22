@@ -85,6 +85,8 @@ export function StructurePanel({
     health
   });
   const summaryHealth = formatHealthStatus(summary.status);
+  const shouldShowSummaryHealth =
+    summary.status !== "healthy" || summary.issueCount > 0;
 
   return (
     <aside className="object-tree model-browser" aria-label="Model structure">
@@ -96,16 +98,19 @@ export function StructurePanel({
             {summary.generatedBodyCount} bodies
           </small>
         </div>
-        <span
-          className={`health-pill ${summaryHealth.className}`}
-          title={
-            summary.issueCount > 0
-              ? `${summary.issueCount} dependency issues`
-              : "No dependency issues"
-          }
-        >
-          {summaryHealth.label}
-        </span>
+        {shouldShowSummaryHealth && (
+          <span
+            className={`health-text ${summaryHealth.className}`}
+            title={
+              summary.issueCount > 0
+                ? `${summary.issueCount} dependency issues`
+                : summaryHealth.label
+            }
+          >
+            {summaryHealth.label}
+            {summary.issueCount > 0 ? ` · ${summary.issueCount}` : ""}
+          </span>
+        )}
       </div>
 
       <div className="structure-browser-sections">
@@ -376,14 +381,14 @@ function HealthStatus({
 }: {
   readonly status: ReturnType<typeof getFeatureHealthStatus>;
 }) {
-  if (!status) {
+  if (!status || status === "healthy") {
     return null;
   }
 
   const display = formatHealthStatus(status);
 
   return (
-    <small className={`health-pill ${display.className}`}>
+    <small className={`health-text ${display.className}`}>
       {display.label}
     </small>
   );
