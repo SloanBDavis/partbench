@@ -21,11 +21,12 @@ import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getSketchEntityOptionLabel,
   isExtrudableSketchEntity,
-  type CutTargetBodyOption
+  type BooleanTargetBodyOption
 } from "../sketchPanelUi";
 import {
   defaultSketchEntityForm,
@@ -40,7 +41,8 @@ export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
-  readonly cutTargetBodies?: readonly CutTargetBodyOption[];
+  readonly addTargetBodies?: readonly BooleanTargetBodyOption[];
+  readonly cutTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly focusedSketchId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -81,6 +83,7 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
 export function SketchPanel({
   disabled,
   sketches,
+  addTargetBodies = [],
   cutTargetBodies = [],
   displayStatuses,
   focusedSketchId,
@@ -172,14 +175,25 @@ export function SketchPanel({
   const selectedExtrudeEntity = isExtrudableSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
+  const addStatus = getAddOperationStatus(
+    selectedExtrudeEntity,
+    addTargetBodies
+  );
   const cutStatus = getCutOperationStatus(
     selectedExtrudeEntity,
     cutTargetBodies
   );
+  const canCreateAdd = addStatus.available;
   const canCreateCut = cutStatus.available;
-  const selectedCutTarget = cutTargetBodies.find(
+  const activeTargetBodies =
+    extrudeForm.operationMode === "add" ? addTargetBodies : cutTargetBodies;
+  const selectedBooleanTarget = activeTargetBodies.find(
     (body) => body.bodyId === extrudeForm.targetBodyId
   );
+  const booleanStatus =
+    extrudeForm.operationMode === "add" ? addStatus : cutStatus;
+  const canCreateBoolean =
+    extrudeForm.operationMode === "add" ? canCreateAdd : canCreateCut;
   const shouldShowEntityEditor =
     Boolean(editingEntityId) ||
     isAddingEntity ||
@@ -591,25 +605,42 @@ export function SketchPanel({
                                 ...extrudeForm,
                                 operationMode,
                                 targetBodyId:
-                                  operationMode === "cut"
-                                    ? (extrudeForm.targetBodyId ??
-                                      cutTargetBodies[0]?.bodyId)
-                                    : undefined
+                                  operationMode === "add"
+                                    ? addTargetBodies.some(
+                                        (body) =>
+                                          body.bodyId ===
+                                          extrudeForm.targetBodyId
+                                      )
+                                      ? extrudeForm.targetBodyId
+                                      : addTargetBodies[0]?.bodyId
+                                    : operationMode === "cut"
+                                      ? cutTargetBodies.some(
+                                          (body) =>
+                                            body.bodyId ===
+                                            extrudeForm.targetBodyId
+                                        )
+                                        ? extrudeForm.targetBodyId
+                                        : cutTargetBodies[0]?.bodyId
+                                      : undefined
                               });
                             }}
                           >
                             <option value="newBody">New body</option>
+                            <option value="add" disabled={!canCreateAdd}>
+                              Add to body
+                            </option>
                             <option value="cut" disabled={!canCreateCut}>
-                              Cut existing body
+                              Cut body
                             </option>
                           </select>
                         </label>
-                        {extrudeForm.operationMode === "cut" ? (
+                        {extrudeForm.operationMode === "add" ||
+                        extrudeForm.operationMode === "cut" ? (
                           <label>
                             Target body
                             <select
                               value={extrudeForm.targetBodyId ?? ""}
-                              disabled={disabled || !canCreateCut}
+                              disabled={disabled || !canCreateBoolean}
                               onChange={(event) =>
                                 setExtrudeForm({
                                   ...extrudeForm,
@@ -617,7 +648,7 @@ export function SketchPanel({
                                 })
                               }
                             >
-                              {cutTargetBodies.map((body) => (
+                              {activeTargetBodies.map((body) => (
                                 <option key={body.bodyId} value={body.bodyId}>
                                   {body.label}
                                 </option>
@@ -631,20 +662,31 @@ export function SketchPanel({
                           </div>
                         )}
                       </div>
-                      {extrudeForm.operationMode === "cut" &&
-                        selectedCutTarget && (
+                      {(extrudeForm.operationMode === "add" ||
+                        extrudeForm.operationMode === "cut") &&
+                        selectedBooleanTarget && (
                           <div className="readonly-field">
-                            <span>Cut target</span>
-                            <strong>{selectedCutTarget.detail}</strong>
+                            <span>
+                              {extrudeForm.operationMode === "add"
+                                ? "Add target"
+                                : "Cut target"}
+                            </span>
+                            <strong>{selectedBooleanTarget.detail}</strong>
                           </div>
                         )}
-                      {(!cutStatus.available ||
-                        extrudeForm.operationMode === "cut") && (
+                      {((extrudeForm.operationMode === "add" &&
+                        (!addStatus.available || selectedBooleanTarget)) ||
+                        (extrudeForm.operationMode === "cut" &&
+                          (!cutStatus.available || selectedBooleanTarget)) ||
+                        (!addStatus.available && !cutStatus.available)) && (
                         <p className="project-message compact">
-                          {extrudeForm.operationMode === "cut" &&
-                          selectedCutTarget
-                            ? "Creates a cut result body. The target stays in structure as consumed."
-                            : cutStatus.message}
+                          {extrudeForm.operationMode === "add" &&
+                          selectedBooleanTarget
+                            ? "Creates an add/fuse result body. The target stays in structure as consumed."
+                            : extrudeForm.operationMode === "cut" &&
+                                selectedBooleanTarget
+                              ? "Creates a cut result body. The target stays in structure as consumed."
+                              : booleanStatus.message}
                         </p>
                       )}
                       <details className="advanced-options">
@@ -698,7 +740,9 @@ export function SketchPanel({
                         type="button"
                         disabled={
                           disabled ||
-                          (extrudeForm.operationMode === "cut" && !canCreateCut)
+                          ((extrudeForm.operationMode === "add" ||
+                            extrudeForm.operationMode === "cut") &&
+                            !canCreateBoolean)
                         }
                         onClick={() =>
                           onExtrudeEntity(

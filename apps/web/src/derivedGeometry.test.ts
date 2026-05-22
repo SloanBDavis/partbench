@@ -533,6 +533,67 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives add result sources from active rectangle target and tool extrudes", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_add_1",
+      bodyId: "body_add_1",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "add"
+    });
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine)
+    );
+    const addSource = sources.find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_add_1"]);
+    expect(addSource).toMatchObject({
+      id: "body_add_1",
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+      tool: { id: "body_add_1", profile: { kind: "rectangle" } }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_add_1",
+        operation: "add",
+        target: expect.objectContaining({ depth: 3 }),
+        tool: expect.objectContaining({ depth: 1 })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_add_1",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("derives cut result sources from active circle target and rectangle tool extrudes", async () => {
     const engine = new CadEngine();
 
@@ -769,6 +830,77 @@ describe("derivedGeometry", () => {
     });
     expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
       "body_cut_1"
+    ]);
+  });
+
+  it("ignores stale worker results after add target source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "target" in input && input.target.profile.kind === "rectangle"
+        ? input.target.profile.width === 4
+          ? first.promise
+          : second.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_add_1",
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: createExtrudeSource("body_rect_1"),
+      tool: createExtrudeSource("body_add_1")
+    };
+    const editedSource: DerivedBooleanExtrudeGeometrySource = {
+      ...initialSource,
+      target: {
+        ...initialSource.target,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 8,
+          height: 2
+        }
+      }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "target" in input && input.target.profile.kind === "rectangle"
+          ? input.target.profile.width
+          : null
+      )
+    ).toEqual([4, 8]);
+
+    first.resolve(createResult("body_add_1", createMesh("stale_add")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_add_1", createMesh("body_add_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_add_1"
     ]);
   });
 
@@ -1330,11 +1462,25 @@ describe("derivedGeometry", () => {
     ]);
 
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Boolean cut display currently supports rectangle/circle target and rectangle tool extrudes only."
+      "Boolean display currently supports rectangle tool extrudes only."
+    );
+
+    service.reconcile([
+      {
+        id: "body_add_unsupported",
+        kind: "extrudeBoolean",
+        operation: "add",
+        target: createCircleExtrudeSource("body_circle_target"),
+        tool: createExtrudeSource("body_add_tool")
+      }
+    ]);
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Boolean add display currently supports rectangle target extrudes only."
     );
   });
 
-  it("labels cut mesh errors without implying primitive fallback", async () => {
+  it("labels boolean mesh errors without implying primitive fallback", async () => {
     const snapshots: DerivedGeometrySnapshot[] = [];
     const service = new DerivedGeometryService({
       runtime: createRuntime(async () => {
@@ -1355,7 +1501,7 @@ describe("derivedGeometry", () => {
     await flushPromises();
 
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
-      "Cut mesh error"
+      "Boolean mesh error"
     );
   });
 

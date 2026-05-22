@@ -305,14 +305,13 @@ one active authored rectangle or circle `newBody` target body. `add` supports a
 rectangle sketch-extrude tool fusing with one active authored rectangle
 `newBody` target body in the authoritative command model. Boolean records
 require an existing authored `targetBodyId` and reject primitive-derived,
-consumed, circle-tool, circle-target add, or otherwise unsupported targets. Cut
-result bodies are rebuilt as derived geometry through the OCCT geometry-worker
-path where the app/runtime has that path enabled. Add result bodies currently
-store source intent only; derived-geometry/UI wiring for add is a later slice.
-Exact B-rep checkpoints and generated topology maps are not persisted. This
-slice does not include a sketch solver, arbitrary profile recognition, broad
-topology mutation features, general boolean join, broad feature edit commands,
-or exact B-rep checkpoint persistence.
+consumed, circle-tool, circle-target add, or otherwise unsupported targets.
+Boolean result bodies for the supported add/cut slices are rebuilt as derived
+geometry through the OCCT geometry-worker path where the app/runtime has that
+path enabled. Exact B-rep checkpoints and generated topology maps are not
+persisted. This slice does not include a sketch solver, arbitrary profile
+recognition, broad topology mutation features, general boolean join, broad
+feature edit commands, or exact B-rep checkpoint persistence.
 Authored
 sketch-extrude features can be removed with `feature.delete` and can have depth
 and side updated with `feature.updateExtrude`. Missing side values in older

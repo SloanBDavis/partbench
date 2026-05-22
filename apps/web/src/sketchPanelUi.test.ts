@@ -7,7 +7,9 @@ import type {
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createAddTargetBodyOptions,
   createCutTargetBodyOptions,
+  getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getSketchEntityOptionLabel,
@@ -114,6 +116,29 @@ describe("sketch panel UI helpers", () => {
     ).toBe(false);
   });
 
+  it("offers active rectangle newBody authored bodies as add targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
+      createExtrudeFeature("feat_add", "body_add", "rectangle", "add")
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect"),
+      createBody("body_circle", "feat_circle"),
+      createBody("body_add", "feat_add")
+    ];
+
+    expect(createAddTargetBodyOptions(bodies, features, "body_rect")).toEqual([
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        profileKind: "rectangle",
+        label: "body_rect / feat_rect",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ]);
+  });
+
   it("offers active rectangle and circle newBody authored bodies as cut targets", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
@@ -195,6 +220,49 @@ describe("sketch panel UI helpers", () => {
       message: "1 eligible cut target body."
     });
   });
+
+  it("explains add availability without requiring React state", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const targets = [
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        profileKind: "rectangle" as const,
+        label: "body_rect / feat_rect",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ];
+
+    expect(getAddOperationStatus(undefined, targets)).toEqual({
+      available: false,
+      message: "Select a rectangle profile to add to an existing body."
+    });
+    expect(getAddOperationStatus(circle, targets)).toEqual({
+      available: false,
+      message:
+        "Add currently supports rectangle profiles and rectangle targets only. This profile can still create a new body."
+    });
+    expect(getAddOperationStatus(rectangle, [])).toEqual({
+      available: false,
+      message: "Create an active rectangle new body before using Add to body."
+    });
+    expect(getAddOperationStatus(rectangle, targets)).toEqual({
+      available: true,
+      message: "1 eligible add target body."
+    });
+  });
 });
 
 function createSketch(
@@ -214,7 +282,7 @@ function createExtrudeFeature(
   id: string,
   bodyId: string,
   profileKind: "rectangle" | "circle",
-  operationMode: "newBody" | "cut"
+  operationMode: "newBody" | "add" | "cut"
 ): Extract<CadFeatureSummary, { kind: "extrude" }> {
   return {
     id,
@@ -227,7 +295,9 @@ function createExtrudeFeature(
     depth: 1,
     side: "positive",
     operationMode,
-    ...(operationMode === "cut" ? { targetBodyId: "body_rect" } : {}),
+    ...(operationMode === "add" || operationMode === "cut"
+      ? { targetBodyId: "body_rect" }
+      : {}),
     source: {
       type: "sketchEntity",
       sketchId: "sketch_1",

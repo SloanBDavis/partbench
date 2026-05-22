@@ -347,9 +347,9 @@ Implemented:
   the default standalone behavior. The first narrow `cut` slices are
   implemented for a rectangle sketch-extrude tool cutting one active authored
   rectangle or circle `newBody` target body. The first narrow `add` slice is
-  implemented in the authoritative command model for a rectangle tool fusing
-  with one active authored rectangle `newBody` target body; derived-geometry/UI
-  integration for add is intentionally separate. Circle-tool booleans,
+  implemented for a rectangle tool fusing with one active authored rectangle
+  `newBody` target body and rebuilds through the same derived-geometry/UI
+  boolean result path. Circle-tool booleans,
   circle-target add, and broader boolean cases fail with structured unsupported
   errors until boolean/topology behavior is scoped.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
@@ -511,9 +511,9 @@ as derived mesh/cache data through `geometry.booleanExtrudes`,
 `@web-cad/geometry-kernel`, `@web-cad/geometry-worker`, and
 `@web-cad/occt-wasm`. The authoritative cut scope is now rectangle tool against
 one active authored rectangle or circle `newBody` target body. Rectangle
-add/fuse with an active authored rectangle `newBody` target is now represented
-in the authoritative command model, but derived geometry and UI integration are
-still pending. Circle-tool booleans, circle-target add, and general booleans
+add/fuse with an active authored rectangle `newBody` target now rebuilds through
+the same derived mesh/cache path and is available through the existing extrude
+UI. Circle-tool booleans, circle-target add, and general booleans
 remain unsupported until source-model, topology/reference, and UX semantics are
 scoped.
 

@@ -141,14 +141,19 @@ describe("structure panel UI helpers", () => {
     expect(formatFeatureLine(createCutFeature(), "mm")).toBe(
       "cut body / rectangle / 2 mm / positive / target body_target"
     );
+    expect(formatExtrudeOperationMode("add")).toBe("add to body");
+    expect(formatFeatureLine(createAddFeature(), "mm")).toBe(
+      "add to body / rectangle / 2 mm / positive / target body_target"
+    );
   });
 
-  it("formats generated body roles for standalone, cut result, and consumed targets", () => {
+  it("formats generated body roles for standalone, boolean result, and consumed targets", () => {
     const standalone = createExtrudeBody("body_1", "feature_1");
     const consumed = createExtrudeBody("body_target", "feature_target", {
       consumedByFeatureId: "feature_cut"
     });
     const cutResult = createExtrudeBody("body_cut", "feature_cut");
+    const addResult = createExtrudeBody("body_add", "feature_add");
 
     expect(formatBodyRole(standalone, createExtrudeFeature())).toBe(
       "Generated body"
@@ -165,6 +170,10 @@ describe("structure panel UI helpers", () => {
     expect(formatBodyRole(cutResult, createCutFeature())).toBe("Cut result");
     expect(formatBodyStatusLine(cutResult, createCutFeature())).toBe(
       "Cuts body_target"
+    );
+    expect(formatBodyRole(addResult, createAddFeature())).toBe("Add result");
+    expect(formatBodyStatusLine(addResult, createAddFeature())).toBe(
+      "Adds to body_target"
     );
   });
 });
@@ -258,6 +267,17 @@ function createCutFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
     bodyId: "body_cut",
     depth: 2,
     operationMode: "cut",
+    targetBodyId: "body_target"
+  };
+}
+
+function createAddFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
+  return {
+    ...createExtrudeFeature(),
+    id: "feature_add",
+    bodyId: "body_add",
+    depth: 2,
+    operationMode: "add",
     targetBodyId: "body_target"
   };
 }

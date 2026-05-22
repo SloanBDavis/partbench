@@ -177,17 +177,16 @@ by constructing the target with `BRepPrimAPI_MakeCylinder` and the tool with
 path uses `BRepAlgoAPI_Fuse` for the geometry-only feasibility mesh. Circle
 target cut has been promoted into the narrow authoritative CADOps cut contract
 for a rectangle tool cutting one active authored circle `newBody` target.
-Rectangle add/fuse has been promoted into the authoritative command model for a
-rectangle tool fusing with one active authored rectangle `newBody` target, but
-derived-geometry/UI wiring for add is still pending. Generated references for
-boolean result bodies and broader boolean/topology behavior remain deliberately
-unsupported.
+Rectangle add/fuse has been promoted into the authoritative command model and
+derived-geometry/UI path for a rectangle tool fusing with one active authored
+rectangle `newBody` target. Generated references for boolean result bodies and
+broader boolean/topology behavior remain deliberately unsupported.
 
 Current geometry-only support matrix:
 
 | Operation | Target profile | Tool profile | Status |
 | --------- | -------------- | ------------ | ------ |
-| add       | rectangle      | rectangle    | Promoted in CADOps command model; derived-geometry/UI wiring pending |
+| add       | rectangle      | rectangle    | Promoted for the narrow CADOps add slice |
 | cut       | rectangle      | rectangle    | Promoted for the first narrow CADOps cut slice |
 | cut       | circle         | rectangle    | Promoted for the narrow CADOps circle-target cut slice |
 | add       | circle         | rectangle    | Unsupported |

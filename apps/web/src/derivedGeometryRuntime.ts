@@ -86,7 +86,7 @@ export interface DerivedGeometryBooleanExtrudeInputSource {
 
 export interface DerivedGeometryBooleanExtrudeInput {
   readonly id: string;
-  readonly operation: "cut";
+  readonly operation: "add" | "cut";
   readonly target: DerivedGeometryBooleanExtrudeInputSource;
   readonly tool: DerivedGeometryBooleanExtrudeInputSource;
 }

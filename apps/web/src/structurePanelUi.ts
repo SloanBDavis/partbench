@@ -151,7 +151,8 @@ export function formatFeatureLine(
   units: DocumentUnits
 ): string {
   const target =
-    feature.operationMode === "cut" && feature.targetBodyId
+    (feature.operationMode === "add" || feature.operationMode === "cut") &&
+    feature.targetBodyId
       ? ` / target ${feature.targetBodyId}`
       : "";
 
@@ -164,6 +165,10 @@ export function formatBodyRole(
 ): string {
   if (body.consumedByFeatureId) {
     return "Consumed target";
+  }
+
+  if (feature?.operationMode === "add") {
+    return "Add result";
   }
 
   if (feature?.operationMode === "cut") {
@@ -181,8 +186,13 @@ export function formatBodyStatusLine(
     return `Consumed by ${body.consumedByFeatureId}`;
   }
 
-  if (feature?.operationMode === "cut" && feature.targetBodyId) {
-    return `Cuts ${feature.targetBodyId}`;
+  if (
+    (feature?.operationMode === "add" || feature?.operationMode === "cut") &&
+    feature.targetBodyId
+  ) {
+    return feature.operationMode === "add"
+      ? `Adds to ${feature.targetBodyId}`
+      : `Cuts ${feature.targetBodyId}`;
   }
 
   return `Feature ${body.featureId}`;
@@ -200,6 +210,10 @@ export function formatExtrudeOperationMode(
 
   if (operationMode === "cut") {
     return "cut body";
+  }
+
+  if (operationMode === "add") {
+    return "add to body";
   }
 
   return operationMode;

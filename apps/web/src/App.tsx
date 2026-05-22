@@ -115,7 +115,10 @@ import {
   formatProjectJsonSummary,
   summarizeCadProject
 } from "./projectJson";
-import { createCutTargetBodyOptions } from "./sketchPanelUi";
+import {
+  createAddTargetBodyOptions,
+  createCutTargetBodyOptions
+} from "./sketchPanelUi";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -509,6 +512,15 @@ export function App() {
   const selectedBody = selectedId
     ? projectStructure.bodies.find((body) => body.id === selectedId)
     : undefined;
+  const addTargetBodyOptions = useMemo(
+    () =>
+      createAddTargetBodyOptions(
+        projectStructure.bodies,
+        projectStructure.features,
+        selectedBody?.id
+      ),
+    [projectStructure.bodies, projectStructure.features, selectedBody?.id]
+  );
   const cutTargetBodyOptions = useMemo(
     () =>
       createCutTargetBodyOptions(
@@ -1316,6 +1328,7 @@ export function App() {
                   key={focusedSketchId ?? "sketch-panel"}
                   disabled={commandPending}
                   sketches={sketches}
+                  addTargetBodies={addTargetBodyOptions}
                   cutTargetBodies={cutTargetBodyOptions}
                   displayStatuses={sketchDisplayState.statuses}
                   focusedSketchId={focusedSketchId}

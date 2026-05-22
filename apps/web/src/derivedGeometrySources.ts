@@ -62,7 +62,10 @@ export function createExtrudeDerivedGeometrySources(
   );
   const consumedBodyIds = new Set(
     extrudeFeatures
-      .filter((feature) => feature.operationMode === "cut")
+      .filter(
+        (feature) =>
+          feature.operationMode === "add" || feature.operationMode === "cut"
+      )
       .map((feature) => feature.targetBodyId)
       .filter((bodyId): bodyId is string => Boolean(bodyId))
   );
@@ -72,7 +75,7 @@ export function createExtrudeDerivedGeometrySources(
   )[] = [];
 
   for (const feature of extrudeFeatures) {
-    if (feature.operationMode === "cut") {
+    if (feature.operationMode === "add" || feature.operationMode === "cut") {
       const targetFeature = feature.targetBodyId
         ? featuresByBodyId.get(feature.targetBodyId)
         : undefined;
@@ -92,7 +95,7 @@ export function createExtrudeDerivedGeometrySources(
       sources.push({
         id: feature.bodyId,
         kind: "extrudeBoolean",
-        operation: "cut",
+        operation: feature.operationMode,
         ...(target && tool
           ? { target, tool }
           : {
@@ -185,8 +188,10 @@ function createBooleanPlacementError(
   tool: DerivedExtrudeGeometrySource | undefined
 ): { readonly placementError?: string } {
   if (!target || !tool) {
+    const operation = feature.operationMode === "add" ? "Add" : "Cut";
+
     return {
-      placementError: `Cut feature ${feature.id} cannot be displayed because its target or tool source is unavailable.`
+      placementError: `${operation} feature ${feature.id} cannot be displayed because its target or tool source is unavailable.`
     };
   }
 

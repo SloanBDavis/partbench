@@ -8,7 +8,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 
-export interface CutTargetBodyOption {
+export interface BooleanTargetBodyOption {
   readonly bodyId: string;
   readonly featureId: string;
   readonly profileKind: "rectangle" | "circle";
@@ -16,7 +16,7 @@ export interface CutTargetBodyOption {
   readonly detail: string;
 }
 
-export interface CutOperationStatus {
+export interface BooleanOperationStatus {
   readonly available: boolean;
   readonly message: string;
 }
@@ -86,11 +86,38 @@ export function isExtrudableSketchEntity(
   return entity?.kind === "rectangle" || entity?.kind === "circle";
 }
 
+export function createAddTargetBodyOptions(
+  bodies: readonly CadBodySnapshot[],
+  features: readonly CadFeatureSummary[],
+  preferredBodyId?: string
+): readonly BooleanTargetBodyOption[] {
+  return createBooleanTargetBodyOptions(
+    bodies,
+    features,
+    "add",
+    preferredBodyId
+  );
+}
+
 export function createCutTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
   preferredBodyId?: string
-): readonly CutTargetBodyOption[] {
+): readonly BooleanTargetBodyOption[] {
+  return createBooleanTargetBodyOptions(
+    bodies,
+    features,
+    "cut",
+    preferredBodyId
+  );
+}
+
+function createBooleanTargetBodyOptions(
+  bodies: readonly CadBodySnapshot[],
+  features: readonly CadFeatureSummary[],
+  operationMode: "add" | "cut",
+  preferredBodyId?: string
+): readonly BooleanTargetBodyOption[] {
   const options = bodies
     .filter(
       (body) =>
@@ -108,7 +135,7 @@ export function createCutTargetBodyOptions(
       if (
         !feature ||
         feature.operationMode !== "newBody" ||
-        !isSupportedCutTargetProfileKind(feature.profileKind)
+        !isSupportedTargetProfileKind(operationMode, feature.profileKind)
       ) {
         return [];
       }
@@ -141,10 +168,45 @@ export function createCutTargetBodyOptions(
   });
 }
 
+export function getAddOperationStatus(
+  entity: SketchEntitySnapshot | undefined,
+  addTargets: readonly BooleanTargetBodyOption[]
+): BooleanOperationStatus {
+  if (!entity) {
+    return {
+      available: false,
+      message: "Select a rectangle profile to add to an existing body."
+    };
+  }
+
+  if (entity.kind !== "rectangle") {
+    return {
+      available: false,
+      message:
+        "Add currently supports rectangle profiles and rectangle targets only. This profile can still create a new body."
+    };
+  }
+
+  if (addTargets.length === 0) {
+    return {
+      available: false,
+      message: "Create an active rectangle new body before using Add to body."
+    };
+  }
+
+  return {
+    available: true,
+    message:
+      addTargets.length === 1
+        ? "1 eligible add target body."
+        : `${addTargets.length} eligible add target bodies.`
+  };
+}
+
 export function getCutOperationStatus(
   entity: SketchEntitySnapshot | undefined,
-  cutTargets: readonly CutTargetBodyOption[]
-): CutOperationStatus {
+  cutTargets: readonly BooleanTargetBodyOption[]
+): BooleanOperationStatus {
   if (!entity) {
     return {
       available: false,
@@ -181,6 +243,21 @@ function isSupportedCutTargetProfileKind(
   profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
 ): boolean {
   return profileKind === "rectangle" || profileKind === "circle";
+}
+
+function isSupportedAddTargetProfileKind(
+  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
+): boolean {
+  return profileKind === "rectangle";
+}
+
+function isSupportedTargetProfileKind(
+  operationMode: "add" | "cut",
+  profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
+): boolean {
+  return operationMode === "add"
+    ? isSupportedAddTargetProfileKind(profileKind)
+    : isSupportedCutTargetProfileKind(profileKind);
 }
 
 function formatProfileKind(
