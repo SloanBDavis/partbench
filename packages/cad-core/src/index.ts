@@ -22,6 +22,7 @@ import type {
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
   CadQueryError,
+  CadQueryKind,
   CadQueryRequest,
   CadQueryResponse,
   CadSketchEntityRef,
@@ -554,7 +555,7 @@ export class CadEngine {
     if (!validation.ok) {
       return {
         ok: false,
-        mode: batch.mode,
+        mode: getBatchResponseMode(batch),
         error: validation.errors[0],
         errors: validation.errors,
         createdIds: [],
@@ -597,6 +598,12 @@ export class CadEngine {
   }
 
   executeQuery(request: CadQueryRequest): CadQueryResponse {
+    const requestError = validateQueryRequestEnvelope(request);
+
+    if (requestError) {
+      return requestError;
+    }
+
     switch (request.query.query) {
       case "project.summary": {
         const objects = [...this.#document.objects.values()].map(
@@ -1057,11 +1064,20 @@ export class CadEngine {
           transactions
         };
       }
+
+      default:
+        return createQueryErrorResponse(request, {
+          code: "UNKNOWN_QUERY",
+          message: `Unsupported query: ${String(
+            (request.query as { readonly query?: unknown }).query
+          )}.`
+        });
     }
   }
 
   validateBatch(batch: CadBatch): CadBatchValidationResult {
     try {
+      validateBatchEnvelope(batch);
       normalizeActorMetadata(batch.actor);
       normalizeAuditMetadata(batch.audit, batch.mode, batch.ops.length);
       this.#runOperations(batch.ops);
@@ -1666,18 +1682,60 @@ function applyOperation(
         dependentFeatures.length > 0
           ? assertExtrudableProfile(entity, opIndex, sketch.id, entity.id)
           : undefined;
+      const updatedFeatures =
+        dependentFeatures.length > 0 && profileKind
+          ? dependentFeatures.map((feature) => ({
+              ...feature,
+              profileKind
+            }))
+          : [];
+      const nextFeatures = new Map(state.features);
+      const updatedBodyIds = new Set<BodyId>();
+
+      for (const feature of updatedFeatures) {
+        nextFeatures.set(feature.id, feature);
+        updatedBodyIds.add(feature.bodyId);
+      }
+
+      for (const feature of updatedFeatures) {
+        assertSupportedExtrudeOperation(
+          { ...state, features: nextFeatures },
+          feature.operationMode,
+          feature.profileKind,
+          feature.targetBodyId,
+          opIndex,
+          feature.id
+        );
+      }
+
+      for (const feature of nextFeatures.values()) {
+        if (
+          feature.operationMode === "newBody" ||
+          !feature.targetBodyId ||
+          !updatedBodyIds.has(feature.targetBodyId) ||
+          updatedFeatures.some((updated) => updated.id === feature.id)
+        ) {
+          continue;
+        }
+
+        assertSupportedExtrudeOperation(
+          { ...state, features: nextFeatures },
+          feature.operationMode,
+          feature.profileKind,
+          feature.targetBodyId,
+          opIndex,
+          feature.id
+        );
+      }
+
       const entities = new Map(sketch.entities);
       entities.set(entity.id, entity);
       state.sketches.set(sketch.id, { ...sketch, entities });
       pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
 
-      if (dependentFeatures.length > 0 && profileKind) {
-        for (const feature of dependentFeatures) {
-          const updated: ExtrudeFeature = {
-            ...feature,
-            profileKind
-          };
-          state.features.set(feature.id, updated);
+      if (updatedFeatures.length > 0) {
+        for (const updated of updatedFeatures) {
+          state.features.set(updated.id, updated);
           pushFeatureModified(diff, featureRef(updated));
           pushBodyModified(diff, bodyRef(updated));
         }
@@ -1830,6 +1888,272 @@ function applyOperation(
       pushNamedReferenceDeleted(diff, reference);
       return;
     }
+
+    default:
+      const unknownOp = op as unknown;
+
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message: `Unsupported operation: ${
+          isRecord(unknownOp) ? String(unknownOp.op) : describeReceived(unknownOp)
+        }.`,
+        opIndex,
+        op:
+          isRecord(unknownOp) && typeof unknownOp.op === "string"
+            ? (unknownOp.op as CadOp["op"])
+            : undefined,
+        path: operationPath(opIndex, "op"),
+        expected: "supported CADOps operation",
+        received: isRecord(unknownOp)
+          ? describeReceived(unknownOp.op)
+          : describeReceived(unknownOp)
+      });
+  }
+}
+
+function validateBatchEnvelope(batch: CadBatch): void {
+  const value = batch as unknown;
+
+  if (!isRecord(value)) {
+    throwValidationError({
+      code: "INVALID_BATCH",
+      message: "CADOps batch must be an object.",
+      path: "$",
+      expected: "batch object",
+      received: describeReceived(value)
+    });
+  }
+
+  if (value.version !== "cadops.v1") {
+    throwValidationError({
+      code: "INVALID_CADOPS_VERSION",
+      message: "CADOps batch version must be cadops.v1.",
+      path: "$.version",
+      expected: "cadops.v1",
+      received: describeReceived(value.version)
+    });
+  }
+
+  if (value.mode !== "dryRun" && value.mode !== "commit") {
+    throwValidationError({
+      code: "INVALID_BATCH_MODE",
+      message: "CADOps batch mode must be dryRun or commit.",
+      path: "$.mode",
+      expected: "dryRun or commit",
+      received: describeReceived(value.mode)
+    });
+  }
+
+  if (!Array.isArray(value.ops)) {
+    throwValidationError({
+      code: "INVALID_BATCH",
+      message: "CADOps batch ops must be an array.",
+      path: "$.ops",
+      expected: "operation array",
+      received: describeReceived(value.ops)
+    });
+  }
+
+  for (const [index, op] of value.ops.entries()) {
+    if (
+      isRecord(op) &&
+      typeof op.op === "string" &&
+      isCadOperationKind(op.op)
+    ) {
+      continue;
+    }
+
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message: `Unsupported or malformed operation at index ${index}.`,
+      opIndex: index,
+      op:
+        isRecord(op) && typeof op.op === "string"
+          ? (op.op as CadOp["op"])
+          : undefined,
+      path: operationPath(index),
+      expected: "supported CADOps operation",
+      received: describeReceived(op)
+    });
+  }
+}
+
+function getBatchResponseMode(batch: CadBatch): CadBatch["mode"] {
+  const value = batch as unknown;
+
+  if (isRecord(value) && value.mode === "commit") {
+    return "commit";
+  }
+
+  return "dryRun";
+}
+
+function isCadOperationKind(value: string): boolean {
+  switch (value) {
+    case "document.updateUnits":
+    case "scene.createBox":
+    case "scene.createCylinder":
+    case "scene.createSphere":
+    case "scene.createCone":
+    case "scene.createTorus":
+    case "scene.deleteObject":
+    case "scene.updateTransform":
+    case "scene.updateBoxDimensions":
+    case "scene.updateCylinderDimensions":
+    case "scene.updateSphereDimensions":
+    case "scene.updateConeDimensions":
+    case "scene.updateTorusDimensions":
+    case "scene.renameObject":
+    case "sketch.create":
+    case "sketch.createOnFace":
+    case "sketch.rename":
+    case "sketch.delete":
+    case "sketch.addPoint":
+    case "sketch.addLine":
+    case "sketch.addRectangle":
+    case "sketch.addCircle":
+    case "sketch.updateEntity":
+    case "sketch.deleteEntity":
+    case "feature.extrude":
+    case "feature.delete":
+    case "feature.updateExtrude":
+    case "reference.nameGenerated":
+    case "reference.deleteName":
+      return true;
+  }
+
+  return false;
+}
+
+function validateQueryRequestEnvelope(
+  request: CadQueryRequest
+): CadQueryResponse | undefined {
+  const value = request as unknown;
+
+  if (!isRecord(value)) {
+    return createQueryErrorResponse(value, {
+      code: "INVALID_QUERY",
+      message: "CADOps query request must be an object."
+    });
+  }
+
+  if (value.version !== "cadops.v1") {
+    return createQueryErrorResponse(value, {
+      code: "INVALID_CADOPS_VERSION",
+      message: "CADOps query version must be cadops.v1."
+    });
+  }
+
+  if (!isRecord(value.query)) {
+    return createQueryErrorResponse(value, {
+      code: "INVALID_QUERY",
+      message: "CADOps query must be an object."
+    });
+  }
+
+  if (typeof value.query.query !== "string") {
+    return createQueryErrorResponse(value, {
+      code: "INVALID_QUERY",
+      message: "CADOps query kind must be a string."
+    });
+  }
+
+  if (!isCadQueryKind(value.query.query)) {
+    return createQueryErrorResponse(value, {
+      code: "UNKNOWN_QUERY",
+      message: `Unsupported query: ${value.query.query}.`
+    });
+  }
+
+  if (!isCadQuery(value.query)) {
+    return createQueryErrorResponse(value, {
+      code: "INVALID_QUERY",
+      message: `Malformed query payload for ${value.query.query}.`
+    });
+  }
+
+  return undefined;
+}
+
+function createQueryErrorResponse(
+  request: unknown,
+  error: CadQueryError
+): CadQueryResponse {
+  const query =
+    isRecord(request) &&
+    isRecord(request.query) &&
+    typeof request.query.query === "string" &&
+    isCadQueryKind(request.query.query)
+      ? request.query.query
+      : "unknown";
+  const cadOpsVersion =
+    isRecord(request) && typeof request.version === "string"
+      ? request.version
+      : "unknown";
+
+  return {
+    ok: false,
+    query,
+    cadOpsVersion,
+    error
+  };
+}
+
+function isCadQueryKind(value: string): value is CadQueryKind {
+  switch (value) {
+    case "project.summary":
+    case "project.features":
+    case "project.structure":
+    case "project.health":
+    case "project.sketches":
+    case "object.get":
+    case "object.measurements":
+    case "project.extents":
+    case "sketch.get":
+    case "body.generatedReferences":
+    case "body.resolveGeneratedReference":
+    case "body.measurements":
+    case "body.generatedReferenceMeasurements":
+    case "reference.listNamed":
+    case "reference.resolveNamed":
+    case "transaction.history":
+      return true;
+  }
+
+  return false;
+}
+
+function isCadQuery(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.query !== "string") {
+    return false;
+  }
+
+  switch (value.query) {
+    case "project.summary":
+    case "project.features":
+    case "project.structure":
+    case "project.health":
+    case "project.sketches":
+    case "project.extents":
+    case "reference.listNamed":
+    case "transaction.history":
+      return Object.keys(value).length === 1;
+    case "object.get":
+    case "object.measurements":
+    case "sketch.get":
+      return typeof value.id === "string";
+    case "body.generatedReferences":
+    case "body.measurements":
+      return typeof value.bodyId === "string";
+    case "body.resolveGeneratedReference":
+    case "body.generatedReferenceMeasurements":
+      return (
+        typeof value.bodyId === "string" && typeof value.stableId === "string"
+      );
+    case "reference.resolveNamed":
+      return typeof value.name === "string";
+    default:
+      return false;
   }
 }
 
@@ -2447,7 +2771,8 @@ function assertSupportedExtrudeOperation(
   operationMode: FeatureExtrudeOperationMode,
   profileKind: FeatureExtrudeProfileKind,
   targetBodyId: BodyId | undefined,
-  opIndex?: number
+  opIndex?: number,
+  ignoreConsumingFeatureId?: FeatureId
 ): void {
   if (operationMode === "newBody") {
     return;
@@ -2460,6 +2785,9 @@ function assertSupportedExtrudeOperation(
   const consumingFeature = targetBodyId
     ? findConsumingBooleanFeatureByTargetBodyId(state.features, targetBodyId)
     : undefined;
+  const hasBlockingConsumingFeature =
+    consumingFeature !== undefined &&
+    consumingFeature.id !== ignoreConsumingFeatureId;
 
   if (
     operationMode === "cut" &&
@@ -2468,7 +2796,7 @@ function assertSupportedExtrudeOperation(
     profileKind === "rectangle" &&
     isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
     targetFeature.operationMode === "newBody" &&
-    consumingFeature === undefined
+    !hasBlockingConsumingFeature
   ) {
     return;
   }
@@ -2480,7 +2808,7 @@ function assertSupportedExtrudeOperation(
     profileKind === "rectangle" &&
     isSupportedAddTargetProfileKind(targetFeature.profileKind) &&
     targetFeature.operationMode === "newBody" &&
-    consumingFeature === undefined
+    !hasBlockingConsumingFeature
   ) {
     return;
   }
@@ -2507,7 +2835,9 @@ function assertSupportedExtrudeOperation(
       targetBodyId,
       targetProfileKind: targetFeature?.profileKind,
       targetOperationMode: targetFeature?.operationMode,
-      targetConsumedByFeatureId: consumingFeature?.id
+      targetConsumedByFeatureId: hasBlockingConsumingFeature
+        ? consumingFeature?.id
+        : undefined
     })
   });
 }
@@ -5207,7 +5537,9 @@ function normalizeCadProject(value: CadProject): CadProject {
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
         )
-      }
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
     };
   }
 
@@ -5221,7 +5553,9 @@ function normalizeCadProject(value: CadProject): CadProject {
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
         )
-      }
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
     };
   }
 
@@ -5233,7 +5567,9 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: []
-      }
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
     };
   }
 
@@ -5245,7 +5581,9 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: []
-      }
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
     };
   }
 
@@ -5259,7 +5597,9 @@ function normalizeCadProject(value: CadProject): CadProject {
         namedReferences: [],
         nextFeatureNumber: 1,
         nextBodyNumber: 1
-      }
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
     };
   }
 
@@ -5275,7 +5615,9 @@ function normalizeCadProject(value: CadProject): CadProject {
       nextSketchEntityNumber: 1,
       nextFeatureNumber: 1,
       nextBodyNumber: 1
-    }
+    },
+    history: value.history.map(normalizeTransactionSnapshot),
+    redoStack: value.redoStack.map(normalizeTransactionSnapshot)
   };
 }
 
@@ -5286,6 +5628,62 @@ function normalizeFeatureSnapshot(
     ...feature,
     side: feature.side ?? "positive",
     operationMode: feature.operationMode ?? "newBody"
+  };
+}
+
+function normalizeTransactionSnapshot(transaction: Transaction): Transaction {
+  return {
+    ...transaction,
+    ops: transaction.ops.map(normalizeCadOpSnapshot),
+    diff: normalizeSemanticDiffSnapshot(transaction.diff)
+  };
+}
+
+function normalizeCadOpSnapshot(op: CadOp): CadOp {
+  if (op.op !== "feature.extrude") {
+    return op;
+  }
+
+  return {
+    ...op,
+    side: op.side ?? "positive",
+    operationMode: op.operationMode ?? "newBody"
+  };
+}
+
+function normalizeSemanticDiffSnapshot(diff: SemanticDiff): SemanticDiff {
+  if (!diff.features) {
+    return diff;
+  }
+
+  return {
+    ...diff,
+    features: {
+      ...diff.features,
+      ...(diff.features.created
+        ? {
+            created: diff.features.created.map(normalizeFeatureRefSnapshot)
+          }
+        : {}),
+      ...(diff.features.modified
+        ? {
+            modified: diff.features.modified.map(normalizeFeatureRefSnapshot)
+          }
+        : {}),
+      ...(diff.features.deleted
+        ? {
+            deleted: diff.features.deleted.map(normalizeFeatureRefSnapshot)
+          }
+        : {})
+    }
+  };
+}
+
+function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
+  return {
+    ...ref,
+    side: ref.side ?? "positive",
+    operationMode: ref.operationMode ?? "newBody"
   };
 }
 
@@ -6102,14 +6500,18 @@ function validateSketchAttachments(
 ): void {
   for (const { path, attachment } of attachments) {
     const feature = featuresByBodyId.get(attachment.bodyId);
+    const expectedStableId = `generated:face:${attachment.bodyId}:${attachment.faceRole}`;
 
-    if (!feature) {
+    if (attachment.faceStableId !== expectedStableId) {
       addProjectIssue(
         issues,
         "INVALID_SKETCH",
-        `${path}.bodyId`,
-        "Sketch attachment bodyId must reference an authored extrude body."
+        `${path}.faceStableId`,
+        "Sketch attachment faceStableId must match the referenced generated face role."
       );
+    }
+
+    if (!feature) {
       continue;
     }
 
@@ -6140,16 +6542,6 @@ function validateSketchAttachments(
       );
     }
 
-    const expectedStableId = `generated:face:${attachment.bodyId}:${attachment.faceRole}`;
-
-    if (attachment.faceStableId !== expectedStableId) {
-      addProjectIssue(
-        issues,
-        "INVALID_SKETCH",
-        `${path}.faceStableId`,
-        "Sketch attachment faceStableId must match the referenced generated face role."
-      );
-    }
   }
 }
 

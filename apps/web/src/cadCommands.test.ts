@@ -5,7 +5,12 @@ import {
   buildCreateBoxOp,
   buildCreateConeOp,
   buildCreateSphereOp,
+  buildCreateSketchOp,
   buildCreateTorusOp,
+  buildAddSketchCircleOp,
+  buildAddSketchLineOp,
+  buildAddSketchPointOp,
+  buildAddSketchRectangleOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
   buildFeatureUpdateExtrudeOp,
@@ -13,8 +18,11 @@ import {
   buildNameGeneratedReferenceOp,
   buildCreateSketchOnFaceOp,
   buildDeleteObjectOp,
+  buildDeleteSketchEntityOp,
+  buildDeleteSketchOp,
   buildOperationFromBatchForm,
   buildRenameObjectOp,
+  buildRenameSketchOp,
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
   buildUpdateCylinderDimensionsOp,
@@ -198,6 +206,74 @@ describe("cad command builders", () => {
         width: 3,
         height: 4
       }
+    });
+  });
+
+  it("builds V2 sketch commands", () => {
+    const entityForm = {
+      id: "entity_1",
+      x: 1,
+      y: 2,
+      x2: 3,
+      y2: 4,
+      width: 5,
+      height: 6,
+      radius: 7
+    };
+
+    expect(
+      buildCreateSketchOp({
+        id: " sketch_1 ",
+        name: " Profile ",
+        plane: "XY"
+      })
+    ).toEqual({
+      op: "sketch.create",
+      id: "sketch_1",
+      name: "Profile",
+      plane: "XY"
+    });
+    expect(buildRenameSketchOp("sketch_1", " Updated profile ")).toEqual({
+      op: "sketch.rename",
+      id: "sketch_1",
+      name: "Updated profile"
+    });
+    expect(buildDeleteSketchOp("sketch_1")).toEqual({
+      op: "sketch.delete",
+      id: "sketch_1"
+    });
+    expect(buildAddSketchPointOp("sketch_1", entityForm)).toEqual({
+      op: "sketch.addPoint",
+      sketchId: "sketch_1",
+      id: "entity_1",
+      point: [1, 2]
+    });
+    expect(buildAddSketchLineOp("sketch_1", entityForm)).toEqual({
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "entity_1",
+      start: [1, 2],
+      end: [3, 4]
+    });
+    expect(buildAddSketchRectangleOp("sketch_1", entityForm)).toEqual({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "entity_1",
+      center: [1, 2],
+      width: 5,
+      height: 6
+    });
+    expect(buildAddSketchCircleOp("sketch_1", entityForm)).toEqual({
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "entity_1",
+      center: [1, 2],
+      radius: 7
+    });
+    expect(buildDeleteSketchEntityOp("sketch_1", "entity_1")).toEqual({
+      op: "sketch.deleteEntity",
+      sketchId: "sketch_1",
+      entityId: "entity_1"
     });
   });
 

@@ -65,6 +65,7 @@ export function formatTransactionDiffSummary(
   diff: CadSemanticDiffSummary
 ): string {
   const parts: string[] = [];
+  const referenceDiff = diff.references as ReferenceDiffWithModified | undefined;
 
   if (diff.createdCount > 0) {
     parts.push(`${diff.createdCount} created`);
@@ -150,6 +151,24 @@ export function formatTransactionDiffSummary(
     "body deleted",
     "bodies deleted"
   );
+  pushNamedReferenceSummary(
+    parts,
+    mergeReferenceRefs(referenceDiff?.namedCreated, referenceDiff?.created),
+    "named reference created",
+    "named references created"
+  );
+  pushNamedReferenceSummary(
+    parts,
+    mergeReferenceRefs(referenceDiff?.namedModified, referenceDiff?.modified),
+    "named reference modified",
+    "named references modified"
+  );
+  pushNamedReferenceSummary(
+    parts,
+    mergeReferenceRefs(referenceDiff?.namedDeleted, referenceDiff?.deleted),
+    "named reference deleted",
+    "named references deleted"
+  );
 
   if (diff.document?.units) {
     const mode =
@@ -163,6 +182,19 @@ export function formatTransactionDiffSummary(
 
   return parts.length > 0 ? parts.join(", ") : "No visible diff";
 }
+
+type NamedReferenceDiffRef = {
+  readonly name: string;
+};
+
+type ReferenceDiffWithModified = NonNullable<
+  CadSemanticDiffSummary["references"]
+> & {
+  readonly created?: readonly NamedReferenceDiffRef[];
+  readonly modified?: readonly NamedReferenceDiffRef[];
+  readonly deleted?: readonly NamedReferenceDiffRef[];
+  readonly namedModified?: readonly NamedReferenceDiffRef[];
+};
 
 function pushCountSummary(
   parts: string[],
@@ -189,5 +221,29 @@ function pushIdSummary(
 
   parts.push(
     `${ids.length} ${ids.length === 1 ? singular : plural} (${ids.join(", ")})`
+  );
+}
+
+function mergeReferenceRefs(
+  primary: readonly NamedReferenceDiffRef[] | undefined,
+  fallback: readonly NamedReferenceDiffRef[] | undefined
+): readonly NamedReferenceDiffRef[] | undefined {
+  return primary && primary.length > 0 ? primary : fallback;
+}
+
+function pushNamedReferenceSummary(
+  parts: string[],
+  refs: readonly NamedReferenceDiffRef[] | undefined,
+  singular: string,
+  plural: string
+): void {
+  if (!refs?.length) {
+    return;
+  }
+
+  parts.push(
+    `${refs.length} ${refs.length === 1 ? singular : plural} (${refs
+      .map((ref) => ref.name)
+      .join(", ")})`
   );
 }

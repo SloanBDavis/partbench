@@ -112,6 +112,28 @@ export function mapSketchPlanePointToSourceMeasurementFrame(
   ]);
 }
 
+export function mapLocalExtrudePointToSourceMeasurementFrame(
+  frame: SourceMeasurementFrame,
+  point: Vec3
+): Vec3 {
+  const normal = createSourceMeasurementFrameNormal(frame);
+
+  return cleanVec3([
+    frame.origin[0] +
+      frame.uAxis[0] * point[0] +
+      frame.vAxis[0] * point[1] +
+      normal[0] * point[2],
+    frame.origin[1] +
+      frame.uAxis[1] * point[0] +
+      frame.vAxis[1] * point[1] +
+      normal[1] * point[2],
+    frame.origin[2] +
+      frame.uAxis[2] * point[0] +
+      frame.vAxis[2] * point[1] +
+      normal[2] * point[2]
+  ]);
+}
+
 export function createExtrudeMeasurementDepthRange(
   depth: number,
   side: FeatureExtrudeSide
@@ -208,10 +230,33 @@ function createAttachedSourceMeasurementFrame(
     return undefined;
   }
 
+  return orientFrameToNormal(
+    {
+      ...createDefaultSourceMeasurementFrame(sketch.plane),
+      origin
+    },
+    normal
+  );
+}
+
+function orientFrameToNormal(
+  frame: SourceMeasurementFrame,
+  targetNormal: Vec3
+): SourceMeasurementFrame {
+  const frameNormal = createSourceMeasurementFrameNormal(frame);
+
+  if (dotVec3(frameNormal, targetNormal) >= 0) {
+    return frame;
+  }
+
   return {
-    ...createDefaultSourceMeasurementFrame(sketch.plane),
-    origin
+    ...frame,
+    uAxis: scaleVec3(frame.uAxis, -1)
   };
+}
+
+function dotVec3(left: Vec3, right: Vec3): number {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
 }
 
 function createRectangleFaceCenter(

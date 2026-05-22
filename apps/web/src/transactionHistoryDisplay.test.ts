@@ -1,4 +1,7 @@
-import type { CadTransactionHistoryEntry } from "@web-cad/cad-core";
+import type {
+  CadSemanticDiffSummary,
+  CadTransactionHistoryEntry
+} from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
   formatTransactionActor,
@@ -163,6 +166,75 @@ describe("transaction history display helpers", () => {
         }
       })
     ).toBe("1 feature deleted (feat_1), 1 body deleted (body_1)");
+  });
+
+  it("formats named reference diff summaries", () => {
+    expect(
+      formatTransactionDiffSummary({
+        created: [],
+        modified: [],
+        deleted: [],
+        createdCount: 0,
+        modifiedCount: 0,
+        deletedCount: 0,
+        references: {
+          namedCreated: [
+            {
+              name: "Mounting face",
+              bodyId: "body_1",
+              stableId: "generated:face:body_1:startCap",
+              kind: "face"
+            }
+          ],
+          namedDeleted: []
+        }
+      })
+    ).toBe("1 named reference created (Mounting face)");
+
+    expect(
+      formatTransactionDiffSummary({
+        created: [],
+        modified: [],
+        deleted: [],
+        createdCount: 0,
+        modifiedCount: 0,
+        deletedCount: 0,
+        references: {
+          namedCreated: [],
+          namedDeleted: [
+            {
+              name: "Mounting face",
+              bodyId: "body_1",
+              stableId: "generated:face:body_1:startCap",
+              kind: "face"
+            }
+          ]
+        }
+      })
+    ).toBe("1 named reference deleted (Mounting face)");
+
+    expect(
+      formatTransactionDiffSummary({
+        created: [],
+        modified: [],
+        deleted: [],
+        createdCount: 0,
+        modifiedCount: 0,
+        deletedCount: 0,
+        references: {
+          namedCreated: [],
+          namedDeleted: [],
+          namedModified: [
+            {
+              name: "Mounting face",
+              bodyId: "body_2",
+              stableId: "generated:face:body_2:endCap",
+              kind: "face"
+            }
+          ]
+        }
+      } as CadSemanticDiffSummary)
+    ).toBe("1 named reference modified (Mounting face)");
   });
 
   it("returns recent transactions newest first", () => {

@@ -13,6 +13,7 @@ import {
   createAttachedSketchGeometryFrame,
   createGeneratedFaceReferenceKey,
   createSketchDisplayState,
+  createSketchDisplayFrameNormal,
   mapSketchPlanePointToDisplayFrame,
   mapSketchPointToDisplayFrame
 } from "./sketchDisplayFrames";
@@ -112,6 +113,25 @@ describe("sketch display frames", () => {
       1,
       3
     ]);
+  });
+
+  it("orients attached side-face frames to the generated face normal", () => {
+    const sketch = createAttachedSketch("sketch_side_1", "side:uMin", "YZ");
+    const face = createRectangleFace({
+      role: "side:uMin",
+      normal: [-1, 0, 0],
+      depth: 4,
+      side: "positive",
+      width: 6,
+      height: 2
+    });
+    const frame = createAttachedSketchGeometryFrame(sketch, face);
+
+    expect(frame?.origin).toEqual([-3, 0, 2]);
+    expect(frame && createSketchDisplayFrameNormal(frame)).toEqual([-1, 0, 0]);
+    expect(
+      frame && mapSketchPlanePointToDisplayFrame(frame, "YZ", [1, 2, 3])
+    ).toEqual([-4, -2, 5]);
   });
 
   it("falls back to the saved sketch plane when an attachment is stale", () => {

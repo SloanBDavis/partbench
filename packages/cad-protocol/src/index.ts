@@ -400,6 +400,10 @@ export interface CadBatch {
 }
 
 export type CadBatchValidationErrorCode =
+  | "INVALID_CADOPS_VERSION"
+  | "INVALID_BATCH"
+  | "INVALID_BATCH_MODE"
+  | "INVALID_OPERATION"
   | "EMPTY_BATCH"
   | "OBJECT_ALREADY_EXISTS"
   | "OBJECT_NOT_FOUND"
@@ -1251,6 +1255,9 @@ export interface CadTransactionHistoryEntry {
 }
 
 export type CadQueryErrorCode =
+  | "INVALID_CADOPS_VERSION"
+  | "INVALID_QUERY"
+  | "UNKNOWN_QUERY"
   | "OBJECT_NOT_FOUND"
   | "SKETCH_NOT_FOUND"
   | "BODY_NOT_FOUND"
@@ -1444,8 +1451,8 @@ export interface ReferenceResolveNamedQueryResponse {
 
 export interface CadQueryErrorResponse {
   readonly ok: false;
-  readonly query: CadQueryKind;
-  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: CadQueryKind | "unknown";
+  readonly cadOpsVersion: CadOpsVersion | string;
   readonly error: CadQueryError;
 }
 

@@ -34,6 +34,8 @@ describe("projectJson helpers", () => {
       objectKindSummary: "box 1",
       sketchCount: 0,
       sketchEntityCount: 0,
+      authoredFeatureCount: 0,
+      namedReferenceCount: 0,
       transactionCount: 2,
       redoTransactionCount: 0
     });
@@ -64,6 +66,8 @@ describe("projectJson helpers", () => {
       objectKindSummary: "none",
       sketchCount: 0,
       sketchEntityCount: 0,
+      authoredFeatureCount: 0,
+      namedReferenceCount: 0,
       transactionCount: 0,
       redoTransactionCount: 1
     });
@@ -128,6 +132,52 @@ describe("projectJson helpers", () => {
     expect(summary.sketchEntityCount).toBe(1);
     expect(formatProjectJsonSummary(summary)).toBe(
       `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 transaction(s)`
+    );
+  });
+
+  it("summarizes V2 authored features and named references", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_1",
+        bodyId: "body_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 4,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "Mounting face",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:endCap"
+      }
+    ]);
+
+    const preview = createProjectJsonPreview(exportCadProjectJson(engine));
+
+    expect(preview.status).toBe("valid");
+
+    if (preview.status !== "valid") {
+      throw new Error("Expected a valid project preview.");
+    }
+
+    expect(preview.summary.authoredFeatureCount).toBe(1);
+    expect(preview.summary.namedReferenceCount).toBe(1);
+    expect(formatProjectJsonSummary(preview.summary)).toBe(
+      `${CURRENT_CAD_PROJECT_FORMAT_VERSION}, 0 object(s), 1 sketch(es), 1 sketch entity(ies), 1 authored feature(s), 1 named reference(s), 1 transaction(s)`
     );
   });
 

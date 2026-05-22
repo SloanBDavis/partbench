@@ -26,7 +26,7 @@ import {
   createMeasurementBounds,
   createSourceMeasurementFrame,
   distanceVec3,
-  mapSketchPlanePointToSourceMeasurementFrame,
+  mapLocalExtrudePointToSourceMeasurementFrame,
   type SourceMeasurementFrame
 } from "./sourceMeasurementGeometry";
 
@@ -584,11 +584,7 @@ function mapLocalPoint(
   input: NonNullable<ReturnType<typeof createReferenceMeasurementInput>>,
   point: Vec3
 ): Vec3 {
-  return mapSketchPlanePointToSourceMeasurementFrame(
-    input.frame,
-    input.sketchPlane,
-    point
-  );
+  return mapLocalExtrudePointToSourceMeasurementFrame(input.frame, point);
 }
 
 function createLongitudinalProfileRoles(

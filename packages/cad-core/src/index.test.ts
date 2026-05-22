@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { CadBatch, CadQueryRequest } from "@web-cad/cad-protocol";
 import {
   AsyncCadCommandExecutor,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
+  type CadProject,
   CadProjectImportError,
   DEFAULT_PART_ID,
   createCadDocument,
@@ -95,6 +97,88 @@ describe("cad-core", () => {
     expect(corePackage).toEqual({
       name: "@web-cad/cad-core",
       status: "ready"
+    });
+  });
+
+  it("rejects malformed runtime CADOps batch envelopes", () => {
+    const engine = new CadEngine();
+    const invalidVersion = engine.executeBatch({
+      version: "cadops.v0",
+      mode: "commit",
+      ops: [
+        {
+          op: "scene.createBox",
+          id: "box_1",
+          dimensions: { width: 1, height: 1, depth: 1 }
+        }
+      ]
+    } as unknown as CadBatch);
+
+    expect(invalidVersion).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: { code: "INVALID_CADOPS_VERSION", path: "$.version" }
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+
+    const invalidMode = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "execute",
+      ops: []
+    } as unknown as CadBatch);
+
+    expect(invalidMode).toMatchObject({
+      ok: false,
+      mode: "dryRun",
+      error: { code: "INVALID_BATCH_MODE", path: "$.mode" }
+    });
+  });
+
+  it("rejects malformed runtime CADOps operations and queries", () => {
+    const engine = new CadEngine();
+    const invalidOperation = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [{ op: "scene.createWidget", id: "widget_1" }]
+    } as unknown as CadBatch);
+
+    expect(invalidOperation).toMatchObject({
+      ok: false,
+      mode: "commit",
+      error: { code: "INVALID_OPERATION", path: "$.ops[0]" }
+    });
+    expect(engine.getDocument().objects.size).toBe(0);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v0",
+        query: { query: "project.summary" }
+      } as unknown as CadQueryRequest)
+    ).toMatchObject({
+      ok: false,
+      query: "project.summary",
+      cadOpsVersion: "cadops.v0",
+      error: { code: "INVALID_CADOPS_VERSION" }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "object.get" }
+      } as unknown as CadQueryRequest)
+    ).toMatchObject({
+      ok: false,
+      query: "object.get",
+      error: { code: "INVALID_QUERY" }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.widgets" }
+      } as unknown as CadQueryRequest)
+    ).toMatchObject({
+      ok: false,
+      query: "unknown",
+      error: { code: "UNKNOWN_QUERY" }
     });
   });
 
@@ -1542,7 +1626,7 @@ describe("cad-core", () => {
                       ...sketch,
                       attachment: {
                         ...sketch.attachment,
-                        bodyId: "missing_body"
+                        faceStableId: "generated:face:body_rect_1:startCap"
                       }
                     }
                   : sketch
@@ -1552,7 +1636,7 @@ describe("cad-core", () => {
         ),
       {
         code: "INVALID_SKETCH",
-        path: "$.document.sketches[1].attachment.bodyId"
+        path: "$.document.sketches[1].attachment.faceStableId"
       }
     );
   });
@@ -9406,7 +9490,9 @@ describe("cad-core", () => {
         bodyId: "body_rect_1",
         sketchId: "sketch_1",
         entityId: "rect_1",
-        depth: 3
+        depth: 3,
+        side: "positive",
+        operationMode: "newBody"
       },
       {
         op: "feature.delete",
@@ -10525,6 +10611,248 @@ describe("cad-core", () => {
         translation: [0, 0, 0],
         rotation: [0, 0, 0],
         scale: [1, 1, 1]
+      }
+    });
+  });
+
+  it("round-trips stale attached sketches after their source feature is deleted", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_face_1",
+      name: "Face sketch",
+      bodyId: "body_rect_1",
+      faceStableId: "generated:face:body_rect_1:endCap"
+    });
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const sketches = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.sketches" }
+    });
+    const health = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(sketches).toMatchObject({
+      ok: true,
+      query: "project.sketches"
+    });
+    if (!sketches.ok || sketches.query !== "project.sketches") {
+      throw new Error("Expected project.sketches response.");
+    }
+    expect(sketches.sketches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "sketch_1" }),
+        expect.objectContaining({
+          id: "sketch_face_1",
+          attachment: expect.objectContaining({
+            bodyId: "body_rect_1",
+            faceStableId: "generated:face:body_rect_1:endCap",
+            sourceFeatureId: "feat_rect_1"
+          })
+        })
+      ])
+    );
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "stale",
+      attachedSketches: [
+        expect.objectContaining({
+          sketchId: "sketch_face_1",
+          status: "stale",
+          issues: expect.arrayContaining([
+            expect.objectContaining({ code: "BODY_NOT_FOUND" })
+          ])
+        })
+      ]
+    });
+  });
+
+  it("normalizes legacy extrude transaction history defaults during import", () => {
+    const engine = createRectangleExtrudeEngine();
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const legacyProject = {
+      ...project,
+      schemaVersion: "web-cad.project.v5",
+      document: {
+        ...project.document,
+        features: project.document.features.map((feature) => {
+          const { side: _side, operationMode: _operationMode, ...legacy } =
+            feature;
+          return legacy;
+        })
+      },
+      history: project.history.map((transaction) => ({
+        ...transaction,
+        ops: transaction.ops.map((op) => {
+          if (op.op !== "feature.extrude") {
+            return op;
+          }
+
+          const { side: _side, operationMode: _operationMode, ...legacy } = op;
+          return legacy;
+        }),
+        diff: {
+          ...transaction.diff,
+          features: transaction.diff.features
+            ? {
+                ...transaction.diff.features,
+                created: transaction.diff.features.created?.map((ref) => {
+                  const {
+                    side: _side,
+                    operationMode: _operationMode,
+                    ...legacy
+                  } = ref;
+                  return legacy;
+                })
+              }
+            : undefined
+        }
+      })),
+      redoStack: []
+    } as unknown as CadProject;
+
+    const restored = CadEngine.fromProject(legacyProject);
+
+    expect(restored.getDocument().features.get("feat_rect_1")).toMatchObject({
+      side: "positive",
+      operationMode: "newBody"
+    });
+    expect(restored.getTransactions()[0]?.ops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.extrude",
+          side: "positive",
+          operationMode: "newBody"
+        })
+      ])
+    );
+  });
+
+  it("rejects source profile edits that would invalidate existing boolean operations", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_tool",
+        name: "Tool",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_tool",
+        id: "rect_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add",
+        bodyId: "body_add",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_tool",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "add"
+      }
+    ]);
+
+    const targetEdit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.updateEntity",
+          sketchId: "sketch_1",
+          entity: {
+            id: "rect_1",
+            kind: "circle",
+            center: [0, 0],
+            radius: 1
+          }
+        }
+      ]
+    });
+    const toolEdit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.updateEntity",
+          sketchId: "sketch_tool",
+          entity: {
+            id: "rect_tool",
+            kind: "circle",
+            center: [0, 0],
+            radius: 1
+          }
+        }
+      ]
+    });
+
+    expect(targetEdit).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+    });
+    expect(toolEdit).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+    });
+    expect(engine.getDocument().features.get("feat_rect_1")).toMatchObject({
+      profileKind: "rectangle"
+    });
+    expect(engine.getDocument().features.get("feat_add")).toMatchObject({
+      profileKind: "rectangle"
+    });
+  });
+
+  it("uses generated face normal direction for attached side-face measurements", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_side_1",
+        name: "Side face sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:side:uMin"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_side_1",
+        id: "rect_side_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_side_1",
+        bodyId: "body_side_1",
+        sketchId: "sketch_side_1",
+        entityId: "rect_side_1",
+        depth: 2
+      }
+    ]);
+
+    const measurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_side_1" }
+    });
+
+    expect(measurements).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        localBounds: {
+          min: [-4, -0.5, 1],
+          max: [-2, 0.5, 2]
+        },
+        centroid: [-3, 0, 1.5]
       }
     });
   });

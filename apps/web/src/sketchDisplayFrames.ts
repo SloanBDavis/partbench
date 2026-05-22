@@ -216,10 +216,33 @@ function createAttachedSketchFaceFrame(
     return undefined;
   }
 
+  return orientFrameToNormal(
+    {
+      ...createDefaultSketchDisplayFrame(sketch.plane),
+      origin: addVec3(frameOrigin, scaleVec3(normal, offset))
+    },
+    normal
+  );
+}
+
+function orientFrameToNormal(
+  frame: SketchDisplayFrame,
+  targetNormal: Vec3
+): SketchDisplayFrame {
+  const frameNormal = createSketchDisplayFrameNormal(frame);
+
+  if (dotVec3(frameNormal, targetNormal) >= 0) {
+    return frame;
+  }
+
   return {
-    ...createDefaultSketchDisplayFrame(sketch.plane),
-    origin: addVec3(frameOrigin, scaleVec3(normal, offset))
+    ...frame,
+    uAxis: scaleVec3(frame.uAxis, -1)
   };
+}
+
+function dotVec3(left: Vec3, right: Vec3): number {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
 }
 
 function getSketchPlaneCoordinates(

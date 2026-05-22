@@ -12,7 +12,7 @@ import {
   createExtrudeMeasurementDepthRange,
   createMeasurementBounds,
   createSourceMeasurementFrame,
-  mapSketchPlanePointToSourceMeasurementFrame
+  mapLocalExtrudePointToSourceMeasurementFrame
 } from "./sourceMeasurementGeometry";
 
 export function createBodyMeasurements(
@@ -55,7 +55,7 @@ export function createBodyMeasurements(
       ? createRectangleExtrudeMeasurementInput(entity, depthRange)
       : createCircleExtrudeMeasurementInput(entity, depthRange);
   const points = measurement.points.map((point) =>
-    mapSketchPlanePointToSourceMeasurementFrame(frame, sketch.plane, point)
+    mapLocalExtrudePointToSourceMeasurementFrame(frame, point)
   );
   const localBounds = createMeasurementBounds(points);
 
@@ -72,9 +72,8 @@ export function createBodyMeasurements(
     measurementModel: "sourceAnalytic",
     localBounds,
     localExtents: localBounds.size,
-    centroid: mapSketchPlanePointToSourceMeasurementFrame(
+    centroid: mapLocalExtrudePointToSourceMeasurementFrame(
       frame,
-      sketch.plane,
       measurement.centroid
     ),
     volume: cleanMeasurementNumber(measurement.volume),

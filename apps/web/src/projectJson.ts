@@ -14,6 +14,8 @@ export interface ProjectJsonSummary {
   readonly objectKindSummary: string;
   readonly sketchCount: number;
   readonly sketchEntityCount: number;
+  readonly authoredFeatureCount: number;
+  readonly namedReferenceCount: number;
   readonly transactionCount: number;
   readonly redoTransactionCount: number;
 }
@@ -44,6 +46,8 @@ export function summarizeCadProject(project: CadProject): ProjectJsonSummary {
       (total, sketch) => total + sketch.entities.length,
       0
     ),
+    authoredFeatureCount: project.document.features.length,
+    namedReferenceCount: project.document.namedReferences.length,
     transactionCount: project.history.length,
     redoTransactionCount: project.redoStack.length
   };
@@ -83,8 +87,16 @@ export function formatProjectJsonSummary(summary: ProjectJsonSummary): string {
     summary.sketchCount > 0
       ? `, ${summary.sketchCount} sketch(es), ${summary.sketchEntityCount} sketch entity(ies)`
       : "";
+  const features =
+    summary.authoredFeatureCount > 0
+      ? `, ${summary.authoredFeatureCount} authored feature(s)`
+      : "";
+  const namedReferences =
+    summary.namedReferenceCount > 0
+      ? `, ${summary.namedReferenceCount} named reference(s)`
+      : "";
 
-  return `${summary.schemaVersion}, ${summary.objectCount} object(s)${objectKinds}${sketches}, ${summary.transactionCount} transaction(s)${redo}`;
+  return `${summary.schemaVersion}, ${summary.objectCount} object(s)${objectKinds}${sketches}${features}${namedReferences}, ${summary.transactionCount} transaction(s)${redo}`;
 }
 
 export function getProjectImportStatusText(
