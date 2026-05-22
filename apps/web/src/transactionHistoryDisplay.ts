@@ -65,7 +65,9 @@ export function formatTransactionDiffSummary(
   diff: CadSemanticDiffSummary
 ): string {
   const parts: string[] = [];
-  const referenceDiff = diff.references as ReferenceDiffWithModified | undefined;
+  const referenceDiff = diff.references as
+    | ReferenceDiffWithModified
+    | undefined;
 
   if (diff.createdCount > 0) {
     parts.push(`${diff.createdCount} created`);

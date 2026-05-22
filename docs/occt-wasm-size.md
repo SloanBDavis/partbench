@@ -21,10 +21,10 @@ The OCCT path remains isolated:
 The same boundary now contains an isolated boolean feasibility request for
 source-derived extrude-like solids. That path proves OCCT can combine two
 simple solids and return mesh data for rectangle add/cut plus circle target cut
-by rectangle tool. The narrow rectangle-tool cut slices now use this
+by rectangle tool. The narrow rectangle-tool add/cut slices now use this
 derived-geometry path where enabled, while `cad-core` still stores only source
-feature intent and no B-rep/mesh result. Cut results still do not provide
-generated-reference topology.
+feature intent and no B-rep/mesh result. Boolean result bodies still do not
+provide generated-reference topology.
 
 ## Baseline
 

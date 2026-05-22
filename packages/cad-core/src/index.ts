@@ -1889,13 +1889,15 @@ function applyOperation(
       return;
     }
 
-    default:
+    default: {
       const unknownOp = op as unknown;
 
       throwValidationError({
         code: "INVALID_OPERATION",
         message: `Unsupported operation: ${
-          isRecord(unknownOp) ? String(unknownOp.op) : describeReceived(unknownOp)
+          isRecord(unknownOp)
+            ? String(unknownOp.op)
+            : describeReceived(unknownOp)
         }.`,
         opIndex,
         op:
@@ -1908,6 +1910,7 @@ function applyOperation(
           ? describeReceived(unknownOp.op)
           : describeReceived(unknownOp)
       });
+    }
   }
 }
 
@@ -2096,7 +2099,7 @@ function createQueryErrorResponse(
     query,
     cadOpsVersion,
     error
-  };
+  } as CadQueryResponse;
 }
 
 function isCadQueryKind(value: string): value is CadQueryKind {
@@ -6541,7 +6544,6 @@ function validateSketchAttachments(
         "Sketch attachment sourceSketchEntityId must match the referenced body feature."
       );
     }
-
   }
 }
 

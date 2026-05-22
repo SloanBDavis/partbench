@@ -1451,8 +1451,8 @@ export interface ReferenceResolveNamedQueryResponse {
 
 export interface CadQueryErrorResponse {
   readonly ok: false;
-  readonly query: CadQueryKind | "unknown";
-  readonly cadOpsVersion: CadOpsVersion | string;
+  readonly query: CadQueryKind;
+  readonly cadOpsVersion: CadOpsVersion;
   readonly error: CadQueryError;
 }
 

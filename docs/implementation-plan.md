@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the actual repo state and
 the next implementation roadmap.
 
-Last updated: 2026-05-19.
+Last updated: 2026-05-22.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for the long-term design, `docs/v1.md` for the completed
@@ -26,8 +26,8 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and real topology are introduced only in
    scoped milestones.
-9. Do not keep expanding V1 with unrelated surface area. Future feature work
-   should move toward the V2 target.
+9. V2 is complete. Future feature work should start from an explicit next
+   milestone and avoid broadening into V3 architecture without a scoped prompt.
 
 ## Current Repo State
 
@@ -157,7 +157,8 @@ breakage.
 
 ## Current Limitations
 
-The repo is ready as a V1 foundation, but it is not yet a full CAD system.
+The repo is ready as a V2 feature/body foundation, but it is not yet a full CAD
+system.
 
 Current limitations:
 
@@ -182,8 +183,8 @@ Current limitations:
 - There is a first read-only semantic generated-reference query for authored
   rectangle/circle extrude bodies, but there is no broad stable topological
   naming system yet.
-- There are first narrow rectangle-tool boolean slices for cut and command-model
-  add/fuse, but there are no general booleans, broad add/join operations,
+- There are first narrow rectangle-tool boolean slices for cut and add/fuse,
+  but there are no general booleans, broad add/join operations,
   revolve, fillet, chamfer, shell, loft, pattern, or direct modeling features.
 - There is no OPFS storage, File System Access integration, native `.wcad`
   package, STEP import/export, WebGPU renderer, large-assembly pipeline, hosted
@@ -193,17 +194,24 @@ Current limitations:
 
 ## Active Roadmap
 
-The active next target is `docs/v2.md`: a feature/body CAD foundation. V2 should
-move the app from primitive scene objects toward a real CAD document model while
-preserving the V1 command, transaction, worker, renderer, storage, and agent
-boundaries.
+V2 is complete. The next target should be a scoped V3 milestone aligned with
+`docs/architecture.md`, likely focused on one of:
+
+- making boolean result topology/reference behavior explicit before broadening
+  booleans;
+- adding a real sketch constraint/dimension slice;
+- introducing explicit authored parts beyond the derived default part; or
+- improving native storage/open-save once the source model justifies it.
+
+Do not start all of these at once. Keep the V2 command, transaction, worker,
+renderer, storage, and agent boundaries intact.
 
 ### Phase 1: V2 Document Model Foundation
 
 Goal: introduce the smallest useful part/feature/body structure without
 replacing working V1 behavior in one jump.
 
-Current status: started. The current implementation exposes a derived default
+Current status: complete for V2. The current implementation exposes a derived default
 part/primitive feature/solid body structure through CADOps queries while keeping
 V1 scene primitives as the saved source of truth. This is a compatibility bridge,
 not a persisted V2 feature graph.
@@ -328,8 +336,8 @@ Exit criteria:
 
 ### Phase 4: First Real Feature Operation
 
-Goal: create the first exact kernel-backed body from source-of-truth feature
-data.
+Goal: create the first source-authored body and rebuildable derived mesh from
+source-of-truth feature data.
 
 Current status: first source-of-truth feature/body slice implemented.
 
@@ -463,12 +471,13 @@ Exit criteria:
   operations.
 - The system does not expose raw kernel indexes as durable user/agent APIs.
 
-### Phase 6: Exact Measurements and Kernel Queries
+### Phase 6: Source-Derived Measurements and Health Queries
 
-Goal: replace primitive-derived measurement approximations with kernel-backed
-queries where exact bodies exist.
+Goal: provide source-derived measurement and health queries for current V2
+authored bodies, while leaving exact B-rep/kernel measurements for a future
+scoped milestone.
 
-Current status: started. `body.measurements` returns read-only analytic
+Current status: complete for V2. `body.measurements` returns read-only analytic
 measurements for authored rectangle/circle sketch-extrude bodies from
 source-of-truth sketch and feature data, including attached-sketch placement
 where the attachment resolves. `body.generatedReferenceMeasurements` measures
@@ -486,8 +495,8 @@ Deliverables:
 - Keep `body.generatedReferenceMeasurements` source-derived for current
   rectangle/circle extrude references until exact topology-backed reference
   measurements exist.
-- Add kernel-backed bounding boxes, volume, surface area, and centroid where
-  practical.
+- Add exact kernel-backed bounding boxes, volume, surface area, and centroid in
+  a later milestone when exact B-rep bodies are authoritative enough to query.
 - Keep read/query separate from mutation.
 - Keep `project.health` source-derived and non-persistent. It reports current
   dependency status; it is not a parametric regeneration graph.
@@ -497,14 +506,14 @@ Deliverables:
 
 Exit criteria:
 
-- Measurements use authoritative semantic/exact geometry when available, not
-  renderer meshes.
+- Measurements use authoritative source data when available, not renderer
+  meshes.
 
 ### Phase 7: Renderer and Performance Upgrade Path
 
 Goal: improve visual correctness and performance based on actual V2 workloads.
 
-Current status: started. The OCCT rectangle-extrude boolean feasibility path now
+Current status: complete for V2. The OCCT rectangle-extrude boolean feasibility path now
 backs the first narrow authoritative `feature.extrude` cut slices. Cut features
 store source-of-truth feature intent in `cad-core`, then rebuild the cut result
 as derived mesh/cache data through `geometry.booleanExtrudes`,
@@ -567,7 +576,8 @@ A future task is done only when:
 3. All CAD mutations go through CADOps.
 4. Source-of-truth state remains in `cad-core`.
 5. Rendered meshes remain derived.
-6. Relevant unit tests, smoke checks, or browser checks are added.
+6. Relevant unit tests or focused package-level checks are added. Browser E2E
+   tests should not be added unless explicitly scoped.
 7. `pnpm test` passes.
 8. `pnpm typecheck` passes.
 9. Relevant build/lint/format checks pass.

@@ -10681,8 +10681,9 @@ describe("cad-core", () => {
       document: {
         ...project.document,
         features: project.document.features.map((feature) => {
-          const { side: _side, operationMode: _operationMode, ...legacy } =
-            feature;
+          const legacy = { ...feature } as Record<string, unknown>;
+          delete legacy.side;
+          delete legacy.operationMode;
           return legacy;
         })
       },
@@ -10693,7 +10694,9 @@ describe("cad-core", () => {
             return op;
           }
 
-          const { side: _side, operationMode: _operationMode, ...legacy } = op;
+          const legacy = { ...op } as Record<string, unknown>;
+          delete legacy.side;
+          delete legacy.operationMode;
           return legacy;
         }),
         diff: {
@@ -10702,11 +10705,9 @@ describe("cad-core", () => {
             ? {
                 ...transaction.diff.features,
                 created: transaction.diff.features.created?.map((ref) => {
-                  const {
-                    side: _side,
-                    operationMode: _operationMode,
-                    ...legacy
-                  } = ref;
+                  const legacy = { ...ref } as Record<string, unknown>;
+                  delete legacy.side;
+                  delete legacy.operationMode;
                   return legacy;
                 })
               }

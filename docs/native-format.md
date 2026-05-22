@@ -427,6 +427,7 @@ The current source of truth is:
   side
 - authored extrude operation mode and optional target body ID
 - authored feature body IDs
+- named generated reference names and targets
 - `document.nextFeatureNumber`
 - `document.nextBodyNumber`
 - committed transaction history
@@ -456,12 +457,13 @@ The `project.structure` query returns the current V2/V3/V4/V5/V6 compatibility b
 - authored sketch-extrude bodies referenced by those features; and
 - object-to-part/feature/body source mappings.
 
-When a supported `cut` feature targets an authored body, the target body remains
-listed as source/intermediate structure and is marked with
-`consumedByFeatureId`. Current display treats the cut result body as the active
-result and skips the consumed target body so the model is not double-rendered.
-Project extents skip the consumed target body and return a structured warning
-for the cut result until analytic boolean result extents are implemented.
+When a supported `add` or `cut` feature targets an authored body, the target
+body remains listed as source/intermediate structure and is marked with
+`consumedByFeatureId`. Current display treats the boolean result body as the
+active result and skips the consumed target body so the model is not
+double-rendered. Project extents skip the consumed target body and return a
+structured warning for the boolean result until analytic boolean result extents
+are implemented.
 
 This structure is a migration bridge toward a fuller feature/body model. The
 primitive side remains derived; the authored extrude side is persisted because it
@@ -639,6 +641,7 @@ document.
 - authored feature kinds
 - authored feature source sketch/entity references
 - authored feature profile kinds, depths, sides, and body IDs
+- named generated reference names and targets
 - transaction and semantic diff shape
 - optional transaction audit metadata
 - committed transaction stack status
@@ -653,6 +656,12 @@ document.
 - transaction replay where practical
 - consistency between the saved document and replayed committed transaction
   history when history or redo entries are present
+
+Sketch generated-face attachment records may point at references that are
+currently stale, such as after the source feature was deleted. The importer
+keeps those records loadable when their shape is valid and lets `project.health`
+report the stale/missing target. This preserves undo/redo and audit history
+without pretending the generated face still resolves.
 
 Invalid imports throw `CadProjectImportError` with structured issues:
 
@@ -749,9 +758,9 @@ Likely rebuildable cache files are:
 - thumbnails
 - geometry diagnostics
 
-The current JSON format is the source-of-truth interchange format for the active
-V2/V3/V4/V5/V6 foundation. It is not the final storage backend and does not imply OPFS
-or File System Access API behavior.
+The current JSON format is the source-of-truth interchange format for the V2/V6
+foundation. It is not the final storage backend and does not imply OPFS or File
+System Access API behavior.
 
 JSON export/import remains the deliberate debuggable interchange path and
 `.wcad` remains a documented direction rather than a runtime storage feature.
