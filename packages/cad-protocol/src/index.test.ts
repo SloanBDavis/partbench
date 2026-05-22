@@ -234,9 +234,24 @@ describe("cad-protocol", () => {
       name: "Named face sketch",
       referenceName: "Mounting face"
     };
+    const addExtrudeOp: CadOp = {
+      op: "feature.extrude",
+      id: "feat_add",
+      bodyId: "body_add",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 2,
+      operationMode: "add",
+      targetBodyId: "body_target"
+    };
     expect(namedFaceOp).toMatchObject({
       op: "sketch.createOnFace",
       referenceName: "Mounting face"
+    });
+    expect(addExtrudeOp).toMatchObject({
+      op: "feature.extrude",
+      operationMode: "add",
+      targetBodyId: "body_target"
     });
   });
 

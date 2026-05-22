@@ -817,6 +817,99 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes rectangle add extrudes through cad.batch dry-run and commit", () => {
+    const server = new CadMcpServer();
+    const seedResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_seed_add_target",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_add",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_add",
+              id: "rect_add",
+              center: [0, 0],
+              width: 3,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_seed_add",
+              bodyId: "body_seed_add",
+              sketchId: "sketch_add",
+              entityId: "rect_add",
+              depth: 4
+            }
+          ]
+        }
+      }
+    });
+
+    expect(seedResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false
+    });
+
+    const addBatch = {
+      version: "cadops.v1" as const,
+      mode: "commit" as const,
+      ops: [
+        {
+          op: "feature.extrude" as const,
+          id: "feat_add",
+          bodyId: "body_add",
+          targetBodyId: "body_seed_add",
+          sketchId: "sketch_add",
+          entityId: "rect_add",
+          depth: 1,
+          operationMode: "add" as const
+        }
+      ]
+    };
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_add_dry_run",
+      arguments: { batch: { ...addBatch, mode: "dryRun" } }
+    });
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_add_commit",
+      arguments: {
+        allowCommit: true,
+        batch: addBatch
+      }
+    });
+
+    expect(dryRun).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_add"],
+        createdBodyIds: ["body_add"]
+      }
+    });
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_add"],
+        createdBodyIds: ["body_add"]
+      }
+    });
+  });
+
   it("passes circle-target cut extrudes through cad.batch dry-run and commit", () => {
     const server = new CadMcpServer();
     const seedResult = server.callTool({

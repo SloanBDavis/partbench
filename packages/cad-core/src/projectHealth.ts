@@ -140,11 +140,13 @@ function createAuthoredExtrudeHealth(
     }
   }
 
-  if (feature.operationMode === "cut") {
+  if (feature.operationMode === "add" || feature.operationMode === "cut") {
+    const operationLabel = feature.operationMode === "add" ? "Add" : "Cut";
+
     if (!feature.targetBodyId) {
       issues.push({
         code: "BODY_NOT_FOUND",
-        message: `Cut feature ${feature.id} is missing its target body.`,
+        message: `${operationLabel} feature ${feature.id} is missing its target body.`,
         featureId: feature.id,
         bodyId: feature.bodyId,
         expected: "targetBodyId",
@@ -158,22 +160,20 @@ function createAuthoredExtrudeHealth(
       if (!targetFeature) {
         issues.push({
           code: "BODY_NOT_FOUND",
-          message: `Cut feature ${feature.id} targets a missing body: ${feature.targetBodyId}`,
+          message: `${operationLabel} feature ${feature.id} targets a missing body: ${feature.targetBodyId}`,
           featureId: feature.id,
           bodyId: feature.targetBodyId
         });
-      } else if (
-        feature.profileKind !== "rectangle" ||
-        !isSupportedCutTargetProfileKind(targetFeature.profileKind) ||
-        targetFeature.operationMode !== "newBody"
-      ) {
+      } else if (!isSupportedBooleanTarget(feature, targetFeature)) {
         issues.push({
           code: "UNSUPPORTED_BODY_REFERENCES",
-          message:
-            "Cut features currently require a rectangle source and an active rectangle or circle newBody target body.",
+          message: getUnsupportedBooleanFeatureMessage(feature.operationMode),
           featureId: feature.id,
           bodyId: feature.targetBodyId,
-          expected: "rectangle or circle newBody target",
+          expected:
+            feature.operationMode === "add"
+              ? "rectangle newBody target"
+              : "rectangle or circle newBody target",
           received: `${targetFeature.profileKind} ${targetFeature.operationMode}`
         });
       }
@@ -387,6 +387,40 @@ function isSupportedCutTargetProfileKind(
   profileKind: FeatureExtrudeProfileKind
 ): boolean {
   return profileKind === "rectangle" || profileKind === "circle";
+}
+
+function isSupportedAddTargetProfileKind(
+  profileKind: FeatureExtrudeProfileKind
+): boolean {
+  return profileKind === "rectangle";
+}
+
+function isSupportedBooleanTarget(
+  feature: ProjectHealthFeature,
+  targetFeature: ProjectHealthFeature
+): boolean {
+  if (
+    feature.profileKind !== "rectangle" ||
+    targetFeature.operationMode !== "newBody"
+  ) {
+    return false;
+  }
+
+  if (feature.operationMode === "add") {
+    return isSupportedAddTargetProfileKind(targetFeature.profileKind);
+  }
+
+  return isSupportedCutTargetProfileKind(targetFeature.profileKind);
+}
+
+function getUnsupportedBooleanFeatureMessage(
+  operationMode: ProjectHealthFeature["operationMode"]
+): string {
+  if (operationMode === "add") {
+    return "Add features currently require a rectangle source and an active rectangle newBody target body.";
+  }
+
+  return "Cut features currently require a rectangle source and an active rectangle or circle newBody target body.";
 }
 
 function statusFromIssues(

@@ -398,48 +398,75 @@ describe("agent-adapter", () => {
     });
   });
 
-  it("passes unsupported extrude operation mode errors through JSON batches", () => {
+  it("passes rectangle add extrudes through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
 
     seedExtrudeFeature(adapter, {
-      sketchId: "sketch_unsupported",
-      entityId: "rect_unsupported",
-      featureId: "feat_seed_unsupported",
-      bodyId: "body_seed_unsupported"
+      sketchId: "sketch_add",
+      entityId: "rect_add",
+      featureId: "feat_seed_add",
+      bodyId: "body_seed_add"
     });
 
-    const response = JSON.parse(
+    const batch = {
+      version: "cadops.v1" as const,
+      mode: "commit" as const,
+      ops: [
+        {
+          op: "feature.extrude" as const,
+          id: "feat_add",
+          bodyId: "body_add",
+          targetBodyId: "body_seed_add",
+          sketchId: "sketch_add",
+          entityId: "rect_add",
+          depth: 2,
+          operationMode: "add" as const
+        }
+      ]
+    };
+    const dryRun = JSON.parse(
       adapter.executeJson(
         JSON.stringify({
-          requestId: "agent_req_unsupported_operation",
+          requestId: "agent_req_add_dry_run",
           adapterVersion: "web-cad.agent-adapter.v1",
-          batch: {
-            version: "cadops.v1",
-            mode: "dryRun",
-            ops: [
-              {
-                op: "feature.extrude",
-                id: "feat_add",
-                bodyId: "body_add",
-                targetBodyId: "body_seed_unsupported",
-                sketchId: "sketch_unsupported",
-                entityId: "rect_unsupported",
-                depth: 2,
-                operationMode: "add"
-              }
-            ]
-          }
+          batch: { ...batch, mode: "dryRun" }
         })
       )
     );
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_add_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch
+        })
+      )
+    );
+    const structure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
 
-    expect(response).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode",
-        received: "add"
-      }
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_add"],
+      createdBodyIds: ["body_add"]
+    });
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_add"],
+      createdBodyIds: ["body_add"]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_seed_add",
+          consumedByFeatureId: "feat_add"
+        }),
+        expect.objectContaining({ id: "body_add", featureId: "feat_add" })
+      ])
     });
   });
 

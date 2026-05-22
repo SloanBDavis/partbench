@@ -299,17 +299,20 @@ depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
 defaults to `newBody` when omitted, and current V6 exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
-`targetBodyId`. `cut` is supported only for narrow boolean-backed slices: a
-rectangle sketch-extrude tool cutting one active authored rectangle or circle
-`newBody` target body. `cut` records require an existing authored
-`targetBodyId` and reject primitive-derived, consumed, circle-tool, `add`,
-or otherwise unsupported targets. The cut result body is rebuilt as derived
-geometry through the OCCT geometry-worker path where the app/runtime has that
-path enabled; exact B-rep checkpoints and generated topology maps are not
-persisted. `add` is still recognized but unsupported until boolean join
-semantics are deliberately scoped. This slice does not include a sketch solver,
-arbitrary profile recognition, broad topology mutation features, boolean join,
-broad feature edit commands, or exact B-rep checkpoint persistence.
+`targetBodyId`. Boolean operation modes are supported only for narrow
+source-modeled slices. `cut` supports a rectangle sketch-extrude tool cutting
+one active authored rectangle or circle `newBody` target body. `add` supports a
+rectangle sketch-extrude tool fusing with one active authored rectangle
+`newBody` target body in the authoritative command model. Boolean records
+require an existing authored `targetBodyId` and reject primitive-derived,
+consumed, circle-tool, circle-target add, or otherwise unsupported targets. Cut
+result bodies are rebuilt as derived geometry through the OCCT geometry-worker
+path where the app/runtime has that path enabled. Add result bodies currently
+store source intent only; derived-geometry/UI wiring for add is a later slice.
+Exact B-rep checkpoints and generated topology maps are not persisted. This
+slice does not include a sketch solver, arbitrary profile recognition, broad
+topology mutation features, general boolean join, broad feature edit commands,
+or exact B-rep checkpoint persistence.
 Authored
 sketch-extrude features can be removed with `feature.delete` and can have depth
 and side updated with `feature.updateExtrude`. Missing side values in older
@@ -689,10 +692,11 @@ sketch metadata, plus an empty named-reference table and `newBody` operation
 mode. V5 is migrated to V6 by preserving sketches, authored features, attached
 sketch metadata, and named references while defaulting missing operation mode to
 `newBody`. Current imports reject inconsistent or unsupported extrude
-operation-mode contracts, such as `newBody` with `targetBodyId`, `add`
-features, `cut` without `targetBodyId`, `cut` targeting missing or
-primitive-derived bodies, and `cut` records outside the currently supported
-rectangle-tool/active-rectangle-or-circle-target contract.
+operation-mode contracts, such as `newBody` with `targetBodyId`,
+`add`/`cut` without `targetBodyId`, boolean features targeting missing,
+primitive-derived, or consumed bodies, circle-tool booleans, circle-target add,
+and records outside the currently supported rectangle-tool/active-target
+contracts.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 

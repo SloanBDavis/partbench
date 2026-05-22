@@ -5040,7 +5040,7 @@ describe("cad-core", () => {
       targetBodyId: "body_rect_1"
     });
 
-    const unsupportedAdd = engine.executeBatch({
+    const addDryRun = engine.executeBatch({
       version: "cadops.v1",
       mode: "dryRun",
       ops: [
@@ -5056,14 +5056,75 @@ describe("cad-core", () => {
         }
       ]
     });
+    const addCommit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_add",
+          bodyId: "body_add",
+          targetBodyId: "body_rect_2",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 2,
+          operationMode: "add"
+        }
+      ]
+    });
+    const addStructure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const addHealth = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
 
-    expect(unsupportedAdd).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode",
-        received: "add"
-      }
+    expect(addDryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_add"],
+      createdBodyIds: ["body_add"]
+    });
+    expect(addCommit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_add"],
+      createdBodyIds: ["body_add"]
+    });
+    expect(addStructure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_add",
+          operationMode: "add",
+          targetBodyId: "body_rect_2",
+          bodyId: "body_add"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_2",
+          consumedByFeatureId: "feat_add"
+        }),
+        expect.objectContaining({
+          id: "body_add",
+          featureId: "feat_add"
+        })
+      ])
+    });
+    expect(addHealth).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_add",
+          bodyId: "body_add",
+          targetBodyId: "body_rect_2",
+          operationMode: "add",
+          status: "healthy"
+        })
+      ])
     });
   });
 
@@ -8321,7 +8382,7 @@ describe("cad-core", () => {
             code: "INVALID_FEATURE",
             path: "$.document.features[0].operationMode",
             message:
-              "Extrude operationMode add requires boolean-backed topology support and is not implemented yet."
+              "Add extrudes currently support rectangle tools fusing with one active rectangle newBody target body."
           }
         ])
       );
@@ -8433,6 +8494,203 @@ describe("cad-core", () => {
           consumedByFeatureId: "feat_cut"
         }),
         expect.objectContaining({ id: "body_cut", featureId: "feat_cut" })
+      ])
+    });
+  });
+
+  it("supports rectangle add features targeting authored rectangle newBody bodies", () => {
+    const engine = createRectangleExtrudeEngine();
+    const addOp = {
+      op: "feature.extrude" as const,
+      id: "feat_add",
+      bodyId: "body_add",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "add" as const
+    };
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [addOp]
+    });
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [addOp]
+    });
+    const transaction = engine
+      .getTransactions()
+      .find((candidate) =>
+        candidate.ops.some(
+          (op) => op.op === "feature.extrude" && op.id === "feat_add"
+        )
+      );
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_add" }
+    });
+    const measurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_add" }
+    });
+    const extents = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_add"],
+      createdBodyIds: ["body_add"]
+    });
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_add"],
+      createdBodyIds: ["body_add"]
+    });
+    expect(transaction?.diff).toMatchObject({
+      features: {
+        created: [
+          expect.objectContaining({
+            id: "feat_add",
+            operationMode: "add",
+            targetBodyId: "body_rect_1",
+            bodyId: "body_add"
+          })
+        ],
+        bodiesCreated: [{ id: "body_add", kind: "solid" }]
+      }
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_add",
+          profileKind: "rectangle",
+          operationMode: "add",
+          targetBodyId: "body_rect_1",
+          bodyId: "body_add"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_add"
+        }),
+        expect.objectContaining({
+          id: "body_add",
+          featureId: "feat_add"
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_add",
+          bodyId: "body_add",
+          targetBodyId: "body_rect_1",
+          operationMode: "add",
+          status: "healthy",
+          issues: []
+        })
+      ])
+    });
+    expect(references).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: { code: "UNSUPPORTED_BODY_REFERENCES", bodyId: "body_add" }
+    });
+    expect(measurements).toMatchObject({
+      ok: false,
+      query: "body.measurements",
+      error: { code: "UNSUPPORTED_BODY_MEASUREMENTS", bodyId: "body_add" }
+    });
+    expect(extents).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 0,
+      warnings: [
+        {
+          code: "BODY_EXTENTS_UNAVAILABLE",
+          bodyId: "body_add",
+          featureId: "feat_add"
+        }
+      ]
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.extrude",
+              featureId: "feat_add",
+              operationMode: "add",
+              targetBodyId: "body_rect_1"
+            })
+          ])
+        })
+      ])
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    expect(restored.getDocument().features.get("feat_add")).toMatchObject({
+      operationMode: "add",
+      targetBodyId: "body_rect_1"
+    });
+
+    restored.undo();
+    const undoneStructure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    expect(restored.getDocument().features.has("feat_add")).toBe(false);
+    if (!undoneStructure.ok || undoneStructure.query !== "project.structure") {
+      throw new Error("Expected project.structure response.");
+    }
+    expect(
+      undoneStructure.bodies.find((body) => body.id === "body_rect_1")
+        ?.consumedByFeatureId
+    ).toBeUndefined();
+    expect(
+      undoneStructure.bodies.find((body) => body.id === "body_add")
+    ).toBeUndefined();
+
+    restored.redo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_add"
+        }),
+        expect.objectContaining({ id: "body_add", featureId: "feat_add" })
       ])
     });
   });
@@ -8778,6 +9036,154 @@ describe("cad-core", () => {
         code: "FEATURE_NOT_DELETABLE",
         featureId: "feat_rect_1",
         bodyId: "body_rect_1"
+      }
+    });
+  });
+
+  it("rejects add features for unsupported profiles and consumed targets", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_tool",
+      center: [0, 0],
+      radius: 1
+    });
+
+    const circleTool = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_circle_add",
+          bodyId: "body_circle_add",
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "circle_tool",
+          depth: 1,
+          operationMode: "add"
+        }
+      ]
+    });
+    expect(circleTool).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+
+    const circleTargetEngine = createCircleExtrudeEngine();
+    circleTargetEngine.apply({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_tool",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    });
+    const circleTarget = circleTargetEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_add_to_circle",
+          bodyId: "body_add_to_circle",
+          targetBodyId: "body_circle_1",
+          sketchId: "sketch_1",
+          entityId: "rect_tool",
+          depth: 1,
+          operationMode: "add"
+        }
+      ]
+    });
+    expect(circleTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_add",
+      bodyId: "body_add",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "add"
+    });
+
+    const consumedTarget = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_add_again",
+          bodyId: "body_add_again",
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 1,
+          operationMode: "add"
+        }
+      ]
+    });
+    const deleteTarget = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [{ op: "feature.delete", id: "feat_rect_1" }]
+    });
+
+    expect(consumedTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    });
+    expect(deleteTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "FEATURE_NOT_DELETABLE",
+        featureId: "feat_rect_1",
+        bodyId: "body_rect_1"
+      }
+    });
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_target",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    const primitiveTarget = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.extrude",
+          id: "feat_add_primitive",
+          bodyId: "body_add_primitive",
+          targetBodyId: "body:box_target",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 1,
+          operationMode: "add"
+        }
+      ]
+    });
+    expect(primitiveTarget).toMatchObject({
+      ok: false,
+      error: {
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        bodyId: "body:box_target",
+        path: "$.ops[0].targetBodyId"
       }
     });
   });

@@ -2053,7 +2053,7 @@ function deleteFeature(
     });
   }
 
-  const consumingFeature = findConsumingCutFeatureByTargetBodyId(
+  const consumingFeature = findConsumingBooleanFeatureByTargetBodyId(
     state.features,
     feature.bodyId
   );
@@ -2061,12 +2061,12 @@ function deleteFeature(
   if (consumingFeature) {
     throwValidationError({
       code: "FEATURE_NOT_DELETABLE",
-      message: `Feature ${featureId} cannot be deleted because its body is targeted by cut feature ${consumingFeature.id}.`,
+      message: `Feature ${featureId} cannot be deleted because its body is targeted by boolean feature ${consumingFeature.id}.`,
       opIndex,
       featureId,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "id"),
-      expected: "feature body not targeted by a cut feature",
+      expected: "feature body not targeted by a boolean feature",
       received: consumingFeature.id
     });
   }
@@ -2198,20 +2198,33 @@ function findFeatureByBodyId(
   return [...features.values()].find((feature) => feature.bodyId === bodyId);
 }
 
-function findConsumingCutFeatureByTargetBodyId(
+function findConsumingBooleanFeatureByTargetBodyId(
   features: ReadonlyMap<FeatureId, Feature>,
   targetBodyId: BodyId
 ): Feature | undefined {
   return [...features.values()].find(
     (feature) =>
-      feature.operationMode === "cut" && feature.targetBodyId === targetBodyId
+      isConsumingExtrudeOperationMode(feature.operationMode) &&
+      feature.targetBodyId === targetBodyId
   );
+}
+
+function isConsumingExtrudeOperationMode(
+  operationMode: FeatureExtrudeOperationMode
+): operationMode is "add" | "cut" {
+  return operationMode === "add" || operationMode === "cut";
 }
 
 function isSupportedCutTargetProfileKind(
   profileKind: FeatureExtrudeProfileKind
 ): boolean {
   return profileKind === "rectangle" || profileKind === "circle";
+}
+
+function isSupportedAddTargetProfileKind(
+  profileKind: FeatureExtrudeProfileKind
+): boolean {
+  return profileKind === "rectangle";
 }
 
 function isPrimitiveBodyId(state: MutableDocumentState, id: BodyId): boolean {
@@ -2440,54 +2453,62 @@ function assertSupportedExtrudeOperation(
     return;
   }
 
-  if (operationMode === "cut") {
-    const targetFeature =
-      targetBodyId === undefined
-        ? undefined
-        : findFeatureByBodyId(state.features, targetBodyId);
+  const targetFeature =
+    targetBodyId === undefined
+      ? undefined
+      : findFeatureByBodyId(state.features, targetBodyId);
+  const consumingFeature = targetBodyId
+    ? findConsumingBooleanFeatureByTargetBodyId(state.features, targetBodyId)
+    : undefined;
 
-    if (
-      targetBodyId &&
-      targetFeature &&
-      profileKind === "rectangle" &&
-      isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
-      targetFeature.operationMode === "newBody" &&
-      findConsumingCutFeatureByTargetBodyId(state.features, targetBodyId) ===
-        undefined
-    ) {
-      return;
-    }
-
-    throwValidationError({
-      code: "UNSUPPORTED_FEATURE_OPERATION",
-      message:
-        "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.",
-      opIndex,
-      bodyId: targetBodyId,
-      path: operationPath(opIndex, "operationMode"),
-      expected:
-        "cut with rectangle source and active rectangle/circle newBody target",
-      received: describeReceived({
-        operationMode,
-        profileKind,
-        targetBodyId,
-        targetProfileKind: targetFeature?.profileKind,
-        targetOperationMode: targetFeature?.operationMode,
-        targetConsumedByFeatureId: targetBodyId
-          ? findConsumingCutFeatureByTargetBodyId(state.features, targetBodyId)
-              ?.id
-          : undefined
-      })
-    });
+  if (
+    operationMode === "cut" &&
+    targetBodyId &&
+    targetFeature &&
+    profileKind === "rectangle" &&
+    isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
+    targetFeature.operationMode === "newBody" &&
+    consumingFeature === undefined
+  ) {
+    return;
   }
+
+  if (
+    operationMode === "add" &&
+    targetBodyId &&
+    targetFeature &&
+    profileKind === "rectangle" &&
+    isSupportedAddTargetProfileKind(targetFeature.profileKind) &&
+    targetFeature.operationMode === "newBody" &&
+    consumingFeature === undefined
+  ) {
+    return;
+  }
+
+  const expected =
+    operationMode === "add"
+      ? "add with rectangle source and active rectangle newBody target"
+      : "cut with rectangle source and active rectangle/circle newBody target";
+  const message =
+    operationMode === "add"
+      ? "Add extrudes currently support rectangle tools fusing with one active rectangle newBody target body."
+      : "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.";
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
-    message: `Extrude operation mode ${operationMode} requires boolean-backed topology support and is not implemented yet.`,
+    message,
     opIndex,
+    bodyId: targetBodyId,
     path: operationPath(opIndex, "operationMode"),
-    expected: "newBody or supported cut",
-    received: operationMode
+    expected,
+    received: describeReceived({
+      operationMode,
+      profileKind,
+      targetBodyId,
+      targetProfileKind: targetFeature?.profileKind,
+      targetOperationMode: targetFeature?.operationMode,
+      targetConsumedByFeatureId: consumingFeature?.id
+    })
   });
 }
 
@@ -3885,7 +3906,10 @@ function createConsumedBodyMap(
   const consumed = new Map<BodyId, FeatureId>();
 
   for (const feature of features.values()) {
-    if (feature.operationMode === "cut" && feature.targetBodyId) {
+    if (
+      isConsumingExtrudeOperationMode(feature.operationMode) &&
+      feature.targetBodyId
+    ) {
       consumed.set(feature.targetBodyId, feature.id);
     }
   }
@@ -5976,7 +6000,9 @@ function validateFeatureTargetBodyReferences(
   issues: CadProjectImportIssue[]
 ): void {
   for (const feature of featuresByBodyId.values()) {
-    if (feature.operationMode !== "cut") {
+    const operationMode = feature.operationMode ?? "newBody";
+
+    if (!isConsumingExtrudeOperationMode(operationMode)) {
       continue;
     }
 
@@ -5993,7 +6019,7 @@ function validateFeatureTargetBodyReferences(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        "Cut extrude targetBodyId must reference an existing authored extrude body."
+        `${formatExtrudeOperationModeForIssue(operationMode)} extrude targetBodyId must reference an existing authored extrude body.`
       );
       continue;
     }
@@ -6001,7 +6027,7 @@ function validateFeatureTargetBodyReferences(
     const consumedBy = [...featuresByBodyId.values()].find(
       (candidate) =>
         candidate.id !== feature.id &&
-        candidate.operationMode === "cut" &&
+        isConsumingExtrudeOperationMode(candidate.operationMode ?? "newBody") &&
         candidate.targetBodyId === targetBodyId
     );
 
@@ -6010,24 +6036,60 @@ function validateFeatureTargetBodyReferences(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        "Cut extrude targetBodyId must reference an active authored body that is not already consumed by another cut."
+        `${formatExtrudeOperationModeForIssue(operationMode)} extrude targetBodyId must reference an active authored body that is not already consumed by another boolean feature.`
       );
       continue;
     }
 
-    if (
-      feature.profileKind !== "rectangle" ||
-      !isSupportedCutTargetProfileKind(target.profileKind) ||
-      target.operationMode !== "newBody"
-    ) {
+    if (!isSupportedBooleanExtrudeCombination(feature, target)) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.operationMode`,
-        "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body."
+        getUnsupportedBooleanExtrudeMessage(operationMode)
       );
     }
   }
+}
+
+function isSupportedBooleanExtrudeCombination(
+  feature: ExtrudeFeatureSnapshot,
+  target: ExtrudeFeatureSnapshot
+): boolean {
+  if (
+    feature.profileKind !== "rectangle" ||
+    target.operationMode !== "newBody"
+  ) {
+    return false;
+  }
+
+  const operationMode = feature.operationMode ?? "newBody";
+
+  if (operationMode === "add") {
+    return isSupportedAddTargetProfileKind(target.profileKind);
+  }
+
+  if (operationMode === "cut") {
+    return isSupportedCutTargetProfileKind(target.profileKind);
+  }
+
+  return false;
+}
+
+function getUnsupportedBooleanExtrudeMessage(
+  operationMode: FeatureExtrudeOperationMode
+): string {
+  if (operationMode === "add") {
+    return "Add extrudes currently support rectangle tools fusing with one active rectangle newBody target body.";
+  }
+
+  return "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.";
+}
+
+function formatExtrudeOperationModeForIssue(
+  operationMode: FeatureExtrudeOperationMode
+): string {
+  return operationMode === "add" ? "Add" : "Cut";
 }
 
 function validateSketchAttachments(
@@ -6446,13 +6508,6 @@ function validateFeatureSnapshot(
       "INVALID_FEATURE",
       `${path}.operationMode`,
       "Extrude feature operationMode must be newBody, add, or cut."
-    );
-  } else if (value.operationMode === "add") {
-    addProjectIssue(
-      issues,
-      "INVALID_FEATURE",
-      `${path}.operationMode`,
-      "Extrude operationMode add requires boolean-backed topology support and is not implemented yet."
     );
   }
 

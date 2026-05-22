@@ -182,9 +182,9 @@ Current limitations:
 - There is a first read-only semantic generated-reference query for authored
   rectangle/circle extrude bodies, but there is no broad stable topological
   naming system yet.
-- There is a first narrow rectangle-extrude cut slice, but there are no general
-  booleans, add/join operations, revolve, fillet, chamfer, shell, loft,
-  pattern, or direct modeling features.
+- There are first narrow rectangle-tool boolean slices for cut and command-model
+  add/fuse, but there are no general booleans, broad add/join operations,
+  revolve, fillet, chamfer, shell, loft, pattern, or direct modeling features.
 - There is no OPFS storage, File System Access integration, native `.wcad`
   package, STEP import/export, WebGPU renderer, large-assembly pipeline, hosted
   collaboration, or production MCP auth system.
@@ -344,11 +344,14 @@ Implemented:
   depth, supported side, supported operation mode, target-body contract, and
   unique feature/body IDs.
 - Operation mode is modeled as `newBody`, `add`, or `cut`. `newBody` remains
-  the default standalone behavior. The first narrow `cut` slice is implemented
-  for a rectangle sketch-extrude tool cutting one active authored rectangle or
-  circle `newBody` target body. `add`, circle-tool cuts, and broader cut cases
-  fail with structured unsupported errors until boolean/topology behavior is
-  scoped.
+  the default standalone behavior. The first narrow `cut` slices are
+  implemented for a rectangle sketch-extrude tool cutting one active authored
+  rectangle or circle `newBody` target body. The first narrow `add` slice is
+  implemented in the authoritative command model for a rectangle tool fusing
+  with one active authored rectangle `newBody` target body; derived-geometry/UI
+  integration for add is intentionally separate. Circle-tool booleans,
+  circle-target add, and broader boolean cases fail with structured unsupported
+  errors until boolean/topology behavior is scoped.
 - Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
   project round trip.
 - `web-cad.project.v6` source-of-truth export with V1/V2/V3/V4/V5 import
@@ -502,21 +505,24 @@ Exit criteria:
 Goal: improve visual correctness and performance based on actual V2 workloads.
 
 Current status: started. The OCCT rectangle-extrude boolean feasibility path now
-backs the first narrow authoritative `feature.extrude` cut slice. Cut features
+backs the first narrow authoritative `feature.extrude` cut slices. Cut features
 store source-of-truth feature intent in `cad-core`, then rebuild the cut result
 as derived mesh/cache data through `geometry.booleanExtrudes`,
 `@web-cad/geometry-kernel`, `@web-cad/geometry-worker`, and
 `@web-cad/occt-wasm`. The authoritative cut scope is now rectangle tool against
-one active authored rectangle or circle `newBody` target body. Circle-tool cuts,
-add/join, and general booleans remain unsupported until source-model,
-topology/reference, and UX semantics are scoped.
+one active authored rectangle or circle `newBody` target body. Rectangle
+add/fuse with an active authored rectangle `newBody` target is now represented
+in the authoritative command model, but derived geometry and UI integration are
+still pending. Circle-tool booleans, circle-target add, and general booleans
+remain unsupported until source-model, topology/reference, and UX semantics are
+scoped.
 
 Deliverables:
 
 - Add better edge display, normals, face highlighting, and body/feature
   selection feedback in the current renderer where practical.
-- Keep general boolean/add geometry work behind the geometry boundary until
-  topology naming, empty-result behavior, tolerance handling, performance, and
+- Keep broad boolean geometry work behind the geometry boundary until topology
+  naming, empty-result behavior, tolerance handling, performance, and
   generated-reference invalidation are intentionally designed.
 - Define benchmark scenes before starting WebGPU.
 - Introduce WebGPU only with clear requirements for buffers, picking, culling,
