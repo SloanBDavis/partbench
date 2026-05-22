@@ -11145,6 +11145,331 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("reports parameter-bound dimension health and rebuilds attached-sketch extrudes", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_attached_1",
+        name: "Attached profile",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_attached_1",
+        id: "rect_attached_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_attached_1",
+        bodyId: "body_attached_1",
+        sketchId: "sketch_attached_1",
+        entityId: "rect_attached_1",
+        depth: 2
+      },
+      {
+        op: "parameter.create",
+        id: "param_attached_w",
+        name: "Attached width",
+        value: 2
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_attached_w",
+        name: "Attached width dimension",
+        sketchId: "sketch_attached_1",
+        entityId: "rect_attached_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_attached_w"
+      }
+    ]);
+
+    const update = engine.apply({
+      op: "parameter.update",
+      id: "param_attached_w",
+      value: 3
+    });
+
+    expect(update.transaction.diff).toMatchObject({
+      parameters: { modified: [{ id: "param_attached_w" }] },
+      sketches: {
+        entitiesModified: [
+          {
+            sketchId: "sketch_attached_1",
+            id: "rect_attached_1",
+            kind: "rectangle"
+          }
+        ]
+      },
+      features: {
+        modified: [expect.objectContaining({ id: "feat_attached_1" })],
+        bodiesModified: [
+          { id: "body_attached_1", featureId: "feat_attached_1" }
+        ]
+      }
+    });
+
+    const measurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_attached_1" }
+    });
+    const extents = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.extents" }
+    });
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(measurements).toMatchObject({
+      ok: true,
+      measurements: {
+        localExtents: [3, 1, 2],
+        volume: 6
+      }
+    });
+    expect(extents).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_attached_1",
+          volume: 6
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      sketchDimensionCount: 1,
+      sketchDimensions: [
+        expect.objectContaining({
+          dimensionId: "dim_attached_w",
+          dimensionName: "Attached width dimension",
+          parameterId: "param_attached_w",
+          status: "healthy",
+          effectiveValue: 3,
+          affectedFeatureIds: ["feat_attached_1"],
+          affectedBodyIds: ["body_attached_1"],
+          issues: []
+        })
+      ]
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      sketchDimensions: [
+        expect.objectContaining({
+          dimensionId: "dim_attached_w",
+          effectiveValue: 3,
+          status: "healthy"
+        })
+      ]
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_attached_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      measurements: { localExtents: [2, 1, 2], volume: 4 }
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_attached_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      measurements: { localExtents: [3, 1, 2], volume: 6 }
+    });
+  });
+
+  it("marks downstream boolean result bodies affected by driving dimension edits", () => {
+    for (const operationMode of ["cut", "add"] as const) {
+      const engine = createRectangleExtrudeEngine();
+      const featureId = `feat_${operationMode}_dim`;
+      const bodyId = `body_${operationMode}_dim`;
+
+      engine.applyBatch([
+        {
+          op: "sketch.create",
+          id: "sketch_tool",
+          name: "Tool",
+          plane: "XY"
+        },
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_tool",
+          id: "rect_tool",
+          center: [0, 0],
+          width: 1,
+          height: 1
+        },
+        {
+          op: "feature.extrude",
+          id: featureId,
+          bodyId,
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_tool",
+          entityId: "rect_tool",
+          depth: 1,
+          operationMode
+        },
+        {
+          op: "parameter.create",
+          id: "param_target_w",
+          name: "Width",
+          value: 4
+        },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_target_w",
+          name: "Target width dimension",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: { entityKind: "rectangle", role: "width" },
+          parameterId: "param_target_w"
+        }
+      ]);
+
+      const update = engine.apply({
+        op: "parameter.update",
+        id: "param_target_w",
+        value: 6
+      });
+
+      expect(update.transaction.diff.features).toMatchObject({
+        modified: expect.arrayContaining([
+          expect.objectContaining({ id: "feat_rect_1" }),
+          expect.objectContaining({ id: featureId })
+        ]),
+        bodiesModified: expect.arrayContaining([
+          expect.objectContaining({ id: "body_rect_1" }),
+          expect.objectContaining({ id: bodyId })
+        ])
+      });
+
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.health" }
+        })
+      ).toMatchObject({
+        ok: true,
+        query: "project.health",
+        sketchDimensions: [
+          expect.objectContaining({
+            dimensionId: "dim_target_w",
+            affectedFeatureIds: ["feat_rect_1", featureId],
+            affectedBodyIds: ["body_rect_1", bodyId],
+            effectiveValue: 6,
+            status: "healthy"
+          })
+        ]
+      });
+    }
+  });
+
+  it("keeps generated and named reference measurements source-derived after parameter edits", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "reference.nameGenerated",
+        name: "top_face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      },
+      { op: "parameter.create", id: "param_w", name: "Width", value: 4 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_w"
+      }
+    ]);
+
+    engine.apply({ op: "parameter.update", id: "param_w", value: 8 });
+
+    const referenceMeasurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+    const namedReference = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "reference.resolveNamed", name: "top_face" }
+    });
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(referenceMeasurements).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      measurements: {
+        kind: "face",
+        area: 16,
+        bounds: {
+          min: [-4, -1, 3],
+          max: [4, 1, 3],
+          size: [8, 2, 0]
+        }
+      }
+    });
+    expect(namedReference).toMatchObject({
+      ok: true,
+      query: "reference.resolveNamed",
+      name: "top_face",
+      target: {
+        name: "top_face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      },
+      reference: {
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      namedReferences: [
+        expect.objectContaining({
+          name: "top_face",
+          status: "healthy",
+          issues: []
+        })
+      ]
+    });
+  });
+
   it("rejects invalid dimension and parameter lifecycle operations clearly", () => {
     const engine = new CadEngine();
     engine.applyBatch([

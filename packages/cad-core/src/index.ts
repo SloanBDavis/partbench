@@ -108,6 +108,7 @@ export type {
   CadDependencyHealthIssue,
   CadDependencyHealthIssueCode,
   CadDependencyHealthStatus,
+  CadSketchDimensionHealth,
   CadFeatureRef,
   CadFeatureSummary,
   CadGeneratedBodyReference,
@@ -1938,73 +1939,7 @@ function applyOperation(
         diff,
         opIndex
       );
-      const dependentFeatures = findFeaturesBySketchEntity(
-        state.features,
-        sketch.id,
-        entity.id
-      );
-      const profileKind =
-        dependentFeatures.length > 0
-          ? assertExtrudableProfile(entity, opIndex, sketch.id, entity.id)
-          : undefined;
-      const updatedFeatures =
-        dependentFeatures.length > 0 && profileKind
-          ? dependentFeatures.map((feature) => ({
-              ...feature,
-              profileKind
-            }))
-          : [];
-      const nextFeatures = new Map(state.features);
-      const updatedBodyIds = new Set<BodyId>();
-
-      for (const feature of updatedFeatures) {
-        nextFeatures.set(feature.id, feature);
-        updatedBodyIds.add(feature.bodyId);
-      }
-
-      for (const feature of updatedFeatures) {
-        assertSupportedExtrudeOperation(
-          { ...state, features: nextFeatures },
-          feature.operationMode,
-          feature.profileKind,
-          feature.targetBodyId,
-          opIndex,
-          feature.id
-        );
-      }
-
-      for (const feature of nextFeatures.values()) {
-        if (
-          feature.operationMode === "newBody" ||
-          !feature.targetBodyId ||
-          !updatedBodyIds.has(feature.targetBodyId) ||
-          updatedFeatures.some((updated) => updated.id === feature.id)
-        ) {
-          continue;
-        }
-
-        assertSupportedExtrudeOperation(
-          { ...state, features: nextFeatures },
-          feature.operationMode,
-          feature.profileKind,
-          feature.targetBodyId,
-          opIndex,
-          feature.id
-        );
-      }
-
-      const entities = new Map(sketch.entities);
-      entities.set(entity.id, entity);
-      state.sketches.set(sketch.id, { ...sketch, entities });
-      pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
-
-      if (updatedFeatures.length > 0) {
-        for (const updated of updatedFeatures) {
-          state.features.set(updated.id, updated);
-          pushFeatureModified(diff, featureRef(updated));
-          pushBodyModified(diff, bodyRef(updated));
-        }
-      }
+      updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
 
       return;
     }
@@ -3130,10 +3065,12 @@ function updateSketchEntityAndDependents(
       : [];
   const nextFeatures = new Map(state.features);
   const updatedBodyIds = new Set<BodyId>();
+  const updatedFeatureIds = new Set<FeatureId>();
 
   for (const feature of updatedFeatures) {
     nextFeatures.set(feature.id, feature);
     updatedBodyIds.add(feature.bodyId);
+    updatedFeatureIds.add(feature.id);
   }
 
   for (const feature of updatedFeatures) {
@@ -3147,12 +3084,14 @@ function updateSketchEntityAndDependents(
     );
   }
 
+  const downstreamFeatures: Feature[] = [];
+
   for (const feature of nextFeatures.values()) {
     if (
       feature.operationMode === "newBody" ||
       !feature.targetBodyId ||
       !updatedBodyIds.has(feature.targetBodyId) ||
-      updatedFeatures.some((updated) => updated.id === feature.id)
+      updatedFeatureIds.has(feature.id)
     ) {
       continue;
     }
@@ -3165,6 +3104,7 @@ function updateSketchEntityAndDependents(
       opIndex,
       feature.id
     );
+    downstreamFeatures.push(feature);
   }
 
   const entities = new Map(sketch.entities);
@@ -3172,7 +3112,7 @@ function updateSketchEntityAndDependents(
   state.sketches.set(sketch.id, { ...sketch, entities });
   pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
 
-  for (const updated of updatedFeatures) {
+  for (const updated of [...updatedFeatures, ...downstreamFeatures]) {
     state.features.set(updated.id, updated);
     pushFeatureModified(diff, featureRef(updated));
     pushBodyModified(diff, bodyRef(updated));

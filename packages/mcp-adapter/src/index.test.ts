@@ -1795,13 +1795,15 @@ describe("mcp-adapter", () => {
         status: "healthy",
         issueCount: 0,
         authoredExtrudeCount: 1,
+        sketchDimensionCount: 0,
         authoredExtrudes: [
           {
             featureId: "mcp_health_feature",
             bodyId: "mcp_health_body",
             status: "healthy"
           }
-        ]
+        ],
+        sketchDimensions: []
       }
     });
   });

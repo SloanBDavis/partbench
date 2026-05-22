@@ -1360,9 +1360,12 @@ export type CadDependencyHealthStatus =
   | "unsupported";
 
 export type CadDependencyHealthIssueCode =
+  | "PARAMETER_NOT_FOUND"
   | "SKETCH_NOT_FOUND"
   | "SKETCH_ENTITY_NOT_FOUND"
   | "PROFILE_KIND_MISMATCH"
+  | "UNSUPPORTED_SKETCH_DIMENSION_TARGET"
+  | "INVALID_SKETCH_DIMENSION_VALUE"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "GENERATED_REFERENCE_NOT_FOUND"
@@ -1376,6 +1379,8 @@ export interface CadDependencyHealthIssue {
   readonly message: string;
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
+  readonly parameterId?: ParameterId;
+  readonly sketchDimensionId?: SketchDimensionId;
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly stableId?: string;
@@ -1411,6 +1416,21 @@ export interface CadAttachedSketchHealth {
   readonly eligibleForSketchPlane: boolean;
   readonly resolvedKind?: CadGeneratedEntityKind;
   readonly resolvedFaceRole?: CadGeneratedExtrudeFaceRole;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadSketchDimensionHealth {
+  readonly dimensionId: SketchDimensionId;
+  readonly dimensionName: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly target: SketchDimensionTarget;
+  readonly valueSource: SketchDimensionValueSource;
+  readonly status: CadDependencyHealthStatus;
+  readonly affectedFeatureIds: readonly FeatureId[];
+  readonly affectedBodyIds: readonly BodyId[];
+  readonly effectiveValue?: number;
+  readonly parameterId?: ParameterId;
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 
@@ -1578,9 +1598,11 @@ export interface ProjectHealthQueryResponse {
   readonly issueCount: number;
   readonly authoredExtrudeCount: number;
   readonly attachedSketchCount: number;
+  readonly sketchDimensionCount: number;
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
+  readonly sketchDimensions: readonly CadSketchDimensionHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
 }
 

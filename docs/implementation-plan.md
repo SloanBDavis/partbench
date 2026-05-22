@@ -285,12 +285,14 @@ Solver direction guardrails:
 Goal: make parameter/dimension edits propagate through the existing V2 body
 pipeline without breaking architectural boundaries.
 
-Expected deliverables:
+Implemented deliverables:
 
 - dimension/parameter edits update source sketches through CADOps;
 - authored extrudes, attached sketches, narrow boolean add/cut results,
   measurements, extents, generated references, named references, and health
   queries respond coherently;
+- `project.health` reports parameter-bound sketch dimensions, effective values,
+  affected features/bodies, and structured missing/invalid dimension issues;
 - derived geometry cache keys and stale async handling include driven sketch
   changes;
 - unsupported cases fail clearly and structurally.
