@@ -931,6 +931,77 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("ignores stale worker results after add tool source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "tool" in input && input.tool.profile.kind === "rectangle"
+        ? input.tool.profile.width === 4
+          ? first.promise
+          : second.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_add_1",
+      kind: "extrudeBoolean",
+      operation: "add",
+      target: createExtrudeSource("body_rect_1"),
+      tool: createExtrudeSource("body_add_1")
+    };
+    const editedSource: DerivedBooleanExtrudeGeometrySource = {
+      ...initialSource,
+      tool: {
+        ...initialSource.tool,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 8,
+          height: 2
+        }
+      }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "tool" in input && input.tool.profile.kind === "rectangle"
+          ? input.tool.profile.width
+          : null
+      )
+    ).toEqual([4, 8]);
+
+    first.resolve(createResult("body_add_1", createMesh("stale_add_tool")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_add_1", createMesh("body_add_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_add_1"
+    ]);
+  });
+
   it("ignores stale worker results after circle cut target source invalidation", async () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();

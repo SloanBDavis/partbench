@@ -286,8 +286,8 @@ describe("cad-protocol", () => {
     expect(batch.ops).toHaveLength(1);
   });
 
-  it("types rectangle-tool cut commands with authored target body ids", () => {
-    const op: CadOp = {
+  it("types rectangle-tool boolean commands with authored target body ids", () => {
+    const cutOp: CadOp = {
       op: "feature.extrude",
       id: "feat_circle_cut",
       bodyId: "body_circle_cut",
@@ -297,16 +297,31 @@ describe("cad-protocol", () => {
       depth: 1,
       operationMode: "cut"
     };
+    const addOp: CadOp = {
+      op: "feature.extrude",
+      id: "feat_rect_add",
+      bodyId: "body_rect_add",
+      targetBodyId: "body_rect_target",
+      sketchId: "sketch_1",
+      entityId: "rect_tool",
+      depth: 1,
+      operationMode: "add"
+    };
     const batch: CadBatch = {
       version: "cadops.v1",
       mode: "dryRun",
-      ops: [op]
+      ops: [cutOp, addOp]
     };
 
     expect(batch.ops[0]).toMatchObject({
       op: "feature.extrude",
       operationMode: "cut",
       targetBodyId: "body_circle_target"
+    });
+    expect(batch.ops[1]).toMatchObject({
+      op: "feature.extrude",
+      operationMode: "add",
+      targetBodyId: "body_rect_target"
     });
   });
 

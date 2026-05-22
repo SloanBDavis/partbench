@@ -157,7 +157,7 @@ describe("geometry-worker", () => {
     });
   });
 
-  it("creates a typed extrude boolean worker request", () => {
+  it("creates typed extrude boolean worker requests for cut and add", () => {
     expect(
       createExtrudeBooleanWorkerRequest({
         id: "worker_req_boolean",
@@ -216,6 +216,40 @@ describe("geometry-worker", () => {
         tessellation: {
           linearDeflection: 0.25
         }
+      }
+    });
+    expect(
+      createExtrudeBooleanWorkerRequest({
+        id: "worker_req_boolean_add",
+        operation: "add",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 4
+        }
+      })
+    ).toMatchObject({
+      id: "worker_req_boolean_add",
+      kind: "geometry-worker.booleanFeature",
+      payload: {
+        id: "worker_req_boolean_add:payload",
+        op: "geometry.booleanExtrudes",
+        operation: "add"
       }
     });
   });

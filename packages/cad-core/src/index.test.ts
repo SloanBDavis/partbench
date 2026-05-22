@@ -8695,6 +8695,134 @@ describe("cad-core", () => {
     });
   });
 
+  it("round-trips a named attached-sketch rectangle add workflow through project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "reference.nameGenerated",
+        name: "Top face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_add_face",
+        name: "Add boss sketch",
+        referenceName: "Top face"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_add_face",
+        id: "rect_add_face",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_face",
+        bodyId: "body_add_face",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_add_face",
+        entityId: "rect_add_face",
+        depth: 1,
+        operationMode: "add"
+      }
+    ]);
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    const structure = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const health = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+    const namedReference = restored.executeQuery({
+      version: "cadops.v1",
+      query: { query: "reference.resolveNamed", name: "Top face" }
+    });
+
+    expect(restored.getDocument().features.get("feat_add_face")).toMatchObject({
+      operationMode: "add",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_add_face",
+      entityId: "rect_add_face"
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_add_face",
+          operationMode: "add",
+          targetBodyId: "body_rect_1",
+          bodyId: "body_add_face"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_add_face"
+        }),
+        expect.objectContaining({
+          id: "body_add_face",
+          featureId: "feat_add_face"
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      attachedSketches: [
+        expect.objectContaining({
+          sketchId: "sketch_add_face",
+          status: "healthy",
+          resolves: true,
+          eligibleForSketchPlane: true
+        })
+      ],
+      namedReferences: [
+        expect.objectContaining({
+          name: "Top face",
+          status: "healthy"
+        })
+      ],
+      authoredExtrudes: expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_add_face",
+          operationMode: "add",
+          targetBodyId: "body_rect_1",
+          status: "healthy"
+        })
+      ])
+    });
+    expect(namedReference).toMatchObject({
+      ok: true,
+      query: "reference.resolveNamed",
+      name: "Top face",
+      reference: {
+        kind: "face",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+
+    restored.undo();
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      bodies: [expect.objectContaining({ id: "body_rect_1" })]
+    });
+  });
+
   it("supports rectangle cut features targeting authored circle newBody bodies", () => {
     const engine = createCircleExtrudeEngine();
 

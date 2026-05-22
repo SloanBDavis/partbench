@@ -171,6 +171,118 @@ describe("mcp stdio server", () => {
     });
   });
 
+  it("handles rectangle add cad.batch calls over line-delimited JSON-RPC", () => {
+    const session = createMcpStdioSession();
+    const commit = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "commit-add",
+          method: "tools/call",
+          params: {
+            name: "cad.batch",
+            arguments: {
+              allowCommit: true,
+              batch: {
+                version: "cadops.v1",
+                mode: "commit",
+                ops: [
+                  {
+                    op: "sketch.create",
+                    id: "sketch_add",
+                    name: "Profile",
+                    plane: "XY"
+                  },
+                  {
+                    op: "sketch.addRectangle",
+                    sketchId: "sketch_add",
+                    id: "rect_add",
+                    center: [0, 0],
+                    width: 3,
+                    height: 2
+                  },
+                  {
+                    op: "feature.extrude",
+                    id: "feat_target",
+                    bodyId: "body_target",
+                    sketchId: "sketch_add",
+                    entityId: "rect_add",
+                    depth: 4
+                  },
+                  {
+                    op: "feature.extrude",
+                    id: "feat_add",
+                    bodyId: "body_add",
+                    targetBodyId: "body_target",
+                    sketchId: "sketch_add",
+                    entityId: "rect_add",
+                    depth: 1,
+                    operationMode: "add"
+                  }
+                ]
+              }
+            }
+          }
+        })
+      )
+    );
+    const structure = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "structure-add",
+          method: "tools/call",
+          params: {
+            name: "cad.project_structure",
+            arguments: {}
+          }
+        })
+      )
+    );
+
+    expect(commit).toMatchObject({
+      jsonrpc: "2.0",
+      id: "commit-add",
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          createdFeatureIds: ["feat_target", "feat_add"],
+          createdBodyIds: ["body_target", "body_add"]
+        }
+      }
+    });
+    expect(structure).toMatchObject({
+      jsonrpc: "2.0",
+      id: "structure-add",
+      result: {
+        toolName: "cad.project_structure",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          features: expect.arrayContaining([
+            expect.objectContaining({
+              id: "feat_add",
+              operationMode: "add",
+              targetBodyId: "body_target"
+            })
+          ]),
+          bodies: expect.arrayContaining([
+            expect.objectContaining({
+              id: "body_target",
+              consumedByFeatureId: "feat_add"
+            }),
+            expect.objectContaining({
+              id: "body_add",
+              featureId: "feat_add"
+            })
+          ])
+        }
+      }
+    });
+  });
+
   it("handles extrude depth updates over line-delimited JSON-RPC", () => {
     const session = createMcpStdioSession();
 
