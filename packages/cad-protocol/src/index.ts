@@ -14,6 +14,7 @@ export type SketchId = string;
 export type SketchEntityId = string;
 export type ParameterId = string;
 export type SketchDimensionId = string;
+export type SketchConstraintId = string;
 export type TransactionId = string;
 export type NamedReferenceName = string;
 export type DocumentUnits = "mm" | "cm" | "m" | "in";
@@ -82,12 +83,21 @@ export type SketchDimensionStatus =
   | "missing-target"
   | "invalid-value";
 
+export type SketchConstraintKind = "horizontal" | "vertical";
+
 export type SketchDimensionIssueCode =
   | "PARAMETER_NOT_FOUND"
   | "SKETCH_NOT_FOUND"
   | "SKETCH_ENTITY_NOT_FOUND"
   | "UNSUPPORTED_TARGET"
   | "INVALID_VALUE";
+
+export type SketchConstraintIssueCode =
+  | "SKETCH_NOT_FOUND"
+  | "SKETCH_ENTITY_NOT_FOUND"
+  | "UNSUPPORTED_TARGET"
+  | "INVALID_VALUE"
+  | "CONFLICTING_CONSTRAINT";
 
 export type SketchDimensionTarget =
   | SketchRectangleDimensionTarget
@@ -156,6 +166,9 @@ export type CadOp =
   | SketchDimensionUpdateOp
   | SketchDimensionRenameOp
   | SketchDimensionDeleteOp
+  | SketchConstraintCreateOp
+  | SketchConstraintRenameOp
+  | SketchConstraintDeleteOp
   | FeatureExtrudeOp
   | FeatureUpdateExtrudeOp
   | FeatureDeleteOp
@@ -381,6 +394,26 @@ export interface SketchDimensionDeleteOp {
   readonly id: SketchDimensionId;
 }
 
+export interface SketchConstraintCreateOp {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: SketchConstraintKind;
+}
+
+export interface SketchConstraintRenameOp {
+  readonly op: "sketch.constraint.rename";
+  readonly id: SketchConstraintId;
+  readonly name: string;
+}
+
+export interface SketchConstraintDeleteOp {
+  readonly op: "sketch.constraint.delete";
+  readonly id: SketchConstraintId;
+}
+
 export interface FeatureExtrudeOp {
   readonly op: "feature.extrude";
   readonly id?: FeatureId;
@@ -473,6 +506,14 @@ export interface CadSketchDimensionRef {
   readonly parameterId?: ParameterId;
 }
 
+export interface CadSketchConstraintRef {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: SketchConstraintKind;
+}
+
 export interface DocumentSemanticDiff {
   readonly units?: {
     readonly before: DocumentUnits;
@@ -517,6 +558,12 @@ export interface SketchDimensionSemanticDiff {
   readonly deleted?: readonly CadSketchDimensionRef[];
 }
 
+export interface SketchConstraintSemanticDiff {
+  readonly created?: readonly CadSketchConstraintRef[];
+  readonly modified?: readonly CadSketchConstraintRef[];
+  readonly deleted?: readonly CadSketchConstraintRef[];
+}
+
 export interface SemanticDiff {
   readonly created: readonly CadObjectRef[];
   readonly modified: readonly CadObjectRef[];
@@ -527,6 +574,7 @@ export interface SemanticDiff {
   readonly references?: ReferenceSemanticDiff;
   readonly parameters?: ParameterSemanticDiff;
   readonly sketchDimensions?: SketchDimensionSemanticDiff;
+  readonly sketchConstraints?: SketchConstraintSemanticDiff;
 }
 
 export type CadTransactionStatus = "committed" | "undone";
@@ -570,6 +618,11 @@ export type CadBatchValidationErrorCode =
   | "SKETCH_DIMENSION_NOT_FOUND"
   | "INVALID_SKETCH_DIMENSION"
   | "INVALID_SKETCH_DIMENSION_NAME"
+  | "SKETCH_CONSTRAINT_ALREADY_EXISTS"
+  | "SKETCH_CONSTRAINT_NOT_FOUND"
+  | "CONFLICTING_SKETCH_CONSTRAINT"
+  | "INVALID_SKETCH_CONSTRAINT"
+  | "INVALID_SKETCH_CONSTRAINT_NAME"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "GENERATED_REFERENCE_NOT_FOUND"
@@ -601,6 +654,7 @@ export interface CadBatchValidationError {
   readonly sketchEntityId?: SketchEntityId;
   readonly parameterId?: ParameterId;
   readonly sketchDimensionId?: SketchDimensionId;
+  readonly sketchConstraintId?: SketchConstraintId;
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
@@ -636,6 +690,9 @@ export interface CadBatchSuccessResponse {
   readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
   readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly createdSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly modifiedSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly deletedSketchConstraintIds?: readonly SketchConstraintId[];
   readonly createdFeatureIds?: readonly FeatureId[];
   readonly modifiedFeatureIds?: readonly FeatureId[];
   readonly deletedFeatureIds?: readonly FeatureId[];
@@ -668,6 +725,9 @@ export interface CadBatchErrorResponse {
   readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
   readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly createdSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly modifiedSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly deletedSketchConstraintIds?: readonly SketchConstraintId[];
   readonly createdFeatureIds?: readonly FeatureId[];
   readonly modifiedFeatureIds?: readonly FeatureId[];
   readonly deletedFeatureIds?: readonly FeatureId[];
@@ -923,6 +983,14 @@ export interface SketchDimensionSnapshot {
   readonly valueSource: SketchDimensionValueSource;
 }
 
+export interface SketchConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: SketchConstraintKind;
+}
+
 export interface SketchDimensionIssue {
   readonly code: SketchDimensionIssueCode;
   readonly message: string;
@@ -934,10 +1002,29 @@ export interface SketchDimensionIssue {
   readonly received?: string;
 }
 
+export interface SketchConstraintIssue {
+  readonly code: SketchConstraintIssueCode;
+  readonly message: string;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly sketchConstraintId?: SketchConstraintId;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export type SketchEvaluationIssue =
+  | SketchDimensionIssue
+  | SketchConstraintIssue;
+
 export interface SketchDimensionEntry extends SketchDimensionSnapshot {
   readonly status: SketchDimensionStatus;
   readonly issues: readonly SketchDimensionIssue[];
   readonly effectiveValue?: number;
+}
+
+export interface SketchConstraintEntry extends SketchConstraintSnapshot {
+  readonly status: SketchDimensionStatus;
+  readonly issues: readonly SketchConstraintIssue[];
 }
 
 export type SketchAttachmentSnapshot = SketchGeneratedFaceAttachmentSnapshot;
@@ -1394,6 +1481,7 @@ export interface CadDependencyHealthIssue {
   readonly bodyId?: BodyId;
   readonly parameterId?: ParameterId;
   readonly sketchDimensionId?: SketchDimensionId;
+  readonly sketchConstraintId?: SketchConstraintId;
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly stableId?: string;
@@ -1471,6 +1559,7 @@ export interface CadOperationSummary {
   readonly objectKind?: CadObjectKind;
   readonly parameterId?: ParameterId;
   readonly sketchDimensionId?: SketchDimensionId;
+  readonly sketchConstraintId?: SketchConstraintId;
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly sketchEntityKind?: SketchEntityKind;
@@ -1496,6 +1585,7 @@ export interface CadSemanticDiffSummary {
   readonly references?: ReferenceSemanticDiff;
   readonly parameters?: ParameterSemanticDiff;
   readonly sketchDimensions?: SketchDimensionSemanticDiff;
+  readonly sketchConstraints?: SketchConstraintSemanticDiff;
 }
 
 export interface CadTransactionHistoryEntry {
@@ -1683,8 +1773,10 @@ export interface SketchEvaluationQueryResponse {
   readonly drivenEntityIds: readonly SketchEntityId[];
   readonly dimensionCount: number;
   readonly dimensions: readonly SketchDimensionEntry[];
+  readonly constraintCount: number;
+  readonly constraints: readonly SketchConstraintEntry[];
   readonly issueCount: number;
-  readonly issues: readonly SketchDimensionIssue[];
+  readonly issues: readonly SketchEvaluationIssue[];
 }
 
 export interface SketchDimensionsQueryResponse {

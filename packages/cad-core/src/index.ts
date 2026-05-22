@@ -28,6 +28,7 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   CadSketchEntityRef,
+  CadSketchConstraintRef,
   CadSketchDimensionRef,
   CadSketchRef,
   CadTransactionStatus,
@@ -67,6 +68,12 @@ import type {
   ReferenceSemanticDiff,
   TransactionId,
   SketchDimensionEntry,
+  SketchConstraintEntry,
+  SketchConstraintId,
+  SketchConstraintIssue,
+  SketchConstraintKind,
+  SketchConstraintSemanticDiff,
+  SketchConstraintSnapshot,
   SketchDimensionId,
   SketchDimensionIssue,
   SketchDimensionSnapshot,
@@ -140,6 +147,7 @@ export type {
   CadQueryResponse,
   CadSemanticDiffSummary,
   CadSketchDimensionRef,
+  CadSketchConstraintRef,
   CadSketchEntityRef,
   CadSketchRef,
   CadTransactionHistoryEntry,
@@ -153,6 +161,12 @@ export type {
   ParameterSemanticDiff,
   ReferenceSemanticDiff,
   SketchDimensionEntry,
+  SketchConstraintEntry,
+  SketchConstraintId,
+  SketchConstraintIssue,
+  SketchConstraintKind,
+  SketchConstraintSnapshot,
+  SketchConstraintSemanticDiff,
   SketchDimensionId,
   SketchDimensionIssue,
   SketchDimensionSnapshot,
@@ -260,6 +274,8 @@ export type CadParameter = CadParameterSnapshot;
 
 export type SketchDimension = SketchDimensionSnapshot;
 
+export type SketchConstraint = SketchConstraintSnapshot;
+
 export type Feature = ExtrudeFeature;
 
 export interface ExtrudeFeature {
@@ -281,6 +297,7 @@ export interface CadDocument {
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
   readonly parameters: ReadonlyMap<ParameterId, CadParameter>;
   readonly sketchDimensions: ReadonlyMap<SketchDimensionId, SketchDimension>;
+  readonly sketchConstraints: ReadonlyMap<SketchConstraintId, SketchConstraint>;
   readonly features: ReadonlyMap<FeatureId, Feature>;
   readonly namedReferences: ReadonlyMap<
     NamedReferenceName,
@@ -309,6 +326,7 @@ export interface CadEngineOptions {
   readonly nextSketchEntityNumber?: number;
   readonly nextParameterNumber?: number;
   readonly nextSketchDimensionNumber?: number;
+  readonly nextSketchConstraintNumber?: number;
   readonly nextFeatureNumber?: number;
   readonly nextBodyNumber?: number;
 }
@@ -324,6 +342,7 @@ export interface CadDocumentSnapshot {
   readonly sketches: readonly SketchSnapshot[];
   readonly parameters: readonly CadParameterSnapshot[];
   readonly sketchDimensions: readonly SketchDimensionSnapshot[];
+  readonly sketchConstraints: readonly SketchConstraintSnapshot[];
   readonly features: readonly ExtrudeFeatureSnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly nextObjectNumber: number;
@@ -331,6 +350,7 @@ export interface CadDocumentSnapshot {
   readonly nextSketchEntityNumber: number;
   readonly nextParameterNumber: number;
   readonly nextSketchDimensionNumber: number;
+  readonly nextSketchConstraintNumber: number;
   readonly nextFeatureNumber: number;
   readonly nextBodyNumber: number;
 }
@@ -362,7 +382,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V3 = "web-cad.project.v3";
 export const CAD_PROJECT_FORMAT_VERSION_V4 = "web-cad.project.v4";
 export const CAD_PROJECT_FORMAT_VERSION_V5 = "web-cad.project.v5";
 export const CAD_PROJECT_FORMAT_VERSION_V6 = "web-cad.project.v6";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v7";
+export const CAD_PROJECT_FORMAT_VERSION_V7 = "web-cad.project.v7";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v8";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -371,6 +392,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V4
   | typeof CAD_PROJECT_FORMAT_VERSION_V5
   | typeof CAD_PROJECT_FORMAT_VERSION_V6
+  | typeof CAD_PROJECT_FORMAT_VERSION_V7
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -386,6 +408,7 @@ export type CadProjectImportErrorCode =
   | "INVALID_SKETCH_ENTITY"
   | "INVALID_PARAMETER"
   | "INVALID_SKETCH_DIMENSION"
+  | "INVALID_SKETCH_CONSTRAINT"
   | "INVALID_FEATURE"
   | "INVALID_NAMED_REFERENCE"
   | "INVALID_DIMENSIONS"
@@ -430,6 +453,7 @@ interface OperationRunResult {
   readonly nextSketchEntityNumber: number;
   readonly nextParameterNumber: number;
   readonly nextSketchDimensionNumber: number;
+  readonly nextSketchConstraintNumber: number;
   readonly nextFeatureNumber: number;
   readonly nextBodyNumber: number;
 }
@@ -459,6 +483,9 @@ export function createCadDocument(
   sketchDimensions: Iterable<
     readonly [SketchDimensionId, SketchDimension]
   > = [],
+  sketchConstraints: Iterable<
+    readonly [SketchConstraintId, SketchConstraint]
+  > = [],
   features: Iterable<readonly [FeatureId, Feature]> = [],
   namedReferences: Iterable<
     readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
@@ -469,6 +496,7 @@ export function createCadDocument(
     sketches: new Map(sketches),
     parameters: new Map(parameters),
     sketchDimensions: new Map(sketchDimensions),
+    sketchConstraints: new Map(sketchConstraints),
     features: new Map(features),
     namedReferences: new Map(namedReferences),
     units
@@ -484,6 +512,7 @@ export class CadEngine {
   #nextSketchEntityNumber = 1;
   #nextParameterNumber = 1;
   #nextSketchDimensionNumber = 1;
+  #nextSketchConstraintNumber = 1;
   #nextFeatureNumber = 1;
   #nextBodyNumber = 1;
   #nextTransactionNumber = 1;
@@ -504,6 +533,9 @@ export class CadEngine {
     this.#nextSketchDimensionNumber =
       options.nextSketchDimensionNumber ??
       inferNextSketchDimensionNumber(document);
+    this.#nextSketchConstraintNumber =
+      options.nextSketchConstraintNumber ??
+      inferNextSketchConstraintNumber(document);
     this.#nextFeatureNumber =
       options.nextFeatureNumber ?? inferNextFeatureNumber(document);
     this.#nextBodyNumber =
@@ -540,6 +572,8 @@ export class CadEngine {
     this.#nextParameterNumber = normalizedProject.document.nextParameterNumber;
     this.#nextSketchDimensionNumber =
       normalizedProject.document.nextSketchDimensionNumber;
+    this.#nextSketchConstraintNumber =
+      normalizedProject.document.nextSketchConstraintNumber;
     this.#nextFeatureNumber = normalizedProject.document.nextFeatureNumber;
     this.#nextBodyNumber = normalizedProject.document.nextBodyNumber;
     this.#nextTransactionNumber = inferNextTransactionNumber([
@@ -562,6 +596,7 @@ export class CadEngine {
       this.#nextSketchEntityNumber,
       this.#nextParameterNumber,
       this.#nextSketchDimensionNumber,
+      this.#nextSketchConstraintNumber,
       this.#nextFeatureNumber,
       this.#nextBodyNumber
     );
@@ -601,6 +636,7 @@ export class CadEngine {
     this.#nextSketchEntityNumber = run.nextSketchEntityNumber;
     this.#nextParameterNumber = run.nextParameterNumber;
     this.#nextSketchDimensionNumber = run.nextSketchDimensionNumber;
+    this.#nextSketchConstraintNumber = run.nextSketchConstraintNumber;
     this.#nextFeatureNumber = run.nextFeatureNumber;
     this.#nextBodyNumber = run.nextBodyNumber;
     this.#history.push(entry);
@@ -1336,6 +1372,7 @@ export class CadEngine {
       this.#nextSketchEntityNumber,
       this.#nextParameterNumber,
       this.#nextSketchDimensionNumber,
+      this.#nextSketchConstraintNumber,
       this.#nextFeatureNumber,
       this.#nextBodyNumber
     );
@@ -1472,6 +1509,7 @@ type MutableSemanticDiff = {
   references?: MutableReferenceSemanticDiff;
   parameters?: MutableParameterSemanticDiff;
   sketchDimensions?: MutableSketchDimensionSemanticDiff;
+  sketchConstraints?: MutableSketchConstraintSemanticDiff;
 };
 
 type MutableDocumentSemanticDiff = {
@@ -1518,6 +1556,12 @@ type MutableSketchDimensionSemanticDiff = {
   deleted: CadSketchDimensionRef[];
 };
 
+type MutableSketchConstraintSemanticDiff = {
+  created: CadSketchConstraintRef[];
+  modified: CadSketchConstraintRef[];
+  deleted: CadSketchConstraintRef[];
+};
+
 type SketchEntityImportRef = {
   readonly sketchId: SketchId;
   readonly kind: SketchEntityKind;
@@ -1529,6 +1573,7 @@ interface MutableDocumentState {
   sketches: Map<SketchId, Sketch>;
   parameters: Map<ParameterId, CadParameter>;
   sketchDimensions: Map<SketchDimensionId, SketchDimension>;
+  sketchConstraints: Map<SketchConstraintId, SketchConstraint>;
   features: Map<FeatureId, Feature>;
   namedReferences: Map<NamedReferenceName, NamedGeneratedReferenceSnapshot>;
   units: DocumentUnits;
@@ -1543,6 +1588,7 @@ function applyOperation(
   createSketchEntityId: () => SketchEntityId,
   createParameterId: () => ParameterId,
   createSketchDimensionId: () => SketchDimensionId,
+  createSketchConstraintId: () => SketchConstraintId,
   createFeatureId: () => FeatureId,
   createBodyId: () => BodyId,
   opIndex: number
@@ -1884,6 +1930,15 @@ function applyOperation(
         pushSketchDimensionDeleted(diff, sketchDimensionRef(dimension));
       }
 
+      for (const constraint of state.sketchConstraints.values()) {
+        if (constraint.sketchId !== op.id) {
+          continue;
+        }
+
+        state.sketchConstraints.delete(constraint.id);
+        pushSketchConstraintDeleted(diff, sketchConstraintRef(constraint));
+      }
+
       return;
     }
 
@@ -1954,15 +2009,33 @@ function applyOperation(
         entity,
         opIndex
       );
+      assertSketchConstraintTargetsStillValid(
+        state.sketchConstraints,
+        op.sketchId,
+        entity,
+        opIndex
+      );
+      const constrainedEntity = applySketchConstraintsToEntity(
+        state,
+        op.sketchId,
+        entity,
+        opIndex
+      );
       syncDimensionsForSketchEntityUpdate(
         state,
         op.sketchId,
         existing,
-        entity,
+        constrainedEntity,
         diff,
         opIndex
       );
-      updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
+      updateSketchEntityAndDependents(
+        state,
+        sketch,
+        constrainedEntity,
+        diff,
+        opIndex
+      );
 
       return;
     }
@@ -1996,6 +2069,17 @@ function applyOperation(
 
         state.sketchDimensions.delete(dimension.id);
         pushSketchDimensionDeleted(diff, sketchDimensionRef(dimension));
+      }
+      for (const constraint of state.sketchConstraints.values()) {
+        if (
+          constraint.sketchId !== op.sketchId ||
+          constraint.entityId !== op.entityId
+        ) {
+          continue;
+        }
+
+        state.sketchConstraints.delete(constraint.id);
+        pushSketchConstraintDeleted(diff, sketchConstraintRef(constraint));
       }
       return;
     }
@@ -2060,6 +2144,49 @@ function applyOperation(
 
       state.sketchDimensions.delete(op.id);
       pushSketchDimensionDeleted(diff, sketchDimensionRef(existing));
+      return;
+    }
+
+    case "sketch.constraint.create": {
+      const kind = validateSketchConstraintTarget(state, op, opIndex);
+      const constraint: SketchConstraint = {
+        id: op.id ?? createSketchConstraintId(),
+        name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+        sketchId: op.sketchId,
+        entityId: op.entityId,
+        kind
+      };
+
+      addSketchConstraint(state.sketchConstraints, constraint, diff, opIndex);
+      applySketchConstraintToEntity(state, constraint, diff, opIndex);
+      return;
+    }
+
+    case "sketch.constraint.rename": {
+      const existing = getSketchConstraintOrThrow(
+        state.sketchConstraints,
+        op.id,
+        opIndex
+      );
+      const updated: SketchConstraint = {
+        ...existing,
+        name: normalizeSketchConstraintName(op.name, opIndex, op.id)
+      };
+
+      state.sketchConstraints.set(op.id, updated);
+      pushSketchConstraintModified(diff, sketchConstraintRef(updated));
+      return;
+    }
+
+    case "sketch.constraint.delete": {
+      const existing = getSketchConstraintOrThrow(
+        state.sketchConstraints,
+        op.id,
+        opIndex
+      );
+
+      state.sketchConstraints.delete(op.id);
+      pushSketchConstraintDeleted(diff, sketchConstraintRef(existing));
       return;
     }
 
@@ -2323,6 +2450,9 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.dimension.update":
     case "sketch.dimension.rename":
     case "sketch.dimension.delete":
+    case "sketch.constraint.create":
+    case "sketch.constraint.rename":
+    case "sketch.constraint.delete":
     case "feature.extrude":
     case "feature.delete":
     case "feature.updateExtrude":
@@ -3127,6 +3257,312 @@ function getLineLength(
   return cleanMeasurementNumber(
     Math.hypot(entity.end[0] - entity.start[0], entity.end[1] - entity.start[1])
   );
+}
+
+function addSketchConstraint(
+  constraints: Map<SketchConstraintId, SketchConstraint>,
+  constraint: SketchConstraint,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (constraint.id.length === 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch constraint id must be a non-empty string.",
+      opIndex,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "id"),
+      expected: "non-empty sketch constraint id",
+      received: constraint.id
+    });
+  }
+
+  if (constraints.has(constraint.id)) {
+    throwValidationError({
+      code: "SKETCH_CONSTRAINT_ALREADY_EXISTS",
+      message: `Sketch constraint already exists: ${constraint.id}`,
+      opIndex,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique sketch constraint id",
+      received: constraint.id
+    });
+  }
+
+  assertSketchConstraintAvailable(constraints, constraint, opIndex);
+  constraints.set(constraint.id, constraint);
+  pushSketchConstraintCreated(diff, sketchConstraintRef(constraint));
+}
+
+function assertSketchConstraintAvailable(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  constraint: SketchConstraint,
+  opIndex: number
+): void {
+  const existing = [...constraints.values()].find(
+    (candidate) =>
+      candidate.id !== constraint.id &&
+      candidate.sketchId === constraint.sketchId &&
+      candidate.entityId === constraint.entityId
+  );
+
+  if (!existing) {
+    return;
+  }
+
+  throwValidationError({
+    code:
+      existing.kind === constraint.kind
+        ? "INVALID_SKETCH_CONSTRAINT"
+        : "CONFLICTING_SKETCH_CONSTRAINT",
+    message:
+      existing.kind === constraint.kind
+        ? `Line already has a ${constraint.kind} constraint: ${existing.id}.`
+        : `Line already has a conflicting ${existing.kind} constraint: ${existing.id}.`,
+    opIndex,
+    sketchId: constraint.sketchId,
+    sketchEntityId: constraint.entityId,
+    sketchConstraintId: constraint.id,
+    path: operationPath(opIndex, "kind"),
+    expected: "undriven line orientation",
+    received: existing.kind
+  });
+}
+
+function getSketchConstraintOrThrow(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  id: SketchConstraintId,
+  opIndex: number
+): SketchConstraint {
+  const constraint = constraints.get(id);
+
+  if (!constraint) {
+    throwValidationError({
+      code: "SKETCH_CONSTRAINT_NOT_FOUND",
+      message: `Sketch constraint does not exist: ${id}`,
+      opIndex,
+      sketchConstraintId: id,
+      path: operationPath(opIndex, "id"),
+      expected: "existing sketch constraint id",
+      received: id
+    });
+  }
+
+  return constraint;
+}
+
+function normalizeSketchConstraintName(
+  value: string,
+  opIndex: number,
+  id?: SketchConstraintId
+): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT_NAME",
+      message: "Sketch constraint name must be non-empty.",
+      opIndex,
+      sketchConstraintId: id,
+      path: operationPath(opIndex, "name"),
+      expected: "non-empty sketch constraint name",
+      received: describeReceived(value)
+    });
+  }
+
+  return value.trim();
+}
+
+function validateSketchConstraintTarget(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "sketch.constraint.create" }>,
+  opIndex: number
+): SketchConstraintKind {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const entity = sketch.entities.get(op.entityId);
+
+  if (!entity) {
+    throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+  }
+
+  if (op.kind !== "horizontal" && op.kind !== "vertical") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch constraint kind must be horizontal or vertical.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.entityId,
+      path: operationPath(opIndex, "kind"),
+      expected: "horizontal or vertical",
+      received: describeReceived(op.kind)
+    });
+  }
+
+  if (entity.kind !== "line") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch orientation constraints can only target line entities.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.entityId,
+      path: operationPath(opIndex, "entityId"),
+      expected: "line entity",
+      received: entity.kind
+    });
+  }
+
+  if (getLineLength(entity) <= 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        "Line orientation constraint cannot update a zero-length line because the orientation is ambiguous.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.entityId,
+      path: operationPath(opIndex, "entityId"),
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  return op.kind;
+}
+
+function assertSketchConstraintTargetsStillValid(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  sketchId: SketchId,
+  entity: SketchEntity,
+  opIndex: number
+): void {
+  for (const constraint of constraints.values()) {
+    if (constraint.sketchId !== sketchId || constraint.entityId !== entity.id) {
+      continue;
+    }
+
+    if (entity.kind === "line") {
+      continue;
+    }
+
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        "Sketch entity update would leave an existing orientation constraint with an unsupported target.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entity.id,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "entity.kind"),
+      expected: `line entity compatible with constraint ${constraint.id}`,
+      received: entity.kind
+    });
+  }
+}
+
+function applySketchConstraintToEntity(
+  state: MutableDocumentState,
+  constraint: SketchConstraint,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
+  const existing = sketch.entities.get(constraint.entityId);
+
+  if (!existing) {
+    throwSketchEntityNotFound(
+      constraint.sketchId,
+      constraint.entityId,
+      opIndex
+    );
+  }
+
+  const entity = applySketchConstraintValue(existing, constraint, opIndex);
+  updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
+}
+
+function applySketchConstraintsToEntity(
+  state: MutableDocumentState,
+  sketchId: SketchId,
+  entity: SketchEntity,
+  opIndex: number
+): SketchEntity {
+  let constrained = entity;
+
+  for (const constraint of state.sketchConstraints.values()) {
+    if (constraint.sketchId !== sketchId || constraint.entityId !== entity.id) {
+      continue;
+    }
+
+    constrained = applySketchConstraintValue(constrained, constraint, opIndex);
+  }
+
+  return constrained;
+}
+
+function applySketchConstraintValue(
+  entity: SketchEntity,
+  constraint: SketchConstraint,
+  opIndex: number
+): SketchEntity {
+  if (entity.kind !== "line") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Sketch constraint target no longer matches a line entity.",
+      opIndex,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "entityId"),
+      expected: "line entity",
+      received: entity.kind
+    });
+  }
+
+  const length = getLineLength(entity);
+
+  if (length <= 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        "Line orientation constraint cannot update a zero-length line because the orientation is ambiguous.",
+      opIndex,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "entityId"),
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  const center: Vec2 = [
+    (entity.start[0] + entity.end[0]) / 2,
+    (entity.start[1] + entity.end[1]) / 2
+  ];
+  const half = length / 2;
+
+  if (constraint.kind === "horizontal") {
+    return {
+      ...entity,
+      start: [
+        cleanMeasurementNumber(center[0] - half),
+        cleanMeasurementNumber(center[1])
+      ],
+      end: [
+        cleanMeasurementNumber(center[0] + half),
+        cleanMeasurementNumber(center[1])
+      ]
+    };
+  }
+
+  return {
+    ...entity,
+    start: [
+      cleanMeasurementNumber(center[0]),
+      cleanMeasurementNumber(center[1] - half)
+    ],
+    end: [
+      cleanMeasurementNumber(center[0]),
+      cleanMeasurementNumber(center[1] + half)
+    ]
+  };
 }
 
 function updateSketchEntityAndDependents(
@@ -4649,6 +5085,18 @@ function sketchDimensionRef(dimension: SketchDimension): CadSketchDimensionRef {
   };
 }
 
+function sketchConstraintRef(
+  constraint: SketchConstraint
+): CadSketchConstraintRef {
+  return {
+    id: constraint.id,
+    name: constraint.name,
+    sketchId: constraint.sketchId,
+    entityId: constraint.entityId,
+    kind: constraint.kind
+  };
+}
+
 function pushSketchCreated(diff: MutableSemanticDiff, ref: CadSketchRef): void {
   ensureSketchDiff(diff).created.push(ref);
 }
@@ -4837,6 +5285,39 @@ function ensureSketchDimensionDiff(
   };
 
   return diff.sketchDimensions;
+}
+
+function pushSketchConstraintCreated(
+  diff: MutableSemanticDiff,
+  ref: CadSketchConstraintRef
+): void {
+  ensureSketchConstraintDiff(diff).created.push(ref);
+}
+
+function pushSketchConstraintModified(
+  diff: MutableSemanticDiff,
+  ref: CadSketchConstraintRef
+): void {
+  ensureSketchConstraintDiff(diff).modified.push(ref);
+}
+
+function pushSketchConstraintDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadSketchConstraintRef
+): void {
+  ensureSketchConstraintDiff(diff).deleted.push(ref);
+}
+
+function ensureSketchConstraintDiff(
+  diff: MutableSemanticDiff
+): MutableSketchConstraintSemanticDiff {
+  diff.sketchConstraints ??= {
+    created: [],
+    modified: [],
+    deleted: []
+  };
+
+  return diff.sketchConstraints;
 }
 
 function getUnitConversionScaleFactor(
@@ -5051,6 +5532,7 @@ export function createCadDocumentSnapshot(
   nextSketchEntityNumber = inferNextSketchEntityNumber(document),
   nextParameterNumber = inferNextParameterNumber(document),
   nextSketchDimensionNumber = inferNextSketchDimensionNumber(document),
+  nextSketchConstraintNumber = inferNextSketchConstraintNumber(document),
   nextFeatureNumber = inferNextFeatureNumber(document),
   nextBodyNumber = inferNextBodyNumber(document)
 ): CadDocumentSnapshot {
@@ -5062,6 +5544,9 @@ export function createCadDocumentSnapshot(
     sketchDimensions: [...document.sketchDimensions.values()].map(
       cloneSketchDimensionSnapshot
     ),
+    sketchConstraints: [...document.sketchConstraints.values()].map(
+      cloneSketchConstraintSnapshot
+    ),
     features: [...document.features.values()].map(createFeatureSnapshot),
     namedReferences: [...document.namedReferences.values()].map(
       cloneNamedReferenceSnapshot
@@ -5071,6 +5556,7 @@ export function createCadDocumentSnapshot(
     nextSketchEntityNumber,
     nextParameterNumber,
     nextSketchDimensionNumber,
+    nextSketchConstraintNumber,
     nextFeatureNumber,
     nextBodyNumber
   };
@@ -5093,6 +5579,10 @@ export function createCadDocumentFromSnapshot(
     snapshot.sketchDimensions.map(
       (dimension) =>
         [dimension.id, cloneSketchDimensionSnapshot(dimension)] as const
+    ),
+    snapshot.sketchConstraints.map(
+      (constraint) =>
+        [constraint.id, cloneSketchConstraintSnapshot(constraint)] as const
     ),
     snapshot.features.map(
       (feature) => [feature.id, createFeatureFromSnapshot(feature)] as const
@@ -5196,6 +5686,18 @@ function cloneSketchDimensionSnapshot(
     entityId: dimension.entityId,
     target: { ...dimension.target },
     valueSource: cloneSketchDimensionValueSource(dimension.valueSource)
+  };
+}
+
+function cloneSketchConstraintSnapshot(
+  constraint: SketchConstraintSnapshot
+): SketchConstraint {
+  return {
+    id: constraint.id,
+    name: constraint.name,
+    sketchId: constraint.sketchId,
+    entityId: constraint.entityId,
+    kind: constraint.kind
   };
 }
 
@@ -5303,6 +5805,88 @@ function createSketchDimensionEntry(
   };
 }
 
+function createSketchConstraintEntry(
+  document: CadDocument,
+  constraint: SketchConstraint
+): SketchConstraintEntry {
+  const issues: SketchConstraintIssue[] = [];
+  const sketch = document.sketches.get(constraint.sketchId);
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${constraint.sketchId}`,
+      sketchId: constraint.sketchId,
+      sketchConstraintId: constraint.id
+    });
+  }
+
+  const entity = sketch?.entities.get(constraint.entityId);
+
+  if (sketch && !entity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.entityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id
+    });
+  }
+
+  if (entity && entity.kind !== "line") {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message: "Sketch orientation constraint target is not a line entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      expected: "line entity",
+      received: entity.kind
+    });
+  }
+
+  if (entity?.kind === "line" && getLineLength(entity) <= 0) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message:
+        "Line orientation constraint cannot evaluate a zero-length line because the orientation is ambiguous.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  const conflicting = [...document.sketchConstraints.values()].find(
+    (candidate) =>
+      candidate.id !== constraint.id &&
+      candidate.sketchId === constraint.sketchId &&
+      candidate.entityId === constraint.entityId
+  );
+
+  if (conflicting) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message:
+        conflicting.kind === constraint.kind
+          ? `Line has a duplicate ${constraint.kind} constraint: ${conflicting.id}.`
+          : `Line has a conflicting ${conflicting.kind} constraint: ${conflicting.id}.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      expected: "one orientation constraint per line",
+      received: conflicting.kind
+    });
+  }
+
+  return {
+    ...cloneSketchConstraintSnapshot(constraint),
+    status: getSketchEvaluationStatus(issues),
+    issues
+  };
+}
+
 function createSketchEvaluationQueryResponse(
   document: CadDocument,
   sketch: Sketch,
@@ -5314,9 +5898,18 @@ function createSketchEvaluationQueryResponse(
   const dimensions = [...document.sketchDimensions.values()]
     .filter((dimension) => dimension.sketchId === sketch.id)
     .map((dimension) => createSketchDimensionEntry(document, dimension));
-  const issues = dimensions.flatMap((dimension) => dimension.issues);
+  const constraints = [...document.sketchConstraints.values()]
+    .filter((constraint) => constraint.sketchId === sketch.id)
+    .map((constraint) => createSketchConstraintEntry(document, constraint));
+  const issues = [
+    ...dimensions.flatMap((dimension) => dimension.issues),
+    ...constraints.flatMap((constraint) => constraint.issues)
+  ];
   const drivenEntityIds = [
-    ...new Set(dimensions.map((dimension) => dimension.entityId))
+    ...new Set([
+      ...dimensions.map((dimension) => dimension.entityId),
+      ...constraints.map((constraint) => constraint.entityId)
+    ])
   ];
 
   return {
@@ -5326,11 +5919,13 @@ function createSketchEvaluationQueryResponse(
     sketchId: sketch.id,
     sketchName: sketch.name,
     plane: sketch.plane,
-    status: getSketchDimensionStatus(issues),
+    status: getSketchEvaluationStatus(issues),
     drivenEntityCount: drivenEntityIds.length,
     drivenEntityIds,
     dimensionCount: dimensions.length,
     dimensions,
+    constraintCount: constraints.length,
+    constraints,
     issueCount: issues.length,
     issues
   };
@@ -5338,6 +5933,12 @@ function createSketchEvaluationQueryResponse(
 
 function getSketchDimensionStatus(
   issues: readonly SketchDimensionIssue[]
+): SketchDimensionEntry["status"] {
+  return getSketchEvaluationStatus(issues);
+}
+
+function getSketchEvaluationStatus(
+  issues: readonly { readonly code: string }[]
 ): SketchDimensionEntry["status"] {
   if (issues.length === 0) {
     return "healthy";
@@ -5932,6 +6533,7 @@ function runOperations(
   initialSketchEntityNumber: number,
   initialParameterNumber: number,
   initialSketchDimensionNumber: number,
+  initialSketchConstraintNumber: number,
   initialFeatureNumber: number,
   initialBodyNumber: number
 ): OperationRunResult {
@@ -5950,6 +6552,7 @@ function runOperations(
     sketches: new Map(document.sketches),
     parameters: new Map(document.parameters),
     sketchDimensions: new Map(document.sketchDimensions),
+    sketchConstraints: new Map(document.sketchConstraints),
     features: new Map(document.features),
     namedReferences: new Map(document.namedReferences),
     units: document.units
@@ -5959,6 +6562,7 @@ function runOperations(
   let nextSketchEntityNumber = initialSketchEntityNumber;
   let nextParameterNumber = initialParameterNumber;
   let nextSketchDimensionNumber = initialSketchDimensionNumber;
+  let nextSketchConstraintNumber = initialSketchConstraintNumber;
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
   const diff: MutableSemanticDiff = {
@@ -6008,6 +6612,14 @@ function runOperations(
           return result.id;
         },
         () => {
+          const result = createSketchConstraintId(
+            state.sketchConstraints,
+            nextSketchConstraintNumber
+          );
+          nextSketchConstraintNumber = result.nextSketchConstraintNumber;
+          return result.id;
+        },
+        () => {
           const result = createFeatureId(state, nextFeatureNumber);
           nextFeatureNumber = result.nextFeatureNumber;
           return result.id;
@@ -6039,6 +6651,7 @@ function runOperations(
     state.sketches,
     state.parameters,
     state.sketchDimensions,
+    state.sketchConstraints,
     state.features,
     state.namedReferences
   );
@@ -6065,6 +6678,10 @@ function runOperations(
     nextSketchDimensionNumber: Math.max(
       nextSketchDimensionNumber,
       inferNextSketchDimensionNumber(resultDocument)
+    ),
+    nextSketchConstraintNumber: Math.max(
+      nextSketchConstraintNumber,
+      inferNextSketchConstraintNumber(resultDocument)
     ),
     nextFeatureNumber: Math.max(
       nextFeatureNumber,
@@ -6180,6 +6797,24 @@ function createSketchDimensionId(
   };
 }
 
+function createSketchConstraintId(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  initialSketchConstraintNumber: number
+): { id: SketchConstraintId; nextSketchConstraintNumber: number } {
+  let nextSketchConstraintNumber = initialSketchConstraintNumber;
+  let id = `skcon_${nextSketchConstraintNumber}`;
+
+  while (constraints.has(id)) {
+    nextSketchConstraintNumber += 1;
+    id = `skcon_${nextSketchConstraintNumber}`;
+  }
+
+  return {
+    id,
+    nextSketchConstraintNumber: nextSketchConstraintNumber + 1
+  };
+}
+
 function createFeatureId(
   state: MutableDocumentState,
   initialFeatureNumber: number
@@ -6232,6 +6867,9 @@ function toDiffIds(diff: SemanticDiff): {
   createdSketchDimensionIds?: readonly SketchDimensionId[];
   modifiedSketchDimensionIds?: readonly SketchDimensionId[];
   deletedSketchDimensionIds?: readonly SketchDimensionId[];
+  createdSketchConstraintIds?: readonly SketchConstraintId[];
+  modifiedSketchConstraintIds?: readonly SketchConstraintId[];
+  deletedSketchConstraintIds?: readonly SketchConstraintId[];
   createdFeatureIds?: readonly FeatureId[];
   modifiedFeatureIds?: readonly FeatureId[];
   deletedFeatureIds?: readonly FeatureId[];
@@ -6246,6 +6884,7 @@ function toDiffIds(diff: SemanticDiff): {
     ...toSketchDiffIds(diff.sketches),
     ...toParameterDiffIds(diff.parameters),
     ...toSketchDimensionDiffIds(diff.sketchDimensions),
+    ...toSketchConstraintDiffIds(diff.sketchConstraints),
     ...toFeatureDiffIds(diff.features)
   };
 }
@@ -6420,6 +7059,39 @@ function uniqueSketchDimensionIds(
   dimensions: readonly CadSketchDimensionRef[]
 ): readonly SketchDimensionId[] {
   return [...new Set(dimensions.map((dimension) => dimension.id))];
+}
+
+function toSketchConstraintDiffIds(
+  constraints: SketchConstraintSemanticDiff | undefined
+): {
+  createdSketchConstraintIds?: readonly SketchConstraintId[];
+  modifiedSketchConstraintIds?: readonly SketchConstraintId[];
+  deletedSketchConstraintIds?: readonly SketchConstraintId[];
+} {
+  if (!constraints) {
+    return {};
+  }
+
+  return {
+    ...nonEmptyIdList(
+      "createdSketchConstraintIds",
+      uniqueSketchConstraintIds(constraints.created ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedSketchConstraintIds",
+      uniqueSketchConstraintIds(constraints.modified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedSketchConstraintIds",
+      uniqueSketchConstraintIds(constraints.deleted ?? [])
+    )
+  };
+}
+
+function uniqueSketchConstraintIds(
+  constraints: readonly CadSketchConstraintRef[]
+): readonly SketchConstraintId[] {
+  return [...new Set(constraints.map((constraint) => constraint.id))];
 }
 
 function nonEmptyIdList<TKey extends string, TValue extends string>(
@@ -6662,6 +7334,19 @@ function inferNextSketchDimensionNumber(document: CadDocument): number {
   return maxSketchDimensionNumber + 1;
 }
 
+function inferNextSketchConstraintNumber(document: CadDocument): number {
+  let maxSketchConstraintNumber = 0;
+
+  for (const id of document.sketchConstraints.keys()) {
+    maxSketchConstraintNumber = Math.max(
+      maxSketchConstraintNumber,
+      parseSketchConstraintNumber(id)
+    );
+  }
+
+  return maxSketchConstraintNumber + 1;
+}
+
 function inferNextFeatureNumber(document: CadDocument): number {
   let maxFeatureNumber = 0;
 
@@ -6704,6 +7389,11 @@ function parseParameterNumber(id: ParameterId): number {
 
 function parseSketchDimensionNumber(id: SketchDimensionId): number {
   const match = /^skdim_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseSketchConstraintNumber(id: SketchConstraintId): number {
+  const match = /^skcon_(\d+)$/.exec(id);
   return match ? Number(match[1]) : 0;
 }
 
@@ -6765,6 +7455,7 @@ function createProjectState(project: CadProject): {
       normalizedProject.document.nextSketchEntityNumber,
       normalizedProject.document.nextParameterNumber,
       normalizedProject.document.nextSketchDimensionNumber,
+      normalizedProject.document.nextSketchConstraintNumber,
       normalizedProject.document.nextFeatureNumber,
       normalizedProject.document.nextBodyNumber
     );
@@ -6789,6 +7480,9 @@ function createTransactionEntries(
   initialSketchDimensionNumber = inferNextSketchDimensionNumber(
     initialDocument
   ),
+  initialSketchConstraintNumber = inferNextSketchConstraintNumber(
+    initialDocument
+  ),
   initialFeatureNumber = inferNextFeatureNumber(initialDocument),
   initialBodyNumber = inferNextBodyNumber(initialDocument)
 ): {
@@ -6801,6 +7495,7 @@ function createTransactionEntries(
   let nextSketchEntityNumber = initialSketchEntityNumber;
   let nextParameterNumber = initialParameterNumber;
   let nextSketchDimensionNumber = initialSketchDimensionNumber;
+  let nextSketchConstraintNumber = initialSketchConstraintNumber;
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
   const entries: TransactionEntry[] = [];
@@ -6815,6 +7510,7 @@ function createTransactionEntries(
       nextSketchEntityNumber,
       nextParameterNumber,
       nextSketchDimensionNumber,
+      nextSketchConstraintNumber,
       nextFeatureNumber,
       nextBodyNumber
     );
@@ -6824,6 +7520,7 @@ function createTransactionEntries(
     nextSketchEntityNumber = run.nextSketchEntityNumber;
     nextParameterNumber = run.nextParameterNumber;
     nextSketchDimensionNumber = run.nextSketchDimensionNumber;
+    nextSketchConstraintNumber = run.nextSketchConstraintNumber;
     nextFeatureNumber = run.nextFeatureNumber;
     nextBodyNumber = run.nextBodyNumber;
 
@@ -6873,6 +7570,7 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     left.sketches.size !== right.sketches.size ||
     left.parameters.size !== right.parameters.size ||
     left.sketchDimensions.size !== right.sketchDimensions.size ||
+    left.sketchConstraints.size !== right.sketchConstraints.size ||
     left.features.size !== right.features.size ||
     left.namedReferences.size !== right.namedReferences.size
   ) {
@@ -6909,6 +7607,17 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     if (
       !rightDimension ||
       !sketchDimensionsEqual(leftDimension, rightDimension)
+    ) {
+      return false;
+    }
+  }
+
+  for (const [id, leftConstraint] of left.sketchConstraints) {
+    const rightConstraint = right.sketchConstraints.get(id);
+
+    if (
+      !rightConstraint ||
+      !sketchConstraintsEqual(leftConstraint, rightConstraint)
     ) {
       return false;
     }
@@ -7079,6 +7788,13 @@ function sketchDimensionsEqual(
   return stableJsonEqual(left, right);
 }
 
+function sketchConstraintsEqual(
+  left: SketchConstraint,
+  right: SketchConstraint
+): boolean {
+  return stableJsonEqual(left, right);
+}
+
 function vec2Equal(left: Vec2, right: Vec2): boolean {
   return left[0] === right[0] && left[1] === right[1];
 }
@@ -7122,10 +7838,35 @@ function normalizeCadProject(value: CadProject): CadProject {
         sketchDimensions: value.document.sketchDimensions.map(
           cloneSketchDimensionSnapshot
         ),
+        sketchConstraints: value.document.sketchConstraints.map(
+          cloneSketchConstraintSnapshot
+        ),
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
         )
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
+    };
+  }
+
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        ...value.document,
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        sketchDimensions: value.document.sketchDimensions.map(
+          cloneSketchDimensionSnapshot
+        ),
+        sketchConstraints: [],
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        ),
+        nextSketchConstraintNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -7140,12 +7881,14 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         parameters: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
         ),
         nextParameterNumber: 1,
-        nextSketchDimensionNumber: 1
+        nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -7160,12 +7903,14 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         parameters: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
         ),
         nextParameterNumber: 1,
-        nextSketchDimensionNumber: 1
+        nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -7180,10 +7925,12 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         parameters: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: [],
         nextParameterNumber: 1,
-        nextSketchDimensionNumber: 1
+        nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -7198,10 +7945,12 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         parameters: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: [],
         nextParameterNumber: 1,
-        nextSketchDimensionNumber: 1
+        nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -7216,10 +7965,12 @@ function normalizeCadProject(value: CadProject): CadProject {
         ...value.document,
         parameters: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         features: [],
         namedReferences: [],
         nextParameterNumber: 1,
         nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1,
         nextFeatureNumber: 1,
         nextBodyNumber: 1
       },
@@ -7236,12 +7987,14 @@ function normalizeCadProject(value: CadProject): CadProject {
       sketches: [],
       parameters: [],
       sketchDimensions: [],
+      sketchConstraints: [],
       features: [],
       namedReferences: [],
       nextSketchNumber: 1,
       nextSketchEntityNumber: 1,
       nextParameterNumber: 1,
       nextSketchDimensionNumber: 1,
+      nextSketchConstraintNumber: 1,
       nextFeatureNumber: 1,
       nextBodyNumber: 1
     },
@@ -7362,6 +8115,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   } else if (
     value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V7 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V6 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V5 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
@@ -7433,6 +8187,7 @@ function validateCadDocumentSnapshot(
   let maxGeneratedSketchEntityNumber = 0;
   let maxGeneratedParameterNumber = 0;
   let maxGeneratedSketchDimensionNumber = 0;
+  let maxGeneratedSketchConstraintNumber = 0;
   let maxGeneratedFeatureNumber = 0;
   let maxGeneratedBodyNumber = 0;
   const primitiveFeatureIds = new Set<string>();
@@ -7495,23 +8250,30 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const requiresSketchConstraints =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -7520,6 +8282,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -7591,6 +8354,17 @@ function validateCadDocumentSnapshot(
         "INVALID_DOCUMENT",
         `${path}.sketchDimensions`,
         "Project documents before V7 must not include sketch dimension source data."
+      );
+    }
+  }
+
+  if (isKnownProjectVersion && !requiresSketchConstraints) {
+    if ("sketchConstraints" in value) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.sketchConstraints`,
+        "Project documents before V8 must not include sketch constraint source data."
       );
     }
   }
@@ -7722,6 +8496,46 @@ function validateCadDocumentSnapshot(
       "Document nextSketchDimensionNumber",
       "generated sketch dimension ids",
       maxGeneratedSketchDimensionNumber,
+      issues
+    );
+  }
+
+  if (requiresSketchConstraints) {
+    if (!Array.isArray(value.sketchConstraints)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.sketchConstraints`,
+        "Document sketchConstraints must be an array."
+      );
+    } else {
+      const seenSketchConstraintIds = new Set<string>();
+      const seenSketchConstraintTargets = new Map<
+        string,
+        SketchConstraintKind
+      >();
+      for (const [index, constraint] of value.sketchConstraints.entries()) {
+        maxGeneratedSketchConstraintNumber = Math.max(
+          maxGeneratedSketchConstraintNumber,
+          validateSketchConstraintSnapshot(
+            constraint,
+            `${path}.sketchConstraints[${index}]`,
+            issues,
+            seenSketchConstraintIds,
+            seenSketchConstraintTargets,
+            seenSketchIds,
+            sketchEntityRefs
+          )
+        );
+      }
+    }
+
+    validateNextGeneratedNumber(
+      value.nextSketchConstraintNumber,
+      `${path}.nextSketchConstraintNumber`,
+      "Document nextSketchConstraintNumber",
+      "generated sketch constraint ids",
+      maxGeneratedSketchConstraintNumber,
       issues
     );
   }
@@ -8320,6 +9134,164 @@ function validateSketchDimensionTargetShape(
   }
 
   return valid;
+}
+
+function validateSketchConstraintSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenSketchConstraintIds: Set<string>,
+  seenSketchConstraintTargets: Map<string, SketchConstraintKind>,
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): number {
+  let maxGeneratedSketchConstraintNumber = 0;
+  let entityRef: SketchEntityImportRef | undefined;
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      "Sketch constraint must be an object."
+    );
+    return maxGeneratedSketchConstraintNumber;
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.id`,
+      "Sketch constraint id must be a non-empty string."
+    );
+  } else if (seenSketchConstraintIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.id`,
+      `Duplicate sketch constraint id: ${value.id}.`
+    );
+  } else {
+    seenSketchConstraintIds.add(value.id);
+    maxGeneratedSketchConstraintNumber = parseSketchConstraintNumber(value.id);
+  }
+
+  if (typeof value.name !== "string" || value.name.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.name`,
+      "Sketch constraint name must be a non-empty string."
+    );
+  }
+
+  if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.sketchId`,
+      "Sketch constraint sketchId must be a non-empty string."
+    );
+  } else if (!seenSketchIds.has(value.sketchId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.sketchId`,
+      "Sketch constraint sketchId must reference an existing sketch."
+    );
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.entityId`,
+      "Sketch constraint entityId must be a non-empty string."
+    );
+  } else {
+    entityRef = sketchEntityRefs.get(value.entityId);
+
+    if (!entityRef) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.entityId`,
+        "Sketch constraint entityId must reference an existing sketch entity."
+      );
+    } else {
+      if (entityRef.sketchId !== value.sketchId) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.entityId`,
+          "Sketch constraint entityId must belong to the referenced sketch."
+        );
+      }
+
+      if (entityRef.kind !== "line") {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.entityId`,
+          "Sketch orientation constraint entityId must reference a line sketch entity."
+        );
+      }
+    }
+  }
+
+  if (!isSketchConstraintKind(value.kind)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.kind`,
+      "Sketch constraint kind must be horizontal or vertical."
+    );
+  }
+
+  if (
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    isSketchConstraintKind(value.kind) &&
+    entityRef?.kind === "line"
+  ) {
+    const targetKey = `${value.sketchId}\0${value.entityId}`;
+    const existing = seenSketchConstraintTargets.get(targetKey);
+
+    if (existing) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.kind`,
+        existing === value.kind
+          ? "Line already has a duplicate orientation constraint."
+          : "Line already has a conflicting orientation constraint."
+      );
+    } else {
+      seenSketchConstraintTargets.set(targetKey, value.kind);
+    }
+
+    if (
+      isRecord(entityRef.entity) &&
+      isVec2(entityRef.entity.start) &&
+      isVec2(entityRef.entity.end) &&
+      getLineLength({
+        id: value.entityId,
+        kind: "line",
+        start: entityRef.entity.start,
+        end: entityRef.entity.end
+      }) <= 0
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.entityId`,
+        "Line orientation constraint cannot target a zero-length line."
+      );
+    }
+  }
+
+  return maxGeneratedSketchConstraintNumber;
 }
 
 function validateSketchDimensionValueSourceSnapshot(
@@ -9668,6 +10640,7 @@ function materializeGeneratedObjectIds(
   let createdSketchEntityIndex = 0;
   let createdParameterIndex = 0;
   let createdSketchDimensionIndex = 0;
+  let createdSketchConstraintIndex = 0;
   let createdFeatureIndex = 0;
 
   return transaction.ops.map((op) => {
@@ -9728,6 +10701,20 @@ function materializeGeneratedObjectIds(
           createdSketchDimensionIndex
         ];
       createdSketchDimensionIndex += 1;
+
+      return createdRef ? { ...op, id: createdRef.id } : op;
+    }
+
+    if (op.op === "sketch.constraint.create") {
+      if (op.id) {
+        return op;
+      }
+
+      const createdRef =
+        transaction.diff.sketchConstraints?.created?.[
+          createdSketchConstraintIndex
+        ];
+      createdSketchConstraintIndex += 1;
 
       return createdRef ? { ...op, id: createdRef.id } : op;
     }
@@ -10015,6 +11002,24 @@ function isCadOp(value: unknown): value is CadOp {
     return typeof value.id === "string";
   }
 
+  if (value.op === "sketch.constraint.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchConstraintKind(value.kind)
+    );
+  }
+
+  if (value.op === "sketch.constraint.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "sketch.constraint.delete") {
+    return typeof value.id === "string";
+  }
+
   if (value.op === "feature.extrude") {
     return (
       isOptionalString(value.id) &&
@@ -10078,7 +11083,9 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     (value.parameters === undefined ||
       isParameterSemanticDiff(value.parameters)) &&
     (value.sketchDimensions === undefined ||
-      isSketchDimensionSemanticDiff(value.sketchDimensions))
+      isSketchDimensionSemanticDiff(value.sketchDimensions)) &&
+    (value.sketchConstraints === undefined ||
+      isSketchConstraintSemanticDiff(value.sketchConstraints))
   );
 }
 
@@ -10189,6 +11196,23 @@ function isSketchDimensionSemanticDiff(
   );
 }
 
+function isSketchConstraintSemanticDiff(
+  value: unknown
+): value is SketchConstraintSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.created === undefined ||
+      (Array.isArray(value.created) &&
+        value.created.every(isCadSketchConstraintRef))) &&
+    (value.modified === undefined ||
+      (Array.isArray(value.modified) &&
+        value.modified.every(isCadSketchConstraintRef))) &&
+    (value.deleted === undefined ||
+      (Array.isArray(value.deleted) &&
+        value.deleted.every(isCadSketchConstraintRef)))
+  );
+}
+
 function isCadObjectRef(value: unknown): value is CadObjectRef {
   return (
     isRecord(value) &&
@@ -10268,6 +11292,19 @@ function isCadSketchDimensionRef(
     typeof value.entityId === "string" &&
     isSketchDimensionTarget(value.target) &&
     (value.parameterId === undefined || typeof value.parameterId === "string")
+  );
+}
+
+function isCadSketchConstraintRef(
+  value: unknown
+): value is CadSketchConstraintRef {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    isSketchConstraintKind(value.kind)
   );
 }
 
@@ -10422,6 +11459,10 @@ function isSketchDimensionTarget(
       (value.entityKind === "circle" && value.role === "radius") ||
       (value.entityKind === "line" && value.role === "length"))
   );
+}
+
+function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
+  return value === "horizontal" || value === "vertical";
 }
 
 function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {

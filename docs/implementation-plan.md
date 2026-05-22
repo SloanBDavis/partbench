@@ -62,7 +62,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v7` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v8` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
@@ -176,7 +176,7 @@ Current Partbench can:
   health, history, measurements, extents, and generated-reference measurements;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
-- save/load current `web-cad.project.v7` JSON with migrations from older accepted
+- save/load current `web-cad.project.v8` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
@@ -273,7 +273,14 @@ Implemented evaluator slice:
 - `sketch.evaluation` exposes the current direct evaluator as read-only query
   data for human UI, scripts, agents, and MCP callers. It reports the sketch
   identity, overall dimension status, driven dimensions, driven entity IDs,
-  effective values, and structured issues without persisting solver output.
+  effective values, and structured issues without persisting solver output;
+- horizontal and vertical line orientation constraints are supported as
+  source-of-truth sketch constraint records, separate from numeric dimensions;
+- horizontal/vertical constraint creation preserves line midpoint and current
+  length while aligning endpoints, and rejects duplicate, conflicting,
+  non-line, missing, or zero-length targets clearly;
+- `web-cad.project.v8` adds persisted sketch constraints with V1 through V7
+  import compatibility.
 
 Non-goals:
 
@@ -283,8 +290,8 @@ Non-goals:
 
 Solver direction guardrails:
 
-- parameters, dimensions, and constraints should be source records with stable
-  IDs, not UI-only fields;
+- parameters, dimensions, and constraints are source records with stable IDs,
+  not UI-only fields;
 - solver/evaluator outputs are deterministic derived data;
 - downstream features should consume evaluated sketch geometry once solver
   behavior exists for that path;
@@ -350,7 +357,8 @@ Expected deliverables:
 
 V3 is complete when:
 
-1. Parameters and sketch dimensions are source-of-truth document data.
+1. Parameters, sketch dimensions, and current line orientation constraints are
+   source-of-truth document data.
 2. Current supported dimensions drive rectangle/circle sketch geometry through
    CADOps.
 3. Editing dimensions/parameters rebuilds downstream authored extrudes,

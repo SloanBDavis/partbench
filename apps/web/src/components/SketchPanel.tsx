@@ -1068,6 +1068,10 @@ function SketchEvaluationSummary({
           <dd>{evaluation?.dimensionCount ?? 0}</dd>
         </div>
         <div>
+          <dt>Constraints</dt>
+          <dd>{evaluation?.constraintCount ?? 0}</dd>
+        </div>
+        <div>
           <dt>Driven entities</dt>
           <dd>{evaluation?.drivenEntityCount ?? 0}</dd>
         </div>

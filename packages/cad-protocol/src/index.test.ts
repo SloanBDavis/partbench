@@ -314,6 +314,20 @@ describe("cad-protocol", () => {
         name: "Overall line length"
       },
       { op: "sketch.dimension.delete", id: "dim_line_length" },
+      {
+        op: "sketch.constraint.create",
+        id: "con_horizontal",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        kind: "horizontal"
+      },
+      {
+        op: "sketch.constraint.rename",
+        id: "con_horizontal",
+        name: "Main horizontal"
+      },
+      { op: "sketch.constraint.delete", id: "con_horizontal" },
       { op: "parameter.delete", id: "param_line" }
     ];
 
@@ -323,11 +337,18 @@ describe("cad-protocol", () => {
       "sketch.dimension.update",
       "sketch.dimension.rename",
       "sketch.dimension.delete",
+      "sketch.constraint.create",
+      "sketch.constraint.rename",
+      "sketch.constraint.delete",
       "parameter.delete"
     ]);
     expect(ops[1]).toMatchObject({
       op: "sketch.dimension.create",
       target: { entityKind: "line", role: "length" }
+    });
+    expect(ops[5]).toMatchObject({
+      op: "sketch.constraint.create",
+      kind: "horizontal"
     });
   });
 

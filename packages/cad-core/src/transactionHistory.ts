@@ -3,6 +3,7 @@ import type {
   CadObjectRef,
   CadOperationSummary,
   CadSemanticDiffSummary,
+  CadSketchConstraintRef,
   CadSketchDimensionRef,
   CadSketchEntityRef,
   CadTransactionAuditMetadata,
@@ -84,6 +85,8 @@ function createOperationSummaries(
   let deletedParameterIndex = 0;
   let createdSketchDimensionIndex = 0;
   let deletedSketchDimensionIndex = 0;
+  let createdSketchConstraintIndex = 0;
+  let deletedSketchConstraintIndex = 0;
 
   return transaction.ops.map((op) => {
     const createdRef =
@@ -139,6 +142,18 @@ function createOperationSummaries(
       op.op === "sketch.dimension.delete"
         ? transaction.diff.sketchDimensions?.deleted?.[
             deletedSketchDimensionIndex++
+          ]
+        : undefined;
+    const createdSketchConstraintRef =
+      op.op === "sketch.constraint.create"
+        ? transaction.diff.sketchConstraints?.created?.[
+            createdSketchConstraintIndex++
+          ]
+        : undefined;
+    const deletedSketchConstraintRef =
+      op.op === "sketch.constraint.delete"
+        ? transaction.diff.sketchConstraints?.deleted?.[
+            deletedSketchConstraintIndex++
           ]
         : undefined;
 
@@ -420,6 +435,32 @@ function createOperationSummaries(
           sketchDimensionId: op.id ?? deletedSketchDimensionRef?.id
         });
 
+      case "sketch.constraint.create": {
+        const constraintId = op.id ?? createdSketchConstraintRef?.id;
+
+        return createSketchConstraintOperationSummary({
+          op: op.op,
+          label: `Create ${op.kind} sketch constraint ${constraintId ?? "with generated ID"} on ${op.sketchId}/${op.entityId}`,
+          sketchConstraintId: constraintId,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId
+        });
+      }
+
+      case "sketch.constraint.rename":
+        return createSketchConstraintOperationSummary({
+          op: op.op,
+          label: `Rename sketch constraint ${op.id}`,
+          sketchConstraintId: op.id
+        });
+
+      case "sketch.constraint.delete":
+        return createSketchConstraintOperationSummary({
+          op: op.op,
+          label: `Delete sketch constraint ${op.id}`,
+          sketchConstraintId: op.id ?? deletedSketchConstraintRef?.id
+        });
+
       case "feature.extrude": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -576,6 +617,22 @@ function createSketchDimensionOperationSummary(
   };
 }
 
+function createSketchConstraintOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.sketchConstraintId
+      ? { sketchConstraintId: summary.sketchConstraintId }
+      : {}),
+    ...(summary.sketchId ? { sketchId: summary.sketchId } : {}),
+    ...(summary.sketchEntityId
+      ? { sketchEntityId: summary.sketchEntityId }
+      : {})
+  };
+}
+
 function createFeatureOperationSummary(
   summary: CadOperationSummary
 ): CadOperationSummary {
@@ -678,6 +735,13 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
           )
         }
       : {}),
+    ...(diff.sketchConstraints
+      ? {
+          sketchConstraints: cloneSketchConstraintSemanticDiff(
+            diff.sketchConstraints
+          )
+        }
+      : {}),
     ...(diff.document
       ? {
           document: {
@@ -728,6 +792,22 @@ function cloneSketchDimensionSemanticDiff(diff: {
   readonly created?: readonly CadSketchDimensionRef[];
   readonly modified?: readonly CadSketchDimensionRef[];
   readonly deleted?: readonly CadSketchDimensionRef[];
+} {
+  return {
+    ...(diff.created ? { created: [...diff.created] } : {}),
+    ...(diff.modified ? { modified: [...diff.modified] } : {}),
+    ...(diff.deleted ? { deleted: [...diff.deleted] } : {})
+  };
+}
+
+function cloneSketchConstraintSemanticDiff(diff: {
+  readonly created?: readonly CadSketchConstraintRef[];
+  readonly modified?: readonly CadSketchConstraintRef[];
+  readonly deleted?: readonly CadSketchConstraintRef[];
+}): {
+  readonly created?: readonly CadSketchConstraintRef[];
+  readonly modified?: readonly CadSketchConstraintRef[];
+  readonly deleted?: readonly CadSketchConstraintRef[];
 } {
   return {
     ...(diff.created ? { created: [...diff.created] } : {}),

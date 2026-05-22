@@ -2,10 +2,10 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
-  SketchDimensionIssue,
   SketchDimensionEntry,
   SketchDimensionStatus,
   SketchDimensionTarget,
+  SketchEvaluationIssue,
   SketchEvaluationQueryResponse,
   SketchEntityId,
   SketchEntityKind,
@@ -273,14 +273,21 @@ export function formatSketchEvaluationStatus(
     return "Evaluation unavailable";
   }
 
-  if (evaluation.dimensionCount === 0) {
-    return "No driving dimensions";
+  if (evaluation.dimensionCount === 0 && evaluation.constraintCount === 0) {
+    return "No driving dimensions or constraints";
   }
 
   if (evaluation.status === "healthy") {
-    return `${evaluation.dimensionCount} driving dimension${
-      evaluation.dimensionCount === 1 ? "" : "s"
-    } · ${evaluation.drivenEntityCount} driven ${
+    const drivers = [
+      `${evaluation.dimensionCount} driving dimension${
+        evaluation.dimensionCount === 1 ? "" : "s"
+      }`,
+      `${evaluation.constraintCount} constraint${
+        evaluation.constraintCount === 1 ? "" : "s"
+      }`
+    ];
+
+    return `${drivers.join(" · ")} · ${evaluation.drivenEntityCount} driven ${
       evaluation.drivenEntityCount === 1 ? "entity" : "entities"
     }`;
   }
@@ -303,12 +310,13 @@ export function getSketchEvaluationStatusDisplay(
 }
 
 export function formatSketchEvaluationIssue(
-  issue: SketchDimensionIssue
+  issue: SketchEvaluationIssue
 ): string {
   const subject =
-    issue.sketchDimensionId ??
+    ("sketchConstraintId" in issue ? issue.sketchConstraintId : undefined) ??
+    ("sketchDimensionId" in issue ? issue.sketchDimensionId : undefined) ??
     issue.sketchEntityId ??
-    issue.parameterId ??
+    ("parameterId" in issue ? issue.parameterId : undefined) ??
     issue.sketchId;
 
   return subject ? `${subject}: ${issue.message}` : issue.message;

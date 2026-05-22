@@ -2285,6 +2285,14 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               entityId: "line_1",
               target: { entityKind: "line", role: "length" },
               parameterId: "param_length"
+            },
+            {
+              op: "sketch.constraint.create",
+              id: "con_horizontal",
+              name: "Horizontal line",
+              sketchId: "sketch_1",
+              entityId: "line_1",
+              kind: "horizontal"
             }
           ]
         }
@@ -2297,7 +2305,8 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
       structuredContent: {
         ok: true,
         createdParameterIds: ["param_r", "param_length"],
-        createdSketchDimensionIds: ["dim_r", "dim_line_length"]
+        createdSketchDimensionIds: ["dim_r", "dim_line_length"],
+        createdSketchConstraintIds: ["con_horizontal"]
       }
     });
 
@@ -2364,7 +2373,15 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
         status: "healthy",
         drivenEntityIds: ["circle_1", "line_1"],
         dimensionCount: 2,
+        constraintCount: 1,
         issueCount: 0,
+        constraints: [
+          expect.objectContaining({
+            id: "con_horizontal",
+            kind: "horizontal",
+            status: "healthy"
+          })
+        ],
         dimensions: [
           expect.objectContaining({ id: "dim_r", effectiveValue: 4 }),
           expect.objectContaining({

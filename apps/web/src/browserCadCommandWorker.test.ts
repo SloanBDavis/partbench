@@ -116,6 +116,7 @@ describe("BrowserCadCommandWorker", () => {
         sketches: [],
         parameters: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         features: [],
         namedReferences: [],
         nextObjectNumber: 1,
@@ -123,6 +124,7 @@ describe("BrowserCadCommandWorker", () => {
         nextSketchEntityNumber: 1,
         nextParameterNumber: 1,
         nextSketchDimensionNumber: 1,
+        nextSketchConstraintNumber: 1,
         nextFeatureNumber: 1,
         nextBodyNumber: 1
       },

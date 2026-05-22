@@ -36,8 +36,11 @@ import type {
   ParameterId,
   SketchSnapshot,
   SketchDimensionEntry,
-  SketchDimensionIssue,
+  SketchConstraintEntry,
+  SketchEvaluationIssue,
   SketchDimensionStatus,
+  SketchConstraintId,
+  SketchConstraintKind,
   SketchDimensionId,
   SketchEntityId,
   SketchPlane,
@@ -105,6 +108,9 @@ export interface CadOpsAgentSuccessResponse {
   readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
   readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly createdSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly modifiedSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly deletedSketchConstraintIds?: readonly SketchConstraintId[];
   readonly createdFeatureIds?: readonly string[];
   readonly modifiedFeatureIds?: readonly string[];
   readonly deletedFeatureIds?: readonly string[];
@@ -140,6 +146,9 @@ export interface CadOpsAgentErrorResponse {
   readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
   readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly createdSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly modifiedSketchConstraintIds?: readonly SketchConstraintId[];
+  readonly deletedSketchConstraintIds?: readonly SketchConstraintId[];
   readonly createdFeatureIds?: readonly string[];
   readonly modifiedFeatureIds?: readonly string[];
   readonly deletedFeatureIds?: readonly string[];
@@ -335,8 +344,10 @@ export interface CadOpsAgentSketchEvaluationQueryResponse {
   readonly drivenEntityIds: readonly SketchEntityId[];
   readonly dimensionCount: number;
   readonly dimensions: readonly SketchDimensionEntry[];
+  readonly constraintCount: number;
+  readonly constraints: readonly SketchConstraintEntry[];
   readonly issueCount: number;
-  readonly issues: readonly SketchDimensionIssue[];
+  readonly issues: readonly SketchEvaluationIssue[];
 }
 
 export interface CadOpsAgentSketchDimensionsQueryResponse {
@@ -652,6 +663,15 @@ function toAgentDiffIds(response: CadBatchResponse): {
     ...(response.deletedSketchDimensionIds
       ? { deletedSketchDimensionIds: response.deletedSketchDimensionIds }
       : {}),
+    ...(response.createdSketchConstraintIds
+      ? { createdSketchConstraintIds: response.createdSketchConstraintIds }
+      : {}),
+    ...(response.modifiedSketchConstraintIds
+      ? { modifiedSketchConstraintIds: response.modifiedSketchConstraintIds }
+      : {}),
+    ...(response.deletedSketchConstraintIds
+      ? { deletedSketchConstraintIds: response.deletedSketchConstraintIds }
+      : {}),
     ...(response.createdFeatureIds
       ? { createdFeatureIds: response.createdFeatureIds }
       : {}),
@@ -947,6 +967,8 @@ function toAgentQueryResponse(
       drivenEntityIds: response.drivenEntityIds,
       dimensionCount: response.dimensionCount,
       dimensions: response.dimensions,
+      constraintCount: response.constraintCount,
+      constraints: response.constraints,
       issueCount: response.issueCount,
       issues: response.issues
     };
@@ -1403,6 +1425,24 @@ function isCadOp(value: unknown): value is CadOp {
     return typeof value.id === "string";
   }
 
+  if (value.op === "sketch.constraint.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchConstraintKind(value.kind)
+    );
+  }
+
+  if (value.op === "sketch.constraint.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "sketch.constraint.delete") {
+    return typeof value.id === "string";
+  }
+
   if (value.op === "feature.extrude") {
     return (
       isOptionalString(value.id) &&
@@ -1567,6 +1607,10 @@ function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
         Number.isFinite(value.value) &&
         value.value > 0
     : typeof value.parameterId === "string";
+}
+
+function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
+  return value === "horizontal" || value === "vertical";
 }
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {

@@ -4913,8 +4913,10 @@ describe("cad-core", () => {
           };
           delete legacyDocument.parameters;
           delete legacyDocument.sketchDimensions;
+          delete legacyDocument.sketchConstraints;
           delete legacyDocument.nextParameterNumber;
           delete legacyDocument.nextSketchDimensionNumber;
+          delete legacyDocument.nextSketchConstraintNumber;
           return legacyDocument;
         })()
       })
@@ -10702,8 +10704,10 @@ describe("cad-core", () => {
         };
         delete legacyDocument.parameters;
         delete legacyDocument.sketchDimensions;
+        delete legacyDocument.sketchConstraints;
         delete legacyDocument.nextParameterNumber;
         delete legacyDocument.nextSketchDimensionNumber;
+        delete legacyDocument.nextSketchConstraintNumber;
         return legacyDocument;
       })(),
       history: project.history.map((transaction) => ({
@@ -12307,5 +12311,343 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       path: "$.document.sketchDimensions[1].target",
       message: "already driven"
     });
+  });
+
+  it("creates, renames, deletes, undoes, and redoes horizontal and vertical line constraints", () => {
+    const engine = new CadEngine();
+    const created = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+        {
+          op: "sketch.addLine",
+          sketchId: "sketch_1",
+          id: "line_1",
+          start: [0, 0],
+          end: [3, 4]
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "con_horizontal",
+          name: "Horizontal line",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          kind: "horizontal"
+        }
+      ]
+    });
+
+    expect(created).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: ["con_horizontal"],
+      modifiedSketchEntityIds: ["line_1"]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "line_1",
+            kind: "line",
+            start: [-1, 2],
+            end: [4, 2]
+          }
+        ]
+      }
+    });
+    expect(engine.getTransactions()[0]?.diff).toMatchObject({
+      sketchConstraints: {
+        created: [
+          {
+            id: "con_horizontal",
+            name: "Horizontal line",
+            sketchId: "sketch_1",
+            entityId: "line_1",
+            kind: "horizontal"
+          }
+        ]
+      },
+      sketches: {
+        entitiesModified: [{ sketchId: "sketch_1", id: "line_1", kind: "line" }]
+      }
+    });
+
+    engine.apply({
+      op: "sketch.constraint.rename",
+      id: "con_horizontal",
+      name: "Main horizontal"
+    });
+    expect(engine.getTransactions().at(-1)?.diff).toMatchObject({
+      sketchConstraints: {
+        modified: [{ id: "con_horizontal", name: "Main horizontal" }]
+      }
+    });
+
+    engine.apply({ op: "sketch.constraint.delete", id: "con_horizontal" });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      constraintCount: 0,
+      constraints: []
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      drivenEntityIds: ["line_1"],
+      constraintCount: 1,
+      constraints: [
+        expect.objectContaining({
+          id: "con_horizontal",
+          name: "Main horizontal",
+          kind: "horizontal",
+          status: "healthy"
+        })
+      ]
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      constraintCount: 0
+    });
+
+    engine.apply({
+      op: "sketch.constraint.create",
+      id: "con_vertical",
+      name: "Vertical line",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "vertical"
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "line_1",
+            kind: "line",
+            start: [1.5, -0.5],
+            end: [1.5, 4.5]
+          }
+        ]
+      }
+    });
+  });
+
+  it("validates duplicate, conflicting, non-line, and zero-length line constraints", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_zero",
+        start: [0, 0],
+        end: [0, 0]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "con_horizontal",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        kind: "horizontal"
+      }
+    ]);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "con_duplicate",
+            name: "Duplicate horizontal",
+            sketchId: "sketch_1",
+            entityId: "line_1",
+            kind: "horizontal"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        sketchConstraintId: "con_duplicate"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "con_vertical",
+            name: "Conflicting vertical",
+            sketchId: "sketch_1",
+            entityId: "line_1",
+            kind: "vertical"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICTING_SKETCH_CONSTRAINT",
+        sketchConstraintId: "con_vertical"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "con_rect",
+            name: "Bad target",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            kind: "horizontal"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT", sketchEntityId: "rect_1" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "con_zero",
+            name: "Zero line",
+            sketchId: "sketch_1",
+            entityId: "line_zero",
+            kind: "vertical"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT", sketchEntityId: "line_zero" }
+    });
+  });
+
+  it("round-trips V8 sketch constraint source data and migrates V7", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [3, 4]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "con_horizontal",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        kind: "horizontal"
+      }
+    ]);
+
+    const project = engine.exportProject();
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.sketchConstraints).toEqual([
+      {
+        id: "con_horizontal",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        kind: "horizontal"
+      }
+    ]);
+
+    const restored = importCadProject(project);
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      constraintCount: 1,
+      constraints: [expect.objectContaining({ id: "con_horizontal" })]
+    });
+
+    const legacyV7Project = {
+      ...project,
+      schemaVersion: "web-cad.project.v7",
+      document: {
+        ...project.document,
+        sketchConstraints: undefined,
+        nextSketchConstraintNumber: undefined
+      },
+      history: [],
+      redoStack: []
+    } as unknown as CadProject;
+    delete (legacyV7Project.document as unknown as Record<string, unknown>)
+      .sketchConstraints;
+    delete (legacyV7Project.document as unknown as Record<string, unknown>)
+      .nextSketchConstraintNumber;
+
+    const migrated = importCadProject(legacyV7Project).exportProject();
+    expect(migrated.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(migrated.document.sketchConstraints).toEqual([]);
+    expect(migrated.document.nextSketchConstraintNumber).toBe(1);
   });
 });

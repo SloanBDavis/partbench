@@ -301,6 +301,8 @@ describe("sketch panel UI helpers", () => {
       drivenEntityIds: ["rect_1"],
       dimensionCount: 1,
       dimensions: [widthDimension],
+      constraintCount: 0,
+      constraints: [],
       issueCount: 0,
       issues: []
     };
@@ -317,7 +319,7 @@ describe("sketch panel UI helpers", () => {
       "Evaluation unavailable"
     );
     expect(formatSketchEvaluationStatus(healthyEvaluation)).toBe(
-      "1 driving dimension · 1 driven entity"
+      "1 driving dimension · 0 constraints · 1 driven entity"
     );
     expect(formatSketchEvaluationStatus(invalidEvaluation)).toBe(
       "Missing target · 1 issue"
