@@ -5,10 +5,10 @@ current app has a typed CADOps command layer, in-memory document model,
 viewport, project JSON serialization, structured agent/MCP adapters, and an
 isolated OCCT/WASM derived geometry path.
 
-The completed V1 foundation supports creating and editing boxes, cylinders,
-spheres, cones, and tori through the shared command layer. Current V2 work adds
-source-of-truth sketches with point, line, rectangle, and circle entities plus a
-first rectangle/circle `feature.extrude` workflow.
+The completed V2 foundation supports primitive scene objects, source-of-truth
+sketches, rectangle/circle extrudes, generated and named references, attached
+sketches, measurements, dependency health, and narrow rectangle-tool add/cut
+boolean workflows through the shared command layer.
 OCCT-derived meshes are display data only; the source of truth remains the typed
 document and transaction history in `cad-core`.
 
@@ -106,8 +106,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/architecture.md` - long-term architecture.
 - `docs/implementation-plan.md` - current implementation source of truth and
   roadmap.
-- `docs/v1.md` - completed V1 foundation.
-- `docs/v2.md` - active next product target.
+- `docs/v2.md` - completed V2 feature/body foundation.
+- `docs/v3.md` - active V3 parametric sketch editing target.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -142,10 +142,13 @@ protocol/package migration.
 - The renderer still uses simple primitive drawing as fallback while OCCT-derived
   meshes are loading, disabled, unavailable, or failed.
 - OCCT/WASM is intentionally off the default production startup path and
-  currently proves box, cylinder, sphere, cone, and torus tessellation.
+  currently backs primitive tessellation, rectangle/circle extrudes, and narrow
+  rectangle-tool add/cut derived meshes.
 - Sketches, rectangle/circle extrude features, and sketches attached to
   generated planar face references are source-of-truth V2 data, but there is no
   sketch solver, automatic profile recognition, broad feature editing, or full
   topology naming yet.
+- V3 planning is focused on source-of-truth parameters, sketch dimensions, and a
+  minimal sketch solver/evaluator slice before broader CAD features.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.

@@ -8,8 +8,8 @@ This is not an implementation checklist. Codex should use this as architectural 
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
-- `docs/v1.md`
 - `docs/v2.md`
+- `docs/v3.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.

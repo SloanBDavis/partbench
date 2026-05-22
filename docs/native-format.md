@@ -1,13 +1,14 @@
 # Native Project Format
 
 This document describes Partbench's current source-of-truth project format and
-the direction for the future native package format. The V1 format is complete
-as a JSON source-of-truth interchange format. V2 added source-of-truth sketches,
-V3 added the first authored sketch-driven feature data, V4 added source-of-truth
-sketch attachment metadata for sketches created on generated planar face
-references, and V5 added source-of-truth user/agent names for generated
-references. V6 added explicit authored extrude operation mode. Current exports
-use `web-cad.project.v6` while the loader still accepts V1, V2, V3, V4, and V5
+the direction for the future native package format. Project schema V1 is the
+original JSON source-of-truth interchange format. Project schema V2 added
+source-of-truth sketches, schema V3 added the first authored sketch-driven
+feature data, schema V4 added source-of-truth sketch attachment metadata for
+sketches created on generated planar face references, schema V5 added
+source-of-truth user/agent names for generated references, and schema V6 added
+explicit authored extrude operation mode. Current exports use
+`web-cad.project.v6` while the loader still accepts V1, V2, V3, V4, and V5
 projects through explicit migration. The `web-cad.project.*` names are retained
 as compatibility schema identifiers after the Partbench product rename; changing
 them would require a deliberate project-format migration. Future storage work
@@ -323,7 +324,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## V2/V3/V4/V5/V6 Storage Decision
+## Project Schema V2/V3/V4/V5/V6 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -334,7 +335,7 @@ unless their commands remain in history forever. That introduced
 The first sketch-driven feature operation, `feature.extrude`, is also authored
 CAD source data. It cannot be represented faithfully by only primitive objects
 and sketches, so it introduced `web-cad.project.v3`. Current exports therefore
-used `web-cad.project.v3`.
+used `web-cad.project.v3` at that point.
 
 The first reference-consuming command, `sketch.createOnFace`, adds authored
 sketch attachment metadata. The attachment records the body ID, generated face
@@ -363,22 +364,24 @@ web-cad.project.v5
 web-cad.project.v6
 ```
 
-V1 projects migrate into the current in-memory model with unchanged units,
+Schema V1 projects migrate into the current in-memory model with unchanged units,
 objects, object counters, history, and redo history, plus empty sketch source
 data, empty authored features, and fresh sketch/feature/body counters.
 
-V2 projects migrate with their sketch source data intact, plus empty authored
-features and fresh feature/body counters.
+Schema V2 projects migrate with their sketch source data intact, plus empty
+authored features and fresh feature/body counters.
 
-V3 projects migrate with sketches and authored features intact, but without
-attached sketch metadata because that source data did not exist in V3.
+Schema V3 projects migrate with sketches and authored features intact, but
+without attached sketch metadata because that source data did not exist in
+schema V3.
 
-V4 projects migrate with sketches, authored features, and attached sketch
+Schema V4 projects migrate with sketches, authored features, and attached sketch
 metadata intact, plus an empty named-reference table.
 
-V5 projects migrate with sketches, authored features, attached sketch metadata,
-and named references intact. Authored extrude features without an operation mode
-normalize to `newBody` and therefore must not include `targetBodyId`.
+Schema V5 projects migrate with sketches, authored features, attached sketch
+metadata, and named references intact. Authored extrude features without an
+operation mode normalize to `newBody` and therefore must not include
+`targetBodyId`.
 
 The derived mapping is deterministic:
 
@@ -563,7 +566,8 @@ document shape.
 Likely triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
-- sketch constraints, dimensions, profiles, or solver state;
+- V3 source-of-truth parameters, sketch dimensions, sketch constraints, profiles,
+  or solver state;
 - additional feature records that require new persisted inputs, such as revolve,
   sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
@@ -585,6 +589,12 @@ schemaVersion: web-cad.project.v7
 
 That format should include a migration from older accepted versions, not silent
 shape guessing.
+
+The active V3 planning target is expected to introduce `web-cad.project.v7` when
+parameters or sketch dimensions become persisted source-of-truth data. Query-only
+solver summaries, dependency health, generated-reference labels, derived
+measurements, and renderer display frames should remain rebuildable query/cache
+data and should not trigger a format version by themselves.
 
 ## Rebuildable Cache
 
@@ -689,12 +699,13 @@ web-cad.project.v5
 web-cad.project.v6
 ```
 
-V1 is migrated to V6 on parse/load by adding empty sketches, empty authored
-features, empty named references, and fresh sketch/feature/body counters. V2 is
-migrated to V6 by preserving sketches and adding empty authored features, empty
-named references, and fresh feature/body counters. V3 is migrated to V6 by
-preserving sketches/features, treating all sketches as unattached, adding empty
-named references, and defaulting authored extrude operation mode to `newBody`.
+Schema V1 is migrated to V6 on parse/load by adding empty sketches, empty
+authored features, empty named references, and fresh sketch/feature/body
+counters. Schema V2 is migrated to V6 by preserving sketches and adding empty
+authored features, empty named references, and fresh feature/body counters.
+Schema V3 is migrated to V6 by preserving sketches/features, treating all
+sketches as unattached, adding empty named references, and defaulting authored
+extrude operation mode to `newBody`.
 V4 is migrated to V6 by preserving sketches, authored features, and attached
 sketch metadata, plus an empty named-reference table and `newBody` operation
 mode. V5 is migrated to V6 by preserving sketches, authored features, attached

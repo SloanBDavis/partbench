@@ -1,16 +1,16 @@
 # Implementation Plan
 
 This document is the current implementation source of truth. It translates the
-long-term architecture in `docs/architecture.md` into the actual repo state and
-the next implementation roadmap.
+long-term architecture in `docs/architecture.md` into the repo state and the
+next implementation roadmap.
 
 Last updated: 2026-05-22.
 
 Use this document for day-to-day implementation decisions. Use
-`docs/architecture.md` for the long-term design, `docs/v1.md` for the completed
-V1 baseline, `docs/v2.md` for the next product target, `docs/native-format.md`
-for project-format direction, and `docs/occt-wasm-size.md` for OCCT/WASM
-load-size findings.
+`docs/architecture.md` for long-term design, `docs/v2.md` for the completed V2
+feature/body foundation, `docs/v3.md` for the active V3 target,
+`docs/native-format.md` for project-format direction, and
+`docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
 
@@ -24,10 +24,10 @@ These constraints remain active:
 6. Geometry, renderer, command engine, protocol, storage, and MCP boundaries stay
    separate.
 7. MCP wraps CADOps. MCP does not define the internal API.
-8. OCCT/WASM, WebGPU, OPFS, STEP, and real topology are introduced only in
+8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2 is complete. Future feature work should start from an explicit next
-   milestone and avoid broadening into V3 architecture without a scoped prompt.
+9. V2 is complete. V3 is active and should focus on parametric sketch-driven
+   editing, not broad V4 architecture.
 
 ## Current Repo State
 
@@ -36,23 +36,22 @@ and focused packages:
 
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
   derived-geometry orchestration, project panel, batch panel, viewport, and
-  smoke page.
+  focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
-  semantic diffs, undo/redo, queries, measurements/extents, derived
-  part/feature/body structure summaries for the current scene primitives,
-  source-of-truth sketches, authored rectangle/circle extrude features, and
-  versioned project JSON import/export.
+  semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
+  sketches, authored rectangle/circle extrude features, narrow rectangle-tool
+  add/cut boolean source data, named references, and versioned project JSON
+  import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
   mesh data into renderer mesh data.
-- `packages/occt-wasm` - isolated OCCT/WASM primitive tessellation adapter.
-- `packages/geometry-kernel` - typed primitive and sketch-extrude tessellation
-  facade around the isolated OCCT path.
-- `packages/geometry-worker` - async geometry worker request/response boundary
-  for primitive and sketch-extrude tessellation.
+- `packages/occt-wasm` - isolated OCCT/WASM loading and tessellation boundary.
+- `packages/geometry-kernel` - typed primitive, extrude, and narrow boolean
+  geometry facade around the isolated OCCT path.
+- `packages/geometry-worker` - async geometry worker request/response boundary.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
@@ -63,45 +62,59 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v6` remain the project-format
-  schema identifiers. Renaming them would be a storage migration.
+- `web-cad.project.v1` through `web-cad.project.v6` remain project-format schema
+  identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
-## Completed Baseline
+## Completed History
 
-V1 is complete. The historical MVP doc has been removed because the relevant
-baseline is now `docs/v1.md`.
+The earlier project history is intentionally condensed here. Keep detailed
+historical V2 behavior in `docs/v2.md`; do not recreate long milestone logs in
+this implementation plan.
 
-Completed foundations:
+### Initial Foundation
 
-- pnpm workspace, Vite app, shared TypeScript config, Vitest, lint, and format
-  scripts.
-- Typed CADOps mutation protocol.
-- In-memory authoritative document model.
-- Transactions, semantic diffs, undo, redo, actor metadata, and audit metadata.
-- CADOps batch dry-run and commit.
-- CADOps read/query path for project summary, object lookup, measurements,
-  project extents, primitive feature summaries, and transaction history.
-- Structured validation and import errors.
-- Canvas viewport with orbit, pan, zoom, fit all, fit selected, reset view,
-  selection, primitive fallback display, and mesh-backed display.
-- Five supported primitive scene objects: box, cylinder, sphere, cone, and
-  torus.
-- Dimension, transform, rename, delete, unit metadata change, and
-  preserve-physical-size unit conversion commands.
-- Versioned source-of-truth JSON project import/export. V1 completed with
-  `web-cad.project.v1`; sketches introduced `web-cad.project.v2`; authored
-  sketch extrudes introduced `web-cad.project.v3`; attached face sketches
-  introduced `web-cad.project.v4`; named generated references introduced
-  `web-cad.project.v5`; explicit extrude operation mode introduced
-  `web-cad.project.v6`; V1, V2, V3, V4, and V5 projects still import through
-  migration.
-- Browser command worker transport.
-- Isolated OCCT/WASM adapter, geometry-kernel facade, browser geometry worker,
-  derived geometry service, renderer mesh bridge, and OCCT browser smoke.
-- Agent adapter, MCP adapter, and stdio MCP server over CADOps.
-- V1 UI polish for object list, inspector, geometry status, measurements,
-  history, batch operations, project import/export, and narrow viewport layout.
+The initial baseline established the pnpm workspace, Vite app, Vitest/lint/format
+checks, typed CADOps mutation protocol, in-memory document model, transactions,
+semantic diffs, undo/redo, browser command worker, canvas viewport, primitive
+scene objects, project JSON import/export, and agent/MCP wrappers.
+
+### V1 Baseline
+
+V1 completed the primitive-scene workflow: box, cylinder, sphere, cone, and torus
+creation/editing; transform, dimension, rename, delete, units, measurements,
+history, batch operations, and project save/load; viewport fit/reset/selection;
+OCCT-derived primitive meshes behind the worker path; and production-facing UI
+polish. V1 source details are now summarized here instead of maintained as a
+separate doc.
+
+### V2 Feature/Body Foundation
+
+V2 moved Partbench from primitives toward authored feature/body CAD while keeping
+V1 compatibility. It added:
+
+- source-of-truth sketches with point, line, rectangle, and circle entities;
+- `feature.extrude` for rectangle/circle sketch profiles;
+- authored body records, feature delete, depth/side edits, and profile edits;
+- sketches attached to generated planar face references;
+- generated body/face/edge/rectangle-vertex references, resolver queries,
+  labels, eligibility metadata, and source-of-truth named references;
+- source-derived measurements, project extents, generated-reference
+  measurements, and dependency/health queries;
+- narrow rectangle-tool boolean slices:
+  - cut rectangle target,
+  - cut circle target,
+  - add/fuse rectangle target;
+- derived geometry rebuilds through `geometry.booleanExtrudes` without making
+  meshes or OCCT authoritative;
+- UI support for sketches, extrudes, generated references, named references,
+  attached sketches, add/cut status, measurements, and project JSON;
+- agent-adapter and MCP pass-through coverage for current V2 commands/queries;
+- project JSON evolution through `web-cad.project.v6`, with explicit migrations
+  from older accepted versions.
+
+V2 is complete. Its detailed target, implemented behavior, and non-goals live in
+`docs/v2.md`.
 
 ## Current Scripts
 
@@ -144,442 +157,227 @@ pnpm smoke:occt-browser
 The smoke writes JSONL telemetry to `.metrics/occt-browser.jsonl`. Timing
 magnitude is tracked, not used as a pass/fail budget.
 
-Feature deletion UI smoke:
+## Current Capabilities
 
-```sh
-pnpm smoke:feature-delete-ui
-```
+Current Partbench can:
 
-This builds the web app, serves the static bundle locally, drives a
-Chromium-compatible browser through the authored sketch rectangle -> extrude ->
-feature delete -> undo -> redo workflow, and fails only on functional workflow
-breakage.
+- create and edit V1 primitive scene objects;
+- create sketches on base planes or eligible generated planar faces;
+- add/edit/delete point, line, rectangle, and circle sketch entities;
+- create rectangle/circle extrude features as new bodies;
+- edit authored extrude depth and side;
+- edit source rectangle/circle profile values through `sketch.updateEntity`;
+- delete authored sketch-extrude features;
+- name generated references and resolve names later;
+- inspect parts, sketches, features, bodies, named references, dependency
+  health, history, measurements, extents, and generated-reference measurements;
+- perform narrow rectangle-tool add/cut boolean workflows for supported target
+  bodies;
+- save/load current project JSON with migrations from older accepted schemas;
+- expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
 
-The repo is ready as a V2 feature/body foundation, but it is not yet a full CAD
-system.
+The repo is a completed V2 feature/body foundation, not yet a full CAD system.
 
 Current limitations:
 
-- `cad-core` stores V1 scene primitives plus the first authored sketch/extrude
-  feature records. It is not yet a full part/feature/body graph.
-- There is no authoritative B-rep topology in the document model.
-- The derived OCCT path tessellates current primitives and rectangle/circle
-  sketch extrudes, but exact B-rep geometry is not persisted as source of truth.
-- Measurements include primitive object bounds/volumes, source-derived
-  rectangle/circle sketch-extrude body measurements, source-derived generated
-  body/face/edge/rectangle-vertex reference measurements, and project extents
-  that union primitive objects with measurable authored extrude bodies. They are
-  not exact kernel/B-rep measurements yet.
-- Document units are explicit but not a full unit system.
-- Object display names are optional and not unique.
-- The first sketch and extrude slices exist, but there is no sketch solver,
-  constraint system, automatic profile recognition, broad feature edit command,
-  or broad feature graph yet. `feature.delete` exists only for authored
-  sketch-extrude features, `feature.updateExtrude` supports authored extrude
-  depth and side edits, and rectangle/circle source profile values are edited
-  through `sketch.updateEntity`.
-- There is a first read-only semantic generated-reference query for authored
-  rectangle/circle extrude bodies, but there is no broad stable topological
-  naming system yet.
-- There are first narrow rectangle-tool boolean slices for cut and add/fuse,
-  but there are no general booleans, broad add/join operations,
-  revolve, fillet, chamfer, shell, loft, pattern, or direct modeling features.
-- There is no OPFS storage, File System Access integration, native `.wcad`
-  package, STEP import/export, WebGPU renderer, large-assembly pipeline, hosted
-  collaboration, or production MCP auth system.
-- OCCT currently uses the full OpenCascade.js WASM in the main path. Brotli
-  delivery is measured in smoke, and custom-build work is documented separately.
+- There is no sketch solver or constraint system.
+- Sketch dimensions are direct entity fields, not first-class driving
+  dimensions with constraint health.
+- There is no document parameter model.
+- There is no broad feature graph beyond current authored sketch extrudes and
+  narrow boolean add/cut result features.
+- Generated references exist for simple authored extrude bodies, but boolean
+  result bodies do not expose generated topology/reference sets yet.
+- There is no authoritative B-rep topology persisted in the document model.
+- Measurements are source-derived for current supported shapes and references;
+  they are not exact B-rep/kernel measurements.
+- There are no fillets, chamfers, revolve, shell, sweep, loft, patterns, direct
+  edits, general booleans, STEP import/export, OPFS/File System Access,
+  WebGPU, assemblies, hosted collaboration, production MCP auth, or
+  natural-language command entry.
+- OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
+  build findings are documented separately and should not block V3 modeling
+  work.
 
-## Active Roadmap
+## Active Roadmap: V3 Parametric Sketch Editing
 
-V2 is complete. The next target should be a scoped V3 milestone aligned with
-`docs/architecture.md`, likely focused on one of:
+V3 should be a meaningful usefulness jump without starting unrelated V4 systems.
+The product target is:
 
-- making boolean result topology/reference behavior explicit before broadening
-  booleans;
-- adding a real sketch constraint/dimension slice;
-- introducing explicit authored parts beyond the derived default part; or
-- improving native storage/open-save once the source model justifies it.
+> A user or agent can define and edit source-of-truth sketch dimensions and
+> parameters, rebuild downstream sketches/features/bodies/measurements through
+> CADOps, and inspect clear dependency health when something becomes invalid.
 
-Do not start all of these at once. Keep the V2 command, transaction, worker,
-renderer, storage, and agent boundaries intact.
+V3 is agent-first. Parameters, dimensions, solver results, dependency health,
+validation failures, and rebuild effects must be typed/queryable through CADOps
+and wrapped by agent/MCP adapters. The UI should make the same structure usable
+for humans without adding hidden UI-only model state.
 
-### Phase 1: V2 Document Model Foundation
+### V3 Phase A: Parameter and Driving-Dimension Source Model
 
-Goal: introduce the smallest useful part/feature/body structure without
-replacing working V1 behavior in one jump.
+Goal: introduce the smallest source-of-truth model for document parameters and
+sketch dimensions.
 
-Current status: complete for V2. The current implementation exposes a derived default
-part/primitive feature/solid body structure through CADOps queries while keeping
-V1 scene primitives as the saved source of truth. This is a compatibility bridge,
-not a persisted V2 feature graph.
+Expected deliverables:
 
-Deliverables:
+- typed parameter records with names, numeric values, units behavior, and
+  validation;
+- typed sketch dimension records for current rectangle/circle/line cases;
+- CADOps commands for creating, updating, renaming, and deleting parameters and
+  dimensions where scoped;
+- semantic diffs, undo/redo, batch dry-run/commit, transaction history,
+  adapter/MCP pass-through, and project JSON import/export;
+- project format decision, likely `web-cad.project.v7` once source-of-truth
+  parameters or sketch dimensions are persisted;
+- UI support only where it clarifies the current sketch workflow.
 
-- Define typed CADOps-compatible IDs and snapshots for project, part, feature,
-  body, and body-instance concepts.
-- Preserve V1 scene primitives through compatibility or migration.
-- Decide whether existing box/cylinder/sphere/cone/torus commands create
-  primitive features, primitive bodies, or migrated scene objects during the
-  transition.
-- Add read-only queries for feature tree, parts, bodies, and feature/source
-  metadata.
-- Keep rendered meshes derived and rebuildable.
-- Add project format version/migration tests.
+Non-goals:
 
-Implemented first slice:
+- No full solver yet.
+- No arbitrary expressions unless explicitly scoped.
+- No dragging solver UX.
+- No arbitrary profile recognition.
 
-- `project.features` now includes default part and body IDs for each current
-  primitive feature.
-- `project.structure` returns the derived default part, primitive features,
-  solid bodies, and object-to-source mappings.
-- `cad.project_structure` exposes the same read model through the MCP wrapper.
-- No body instances are introduced yet because there is no assembly or instancing
-  caller.
-- No project format version change is required yet because this first slice is
-  derived from existing V1 source-of-truth data.
+### V3 Phase B: Minimal Constraint/Solver Slice
 
-Exit criteria:
+Goal: make the first dimensions actually drive geometry in a controlled,
+testable way.
 
-- V1 projects still load.
-- New model structures are current-useful, tested, and visible through queries.
-- No dead feature graph exists only as speculative architecture.
+Expected deliverables:
 
-### Phase 2: Native Project Package and Local Save/Open Direction
+- a small internal sketch-solving/evaluation path in the correct package
+  boundary;
+- support for the current high-value cases first:
+  - rectangle width and height,
+  - rectangle center where needed,
+  - circle radius,
+  - line length or horizontal/vertical only if it stays narrow;
+- structured solver status for healthy, under-defined, over-defined,
+  unsolved, and unsupported cases where practical;
+- no UI-only solver state;
+- tests for deterministic inputs/outputs and failure shapes.
 
-Goal: turn the current JSON interchange into a deliberate path toward a native
-project package without losing debuggability.
+Non-goals:
 
-Current status: storage decision implemented and evolved. The V2 structural
-bridge is still derived, the sketch slice added authored source data in
-`web-cad.project.v2`, the first extrude slice added authored feature/body source
-data in `web-cad.project.v3`, and `sketch.createOnFace` added persisted sketch
-attachment metadata in `web-cad.project.v4`. Named generated references added
-persisted user/agent reference names in `web-cad.project.v5`. V1, V2, V3, and
-V4 project JSON remain importable through migration. Explicit extrude
-operation mode is now source data in `web-cad.project.v6`, with V1 through V5
-remaining importable through migration.
+- No general geometric constraint solver.
+- No tangent, concentric, equal, symmetry, spline, or complex profile solving
+  unless a later prompt scopes them deliberately.
 
-Deliverables:
+Solver direction guardrails:
 
-- Update `docs/native-format.md` for the next project format version and package
-  layout.
-- Decide the first `.wcad` package shape: manifest, source document, command
-  log, optional caches, and metadata.
-- Add a migration path from `web-cad.project.v1`.
-- Scope File System Access API and OPFS separately:
-  - File System Access for user-visible open/save.
-  - OPFS for private rebuildable caches.
-- Keep derived meshes optional and rebuildable.
+- parameters, dimensions, and constraints should be source records with stable
+  IDs, not UI-only fields;
+- solver/evaluator outputs are deterministic derived data;
+- downstream features should consume evaluated sketch geometry once solver
+  behavior exists for that path;
+- invalid, unsupported, under-defined, or over-defined sketches must report
+  structured status/errors instead of silently producing misleading geometry;
+- React, renderer, OCCT, MCP, and agent layers must not own separate solver
+  authority.
 
-Implemented decision:
+### V3 Phase C: Rebuild Propagation and Health
 
-- Continue deriving `part:default`, `feature:<objectId>`, and
-  `body:<objectId>` rather than persisting duplicate part/feature/body records.
-- Export `web-cad.project.v6` with source-of-truth sketches, attached sketch
-  metadata, authored extrude features, named generated references, sketch
-  counters, feature counters, body counters, and explicit authored extrude
-  operation mode.
-- Accept `web-cad.project.v1` through migration with empty sketches/features.
-- Accept `web-cad.project.v2` through migration with sketches and empty
-  features.
-- Accept `web-cad.project.v3` through migration with sketches/features and no
-  attached sketch metadata.
-- Accept `web-cad.project.v4` through migration with sketches/features and
-  attached sketch metadata, plus empty named references.
-- Accept `web-cad.project.v5` through migration with sketches/features,
-  attached sketch metadata, named references, and defaulted `newBody` extrude
-  operation mode.
-- Introduce a later project format only when source-of-truth data cannot be
-  represented cleanly in the current V6 shape, such as constraints, explicit
-  profiles, explicit authored parts, additional feature inputs, exact body
-  checkpoints, exact topology-backed references, or assemblies.
-- Keep `.wcad`, OPFS, and File System Access as future scoped milestones.
+Goal: make parameter/dimension edits propagate through the existing V2 body
+pipeline without breaking architectural boundaries.
 
-Exit criteria:
+Expected deliverables:
 
-- The source-of-truth storage contract is clear before OPFS or File System
-  Access code is added.
-- Older JSON versions remain supported imports while the active source format
-  evolves deliberately.
+- dimension/parameter edits update source sketches through CADOps;
+- authored extrudes, attached sketches, narrow boolean add/cut results,
+  measurements, extents, generated references, named references, and health
+  queries respond coherently;
+- derived geometry cache keys and stale async handling include driven sketch
+  changes;
+- unsupported cases fail clearly and structurally.
 
-### Phase 3: Sketch Model First Slice
+Non-goals:
 
-Goal: add a minimal parametric sketch model that can support the first real
-feature operation.
+- No exact topology naming for boolean result bodies unless separately scoped.
+- No broad boolean expansion.
 
-Current status: first source-of-truth slice implemented.
+### V3 Phase D: Human and Agent UX
 
-Implemented:
+Goal: make parametric editing understandable in the UI and through structured
+agent queries.
 
-- Sketch containers on `XY`, `XZ`, and `YZ` planes.
-- Point, line, rectangle, and circle sketch entities.
-- CADOps commands for sketch create/rename/delete and entity
-  add/update/delete.
-- Validation for sketch names, planes, entity existence, coordinates, rectangle
-  sizes, and circle radius.
-- Semantic diffs, undo/redo, batch dry-run/commit, transaction history, and
-  project JSON round trip for sketches.
-- `project.sketches` and `sketch.get` queries through `cad-core`,
-  `agent-adapter`, and MCP wrappers.
-- Compact web UI panel for sketch creation and entity editing.
-- Current exports use `web-cad.project.v6`; V1, V2, V3, V4, and V5 imports
-  remain compatible.
+Expected deliverables:
 
-Exit criteria:
+- compact UI for parameters, sketch dimensions, solver status, and downstream
+  dependency health;
+- CADOps query support for parameter/dimension summaries and affected features;
+- agent/MCP wrapper coverage as thin pass-throughs;
+- UI helper tests for command building, filtering, status formatting, and
+  dependency display.
 
-- A user or agent can create and inspect a simple sketch through CADOps.
-- The sketch model is source-of-truth data, not renderer geometry.
-- No full constraint solver is introduced until the scoped solver milestone.
+Non-goals:
 
-### Phase 4: First Real Feature Operation
+- No browser E2E expansion unless explicitly scoped.
+- No natural-language parser.
 
-Goal: create the first source-authored body and rebuildable derived mesh from
-source-of-truth feature data.
+### V3 Phase E: Stabilization and Completion
 
-Current status: first source-of-truth feature/body slice implemented.
+Goal: finish V3 as a coherent, well-tested milestone.
 
-Implemented:
+Expected deliverables:
 
-- `feature.extrude` CADOps command for rectangle and circle sketch entities.
-- Authored extrude feature records in `cad-core` with source sketch/entity,
-  profile kind, depth, side (`positive`, `negative`, or `symmetric`), explicit
-  operation mode, optional target body ID for boolean modes, generated
-  feature ID, and generated body ID.
-- Validation for source sketch/entity, supported profile, positive finite
-  depth, supported side, supported operation mode, target-body contract, and
-  unique feature/body IDs.
-- Operation mode is modeled as `newBody`, `add`, or `cut`. `newBody` remains
-  the default standalone behavior. The first narrow `cut` slices are
-  implemented for a rectangle sketch-extrude tool cutting one active authored
-  rectangle or circle `newBody` target body. The first narrow `add` slice is
-  implemented for a rectangle tool fusing with one active authored rectangle
-  `newBody` target body and rebuilds through the same derived-geometry/UI
-  boolean result path. Circle-tool booleans,
-  circle-target add, and broader boolean cases fail with structured unsupported
-  errors until boolean/topology behavior is scoped.
-- Semantic diffs, undo/redo, batch dry-run/commit, transaction summaries, and
-  project round trip.
-- `web-cad.project.v6` source-of-truth export with V1/V2/V3/V4/V5 import
-  migration.
-- `project.structure` and `project.features` show primitive-derived and
-  sketch-extrude features/bodies.
-- Geometry-kernel and geometry-worker rectangle/circle extrude tessellation
-  behind the existing worker boundary.
-- Derived renderer meshes remain rebuildable; simple primitive fallback remains
-  available while geometry is disabled, pending, or unavailable.
-- UI support for selecting a rectangle/circle sketch entity, entering extrusion
-  depth, creating the feature through CADOps, and selecting the resulting body.
+- unit/package-level coverage for command/query contracts, serialization,
+  solver/evaluator behavior, rebuild propagation, derived geometry invalidation,
+  adapter/MCP wrappers, and UI helpers;
+- docs updated to mark V3 complete when acceptance criteria pass;
+- implementation-plan updated with the next target after V3.
 
-Exit criteria:
+## V3 Acceptance Criteria
 
-- A sketch-derived feature can produce a body and derived mesh without making
-  OCCT authoritative inside `cad-core`.
-- Existing primitive workflows remain usable or are explicitly migrated.
+V3 is complete when:
 
-### Phase 5: Topological Reference and Naming First Slice
+1. Parameters and sketch dimensions are source-of-truth document data.
+2. Current supported dimensions drive rectangle/circle sketch geometry through
+   CADOps.
+3. Editing dimensions/parameters rebuilds downstream authored extrudes,
+   attached-sketch extrudes, narrow add/cut results, measurements, extents,
+   generated references, named references, and dependency health where
+   supported.
+4. Unsupported or unsolved sketch states fail with structured errors/status
+   instead of silently producing misleading geometry.
+5. Project JSON import/export/migration is explicit and tested.
+6. Agent/MCP adapters expose V3 commands/queries as wrappers over CADOps.
+7. The UI clearly presents parameters, dimensions, solver status, and downstream
+   impact without relying on debug text.
+8. Unit and package-level tests cover the behavior without depending on brittle
+   browser E2E workflows.
 
-Goal: prevent future feature work from depending on unstable face/edge indexes.
+## Deferred Beyond V3 Unless Explicitly Scoped
 
-Current status: first read-only body/face/edge reference slices implemented for
-authored sketch-extrude bodies, with rectangle vertex references implemented for
-simple authored rectangle extrudes.
-
-Implemented:
-
-- CADOps query `body.generatedReferences` returns semantic generated references
-  for authored sketch-extrude bodies.
-- CADOps query `body.resolveGeneratedReference` resolves one generated stable
-  ID on an authored sketch-extrude body to the current body, face, edge, or
-  vertex reference object.
-- Rectangle extrudes expose stable generated face roles for start cap, end cap,
-  and four profile-edge side faces: `side:uMin`, `side:uMax`, `side:vMin`, and
-  `side:vMax`.
-- Circle extrudes expose start cap, end cap, and `side:circular`.
-- Rectangle extrudes expose stable generated edge roles for start-cap profile
-  edges, end-cap profile edges, and four longitudinal corner edges.
-- Circle extrudes expose start and end circular edge roles.
-- Rectangle extrudes expose eight semantic generated vertex roles:
-  `start:uMin:vMin`, `start:uMin:vMax`, `start:uMax:vMin`,
-  `start:uMax:vMax`, `end:uMin:vMin`, `end:uMin:vMax`, `end:uMax:vMin`, and
-  `end:uMax:vMax`.
-- Circle extrudes intentionally return an empty vertex set because there are no
-  stable discrete semantic vertices on a circular profile in this first slice.
-- Reference metadata includes owning body ID, source feature ID, source sketch
-  ID, source sketch entity ID, face/edge/vertex role, adjacent face roles for
-  edges and vertices, adjacent edge roles for vertices, sketch plane, extrude
-  side, profile kind, depth, current source profile signature, and simple
-  normal/axis/profile-point roles where practical.
-- Generated references include deterministic read-only labels and descriptions
-  for human, script, and agent inspection. These labels are derived readability
-  metadata, not persisted user names.
-- Generated references include deterministic read-only eligibility metadata for
-  currently planned future operations: `feature.attachSketchPlane`,
-  `feature.measureReference`, and `feature.selectReference`. Eligibility is
-  advisory planning metadata derived from the reference kind and role, not an
-  implemented mutation capability.
-- Internal generated-reference validation helpers resolve references by body ID
-  and stable ID, then check expected kind and operation eligibility for future
-  reference-consuming commands.
-- Source-of-truth named generated references through `reference.nameGenerated`
-  and `reference.deleteName`, plus `reference.listNamed` and
-  `reference.resolveNamed` read queries. Names store user/agent metadata that
-  points at generated references; they do not persist B-rep topology.
-- The web UI can name the selected generated reference, delete named
-  references, list document named references, and show stale named targets
-  without changing generated stable IDs or resolver behavior.
-- `sketch.createOnFace` is the first reference-consuming mutation. It creates a
-  source-of-truth sketch attached to an eligible generated planar face reference
-  from an authored sketch-extrude body while keeping generated references
-  derived rather than persisted topology. The command accepts the original body
-  ID plus generated face stable ID pair, or a named reference that resolves to an
-  eligible generated planar face.
-- The web UI exposes eligible generated face references on selected authored
-  bodies and creates attached sketches through the same `sketch.createOnFace`
-  CADOps command. Ineligible references remain visible as inspection metadata
-  but are not offered as sketch targets.
-- Attached sketches are displayed through a derived render-layer face frame from
-  the current generated face reference. If the reference is stale or unresolved,
-  the viewport falls back to the sketch's saved MVP plane and the sketch panel
-  shows an unresolved attachment status.
-- Existing `feature.extrude` derives rectangle/circle body display geometry
-  from attached sketches by resolving the current generated planar face frame.
-  Stale or unresolved attachments produce an explicit derived-geometry fallback
-  status instead of rendering the extrude on the wrong base plane.
-- Agent adapter and MCP wrapper expose the same read path without defining new
-  internal architecture.
-- Missing/stale generated reference IDs fail with a structured
-  `GENERATED_REFERENCE_NOT_FOUND` query error instead of falling back to raw
-  kernel or mesh indexes.
-- References are derived from source data and update across depth edits, side
-  edits, rectangle/circle profile edits, feature delete, undo/redo, and project
-  import/export.
-
-Deliverables:
-
-- Add typed entity references for generated faces, edges, vertices, bodies,
-  sketches, and features.
-- Track feature lineage and lightweight geometric signatures where practical.
-- Make ambiguous references fail clearly instead of silently editing the wrong
-  geometry.
-
-Exit criteria:
-
-- First feature outputs have stable-enough references for subsequent scoped
-  operations.
-- The system does not expose raw kernel indexes as durable user/agent APIs.
-
-### Phase 6: Source-Derived Measurements and Health Queries
-
-Goal: provide source-derived measurement and health queries for current V2
-authored bodies, while leaving exact B-rep/kernel measurements for a future
-scoped milestone.
-
-Current status: complete for V2. `body.measurements` returns read-only analytic
-measurements for authored rectangle/circle sketch-extrude bodies from
-source-of-truth sketch and feature data, including attached-sketch placement
-where the attachment resolves. `body.generatedReferenceMeasurements` measures
-one generated body, face, edge, or rectangle vertex reference from the same
-source-derived semantic reference model. `project.health` reports read-only
-dependency health for authored extrudes, attached sketches, and named generated
-references so humans, agents, and future commands can detect stale or broken
-source relationships before mutating the model. Primitive object measurements
-remain unchanged.
-
-Deliverables:
-
-- Keep `body.measurements` source-derived until exact B-rep/kernel measurement
-  data becomes authoritative enough to use.
-- Keep `body.generatedReferenceMeasurements` source-derived for current
-  rectangle/circle extrude references until exact topology-backed reference
-  measurements exist.
-- Add exact kernel-backed bounding boxes, volume, surface area, and centroid in
-  a later milestone when exact B-rep bodies are authoritative enough to query.
-- Keep read/query separate from mutation.
-- Keep `project.health` source-derived and non-persistent. It reports current
-  dependency status; it is not a parametric regeneration graph.
-- Preserve primitive-derived measurements as fallback for V1 objects or
-  migrated objects without exact bodies.
-- Expose through CADOps, agent adapter, and MCP wrappers.
-
-Exit criteria:
-
-- Measurements use authoritative source data when available, not renderer
-  meshes.
-
-### Phase 7: Renderer and Performance Upgrade Path
-
-Goal: improve visual correctness and performance based on actual V2 workloads.
-
-Current status: complete for V2. The OCCT rectangle-extrude boolean feasibility path now
-backs the first narrow authoritative `feature.extrude` cut slices. Cut features
-store source-of-truth feature intent in `cad-core`, then rebuild the cut result
-as derived mesh/cache data through `geometry.booleanExtrudes`,
-`@web-cad/geometry-kernel`, `@web-cad/geometry-worker`, and
-`@web-cad/occt-wasm`. The authoritative cut scope is now rectangle tool against
-one active authored rectangle or circle `newBody` target body. Rectangle
-add/fuse with an active authored rectangle `newBody` target now rebuilds through
-the same derived mesh/cache path and is available through the existing extrude
-UI. Circle-tool booleans, circle-target add, and general booleans
-remain unsupported until source-model, topology/reference, and UX semantics are
-scoped.
-
-Deliverables:
-
-- Add better edge display, normals, face highlighting, and body/feature
-  selection feedback in the current renderer where practical.
-- Keep broad boolean geometry work behind the geometry boundary until topology
-  naming, empty-result behavior, tolerance handling, performance, and
-  generated-reference invalidation are intentionally designed.
-- Define benchmark scenes before starting WebGPU.
-- Introduce WebGPU only with clear requirements for buffers, picking, culling,
-  instancing, and LOD.
-
-Exit criteria:
-
-- Renderer work follows measured needs from real geometry and assemblies.
-- WebGPU is not started as a cosmetic rewrite.
-
-### Phase 8: Interoperability and Larger CAD Features
-
-These should wait until feature/body and topology foundations exist:
-
+- General sketch constraint solving.
+- Full stable topological naming across broad feature edits.
+- Generated references for boolean result bodies.
+- General booleans/add, fillets, chamfers, shell, patterns, lofts, sweeps,
+  revolve, and direct edits.
 - STEP import/export.
-- Fillets, chamfers, general booleans/add, shell, patterns, lofts, sweeps, and
-  direct edits.
-- Assemblies, instancing, mates, LOD, and large-model benchmarks.
-- Production MCP auth/approval flows and hosted collaboration.
-- Natural-language command entry, if added at all, after structured operations
-  remain solid.
-
-## OCCT/WASM Size Track
-
-The full OpenCascade.js WASM is acceptable for current local development and V1
-foundation work. It should not block the V2 document/modeling roadmap.
-
-Use `docs/occt-wasm-size.md` for current findings. Custom OCCT builds should
-remain behind the geometry-worker boundary and should be evaluated when:
-
-- hosted startup/download experience becomes a priority,
-- the supported kernel API surface stabilizes enough to build a smaller binding
-  set, or
-- CI/smoke metrics show the full build is blocking development.
+- OPFS cache implementation and File System Access open/save.
+- Native `.wcad` package implementation.
+- Local launcher with cross-origin isolation headers.
+- WebGPU production renderer.
+- Assemblies, mates, large-model LOD, and instancing.
+- Hosted collaboration.
+- Production MCP auth/permission system.
+- Natural-language command entry.
 
 ## Definition of Done
 
 A future task is done only when:
 
 1. The requested scope is implemented.
-2. The implementation respects the package boundaries above.
+2. The implementation respects package boundaries.
 3. All CAD mutations go through CADOps.
 4. Source-of-truth state remains in `cad-core`.
 5. Rendered meshes remain derived.
-6. Relevant unit tests or focused package-level checks are added. Browser E2E
-   tests should not be added unless explicitly scoped.
-7. `pnpm test` passes.
-8. `pnpm typecheck` passes.
-9. Relevant build/lint/format checks pass.
-10. Documentation is updated when behavior, scripts, or architecture boundaries
+6. Relevant unit tests or focused package-level checks are added.
+7. Browser E2E tests are not added unless explicitly scoped.
+8. `pnpm test` passes.
+9. `pnpm typecheck` passes.
+10. Relevant build/lint/format checks pass.
+11. Documentation is updated when behavior, scripts, or architecture boundaries
     change.

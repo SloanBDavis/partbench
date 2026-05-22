@@ -12,8 +12,8 @@ The long-term architecture is in:
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
-- `docs/v1.md` — completed V1 baseline
-- `docs/v2.md` — active next target
+- `docs/v2.md` — completed V2 feature/body foundation
+- `docs/v3.md` — active V3 target
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 
