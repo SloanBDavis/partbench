@@ -19,6 +19,8 @@ describe("mcp stdio server", () => {
       id: 1,
       result: {
         tools: [
+          { name: "cad.parameter_list" },
+          { name: "cad.parameter_get" },
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
@@ -28,6 +30,8 @@ describe("mcp stdio server", () => {
           { name: "cad.body_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
+          { name: "cad.sketch_dimensions" },
+          { name: "cad.sketch_dimension_get" },
           { name: "cad.body_generated_references" },
           { name: "cad.resolve_generated_reference" },
           { name: "cad.generated_reference_measurements" },

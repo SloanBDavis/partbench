@@ -10,6 +10,8 @@ import {
 import type { CadActorMetadata, CadBatch } from "@web-cad/cad-protocol";
 
 export type CadMcpToolName =
+  | "cad.parameter_list"
+  | "cad.parameter_get"
   | "cad.project_summary"
   | "cad.project_features"
   | "cad.project_structure"
@@ -19,6 +21,8 @@ export type CadMcpToolName =
   | "cad.body_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
+  | "cad.sketch_dimensions"
+  | "cad.sketch_dimension_get"
   | "cad.body_generated_references"
   | "cad.resolve_generated_reference"
   | "cad.generated_reference_measurements"
@@ -117,6 +121,14 @@ export class CadMcpServer {
   }
 
   callTool(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (request.name === "cad.parameter_list") {
+      return this.#callParameterList(request);
+    }
+
+    if (request.name === "cad.parameter_get") {
+      return this.#callParameterGet(request);
+    }
+
     if (request.name === "cad.project_summary") {
       return this.#callProjectSummary(request);
     }
@@ -151,6 +163,14 @@ export class CadMcpServer {
 
     if (request.name === "cad.sketch_get") {
       return this.#callSketchGet(request);
+    }
+
+    if (request.name === "cad.sketch_dimensions") {
+      return this.#callSketchDimensions(request);
+    }
+
+    if (request.name === "cad.sketch_dimension_get") {
+      return this.#callSketchDimensionGet(request);
     }
 
     if (request.name === "cad.body_generated_references") {
@@ -230,6 +250,53 @@ export class CadMcpServer {
       -32601,
       `Unknown JSON-RPC method: ${request.method}`
     );
+  }
+
+  #callParameterList(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.parameter_list does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "parameter.list" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callParameterGet(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isIdToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.parameter_get expects arguments shaped as { id: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "parameter.get",
+            id: request.arguments.id
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
   }
 
   #callProjectSummary(request: CadMcpToolCallRequest): CadMcpToolCallResult {
@@ -432,6 +499,58 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "sketch.get",
+            id: request.arguments.id
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callSketchDimensions(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isSketchDimensionsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.sketch_dimensions expects arguments shaped as { sketchId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.dimensions",
+            sketchId: request.arguments.sketchId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callSketchDimensionGet(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isIdToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.sketch_dimension_get expects arguments shaped as { id: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.dimension.get",
             id: request.arguments.id
           }
         }
@@ -646,6 +765,31 @@ export function createCadMcpServer(
 
 const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
+    name: "cad.parameter_list",
+    description:
+      "Returns source-of-truth document parameters in the current CAD document.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.parameter_get",
+    description: "Returns one source-of-truth document parameter by ID.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id"],
+      properties: {
+        id: {
+          type: "string",
+          description: "Parameter ID to fetch."
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_summary",
     description: "Returns a structured summary of the current CAD document.",
     inputSchema: {
@@ -747,6 +891,36 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         id: {
           type: "string",
           description: "Sketch ID to fetch."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.sketch_dimensions",
+    description: "Returns source-of-truth driving dimensions for one sketch.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["sketchId"],
+      properties: {
+        sketchId: {
+          type: "string",
+          description: "Sketch ID whose dimensions should be listed."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.sketch_dimension_get",
+    description: "Returns one source-of-truth sketch dimension by ID.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["id"],
+      properties: {
+        id: {
+          type: "string",
+          description: "Sketch dimension ID to fetch."
         }
       }
     }
@@ -912,6 +1086,10 @@ function isBatchToolArguments(value: unknown): value is {
 function isObjectMeasurementsToolArguments(
   value: unknown
 ): value is { readonly id: string } {
+  return isIdToolArguments(value);
+}
+
+function isIdToolArguments(value: unknown): value is { readonly id: string } {
   return isRecord(value) && typeof value.id === "string" && value.id !== "";
 }
 
@@ -926,7 +1104,17 @@ function isBodyMeasurementsToolArguments(
 function isSketchGetToolArguments(
   value: unknown
 ): value is { readonly id: string } {
-  return isRecord(value) && typeof value.id === "string" && value.id !== "";
+  return isIdToolArguments(value);
+}
+
+function isSketchDimensionsToolArguments(
+  value: unknown
+): value is { readonly sketchId: string } {
+  return (
+    isRecord(value) &&
+    typeof value.sketchId === "string" &&
+    value.sketchId !== ""
+  );
 }
 
 function isBodyGeneratedReferencesToolArguments(

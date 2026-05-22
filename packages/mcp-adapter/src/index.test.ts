@@ -6,6 +6,8 @@ describe("mcp-adapter", () => {
     const server = createCadMcpServer();
 
     expect(server.listTools().tools.map((tool) => tool.name)).toEqual([
+      "cad.parameter_list",
+      "cad.parameter_get",
       "cad.project_summary",
       "cad.project_features",
       "cad.project_structure",
@@ -15,6 +17,8 @@ describe("mcp-adapter", () => {
       "cad.body_measurements",
       "cad.project_extents",
       "cad.sketch_get",
+      "cad.sketch_dimensions",
+      "cad.sketch_dimension_get",
       "cad.body_generated_references",
       "cad.resolve_generated_reference",
       "cad.generated_reference_measurements",
@@ -2070,6 +2074,8 @@ describe("mcp-adapter", () => {
       id: 1,
       result: {
         tools: [
+          { name: "cad.parameter_list" },
+          { name: "cad.parameter_get" },
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
@@ -2079,6 +2085,8 @@ describe("mcp-adapter", () => {
           { name: "cad.body_measurements" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
+          { name: "cad.sketch_dimensions" },
+          { name: "cad.sketch_dimension_get" },
           { name: "cad.body_generated_references" },
           { name: "cad.resolve_generated_reference" },
           { name: "cad.generated_reference_measurements" },
@@ -2215,3 +2223,95 @@ function seedMcpExtrudeFeature(
     }
   });
 }
+
+describe("mcp-adapter V3 parameter and dimension pass-through", () => {
+  it("passes parameter and sketch dimension commands and queries through", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v3_commit",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_1",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_1",
+              id: "circle_1",
+              center: [0, 0],
+              radius: 1
+            },
+            { op: "parameter.create", id: "param_r", name: "Radius", value: 4 },
+            {
+              op: "sketch.dimension.create",
+              id: "dim_r",
+              name: "Radius dimension",
+              sketchId: "sketch_1",
+              entityId: "circle_1",
+              target: { entityKind: "circle", role: "radius" },
+              parameterId: "param_r"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdParameterIds: ["param_r"],
+        createdSketchDimensionIds: ["dim_r"]
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.parameter_get",
+        requestId: "mcp_req_parameter_get",
+        arguments: { id: "param_r" }
+      })
+    ).toMatchObject({
+      toolName: "cad.parameter_get",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "parameter.get",
+        parameter: { id: "param_r", name: "Radius", value: 4 }
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.sketch_dimensions",
+        requestId: "mcp_req_dimensions",
+        arguments: { sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      toolName: "cad.sketch_dimensions",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "sketch.dimensions",
+        dimensionCount: 1,
+        dimensions: [
+          expect.objectContaining({
+            id: "dim_r",
+            status: "healthy",
+            effectiveValue: 4
+          })
+        ]
+      }
+    });
+  });
+});

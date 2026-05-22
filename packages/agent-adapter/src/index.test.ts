@@ -2235,3 +2235,86 @@ function seedExtrudeFeature(
     createdBodyIds: [ids.bodyId]
   });
 }
+
+describe("agent-adapter V3 parameter and dimension pass-through", () => {
+  it("passes parameter and sketch dimension commands and queries through", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const commit = adapter.execute({
+      requestId: "agent_req_v3_commit",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_1",
+            id: "rect_1",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          { op: "parameter.create", id: "param_w", name: "Width", value: 5 },
+          {
+            op: "sketch.dimension.create",
+            id: "dim_w",
+            name: "Width dimension",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            target: { entityKind: "rectangle", role: "width" },
+            parameterId: "param_w"
+          }
+        ]
+      }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdParameterIds: ["param_w"],
+      createdSketchDimensionIds: ["dim_w"],
+      modifiedSketchEntityIds: ["rect_1"]
+    });
+
+    expect(
+      adapter.query({
+        requestId: "agent_req_parameter_list",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "parameter.list" }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "parameter.list",
+      parameterCount: 1,
+      parameters: [{ id: "param_w", name: "Width", value: 5 }]
+    });
+
+    expect(
+      adapter.query({
+        requestId: "agent_req_dimensions",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "sketch.dimensions", sketchId: "sketch_1" }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.dimensions",
+      sketchId: "sketch_1",
+      dimensionCount: 1,
+      dimensions: [
+        expect.objectContaining({
+          id: "dim_w",
+          status: "healthy",
+          effectiveValue: 5
+        })
+      ]
+    });
+  });
+});

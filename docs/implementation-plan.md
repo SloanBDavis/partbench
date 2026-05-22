@@ -41,9 +41,9 @@ and focused packages:
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
-  sketches, authored rectangle/circle extrude features, narrow rectangle-tool
-  add/cut boolean source data, named references, and versioned project JSON
-  import/export.
+  sketches, document parameters, driving sketch dimensions, authored
+  rectangle/circle extrude features, narrow rectangle-tool add/cut boolean source
+  data, named references, and versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -62,7 +62,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v6` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v7` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
@@ -164,6 +164,9 @@ Current Partbench can:
 - create and edit V1 primitive scene objects;
 - create sketches on base planes or eligible generated planar faces;
 - add/edit/delete point, line, rectangle, and circle sketch entities;
+- create and edit source-of-truth document parameters through CADOps;
+- create and edit driving sketch dimensions for rectangle width, rectangle
+  height, and circle radius through CADOps;
 - create rectangle/circle extrude features as new bodies;
 - edit authored extrude depth and side;
 - edit source rectangle/circle profile values through `sketch.updateEntity`;
@@ -173,7 +176,8 @@ Current Partbench can:
   health, history, measurements, extents, and generated-reference measurements;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
-- save/load current project JSON with migrations from older accepted schemas;
+- save/load current `web-cad.project.v7` JSON with migrations from older accepted
+  schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
@@ -182,10 +186,10 @@ The repo is a completed V2 feature/body foundation, not yet a full CAD system.
 
 Current limitations:
 
-- There is no sketch solver or constraint system.
-- Sketch dimensions are direct entity fields, not first-class driving
-  dimensions with constraint health.
-- There is no document parameter model.
+- There is no general sketch solver or constraint system.
+- Sketch dimensions currently drive only rectangle width/height and circle radius
+  through a direct evaluator path.
+- There is no parameter expression language.
 - There is no broad feature graph beyond current authored sketch extrudes and
   narrow boolean add/cut result features.
 - Generated references exist for simple authored extrude bodies, but boolean
@@ -220,18 +224,19 @@ for humans without adding hidden UI-only model state.
 Goal: introduce the smallest source-of-truth model for document parameters and
 sketch dimensions.
 
-Expected deliverables:
+Implemented in Phase A:
 
-- typed parameter records with names, numeric values, units behavior, and
+- typed parameter records with names, numeric values, optional descriptions, and
   validation;
-- typed sketch dimension records for current rectangle/circle/line cases;
+- typed sketch dimension records for rectangle width, rectangle height, and circle
+  radius;
 - CADOps commands for creating, updating, renaming, and deleting parameters and
-  dimensions where scoped;
+  dimensions;
 - semantic diffs, undo/redo, batch dry-run/commit, transaction history,
   adapter/MCP pass-through, and project JSON import/export;
-- project format decision, likely `web-cad.project.v7` once source-of-truth
-  parameters or sketch dimensions are persisted;
-- UI support only where it clarifies the current sketch workflow.
+- `web-cad.project.v7` with V1 through V6 import compatibility;
+- a direct evaluator path where literal or parameter-bound dimensions update
+  supported sketch entity values through CADOps.
 
 Non-goals:
 
@@ -239,21 +244,19 @@ Non-goals:
 - No arbitrary expressions unless explicitly scoped.
 - No dragging solver UX.
 - No arbitrary profile recognition.
+- No parameter/dimension UI in the first core/source-model slice.
 
 ### V3 Phase B: Minimal Constraint/Solver Slice
 
-Goal: make the first dimensions actually drive geometry in a controlled,
-testable way.
+Goal: broaden the Phase A direct evaluator toward a small sketch
+solver/evaluator structure in a controlled, testable way.
 
 Expected deliverables:
 
 - a small internal sketch-solving/evaluation path in the correct package
   boundary;
-- support for the current high-value cases first:
-  - rectangle width and height,
-  - rectangle center where needed,
-  - circle radius,
-  - line length or horizontal/vertical only if it stays narrow;
+- support for the next high-value cases only where endpoint/entity behavior is
+  explicit, such as line length or horizontal/vertical constraints;
 - structured solver status for healthy, under-defined, over-defined,
   unsolved, and unsupported cases where practical;
 - no UI-only solver state;

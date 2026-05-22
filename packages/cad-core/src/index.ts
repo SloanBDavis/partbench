@@ -18,6 +18,8 @@ import type {
   CadObjectRef,
   CadOp,
   CadObjectModelSource,
+  CadParameterRef,
+  CadParameterSnapshot,
   CadPartSnapshot,
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
@@ -26,6 +28,7 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   CadSketchEntityRef,
+  CadSketchDimensionRef,
   CadSketchRef,
   CadTransactionStatus,
   ConeDimensions,
@@ -59,8 +62,17 @@ import type {
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
+  ParameterId,
+  ParameterSemanticDiff,
   ReferenceSemanticDiff,
   TransactionId,
+  SketchDimensionEntry,
+  SketchDimensionId,
+  SketchDimensionIssue,
+  SketchDimensionSnapshot,
+  SketchDimensionTarget,
+  SketchDimensionValueSource,
+  SketchDimensionSemanticDiff,
   Transform,
   Vec2,
   Vec3
@@ -112,6 +124,8 @@ export type {
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
   CadNamedReferenceRef,
+  CadParameterRef,
+  CadParameterSnapshot,
   CadObjectSnapshot,
   CadObjectRef,
   CadOperationSummary,
@@ -124,6 +138,7 @@ export type {
   CadQueryError,
   CadQueryResponse,
   CadSemanticDiffSummary,
+  CadSketchDimensionRef,
   CadSketchEntityRef,
   CadSketchRef,
   CadTransactionHistoryEntry,
@@ -133,7 +148,16 @@ export type {
   CadNamedReferenceHealth,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
+  ParameterId,
+  ParameterSemanticDiff,
   ReferenceSemanticDiff,
+  SketchDimensionEntry,
+  SketchDimensionId,
+  SketchDimensionIssue,
+  SketchDimensionSnapshot,
+  SketchDimensionTarget,
+  SketchDimensionValueSource,
+  SketchDimensionSemanticDiff,
   ExtrudeFeatureSnapshot,
   FeatureId,
   FeatureExtrudeOperationMode,
@@ -231,6 +255,10 @@ export interface Sketch {
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntity>;
 }
 
+export type CadParameter = CadParameterSnapshot;
+
+export type SketchDimension = SketchDimensionSnapshot;
+
 export type Feature = ExtrudeFeature;
 
 export interface ExtrudeFeature {
@@ -250,6 +278,8 @@ export interface ExtrudeFeature {
 export interface CadDocument {
   readonly objects: ReadonlyMap<ObjectId, SceneObject>;
   readonly sketches: ReadonlyMap<SketchId, Sketch>;
+  readonly parameters: ReadonlyMap<ParameterId, CadParameter>;
+  readonly sketchDimensions: ReadonlyMap<SketchDimensionId, SketchDimension>;
   readonly features: ReadonlyMap<FeatureId, Feature>;
   readonly namedReferences: ReadonlyMap<
     NamedReferenceName,
@@ -276,6 +306,8 @@ export interface CadEngineOptions {
   readonly nextObjectNumber?: number;
   readonly nextSketchNumber?: number;
   readonly nextSketchEntityNumber?: number;
+  readonly nextParameterNumber?: number;
+  readonly nextSketchDimensionNumber?: number;
   readonly nextFeatureNumber?: number;
   readonly nextBodyNumber?: number;
 }
@@ -289,11 +321,15 @@ export interface CadDocumentSnapshot {
   readonly units: DocumentUnits;
   readonly objects: readonly SceneObject[];
   readonly sketches: readonly SketchSnapshot[];
+  readonly parameters: readonly CadParameterSnapshot[];
+  readonly sketchDimensions: readonly SketchDimensionSnapshot[];
   readonly features: readonly ExtrudeFeatureSnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
+  readonly nextParameterNumber: number;
+  readonly nextSketchDimensionNumber: number;
   readonly nextFeatureNumber: number;
   readonly nextBodyNumber: number;
 }
@@ -324,7 +360,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V2 = "web-cad.project.v2";
 export const CAD_PROJECT_FORMAT_VERSION_V3 = "web-cad.project.v3";
 export const CAD_PROJECT_FORMAT_VERSION_V4 = "web-cad.project.v4";
 export const CAD_PROJECT_FORMAT_VERSION_V5 = "web-cad.project.v5";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v6";
+export const CAD_PROJECT_FORMAT_VERSION_V6 = "web-cad.project.v6";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v7";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -332,6 +369,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V3
   | typeof CAD_PROJECT_FORMAT_VERSION_V4
   | typeof CAD_PROJECT_FORMAT_VERSION_V5
+  | typeof CAD_PROJECT_FORMAT_VERSION_V6
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -345,6 +383,8 @@ export type CadProjectImportErrorCode =
   | "INVALID_SKETCH"
   | "INVALID_SKETCH_NAME"
   | "INVALID_SKETCH_ENTITY"
+  | "INVALID_PARAMETER"
+  | "INVALID_SKETCH_DIMENSION"
   | "INVALID_FEATURE"
   | "INVALID_NAMED_REFERENCE"
   | "INVALID_DIMENSIONS"
@@ -387,6 +427,8 @@ interface OperationRunResult {
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
+  readonly nextParameterNumber: number;
+  readonly nextSketchDimensionNumber: number;
   readonly nextFeatureNumber: number;
   readonly nextBodyNumber: number;
 }
@@ -412,6 +454,10 @@ export function createCadDocument(
   objects: Iterable<readonly [ObjectId, SceneObject]> = [],
   units: DocumentUnits = DEFAULT_DOCUMENT_UNITS,
   sketches: Iterable<readonly [SketchId, Sketch]> = [],
+  parameters: Iterable<readonly [ParameterId, CadParameter]> = [],
+  sketchDimensions: Iterable<
+    readonly [SketchDimensionId, SketchDimension]
+  > = [],
   features: Iterable<readonly [FeatureId, Feature]> = [],
   namedReferences: Iterable<
     readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
@@ -420,6 +466,8 @@ export function createCadDocument(
   return {
     objects: new Map(objects),
     sketches: new Map(sketches),
+    parameters: new Map(parameters),
+    sketchDimensions: new Map(sketchDimensions),
     features: new Map(features),
     namedReferences: new Map(namedReferences),
     units
@@ -433,6 +481,8 @@ export class CadEngine {
   #nextObjectNumber = 1;
   #nextSketchNumber = 1;
   #nextSketchEntityNumber = 1;
+  #nextParameterNumber = 1;
+  #nextSketchDimensionNumber = 1;
   #nextFeatureNumber = 1;
   #nextBodyNumber = 1;
   #nextTransactionNumber = 1;
@@ -448,6 +498,11 @@ export class CadEngine {
       options.nextSketchNumber ?? inferNextSketchNumber(document);
     this.#nextSketchEntityNumber =
       options.nextSketchEntityNumber ?? inferNextSketchEntityNumber(document);
+    this.#nextParameterNumber =
+      options.nextParameterNumber ?? inferNextParameterNumber(document);
+    this.#nextSketchDimensionNumber =
+      options.nextSketchDimensionNumber ??
+      inferNextSketchDimensionNumber(document);
     this.#nextFeatureNumber =
       options.nextFeatureNumber ?? inferNextFeatureNumber(document);
     this.#nextBodyNumber =
@@ -481,6 +536,9 @@ export class CadEngine {
     this.#nextSketchNumber = normalizedProject.document.nextSketchNumber;
     this.#nextSketchEntityNumber =
       normalizedProject.document.nextSketchEntityNumber;
+    this.#nextParameterNumber = normalizedProject.document.nextParameterNumber;
+    this.#nextSketchDimensionNumber =
+      normalizedProject.document.nextSketchDimensionNumber;
     this.#nextFeatureNumber = normalizedProject.document.nextFeatureNumber;
     this.#nextBodyNumber = normalizedProject.document.nextBodyNumber;
     this.#nextTransactionNumber = inferNextTransactionNumber([
@@ -501,6 +559,8 @@ export class CadEngine {
       this.#nextObjectNumber,
       this.#nextSketchNumber,
       this.#nextSketchEntityNumber,
+      this.#nextParameterNumber,
+      this.#nextSketchDimensionNumber,
       this.#nextFeatureNumber,
       this.#nextBodyNumber
     );
@@ -538,6 +598,8 @@ export class CadEngine {
     this.#nextObjectNumber = run.nextObjectNumber;
     this.#nextSketchNumber = run.nextSketchNumber;
     this.#nextSketchEntityNumber = run.nextSketchEntityNumber;
+    this.#nextParameterNumber = run.nextParameterNumber;
+    this.#nextSketchDimensionNumber = run.nextSketchDimensionNumber;
     this.#nextFeatureNumber = run.nextFeatureNumber;
     this.#nextBodyNumber = run.nextBodyNumber;
     this.#history.push(entry);
@@ -605,6 +667,44 @@ export class CadEngine {
     }
 
     switch (request.query.query) {
+      case "parameter.list": {
+        const parameters = [...this.#document.parameters.values()].map(
+          cloneParameterSnapshot
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          parameterCount: parameters.length,
+          parameters
+        };
+      }
+
+      case "parameter.get": {
+        const parameter = this.#document.parameters.get(request.query.id);
+
+        if (!parameter) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "PARAMETER_NOT_FOUND",
+              message: `Parameter does not exist: ${request.query.id}`,
+              parameterId: request.query.id
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          parameter: cloneParameterSnapshot(parameter)
+        };
+      }
+
       case "project.summary": {
         const objects = [...this.#document.objects.values()].map(
           createCadObjectSnapshot
@@ -794,6 +894,62 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           sketch: createSketchSnapshot(sketch)
+        };
+      }
+
+      case "sketch.dimensions": {
+        const sketch = this.#document.sketches.get(request.query.sketchId);
+
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.sketchId}`,
+              sketchId: request.query.sketchId
+            }
+          };
+        }
+
+        const dimensions = [...this.#document.sketchDimensions.values()]
+          .filter((dimension) => dimension.sketchId === sketch.id)
+          .map((dimension) =>
+            createSketchDimensionEntry(this.#document, dimension)
+          );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          sketchId: sketch.id,
+          dimensionCount: dimensions.length,
+          dimensions
+        };
+      }
+
+      case "sketch.dimension.get": {
+        const dimension = this.#document.sketchDimensions.get(request.query.id);
+
+        if (!dimension) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_DIMENSION_NOT_FOUND",
+              message: `Sketch dimension does not exist: ${request.query.id}`,
+              sketchDimensionId: request.query.id
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          dimension: createSketchDimensionEntry(this.#document, dimension)
         };
       }
 
@@ -1154,6 +1310,8 @@ export class CadEngine {
       this.#nextObjectNumber,
       this.#nextSketchNumber,
       this.#nextSketchEntityNumber,
+      this.#nextParameterNumber,
+      this.#nextSketchDimensionNumber,
       this.#nextFeatureNumber,
       this.#nextBodyNumber
     );
@@ -1178,6 +1336,8 @@ export class SnapshotCadCommandWorker implements CadCommandWorker {
         nextObjectNumber: request.document.nextObjectNumber,
         nextSketchNumber: request.document.nextSketchNumber,
         nextSketchEntityNumber: request.document.nextSketchEntityNumber,
+        nextParameterNumber: request.document.nextParameterNumber,
+        nextSketchDimensionNumber: request.document.nextSketchDimensionNumber,
         nextFeatureNumber: request.document.nextFeatureNumber,
         nextBodyNumber: request.document.nextBodyNumber
       }
@@ -1286,6 +1446,8 @@ type MutableSemanticDiff = {
   sketches?: MutableSketchSemanticDiff;
   features?: MutableFeatureSemanticDiff;
   references?: MutableReferenceSemanticDiff;
+  parameters?: MutableParameterSemanticDiff;
+  sketchDimensions?: MutableSketchDimensionSemanticDiff;
 };
 
 type MutableDocumentSemanticDiff = {
@@ -1320,9 +1482,29 @@ type MutableReferenceSemanticDiff = {
   namedDeleted: CadNamedReferenceRef[];
 };
 
+type MutableParameterSemanticDiff = {
+  created: CadParameterRef[];
+  modified: CadParameterRef[];
+  deleted: CadParameterRef[];
+};
+
+type MutableSketchDimensionSemanticDiff = {
+  created: CadSketchDimensionRef[];
+  modified: CadSketchDimensionRef[];
+  deleted: CadSketchDimensionRef[];
+};
+
+type SketchEntityImportRef = {
+  readonly sketchId: SketchId;
+  readonly kind: SketchEntityKind;
+  readonly entity: unknown;
+};
+
 interface MutableDocumentState {
   objects: Map<ObjectId, SceneObject>;
   sketches: Map<SketchId, Sketch>;
+  parameters: Map<ParameterId, CadParameter>;
+  sketchDimensions: Map<SketchDimensionId, SketchDimension>;
   features: Map<FeatureId, Feature>;
   namedReferences: Map<NamedReferenceName, NamedGeneratedReferenceSnapshot>;
   units: DocumentUnits;
@@ -1335,11 +1517,71 @@ function applyOperation(
   createObjectId: () => ObjectId,
   createSketchId: () => SketchId,
   createSketchEntityId: () => SketchEntityId,
+  createParameterId: () => ParameterId,
+  createSketchDimensionId: () => SketchDimensionId,
   createFeatureId: () => FeatureId,
   createBodyId: () => BodyId,
   opIndex: number
 ): void {
   switch (op.op) {
+    case "parameter.create": {
+      const parameter: CadParameter = {
+        id: op.id ?? createParameterId(),
+        name: normalizeParameterName(op.name, opIndex, op.id),
+        value: validateFiniteParameterValue(op.value, opIndex, "value"),
+        ...(op.description !== undefined
+          ? {
+              description: normalizeOptionalDescription(op.description, opIndex)
+            }
+          : {})
+      };
+
+      addParameter(state.parameters, parameter, diff, opIndex);
+      reevaluateParameterDimensions(state, parameter.id, diff, opIndex);
+      return;
+    }
+
+    case "parameter.update": {
+      assertParameterUpdateHasChanges(op, opIndex);
+      const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
+      const updated: CadParameter = {
+        ...existing,
+        ...(op.value !== undefined
+          ? { value: validateFiniteParameterValue(op.value, opIndex, "value") }
+          : {}),
+        ...(op.description !== undefined
+          ? {
+              description: normalizeOptionalDescription(op.description, opIndex)
+            }
+          : {})
+      };
+
+      state.parameters.set(op.id, updated);
+      pushParameterModified(diff, parameterRef(updated));
+      reevaluateParameterDimensions(state, op.id, diff, opIndex);
+      return;
+    }
+
+    case "parameter.rename": {
+      const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
+      const updated: CadParameter = {
+        ...existing,
+        name: normalizeParameterName(op.name, opIndex, op.id)
+      };
+
+      state.parameters.set(op.id, updated);
+      pushParameterModified(diff, parameterRef(updated));
+      return;
+    }
+
+    case "parameter.delete": {
+      const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
+      assertParameterNotInUse(state.sketchDimensions, op.id, opIndex);
+      state.parameters.delete(op.id);
+      pushParameterDeleted(diff, parameterRef(existing));
+      return;
+    }
+
     case "document.updateUnits": {
       validateDocumentUnits(op.units, opIndex);
       const unitUpdateMode = validateDocumentUnitUpdateMode(op.mode, opIndex);
@@ -1609,6 +1851,15 @@ function applyOperation(
         pushSketchEntityDeleted(diff, sketchEntityRef(existing.id, entity));
       }
 
+      for (const dimension of state.sketchDimensions.values()) {
+        if (dimension.sketchId !== op.id) {
+          continue;
+        }
+
+        state.sketchDimensions.delete(dimension.id);
+        pushSketchDimensionDeleted(diff, sketchDimensionRef(dimension));
+      }
+
       return;
     }
 
@@ -1673,6 +1924,20 @@ function applyOperation(
       }
 
       const entity = normalizeSketchEntity(op.entity, opIndex);
+      assertSketchDimensionTargetsStillValid(
+        state.sketchDimensions,
+        op.sketchId,
+        entity,
+        opIndex
+      );
+      syncDimensionsForSketchEntityUpdate(
+        state,
+        op.sketchId,
+        existing,
+        entity,
+        diff,
+        opIndex
+      );
       const dependentFeatures = findFeaturesBySketchEntity(
         state.features,
         sketch.id,
@@ -1762,6 +2027,81 @@ function applyOperation(
       entities.delete(op.entityId);
       state.sketches.set(sketch.id, { ...sketch, entities });
       pushSketchEntityDeleted(diff, sketchEntityRef(sketch.id, existing));
+
+      for (const dimension of state.sketchDimensions.values()) {
+        if (
+          dimension.sketchId !== op.sketchId ||
+          dimension.entityId !== op.entityId
+        ) {
+          continue;
+        }
+
+        state.sketchDimensions.delete(dimension.id);
+        pushSketchDimensionDeleted(diff, sketchDimensionRef(dimension));
+      }
+      return;
+    }
+
+    case "sketch.dimension.create": {
+      const target = validateSketchDimensionTarget(state, op, opIndex);
+      const valueSource = createSketchDimensionValueSource(op, opIndex);
+      const dimension: SketchDimension = {
+        id: op.id ?? createSketchDimensionId(),
+        name: normalizeSketchDimensionName(op.name, opIndex, op.id),
+        sketchId: op.sketchId,
+        entityId: op.entityId,
+        target,
+        valueSource
+      };
+
+      addSketchDimension(state.sketchDimensions, dimension, diff, opIndex);
+      applySketchDimensionToEntity(state, dimension, diff, opIndex);
+      return;
+    }
+
+    case "sketch.dimension.update": {
+      const existing = getSketchDimensionOrThrow(
+        state.sketchDimensions,
+        op.id,
+        opIndex
+      );
+      const valueSource = createSketchDimensionValueSource(op, opIndex);
+      const updated: SketchDimension = {
+        ...existing,
+        valueSource
+      };
+
+      state.sketchDimensions.set(op.id, updated);
+      pushSketchDimensionModified(diff, sketchDimensionRef(updated));
+      applySketchDimensionToEntity(state, updated, diff, opIndex);
+      return;
+    }
+
+    case "sketch.dimension.rename": {
+      const existing = getSketchDimensionOrThrow(
+        state.sketchDimensions,
+        op.id,
+        opIndex
+      );
+      const updated: SketchDimension = {
+        ...existing,
+        name: normalizeSketchDimensionName(op.name, opIndex, op.id)
+      };
+
+      state.sketchDimensions.set(op.id, updated);
+      pushSketchDimensionModified(diff, sketchDimensionRef(updated));
+      return;
+    }
+
+    case "sketch.dimension.delete": {
+      const existing = getSketchDimensionOrThrow(
+        state.sketchDimensions,
+        op.id,
+        opIndex
+      );
+
+      state.sketchDimensions.delete(op.id);
+      pushSketchDimensionDeleted(diff, sketchDimensionRef(existing));
       return;
     }
 
@@ -1993,6 +2333,10 @@ function getBatchResponseMode(batch: CadBatch): CadBatch["mode"] {
 
 function isCadOperationKind(value: string): boolean {
   switch (value) {
+    case "parameter.create":
+    case "parameter.update":
+    case "parameter.rename":
+    case "parameter.delete":
     case "document.updateUnits":
     case "scene.createBox":
     case "scene.createCylinder":
@@ -2017,6 +2361,10 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.addCircle":
     case "sketch.updateEntity":
     case "sketch.deleteEntity":
+    case "sketch.dimension.create":
+    case "sketch.dimension.update":
+    case "sketch.dimension.rename":
+    case "sketch.dimension.delete":
     case "feature.extrude":
     case "feature.delete":
     case "feature.updateExtrude":
@@ -2104,6 +2452,8 @@ function createQueryErrorResponse(
 
 function isCadQueryKind(value: string): value is CadQueryKind {
   switch (value) {
+    case "parameter.list":
+    case "parameter.get":
     case "project.summary":
     case "project.features":
     case "project.structure":
@@ -2113,6 +2463,8 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "object.measurements":
     case "project.extents":
     case "sketch.get":
+    case "sketch.dimensions":
+    case "sketch.dimension.get":
     case "body.generatedReferences":
     case "body.resolveGeneratedReference":
     case "body.measurements":
@@ -2132,6 +2484,7 @@ function isCadQuery(value: unknown): boolean {
   }
 
   switch (value.query) {
+    case "parameter.list":
     case "project.summary":
     case "project.features":
     case "project.structure":
@@ -2141,10 +2494,14 @@ function isCadQuery(value: unknown): boolean {
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "parameter.get":
     case "object.get":
     case "object.measurements":
     case "sketch.get":
+    case "sketch.dimension.get":
       return typeof value.id === "string";
+    case "sketch.dimensions":
+      return typeof value.sketchId === "string";
     case "body.generatedReferences":
     case "body.measurements":
       return typeof value.bodyId === "string";
@@ -2157,6 +2514,668 @@ function isCadQuery(value: unknown): boolean {
       return typeof value.name === "string";
     default:
       return false;
+  }
+}
+
+function addParameter(
+  parameters: Map<ParameterId, CadParameter>,
+  parameter: CadParameter,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (parameter.id.length === 0) {
+    throwValidationError({
+      code: "INVALID_PARAMETER",
+      message: "Parameter id must be a non-empty string.",
+      opIndex,
+      parameterId: parameter.id,
+      path: operationPath(opIndex, "id"),
+      expected: "non-empty parameter id",
+      received: parameter.id
+    });
+  }
+
+  if (parameters.has(parameter.id)) {
+    throwValidationError({
+      code: "PARAMETER_ALREADY_EXISTS",
+      message: `Parameter already exists: ${parameter.id}`,
+      opIndex,
+      parameterId: parameter.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique parameter id",
+      received: parameter.id
+    });
+  }
+
+  parameters.set(parameter.id, parameter);
+  pushParameterCreated(diff, parameterRef(parameter));
+}
+
+function getParameterOrThrow(
+  parameters: ReadonlyMap<ParameterId, CadParameter>,
+  id: ParameterId,
+  opIndex: number
+): CadParameter {
+  const parameter = parameters.get(id);
+
+  if (!parameter) {
+    throwValidationError({
+      code: "PARAMETER_NOT_FOUND",
+      message: `Parameter does not exist: ${id}`,
+      opIndex,
+      parameterId: id,
+      path: operationPath(opIndex, "id"),
+      expected: "existing parameter id",
+      received: id
+    });
+  }
+
+  return parameter;
+}
+
+function normalizeParameterName(
+  value: string,
+  opIndex: number,
+  id?: ParameterId
+): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throwValidationError({
+      code: "INVALID_PARAMETER_NAME",
+      message: "Parameter name must be non-empty.",
+      opIndex,
+      parameterId: id,
+      path: operationPath(opIndex, "name"),
+      expected: "non-empty parameter name",
+      received: describeReceived(value)
+    });
+  }
+
+  return value.trim();
+}
+
+function normalizeOptionalDescription(value: string, opIndex: number): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throwValidationError({
+      code: "INVALID_PARAMETER",
+      message: "Parameter description must be non-empty when provided.",
+      opIndex,
+      path: operationPath(opIndex, "description"),
+      expected: "non-empty description",
+      received: describeReceived(value)
+    });
+  }
+
+  return value.trim();
+}
+
+function validateFiniteParameterValue(
+  value: number,
+  opIndex: number,
+  field: string
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throwValidationError({
+      code: "INVALID_PARAMETER",
+      message: "Parameter value must be a finite number.",
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected: "finite number",
+      received: describeReceived(value)
+    });
+  }
+
+  return cleanMeasurementNumber(value);
+}
+
+function assertParameterUpdateHasChanges(
+  op: Extract<CadOp, { readonly op: "parameter.update" }>,
+  opIndex: number
+): void {
+  if (op.value !== undefined || op.description !== undefined) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_PARAMETER",
+    message: "parameter.update must include value or description.",
+    opIndex,
+    parameterId: op.id,
+    path: operationPath(opIndex),
+    expected: "value or description",
+    received: "no editable fields"
+  });
+}
+
+function assertParameterNotInUse(
+  dimensions: ReadonlyMap<SketchDimensionId, SketchDimension>,
+  parameterId: ParameterId,
+  opIndex: number
+): void {
+  const dependent = [...dimensions.values()].find(
+    (dimension) =>
+      dimension.valueSource.type === "parameter" &&
+      dimension.valueSource.parameterId === parameterId
+  );
+
+  if (!dependent) {
+    return;
+  }
+
+  throwValidationError({
+    code: "PARAMETER_IN_USE",
+    message: `Parameter is used by sketch dimension ${dependent.id}.`,
+    opIndex,
+    parameterId,
+    sketchDimensionId: dependent.id,
+    path: operationPath(opIndex, "id"),
+    expected: "unused parameter",
+    received: parameterId
+  });
+}
+
+function addSketchDimension(
+  dimensions: Map<SketchDimensionId, SketchDimension>,
+  dimension: SketchDimension,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  if (dimension.id.length === 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message: "Sketch dimension id must be a non-empty string.",
+      opIndex,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "id"),
+      expected: "non-empty sketch dimension id",
+      received: dimension.id
+    });
+  }
+
+  if (dimensions.has(dimension.id)) {
+    throwValidationError({
+      code: "SKETCH_DIMENSION_ALREADY_EXISTS",
+      message: `Sketch dimension already exists: ${dimension.id}`,
+      opIndex,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "id"),
+      expected: "unique sketch dimension id",
+      received: dimension.id
+    });
+  }
+
+  assertSketchDimensionTargetAvailable(dimensions, dimension, opIndex);
+  dimensions.set(dimension.id, dimension);
+  pushSketchDimensionCreated(diff, sketchDimensionRef(dimension));
+}
+
+function assertSketchDimensionTargetAvailable(
+  dimensions: ReadonlyMap<SketchDimensionId, SketchDimension>,
+  dimension: SketchDimension,
+  opIndex: number
+): void {
+  const conflicting = [...dimensions.values()].find(
+    (existing) =>
+      existing.id !== dimension.id &&
+      getSketchDimensionTargetKey(existing) ===
+        getSketchDimensionTargetKey(dimension)
+  );
+
+  if (!conflicting) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_DIMENSION",
+    message: `Sketch dimension target is already driven by ${conflicting.id}.`,
+    opIndex,
+    sketchId: dimension.sketchId,
+    sketchEntityId: dimension.entityId,
+    sketchDimensionId: dimension.id,
+    path: operationPath(opIndex, "target"),
+    expected: "undriven sketch dimension target",
+    received: conflicting.id
+  });
+}
+
+function getSketchDimensionTargetKey(
+  dimension: Pick<SketchDimension, "sketchId" | "entityId" | "target">
+): string {
+  return [
+    dimension.sketchId,
+    dimension.entityId,
+    dimension.target.entityKind,
+    dimension.target.role
+  ].join("\0");
+}
+
+function getSketchDimensionOrThrow(
+  dimensions: ReadonlyMap<SketchDimensionId, SketchDimension>,
+  id: SketchDimensionId,
+  opIndex: number
+): SketchDimension {
+  const dimension = dimensions.get(id);
+
+  if (!dimension) {
+    throwValidationError({
+      code: "SKETCH_DIMENSION_NOT_FOUND",
+      message: `Sketch dimension does not exist: ${id}`,
+      opIndex,
+      sketchDimensionId: id,
+      path: operationPath(opIndex, "id"),
+      expected: "existing sketch dimension id",
+      received: id
+    });
+  }
+
+  return dimension;
+}
+
+function normalizeSketchDimensionName(
+  value: string,
+  opIndex: number,
+  id?: SketchDimensionId
+): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION_NAME",
+      message: "Sketch dimension name must be non-empty.",
+      opIndex,
+      sketchDimensionId: id,
+      path: operationPath(opIndex, "name"),
+      expected: "non-empty sketch dimension name",
+      received: describeReceived(value)
+    });
+  }
+
+  return value.trim();
+}
+
+function createSketchDimensionValueSource(
+  op: Extract<
+    CadOp,
+    {
+      readonly op: "sketch.dimension.create" | "sketch.dimension.update";
+    }
+  >,
+  opIndex: number
+): SketchDimensionValueSource {
+  const hasLiteral = op.value !== undefined;
+  const hasParameter = op.parameterId !== undefined;
+
+  if (hasLiteral === hasParameter) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message:
+        "Sketch dimension value source must include exactly one of value or parameterId.",
+      opIndex,
+      sketchDimensionId: "id" in op ? op.id : undefined,
+      path: operationPath(opIndex),
+      expected: "value or parameterId",
+      received: hasLiteral && hasParameter ? "both" : "neither"
+    });
+  }
+
+  if (hasParameter) {
+    return {
+      type: "parameter",
+      parameterId: op.parameterId
+    };
+  }
+
+  return {
+    type: "literal",
+    value: validatePositiveDimensionValue(op.value, opIndex, "value")
+  };
+}
+
+function validatePositiveDimensionValue(
+  value: unknown,
+  opIndex: number,
+  field: string
+): number {
+  if (typeof value !== "number" || !isPositiveFiniteNumber(value)) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message: "Sketch dimension value must be a positive finite number.",
+      opIndex,
+      path: operationPath(opIndex, field),
+      expected: "positive finite number",
+      received: describeReceived(value)
+    });
+  }
+
+  return cleanMeasurementNumber(value);
+}
+
+function validateSketchDimensionTarget(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "sketch.dimension.create" }>,
+  opIndex: number
+): SketchDimensionTarget {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const entity = sketch.entities.get(op.entityId);
+
+  if (!entity) {
+    throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+  }
+
+  if (!isSupportedSketchDimensionTarget(op.target, entity)) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message: "Sketch dimension target is not supported for this entity.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.entityId,
+      path: operationPath(opIndex, "target"),
+      expected: `supported target for ${entity.kind}`,
+      received: describeReceived(op.target)
+    });
+  }
+
+  return op.target;
+}
+
+function isSupportedSketchDimensionTarget(
+  target: unknown,
+  entity: SketchEntity
+): target is SketchDimensionTarget {
+  if (!isRecord(target)) {
+    return false;
+  }
+
+  if (entity.kind === "rectangle") {
+    return (
+      target.entityKind === "rectangle" &&
+      (target.role === "width" || target.role === "height")
+    );
+  }
+
+  if (entity.kind === "circle") {
+    return target.entityKind === "circle" && target.role === "radius";
+  }
+
+  return false;
+}
+
+function applySketchDimensionToEntity(
+  state: MutableDocumentState,
+  dimension: SketchDimension,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const value = resolveSketchDimensionValueOrThrow(state, dimension, opIndex);
+  const sketch = getSketchOrThrow(state.sketches, dimension.sketchId, opIndex);
+  const existing = sketch.entities.get(dimension.entityId);
+
+  if (!existing) {
+    throwSketchEntityNotFound(dimension.sketchId, dimension.entityId, opIndex);
+  }
+
+  const entity = applySketchDimensionValue(existing, dimension, value, opIndex);
+  updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
+}
+
+function reevaluateParameterDimensions(
+  state: MutableDocumentState,
+  parameterId: ParameterId,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  for (const dimension of state.sketchDimensions.values()) {
+    if (
+      dimension.valueSource.type === "parameter" &&
+      dimension.valueSource.parameterId === parameterId
+    ) {
+      applySketchDimensionToEntity(state, dimension, diff, opIndex);
+    }
+  }
+}
+
+function resolveSketchDimensionValueOrThrow(
+  state: MutableDocumentState,
+  dimension: SketchDimension,
+  opIndex: number
+): number {
+  if (dimension.valueSource.type === "literal") {
+    return validatePositiveDimensionValue(
+      dimension.valueSource.value,
+      opIndex,
+      "value"
+    );
+  }
+
+  const parameter = getParameterOrThrow(
+    state.parameters,
+    dimension.valueSource.parameterId,
+    opIndex
+  );
+  return validatePositiveDimensionValue(parameter.value, opIndex, "value");
+}
+
+function applySketchDimensionValue(
+  entity: SketchEntity,
+  dimension: SketchDimension,
+  value: number,
+  opIndex: number
+): SketchEntity {
+  if (
+    entity.kind === "rectangle" &&
+    dimension.target.entityKind === "rectangle"
+  ) {
+    return {
+      ...entity,
+      [dimension.target.role]: value
+    };
+  }
+
+  if (entity.kind === "circle" && dimension.target.entityKind === "circle") {
+    return {
+      ...entity,
+      radius: value
+    };
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_DIMENSION",
+    message: "Sketch dimension target no longer matches the target entity.",
+    opIndex,
+    sketchId: dimension.sketchId,
+    sketchEntityId: dimension.entityId,
+    sketchDimensionId: dimension.id,
+    path: operationPath(opIndex, "target"),
+    expected: `target for ${entity.kind}`,
+    received: `${dimension.target.entityKind}.${dimension.target.role}`
+  });
+}
+
+function assertSketchDimensionTargetsStillValid(
+  dimensions: ReadonlyMap<SketchDimensionId, SketchDimension>,
+  sketchId: SketchId,
+  entity: SketchEntity,
+  opIndex: number
+): void {
+  for (const dimension of dimensions.values()) {
+    if (dimension.sketchId !== sketchId || dimension.entityId !== entity.id) {
+      continue;
+    }
+
+    if (isSupportedSketchDimensionTarget(dimension.target, entity)) {
+      continue;
+    }
+
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message:
+        "Sketch entity update would leave an existing dimension with an unsupported target.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entity.id,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "entity.kind"),
+      expected: `entity compatible with dimension ${dimension.id}`,
+      received: entity.kind
+    });
+  }
+}
+
+function syncDimensionsForSketchEntityUpdate(
+  state: MutableDocumentState,
+  sketchId: SketchId,
+  before: SketchEntity,
+  after: SketchEntity,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  for (const dimension of state.sketchDimensions.values()) {
+    if (dimension.sketchId !== sketchId || dimension.entityId !== after.id) {
+      continue;
+    }
+
+    const nextValue = getDimensionTargetValue(after, dimension, opIndex);
+    const previousValue = getDimensionTargetValue(before, dimension, opIndex);
+
+    if (nextValue === previousValue) {
+      continue;
+    }
+
+    if (dimension.valueSource.type === "parameter") {
+      const parameter = getParameterOrThrow(
+        state.parameters,
+        dimension.valueSource.parameterId,
+        opIndex
+      );
+
+      if (cleanMeasurementNumber(parameter.value) === nextValue) {
+        continue;
+      }
+
+      throwValidationError({
+        code: "INVALID_SKETCH_DIMENSION",
+        message:
+          "Sketch entity update conflicts with a parameter-driven dimension.",
+        opIndex,
+        parameterId: parameter.id,
+        sketchId,
+        sketchEntityId: after.id,
+        sketchDimensionId: dimension.id,
+        path: operationPath(opIndex, "entity"),
+        expected: `dimension value ${parameter.value}`,
+        received: String(nextValue)
+      });
+    }
+
+    const updated: SketchDimension = {
+      ...dimension,
+      valueSource: {
+        type: "literal",
+        value: nextValue
+      }
+    };
+    state.sketchDimensions.set(updated.id, updated);
+    pushSketchDimensionModified(diff, sketchDimensionRef(updated));
+  }
+}
+
+function getDimensionTargetValue(
+  entity: SketchEntity,
+  dimension: SketchDimension,
+  opIndex: number
+): number {
+  if (
+    entity.kind === "rectangle" &&
+    dimension.target.entityKind === "rectangle"
+  ) {
+    return cleanMeasurementNumber(entity[dimension.target.role]);
+  }
+
+  if (entity.kind === "circle" && dimension.target.entityKind === "circle") {
+    return cleanMeasurementNumber(entity.radius);
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_DIMENSION",
+    message: "Sketch dimension target no longer matches the target entity.",
+    opIndex,
+    sketchId: dimension.sketchId,
+    sketchEntityId: dimension.entityId,
+    sketchDimensionId: dimension.id,
+    path: operationPath(opIndex, "target"),
+    expected: `target for ${entity.kind}`,
+    received: `${dimension.target.entityKind}.${dimension.target.role}`
+  });
+}
+
+function updateSketchEntityAndDependents(
+  state: MutableDocumentState,
+  sketch: Sketch,
+  entity: SketchEntity,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const dependentFeatures = findFeaturesBySketchEntity(
+    state.features,
+    sketch.id,
+    entity.id
+  );
+  const profileKind =
+    dependentFeatures.length > 0
+      ? assertExtrudableProfile(entity, opIndex, sketch.id, entity.id)
+      : undefined;
+  const updatedFeatures =
+    dependentFeatures.length > 0 && profileKind
+      ? dependentFeatures.map((feature) => ({
+          ...feature,
+          profileKind
+        }))
+      : [];
+  const nextFeatures = new Map(state.features);
+  const updatedBodyIds = new Set<BodyId>();
+
+  for (const feature of updatedFeatures) {
+    nextFeatures.set(feature.id, feature);
+    updatedBodyIds.add(feature.bodyId);
+  }
+
+  for (const feature of updatedFeatures) {
+    assertSupportedExtrudeOperation(
+      { ...state, features: nextFeatures },
+      feature.operationMode,
+      feature.profileKind,
+      feature.targetBodyId,
+      opIndex,
+      feature.id
+    );
+  }
+
+  for (const feature of nextFeatures.values()) {
+    if (
+      feature.operationMode === "newBody" ||
+      !feature.targetBodyId ||
+      !updatedBodyIds.has(feature.targetBodyId) ||
+      updatedFeatures.some((updated) => updated.id === feature.id)
+    ) {
+      continue;
+    }
+
+    assertSupportedExtrudeOperation(
+      { ...state, features: nextFeatures },
+      feature.operationMode,
+      feature.profileKind,
+      feature.targetBodyId,
+      opIndex,
+      feature.id
+    );
+  }
+
+  const entities = new Map(sketch.entities);
+  entities.set(entity.id, entity);
+  state.sketches.set(sketch.id, { ...sketch, entities });
+  pushSketchEntityModified(diff, sketchEntityRef(sketch.id, entity));
+
+  for (const updated of updatedFeatures) {
+    state.features.set(updated.id, updated);
+    pushFeatureModified(diff, featureRef(updated));
+    pushBodyModified(diff, bodyRef(updated));
   }
 }
 
@@ -3581,6 +4600,26 @@ function namedReferenceRef(
   };
 }
 
+function parameterRef(parameter: CadParameter): CadParameterRef {
+  return {
+    id: parameter.id,
+    name: parameter.name
+  };
+}
+
+function sketchDimensionRef(dimension: SketchDimension): CadSketchDimensionRef {
+  return {
+    id: dimension.id,
+    name: dimension.name,
+    sketchId: dimension.sketchId,
+    entityId: dimension.entityId,
+    target: dimension.target,
+    ...(dimension.valueSource.type === "parameter"
+      ? { parameterId: dimension.valueSource.parameterId }
+      : {})
+  };
+}
+
 function pushSketchCreated(diff: MutableSemanticDiff, ref: CadSketchRef): void {
   ensureSketchDiff(diff).created.push(ref);
 }
@@ -3705,6 +4744,72 @@ function ensureReferenceDiff(
   return diff.references;
 }
 
+function pushParameterCreated(
+  diff: MutableSemanticDiff,
+  ref: CadParameterRef
+): void {
+  ensureParameterDiff(diff).created.push(ref);
+}
+
+function pushParameterModified(
+  diff: MutableSemanticDiff,
+  ref: CadParameterRef
+): void {
+  ensureParameterDiff(diff).modified.push(ref);
+}
+
+function pushParameterDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadParameterRef
+): void {
+  ensureParameterDiff(diff).deleted.push(ref);
+}
+
+function ensureParameterDiff(
+  diff: MutableSemanticDiff
+): MutableParameterSemanticDiff {
+  diff.parameters ??= {
+    created: [],
+    modified: [],
+    deleted: []
+  };
+
+  return diff.parameters;
+}
+
+function pushSketchDimensionCreated(
+  diff: MutableSemanticDiff,
+  ref: CadSketchDimensionRef
+): void {
+  ensureSketchDimensionDiff(diff).created.push(ref);
+}
+
+function pushSketchDimensionModified(
+  diff: MutableSemanticDiff,
+  ref: CadSketchDimensionRef
+): void {
+  ensureSketchDimensionDiff(diff).modified.push(ref);
+}
+
+function pushSketchDimensionDeleted(
+  diff: MutableSemanticDiff,
+  ref: CadSketchDimensionRef
+): void {
+  ensureSketchDimensionDiff(diff).deleted.push(ref);
+}
+
+function ensureSketchDimensionDiff(
+  diff: MutableSemanticDiff
+): MutableSketchDimensionSemanticDiff {
+  diff.sketchDimensions ??= {
+    created: [],
+    modified: [],
+    deleted: []
+  };
+
+  return diff.sketchDimensions;
+}
+
 function getUnitConversionScaleFactor(
   from: DocumentUnits,
   to: DocumentUnits
@@ -3746,6 +4851,31 @@ function scaleDocumentLengthValues(
     for (const entity of scaled.entities.values()) {
       pushSketchEntityModified(diff, sketchEntityRef(scaled.id, entity));
     }
+  }
+
+  for (const parameter of state.parameters.values()) {
+    const scaled: CadParameter = {
+      ...parameter,
+      value: scaleLength(parameter.value, scaleFactor)
+    };
+    state.parameters.set(parameter.id, scaled);
+    pushParameterModified(diff, parameterRef(scaled));
+  }
+
+  for (const dimension of state.sketchDimensions.values()) {
+    if (dimension.valueSource.type !== "literal") {
+      continue;
+    }
+
+    const scaled: SketchDimension = {
+      ...dimension,
+      valueSource: {
+        type: "literal",
+        value: scaleLength(dimension.valueSource.value, scaleFactor)
+      }
+    };
+    state.sketchDimensions.set(dimension.id, scaled);
+    pushSketchDimensionModified(diff, sketchDimensionRef(scaled));
   }
 
   for (const feature of state.features.values()) {
@@ -3890,6 +5020,8 @@ export function createCadDocumentSnapshot(
   nextObjectNumber = inferNextObjectNumber(document),
   nextSketchNumber = inferNextSketchNumber(document),
   nextSketchEntityNumber = inferNextSketchEntityNumber(document),
+  nextParameterNumber = inferNextParameterNumber(document),
+  nextSketchDimensionNumber = inferNextSketchDimensionNumber(document),
   nextFeatureNumber = inferNextFeatureNumber(document),
   nextBodyNumber = inferNextBodyNumber(document)
 ): CadDocumentSnapshot {
@@ -3897,6 +5029,10 @@ export function createCadDocumentSnapshot(
     units: document.units,
     objects: [...document.objects.values()].map(createCadObjectSnapshot),
     sketches: [...document.sketches.values()].map(createSketchSnapshot),
+    parameters: [...document.parameters.values()].map(cloneParameterSnapshot),
+    sketchDimensions: [...document.sketchDimensions.values()].map(
+      cloneSketchDimensionSnapshot
+    ),
     features: [...document.features.values()].map(createFeatureSnapshot),
     namedReferences: [...document.namedReferences.values()].map(
       cloneNamedReferenceSnapshot
@@ -3904,6 +5040,8 @@ export function createCadDocumentSnapshot(
     nextObjectNumber,
     nextSketchNumber,
     nextSketchEntityNumber,
+    nextParameterNumber,
+    nextSketchDimensionNumber,
     nextFeatureNumber,
     nextBodyNumber
   };
@@ -3919,6 +5057,13 @@ export function createCadDocumentFromSnapshot(
     snapshot.units,
     snapshot.sketches.map(
       (sketch) => [sketch.id, createSketchFromSnapshot(sketch)] as const
+    ),
+    snapshot.parameters.map(
+      (parameter) => [parameter.id, cloneParameterSnapshot(parameter)] as const
+    ),
+    snapshot.sketchDimensions.map(
+      (dimension) =>
+        [dimension.id, cloneSketchDimensionSnapshot(dimension)] as const
     ),
     snapshot.features.map(
       (feature) => [feature.id, createFeatureFromSnapshot(feature)] as const
@@ -3999,6 +5144,142 @@ function createSketchFromSnapshot(snapshot: SketchSnapshot): Sketch {
       snapshot.entities.map((entity) => [entity.id, cloneSketchEntity(entity)])
     )
   };
+}
+
+function cloneParameterSnapshot(parameter: CadParameterSnapshot): CadParameter {
+  return {
+    id: parameter.id,
+    name: parameter.name,
+    value: parameter.value,
+    ...(parameter.description !== undefined
+      ? { description: parameter.description }
+      : {})
+  };
+}
+
+function cloneSketchDimensionSnapshot(
+  dimension: SketchDimensionSnapshot
+): SketchDimension {
+  return {
+    id: dimension.id,
+    name: dimension.name,
+    sketchId: dimension.sketchId,
+    entityId: dimension.entityId,
+    target: { ...dimension.target },
+    valueSource: cloneSketchDimensionValueSource(dimension.valueSource)
+  };
+}
+
+function cloneSketchDimensionValueSource(
+  valueSource: SketchDimensionValueSource
+): SketchDimensionValueSource {
+  return valueSource.type === "literal"
+    ? { type: "literal", value: valueSource.value }
+    : { type: "parameter", parameterId: valueSource.parameterId };
+}
+
+function createSketchDimensionEntry(
+  document: CadDocument,
+  dimension: SketchDimension
+): SketchDimensionEntry {
+  const issues: SketchDimensionIssue[] = [];
+  const sketch = document.sketches.get(dimension.sketchId);
+  const parameter =
+    dimension.valueSource.type === "parameter"
+      ? document.parameters.get(dimension.valueSource.parameterId)
+      : undefined;
+  const effectiveValue =
+    dimension.valueSource.type === "literal"
+      ? dimension.valueSource.value
+      : parameter?.value;
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${dimension.sketchId}`,
+      sketchId: dimension.sketchId,
+      sketchDimensionId: dimension.id
+    });
+  }
+
+  const entity = sketch?.entities.get(dimension.entityId);
+
+  if (sketch && !entity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${dimension.entityId}`,
+      sketchId: dimension.sketchId,
+      sketchEntityId: dimension.entityId,
+      sketchDimensionId: dimension.id
+    });
+  }
+
+  const targetLabel = `${dimension.target.entityKind}.${dimension.target.role}`;
+
+  if (entity && !isSupportedSketchDimensionTarget(dimension.target, entity)) {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message: "Sketch dimension target is not supported for this entity.",
+      sketchId: dimension.sketchId,
+      sketchEntityId: dimension.entityId,
+      sketchDimensionId: dimension.id,
+      expected: `target for ${entity.kind}`,
+      received: targetLabel
+    });
+  }
+
+  if (dimension.valueSource.type === "parameter" && !parameter) {
+    issues.push({
+      code: "PARAMETER_NOT_FOUND",
+      message: `Parameter does not exist: ${dimension.valueSource.parameterId}`,
+      parameterId: dimension.valueSource.parameterId,
+      sketchDimensionId: dimension.id
+    });
+  }
+
+  if (effectiveValue !== undefined && !isPositiveFiniteNumber(effectiveValue)) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message: "Sketch dimension effective value must be positive and finite.",
+      sketchDimensionId: dimension.id,
+      expected: "positive finite number",
+      received: describeReceived(effectiveValue)
+    });
+  }
+
+  return {
+    ...cloneSketchDimensionSnapshot(dimension),
+    status: getSketchDimensionStatus(issues),
+    issues,
+    ...(effectiveValue !== undefined
+      ? { effectiveValue: cleanMeasurementNumber(effectiveValue) }
+      : {})
+  };
+}
+
+function getSketchDimensionStatus(
+  issues: readonly SketchDimensionIssue[]
+): SketchDimensionEntry["status"] {
+  if (issues.length === 0) {
+    return "healthy";
+  }
+
+  if (
+    issues.some(
+      (issue) =>
+        issue.code === "SKETCH_NOT_FOUND" ||
+        issue.code === "SKETCH_ENTITY_NOT_FOUND" ||
+        issue.code === "PARAMETER_NOT_FOUND"
+    )
+  ) {
+    return "missing-target";
+  }
+
+  if (issues.some((issue) => issue.code === "INVALID_VALUE")) {
+    return "invalid-value";
+  }
+
+  return "unsupported";
 }
 
 function cloneSketchAttachment(
@@ -4570,6 +5851,8 @@ function runOperations(
   initialObjectNumber: number,
   initialSketchNumber: number,
   initialSketchEntityNumber: number,
+  initialParameterNumber: number,
+  initialSketchDimensionNumber: number,
   initialFeatureNumber: number,
   initialBodyNumber: number
 ): OperationRunResult {
@@ -4586,6 +5869,8 @@ function runOperations(
   const state: MutableDocumentState = {
     objects: new Map(document.objects),
     sketches: new Map(document.sketches),
+    parameters: new Map(document.parameters),
+    sketchDimensions: new Map(document.sketchDimensions),
     features: new Map(document.features),
     namedReferences: new Map(document.namedReferences),
     units: document.units
@@ -4593,6 +5878,8 @@ function runOperations(
   let nextObjectNumber = initialObjectNumber;
   let nextSketchNumber = initialSketchNumber;
   let nextSketchEntityNumber = initialSketchEntityNumber;
+  let nextParameterNumber = initialParameterNumber;
+  let nextSketchDimensionNumber = initialSketchDimensionNumber;
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
   const diff: MutableSemanticDiff = {
@@ -4626,6 +5913,22 @@ function runOperations(
           return result.id;
         },
         () => {
+          const result = createParameterId(
+            state.parameters,
+            nextParameterNumber
+          );
+          nextParameterNumber = result.nextParameterNumber;
+          return result.id;
+        },
+        () => {
+          const result = createSketchDimensionId(
+            state.sketchDimensions,
+            nextSketchDimensionNumber
+          );
+          nextSketchDimensionNumber = result.nextSketchDimensionNumber;
+          return result.id;
+        },
+        () => {
           const result = createFeatureId(state, nextFeatureNumber);
           nextFeatureNumber = result.nextFeatureNumber;
           return result.id;
@@ -4655,6 +5958,8 @@ function runOperations(
     state.objects,
     state.units,
     state.sketches,
+    state.parameters,
+    state.sketchDimensions,
     state.features,
     state.namedReferences
   );
@@ -4673,6 +5978,14 @@ function runOperations(
     nextSketchEntityNumber: Math.max(
       nextSketchEntityNumber,
       inferNextSketchEntityNumber(resultDocument)
+    ),
+    nextParameterNumber: Math.max(
+      nextParameterNumber,
+      inferNextParameterNumber(resultDocument)
+    ),
+    nextSketchDimensionNumber: Math.max(
+      nextSketchDimensionNumber,
+      inferNextSketchDimensionNumber(resultDocument)
     ),
     nextFeatureNumber: Math.max(
       nextFeatureNumber,
@@ -4752,6 +6065,42 @@ function hasSketchEntityId(
   return false;
 }
 
+function createParameterId(
+  parameters: ReadonlyMap<ParameterId, CadParameter>,
+  initialParameterNumber: number
+): { id: ParameterId; nextParameterNumber: number } {
+  let nextParameterNumber = initialParameterNumber;
+  let id = `param_${nextParameterNumber}`;
+
+  while (parameters.has(id)) {
+    nextParameterNumber += 1;
+    id = `param_${nextParameterNumber}`;
+  }
+
+  return {
+    id,
+    nextParameterNumber: nextParameterNumber + 1
+  };
+}
+
+function createSketchDimensionId(
+  dimensions: ReadonlyMap<SketchDimensionId, SketchDimension>,
+  initialSketchDimensionNumber: number
+): { id: SketchDimensionId; nextSketchDimensionNumber: number } {
+  let nextSketchDimensionNumber = initialSketchDimensionNumber;
+  let id = `skdim_${nextSketchDimensionNumber}`;
+
+  while (dimensions.has(id)) {
+    nextSketchDimensionNumber += 1;
+    id = `skdim_${nextSketchDimensionNumber}`;
+  }
+
+  return {
+    id,
+    nextSketchDimensionNumber: nextSketchDimensionNumber + 1
+  };
+}
+
 function createFeatureId(
   state: MutableDocumentState,
   initialFeatureNumber: number
@@ -4798,6 +6147,12 @@ function toDiffIds(diff: SemanticDiff): {
   createdSketchEntityIds?: readonly SketchEntityId[];
   modifiedSketchEntityIds?: readonly SketchEntityId[];
   deletedSketchEntityIds?: readonly SketchEntityId[];
+  createdParameterIds?: readonly ParameterId[];
+  modifiedParameterIds?: readonly ParameterId[];
+  deletedParameterIds?: readonly ParameterId[];
+  createdSketchDimensionIds?: readonly SketchDimensionId[];
+  modifiedSketchDimensionIds?: readonly SketchDimensionId[];
+  deletedSketchDimensionIds?: readonly SketchDimensionId[];
   createdFeatureIds?: readonly FeatureId[];
   modifiedFeatureIds?: readonly FeatureId[];
   deletedFeatureIds?: readonly FeatureId[];
@@ -4810,6 +6165,8 @@ function toDiffIds(diff: SemanticDiff): {
     modifiedIds: uniqueObjectIds(diff.modified),
     deletedIds: uniqueObjectIds(diff.deleted),
     ...toSketchDiffIds(diff.sketches),
+    ...toParameterDiffIds(diff.parameters),
+    ...toSketchDimensionDiffIds(diff.sketchDimensions),
     ...toFeatureDiffIds(diff.features)
   };
 }
@@ -4900,6 +6257,58 @@ function toFeatureDiffIds(features: FeatureSemanticDiff | undefined): {
   };
 }
 
+function toParameterDiffIds(parameters: ParameterSemanticDiff | undefined): {
+  createdParameterIds?: readonly ParameterId[];
+  modifiedParameterIds?: readonly ParameterId[];
+  deletedParameterIds?: readonly ParameterId[];
+} {
+  if (!parameters) {
+    return {};
+  }
+
+  return {
+    ...nonEmptyIdList(
+      "createdParameterIds",
+      uniqueParameterIds(parameters.created ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedParameterIds",
+      uniqueParameterIds(parameters.modified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedParameterIds",
+      uniqueParameterIds(parameters.deleted ?? [])
+    )
+  };
+}
+
+function toSketchDimensionDiffIds(
+  dimensions: SketchDimensionSemanticDiff | undefined
+): {
+  createdSketchDimensionIds?: readonly SketchDimensionId[];
+  modifiedSketchDimensionIds?: readonly SketchDimensionId[];
+  deletedSketchDimensionIds?: readonly SketchDimensionId[];
+} {
+  if (!dimensions) {
+    return {};
+  }
+
+  return {
+    ...nonEmptyIdList(
+      "createdSketchDimensionIds",
+      uniqueSketchDimensionIds(dimensions.created ?? [])
+    ),
+    ...nonEmptyIdList(
+      "modifiedSketchDimensionIds",
+      uniqueSketchDimensionIds(dimensions.modified ?? [])
+    ),
+    ...nonEmptyIdList(
+      "deletedSketchDimensionIds",
+      uniqueSketchDimensionIds(dimensions.deleted ?? [])
+    )
+  };
+}
+
 function uniqueSketchIds(
   sketches: readonly CadSketchRef[]
 ): readonly SketchId[] {
@@ -4920,6 +6329,18 @@ function uniqueFeatureIds(
 
 function uniqueBodyIds(bodies: readonly CadBodyRef[]): readonly BodyId[] {
   return [...new Set(bodies.map((body) => body.id))];
+}
+
+function uniqueParameterIds(
+  parameters: readonly CadParameterRef[]
+): readonly ParameterId[] {
+  return [...new Set(parameters.map((parameter) => parameter.id))];
+}
+
+function uniqueSketchDimensionIds(
+  dimensions: readonly CadSketchDimensionRef[]
+): readonly SketchDimensionId[] {
+  return [...new Set(dimensions.map((dimension) => dimension.id))];
 }
 
 function nonEmptyIdList<TKey extends string, TValue extends string>(
@@ -5139,6 +6560,29 @@ function inferNextSketchEntityNumber(document: CadDocument): number {
   return maxSketchEntityNumber + 1;
 }
 
+function inferNextParameterNumber(document: CadDocument): number {
+  let maxParameterNumber = 0;
+
+  for (const id of document.parameters.keys()) {
+    maxParameterNumber = Math.max(maxParameterNumber, parseParameterNumber(id));
+  }
+
+  return maxParameterNumber + 1;
+}
+
+function inferNextSketchDimensionNumber(document: CadDocument): number {
+  let maxSketchDimensionNumber = 0;
+
+  for (const id of document.sketchDimensions.keys()) {
+    maxSketchDimensionNumber = Math.max(
+      maxSketchDimensionNumber,
+      parseSketchDimensionNumber(id)
+    );
+  }
+
+  return maxSketchDimensionNumber + 1;
+}
+
 function inferNextFeatureNumber(document: CadDocument): number {
   let maxFeatureNumber = 0;
 
@@ -5171,6 +6615,16 @@ function parseSketchNumber(id: SketchId): number {
 
 function parseSketchEntityNumber(id: SketchEntityId): number {
   const match = /^skent_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseParameterNumber(id: ParameterId): number {
+  const match = /^param_(\d+)$/.exec(id);
+  return match ? Number(match[1]) : 0;
+}
+
+function parseSketchDimensionNumber(id: SketchDimensionId): number {
+  const match = /^skdim_(\d+)$/.exec(id);
   return match ? Number(match[1]) : 0;
 }
 
@@ -5230,6 +6684,8 @@ function createProjectState(project: CadProject): {
       normalizedProject.document.nextObjectNumber,
       normalizedProject.document.nextSketchNumber,
       normalizedProject.document.nextSketchEntityNumber,
+      normalizedProject.document.nextParameterNumber,
+      normalizedProject.document.nextSketchDimensionNumber,
       normalizedProject.document.nextFeatureNumber,
       normalizedProject.document.nextBodyNumber
     );
@@ -5250,6 +6706,10 @@ function createTransactionEntries(
   initialObjectNumber = inferNextObjectNumber(initialDocument),
   initialSketchNumber = inferNextSketchNumber(initialDocument),
   initialSketchEntityNumber = inferNextSketchEntityNumber(initialDocument),
+  initialParameterNumber = inferNextParameterNumber(initialDocument),
+  initialSketchDimensionNumber = inferNextSketchDimensionNumber(
+    initialDocument
+  ),
   initialFeatureNumber = inferNextFeatureNumber(initialDocument),
   initialBodyNumber = inferNextBodyNumber(initialDocument)
 ): {
@@ -5260,6 +6720,8 @@ function createTransactionEntries(
   let nextObjectNumber = initialObjectNumber;
   let nextSketchNumber = initialSketchNumber;
   let nextSketchEntityNumber = initialSketchEntityNumber;
+  let nextParameterNumber = initialParameterNumber;
+  let nextSketchDimensionNumber = initialSketchDimensionNumber;
   let nextFeatureNumber = initialFeatureNumber;
   let nextBodyNumber = initialBodyNumber;
   const entries: TransactionEntry[] = [];
@@ -5272,6 +6734,8 @@ function createTransactionEntries(
       nextObjectNumber,
       nextSketchNumber,
       nextSketchEntityNumber,
+      nextParameterNumber,
+      nextSketchDimensionNumber,
       nextFeatureNumber,
       nextBodyNumber
     );
@@ -5279,6 +6743,8 @@ function createTransactionEntries(
     nextObjectNumber = run.nextObjectNumber;
     nextSketchNumber = run.nextSketchNumber;
     nextSketchEntityNumber = run.nextSketchEntityNumber;
+    nextParameterNumber = run.nextParameterNumber;
+    nextSketchDimensionNumber = run.nextSketchDimensionNumber;
     nextFeatureNumber = run.nextFeatureNumber;
     nextBodyNumber = run.nextBodyNumber;
 
@@ -5326,6 +6792,8 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     left.units !== right.units ||
     left.objects.size !== right.objects.size ||
     left.sketches.size !== right.sketches.size ||
+    left.parameters.size !== right.parameters.size ||
+    left.sketchDimensions.size !== right.sketchDimensions.size ||
     left.features.size !== right.features.size ||
     left.namedReferences.size !== right.namedReferences.size
   ) {
@@ -5344,6 +6812,25 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     const rightSketch = right.sketches.get(id);
 
     if (!rightSketch || !sketchesEqual(leftSketch, rightSketch)) {
+      return false;
+    }
+  }
+
+  for (const [id, leftParameter] of left.parameters) {
+    const rightParameter = right.parameters.get(id);
+
+    if (!rightParameter || !parametersEqual(leftParameter, rightParameter)) {
+      return false;
+    }
+  }
+
+  for (const [id, leftDimension] of left.sketchDimensions) {
+    const rightDimension = right.sketchDimensions.get(id);
+
+    if (
+      !rightDimension ||
+      !sketchDimensionsEqual(leftDimension, rightDimension)
+    ) {
       return false;
     }
   }
@@ -5497,6 +6984,22 @@ function sketchEntitiesEqual(left: SketchEntity, right: SketchEntity): boolean {
   return false;
 }
 
+function parametersEqual(left: CadParameter, right: CadParameter): boolean {
+  return (
+    left.id === right.id &&
+    left.name === right.name &&
+    left.value === right.value &&
+    left.description === right.description
+  );
+}
+
+function sketchDimensionsEqual(
+  left: SketchDimension,
+  right: SketchDimension
+): boolean {
+  return stableJsonEqual(left, right);
+}
+
 function vec2Equal(left: Vec2, right: Vec2): boolean {
   return left[0] === right[0] && left[1] === right[1];
 }
@@ -5536,6 +7039,10 @@ function normalizeCadProject(value: CadProject): CadProject {
       ...value,
       document: {
         ...value.document,
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        sketchDimensions: value.document.sketchDimensions.map(
+          cloneSketchDimensionSnapshot
+        ),
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
@@ -5552,10 +7059,34 @@ function normalizeCadProject(value: CadProject): CadProject {
       schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
+        parameters: [],
+        sketchDimensions: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
         namedReferences: value.document.namedReferences.map(
           cloneNamedReferenceSnapshot
-        )
+        ),
+        nextParameterNumber: 1,
+        nextSketchDimensionNumber: 1
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
+    };
+  }
+
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        ...value.document,
+        parameters: [],
+        sketchDimensions: [],
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        ),
+        nextParameterNumber: 1,
+        nextSketchDimensionNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -5568,8 +7099,12 @@ function normalizeCadProject(value: CadProject): CadProject {
       schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
+        parameters: [],
+        sketchDimensions: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
-        namedReferences: []
+        namedReferences: [],
+        nextParameterNumber: 1,
+        nextSketchDimensionNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -5582,8 +7117,12 @@ function normalizeCadProject(value: CadProject): CadProject {
       schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
+        parameters: [],
+        sketchDimensions: [],
         features: value.document.features.map(normalizeFeatureSnapshot),
-        namedReferences: []
+        namedReferences: [],
+        nextParameterNumber: 1,
+        nextSketchDimensionNumber: 1
       },
       history: value.history.map(normalizeTransactionSnapshot),
       redoStack: value.redoStack.map(normalizeTransactionSnapshot)
@@ -5596,8 +7135,12 @@ function normalizeCadProject(value: CadProject): CadProject {
       schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
+        parameters: [],
+        sketchDimensions: [],
         features: [],
         namedReferences: [],
+        nextParameterNumber: 1,
+        nextSketchDimensionNumber: 1,
         nextFeatureNumber: 1,
         nextBodyNumber: 1
       },
@@ -5612,10 +7155,14 @@ function normalizeCadProject(value: CadProject): CadProject {
     document: {
       ...value.document,
       sketches: [],
+      parameters: [],
+      sketchDimensions: [],
       features: [],
       namedReferences: [],
       nextSketchNumber: 1,
       nextSketchEntityNumber: 1,
+      nextParameterNumber: 1,
+      nextSketchDimensionNumber: 1,
       nextFeatureNumber: 1,
       nextBodyNumber: 1
     },
@@ -5736,6 +7283,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     );
   } else if (
     value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V6 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V5 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
@@ -5804,6 +7352,8 @@ function validateCadDocumentSnapshot(
   let maxGeneratedObjectNumber = 0;
   let maxGeneratedSketchNumber = 0;
   let maxGeneratedSketchEntityNumber = 0;
+  let maxGeneratedParameterNumber = 0;
+  let maxGeneratedSketchDimensionNumber = 0;
   let maxGeneratedFeatureNumber = 0;
   let maxGeneratedBodyNumber = 0;
   const primitiveFeatureIds = new Set<string>();
@@ -5865,18 +7415,24 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const requiresParameters =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -5884,6 +7440,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -5891,10 +7448,7 @@ function validateCadDocumentSnapshot(
     BodyId,
     ExtrudeFeatureSnapshot & { readonly path: string }
   >();
-  const sketchEntityRefs = new Map<
-    SketchEntityId,
-    { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
-  >();
+  const sketchEntityRefs = new Map<SketchEntityId, SketchEntityImportRef>();
   const sketchAttachments: {
     readonly path: string;
     readonly attachment: SketchAttachmentSnapshot;
@@ -5940,6 +7494,26 @@ function validateCadDocumentSnapshot(
       `${path}.namedReferences`,
       "Project documents before V5 must not include named generated references."
     );
+  }
+
+  if (isKnownProjectVersion && !requiresParameters) {
+    if ("parameters" in value) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.parameters`,
+        "Project documents before V7 must not include parameter source data."
+      );
+    }
+
+    if ("sketchDimensions" in value) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.sketchDimensions`,
+        "Project documents before V7 must not include sketch dimension source data."
+      );
+    }
   }
 
   if (requiresSketches) {
@@ -5989,6 +7563,86 @@ function validateCadDocumentSnapshot(
       "Document nextSketchEntityNumber",
       "generated sketch entity ids",
       maxGeneratedSketchEntityNumber,
+      issues
+    );
+  }
+
+  const seenParameterIds = new Set<string>();
+  const parameterValues = new Map<ParameterId, number>();
+
+  if (requiresParameters) {
+    if (!Array.isArray(value.parameters)) {
+      addProjectIssue(
+        issues,
+        "INVALID_PARAMETER",
+        `${path}.parameters`,
+        "Document parameters must be an array."
+      );
+    } else {
+      for (const [index, parameter] of value.parameters.entries()) {
+        maxGeneratedParameterNumber = Math.max(
+          maxGeneratedParameterNumber,
+          validateParameterSnapshot(
+            parameter,
+            `${path}.parameters[${index}]`,
+            issues,
+            seenParameterIds
+          )
+        );
+
+        if (
+          isRecord(parameter) &&
+          typeof parameter.id === "string" &&
+          typeof parameter.value === "number" &&
+          Number.isFinite(parameter.value)
+        ) {
+          parameterValues.set(parameter.id, parameter.value);
+        }
+      }
+    }
+
+    if (!Array.isArray(value.sketchDimensions)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        `${path}.sketchDimensions`,
+        "Document sketchDimensions must be an array."
+      );
+    } else {
+      const seenSketchDimensionIds = new Set<string>();
+      const seenSketchDimensionTargets = new Set<string>();
+      for (const [index, dimension] of value.sketchDimensions.entries()) {
+        maxGeneratedSketchDimensionNumber = Math.max(
+          maxGeneratedSketchDimensionNumber,
+          validateSketchDimensionSnapshot(
+            dimension,
+            `${path}.sketchDimensions[${index}]`,
+            issues,
+            seenSketchDimensionIds,
+            seenSketchDimensionTargets,
+            seenSketchIds,
+            sketchEntityRefs,
+            seenParameterIds,
+            parameterValues
+          )
+        );
+      }
+    }
+
+    validateNextGeneratedNumber(
+      value.nextParameterNumber,
+      `${path}.nextParameterNumber`,
+      "Document nextParameterNumber",
+      "generated parameter ids",
+      maxGeneratedParameterNumber,
+      issues
+    );
+    validateNextGeneratedNumber(
+      value.nextSketchDimensionNumber,
+      `${path}.nextSketchDimensionNumber`,
+      "Document nextSketchDimensionNumber",
+      "generated sketch dimension ids",
+      maxGeneratedSketchDimensionNumber,
       issues
     );
   }
@@ -6319,6 +7973,370 @@ function validateSketchAttachmentSnapshot(
   return valid;
 }
 
+function validateParameterSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenParameterIds: Set<string>
+): number {
+  let maxGeneratedParameterNumber = 0;
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_PARAMETER",
+      path,
+      "Parameter must be an object."
+    );
+    return maxGeneratedParameterNumber;
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_PARAMETER",
+      `${path}.id`,
+      "Parameter id must be a non-empty string."
+    );
+  } else if (seenParameterIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_PARAMETER",
+      `${path}.id`,
+      `Duplicate parameter id: ${value.id}.`
+    );
+  } else {
+    seenParameterIds.add(value.id);
+    maxGeneratedParameterNumber = parseParameterNumber(value.id);
+  }
+
+  if (typeof value.name !== "string" || value.name.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_PARAMETER",
+      `${path}.name`,
+      "Parameter name must be a non-empty string."
+    );
+  }
+
+  if (typeof value.value !== "number" || !Number.isFinite(value.value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_PARAMETER",
+      `${path}.value`,
+      "Parameter value must be a finite number."
+    );
+  }
+
+  if (
+    value.description !== undefined &&
+    (typeof value.description !== "string" || value.description.trim() === "")
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_PARAMETER",
+      `${path}.description`,
+      "Parameter description must be a non-empty string when present."
+    );
+  }
+
+  return maxGeneratedParameterNumber;
+}
+
+function validateSketchDimensionSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenSketchDimensionIds: Set<string>,
+  seenSketchDimensionTargets: Set<string>,
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
+  seenParameterIds: ReadonlySet<string>,
+  parameterValues: ReadonlyMap<ParameterId, number>
+): number {
+  let maxGeneratedSketchDimensionNumber = 0;
+  let entityRef: SketchEntityImportRef | undefined;
+  let targetIsValid = false;
+
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      path,
+      "Sketch dimension must be an object."
+    );
+    return maxGeneratedSketchDimensionNumber;
+  }
+
+  if (typeof value.id !== "string" || value.id.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      `${path}.id`,
+      "Sketch dimension id must be a non-empty string."
+    );
+  } else if (seenSketchDimensionIds.has(value.id)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      `${path}.id`,
+      `Duplicate sketch dimension id: ${value.id}.`
+    );
+  } else {
+    seenSketchDimensionIds.add(value.id);
+    maxGeneratedSketchDimensionNumber = parseSketchDimensionNumber(value.id);
+  }
+
+  if (typeof value.name !== "string" || value.name.trim() === "") {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      `${path}.name`,
+      "Sketch dimension name must be a non-empty string."
+    );
+  }
+
+  if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      `${path}.sketchId`,
+      "Sketch dimension sketchId must be a non-empty string."
+    );
+  } else if (!seenSketchIds.has(value.sketchId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      `${path}.sketchId`,
+      "Sketch dimension sketchId must reference an existing sketch."
+    );
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      `${path}.entityId`,
+      "Sketch dimension entityId must be a non-empty string."
+    );
+  } else {
+    entityRef = sketchEntityRefs.get(value.entityId);
+
+    if (!entityRef) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        `${path}.entityId`,
+        "Sketch dimension entityId must reference an existing sketch entity."
+      );
+    } else {
+      if (entityRef.sketchId !== value.sketchId) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_DIMENSION",
+          `${path}.entityId`,
+          "Sketch dimension entityId must belong to the referenced sketch."
+        );
+      }
+
+      targetIsValid = validateSketchDimensionTargetShape(
+        value.target,
+        `${path}.target`,
+        entityRef.kind,
+        issues
+      );
+    }
+  }
+
+  const effectiveValue = validateSketchDimensionValueSourceSnapshot(
+    value.valueSource,
+    `${path}.valueSource`,
+    seenParameterIds,
+    parameterValues,
+    issues
+  );
+
+  if (
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    targetIsValid &&
+    entityRef &&
+    isSketchDimensionTarget(value.target)
+  ) {
+    const targetKey = getSketchDimensionTargetKey({
+      sketchId: value.sketchId,
+      entityId: value.entityId,
+      target: value.target
+    });
+
+    if (seenSketchDimensionTargets.has(targetKey)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        `${path}.target`,
+        "Sketch dimension target is already driven by another dimension."
+      );
+    } else {
+      seenSketchDimensionTargets.add(targetKey);
+    }
+
+    if (effectiveValue !== undefined) {
+      const entityValue = getImportedSketchDimensionTargetValue(
+        entityRef.entity,
+        value.target
+      );
+
+      if (
+        entityValue !== undefined &&
+        cleanMeasurementNumber(entityValue) !==
+          cleanMeasurementNumber(effectiveValue)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_DIMENSION",
+          `${path}.valueSource`,
+          "Sketch dimension effective value must match the saved target entity value."
+        );
+      }
+    }
+  }
+
+  return maxGeneratedSketchDimensionNumber;
+}
+
+function validateSketchDimensionTargetShape(
+  value: unknown,
+  path: string,
+  entityKind: SketchEntityKind,
+  issues: CadProjectImportIssue[]
+): boolean {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      path,
+      "Sketch dimension target must be an object."
+    );
+    return false;
+  }
+
+  const valid =
+    (entityKind === "rectangle" &&
+      value.entityKind === "rectangle" &&
+      (value.role === "width" || value.role === "height")) ||
+    (entityKind === "circle" &&
+      value.entityKind === "circle" &&
+      value.role === "radius");
+
+  if (!valid) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      path,
+      "Sketch dimension target must match a supported rectangle width/height or circle radius role."
+    );
+  }
+
+  return valid;
+}
+
+function validateSketchDimensionValueSourceSnapshot(
+  value: unknown,
+  path: string,
+  seenParameterIds: ReadonlySet<string>,
+  parameterValues: ReadonlyMap<ParameterId, number>,
+  issues: CadProjectImportIssue[]
+): number | undefined {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_DIMENSION",
+      path,
+      "Sketch dimension valueSource must be an object."
+    );
+    return undefined;
+  }
+
+  if (value.type === "literal") {
+    if (
+      typeof value.value !== "number" ||
+      !isPositiveFiniteNumber(value.value)
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        `${path}.value`,
+        "Sketch dimension value must be a positive finite number."
+      );
+      return undefined;
+    }
+    return cleanMeasurementNumber(value.value);
+  }
+
+  if (value.type === "parameter") {
+    if (
+      typeof value.parameterId !== "string" ||
+      value.parameterId.length === 0
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        `${path}.parameterId`,
+        "Sketch dimension parameterId must be a non-empty string."
+      );
+      return undefined;
+    } else if (!seenParameterIds.has(value.parameterId)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_DIMENSION",
+        `${path}.parameterId`,
+        "Sketch dimension parameterId must reference an existing parameter."
+      );
+      return undefined;
+    } else {
+      const parameterValue = parameterValues.get(value.parameterId);
+
+      if (
+        typeof parameterValue !== "number" ||
+        !isPositiveFiniteNumber(parameterValue)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_DIMENSION",
+          `${path}.parameterId`,
+          "Sketch dimension parameter value must be positive and finite."
+        );
+        return undefined;
+      }
+      return cleanMeasurementNumber(parameterValue);
+    }
+  }
+
+  addProjectIssue(
+    issues,
+    "INVALID_SKETCH_DIMENSION",
+    `${path}.type`,
+    "Sketch dimension valueSource type must be literal or parameter."
+  );
+  return undefined;
+}
+
+function getImportedSketchDimensionTargetValue(
+  entity: unknown,
+  target: SketchDimensionTarget
+): number | undefined {
+  if (!isRecord(entity)) {
+    return undefined;
+  }
+
+  if (target.entityKind === "rectangle") {
+    const value = entity[target.role];
+    return typeof value === "number" ? value : undefined;
+  }
+
+  return typeof entity.radius === "number" ? entity.radius : undefined;
+}
+
 function collectValidExtrudeFeatureByBodyId(
   value: unknown,
   featuresByBodyId: Map<BodyId, ExtrudeFeatureSnapshot>
@@ -6625,10 +8643,7 @@ function validateSketchEntitySnapshot(
 
 function collectSketchEntityRefs(
   value: unknown,
-  output: Map<
-    SketchEntityId,
-    { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
-  >
+  output: Map<SketchEntityId, SketchEntityImportRef>
 ): void {
   if (
     !isRecord(value) ||
@@ -6644,7 +8659,11 @@ function collectSketchEntityRefs(
       typeof entity.id === "string" &&
       isSketchEntityKind(entity.kind)
     ) {
-      output.set(entity.id, { sketchId: value.id, kind: entity.kind });
+      output.set(entity.id, {
+        sketchId: value.id,
+        kind: entity.kind,
+        entity
+      });
     }
   }
 }
@@ -7552,6 +9571,8 @@ function materializeGeneratedObjectIds(
   let createdObjectIndex = 0;
   let createdSketchIndex = 0;
   let createdSketchEntityIndex = 0;
+  let createdParameterIndex = 0;
+  let createdSketchDimensionIndex = 0;
   let createdFeatureIndex = 0;
 
   return transaction.ops.map((op) => {
@@ -7586,6 +9607,32 @@ function materializeGeneratedObjectIds(
       const createdRef =
         transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex];
       createdSketchEntityIndex += 1;
+
+      return createdRef ? { ...op, id: createdRef.id } : op;
+    }
+
+    if (op.op === "parameter.create") {
+      if (op.id) {
+        return op;
+      }
+
+      const createdRef =
+        transaction.diff.parameters?.created?.[createdParameterIndex];
+      createdParameterIndex += 1;
+
+      return createdRef ? { ...op, id: createdRef.id } : op;
+    }
+
+    if (op.op === "sketch.dimension.create") {
+      if (op.id) {
+        return op;
+      }
+
+      const createdRef =
+        transaction.diff.sketchDimensions?.created?.[
+          createdSketchDimensionIndex
+        ];
+      createdSketchDimensionIndex += 1;
 
       return createdRef ? { ...op, id: createdRef.id } : op;
     }
@@ -7647,6 +9694,35 @@ function isSketchAddEntityOp(op: CadOp): op is Extract<
 function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
+  }
+
+  if (value.op === "parameter.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.value === "number" &&
+      Number.isFinite(value.value) &&
+      (value.description === undefined || typeof value.description === "string")
+    );
+  }
+
+  if (value.op === "parameter.update") {
+    return (
+      typeof value.id === "string" &&
+      (value.value === undefined ||
+        (typeof value.value === "number" && Number.isFinite(value.value))) &&
+      (value.description === undefined ||
+        typeof value.description === "string") &&
+      (value.value !== undefined || value.description !== undefined)
+    );
+  }
+
+  if (value.op === "parameter.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "parameter.delete") {
+    return typeof value.id === "string";
   }
 
   if (value.op === "scene.createBox") {
@@ -7821,6 +9897,29 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.dimension.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      isSketchDimensionValueInput(value)
+    );
+  }
+
+  if (value.op === "sketch.dimension.update") {
+    return typeof value.id === "string" && isSketchDimensionValueInput(value);
+  }
+
+  if (value.op === "sketch.dimension.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "sketch.dimension.delete") {
+    return typeof value.id === "string";
+  }
+
   if (value.op === "feature.extrude") {
     return (
       isOptionalString(value.id) &&
@@ -7880,7 +9979,11 @@ function isSemanticDiff(value: unknown): value is SemanticDiff {
     (value.sketches === undefined || isSketchSemanticDiff(value.sketches)) &&
     (value.features === undefined || isFeatureSemanticDiff(value.features)) &&
     (value.references === undefined ||
-      isReferenceSemanticDiff(value.references))
+      isReferenceSemanticDiff(value.references)) &&
+    (value.parameters === undefined ||
+      isParameterSemanticDiff(value.parameters)) &&
+    (value.sketchDimensions === undefined ||
+      isSketchDimensionSemanticDiff(value.sketchDimensions))
   );
 }
 
@@ -7958,6 +10061,39 @@ function isReferenceSemanticDiff(
   );
 }
 
+function isParameterSemanticDiff(
+  value: unknown
+): value is ParameterSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.created === undefined ||
+      (Array.isArray(value.created) &&
+        value.created.every(isCadParameterRef))) &&
+    (value.modified === undefined ||
+      (Array.isArray(value.modified) &&
+        value.modified.every(isCadParameterRef))) &&
+    (value.deleted === undefined ||
+      (Array.isArray(value.deleted) && value.deleted.every(isCadParameterRef)))
+  );
+}
+
+function isSketchDimensionSemanticDiff(
+  value: unknown
+): value is SketchDimensionSemanticDiff {
+  return (
+    isRecord(value) &&
+    (value.created === undefined ||
+      (Array.isArray(value.created) &&
+        value.created.every(isCadSketchDimensionRef))) &&
+    (value.modified === undefined ||
+      (Array.isArray(value.modified) &&
+        value.modified.every(isCadSketchDimensionRef))) &&
+    (value.deleted === undefined ||
+      (Array.isArray(value.deleted) &&
+        value.deleted.every(isCadSketchDimensionRef)))
+  );
+}
+
 function isCadObjectRef(value: unknown): value is CadObjectRef {
   return (
     isRecord(value) &&
@@ -8015,6 +10151,28 @@ function isCadNamedReferenceRef(value: unknown): value is CadNamedReferenceRef {
     typeof value.bodyId === "string" &&
     typeof value.stableId === "string" &&
     isGeneratedEntityKind(value.kind)
+  );
+}
+
+function isCadParameterRef(value: unknown): value is CadParameterRef {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string"
+  );
+}
+
+function isCadSketchDimensionRef(
+  value: unknown
+): value is CadSketchDimensionRef {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    isSketchDimensionTarget(value.target) &&
+    (value.parameterId === undefined || typeof value.parameterId === "string")
   );
 }
 
@@ -8157,6 +10315,30 @@ function isSketchEntityKind(value: unknown): value is SketchEntityKind {
     value === "rectangle" ||
     value === "circle"
   );
+}
+
+function isSketchDimensionTarget(
+  value: unknown
+): value is SketchDimensionTarget {
+  return (
+    isRecord(value) &&
+    ((value.entityKind === "rectangle" &&
+      (value.role === "width" || value.role === "height")) ||
+      (value.entityKind === "circle" && value.role === "radius"))
+  );
+}
+
+function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
+  const hasLiteral = value.value !== undefined;
+  const hasParameter = value.parameterId !== undefined;
+
+  if (hasLiteral === hasParameter) {
+    return false;
+  }
+
+  return hasLiteral
+    ? typeof value.value === "number" && isPositiveFiniteNumber(value.value)
+    : typeof value.parameterId === "string";
 }
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {

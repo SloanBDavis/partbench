@@ -4896,15 +4896,22 @@ describe("cad-core", () => {
       JSON.stringify({
         ...legacyProject,
         schemaVersion: "web-cad.project.v5",
-        document: {
-          ...legacyProject.document,
-          features: legacyProject.document.features.map((feature) => {
-            const legacyFeature: Record<string, unknown> = { ...feature };
-            delete legacyFeature.operationMode;
+        document: (() => {
+          const legacyDocument: Record<string, unknown> = {
+            ...legacyProject.document,
+            features: legacyProject.document.features.map((feature) => {
+              const legacyFeature: Record<string, unknown> = { ...feature };
+              delete legacyFeature.operationMode;
 
-            return legacyFeature;
-          })
-        }
+              return legacyFeature;
+            })
+          };
+          delete legacyDocument.parameters;
+          delete legacyDocument.sketchDimensions;
+          delete legacyDocument.nextParameterNumber;
+          delete legacyDocument.nextSketchDimensionNumber;
+          return legacyDocument;
+        })()
       })
     );
     expect(legacyRestored.exportProject()).toMatchObject({
@@ -10678,15 +10685,22 @@ describe("cad-core", () => {
     const legacyProject = {
       ...project,
       schemaVersion: "web-cad.project.v5",
-      document: {
-        ...project.document,
-        features: project.document.features.map((feature) => {
-          const legacy = { ...feature } as Record<string, unknown>;
-          delete legacy.side;
-          delete legacy.operationMode;
-          return legacy;
-        })
-      },
+      document: (() => {
+        const legacyDocument: Record<string, unknown> = {
+          ...project.document,
+          features: project.document.features.map((feature) => {
+            const legacy = { ...feature } as Record<string, unknown>;
+            delete legacy.side;
+            delete legacy.operationMode;
+            return legacy;
+          })
+        };
+        delete legacyDocument.parameters;
+        delete legacyDocument.sketchDimensions;
+        delete legacyDocument.nextParameterNumber;
+        delete legacyDocument.nextSketchDimensionNumber;
+        return legacyDocument;
+      })(),
       history: project.history.map((transaction) => ({
         ...transaction,
         ops: transaction.ops.map((op) => {
@@ -10889,3 +10903,539 @@ function expectProjectImportError(
 
   throw new Error("Expected project import error.");
 }
+
+describe("cad-core V3 parameters and sketch dimensions", () => {
+  it("creates, updates, renames, queries, and deletes document parameters", () => {
+    const engine = new CadEngine();
+
+    const created = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "parameter.create",
+          id: "param_width",
+          name: "Width",
+          value: 12,
+          description: "Primary width"
+        }
+      ]
+    });
+
+    expect(created).toMatchObject({
+      ok: true,
+      createdParameterIds: ["param_width"]
+    });
+
+    engine.apply({ op: "parameter.update", id: "param_width", value: 18 });
+    engine.apply({
+      op: "parameter.rename",
+      id: "param_width",
+      name: "Panel width"
+    });
+
+    const parameter = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "parameter.get", id: "param_width" }
+    });
+
+    expect(parameter).toMatchObject({
+      ok: true,
+      query: "parameter.get",
+      parameter: {
+        id: "param_width",
+        name: "Panel width",
+        value: 18,
+        description: "Primary width"
+      }
+    });
+
+    engine.apply({ op: "parameter.delete", id: "param_width" });
+
+    const list = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "parameter.list" }
+    });
+
+    expect(list).toMatchObject({
+      ok: true,
+      query: "parameter.list",
+      parameterCount: 0,
+      parameters: []
+    });
+  });
+
+  it("uses sketch dimensions to drive rectangle and circle entity values", () => {
+    const engine = new CadEngine();
+
+    const response = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_1",
+          id: "rect_1",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        {
+          op: "sketch.addCircle",
+          sketchId: "sketch_1",
+          id: "circle_1",
+          center: [4, 0],
+          radius: 1
+        },
+        { op: "parameter.create", id: "param_w", name: "Width", value: 6 },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_w",
+          name: "Rectangle width",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: { entityKind: "rectangle", role: "width" },
+          parameterId: "param_w"
+        },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_h",
+          name: "Rectangle height",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: { entityKind: "rectangle", role: "height" },
+          value: 5
+        },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_r",
+          name: "Circle radius",
+          sketchId: "sketch_1",
+          entityId: "circle_1",
+          target: { entityKind: "circle", role: "radius" },
+          value: 3
+        }
+      ]
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdParameterIds: ["param_w"],
+      createdSketchDimensionIds: ["dim_w", "dim_h", "dim_r"],
+      modifiedSketchEntityIds: ["rect_1", "circle_1"]
+    });
+
+    const sketch = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.get", id: "sketch_1" }
+    });
+
+    expect(sketch).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({ id: "rect_1", width: 6, height: 5 }),
+          expect.objectContaining({ id: "circle_1", radius: 3 })
+        ])
+      }
+    });
+
+    const dimensions = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.dimensions", sketchId: "sketch_1" }
+    });
+
+    expect(dimensions).toMatchObject({
+      ok: true,
+      query: "sketch.dimensions",
+      dimensionCount: 3,
+      dimensions: expect.arrayContaining([
+        expect.objectContaining({
+          id: "dim_w",
+          status: "healthy",
+          effectiveValue: 6
+        }),
+        expect.objectContaining({
+          id: "dim_h",
+          status: "healthy",
+          effectiveValue: 5
+        }),
+        expect.objectContaining({
+          id: "dim_r",
+          status: "healthy",
+          effectiveValue: 3
+        })
+      ])
+    });
+  });
+
+  it("updates dependent extrude bodies when a driving dimension changes", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "parameter.create", id: "param_w", name: "Width", value: 8 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_w"
+      }
+    ]);
+
+    const update = engine.apply({
+      op: "parameter.update",
+      id: "param_w",
+      value: 10
+    });
+
+    expect(update.transaction.diff).toMatchObject({
+      parameters: { modified: [{ id: "param_w", name: "Width" }] },
+      sketches: {
+        entitiesModified: [
+          { sketchId: "sketch_1", id: "rect_1", kind: "rectangle" }
+        ]
+      },
+      features: {
+        modified: [expect.objectContaining({ id: "feat_rect_1" })],
+        bodiesModified: [
+          { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+        ]
+      }
+    });
+
+    const measurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_rect_1" }
+    });
+
+    expect(measurements).toMatchObject({
+      ok: true,
+      measurements: {
+        localBounds: {
+          size: [10, 2, 3]
+        },
+        volume: 60
+      }
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_w" }
+      })
+    ).toMatchObject({
+      ok: true,
+      dimension: { effectiveValue: 8 }
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_w" }
+      })
+    ).toMatchObject({
+      ok: true,
+      dimension: { effectiveValue: 10 }
+    });
+  });
+
+  it("rejects invalid dimension and parameter lifecycle operations clearly", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 1
+      },
+      { op: "parameter.create", id: "param_r", name: "Radius", value: 2 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_r",
+        name: "Radius dimension",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        target: { entityKind: "circle", role: "radius" },
+        parameterId: "param_r"
+      }
+    ]);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [{ op: "parameter.delete", id: "param_r" }]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "PARAMETER_IN_USE",
+        parameterId: "param_r",
+        sketchDimensionId: "dim_r"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.create",
+            id: "dim_bad",
+            name: "Bad dimension",
+            sketchId: "sketch_1",
+            entityId: "circle_1",
+            target: { entityKind: "rectangle", role: "width" },
+            value: 1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_DIMENSION",
+        sketchId: "sketch_1",
+        sketchEntityId: "circle_1"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.create",
+            id: "dim_r_duplicate",
+            name: "Duplicate radius dimension",
+            sketchId: "sketch_1",
+            entityId: "circle_1",
+            target: { entityKind: "circle", role: "radius" },
+            value: 2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_DIMENSION",
+        sketchDimensionId: "dim_r_duplicate",
+        sketchId: "sketch_1",
+        sketchEntityId: "circle_1"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.update",
+            id: "dim_r",
+            value: 0
+          }
+        ]
+      } as unknown as CadBatch)
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_DIMENSION" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [{ op: "parameter.create", id: "", name: "Bad", value: 1 }]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_PARAMETER" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.create",
+            id: "",
+            name: "Bad dimension",
+            sketchId: "sketch_1",
+            entityId: "circle_1",
+            target: { entityKind: "circle", role: "radius" },
+            value: 2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_DIMENSION" }
+    });
+  });
+
+  it("round-trips V7 parameter and sketch dimension source data and migrates V6", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      { op: "parameter.create", id: "param_w", name: "Width", value: 9 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_w"
+      }
+    ]);
+
+    const project = engine.exportProject();
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.parameters).toEqual([
+      { id: "param_w", name: "Width", value: 9 }
+    ]);
+    expect(project.document.sketchDimensions).toEqual([
+      {
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        valueSource: { type: "parameter", parameterId: "param_w" }
+      }
+    ]);
+
+    const restored = importCadProject(project);
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_w" }
+      })
+    ).toMatchObject({
+      ok: true,
+      dimension: {
+        status: "healthy",
+        effectiveValue: 9
+      }
+    });
+
+    const v6Project = {
+      ...project,
+      schemaVersion: "web-cad.project.v6",
+      document: {
+        units: project.document.units,
+        objects: project.document.objects,
+        sketches: project.document.sketches,
+        features: project.document.features,
+        namedReferences: project.document.namedReferences,
+        nextObjectNumber: project.document.nextObjectNumber,
+        nextSketchNumber: project.document.nextSketchNumber,
+        nextSketchEntityNumber: project.document.nextSketchEntityNumber,
+        nextFeatureNumber: project.document.nextFeatureNumber,
+        nextBodyNumber: project.document.nextBodyNumber
+      },
+      history: [],
+      redoStack: []
+    } as unknown as CadProject;
+
+    const migrated = importCadProject(v6Project).exportProject();
+    expect(migrated.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(migrated.document.parameters).toEqual([]);
+    expect(migrated.document.sketchDimensions).toEqual([]);
+    expect(migrated.document.nextParameterNumber).toBe(1);
+    expect(migrated.document.nextSketchDimensionNumber).toBe(1);
+  });
+
+  it("rejects imported V7 dimensions that conflict with source entity values", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      { op: "parameter.create", id: "param_w", name: "Width", value: 9 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_w"
+      }
+    ]);
+
+    const project = engine.exportProject();
+    const inconsistentProject = {
+      ...project,
+      document: {
+        ...project.document,
+        sketches: project.document.sketches.map((sketch) =>
+          sketch.id === "sketch_1"
+            ? {
+                ...sketch,
+                entities: sketch.entities.map((entity) =>
+                  entity.id === "rect_1" && entity.kind === "rectangle"
+                    ? { ...entity, width: 4 }
+                    : entity
+                )
+              }
+            : sketch
+        )
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+
+    expectProjectImportError(() => importCadProject(inconsistentProject), {
+      code: "INVALID_SKETCH_DIMENSION",
+      path: "$.document.sketchDimensions[0].valueSource",
+      message: "effective value"
+    });
+  });
+
+  it("rejects imported V7 dimensions that drive the same target twice", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        value: 4
+      }
+    ]);
+
+    const project = engine.exportProject();
+    const duplicateProject = {
+      ...project,
+      document: {
+        ...project.document,
+        sketchDimensions: [
+          ...project.document.sketchDimensions,
+          {
+            ...project.document.sketchDimensions[0],
+            id: "dim_w_2",
+            name: "Second width dimension"
+          }
+        ]
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+
+    expectProjectImportError(() => importCadProject(duplicateProject), {
+      code: "INVALID_SKETCH_DIMENSION",
+      path: "$.document.sketchDimensions[1].target",
+      message: "already driven"
+    });
+  });
+});

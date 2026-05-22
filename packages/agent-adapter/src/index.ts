@@ -24,6 +24,7 @@ import type {
   CadObjectModelSource,
   CadOp,
   CadOpsVersion,
+  CadParameterSnapshot,
   CadPartSnapshot,
   CadQueryError,
   CadQueryRequest,
@@ -31,7 +32,10 @@ import type {
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
+  ParameterId,
   SketchSnapshot,
+  SketchDimensionEntry,
+  SketchDimensionId,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   DocumentUnits,
@@ -90,6 +94,12 @@ export interface CadOpsAgentSuccessResponse {
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
+  readonly createdParameterIds?: readonly ParameterId[];
+  readonly modifiedParameterIds?: readonly ParameterId[];
+  readonly deletedParameterIds?: readonly ParameterId[];
+  readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly createdFeatureIds?: readonly string[];
   readonly modifiedFeatureIds?: readonly string[];
   readonly deletedFeatureIds?: readonly string[];
@@ -119,6 +129,12 @@ export interface CadOpsAgentErrorResponse {
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
+  readonly createdParameterIds?: readonly ParameterId[];
+  readonly modifiedParameterIds?: readonly ParameterId[];
+  readonly deletedParameterIds?: readonly ParameterId[];
+  readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly createdFeatureIds?: readonly string[];
   readonly modifiedFeatureIds?: readonly string[];
   readonly deletedFeatureIds?: readonly string[];
@@ -142,6 +158,8 @@ export interface CadOpsAgentPermissionError {
 }
 
 export type CadOpsAgentQueryResponse =
+  | CadOpsAgentParameterListQueryResponse
+  | CadOpsAgentParameterGetQueryResponse
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentProjectStructureQueryResponse
@@ -152,6 +170,8 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
+  | CadOpsAgentSketchDimensionsQueryResponse
+  | CadOpsAgentSketchDimensionGetQueryResponse
   | CadOpsAgentBodyGeneratedReferencesQueryResponse
   | CadOpsAgentBodyResolveGeneratedReferenceQueryResponse
   | CadOpsAgentBodyGeneratedReferenceMeasurementsQueryResponse
@@ -159,6 +179,25 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentReferenceResolveNamedQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
+
+export interface CadOpsAgentParameterListQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "parameter.list";
+  readonly parameterCount: number;
+  readonly parameters: readonly CadParameterSnapshot[];
+}
+
+export interface CadOpsAgentParameterGetQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "parameter.get";
+  readonly parameter: CadParameterSnapshot;
+}
 
 export interface CadOpsAgentProjectSummaryQueryResponse {
   readonly ok: true;
@@ -274,6 +313,26 @@ export interface CadOpsAgentSketchGetQueryResponse {
   readonly sketch: SketchSnapshot;
 }
 
+export interface CadOpsAgentSketchDimensionsQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "sketch.dimensions";
+  readonly sketchId: string;
+  readonly dimensionCount: number;
+  readonly dimensions: readonly SketchDimensionEntry[];
+}
+
+export interface CadOpsAgentSketchDimensionGetQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "sketch.dimension.get";
+  readonly dimension: SketchDimensionEntry;
+}
+
 export interface CadOpsAgentBodyGeneratedReferencesQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -351,6 +410,8 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly adapterVersion: AgentAdapterVersion;
   readonly cadOpsVersion: CadOpsVersion;
   readonly query:
+    | "parameter.list"
+    | "parameter.get"
     | "project.summary"
     | "project.features"
     | "project.structure"
@@ -361,6 +422,8 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.measurements"
     | "project.extents"
     | "sketch.get"
+    | "sketch.dimensions"
+    | "sketch.dimension.get"
     | "body.generatedReferences"
     | "body.resolveGeneratedReference"
     | "body.generatedReferenceMeasurements"
@@ -512,6 +575,12 @@ function toAgentDiffIds(response: CadBatchResponse): {
   readonly createdSketchEntityIds?: readonly string[];
   readonly modifiedSketchEntityIds?: readonly string[];
   readonly deletedSketchEntityIds?: readonly string[];
+  readonly createdParameterIds?: readonly ParameterId[];
+  readonly modifiedParameterIds?: readonly ParameterId[];
+  readonly deletedParameterIds?: readonly ParameterId[];
+  readonly createdSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly modifiedSketchDimensionIds?: readonly SketchDimensionId[];
+  readonly deletedSketchDimensionIds?: readonly SketchDimensionId[];
   readonly createdFeatureIds?: readonly string[];
   readonly modifiedFeatureIds?: readonly string[];
   readonly deletedFeatureIds?: readonly string[];
@@ -537,6 +606,24 @@ function toAgentDiffIds(response: CadBatchResponse): {
       : {}),
     ...(response.deletedSketchEntityIds
       ? { deletedSketchEntityIds: response.deletedSketchEntityIds }
+      : {}),
+    ...(response.createdParameterIds
+      ? { createdParameterIds: response.createdParameterIds }
+      : {}),
+    ...(response.modifiedParameterIds
+      ? { modifiedParameterIds: response.modifiedParameterIds }
+      : {}),
+    ...(response.deletedParameterIds
+      ? { deletedParameterIds: response.deletedParameterIds }
+      : {}),
+    ...(response.createdSketchDimensionIds
+      ? { createdSketchDimensionIds: response.createdSketchDimensionIds }
+      : {}),
+    ...(response.modifiedSketchDimensionIds
+      ? { modifiedSketchDimensionIds: response.modifiedSketchDimensionIds }
+      : {}),
+    ...(response.deletedSketchDimensionIds
+      ? { deletedSketchDimensionIds: response.deletedSketchDimensionIds }
       : {}),
     ...(response.createdFeatureIds
       ? { createdFeatureIds: response.createdFeatureIds }
@@ -642,6 +729,29 @@ function toAgentQueryResponse(
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
       error: response.error
+    };
+  }
+
+  if (response.query === "parameter.list") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      parameterCount: response.parameterCount,
+      parameters: response.parameters
+    };
+  }
+
+  if (response.query === "parameter.get") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      parameter: response.parameter
     };
   }
 
@@ -777,6 +887,30 @@ function toAgentQueryResponse(
       cadOpsVersion: response.cadOpsVersion,
       query: response.query,
       sketch: response.sketch
+    };
+  }
+
+  if (response.query === "sketch.dimensions") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      sketchId: response.sketchId,
+      dimensionCount: response.dimensionCount,
+      dimensions: response.dimensions
+    };
+  }
+
+  if (response.query === "sketch.dimension.get") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      dimension: response.dimension
     };
   }
 
@@ -947,8 +1081,12 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
     isRecord(value) &&
     value.version === "cadops.v1" &&
     isRecord(value.query) &&
-    ((value.query.query === "project.summary" &&
+    ((value.query.query === "parameter.list" &&
       Object.keys(value.query).length === 1) ||
+      (value.query.query === "parameter.get" &&
+        typeof value.query.id === "string") ||
+      (value.query.query === "project.summary" &&
+        Object.keys(value.query).length === 1) ||
       (value.query.query === "project.features" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.structure" &&
@@ -966,6 +1104,10 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.extents" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "sketch.get" &&
+        typeof value.query.id === "string") ||
+      (value.query.query === "sketch.dimensions" &&
+        typeof value.query.sketchId === "string") ||
+      (value.query.query === "sketch.dimension.get" &&
         typeof value.query.id === "string") ||
       (value.query.query === "body.generatedReferences" &&
         typeof value.query.bodyId === "string") ||
@@ -987,6 +1129,35 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
 function isCadOp(value: unknown): value is CadOp {
   if (!isRecord(value)) {
     return false;
+  }
+
+  if (value.op === "parameter.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.value === "number" &&
+      Number.isFinite(value.value) &&
+      (value.description === undefined || typeof value.description === "string")
+    );
+  }
+
+  if (value.op === "parameter.update") {
+    return (
+      typeof value.id === "string" &&
+      (value.value === undefined ||
+        (typeof value.value === "number" && Number.isFinite(value.value))) &&
+      (value.description === undefined ||
+        typeof value.description === "string") &&
+      (value.value !== undefined || value.description !== undefined)
+    );
+  }
+
+  if (value.op === "parameter.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "parameter.delete") {
+    return typeof value.id === "string";
   }
 
   if (value.op === "scene.createBox") {
@@ -1158,6 +1329,29 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "sketch.dimension.create") {
+    return (
+      isOptionalString(value.id) &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      isSketchDimensionValueInput(value)
+    );
+  }
+
+  if (value.op === "sketch.dimension.update") {
+    return typeof value.id === "string" && isSketchDimensionValueInput(value);
+  }
+
+  if (value.op === "sketch.dimension.rename") {
+    return typeof value.id === "string" && typeof value.name === "string";
+  }
+
+  if (value.op === "sketch.dimension.delete") {
+    return typeof value.id === "string";
+  }
+
   if (value.op === "feature.extrude") {
     return (
       isOptionalString(value.id) &&
@@ -1297,6 +1491,30 @@ function isSketchEntity(value: unknown): boolean {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isSketchDimensionTarget(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    ((value.entityKind === "rectangle" &&
+      (value.role === "width" || value.role === "height")) ||
+      (value.entityKind === "circle" && value.role === "radius"))
+  );
+}
+
+function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
+  const hasLiteral = value.value !== undefined;
+  const hasParameter = value.parameterId !== undefined;
+
+  if (hasLiteral === hasParameter) {
+    return false;
+  }
+
+  return hasLiteral
+    ? typeof value.value === "number" &&
+        Number.isFinite(value.value) &&
+        value.value > 0
+    : typeof value.parameterId === "string";
 }
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {

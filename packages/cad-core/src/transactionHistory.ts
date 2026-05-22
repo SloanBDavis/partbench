@@ -3,6 +3,7 @@ import type {
   CadObjectRef,
   CadOperationSummary,
   CadSemanticDiffSummary,
+  CadSketchDimensionRef,
   CadSketchEntityRef,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
@@ -10,6 +11,7 @@ import type {
   DocumentUnitUpdateMode,
   FeatureSemanticDiff,
   ReferenceSemanticDiff,
+  ParameterSemanticDiff,
   ObjectId,
   SemanticDiff,
   SketchEntityId,
@@ -78,6 +80,10 @@ function createOperationSummaries(
   let deletedFeatureIndex = 0;
   let createdNamedReferenceIndex = 0;
   let deletedNamedReferenceIndex = 0;
+  let createdParameterIndex = 0;
+  let deletedParameterIndex = 0;
+  let createdSketchDimensionIndex = 0;
+  let deletedSketchDimensionIndex = 0;
 
   return transaction.ops.map((op) => {
     const createdRef =
@@ -115,8 +121,59 @@ function createOperationSummaries(
             deletedNamedReferenceIndex++
           ]
         : undefined;
+    const createdParameterRef =
+      op.op === "parameter.create"
+        ? transaction.diff.parameters?.created?.[createdParameterIndex++]
+        : undefined;
+    const deletedParameterRef =
+      op.op === "parameter.delete"
+        ? transaction.diff.parameters?.deleted?.[deletedParameterIndex++]
+        : undefined;
+    const createdSketchDimensionRef =
+      op.op === "sketch.dimension.create"
+        ? transaction.diff.sketchDimensions?.created?.[
+            createdSketchDimensionIndex++
+          ]
+        : undefined;
+    const deletedSketchDimensionRef =
+      op.op === "sketch.dimension.delete"
+        ? transaction.diff.sketchDimensions?.deleted?.[
+            deletedSketchDimensionIndex++
+          ]
+        : undefined;
 
     switch (op.op) {
+      case "parameter.create": {
+        const parameterId = op.id ?? createdParameterRef?.id;
+
+        return createParameterOperationSummary({
+          op: op.op,
+          label: `Create parameter ${parameterId ?? "with generated ID"}`,
+          parameterId
+        });
+      }
+
+      case "parameter.update":
+        return createParameterOperationSummary({
+          op: op.op,
+          label: `Update parameter ${op.id}`,
+          parameterId: op.id
+        });
+
+      case "parameter.rename":
+        return createParameterOperationSummary({
+          op: op.op,
+          label: `Rename parameter ${op.id}`,
+          parameterId: op.id
+        });
+
+      case "parameter.delete":
+        return createParameterOperationSummary({
+          op: op.op,
+          label: `Delete parameter ${op.id}`,
+          parameterId: op.id ?? deletedParameterRef?.id
+        });
+
       case "document.updateUnits":
         return {
           op: op.op,
@@ -330,6 +387,39 @@ function createOperationSummaries(
           )
         });
 
+      case "sketch.dimension.create": {
+        const dimensionId = op.id ?? createdSketchDimensionRef?.id;
+
+        return createSketchDimensionOperationSummary({
+          op: op.op,
+          label: `Create sketch dimension ${dimensionId ?? "with generated ID"} on ${op.sketchId}/${op.entityId}`,
+          sketchDimensionId: dimensionId,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId
+        });
+      }
+
+      case "sketch.dimension.update":
+        return createSketchDimensionOperationSummary({
+          op: op.op,
+          label: `Update sketch dimension ${op.id}`,
+          sketchDimensionId: op.id
+        });
+
+      case "sketch.dimension.rename":
+        return createSketchDimensionOperationSummary({
+          op: op.op,
+          label: `Rename sketch dimension ${op.id}`,
+          sketchDimensionId: op.id
+        });
+
+      case "sketch.dimension.delete":
+        return createSketchDimensionOperationSummary({
+          op: op.op,
+          label: `Delete sketch dimension ${op.id}`,
+          sketchDimensionId: op.id ?? deletedSketchDimensionRef?.id
+        });
+
       case "feature.extrude": {
         const featureId = op.id ?? createdFeatureRef?.id;
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
@@ -442,6 +532,16 @@ function createObjectOperationSummary(
   };
 }
 
+function createParameterOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.parameterId ? { parameterId: summary.parameterId } : {})
+  };
+}
+
 function createSketchOperationSummary(
   summary: CadOperationSummary
 ): CadOperationSummary {
@@ -457,6 +557,22 @@ function createSketchOperationSummary(
       : {}),
     ...(summary.featureId ? { featureId: summary.featureId } : {}),
     ...(summary.bodyId ? { bodyId: summary.bodyId } : {})
+  };
+}
+
+function createSketchDimensionOperationSummary(
+  summary: CadOperationSummary
+): CadOperationSummary {
+  return {
+    op: summary.op,
+    label: summary.label,
+    ...(summary.sketchDimensionId
+      ? { sketchDimensionId: summary.sketchDimensionId }
+      : {}),
+    ...(summary.sketchId ? { sketchId: summary.sketchId } : {}),
+    ...(summary.sketchEntityId
+      ? { sketchEntityId: summary.sketchEntityId }
+      : {})
   };
 }
 
@@ -550,6 +666,18 @@ function createSemanticDiffSummary(diff: SemanticDiff): CadSemanticDiffSummary {
           references: cloneReferenceSemanticDiff(diff.references)
         }
       : {}),
+    ...(diff.parameters
+      ? {
+          parameters: cloneParameterSemanticDiff(diff.parameters)
+        }
+      : {}),
+    ...(diff.sketchDimensions
+      ? {
+          sketchDimensions: cloneSketchDimensionSemanticDiff(
+            diff.sketchDimensions
+          )
+        }
+      : {}),
     ...(diff.document
       ? {
           document: {
@@ -579,6 +707,32 @@ function cloneReferenceSemanticDiff(
   return {
     ...(diff.namedCreated ? { namedCreated: [...diff.namedCreated] } : {}),
     ...(diff.namedDeleted ? { namedDeleted: [...diff.namedDeleted] } : {})
+  };
+}
+
+function cloneParameterSemanticDiff(
+  diff: ParameterSemanticDiff
+): ParameterSemanticDiff {
+  return {
+    ...(diff.created ? { created: [...diff.created] } : {}),
+    ...(diff.modified ? { modified: [...diff.modified] } : {}),
+    ...(diff.deleted ? { deleted: [...diff.deleted] } : {})
+  };
+}
+
+function cloneSketchDimensionSemanticDiff(diff: {
+  readonly created?: readonly CadSketchDimensionRef[];
+  readonly modified?: readonly CadSketchDimensionRef[];
+  readonly deleted?: readonly CadSketchDimensionRef[];
+}): {
+  readonly created?: readonly CadSketchDimensionRef[];
+  readonly modified?: readonly CadSketchDimensionRef[];
+  readonly deleted?: readonly CadSketchDimensionRef[];
+} {
+  return {
+    ...(diff.created ? { created: [...diff.created] } : {}),
+    ...(diff.modified ? { modified: [...diff.modified] } : {}),
+    ...(diff.deleted ? { deleted: [...diff.deleted] } : {})
   };
 }
 
