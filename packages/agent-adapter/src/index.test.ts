@@ -2349,5 +2349,36 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
         })
       ]
     });
+
+    expect(
+      adapter.query({
+        requestId: "agent_req_sketch_evaluation",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.evaluation",
+      sketchId: "sketch_1",
+      sketchName: "Profile",
+      plane: "XY",
+      status: "healthy",
+      drivenEntityIds: ["rect_1", "line_1"],
+      dimensionCount: 2,
+      issueCount: 0,
+      dimensions: [
+        expect.objectContaining({
+          id: "dim_w",
+          effectiveValue: 5
+        }),
+        expect.objectContaining({
+          id: "dim_line_length",
+          effectiveValue: 6
+        })
+      ]
+    });
   });
 });

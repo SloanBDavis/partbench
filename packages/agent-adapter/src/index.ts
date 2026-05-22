@@ -36,7 +36,11 @@ import type {
   ParameterId,
   SketchSnapshot,
   SketchDimensionEntry,
+  SketchDimensionIssue,
+  SketchDimensionStatus,
   SketchDimensionId,
+  SketchEntityId,
+  SketchPlane,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
   DocumentUnits,
@@ -171,6 +175,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
+  | CadOpsAgentSketchEvaluationQueryResponse
   | CadOpsAgentSketchDimensionsQueryResponse
   | CadOpsAgentSketchDimensionGetQueryResponse
   | CadOpsAgentBodyGeneratedReferencesQueryResponse
@@ -316,6 +321,24 @@ export interface CadOpsAgentSketchGetQueryResponse {
   readonly sketch: SketchSnapshot;
 }
 
+export interface CadOpsAgentSketchEvaluationQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "sketch.evaluation";
+  readonly sketchId: string;
+  readonly sketchName: string;
+  readonly plane: SketchPlane;
+  readonly status: SketchDimensionStatus;
+  readonly drivenEntityCount: number;
+  readonly drivenEntityIds: readonly SketchEntityId[];
+  readonly dimensionCount: number;
+  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly issueCount: number;
+  readonly issues: readonly SketchDimensionIssue[];
+}
+
 export interface CadOpsAgentSketchDimensionsQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -425,6 +448,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.measurements"
     | "project.extents"
     | "sketch.get"
+    | "sketch.evaluation"
     | "sketch.dimensions"
     | "sketch.dimension.get"
     | "body.generatedReferences"
@@ -908,6 +932,26 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "sketch.evaluation") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      sketchId: response.sketchId,
+      sketchName: response.sketchName,
+      plane: response.plane,
+      status: response.status,
+      drivenEntityCount: response.drivenEntityCount,
+      drivenEntityIds: response.drivenEntityIds,
+      dimensionCount: response.dimensionCount,
+      dimensions: response.dimensions,
+      issueCount: response.issueCount,
+      issues: response.issues
+    };
+  }
+
   if (response.query === "sketch.dimension.get") {
     return {
       ok: true,
@@ -1110,6 +1154,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "sketch.get" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "sketch.evaluation" &&
+        typeof value.query.sketchId === "string") ||
       (value.query.query === "sketch.dimensions" &&
         typeof value.query.sketchId === "string") ||
       (value.query.query === "sketch.dimension.get" &&

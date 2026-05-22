@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CadBatch, CadQueryRequest } from "@web-cad/cad-protocol";
+import type {
+  CadBatch,
+  CadQueryRequest,
+  SketchDimensionSnapshot,
+  SketchEntitySnapshot
+} from "@web-cad/cad-protocol";
 import {
   AsyncCadCommandExecutor,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -11068,6 +11073,44 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     });
+
+    const evaluation = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+    });
+
+    expect(evaluation).toMatchObject({
+      ok: true,
+      query: "sketch.evaluation",
+      sketchId: "sketch_1",
+      sketchName: "Profile",
+      plane: "XY",
+      status: "healthy",
+      drivenEntityCount: 2,
+      drivenEntityIds: ["rect_1", "circle_1"],
+      dimensionCount: 3,
+      issueCount: 0,
+      dimensions: expect.arrayContaining([
+        expect.objectContaining({
+          id: "dim_w",
+          target: { entityKind: "rectangle", role: "width" },
+          status: "healthy",
+          effectiveValue: 6
+        }),
+        expect.objectContaining({
+          id: "dim_h",
+          target: { entityKind: "rectangle", role: "height" },
+          status: "healthy",
+          effectiveValue: 5
+        }),
+        expect.objectContaining({
+          id: "dim_r",
+          target: { entityKind: "circle", role: "radius" },
+          status: "healthy",
+          effectiveValue: 3
+        })
+      ])
+    });
   });
 
   it("uses line length dimensions to resize lines around their midpoint", () => {
@@ -11208,6 +11251,25 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(
       engine.executeQuery({
         version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.evaluation",
+      status: "healthy",
+      drivenEntityIds: ["line_1"],
+      dimensions: [
+        expect.objectContaining({
+          id: "dim_line_length",
+          target: { entityKind: "line", role: "length" },
+          effectiveValue: 2
+        })
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
         query: { query: "project.health" }
       })
     ).toMatchObject({
@@ -11271,6 +11333,24 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         status: "healthy",
         effectiveValue: 6
       }
+    });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.evaluation",
+      status: "healthy",
+      sketchId: "sketch_1",
+      dimensions: [
+        expect.objectContaining({
+          id: "dim_line_length",
+          effectiveValue: 6
+        })
+      ],
+      issueCount: 0
     });
     expect(
       restored.executeQuery({
@@ -11395,6 +11475,142 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       error: {
         code: "INVALID_SKETCH_DIMENSION",
         sketchEntityId: "line_1"
+      }
+    });
+  });
+
+  it("reports sketch evaluation issues for invalid or stale dimension state", () => {
+    const entities = new Map<string, SketchEntitySnapshot>([
+      [
+        "line_zero",
+        {
+          id: "line_zero",
+          kind: "line",
+          start: [1, 1],
+          end: [1, 1]
+        }
+      ],
+      [
+        "line_1",
+        {
+          id: "line_1",
+          kind: "line",
+          start: [0, 0],
+          end: [1, 0]
+        }
+      ]
+    ]);
+    const sketchDimensions = new Map<string, SketchDimensionSnapshot>([
+      [
+        "dim_missing_entity",
+        {
+          id: "dim_missing_entity",
+          name: "Missing entity",
+          sketchId: "sketch_1",
+          entityId: "missing_entity",
+          target: { entityKind: "rectangle", role: "width" },
+          valueSource: { type: "literal", value: 2 }
+        }
+      ],
+      [
+        "dim_missing_parameter",
+        {
+          id: "dim_missing_parameter",
+          name: "Missing parameter",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          target: { entityKind: "line", role: "length" },
+          valueSource: { type: "parameter", parameterId: "missing_parameter" }
+        }
+      ],
+      [
+        "dim_unsupported_target",
+        {
+          id: "dim_unsupported_target",
+          name: "Unsupported target",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          target: { entityKind: "rectangle", role: "width" },
+          valueSource: { type: "literal", value: 1 }
+        }
+      ],
+      [
+        "dim_zero_line",
+        {
+          id: "dim_zero_line",
+          name: "Zero line",
+          sketchId: "sketch_1",
+          entityId: "line_zero",
+          target: { entityKind: "line", role: "length" },
+          valueSource: { type: "literal", value: 1 }
+        }
+      ]
+    ]);
+    const engine = new CadEngine(
+      createCadDocument(
+        [],
+        "mm",
+        [
+          [
+            "sketch_1",
+            {
+              id: "sketch_1",
+              name: "Profile",
+              plane: "XY",
+              entities
+            }
+          ]
+        ],
+        [],
+        sketchDimensions
+      )
+    );
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.evaluation",
+      status: "missing-target",
+      drivenEntityCount: 3,
+      issueCount: 4,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_ENTITY_NOT_FOUND",
+          sketchEntityId: "missing_entity"
+        }),
+        expect.objectContaining({
+          code: "PARAMETER_NOT_FOUND",
+          parameterId: "missing_parameter"
+        }),
+        expect.objectContaining({
+          code: "UNSUPPORTED_TARGET",
+          sketchEntityId: "line_1",
+          received: "rectangle.width"
+        }),
+        expect.objectContaining({
+          code: "INVALID_VALUE",
+          sketchEntityId: "line_zero",
+          expected: "line with a non-zero direction",
+          received: "zero-length line"
+        })
+      ])
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "missing_sketch" }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "sketch.evaluation",
+      error: {
+        code: "SKETCH_NOT_FOUND",
+        sketchId: "missing_sketch"
       }
     });
   });

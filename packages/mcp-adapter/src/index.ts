@@ -21,6 +21,7 @@ export type CadMcpToolName =
   | "cad.body_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
+  | "cad.sketch_evaluation"
   | "cad.sketch_dimensions"
   | "cad.sketch_dimension_get"
   | "cad.body_generated_references"
@@ -163,6 +164,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.sketch_get") {
       return this.#callSketchGet(request);
+    }
+
+    if (request.name === "cad.sketch_evaluation") {
+      return this.#callSketchEvaluation(request);
     }
 
     if (request.name === "cad.sketch_dimensions") {
@@ -524,6 +529,31 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "sketch.dimensions",
+            sketchId: request.arguments.sketchId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callSketchEvaluation(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isSketchDimensionsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.sketch_evaluation expects arguments shaped as { sketchId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.evaluation",
             sketchId: request.arguments.sketchId
           }
         }
@@ -906,6 +936,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         sketchId: {
           type: "string",
           description: "Sketch ID whose dimensions should be listed."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.sketch_evaluation",
+    description:
+      "Returns derived evaluator status for source-of-truth dimensions in one sketch.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["sketchId"],
+      properties: {
+        sketchId: {
+          type: "string",
+          description: "Sketch ID whose dimension evaluation should be read."
         }
       }
     }

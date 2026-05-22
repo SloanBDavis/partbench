@@ -333,6 +333,11 @@ endpoints symmetrically to match the requested length. A line length dimension
 cannot drive a zero-length line because the direction is ambiguous. This is not a
 general sketch solver, expression system, or constraint graph.
 
+The `sketch.evaluation` query is derived from these persisted parameter,
+dimension, and sketch records. It reports current evaluator status, driven
+dimension entries, effective values, driven entity IDs, and structured issues,
+but none of that query output is saved in the project file.
+
 Current authored features are source-of-truth V3 document data:
 
 ```ts
@@ -661,10 +666,10 @@ That format should include a migration from older accepted versions, not silent
 shape guessing.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
-became persisted source-of-truth data. Query-only solver summaries, dependency
-health, generated-reference labels, derived measurements, and renderer display
-frames should remain rebuildable query/cache data and should not trigger a
-format version by themselves.
+became persisted source-of-truth data. Query-only solver/evaluator summaries
+such as `sketch.evaluation`, dependency health, generated-reference labels,
+derived measurements, and renderer display frames should remain rebuildable
+query/cache data and should not trigger a format version by themselves.
 
 ## Rebuildable Cache
 
@@ -686,6 +691,7 @@ These are not source of truth and must not be required to load a project:
 - read-only project sketch query formatting
 - read-only generated body/face/edge/vertex reference query results
 - read-only generated reference resolver query results
+- read-only sketch evaluator query results
 - read-only generated reference labels and descriptions
 - read-only generated reference eligibility metadata
 - read-only generated reference measurement query results

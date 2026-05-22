@@ -930,6 +930,29 @@ export class CadEngine {
         };
       }
 
+      case "sketch.evaluation": {
+        const sketch = this.#document.sketches.get(request.query.sketchId);
+
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.sketchId}`,
+              sketchId: request.query.sketchId
+            }
+          };
+        }
+
+        return createSketchEvaluationQueryResponse(
+          this.#document,
+          sketch,
+          request.version
+        );
+      }
+
       case "sketch.dimension.get": {
         const dimension = this.#document.sketchDimensions.get(request.query.id);
 
@@ -2398,6 +2421,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "object.measurements":
     case "project.extents":
     case "sketch.get":
+    case "sketch.evaluation":
     case "sketch.dimensions":
     case "sketch.dimension.get":
     case "body.generatedReferences":
@@ -2435,6 +2459,7 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.get":
     case "sketch.dimension.get":
       return typeof value.id === "string";
+    case "sketch.evaluation":
     case "sketch.dimensions":
       return typeof value.sketchId === "string";
     case "body.generatedReferences":
@@ -5232,6 +5257,23 @@ function createSketchDimensionEntry(
     });
   }
 
+  if (
+    entity?.kind === "line" &&
+    dimension.target.entityKind === "line" &&
+    getLineLength(entity) <= 0
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message:
+        "Line length dimension cannot evaluate a zero-length line because the direction is ambiguous.",
+      sketchId: dimension.sketchId,
+      sketchEntityId: dimension.entityId,
+      sketchDimensionId: dimension.id,
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
   if (dimension.valueSource.type === "parameter" && !parameter) {
     issues.push({
       code: "PARAMETER_NOT_FOUND",
@@ -5258,6 +5300,39 @@ function createSketchDimensionEntry(
     ...(effectiveValue !== undefined
       ? { effectiveValue: cleanMeasurementNumber(effectiveValue) }
       : {})
+  };
+}
+
+function createSketchEvaluationQueryResponse(
+  document: CadDocument,
+  sketch: Sketch,
+  cadOpsVersion: CadQueryRequest["version"]
+): Extract<
+  CadQueryResponse,
+  { readonly ok: true; readonly query: "sketch.evaluation" }
+> {
+  const dimensions = [...document.sketchDimensions.values()]
+    .filter((dimension) => dimension.sketchId === sketch.id)
+    .map((dimension) => createSketchDimensionEntry(document, dimension));
+  const issues = dimensions.flatMap((dimension) => dimension.issues);
+  const drivenEntityIds = [
+    ...new Set(dimensions.map((dimension) => dimension.entityId))
+  ];
+
+  return {
+    ok: true,
+    query: "sketch.evaluation",
+    cadOpsVersion,
+    sketchId: sketch.id,
+    sketchName: sketch.name,
+    plane: sketch.plane,
+    status: getSketchDimensionStatus(issues),
+    drivenEntityCount: drivenEntityIds.length,
+    drivenEntityIds,
+    dimensionCount: dimensions.length,
+    dimensions,
+    issueCount: issues.length,
+    issues
   };
 }
 

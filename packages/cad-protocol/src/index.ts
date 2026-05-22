@@ -689,6 +689,7 @@ export type CadQueryKind =
   | "object.measurements"
   | "project.extents"
   | "sketch.get"
+  | "sketch.evaluation"
   | "sketch.dimensions"
   | "sketch.dimension.get"
   | "body.generatedReferences"
@@ -711,6 +712,7 @@ export type CadQuery =
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
   | SketchGetQuery
+  | SketchEvaluationQuery
   | SketchDimensionsQuery
   | SketchDimensionGetQuery
   | BodyGeneratedReferencesQuery
@@ -767,6 +769,11 @@ export interface ProjectExtentsQuery {
 export interface SketchGetQuery {
   readonly query: "sketch.get";
   readonly id: SketchId;
+}
+
+export interface SketchEvaluationQuery {
+  readonly query: "sketch.evaluation";
+  readonly sketchId: SketchId;
 }
 
 export interface SketchDimensionsQuery {
@@ -1540,6 +1547,7 @@ export type CadQueryResponse =
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
   | SketchGetQueryResponse
+  | SketchEvaluationQueryResponse
   | SketchDimensionsQueryResponse
   | SketchDimensionGetQueryResponse
   | BodyGeneratedReferencesQueryResponse
@@ -1661,6 +1669,22 @@ export interface SketchGetQueryResponse {
   readonly query: "sketch.get";
   readonly cadOpsVersion: CadOpsVersion;
   readonly sketch: SketchSnapshot;
+}
+
+export interface SketchEvaluationQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.evaluation";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketchId: SketchId;
+  readonly sketchName: string;
+  readonly plane: SketchPlane;
+  readonly status: SketchDimensionStatus;
+  readonly drivenEntityCount: number;
+  readonly drivenEntityIds: readonly SketchEntityId[];
+  readonly dimensionCount: number;
+  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly issueCount: number;
+  readonly issues: readonly SketchDimensionIssue[];
 }
 
 export interface SketchDimensionsQueryResponse {

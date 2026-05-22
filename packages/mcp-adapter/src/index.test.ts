@@ -18,6 +18,7 @@ describe("mcp-adapter", () => {
       "cad.project_extents",
       "cad.sketch_get",
       "cad.sketch_dimensions",
+      "cad.sketch_evaluation",
       "cad.sketch_dimension_get",
       "cad.body_generated_references",
       "cad.resolve_generated_reference",
@@ -2088,6 +2089,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.sketch_dimensions" },
+          { name: "cad.sketch_evaluation" },
           { name: "cad.sketch_dimension_get" },
           { name: "cad.body_generated_references" },
           { name: "cad.resolve_generated_reference" },
@@ -2338,6 +2340,35 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
             id: "dim_line_length",
             target: { entityKind: "line", role: "length" },
             status: "healthy",
+            effectiveValue: 10
+          })
+        ]
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.sketch_evaluation",
+        requestId: "mcp_req_sketch_evaluation",
+        arguments: { sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      toolName: "cad.sketch_evaluation",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "sketch.evaluation",
+        sketchId: "sketch_1",
+        sketchName: "Profile",
+        plane: "XY",
+        status: "healthy",
+        drivenEntityIds: ["circle_1", "line_1"],
+        dimensionCount: 2,
+        issueCount: 0,
+        dimensions: [
+          expect.objectContaining({ id: "dim_r", effectiveValue: 4 }),
+          expect.objectContaining({
+            id: "dim_line_length",
             effectiveValue: 10
           })
         ]

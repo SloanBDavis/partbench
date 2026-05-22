@@ -269,7 +269,11 @@ Implemented evaluator slice:
 - the evaluator preserves the current line midpoint and direction, then moves
   both endpoints symmetrically to match the requested length;
 - zero-length lines reject line-length dimensions with a structured validation
-  error because the direction is ambiguous.
+  error because the direction is ambiguous;
+- `sketch.evaluation` exposes the current direct evaluator as read-only query
+  data for human UI, scripts, agents, and MCP callers. It reports the sketch
+  identity, overall dimension status, driven dimensions, driven entity IDs,
+  effective values, and structured issues without persisting solver output.
 
 Non-goals:
 
