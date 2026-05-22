@@ -166,7 +166,7 @@ Current Partbench can:
 - add/edit/delete point, line, rectangle, and circle sketch entities;
 - create and edit source-of-truth document parameters through CADOps;
 - create and edit driving sketch dimensions for rectangle width, rectangle
-  height, and circle radius through CADOps;
+  height, circle radius, and line length through CADOps;
 - create rectangle/circle extrude features as new bodies;
 - edit authored extrude depth and side;
 - edit source rectangle/circle profile values through `sketch.updateEntity`;
@@ -187,8 +187,8 @@ The repo is a completed V2 feature/body foundation, not yet a full CAD system.
 Current limitations:
 
 - There is no general sketch solver or constraint system.
-- Sketch dimensions currently drive only rectangle width/height and circle radius
-  through a direct evaluator path.
+- Sketch dimensions currently drive only rectangle width/height, circle radius,
+  and line length through a direct evaluator path.
 - There is no parameter expression language.
 - There is no broad feature graph beyond current authored sketch extrudes and
   narrow boolean add/cut result features.
@@ -261,6 +261,15 @@ Expected deliverables:
   unsolved, and unsupported cases where practical;
 - no UI-only solver state;
 - tests for deterministic inputs/outputs and failure shapes.
+
+Implemented evaluator slice:
+
+- line length dimensions are supported through the existing sketch dimension
+  lifecycle commands;
+- the evaluator preserves the current line midpoint and direction, then moves
+  both endpoints symmetrically to match the requested length;
+- zero-length lines reject line-length dimensions with a structured validation
+  error because the direction is ambiguous.
 
 Non-goals:
 

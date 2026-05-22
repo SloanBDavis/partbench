@@ -2829,6 +2829,10 @@ function isSupportedSketchDimensionTarget(
     return target.entityKind === "circle" && target.role === "radius";
   }
 
+  if (entity.kind === "line") {
+    return target.entityKind === "line" && target.role === "length";
+  }
+
   return false;
 }
 
@@ -2908,6 +2912,10 @@ function applySketchDimensionValue(
       ...entity,
       radius: value
     };
+  }
+
+  if (entity.kind === "line" && dimension.target.entityKind === "line") {
+    return applyLineLengthDimensionValue(entity, dimension, value, opIndex);
   }
 
   throwValidationError({
@@ -3027,6 +3035,10 @@ function getDimensionTargetValue(
     return cleanMeasurementNumber(entity.radius);
   }
 
+  if (entity.kind === "line" && dimension.target.entityKind === "line") {
+    return getLineLength(entity);
+  }
+
   throwValidationError({
     code: "INVALID_SKETCH_DIMENSION",
     message: "Sketch dimension target no longer matches the target entity.",
@@ -3038,6 +3050,58 @@ function getDimensionTargetValue(
     expected: `target for ${entity.kind}`,
     received: `${dimension.target.entityKind}.${dimension.target.role}`
   });
+}
+
+function applyLineLengthDimensionValue(
+  entity: Extract<SketchEntity, { readonly kind: "line" }>,
+  dimension: SketchDimension,
+  value: number,
+  opIndex: number
+): SketchEntity {
+  const currentLength = getLineLength(entity);
+
+  if (currentLength <= 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_DIMENSION",
+      message:
+        "Line length dimension cannot update a zero-length line because the direction is ambiguous.",
+      opIndex,
+      sketchId: dimension.sketchId,
+      sketchEntityId: dimension.entityId,
+      sketchDimensionId: dimension.id,
+      path: operationPath(opIndex, "target"),
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  const center: Vec2 = [
+    (entity.start[0] + entity.end[0]) / 2,
+    (entity.start[1] + entity.end[1]) / 2
+  ];
+  const ux = (entity.end[0] - entity.start[0]) / currentLength;
+  const uy = (entity.end[1] - entity.start[1]) / currentLength;
+  const half = value / 2;
+
+  return {
+    ...entity,
+    start: [
+      cleanMeasurementNumber(center[0] - ux * half),
+      cleanMeasurementNumber(center[1] - uy * half)
+    ],
+    end: [
+      cleanMeasurementNumber(center[0] + ux * half),
+      cleanMeasurementNumber(center[1] + uy * half)
+    ]
+  };
+}
+
+function getLineLength(
+  entity: Extract<SketchEntity, { readonly kind: "line" }>
+): number {
+  return cleanMeasurementNumber(
+    Math.hypot(entity.end[0] - entity.start[0], entity.end[1] - entity.start[1])
+  );
 }
 
 function updateSketchEntityAndDependents(
@@ -8166,14 +8230,17 @@ function validateSketchDimensionTargetShape(
       (value.role === "width" || value.role === "height")) ||
     (entityKind === "circle" &&
       value.entityKind === "circle" &&
-      value.role === "radius");
+      value.role === "radius") ||
+    (entityKind === "line" &&
+      value.entityKind === "line" &&
+      value.role === "length");
 
   if (!valid) {
     addProjectIssue(
       issues,
       "INVALID_SKETCH_DIMENSION",
       path,
-      "Sketch dimension target must match a supported rectangle width/height or circle radius role."
+      "Sketch dimension target must match a supported rectangle width/height, circle radius, or line length role."
     );
   }
 
@@ -8274,7 +8341,20 @@ function getImportedSketchDimensionTargetValue(
     return typeof value === "number" ? value : undefined;
   }
 
-  return typeof entity.radius === "number" ? entity.radius : undefined;
+  if (target.entityKind === "circle") {
+    return typeof entity.radius === "number" ? entity.radius : undefined;
+  }
+
+  if (isRecord(entity) && isVec2(entity.start) && isVec2(entity.end)) {
+    return cleanMeasurementNumber(
+      Math.hypot(
+        entity.end[0] - entity.start[0],
+        entity.end[1] - entity.start[1]
+      )
+    );
+  }
+
+  return undefined;
 }
 
 function collectValidExtrudeFeatureByBodyId(
@@ -10264,7 +10344,8 @@ function isSketchDimensionTarget(
     isRecord(value) &&
     ((value.entityKind === "rectangle" &&
       (value.role === "width" || value.role === "height")) ||
-      (value.entityKind === "circle" && value.role === "radius"))
+      (value.entityKind === "circle" && value.role === "radius") ||
+      (value.entityKind === "line" && value.role === "length"))
   );
 }
 

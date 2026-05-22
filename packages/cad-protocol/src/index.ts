@@ -91,7 +91,8 @@ export type SketchDimensionIssueCode =
 
 export type SketchDimensionTarget =
   | SketchRectangleDimensionTarget
-  | SketchCircleDimensionTarget;
+  | SketchCircleDimensionTarget
+  | SketchLineDimensionTarget;
 
 export interface SketchRectangleDimensionTarget {
   readonly entityKind: "rectangle";
@@ -101,6 +102,11 @@ export interface SketchRectangleDimensionTarget {
 export interface SketchCircleDimensionTarget {
   readonly entityKind: "circle";
   readonly role: "radius";
+}
+
+export interface SketchLineDimensionTarget {
+  readonly entityKind: "line";
+  readonly role: "length";
 }
 
 export type SketchDimensionValueSource =

@@ -286,6 +286,51 @@ describe("cad-protocol", () => {
     expect(batch.ops).toHaveLength(1);
   });
 
+  it("types V3 parameter and sketch dimension commands", () => {
+    const ops: CadOp[] = [
+      {
+        op: "parameter.create",
+        id: "param_line",
+        name: "Line length",
+        value: 5
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_line_length",
+        name: "Line length dimension",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        parameterId: "param_line"
+      },
+      {
+        op: "sketch.dimension.update",
+        id: "dim_line_length",
+        value: 8
+      },
+      {
+        op: "sketch.dimension.rename",
+        id: "dim_line_length",
+        name: "Overall line length"
+      },
+      { op: "sketch.dimension.delete", id: "dim_line_length" },
+      { op: "parameter.delete", id: "param_line" }
+    ];
+
+    expect(ops.map((op) => op.op)).toEqual([
+      "parameter.create",
+      "sketch.dimension.create",
+      "sketch.dimension.update",
+      "sketch.dimension.rename",
+      "sketch.dimension.delete",
+      "parameter.delete"
+    ]);
+    expect(ops[1]).toMatchObject({
+      op: "sketch.dimension.create",
+      target: { entityKind: "line", role: "length" }
+    });
+  });
+
   it("types rectangle-tool boolean commands with authored target body ids", () => {
     const cutOp: CadOp = {
       op: "feature.extrude",

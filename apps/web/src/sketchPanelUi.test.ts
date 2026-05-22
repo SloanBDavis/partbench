@@ -138,6 +138,12 @@ describe("sketch panel UI helpers", () => {
       center: [0, 0],
       radius: 3
     };
+    const line: SketchSnapshot["entities"][number] = {
+      id: "line_1",
+      kind: "line",
+      start: [0, 0],
+      end: [3, 4]
+    };
 
     expect(createSketchDimensionTargetOptions(rectangle)).toEqual([
       {
@@ -158,6 +164,13 @@ describe("sketch panel UI helpers", () => {
         currentValue: 3
       }
     ]);
+    expect(createSketchDimensionTargetOptions(line)).toEqual([
+      {
+        target: { entityKind: "line", role: "length" },
+        label: "Length",
+        currentValue: 5
+      }
+    ]);
     expect(
       createSketchDimensionTargetOptions({
         id: "point_1",
@@ -174,6 +187,12 @@ describe("sketch panel UI helpers", () => {
         role: "width"
       })
     ).toBe(4);
+    expect(
+      getSketchDimensionTargetValue(line, {
+        entityKind: "line",
+        role: "length"
+      })
+    ).toBe(5);
   });
 
   it("filters already-driven dimension targets and formats binding state", () => {

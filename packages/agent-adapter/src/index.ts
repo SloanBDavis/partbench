@@ -1503,7 +1503,8 @@ function isSketchDimensionTarget(value: unknown): boolean {
     isRecord(value) &&
     ((value.entityKind === "rectangle" &&
       (value.role === "width" || value.role === "height")) ||
-      (value.entityKind === "circle" && value.role === "radius"))
+      (value.entityKind === "circle" && value.role === "radius") ||
+      (value.entityKind === "line" && value.role === "length"))
   );
 }
 

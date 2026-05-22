@@ -304,6 +304,10 @@ SketchDimension {
         entityKind: "circle"
         role: "radius"
       }
+    | {
+        entityKind: "line"
+        role: "length"
+      }
   valueSource:
     | {
         type: "literal"
@@ -317,13 +321,17 @@ SketchDimension {
 ```
 
 Parameter names and sketch dimension names must be non-empty after trimming.
-Parameter values must be finite. Rectangle width, rectangle height, and circle
-radius dimensions must resolve to positive finite values. A parameter-bound
-dimension stores the parameter ID and evaluates through the current parameter
-value. Deleting a parameter that is still referenced by a sketch dimension fails
-with a structured validation error. Direct dimension evaluation updates the
-target sketch entity field deterministically through CADOps; it is not a general
-sketch solver, expression system, or constraint graph.
+Parameter values must be finite. Rectangle width, rectangle height, circle
+radius, and line length dimensions must resolve to positive finite values. A
+parameter-bound dimension stores the parameter ID and evaluates through the
+current parameter value. Deleting a parameter that is still referenced by a
+sketch dimension fails with a structured validation error. Direct dimension
+evaluation updates the target sketch entity deterministically through CADOps:
+rectangle and circle dimensions rewrite their numeric fields, while a line
+length dimension preserves the current line midpoint and direction and moves both
+endpoints symmetrically to match the requested length. A line length dimension
+cannot drive a zero-length line because the direction is ambiguous. This is not a
+general sketch solver, expression system, or constraint graph.
 
 Current authored features are source-of-truth V3 document data:
 
@@ -715,8 +723,8 @@ document.
 - authored feature profile kinds, depths, sides, and body IDs
 - named generated reference names and targets
 - parameter IDs, names, finite numeric values, and optional descriptions
-- sketch dimension IDs, names, source references, supported target roles, and
-  literal or parameter-bound value sources
+- sketch dimension IDs, names, source references, supported target roles
+  including line length, and literal or parameter-bound value sources
 - parameter-bound dimension references and positive resolved dimension values
 - transaction and semantic diff shape
 - optional transaction audit metadata

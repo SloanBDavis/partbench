@@ -132,6 +132,16 @@ export function createSketchDimensionTargetOptions(
     ];
   }
 
+  if (entity.kind === "line") {
+    return [
+      {
+        target: { entityKind: "line", role: "length" },
+        label: "Length",
+        currentValue: getLineLength(entity)
+      }
+    ];
+  }
+
   return [];
 }
 
@@ -159,6 +169,8 @@ export function getSketchDimensionTargetLabel(
       return "Height";
     case "radius":
       return "Radius";
+    case "length":
+      return "Length";
   }
 }
 
@@ -178,7 +190,22 @@ export function getSketchDimensionTargetValue(
     return entity.radius;
   }
 
+  if (entity.kind === "line" && target.entityKind === "line") {
+    return getLineLength(entity);
+  }
+
   return 1;
+}
+
+function getLineLength(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
+): number {
+  const length = Math.hypot(
+    entity.end[0] - entity.start[0],
+    entity.end[1] - entity.start[1]
+  );
+  const rounded = Math.round(length * 1e12) / 1e12;
+  return Object.is(rounded, -0) ? 0 : rounded;
 }
 
 export function formatSketchDimensionValueSource(

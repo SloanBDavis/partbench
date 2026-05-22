@@ -2259,7 +2259,20 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
             width: 2,
             height: 1
           },
+          {
+            op: "sketch.addLine",
+            sketchId: "sketch_1",
+            id: "line_1",
+            start: [0, 0],
+            end: [0, 2]
+          },
           { op: "parameter.create", id: "param_w", name: "Width", value: 5 },
+          {
+            op: "parameter.create",
+            id: "param_length",
+            name: "Length",
+            value: 6
+          },
           {
             op: "sketch.dimension.create",
             id: "dim_w",
@@ -2268,6 +2281,15 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
             entityId: "rect_1",
             target: { entityKind: "rectangle", role: "width" },
             parameterId: "param_w"
+          },
+          {
+            op: "sketch.dimension.create",
+            id: "dim_line_length",
+            name: "Line length",
+            sketchId: "sketch_1",
+            entityId: "line_1",
+            target: { entityKind: "line", role: "length" },
+            parameterId: "param_length"
           }
         ]
       }
@@ -2275,9 +2297,9 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
 
     expect(commit).toMatchObject({
       ok: true,
-      createdParameterIds: ["param_w"],
-      createdSketchDimensionIds: ["dim_w"],
-      modifiedSketchEntityIds: ["rect_1"]
+      createdParameterIds: ["param_w", "param_length"],
+      createdSketchDimensionIds: ["dim_w", "dim_line_length"],
+      modifiedSketchEntityIds: ["rect_1", "line_1"]
     });
 
     expect(
@@ -2292,8 +2314,11 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
     ).toMatchObject({
       ok: true,
       query: "parameter.list",
-      parameterCount: 1,
-      parameters: [{ id: "param_w", name: "Width", value: 5 }]
+      parameterCount: 2,
+      parameters: [
+        { id: "param_w", name: "Width", value: 5 },
+        { id: "param_length", name: "Length", value: 6 }
+      ]
     });
 
     expect(
@@ -2309,12 +2334,18 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
       ok: true,
       query: "sketch.dimensions",
       sketchId: "sketch_1",
-      dimensionCount: 1,
+      dimensionCount: 2,
       dimensions: [
         expect.objectContaining({
           id: "dim_w",
           status: "healthy",
           effectiveValue: 5
+        }),
+        expect.objectContaining({
+          id: "dim_line_length",
+          target: { entityKind: "line", role: "length" },
+          status: "healthy",
+          effectiveValue: 6
         })
       ]
     });

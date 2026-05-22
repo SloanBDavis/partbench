@@ -2252,7 +2252,20 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               center: [0, 0],
               radius: 1
             },
+            {
+              op: "sketch.addLine",
+              sketchId: "sketch_1",
+              id: "line_1",
+              start: [0, 0],
+              end: [3, 4]
+            },
             { op: "parameter.create", id: "param_r", name: "Radius", value: 4 },
+            {
+              op: "parameter.create",
+              id: "param_length",
+              name: "Length",
+              value: 10
+            },
             {
               op: "sketch.dimension.create",
               id: "dim_r",
@@ -2261,6 +2274,15 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               entityId: "circle_1",
               target: { entityKind: "circle", role: "radius" },
               parameterId: "param_r"
+            },
+            {
+              op: "sketch.dimension.create",
+              id: "dim_line_length",
+              name: "Line length",
+              sketchId: "sketch_1",
+              entityId: "line_1",
+              target: { entityKind: "line", role: "length" },
+              parameterId: "param_length"
             }
           ]
         }
@@ -2272,8 +2294,8 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
       isError: false,
       structuredContent: {
         ok: true,
-        createdParameterIds: ["param_r"],
-        createdSketchDimensionIds: ["dim_r"]
+        createdParameterIds: ["param_r", "param_length"],
+        createdSketchDimensionIds: ["dim_r", "dim_line_length"]
       }
     });
 
@@ -2305,12 +2327,18 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
       structuredContent: {
         ok: true,
         query: "sketch.dimensions",
-        dimensionCount: 1,
+        dimensionCount: 2,
         dimensions: [
           expect.objectContaining({
             id: "dim_r",
             status: "healthy",
             effectiveValue: 4
+          }),
+          expect.objectContaining({
+            id: "dim_line_length",
+            target: { entityKind: "line", role: "length" },
+            status: "healthy",
+            effectiveValue: 10
           })
         ]
       }

@@ -518,6 +518,10 @@ function isSupportedSketchDimensionTarget(
     return target.entityKind === "circle";
   }
 
+  if (entity.kind === "line") {
+    return target.entityKind === "line";
+  }
+
   return false;
 }
 

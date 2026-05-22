@@ -11070,6 +11070,335 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("uses line length dimensions to resize lines around their midpoint", () => {
+    const engine = new CadEngine();
+
+    const created = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+        {
+          op: "sketch.addLine",
+          sketchId: "sketch_1",
+          id: "line_1",
+          start: [0, 0],
+          end: [3, 4]
+        },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_line_length",
+          name: "Line length",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          target: { entityKind: "line", role: "length" },
+          value: 10
+        }
+      ]
+    });
+
+    expect(created).toMatchObject({
+      ok: true,
+      createdSketchDimensionIds: ["dim_line_length"],
+      modifiedSketchEntityIds: ["line_1"]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "line_1",
+            kind: "line",
+            start: [-1.5, -2],
+            end: [4.5, 6]
+          }
+        ]
+      }
+    });
+
+    const updated = engine.apply({
+      op: "sketch.dimension.update",
+      id: "dim_line_length",
+      value: 2
+    });
+
+    expect(updated.transaction.diff).toMatchObject({
+      sketchDimensions: {
+        modified: [
+          {
+            id: "dim_line_length",
+            target: { entityKind: "line", role: "length" }
+          }
+        ]
+      },
+      sketches: {
+        entitiesModified: [{ sketchId: "sketch_1", id: "line_1", kind: "line" }]
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "line_1",
+            kind: "line",
+            start: [0.9, 1.2],
+            end: [2.1, 2.8]
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.update",
+            id: "dim_line_length",
+            value: 6
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedSketchDimensionIds: ["dim_line_length"],
+      modifiedSketchEntityIds: ["line_1"]
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_line_length" }
+      })
+    ).toMatchObject({
+      ok: true,
+      dimension: { effectiveValue: 10 }
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_line_length" }
+      })
+    ).toMatchObject({
+      ok: true,
+      dimension: {
+        target: { entityKind: "line", role: "length" },
+        status: "healthy",
+        effectiveValue: 2
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      sketchDimensions: [
+        expect.objectContaining({
+          dimensionId: "dim_line_length",
+          target: { entityKind: "line", role: "length" },
+          effectiveValue: 2,
+          status: "healthy"
+        })
+      ]
+    });
+  });
+
+  it("round-trips line length dimensions through project JSON", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      { op: "parameter.create", id: "param_length", name: "Length", value: 6 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_line_length",
+        name: "Line length",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        parameterId: "param_length"
+      }
+    ]);
+
+    const project = engine.exportProject();
+    expect(project.document.sketchDimensions).toEqual([
+      expect.objectContaining({
+        id: "dim_line_length",
+        target: { entityKind: "line", role: "length" },
+        valueSource: { type: "parameter", parameterId: "param_length" }
+      })
+    ]);
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_line_length" }
+      })
+    ).toMatchObject({
+      ok: true,
+      dimension: {
+        target: { entityKind: "line", role: "length" },
+        status: "healthy",
+        effectiveValue: 6
+      }
+    });
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: [
+          {
+            id: "line_1",
+            kind: "line",
+            start: [0, -2],
+            end: [0, 4]
+          }
+        ]
+      }
+    });
+  });
+
+  it("rejects ambiguous or conflicting line length dimensions clearly", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_zero",
+        start: [1, 1],
+        end: [1, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [1, 0]
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_line_length",
+        name: "Line length",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        value: 2
+      }
+    ]);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.create",
+            id: "dim_zero_length",
+            name: "Zero length",
+            sketchId: "sketch_1",
+            entityId: "line_zero",
+            target: { entityKind: "line", role: "length" },
+            value: 3
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_DIMENSION",
+        sketchDimensionId: "dim_zero_length",
+        sketchEntityId: "line_zero",
+        expected: "line with a non-zero direction",
+        received: "zero-length line"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.create",
+            id: "dim_line_length_2",
+            name: "Duplicate line length",
+            sketchId: "sketch_1",
+            entityId: "line_1",
+            target: { entityKind: "line", role: "length" },
+            value: 4
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_DIMENSION",
+        sketchDimensionId: "dim_line_length_2",
+        sketchEntityId: "line_1"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.create",
+            id: "dim_bad_target",
+            name: "Bad target",
+            sketchId: "sketch_1",
+            entityId: "line_1",
+            target: { entityKind: "rectangle", role: "width" },
+            value: 4
+          }
+        ]
+      } as unknown as CadBatch)
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_DIMENSION",
+        sketchEntityId: "line_1"
+      }
+    });
+  });
+
   it("updates dependent extrude bodies when a driving dimension changes", () => {
     const engine = createRectangleExtrudeEngine();
 
