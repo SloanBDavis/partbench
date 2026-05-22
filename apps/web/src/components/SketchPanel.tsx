@@ -4,6 +4,7 @@ import type {
   CadFeatureSummary,
   SketchDimensionEntry,
   SketchDimensionTarget,
+  SketchEvaluationQueryResponse,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -28,12 +29,17 @@ import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
   createAvailableSketchDimensionTargetOptions,
+  formatSketchDimensionEffectiveValue,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   createParameterBindingOptions,
+  formatSketchEvaluationIssue,
+  formatSketchEvaluationStatus,
   formatSketchDimensionStatus,
   formatSketchDimensionValueSource,
+  getSketchDimensionStatusDisplay,
+  getSketchEvaluationStatusDisplay,
   getParameterDimensionUsageCount,
   getSketchDimensionTargetLabel,
   getSketchEntityOptionLabel,
@@ -57,6 +63,10 @@ export interface SketchPanelProps {
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
     readonly SketchDimensionEntry[]
+  >;
+  readonly sketchEvaluationsBySketchId: ReadonlyMap<
+    string,
+    SketchEvaluationQueryResponse
   >;
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
   readonly addTargetBodies?: readonly BooleanTargetBodyOption[];
@@ -135,6 +145,7 @@ export function SketchPanel({
   sketches,
   parameters,
   sketchDimensionsBySketchId,
+  sketchEvaluationsBySketchId,
   addTargetBodies = [],
   cutTargetBodies = [],
   displayStatuses,
@@ -202,13 +213,20 @@ export function SketchPanel({
   const selectedSketchDisplayStatus = selectedSketch
     ? displayStatuses?.get(selectedSketch.id)
     : undefined;
-  const selectedSketchDimensions = useMemo(
-    () =>
-      selectedSketch
-        ? (sketchDimensionsBySketchId.get(selectedSketch.id) ?? [])
-        : [],
-    [selectedSketch, sketchDimensionsBySketchId]
-  );
+  const selectedSketchEvaluation = selectedSketch
+    ? sketchEvaluationsBySketchId.get(selectedSketch.id)
+    : undefined;
+  const selectedSketchDimensions = useMemo(() => {
+    if (!selectedSketch) {
+      return [];
+    }
+
+    return (
+      selectedSketchEvaluation?.dimensions ??
+      sketchDimensionsBySketchId.get(selectedSketch.id) ??
+      []
+    );
+  }, [selectedSketch, selectedSketchEvaluation, sketchDimensionsBySketchId]);
   const effectiveSelectedEntityId = chooseSketchEntitySelection(
     selectedSketch?.entities ?? [],
     selectedEntityId
@@ -652,6 +670,8 @@ export function SketchPanel({
                 </section>
               )}
 
+              <SketchEvaluationSummary evaluation={selectedSketchEvaluation} />
+
               {selectedSketch.entities.length > 0 && (
                 <section className="entity-picker" aria-label="Sketch entities">
                   <div className="command-card-heading">
@@ -738,7 +758,6 @@ export function SketchPanel({
                   {selectedEntity && (
                     <SketchDimensionControls
                       disabled={disabled}
-                      entity={selectedEntity}
                       dimensions={selectedEntityDimensions}
                       availableTargets={availableDimensionTargets}
                       createTarget={effectiveDimensionCreateTarget}
@@ -1024,6 +1043,57 @@ export function SketchPanel({
   );
 }
 
+function SketchEvaluationSummary({
+  evaluation
+}: {
+  readonly evaluation: SketchEvaluationQueryResponse | undefined;
+}) {
+  const statusDisplay = getSketchEvaluationStatusDisplay(evaluation);
+  const issues = evaluation?.issues.slice(0, 3) ?? [];
+
+  return (
+    <section className="entity-editor" aria-label="Sketch evaluation">
+      <div className="command-card-heading">
+        <h3>Evaluation</h3>
+        <span
+          className={`health-text health-${statusDisplay.tone}`}
+          title={statusDisplay.detail}
+        >
+          {statusDisplay.label}
+        </span>
+      </div>
+      <dl className="compact-definition-list">
+        <div>
+          <dt>Dimensions</dt>
+          <dd>{evaluation?.dimensionCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>Driven entities</dt>
+          <dd>{evaluation?.drivenEntityCount ?? 0}</dd>
+        </div>
+      </dl>
+      <p
+        className={
+          statusDisplay.tone === "error"
+            ? "error-text compact"
+            : "project-message compact"
+        }
+      >
+        {formatSketchEvaluationStatus(evaluation)}
+      </p>
+      {issues.length > 0 && (
+        <ul className="dimension-issue-list">
+          {issues.map((issue) => (
+            <li key={`${issue.code}:${formatSketchEvaluationIssue(issue)}`}>
+              {formatSketchEvaluationIssue(issue)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ParameterControls({
   disabled,
   parameters,
@@ -1210,7 +1280,6 @@ function ParameterControls({
 
 function SketchDimensionControls({
   disabled,
-  entity,
   dimensions,
   availableTargets,
   createTarget,
@@ -1229,7 +1298,6 @@ function SketchDimensionControls({
   onDeleteDimension
 }: {
   readonly disabled: boolean;
-  readonly entity: SketchEntitySnapshot;
   readonly dimensions: readonly SketchDimensionEntry[];
   readonly availableTargets: readonly {
     readonly target: SketchDimensionTarget;
@@ -1255,7 +1323,7 @@ function SketchDimensionControls({
   readonly onDeleteDimension: (dimensionId: string) => void;
 }) {
   const supportsDimensions =
-    entity.kind === "rectangle" || entity.kind === "circle";
+    availableTargets.length > 0 || dimensions.length > 0;
 
   if (!supportsDimensions) {
     return (
@@ -1264,7 +1332,7 @@ function SketchDimensionControls({
           <h3>Driving dimensions</h3>
         </div>
         <p className="empty-state compact">
-          Point and line dimensions are not supported yet.
+          This entity has no supported driving dimension targets.
         </p>
       </section>
     );
@@ -1276,6 +1344,35 @@ function SketchDimensionControls({
         <h3>Driving dimensions</h3>
         <span>{dimensions.length}</span>
       </div>
+
+      {dimensions.length > 0 && (
+        <div className="dimension-status-list" aria-label="Dimension status">
+          {dimensions.map((dimension) => {
+            const statusDisplay = getSketchDimensionStatusDisplay(dimension);
+
+            return (
+              <div key={dimension.id} className="dimension-status-row">
+                <div>
+                  <strong>
+                    {dimension.name} ·{" "}
+                    {getSketchDimensionTargetLabel(dimension.target)}
+                  </strong>
+                  <span>
+                    {formatSketchDimensionValueSource(dimension, parameters)} ·{" "}
+                    {formatSketchDimensionEffectiveValue(dimension)}
+                  </span>
+                </div>
+                <span
+                  className={`health-text health-${statusDisplay.tone}`}
+                  title={statusDisplay.detail}
+                >
+                  {statusDisplay.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {availableTargets.length > 0 ? (
         <div className="dimension-create-row">
@@ -1399,6 +1496,12 @@ function SketchDimensionControls({
                     selectedDimension,
                     parameters
                   )}
+                </strong>
+              </div>
+              <div className="readonly-field">
+                <span>Evaluated</span>
+                <strong>
+                  {formatSketchDimensionEffectiveValue(selectedDimension)}
                 </strong>
               </div>
               <p

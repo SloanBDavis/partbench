@@ -2,8 +2,11 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
+  SketchDimensionIssue,
   SketchDimensionEntry,
+  SketchDimensionStatus,
   SketchDimensionTarget,
+  SketchEvaluationQueryResponse,
   SketchEntityId,
   SketchEntityKind,
   SketchId,
@@ -33,6 +36,12 @@ export interface SketchDimensionTargetOption {
 export interface ParameterBindingOption {
   readonly parameterId: string;
   readonly label: string;
+}
+
+export interface DimensionStatusDisplay {
+  readonly label: string;
+  readonly detail: string;
+  readonly tone: "healthy" | "warning" | "error";
 }
 
 export function chooseSketchPanelSelection(
@@ -227,16 +236,111 @@ export function formatSketchDimensionValueSource(
     : `Missing parameter ${valueSource.parameterId}`;
 }
 
+export function formatSketchDimensionEffectiveValue(
+  dimension: SketchDimensionEntry
+): string {
+  return dimension.effectiveValue !== undefined
+    ? `Effective ${dimension.effectiveValue}`
+    : "No effective value";
+}
+
 export function formatSketchDimensionStatus(
   dimension: SketchDimensionEntry
 ): string {
   if (dimension.status === "healthy") {
     return dimension.effectiveValue !== undefined
-      ? `Healthy / ${dimension.effectiveValue}`
+      ? `Healthy · ${formatSketchDimensionEffectiveValue(dimension)}`
       : "Healthy";
   }
 
   return dimension.issues[0]?.message ?? dimension.status;
+}
+
+export function getSketchDimensionStatusDisplay(
+  dimension: SketchDimensionEntry
+): DimensionStatusDisplay {
+  return {
+    label: getSketchDimensionStatusLabel(dimension.status),
+    detail: formatSketchDimensionStatus(dimension),
+    tone: getSketchDimensionStatusTone(dimension.status)
+  };
+}
+
+export function formatSketchEvaluationStatus(
+  evaluation: SketchEvaluationQueryResponse | undefined
+): string {
+  if (!evaluation) {
+    return "Evaluation unavailable";
+  }
+
+  if (evaluation.dimensionCount === 0) {
+    return "No driving dimensions";
+  }
+
+  if (evaluation.status === "healthy") {
+    return `${evaluation.dimensionCount} driving dimension${
+      evaluation.dimensionCount === 1 ? "" : "s"
+    } · ${evaluation.drivenEntityCount} driven ${
+      evaluation.drivenEntityCount === 1 ? "entity" : "entities"
+    }`;
+  }
+
+  return `${getSketchDimensionStatusLabel(evaluation.status)} · ${
+    evaluation.issueCount
+  } issue${evaluation.issueCount === 1 ? "" : "s"}`;
+}
+
+export function getSketchEvaluationStatusDisplay(
+  evaluation: SketchEvaluationQueryResponse | undefined
+): DimensionStatusDisplay {
+  const status = evaluation?.status ?? "unsupported";
+
+  return {
+    label: evaluation ? getSketchDimensionStatusLabel(status) : "Unavailable",
+    detail: formatSketchEvaluationStatus(evaluation),
+    tone: evaluation ? getSketchDimensionStatusTone(status) : "warning"
+  };
+}
+
+export function formatSketchEvaluationIssue(
+  issue: SketchDimensionIssue
+): string {
+  const subject =
+    issue.sketchDimensionId ??
+    issue.sketchEntityId ??
+    issue.parameterId ??
+    issue.sketchId;
+
+  return subject ? `${subject}: ${issue.message}` : issue.message;
+}
+
+export function getSketchDimensionStatusLabel(
+  status: SketchDimensionStatus
+): string {
+  switch (status) {
+    case "healthy":
+      return "Healthy";
+    case "unsupported":
+      return "Unsupported";
+    case "missing-target":
+      return "Missing target";
+    case "invalid-value":
+      return "Invalid value";
+  }
+}
+
+function getSketchDimensionStatusTone(
+  status: SketchDimensionStatus
+): DimensionStatusDisplay["tone"] {
+  switch (status) {
+    case "healthy":
+      return "healthy";
+    case "unsupported":
+      return "warning";
+    case "missing-target":
+    case "invalid-value":
+      return "error";
+  }
 }
 
 export function createParameterBindingOptions(

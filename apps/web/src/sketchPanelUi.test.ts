@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
+  SketchDimensionEntry,
+  SketchEvaluationQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import {
@@ -12,15 +14,20 @@ import {
   createCutTargetBodyOptions,
   createParameterBindingOptions,
   createSketchDimensionTargetOptions,
+  formatSketchDimensionEffectiveValue,
   formatSketchDimensionStatus,
   formatSketchDimensionValueSource,
+  formatSketchEvaluationIssue,
+  formatSketchEvaluationStatus,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getParameterDimensionUsageCount,
+  getSketchDimensionStatusDisplay,
   getSketchDimensionTargetLabel,
   getSketchDimensionTargetValue,
   getSketchEntityOptionLabel,
+  getSketchEvaluationStatusDisplay,
   isExtrudableSketchEntity
 } from "./sketchPanelUi";
 
@@ -237,10 +244,97 @@ describe("sketch panel UI helpers", () => {
         { id: "p_width", name: "Width", value: 6 }
       ])
     ).toBe("Width = 6");
-    expect(formatSketchDimensionStatus(dimensions[0])).toBe("Healthy / 6");
+    expect(formatSketchDimensionEffectiveValue(dimensions[0])).toBe(
+      "Effective 6"
+    );
+    expect(formatSketchDimensionStatus(dimensions[0])).toBe(
+      "Healthy · Effective 6"
+    );
+    expect(getSketchDimensionStatusDisplay(dimensions[0])).toEqual({
+      label: "Healthy",
+      detail: "Healthy · Effective 6",
+      tone: "healthy"
+    });
     expect(formatSketchDimensionValueSource(dimensions[0], [])).toBe(
       "Missing parameter p_width"
     );
+  });
+
+  it("formats sketch evaluation and dimension issue status compactly", () => {
+    const widthDimension: SketchDimensionEntry = {
+      id: "dim_width",
+      name: "Width",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "width" },
+      valueSource: { type: "literal", value: 6 },
+      status: "healthy",
+      issues: [],
+      effectiveValue: 6
+    };
+    const badDimension: SketchDimensionEntry = {
+      id: "dim_missing_parameter",
+      name: "Missing parameter",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "height" },
+      valueSource: { type: "parameter", parameterId: "missing_parameter" },
+      status: "missing-target",
+      issues: [
+        {
+          code: "PARAMETER_NOT_FOUND",
+          message: "Parameter does not exist: missing_parameter",
+          parameterId: "missing_parameter",
+          sketchDimensionId: "dim_missing_parameter"
+        }
+      ]
+    };
+    const healthyEvaluation: SketchEvaluationQueryResponse = {
+      ok: true,
+      query: "sketch.evaluation",
+      cadOpsVersion: "cadops.v1",
+      sketchId: "sketch_1",
+      sketchName: "Profile",
+      plane: "XY",
+      status: "healthy",
+      drivenEntityCount: 1,
+      drivenEntityIds: ["rect_1"],
+      dimensionCount: 1,
+      dimensions: [widthDimension],
+      issueCount: 0,
+      issues: []
+    };
+    const invalidEvaluation: SketchEvaluationQueryResponse = {
+      ...healthyEvaluation,
+      status: "missing-target",
+      dimensionCount: 2,
+      dimensions: [widthDimension, badDimension],
+      issueCount: 1,
+      issues: badDimension.issues
+    };
+
+    expect(formatSketchEvaluationStatus(undefined)).toBe(
+      "Evaluation unavailable"
+    );
+    expect(formatSketchEvaluationStatus(healthyEvaluation)).toBe(
+      "1 driving dimension · 1 driven entity"
+    );
+    expect(formatSketchEvaluationStatus(invalidEvaluation)).toBe(
+      "Missing target · 1 issue"
+    );
+    expect(getSketchEvaluationStatusDisplay(invalidEvaluation)).toEqual({
+      label: "Missing target",
+      detail: "Missing target · 1 issue",
+      tone: "error"
+    });
+    expect(formatSketchEvaluationIssue(badDimension.issues[0])).toBe(
+      "dim_missing_parameter: Parameter does not exist: missing_parameter"
+    );
+    expect(getSketchDimensionStatusDisplay(badDimension)).toEqual({
+      label: "Missing target",
+      detail: "Parameter does not exist: missing_parameter",
+      tone: "error"
+    });
   });
 
   it("offers active rectangle newBody authored bodies as add targets", () => {

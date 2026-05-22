@@ -610,11 +610,13 @@ code {
   color: var(--success);
 }
 
+.health-text.health-warning,
 .health-text.health-stale,
 .health-text.health-unsupported {
   color: var(--amber);
 }
 
+.health-text.health-error,
 .health-text.health-missing-source {
   color: var(--danger);
 }
@@ -995,6 +997,69 @@ canvas:active {
   overflow-wrap: anywhere;
   color: var(--ink);
   font-size: 0.86rem;
+}
+
+.compact-definition-list,
+.dimension-status-list,
+.dimension-issue-list {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+}
+
+.compact-definition-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compact-definition-list div,
+.dimension-status-row {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.compact-definition-list dt,
+.dimension-status-row span {
+  color: var(--quiet);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.compact-definition-list dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.dimension-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.dimension-status-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dimension-status-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.dimension-issue-list {
+  padding-left: 18px;
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .advanced-options {

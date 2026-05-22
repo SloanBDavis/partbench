@@ -25,6 +25,7 @@ import type {
   ProjectHealthQueryResponse,
   SketchDimensionEntry,
   SketchDimensionTarget,
+  SketchEvaluationQueryResponse,
   SketchEntityKind,
   SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
@@ -410,6 +411,28 @@ function readSketchDimensionsBySketchId(
   return dimensionsBySketchId;
 }
 
+function readSketchEvaluationsBySketchId(
+  sketches: readonly { readonly id: string }[]
+): ReadonlyMap<string, SketchEvaluationQueryResponse> {
+  const evaluationsBySketchId = new Map<
+    string,
+    SketchEvaluationQueryResponse
+  >();
+
+  for (const sketch of sketches) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.evaluation", sketchId: sketch.id }
+    });
+
+    if (response.ok && response.query === "sketch.evaluation") {
+      evaluationsBySketchId.set(sketch.id, response);
+    }
+  }
+
+  return evaluationsBySketchId;
+}
+
 function readBodyMeasurements(bodyId: string | undefined): {
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly error?: string;
@@ -603,6 +626,7 @@ export function App() {
   const transactionHistory = readTransactionHistory();
   const parameters = readParameters();
   const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
+  const sketchEvaluationsBySketchId = readSketchEvaluationsBySketchId(sketches);
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
   >(() => {
@@ -1432,6 +1456,7 @@ export function App() {
                   sketches={sketches}
                   parameters={parameters}
                   sketchDimensionsBySketchId={sketchDimensionsBySketchId}
+                  sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
                   addTargetBodies={addTargetBodyOptions}
                   cutTargetBodies={cutTargetBodyOptions}
                   displayStatuses={sketchDisplayState.statuses}
