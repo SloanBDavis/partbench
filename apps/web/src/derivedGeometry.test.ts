@@ -594,6 +594,33 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("updates add result sources across undo and redo without double-listing the consumed target", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_rect_1"]);
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_add_1",
+      bodyId: "body_add_1",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "add"
+    });
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_add_1"]);
+
+    engine.undo();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_rect_1"]);
+
+    engine.redo();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_add_1"]);
+  });
+
   it("derives cut result sources from active circle target and rectangle tool extrudes", async () => {
     const engine = new CadEngine();
 

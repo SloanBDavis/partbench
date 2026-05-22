@@ -374,55 +374,56 @@ describe("renderScene", () => {
     expect(scene.meshes).toEqual([]);
   });
 
-  it("renders ready cut meshes without an honest-looking pending fallback", () => {
-    const cutSource = createCutSource();
-    const readyMesh = createMesh("body_cut");
-    const readyScene = createRenderSceneInputs(
-      [],
-      new Map([
-        [
-          "body_cut",
-          {
-            objectId: "body_cut",
-            objectKind: "extrudeBoolean",
-            sourceId: "body_cut",
-            sourceKind: "extrudeBoolean",
-            cacheKey: "cut-ready",
-            status: "ready",
-            mesh: readyMesh,
-            metrics: {
-              objectId: "body_cut",
-              roundTripMs: 1,
-              vertexCount: 4,
-              triangleCount: 2
+  it("renders ready boolean meshes without an honest-looking pending fallback", () => {
+    for (const booleanSource of [createCutSource(), createAddSource()]) {
+      const readyMesh = createMesh(booleanSource.id);
+      const readyScene = createRenderSceneInputs(
+        [],
+        new Map([
+          [
+            booleanSource.id,
+            {
+              objectId: booleanSource.id,
+              objectKind: "extrudeBoolean",
+              sourceId: booleanSource.id,
+              sourceKind: "extrudeBoolean",
+              cacheKey: `${booleanSource.operation}-ready`,
+              status: "ready",
+              mesh: readyMesh,
+              metrics: {
+                objectId: booleanSource.id,
+                roundTripMs: 1,
+                vertexCount: 4,
+                triangleCount: 2
+              }
             }
-          }
-        ]
-      ]),
-      [cutSource]
-    );
-    const pendingScene = createRenderSceneInputs(
-      [],
-      new Map([
-        [
-          "body_cut",
-          {
-            objectId: "body_cut",
-            objectKind: "extrudeBoolean",
-            sourceId: "body_cut",
-            sourceKind: "extrudeBoolean",
-            cacheKey: "cut-pending",
-            status: "pending"
-          }
-        ]
-      ]),
-      [cutSource]
-    );
+          ]
+        ]),
+        [booleanSource]
+      );
+      const pendingScene = createRenderSceneInputs(
+        [],
+        new Map([
+          [
+            booleanSource.id,
+            {
+              objectId: booleanSource.id,
+              objectKind: "extrudeBoolean",
+              sourceId: booleanSource.id,
+              sourceKind: "extrudeBoolean",
+              cacheKey: `${booleanSource.operation}-pending`,
+              status: "pending"
+            }
+          ]
+        ]),
+        [booleanSource]
+      );
 
-    expect(readyScene.primitives).toEqual([]);
-    expect(readyScene.meshes).toEqual([readyMesh]);
-    expect(pendingScene.primitives).toEqual([]);
-    expect(pendingScene.meshes).toEqual([]);
+      expect(readyScene.primitives).toEqual([]);
+      expect(readyScene.meshes).toEqual([readyMesh]);
+      expect(pendingScene.primitives).toEqual([]);
+      expect(pendingScene.meshes).toEqual([]);
+    }
   });
 
   it("adds sketch display edges so authored sketches are visible in the viewport", () => {
@@ -647,6 +648,16 @@ function createCutSource(): DerivedBooleanExtrudeGeometrySource {
     operation: "cut",
     target: createExtrudeSource("body_target", "positive"),
     tool: createExtrudeSource("body_cut", "positive")
+  };
+}
+
+function createAddSource(): DerivedBooleanExtrudeGeometrySource {
+  return {
+    id: "body_add",
+    kind: "extrudeBoolean",
+    operation: "add",
+    target: createExtrudeSource("body_target", "positive"),
+    tool: createExtrudeSource("body_add", "positive")
   };
 }
 
