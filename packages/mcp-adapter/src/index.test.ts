@@ -2261,6 +2261,12 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               start: [0, 0],
               end: [3, 4]
             },
+            {
+              op: "sketch.addPoint",
+              sketchId: "sketch_1",
+              id: "point_1",
+              point: [10, 10]
+            },
             { op: "parameter.create", id: "param_r", name: "Radius", value: 4 },
             {
               op: "parameter.create",
@@ -2301,6 +2307,15 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               sketchId: "sketch_1",
               kind: "fixed",
               target: { entityId: "line_1", role: "start" }
+            },
+            {
+              op: "sketch.constraint.create",
+              id: "con_coincident_end",
+              name: "Line end point",
+              sketchId: "sketch_1",
+              kind: "coincident",
+              primaryTarget: { entityId: "line_1", role: "end" },
+              secondaryTarget: { entityId: "point_1", role: "position" }
             }
           ]
         }
@@ -2314,7 +2329,11 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
         ok: true,
         createdParameterIds: ["param_r", "param_length"],
         createdSketchDimensionIds: ["dim_r", "dim_line_length"],
-        createdSketchConstraintIds: ["con_horizontal", "con_fixed_start"]
+        createdSketchConstraintIds: [
+          "con_horizontal",
+          "con_fixed_start",
+          "con_coincident_end"
+        ]
       }
     });
 
@@ -2379,9 +2398,9 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
         sketchName: "Profile",
         plane: "XY",
         status: "healthy",
-        drivenEntityIds: ["circle_1", "line_1"],
+        drivenEntityIds: ["circle_1", "line_1", "point_1"],
         dimensionCount: 2,
-        constraintCount: 2,
+        constraintCount: 3,
         issueCount: 0,
         constraints: [
           expect.objectContaining({
@@ -2393,6 +2412,13 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
             id: "con_fixed_start",
             kind: "fixed",
             target: { entityId: "line_1", role: "start" },
+            status: "healthy"
+          }),
+          expect.objectContaining({
+            id: "con_coincident_end",
+            kind: "coincident",
+            primaryTarget: { entityId: "line_1", role: "end" },
+            secondaryTarget: { entityId: "point_1", role: "position" },
             status: "healthy"
           })
         ],

@@ -332,6 +332,15 @@ describe("cad-protocol", () => {
         coordinate: [0, 0]
       },
       {
+        op: "sketch.constraint.create",
+        id: "con_coincident",
+        name: "Coincident points",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "point_1", role: "position" },
+        secondaryTarget: { entityId: "line_1", role: "end" }
+      },
+      {
         op: "sketch.constraint.rename",
         id: "con_horizontal",
         name: "Main horizontal"
@@ -346,6 +355,7 @@ describe("cad-protocol", () => {
       "sketch.dimension.update",
       "sketch.dimension.rename",
       "sketch.dimension.delete",
+      "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.rename",
@@ -364,6 +374,12 @@ describe("cad-protocol", () => {
       op: "sketch.constraint.create",
       kind: "fixed",
       target: { entityId: "line_1", role: "start" }
+    });
+    expect(ops[7]).toMatchObject({
+      op: "sketch.constraint.create",
+      kind: "coincident",
+      primaryTarget: { entityId: "point_1", role: "position" },
+      secondaryTarget: { entityId: "line_1", role: "end" }
     });
   });
 

@@ -44,7 +44,8 @@ and focused packages:
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
-  line constraints, fixed point constraints, authored rectangle/circle extrude features, narrow
+  line constraints, fixed and coincident point constraints,
+  authored rectangle/circle extrude features, narrow
   rectangle-tool add/cut boolean source data, named references, and versioned
   project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
@@ -65,7 +66,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v9` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v10` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
@@ -170,7 +171,8 @@ Current Partbench can:
 - create and edit driving sketch dimensions for rectangle width, rectangle
   height, circle radius, and line length through CADOps;
 - create, rename, and delete source-of-truth horizontal/vertical line
-  orientation constraints and fixed point constraints through CADOps;
+  orientation constraints plus fixed/coincident point constraints through
+  CADOps;
 - create rectangle/circle extrude features as new bodies;
 - edit authored extrude depth and side;
 - edit source rectangle/circle profile values through `sketch.updateEntity`;
@@ -180,7 +182,7 @@ Current Partbench can:
   health, history, measurements, extents, and generated-reference measurements;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
-- save/load current `web-cad.project.v9` JSON with migrations from older accepted
+- save/load current `web-cad.project.v10` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
@@ -192,7 +194,7 @@ system.
 Current limitations:
 
 - There is no general sketch solver. Current constraints are limited to
-  horizontal/vertical line orientation and fixed point targets.
+  horizontal/vertical line orientation plus fixed and coincident point targets.
 - Sketch dimensions currently drive only rectangle width/height, circle radius,
   and line length through a direct evaluator path.
 - There is no parameter expression language.
@@ -429,22 +431,19 @@ Planned deliverables:
 
 Goal: add the first genuinely solver-shaped constraints.
 
-Implemented so far:
+Implemented:
 
 - source-of-truth fixed point constraints for point position, line start, line
   end, rectangle center, and circle center targets;
 - fixed constraints store durable target metadata plus a fixed coordinate;
+- source-of-truth coincident point constraints between two explicit point
+  targets using the same point target model;
+- coincident constraints use a deterministic first-slice evaluator: fixed
+  target wins, otherwise secondary target moves to primary target, conflicting
+  fixed coordinates fail clearly;
 - CADOps validation, semantic diffs, undo/redo, batch dry-run/commit,
   import/export, and adapter/MCP pass-through;
-- `web-cad.project.v9` with V1 through V8 import compatibility.
-
-Planned remaining deliverables:
-
-- source-of-truth constraints for coincident point/entity roles;
-- CADOps commands and validation for supported targets;
-- clear errors for missing, duplicate, conflicting, or unsupported targets;
-- semantic diffs, undo/redo, batch dry-run/commit, import/export, and
-  adapter/MCP pass-through;
+- `web-cad.project.v10` with V1 through V9 import compatibility;
 - tests for successful solve cases and structured failure states.
 
 ### V4 Phase C: Solver-Backed Dimensions And Orientation Constraints

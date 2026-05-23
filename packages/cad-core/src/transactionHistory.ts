@@ -438,11 +438,17 @@ function createOperationSummaries(
       case "sketch.constraint.create": {
         const constraintId = op.id ?? createdSketchConstraintRef?.id;
         const targetEntityId =
-          op.kind === "fixed" ? op.target.entityId : op.entityId;
+          op.kind === "fixed"
+            ? op.target.entityId
+            : op.kind === "coincident"
+              ? op.primaryTarget.entityId
+              : op.entityId;
         const targetLabel =
           op.kind === "fixed"
             ? `${op.sketchId}/${op.target.entityId}.${op.target.role}`
-            : `${op.sketchId}/${op.entityId}`;
+            : op.kind === "coincident"
+              ? `${op.sketchId}/${op.primaryTarget.entityId}.${op.primaryTarget.role} = ${op.secondaryTarget.entityId}.${op.secondaryTarget.role}`
+              : `${op.sketchId}/${op.entityId}`;
 
         return createSketchConstraintOperationSummary({
           op: op.op,

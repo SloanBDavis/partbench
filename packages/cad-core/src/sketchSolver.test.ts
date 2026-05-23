@@ -311,6 +311,154 @@ describe("sketch solver boundary", () => {
     );
   });
 
+  it("evaluates coincident point constraints and moves the secondary target deterministically", () => {
+    const sketch = createSketch([
+      { id: "point_1", kind: "point", point: [1, 2] },
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 0] },
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [5, 6],
+        width: 2,
+        height: 3
+      },
+      { id: "circle_1", kind: "circle", center: [0, 0], radius: 2 }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "co_point_end",
+        name: "Point to line end",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "point_1", role: "position" },
+        secondaryTarget: { entityId: "line_1", role: "end" }
+      },
+      {
+        id: "co_rect_circle",
+        name: "Centers",
+        sketchId: sketch.id,
+        entityId: "rect_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "rect_1", role: "center" },
+        secondaryTarget: { entityId: "circle_1", role: "center" }
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.drivenEntityIds).toEqual([
+      "point_1",
+      "line_1",
+      "rect_1",
+      "circle_1"
+    ]);
+    expect(evaluation.constraints).toEqual([
+      expect.objectContaining({
+        id: "co_point_end",
+        kind: "coincident",
+        primaryCurrentCoordinate: [1, 2],
+        secondaryCurrentCoordinate: [4, 0],
+        resolvedCoordinate: [1, 2],
+        status: "inconsistent"
+      }),
+      expect.objectContaining({
+        id: "co_rect_circle",
+        kind: "coincident",
+        primaryCurrentCoordinate: [5, 6],
+        secondaryCurrentCoordinate: [0, 0],
+        resolvedCoordinate: [5, 6],
+        status: "inconsistent"
+      })
+    ]);
+    expect(evaluation.evaluatedGeometry.entities.get("line_1")).toMatchObject({
+      kind: "line",
+      end: [1, 2]
+    });
+    expect(evaluation.evaluatedGeometry.entities.get("circle_1")).toMatchObject(
+      {
+        kind: "circle",
+        center: [5, 6]
+      }
+    );
+  });
+
+  it("uses fixed coincident targets as the resolved coordinate and reports conflicting fixed targets", () => {
+    const sketch = createSketch([
+      { id: "point_1", kind: "point", point: [1, 2] },
+      { id: "point_2", kind: "point", point: [0, 0] },
+      { id: "point_3", kind: "point", point: [3, 3] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_point_1",
+        name: "Fixed point 1",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" },
+        coordinate: [1, 2]
+      },
+      {
+        id: "fix_point_3",
+        name: "Fixed point 3",
+        sketchId: sketch.id,
+        entityId: "point_3",
+        kind: "fixed",
+        target: { entityId: "point_3", role: "position" },
+        coordinate: [3, 3]
+      },
+      {
+        id: "co_fixed",
+        name: "Fixed wins",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "point_1", role: "position" },
+        secondaryTarget: { entityId: "point_2", role: "position" }
+      },
+      {
+        id: "co_conflict",
+        name: "Fixed conflict",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "point_1", role: "position" },
+        secondaryTarget: { entityId: "point_3", role: "position" }
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "co_fixed",
+          resolvedCoordinate: [1, 2]
+        }),
+        expect.objectContaining({
+          id: "co_conflict",
+          status: "inconsistent",
+          issues: expect.arrayContaining([
+            expect.objectContaining({ code: "INCONSISTENT_CONSTRAINT" })
+          ])
+        })
+      ])
+    );
+    expect(evaluation.evaluatedGeometry.entities.get("point_2")).toMatchObject({
+      kind: "point",
+      point: [1, 2]
+    });
+  });
+
   it("reports missing parameters and zero-length line dimensions as evaluation issues", () => {
     const sketch = createSketch([
       { id: "line_1", kind: "line", start: [0, 0], end: [0, 0] },

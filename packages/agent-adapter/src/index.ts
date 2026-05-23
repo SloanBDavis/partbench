@@ -1443,6 +1443,13 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
+    if (value.kind === "coincident") {
+      return (
+        isSketchPointTarget(value.primaryTarget) &&
+        isSketchPointTarget(value.secondaryTarget)
+      );
+    }
+
     return typeof value.entityId === "string";
   }
 
@@ -1621,7 +1628,12 @@ function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
 }
 
 function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
-  return value === "horizontal" || value === "vertical" || value === "fixed";
+  return (
+    value === "horizontal" ||
+    value === "vertical" ||
+    value === "fixed" ||
+    value === "coincident"
+  );
 }
 
 function isSketchPointTarget(value: unknown): value is SketchPointTarget {

@@ -2266,6 +2266,12 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
             start: [0, 0],
             end: [0, 2]
           },
+          {
+            op: "sketch.addPoint",
+            sketchId: "sketch_1",
+            id: "point_1",
+            point: [10, 10]
+          },
           { op: "parameter.create", id: "param_w", name: "Width", value: 5 },
           {
             op: "parameter.create",
@@ -2306,6 +2312,15 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
             sketchId: "sketch_1",
             kind: "fixed",
             target: { entityId: "line_1", role: "start" }
+          },
+          {
+            op: "sketch.constraint.create",
+            id: "con_coincident_end",
+            name: "Line end point",
+            sketchId: "sketch_1",
+            kind: "coincident",
+            primaryTarget: { entityId: "line_1", role: "end" },
+            secondaryTarget: { entityId: "point_1", role: "position" }
           }
         ]
       }
@@ -2315,8 +2330,12 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
       ok: true,
       createdParameterIds: ["param_w", "param_length"],
       createdSketchDimensionIds: ["dim_w", "dim_line_length"],
-      createdSketchConstraintIds: ["con_horizontal", "con_fixed_start"],
-      modifiedSketchEntityIds: ["rect_1", "line_1"]
+      createdSketchConstraintIds: [
+        "con_horizontal",
+        "con_fixed_start",
+        "con_coincident_end"
+      ],
+      modifiedSketchEntityIds: ["rect_1", "line_1", "point_1"]
     });
 
     expect(
@@ -2383,9 +2402,9 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
       sketchName: "Profile",
       plane: "XY",
       status: "healthy",
-      drivenEntityIds: ["rect_1", "line_1"],
+      drivenEntityIds: ["rect_1", "line_1", "point_1"],
       dimensionCount: 2,
-      constraintCount: 2,
+      constraintCount: 3,
       issueCount: 0,
       constraints: [
         expect.objectContaining({
@@ -2397,6 +2416,13 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
           id: "con_fixed_start",
           kind: "fixed",
           target: { entityId: "line_1", role: "start" },
+          status: "healthy"
+        }),
+        expect.objectContaining({
+          id: "con_coincident_end",
+          kind: "coincident",
+          primaryTarget: { entityId: "line_1", role: "end" },
+          secondaryTarget: { entityId: "point_1", role: "position" },
           status: "healthy"
         })
       ],

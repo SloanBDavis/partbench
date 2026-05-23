@@ -181,6 +181,7 @@ describe("sketch panel UI helpers", () => {
       []
     );
     expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
+    expect(getSketchConstraintKindLabel("coincident")).toBe("Coincident");
     expect(formatSketchConstraintStatus(horizontalConstraint)).toBe(
       "Horizontal · Healthy"
     );

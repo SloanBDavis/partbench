@@ -70,6 +70,16 @@ export type SketchSolverEntityResult =
       readonly issue: SketchSolverApplyIssue;
     };
 
+type SketchSolverEntitiesResult =
+  | {
+      readonly ok: true;
+      readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+    }
+  | {
+      readonly ok: false;
+      readonly issue: SketchSolverApplyIssue;
+    };
+
 export type SketchSolverNumberResult =
   | {
       readonly ok: true;
@@ -113,7 +123,15 @@ export function evaluateSketch(
   const drivenEntityIds = [
     ...new Set([
       ...dimensions.map((dimension) => dimension.entityId),
-      ...constraints.map((constraint) => constraint.entityId)
+      ...constraints.flatMap((constraint) =>
+        constraint.kind === "coincident"
+          ? [
+              constraint.entityId,
+              constraint.primaryTarget.entityId,
+              constraint.secondaryTarget.entityId
+            ]
+          : [constraint.entityId]
+      )
     ])
   ];
 
@@ -261,6 +279,10 @@ export function evaluateSketchConstraint(
 ): SketchConstraintEntry {
   if (constraint.kind === "fixed") {
     return evaluateFixedSketchConstraint(document, constraint);
+  }
+
+  if (constraint.kind === "coincident") {
+    return evaluateCoincidentSketchConstraint(document, constraint);
   }
 
   return evaluateOrientationSketchConstraint(document, constraint);
@@ -483,6 +505,232 @@ function evaluateFixedSketchConstraint(
   };
 }
 
+function evaluateCoincidentSketchConstraint(
+  document: SketchSolverDocument,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "coincident" }>
+): SketchConstraintEntry {
+  const issues: SketchConstraintIssue[] = [];
+  const sketch = document.sketches.get(constraint.sketchId);
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${constraint.sketchId}`,
+      sketchId: constraint.sketchId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget
+    });
+  }
+
+  const primaryEntity = sketch?.entities.get(constraint.primaryTarget.entityId);
+  const secondaryEntity = sketch?.entities.get(
+    constraint.secondaryTarget.entityId
+  );
+
+  if (sketch && !primaryEntity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.primaryTarget.entityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.primaryTarget.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget
+    });
+  }
+
+  if (sketch && !secondaryEntity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.secondaryTarget.entityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryTarget.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget
+    });
+  }
+
+  if (
+    primaryEntity &&
+    !isSketchPointTargetSupported(primaryEntity, constraint.primaryTarget)
+  ) {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Coincident sketch constraint primary target role is not supported for this entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.primaryTarget.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: `point target for ${primaryEntity.kind}`,
+      received: constraint.primaryTarget.role
+    });
+  }
+
+  if (
+    secondaryEntity &&
+    !isSketchPointTargetSupported(secondaryEntity, constraint.secondaryTarget)
+  ) {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Coincident sketch constraint secondary target role is not supported for this entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryTarget.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: `point target for ${secondaryEntity.kind}`,
+      received: constraint.secondaryTarget.role
+    });
+  }
+
+  if (
+    sketchPointTargetsEqual(
+      constraint.primaryTarget,
+      constraint.secondaryTarget
+    )
+  ) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message: "Coincident sketch constraint targets must be distinct.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: "distinct sketch point targets",
+      received: "same target"
+    });
+  }
+
+  const duplicate = [...document.sketchConstraints.values()].find(
+    (candidate) =>
+      candidate.id !== constraint.id &&
+      candidate.sketchId === constraint.sketchId &&
+      candidate.kind === "coincident" &&
+      sketchPointTargetPairKey(
+        candidate.primaryTarget,
+        candidate.secondaryTarget
+      ) ===
+        sketchPointTargetPairKey(
+          constraint.primaryTarget,
+          constraint.secondaryTarget
+        )
+  );
+
+  if (duplicate) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message: `Sketch point targets have a duplicate coincident constraint: ${duplicate.id}.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: "one coincident constraint per target pair",
+      received: duplicate.id
+    });
+  }
+
+  const primaryCurrentCoordinate =
+    primaryEntity &&
+    isSketchPointTargetSupported(primaryEntity, constraint.primaryTarget)
+      ? getSketchPointTargetCoordinate(primaryEntity, constraint.primaryTarget)
+      : undefined;
+  const secondaryCurrentCoordinate =
+    secondaryEntity &&
+    isSketchPointTargetSupported(secondaryEntity, constraint.secondaryTarget)
+      ? getSketchPointTargetCoordinate(
+          secondaryEntity,
+          constraint.secondaryTarget
+        )
+      : undefined;
+  const primaryFixed = findFixedConstraintCoordinate(
+    document,
+    constraint.sketchId,
+    constraint.primaryTarget
+  );
+  const secondaryFixed = findFixedConstraintCoordinate(
+    document,
+    constraint.sketchId,
+    constraint.secondaryTarget
+  );
+  const resolvedCoordinate =
+    primaryFixed?.coordinate ??
+    secondaryFixed?.coordinate ??
+    primaryCurrentCoordinate;
+
+  if (
+    primaryFixed &&
+    secondaryFixed &&
+    !vec2Equal(primaryFixed.coordinate, secondaryFixed.coordinate)
+  ) {
+    issues.push({
+      code: "INCONSISTENT_CONSTRAINT",
+      message:
+        "Coincident sketch constraint cannot satisfy two different fixed coordinates.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: formatVec2(primaryFixed.coordinate),
+      received: formatVec2(secondaryFixed.coordinate)
+    });
+  }
+
+  if (
+    resolvedCoordinate &&
+    primaryCurrentCoordinate &&
+    !vec2Equal(primaryCurrentCoordinate, resolvedCoordinate)
+  ) {
+    issues.push({
+      code: "INCONSISTENT_CONSTRAINT",
+      message:
+        "Coincident sketch constraint primary target does not match the resolved coordinate.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.primaryTarget.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: formatVec2(resolvedCoordinate),
+      received: formatVec2(primaryCurrentCoordinate)
+    });
+  }
+
+  if (
+    resolvedCoordinate &&
+    secondaryCurrentCoordinate &&
+    !vec2Equal(secondaryCurrentCoordinate, resolvedCoordinate)
+  ) {
+    issues.push({
+      code: "INCONSISTENT_CONSTRAINT",
+      message:
+        "Coincident sketch constraint secondary target does not match the resolved coordinate.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryTarget.entityId,
+      sketchConstraintId: constraint.id,
+      primaryTarget: constraint.primaryTarget,
+      secondaryTarget: constraint.secondaryTarget,
+      expected: formatVec2(resolvedCoordinate),
+      received: formatVec2(secondaryCurrentCoordinate)
+    });
+  }
+
+  return {
+    ...cloneSketchConstraintSnapshot(constraint),
+    status: getSketchEvaluationStatus(issues),
+    issues,
+    ...(primaryCurrentCoordinate ? { primaryCurrentCoordinate } : {}),
+    ...(secondaryCurrentCoordinate ? { secondaryCurrentCoordinate } : {}),
+    ...(resolvedCoordinate ? { resolvedCoordinate } : {})
+  };
+}
+
 export function evaluateSketchGeometry(
   document: SketchSolverDocument,
   sketch: SketchSolverSketch
@@ -518,6 +766,22 @@ export function evaluateSketchGeometry(
 
   for (const constraint of document.sketchConstraints.values()) {
     if (constraint.sketchId !== sketch.id) {
+      continue;
+    }
+
+    if (constraint.kind === "coincident") {
+      const result = applyCoincidentSketchConstraintValue(
+        entities,
+        document,
+        constraint
+      );
+
+      if (result.ok) {
+        for (const entity of result.entities.values()) {
+          entities.set(entity.id, entity);
+        }
+      }
+
       continue;
     }
 
@@ -663,6 +927,24 @@ export function applySketchConstraintValue(
     return applyFixedSketchConstraintValue(entity, constraint);
   }
 
+  if (constraint.kind === "coincident") {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Coincident sketch constraints require sketch-level evaluation.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "primaryTarget",
+        expected: "sketch-level coincident evaluation",
+        received: "single entity evaluation"
+      }
+    };
+  }
+
   if (entity.kind !== "line") {
     return {
       ok: false,
@@ -745,7 +1027,7 @@ export function sketchConstraintMatchesLine(
   kind: SketchConstraintKind,
   entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
 ): boolean {
-  if (kind === "fixed") {
+  if (kind === "fixed" || kind === "coincident") {
     return true;
   }
 
@@ -892,6 +1174,139 @@ function applyFixedSketchConstraintValue(
   };
 }
 
+function applyCoincidentSketchConstraintValue(
+  entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  document: SketchSolverDocument,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "coincident" }>
+): SketchSolverEntitiesResult {
+  const primaryEntity = entities.get(constraint.primaryTarget.entityId);
+  const secondaryEntity = entities.get(constraint.secondaryTarget.entityId);
+
+  if (!primaryEntity) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: `Sketch entity does not exist: ${constraint.primaryTarget.entityId}`,
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.primaryTarget.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "primaryTarget.entityId",
+        expected: "existing sketch entity id",
+        received: constraint.primaryTarget.entityId
+      }
+    };
+  }
+
+  if (!secondaryEntity) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: `Sketch entity does not exist: ${constraint.secondaryTarget.entityId}`,
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.secondaryTarget.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "secondaryTarget.entityId",
+        expected: "existing sketch entity id",
+        received: constraint.secondaryTarget.entityId
+      }
+    };
+  }
+
+  if (!isSketchPointTargetSupported(primaryEntity, constraint.primaryTarget)) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Coincident sketch constraint primary target role is not supported for this entity.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.primaryTarget.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "primaryTarget.role",
+        expected: `point target for ${primaryEntity.kind}`,
+        received: constraint.primaryTarget.role
+      }
+    };
+  }
+
+  if (
+    !isSketchPointTargetSupported(secondaryEntity, constraint.secondaryTarget)
+  ) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Coincident sketch constraint secondary target role is not supported for this entity.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.secondaryTarget.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "secondaryTarget.role",
+        expected: `point target for ${secondaryEntity.kind}`,
+        received: constraint.secondaryTarget.role
+      }
+    };
+  }
+
+  const primaryFixed = findFixedConstraintCoordinate(
+    document,
+    constraint.sketchId,
+    constraint.primaryTarget
+  );
+  const secondaryFixed = findFixedConstraintCoordinate(
+    document,
+    constraint.sketchId,
+    constraint.secondaryTarget
+  );
+
+  if (
+    primaryFixed &&
+    secondaryFixed &&
+    !vec2Equal(primaryFixed.coordinate, secondaryFixed.coordinate)
+  ) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Coincident sketch constraint cannot satisfy two different fixed coordinates.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "secondaryTarget",
+        expected: formatVec2(primaryFixed.coordinate),
+        received: formatVec2(secondaryFixed.coordinate)
+      }
+    };
+  }
+
+  if (primaryFixed && secondaryFixed) {
+    return { ok: true, entities: new Map() };
+  }
+
+  const target = primaryFixed
+    ? constraint.secondaryTarget
+    : secondaryFixed
+      ? constraint.primaryTarget
+      : constraint.secondaryTarget;
+  const coordinate =
+    primaryFixed?.coordinate ??
+    secondaryFixed?.coordinate ??
+    getSketchPointTargetCoordinate(primaryEntity, constraint.primaryTarget);
+  const targetEntity =
+    target.entityId === primaryEntity.id ? primaryEntity : secondaryEntity;
+  const next = setSketchPointTargetCoordinate(targetEntity, target, coordinate);
+
+  return { ok: true, entities: new Map([[next.id, next]]) };
+}
+
 function isSketchPointTargetSupported(
   entity: SketchEntitySnapshot,
   target: SketchPointTarget
@@ -972,6 +1387,40 @@ function sketchPointTargetsEqual(
   return left.entityId === right.entityId && left.role === right.role;
 }
 
+function sketchPointTargetPairKey(
+  left: SketchPointTarget,
+  right: SketchPointTarget
+): string {
+  return [sketchPointTargetKey(left), sketchPointTargetKey(right)]
+    .sort()
+    .join("\0");
+}
+
+function sketchPointTargetKey(target: SketchPointTarget): string {
+  return `${target.entityId}\0${target.role}`;
+}
+
+function findFixedConstraintCoordinate(
+  document: SketchSolverDocument,
+  sketchId: SketchId,
+  target: SketchPointTarget
+): { readonly id: SketchConstraintId; readonly coordinate: Vec2 } | undefined {
+  for (const constraint of document.sketchConstraints.values()) {
+    if (
+      constraint.kind === "fixed" &&
+      constraint.sketchId === sketchId &&
+      sketchPointTargetsEqual(constraint.target, target)
+    ) {
+      return {
+        id: constraint.id,
+        coordinate: cleanVec2(constraint.coordinate)
+      };
+    }
+  }
+
+  return undefined;
+}
+
 function cloneSketchDimensionSnapshot(
   dimension: SketchDimensionSnapshot
 ): SketchDimensionSnapshot {
@@ -1000,6 +1449,18 @@ function cloneSketchConstraintSnapshot(
       kind: "fixed",
       target: { ...constraint.target },
       coordinate: cleanVec2(constraint.coordinate)
+    };
+  }
+
+  if (constraint.kind === "coincident") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "coincident",
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget }
     };
   }
 

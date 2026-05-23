@@ -207,6 +207,8 @@ export function getSketchConstraintKindLabel(
       return "Vertical";
     case "fixed":
       return "Fixed";
+    case "coincident":
+      return "Coincident";
   }
 }
 
