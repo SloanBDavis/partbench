@@ -10,8 +10,9 @@ source-of-truth user/agent names for generated references, schema V6 added
 explicit authored extrude operation mode, and schema V7 added source-of-truth
 document parameters and driving sketch dimensions. Schema V8 added
 source-of-truth sketch constraint records for the first horizontal/vertical
-line orientation slice. Current exports use `web-cad.project.v8` while the
-loader still accepts V1, V2, V3, V4, V5, V6, and V7 projects through explicit
+line orientation slice. Schema V9 added source-of-truth fixed point constraints
+with durable sketch point targets. Current exports use `web-cad.project.v9`
+while the loader still accepts V1 through V8 projects through explicit
 migration. The `web-cad.project.*` names are retained as compatibility schema
 identifiers after the Partbench product rename; changing them would require a
 deliberate project-format migration. Future storage work should use this
@@ -32,6 +33,7 @@ schemaVersion: web-cad.project.v5
 schemaVersion: web-cad.project.v6
 schemaVersion: web-cad.project.v7
 schemaVersion: web-cad.project.v8
+schemaVersion: web-cad.project.v9
 ```
 
 It is produced by:
@@ -58,8 +60,8 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV8 {
-  schemaVersion: "web-cad.project.v8"
+ProjectV9 {
+  schemaVersion: "web-cad.project.v9"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -286,7 +288,7 @@ from that face. Those frames and meshes are rebuildable view/cache data and are
 not saved.
 
 Document parameters, sketch dimensions, and sketch constraints are
-source-of-truth V8 document data:
+source-of-truth V9 document data:
 
 ```ts
 CadParameter {
@@ -332,6 +334,19 @@ SketchConstraint {
   entityId: string
   kind: "horizontal" | "vertical"
 }
+
+FixedSketchConstraint {
+  id: string
+  name: string
+  sketchId: string
+  entityId: string
+  kind: "fixed"
+  target: {
+    entityId: string
+    role: "position" | "start" | "end" | "center"
+  }
+  coordinate: [number, number]
+}
 ```
 
 Parameter names and sketch dimension names must be non-empty after trimming.
@@ -347,13 +362,17 @@ endpoints symmetrically to match the requested length. A line length dimension
 cannot drive a zero-length line because the direction is ambiguous. This is not a
 general sketch solver, expression system, or constraint graph.
 
-Sketch constraints are separate from numeric dimensions. The current V8
-constraint slice supports only line horizontal and line vertical orientation
-constraints. Creating one preserves the line midpoint and current length, then
-sets both endpoints to the same Y for horizontal or the same X for vertical.
-Duplicate orientation constraints on the same line, conflicting horizontal and
-vertical constraints on the same non-zero line, non-line targets, missing
-targets, and zero-length lines fail with structured validation errors. This
+Sketch constraints are separate from numeric dimensions. The V8 constraint slice
+supports line horizontal and line vertical orientation constraints. Creating one
+preserves the line midpoint and current length, then sets both endpoints to the
+same Y for horizontal or the same X for vertical. The V9 constraint slice adds
+fixed point constraints for explicit point targets: point position, line start,
+line end, rectangle center, and circle center. Fixed constraints store their
+durable target and fixed coordinate as source-of-truth metadata. Duplicate
+orientation constraints on the same line, conflicting horizontal and vertical
+constraints on the same non-zero line, duplicate fixed constraints on the same
+point target, unsupported roles, missing targets, non-finite coordinates, and
+zero-length orientation targets fail with structured validation errors. This
 persists authored intent only; no solved graph output is saved.
 
 The `sketch.evaluation` query is derived from these persisted parameter,
@@ -386,7 +405,7 @@ derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
-defaults to `newBody` when omitted, and current V8 exports include an explicit
+defaults to `newBody` when omitted, and current V9 exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
 `targetBodyId`. Boolean operation modes are supported only for narrow
 source-modeled slices. `cut` supports a rectangle sketch-extrude tool cutting
@@ -412,7 +431,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2/V3/V4/V5/V6/V7/V8 Storage Decision
+## Project Schema V2/V3/V4/V5/V6/V7/V8/V9 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -446,11 +465,14 @@ cannot be reconstructed from sketch entity scalar fields alone because they carr
 stable IDs, names, optional descriptions, target roles, literal values, and
 parameter bindings. That persisted intent introduced `web-cad.project.v7`.
 
-Sketch constraints are authored source-of-truth V3 data too. The first supported
+Sketch constraints are authored source-of-truth data too. The first supported
 constraint records line horizontal and vertical orientation intent. That intent
 cannot be reconstructed from the line endpoints alone because an already
 horizontal line may or may not be constrained. That persisted intent introduced
-`web-cad.project.v8`. Current exports therefore use `web-cad.project.v8`.
+`web-cad.project.v8`. V4 fixed point constraints add durable point targets and
+fixed coordinates that cannot be represented by the V8 orientation-only shape.
+That persisted intent introduced `web-cad.project.v9`. Current exports therefore
+use `web-cad.project.v9`.
 
 The loader accepts:
 
@@ -463,6 +485,7 @@ web-cad.project.v5
 web-cad.project.v6
 web-cad.project.v7
 web-cad.project.v8
+web-cad.project.v9
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -483,6 +506,9 @@ Schema V5 projects migrate with sketches, authored features, attached sketch
 metadata, and named references intact. Authored extrude features without an
 operation mode normalize to `newBody` and therefore must not include
 `targetBodyId`.
+
+Schema V8 projects migrate with horizontal/vertical sketch constraints intact.
+Fixed point constraints are a V9 source shape and are rejected in V8 documents.
 
 Schema V6 projects migrate with all V6 source data intact, plus empty parameter
 and sketch-dimension tables and fresh parameter/dimension counters.
@@ -563,7 +589,7 @@ Primitive summaries include the derived default part ID and derived body ID for
 each object. Extrude summaries include the source sketch/entity, profile kind,
 depth, side, operation mode, optional target body ID, and authored body ID.
 
-The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -673,14 +699,14 @@ named-reference lookup results, or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v8`
+that cannot be faithfully represented by the current `web-cad.project.v9`
 document shape.
 
 Likely triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
 - future source-of-truth sketch profiles, solver state, expression records, or
-  constraint families beyond current V8 horizontal/vertical line constraints;
+  constraint families beyond current V9 horizontal/vertical/fixed constraints;
 - additional feature records that require new persisted inputs, such as revolve,
   sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
@@ -689,7 +715,7 @@ Likely triggers:
   generated references, such as exact topology-backed faces, edges, vertices,
   sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level materials/named views that are not represented by V8;
+- project-level materials/named views that are not represented by V9;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -697,7 +723,7 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v9
+schemaVersion: web-cad.project.v10
 ```
 
 That format should include a migration from older accepted versions, not silent
@@ -706,15 +732,17 @@ shape guessing.
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
 `web-cad.project.v8` when line orientation constraints became persisted
-source-of-truth data. Query-only solver/evaluator summaries
+source-of-truth data. V4 Phase B introduced `web-cad.project.v9` when fixed
+point constraints became persisted source-of-truth data. Query-only
+solver/evaluator summaries
 such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
-V4 is expected to introduce `web-cad.project.v9` only if it adds persisted
-source-of-truth constraint or sketch-reference records beyond the current V8
-horizontal/vertical line orientation constraint slice. V4 solver/evaluator
-status alone should remain derived query data.
+Future V4 slices should introduce another project format only if they add
+persisted source-of-truth data that cannot be represented by the current V9
+constraint records. Solver/evaluator status alone should remain derived query
+data.
 
 ## Rebuildable Cache
 
@@ -831,29 +859,31 @@ web-cad.project.v5
 web-cad.project.v6
 web-cad.project.v7
 web-cad.project.v8
+web-cad.project.v9
 ```
 
-Schema V1 is migrated to V8 on parse/load by adding empty sketches, empty
+Schema V1 is migrated to V9 on parse/load by adding empty sketches, empty
 authored features, empty named references, empty parameters, empty sketch
 dimensions, empty sketch constraints, and fresh
 sketch/feature/body/parameter/dimension/constraint counters. Schema V2 is
-migrated to V8 by preserving sketches and adding empty authored features, empty
+migrated to V9 by preserving sketches and adding empty authored features, empty
 named references, empty parameters, empty sketch dimensions, empty sketch
 constraints, and fresh feature/body/parameter/dimension/constraint counters.
-Schema V3 is migrated to V8 by preserving sketches/features, treating all
+Schema V3 is migrated to V9 by preserving sketches/features, treating all
 sketches as unattached, adding empty named references, empty parameters, empty
 sketch dimensions, empty sketch constraints, and defaulting authored extrude
 operation mode to `newBody`.
-Schema V4 is migrated to V8 by preserving sketches, authored features, and
+Schema V4 is migrated to V9 by preserving sketches, authored features, and
 attached sketch metadata, plus empty named-reference, parameter,
 sketch-dimension, and sketch-constraint tables and `newBody` operation mode.
-Schema V5 is migrated to V8 by preserving sketches, authored features, attached
+Schema V5 is migrated to V9 by preserving sketches, authored features, attached
 sketch metadata, and named references while defaulting missing operation mode to
 `newBody` and adding empty parameters, sketch dimensions, and sketch
-constraints. Schema V6 is migrated to V8 by preserving all V6 source data and
+constraints. Schema V6 is migrated to V9 by preserving all V6 source data and
 adding empty parameters, sketch dimensions, and sketch constraints. Schema V7 is
-migrated to V8 by preserving parameters and sketch dimensions and adding empty
-sketch constraints. Current imports reject
+migrated to V9 by preserving parameters and sketch dimensions and adding empty
+sketch constraints. Schema V8 is migrated to V9 by preserving horizontal and
+vertical sketch constraints. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,
@@ -912,7 +942,7 @@ Likely rebuildable cache files are:
 - thumbnails
 - geometry diagnostics
 
-The current JSON format is the source-of-truth interchange format for the V3/V8
+The current JSON format is the source-of-truth interchange format for the V4/V9
 foundation. It is not the final storage backend and does not imply OPFS or File
 System Access API behavior.
 

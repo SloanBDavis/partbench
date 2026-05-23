@@ -157,6 +157,160 @@ describe("sketch solver boundary", () => {
     });
   });
 
+  it("evaluates and applies fixed point constraints for explicit point targets", () => {
+    const sketch = createSketch([
+      { id: "point_1", kind: "point", point: [1, 2] },
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 0] },
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      { id: "circle_1", kind: "circle", center: [0, 0], radius: 2 }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_point",
+        name: "Fixed point",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" },
+        coordinate: [1, 2]
+      },
+      {
+        id: "fix_start",
+        name: "Fixed start",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" },
+        coordinate: [3, 4]
+      },
+      {
+        id: "fix_rect",
+        name: "Fixed rectangle center",
+        sketchId: sketch.id,
+        entityId: "rect_1",
+        kind: "fixed",
+        target: { entityId: "rect_1", role: "center" },
+        coordinate: [5, 6]
+      },
+      {
+        id: "fix_circle",
+        name: "Fixed circle center",
+        sketchId: sketch.id,
+        entityId: "circle_1",
+        kind: "fixed",
+        target: { entityId: "circle_1", role: "center" },
+        coordinate: [7, 8]
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.constraints).toEqual([
+      expect.objectContaining({
+        id: "fix_point",
+        status: "healthy",
+        currentCoordinate: [1, 2]
+      }),
+      expect.objectContaining({
+        id: "fix_start",
+        status: "inconsistent",
+        currentCoordinate: [0, 0]
+      }),
+      expect.objectContaining({
+        id: "fix_rect",
+        status: "inconsistent",
+        currentCoordinate: [0, 0]
+      }),
+      expect.objectContaining({
+        id: "fix_circle",
+        status: "inconsistent",
+        currentCoordinate: [0, 0]
+      })
+    ]);
+    expect(evaluation.evaluatedGeometry.entities.get("line_1")).toMatchObject({
+      kind: "line",
+      start: [3, 4]
+    });
+    expect(evaluation.evaluatedGeometry.entities.get("rect_1")).toMatchObject({
+      kind: "rectangle",
+      center: [5, 6]
+    });
+    expect(evaluation.evaluatedGeometry.entities.get("circle_1")).toMatchObject(
+      {
+        kind: "circle",
+        center: [7, 8]
+      }
+    );
+  });
+
+  it("reports fixed target missing, unsupported, and duplicate issues", () => {
+    const sketch = createSketch([
+      { id: "point_1", kind: "point", point: [1, 2] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_missing",
+        name: "Missing",
+        sketchId: sketch.id,
+        entityId: "missing",
+        kind: "fixed",
+        target: { entityId: "missing", role: "position" },
+        coordinate: [1, 2]
+      },
+      {
+        id: "fix_bad_role",
+        name: "Bad role",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "start" },
+        coordinate: [1, 2]
+      },
+      {
+        id: "fix_point",
+        name: "Fixed point",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" },
+        coordinate: [1, 2]
+      },
+      {
+        id: "fix_duplicate",
+        name: "Duplicate",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" },
+        coordinate: [1, 2]
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("missing-target");
+    expect(evaluation.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_ENTITY_NOT_FOUND" }),
+        expect.objectContaining({ code: "UNSUPPORTED_TARGET" }),
+        expect.objectContaining({ code: "CONFLICTING_CONSTRAINT" })
+      ])
+    );
+  });
+
   it("reports missing parameters and zero-length line dimensions as evaluation issues", () => {
     const sketch = createSketch([
       { id: "line_1", kind: "line", start: [0, 0], end: [0, 0] },

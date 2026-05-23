@@ -43,6 +43,7 @@ import type {
   SketchConstraintKind,
   SketchDimensionId,
   SketchEntityId,
+  SketchPointTarget,
   SketchPlane,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
@@ -1426,13 +1427,23 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.constraint.create") {
-    return (
-      isOptionalString(value.id) &&
-      typeof value.name === "string" &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
-      isSketchConstraintKind(value.kind)
-    );
+    if (
+      !isOptionalString(value.id) ||
+      typeof value.name !== "string" ||
+      typeof value.sketchId !== "string" ||
+      !isSketchConstraintKind(value.kind)
+    ) {
+      return false;
+    }
+
+    if (value.kind === "fixed") {
+      return (
+        isSketchPointTarget(value.target) &&
+        (value.coordinate === undefined || isVec2(value.coordinate))
+      );
+    }
+
+    return typeof value.entityId === "string";
   }
 
   if (value.op === "sketch.constraint.rename") {
@@ -1610,7 +1621,18 @@ function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
 }
 
 function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
-  return value === "horizontal" || value === "vertical";
+  return value === "horizontal" || value === "vertical" || value === "fixed";
+}
+
+function isSketchPointTarget(value: unknown): value is SketchPointTarget {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    (value.role === "position" ||
+      value.role === "start" ||
+      value.role === "end" ||
+      value.role === "center")
+  );
 }
 
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {

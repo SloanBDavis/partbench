@@ -323,6 +323,15 @@ describe("cad-protocol", () => {
         kind: "horizontal"
       },
       {
+        op: "sketch.constraint.create",
+        id: "con_fixed",
+        name: "Fix line start",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" },
+        coordinate: [0, 0]
+      },
+      {
         op: "sketch.constraint.rename",
         id: "con_horizontal",
         name: "Main horizontal"
@@ -338,6 +347,7 @@ describe("cad-protocol", () => {
       "sketch.dimension.rename",
       "sketch.dimension.delete",
       "sketch.constraint.create",
+      "sketch.constraint.create",
       "sketch.constraint.rename",
       "sketch.constraint.delete",
       "parameter.delete"
@@ -349,6 +359,11 @@ describe("cad-protocol", () => {
     expect(ops[5]).toMatchObject({
       op: "sketch.constraint.create",
       kind: "horizontal"
+    });
+    expect(ops[6]).toMatchObject({
+      op: "sketch.constraint.create",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "start" }
     });
   });
 

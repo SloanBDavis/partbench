@@ -48,6 +48,7 @@ import type {
   SketchId,
   SketchAttachmentSnapshot,
   SketchPlane,
+  SketchPointTarget,
   SketchSemanticDiff,
   SketchSnapshot,
   SphereDimensions,
@@ -202,6 +203,7 @@ export type {
   SketchAttachmentSnapshot,
   SketchGeneratedFaceAttachmentSnapshot,
   SketchPlane,
+  SketchPointTarget,
   SketchSemanticDiff,
   SketchSnapshot,
   SphereDimensions,
@@ -390,7 +392,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V4 = "web-cad.project.v4";
 export const CAD_PROJECT_FORMAT_VERSION_V5 = "web-cad.project.v5";
 export const CAD_PROJECT_FORMAT_VERSION_V6 = "web-cad.project.v6";
 export const CAD_PROJECT_FORMAT_VERSION_V7 = "web-cad.project.v7";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v8";
+export const CAD_PROJECT_FORMAT_VERSION_V8 = "web-cad.project.v8";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v9";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -400,6 +403,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V5
   | typeof CAD_PROJECT_FORMAT_VERSION_V6
   | typeof CAD_PROJECT_FORMAT_VERSION_V7
+  | typeof CAD_PROJECT_FORMAT_VERSION_V8
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -2158,14 +2162,12 @@ function applyOperation(
     }
 
     case "sketch.constraint.create": {
-      const kind = validateSketchConstraintTarget(state, op, opIndex);
-      const constraint: SketchConstraint = {
-        id: op.id ?? createSketchConstraintId(),
-        name: normalizeSketchConstraintName(op.name, opIndex, op.id),
-        sketchId: op.sketchId,
-        entityId: op.entityId,
-        kind
-      };
+      const constraint = createSketchConstraintFromOp(
+        state,
+        op,
+        op.id ?? createSketchConstraintId(),
+        opIndex
+      );
 
       addSketchConstraint(state.sketchConstraints, constraint, diff, opIndex);
       applySketchConstraintToEntity(state, constraint, diff, opIndex);
@@ -3015,6 +3017,13 @@ function applySketchDimensionToEntity(
   }
 
   const entity = result.entity;
+  assertFixedConstraintsRemainSatisfied(
+    state.sketchConstraints,
+    dimension.sketchId,
+    existing,
+    entity,
+    opIndex
+  );
   updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
 }
 
@@ -3215,32 +3224,59 @@ function assertSketchConstraintAvailable(
   constraint: SketchConstraint,
   opIndex: number
 ): void {
-  const existing = [...constraints.values()].find(
-    (candidate) =>
-      candidate.id !== constraint.id &&
-      candidate.sketchId === constraint.sketchId &&
-      candidate.entityId === constraint.entityId
-  );
+  const existing = [...constraints.values()].find((candidate) => {
+    if (
+      candidate.id === constraint.id ||
+      candidate.sketchId !== constraint.sketchId
+    ) {
+      return false;
+    }
+
+    if (
+      isOrientationConstraint(candidate) &&
+      isOrientationConstraint(constraint)
+    ) {
+      return candidate.entityId === constraint.entityId;
+    }
+
+    if (candidate.kind === "fixed" && constraint.kind === "fixed") {
+      return sketchPointTargetsEqual(candidate.target, constraint.target);
+    }
+
+    return false;
+  });
 
   if (!existing) {
     return;
   }
 
+  const isDuplicate =
+    existing.kind === constraint.kind &&
+    (constraint.kind !== "fixed" ||
+      (existing.kind === "fixed" &&
+        sketchPointTargetsEqual(existing.target, constraint.target)));
+
   throwValidationError({
-    code:
-      existing.kind === constraint.kind
-        ? "INVALID_SKETCH_CONSTRAINT"
-        : "CONFLICTING_SKETCH_CONSTRAINT",
-    message:
-      existing.kind === constraint.kind
-        ? `Line already has a ${constraint.kind} constraint: ${existing.id}.`
-        : `Line already has a conflicting ${existing.kind} constraint: ${existing.id}.`,
+    code: isDuplicate
+      ? "INVALID_SKETCH_CONSTRAINT"
+      : "CONFLICTING_SKETCH_CONSTRAINT",
+    message: isDuplicate
+      ? constraint.kind === "fixed"
+        ? `Sketch point target already has a fixed constraint: ${existing.id}.`
+        : `Line already has a ${constraint.kind} constraint: ${existing.id}.`
+      : `Line already has a conflicting ${existing.kind} constraint: ${existing.id}.`,
     opIndex,
     sketchId: constraint.sketchId,
     sketchEntityId: constraint.entityId,
     sketchConstraintId: constraint.id,
-    path: operationPath(opIndex, "kind"),
-    expected: "undriven line orientation",
+    path: operationPath(
+      opIndex,
+      constraint.kind === "fixed" ? "target" : "kind"
+    ),
+    expected:
+      constraint.kind === "fixed"
+        ? "unfixed sketch point target"
+        : "undriven line orientation",
     received: existing.kind
   });
 }
@@ -3287,29 +3323,36 @@ function normalizeSketchConstraintName(
   return value.trim();
 }
 
-function validateSketchConstraintTarget(
+function createSketchConstraintFromOp(
   state: MutableDocumentState,
   op: Extract<CadOp, { readonly op: "sketch.constraint.create" }>,
+  id: SketchConstraintId,
   opIndex: number
-): SketchConstraintKind {
+): SketchConstraint {
+  if (op.kind === "fixed") {
+    return createFixedSketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  return createOrientationSketchConstraintFromOp(state, op, id, opIndex);
+}
+
+function createOrientationSketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    {
+      readonly op: "sketch.constraint.create";
+      readonly kind: "horizontal" | "vertical";
+    }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): SketchConstraint {
   const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
   const entity = sketch.entities.get(op.entityId);
 
   if (!entity) {
     throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
-  }
-
-  if (op.kind !== "horizontal" && op.kind !== "vertical") {
-    throwValidationError({
-      code: "INVALID_SKETCH_CONSTRAINT",
-      message: "Sketch constraint kind must be horizontal or vertical.",
-      opIndex,
-      sketchId: op.sketchId,
-      sketchEntityId: op.entityId,
-      path: operationPath(opIndex, "kind"),
-      expected: "horizontal or vertical",
-      received: describeReceived(op.kind)
-    });
   }
 
   if (entity.kind !== "line") {
@@ -3339,7 +3382,46 @@ function validateSketchConstraintTarget(
     });
   }
 
-  return op.kind;
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: op.entityId,
+    kind: op.kind
+  };
+}
+
+function createFixedSketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    { readonly op: "sketch.constraint.create"; readonly kind: "fixed" }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): SketchConstraint {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const target = validateSketchPointTarget(op.target, opIndex);
+  const entity = sketch.entities.get(target.entityId);
+
+  if (!entity) {
+    throwSketchEntityNotFound(op.sketchId, target.entityId, opIndex);
+  }
+
+  assertSketchPointTargetSupported(entity, target, opIndex, op.sketchId);
+
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: target.entityId,
+    kind: "fixed",
+    target,
+    coordinate:
+      op.coordinate !== undefined
+        ? validateVec2(op.coordinate, opIndex, "coordinate")
+        : getSketchPointTargetCoordinate(entity, target)
+  };
 }
 
 function assertSketchConstraintTargetsStillValid(
@@ -3353,23 +3435,228 @@ function assertSketchConstraintTargetsStillValid(
       continue;
     }
 
-    if (entity.kind === "line") {
+    if (isOrientationConstraint(constraint) && entity.kind === "line") {
+      continue;
+    }
+
+    if (
+      constraint.kind === "fixed" &&
+      isSketchPointTargetSupported(entity, constraint.target)
+    ) {
       continue;
     }
 
     throwValidationError({
       code: "INVALID_SKETCH_CONSTRAINT",
       message:
-        "Sketch entity update would leave an existing orientation constraint with an unsupported target.",
+        "Sketch entity update would leave an existing constraint with an unsupported target.",
       opIndex,
       sketchId,
       sketchEntityId: entity.id,
       sketchConstraintId: constraint.id,
       path: operationPath(opIndex, "entity.kind"),
-      expected: `line entity compatible with constraint ${constraint.id}`,
+      expected: `entity compatible with constraint ${constraint.id}`,
       received: entity.kind
     });
   }
+}
+
+function assertFixedConstraintsRemainSatisfied(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  sketchId: SketchId,
+  before: SketchEntity,
+  after: SketchEntity,
+  opIndex: number
+): void {
+  for (const constraint of constraints.values()) {
+    if (
+      constraint.kind !== "fixed" ||
+      constraint.sketchId !== sketchId ||
+      constraint.entityId !== after.id
+    ) {
+      continue;
+    }
+
+    const beforeCoordinate = getSketchPointTargetCoordinate(
+      before,
+      constraint.target
+    );
+    const afterCoordinate = getSketchPointTargetCoordinate(
+      after,
+      constraint.target
+    );
+
+    if (
+      vec2Equal(beforeCoordinate, constraint.coordinate) &&
+      !vec2Equal(afterCoordinate, constraint.coordinate)
+    ) {
+      throwValidationError({
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Sketch dimension update would violate an existing fixed point constraint.",
+        opIndex,
+        sketchId,
+        sketchEntityId: after.id,
+        sketchConstraintId: constraint.id,
+        path: operationPath(opIndex, "value"),
+        expected: `fixed coordinate ${formatVec2(constraint.coordinate)}`,
+        received: formatVec2(afterCoordinate)
+      });
+    }
+  }
+}
+
+function validateSketchPointTarget(
+  value: unknown,
+  opIndex: number
+): SketchPointTarget {
+  if (!isRecord(value)) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Fixed sketch constraint target must be an object.",
+      opIndex,
+      path: operationPath(opIndex, "target"),
+      expected: "sketch point target",
+      received: describeReceived(value)
+    });
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Fixed sketch constraint target entityId must be non-empty.",
+      opIndex,
+      path: operationPath(opIndex, "target.entityId"),
+      expected: "non-empty sketch entity id",
+      received: describeReceived(value.entityId)
+    });
+  }
+
+  if (!isSketchPointTargetRole(value.role)) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Fixed sketch constraint target role is unsupported.",
+      opIndex,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "target.role"),
+      expected: "position, start, end, or center",
+      received: describeReceived(value.role)
+    });
+  }
+
+  return {
+    entityId: value.entityId,
+    role: value.role
+  };
+}
+
+function assertSketchPointTargetSupported(
+  entity: SketchEntity,
+  target: SketchPointTarget,
+  opIndex: number,
+  sketchId: SketchId
+): void {
+  if (isSketchPointTargetSupported(entity, target)) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_CONSTRAINT",
+    message:
+      "Fixed sketch constraint target role is not supported for this entity.",
+    opIndex,
+    sketchId,
+    sketchEntityId: entity.id,
+    path: operationPath(opIndex, "target.role"),
+    expected: `point target for ${entity.kind}`,
+    received: target.role
+  });
+}
+
+function isSketchPointTargetSupported(
+  entity: SketchEntity,
+  target: SketchPointTarget
+): boolean {
+  if (target.entityId !== entity.id) {
+    return false;
+  }
+
+  return (
+    (entity.kind === "point" && target.role === "position") ||
+    (entity.kind === "line" &&
+      (target.role === "start" || target.role === "end")) ||
+    ((entity.kind === "rectangle" || entity.kind === "circle") &&
+      target.role === "center")
+  );
+}
+
+function getSketchPointTargetCoordinate(
+  entity: SketchEntity,
+  target: SketchPointTarget
+): Vec2 {
+  if (entity.kind === "point" && target.role === "position") {
+    return [
+      cleanMeasurementNumber(entity.point[0]),
+      cleanMeasurementNumber(entity.point[1])
+    ];
+  }
+
+  if (entity.kind === "line" && target.role === "start") {
+    return [
+      cleanMeasurementNumber(entity.start[0]),
+      cleanMeasurementNumber(entity.start[1])
+    ];
+  }
+
+  if (entity.kind === "line" && target.role === "end") {
+    return [
+      cleanMeasurementNumber(entity.end[0]),
+      cleanMeasurementNumber(entity.end[1])
+    ];
+  }
+
+  if (
+    (entity.kind === "rectangle" || entity.kind === "circle") &&
+    target.role === "center"
+  ) {
+    return [
+      cleanMeasurementNumber(entity.center[0]),
+      cleanMeasurementNumber(entity.center[1])
+    ];
+  }
+
+  return [NaN, NaN];
+}
+
+function sketchPointTargetsEqual(
+  left: SketchPointTarget,
+  right: SketchPointTarget
+): boolean {
+  return left.entityId === right.entityId && left.role === right.role;
+}
+
+function isOrientationConstraint(
+  constraint: SketchConstraint
+): constraint is Extract<
+  SketchConstraint,
+  { readonly kind: "horizontal" | "vertical" }
+> {
+  return constraint.kind === "horizontal" || constraint.kind === "vertical";
+}
+
+function isSketchPointTargetRole(
+  value: unknown
+): value is SketchPointTarget["role"] {
+  return (
+    value === "position" ||
+    value === "start" ||
+    value === "end" ||
+    value === "center"
+  );
+}
+
+function formatVec2(value: Vec2): string {
+  return `[${value[0]}, ${value[1]}]`;
 }
 
 function applySketchConstraintToEntity(
@@ -4951,7 +5238,8 @@ function sketchConstraintRef(
     name: constraint.name,
     sketchId: constraint.sketchId,
     entityId: constraint.entityId,
-    kind: constraint.kind
+    kind: constraint.kind,
+    ...(constraint.kind === "fixed" ? { target: { ...constraint.target } } : {})
   };
 }
 
@@ -5550,6 +5838,18 @@ function cloneSketchDimensionSnapshot(
 function cloneSketchConstraintSnapshot(
   constraint: SketchConstraintSnapshot
 ): SketchConstraint {
+  if (constraint.kind === "fixed") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "fixed",
+      target: { ...constraint.target },
+      coordinate: [constraint.coordinate[0], constraint.coordinate[1]]
+    };
+  }
+
   return {
     id: constraint.id,
     name: constraint.name,
@@ -7456,6 +7756,29 @@ function normalizeCadProject(value: CadProject): CadProject {
     };
   }
 
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        ...value.document,
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        sketchDimensions: value.document.sketchDimensions.map(
+          cloneSketchDimensionSnapshot
+        ),
+        sketchConstraints: value.document.sketchConstraints.map(
+          cloneSketchConstraintSnapshot
+        ),
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        )
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
+    };
+  }
+
   if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7) {
     return {
       ...value,
@@ -7726,6 +8049,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V8 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
   ) {
     addProjectIssue(
@@ -7856,6 +8180,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -7863,22 +8188,29 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresSketchConstraints =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsFixedSketchConstraints =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -7888,6 +8220,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -8129,7 +8462,8 @@ function validateCadDocumentSnapshot(
             seenSketchConstraintIds,
             seenSketchConstraintTargets,
             seenSketchIds,
-            sketchEntityRefs
+            sketchEntityRefs,
+            allowsFixedSketchConstraints
           )
         );
       }
@@ -8741,6 +9075,84 @@ function validateSketchDimensionTargetShape(
   return valid;
 }
 
+function validateSketchPointTargetSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[]
+): SketchPointTarget | undefined {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      "Fixed sketch constraint target must be an object."
+    );
+    return undefined;
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.entityId`,
+      "Fixed sketch constraint target entityId must be a non-empty string."
+    );
+  }
+
+  if (!isSketchPointTargetRole(value.role)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.role`,
+      "Fixed sketch constraint target role must be position, start, end, or center."
+    );
+  }
+
+  return typeof value.entityId === "string" &&
+    isSketchPointTargetRole(value.role)
+    ? {
+        entityId: value.entityId,
+        role: value.role
+      }
+    : undefined;
+}
+
+function isSketchPointTargetSupportedForImport(
+  entityKind: SketchEntityKind,
+  target: SketchPointTarget
+): boolean {
+  return (
+    (entityKind === "point" && target.role === "position") ||
+    (entityKind === "line" &&
+      (target.role === "start" || target.role === "end")) ||
+    ((entityKind === "rectangle" || entityKind === "circle") &&
+      target.role === "center")
+  );
+}
+
+function getImportSketchPointTargetCoordinate(
+  entity: Record<string, unknown>,
+  target: SketchPointTarget
+): Vec2 | undefined {
+  if (target.role === "position" && isVec2(entity.point)) {
+    return entity.point;
+  }
+
+  if (target.role === "start" && isVec2(entity.start)) {
+    return entity.start;
+  }
+
+  if (target.role === "end" && isVec2(entity.end)) {
+    return entity.end;
+  }
+
+  if (target.role === "center" && isVec2(entity.center)) {
+    return entity.center;
+  }
+
+  return undefined;
+}
+
 function validateSketchConstraintSnapshot(
   value: unknown,
   path: string,
@@ -8748,10 +9160,13 @@ function validateSketchConstraintSnapshot(
   seenSketchConstraintIds: Set<string>,
   seenSketchConstraintTargets: Map<string, SketchConstraintKind>,
   seenSketchIds: ReadonlySet<string>,
-  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
+  allowsFixedConstraints: boolean
 ): number {
   let maxGeneratedSketchConstraintNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
+  let entityId: string | undefined;
+  let target: SketchPointTarget | undefined;
 
   if (!isRecord(value)) {
     addProjectIssue(
@@ -8807,21 +9222,72 @@ function validateSketchConstraintSnapshot(
     );
   }
 
-  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+  if (!isSketchConstraintKind(value.kind)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.kind`,
+      "Sketch constraint kind must be horizontal, vertical, or fixed."
+    );
+  }
+
+  if (value.kind === "fixed") {
+    if (!allowsFixedConstraints) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.kind`,
+        "Project documents before V9 must not include fixed sketch constraints."
+      );
+    }
+
+    target = validateSketchPointTargetSnapshot(
+      value.target,
+      `${path}.target`,
+      issues
+    );
+    entityId = target?.entityId;
+
+    if (
+      typeof value.entityId === "string" &&
+      target &&
+      value.entityId !== target.entityId
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.entityId`,
+        "Fixed sketch constraint entityId must match target.entityId."
+      );
+    }
+
+    if (!isVec2(value.coordinate)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.coordinate`,
+        "Fixed sketch constraint coordinate must be a finite Vec2."
+      );
+    }
+  } else if (typeof value.entityId === "string" && value.entityId.length > 0) {
+    entityId = value.entityId;
+  } else {
     addProjectIssue(
       issues,
       "INVALID_SKETCH_CONSTRAINT",
       `${path}.entityId`,
       "Sketch constraint entityId must be a non-empty string."
     );
-  } else {
-    entityRef = sketchEntityRefs.get(value.entityId);
+  }
+
+  if (typeof entityId === "string") {
+    entityRef = sketchEntityRefs.get(entityId);
 
     if (!entityRef) {
       addProjectIssue(
         issues,
         "INVALID_SKETCH_CONSTRAINT",
-        `${path}.entityId`,
+        value.kind === "fixed" ? `${path}.target.entityId` : `${path}.entityId`,
         "Sketch constraint entityId must reference an existing sketch entity."
       );
     } else {
@@ -8829,12 +9295,17 @@ function validateSketchConstraintSnapshot(
         addProjectIssue(
           issues,
           "INVALID_SKETCH_CONSTRAINT",
-          `${path}.entityId`,
+          value.kind === "fixed"
+            ? `${path}.target.entityId`
+            : `${path}.entityId`,
           "Sketch constraint entityId must belong to the referenced sketch."
         );
       }
 
-      if (entityRef.kind !== "line") {
+      if (
+        (value.kind === "horizontal" || value.kind === "vertical") &&
+        entityRef.kind !== "line"
+      ) {
         addProjectIssue(
           issues,
           "INVALID_SKETCH_CONSTRAINT",
@@ -8842,25 +9313,30 @@ function validateSketchConstraintSnapshot(
           "Sketch orientation constraint entityId must reference a line sketch entity."
         );
       }
-    }
-  }
 
-  if (!isSketchConstraintKind(value.kind)) {
-    addProjectIssue(
-      issues,
-      "INVALID_SKETCH_CONSTRAINT",
-      `${path}.kind`,
-      "Sketch constraint kind must be horizontal or vertical."
-    );
+      if (
+        value.kind === "fixed" &&
+        target &&
+        !isSketchPointTargetSupportedForImport(entityRef.kind, target)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.target.role`,
+          "Fixed sketch constraint target role is not supported for this entity."
+        );
+      }
+    }
   }
 
   if (
     typeof value.sketchId === "string" &&
-    typeof value.entityId === "string" &&
+    typeof entityId === "string" &&
     isSketchConstraintKind(value.kind) &&
+    (value.kind === "horizontal" || value.kind === "vertical") &&
     entityRef?.kind === "line"
   ) {
-    const targetKey = `${value.sketchId}\0${value.entityId}`;
+    const targetKey = `${value.sketchId}\0orientation\0${entityId}`;
     const existing = seenSketchConstraintTargets.get(targetKey);
 
     if (existing) {
@@ -8881,7 +9357,7 @@ function validateSketchConstraintSnapshot(
       isVec2(entityRef.entity.start) &&
       isVec2(entityRef.entity.end) &&
       getLineLength({
-        id: value.entityId,
+        id: entityId,
         kind: "line",
         start: entityRef.entity.start,
         end: entityRef.entity.end
@@ -8901,7 +9377,7 @@ function validateSketchConstraintSnapshot(
       isVec2(entityRef.entity.end)
     ) {
       const entity: Extract<SketchEntity, { readonly kind: "line" }> = {
-        id: value.entityId,
+        id: entityId,
         kind: "line",
         start: entityRef.entity.start,
         end: entityRef.entity.end
@@ -8916,6 +9392,50 @@ function validateSketchConstraintSnapshot(
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.kind`,
           `Saved line entity does not satisfy its ${value.kind} orientation constraint.`
+        );
+      }
+    }
+  }
+
+  if (
+    typeof value.sketchId === "string" &&
+    value.kind === "fixed" &&
+    target &&
+    entityRef
+  ) {
+    const targetKey = `${value.sketchId}\0fixed\0${target.entityId}\0${target.role}`;
+    const existing = seenSketchConstraintTargets.get(targetKey);
+
+    if (existing) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.target`,
+        "Sketch point target already has a duplicate fixed constraint."
+      );
+    } else {
+      seenSketchConstraintTargets.set(targetKey, value.kind);
+    }
+
+    if (
+      isRecord(entityRef.entity) &&
+      isVec2(value.coordinate) &&
+      isSketchPointTargetSupportedForImport(entityRef.kind, target)
+    ) {
+      const currentCoordinate = getImportSketchPointTargetCoordinate(
+        entityRef.entity,
+        target
+      );
+
+      if (
+        currentCoordinate &&
+        !vec2Equal(currentCoordinate, value.coordinate)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.coordinate`,
+          "Saved sketch entity does not satisfy its fixed point constraint."
         );
       }
     }
@@ -10633,13 +11153,23 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "sketch.constraint.create") {
-    return (
-      isOptionalString(value.id) &&
-      typeof value.name === "string" &&
-      typeof value.sketchId === "string" &&
-      typeof value.entityId === "string" &&
-      isSketchConstraintKind(value.kind)
-    );
+    if (
+      !isOptionalString(value.id) ||
+      typeof value.name !== "string" ||
+      typeof value.sketchId !== "string" ||
+      !isSketchConstraintKind(value.kind)
+    ) {
+      return false;
+    }
+
+    if (value.kind === "fixed") {
+      return (
+        isSketchPointTarget(value.target) &&
+        (value.coordinate === undefined || isVec2(value.coordinate))
+      );
+    }
+
+    return typeof value.entityId === "string";
   }
 
   if (value.op === "sketch.constraint.rename") {
@@ -11092,7 +11622,15 @@ function isSketchDimensionTarget(
 }
 
 function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
-  return value === "horizontal" || value === "vertical";
+  return value === "horizontal" || value === "vertical" || value === "fixed";
+}
+
+function isSketchPointTarget(value: unknown): value is SketchPointTarget {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    isSketchPointTargetRole(value.role)
+  );
 }
 
 function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {

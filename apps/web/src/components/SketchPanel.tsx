@@ -63,6 +63,11 @@ import {
   validateSketchEntityForm
 } from "../sketchEntityForms";
 
+type OrientationSketchConstraintKind = Extract<
+  SketchConstraintKind,
+  "horizontal" | "vertical"
+>;
+
 export interface SketchPanelProps {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
@@ -277,7 +282,10 @@ export function SketchPanel({
     () =>
       selectedEntity
         ? selectedSketchConstraints.filter(
-            (constraint) => constraint.entityId === selectedEntity.id
+            (constraint) =>
+              constraint.entityId === selectedEntity.id &&
+              (constraint.kind === "horizontal" ||
+                constraint.kind === "vertical")
           )
         : [],
     [selectedEntity, selectedSketchConstraints]
@@ -1790,7 +1798,7 @@ function SketchConstraintControls({
                 disabled={disabled}
                 onChange={(event) => {
                   const kind = event.currentTarget
-                    .value as SketchConstraintKind;
+                    .value as OrientationSketchConstraintKind;
 
                   onCreateFormChange({
                     ...createForm,
@@ -2185,7 +2193,10 @@ function sketchDimensionToForm(
 function sketchConstraintToForm(
   constraint: SketchConstraintEntry | undefined
 ): SketchConstraintForm {
-  if (!constraint) {
+  if (
+    !constraint ||
+    (constraint.kind !== "horizontal" && constraint.kind !== "vertical")
+  ) {
     return defaultSketchConstraintForm;
   }
 

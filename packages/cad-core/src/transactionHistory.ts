@@ -437,13 +437,19 @@ function createOperationSummaries(
 
       case "sketch.constraint.create": {
         const constraintId = op.id ?? createdSketchConstraintRef?.id;
+        const targetEntityId =
+          op.kind === "fixed" ? op.target.entityId : op.entityId;
+        const targetLabel =
+          op.kind === "fixed"
+            ? `${op.sketchId}/${op.target.entityId}.${op.target.role}`
+            : `${op.sketchId}/${op.entityId}`;
 
         return createSketchConstraintOperationSummary({
           op: op.op,
-          label: `Create ${op.kind} sketch constraint ${constraintId ?? "with generated ID"} on ${op.sketchId}/${op.entityId}`,
+          label: `Create ${op.kind} sketch constraint ${constraintId ?? "with generated ID"} on ${targetLabel}`,
           sketchConstraintId: constraintId,
           sketchId: op.sketchId,
-          sketchEntityId: op.entityId
+          sketchEntityId: targetEntityId
         });
       }
 

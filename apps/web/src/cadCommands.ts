@@ -160,7 +160,7 @@ export interface SketchDimensionForm {
 export interface SketchConstraintForm {
   readonly id: string;
   readonly name: string;
-  readonly kind: SketchConstraintKind;
+  readonly kind: Extract<SketchConstraintKind, "horizontal" | "vertical">;
 }
 
 export interface SketchEntityForm {

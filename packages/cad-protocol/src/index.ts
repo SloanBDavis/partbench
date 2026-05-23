@@ -81,9 +81,17 @@ export type SketchDimensionStatus =
   | "healthy"
   | "unsupported"
   | "missing-target"
-  | "invalid-value";
+  | "invalid-value"
+  | "inconsistent";
 
-export type SketchConstraintKind = "horizontal" | "vertical";
+export type SketchConstraintKind = "horizontal" | "vertical" | "fixed";
+
+export type SketchPointTargetRole = "position" | "start" | "end" | "center";
+
+export interface SketchPointTarget {
+  readonly entityId: SketchEntityId;
+  readonly role: SketchPointTargetRole;
+}
 
 export type SketchDimensionIssueCode =
   | "PARAMETER_NOT_FOUND"
@@ -97,6 +105,7 @@ export type SketchConstraintIssueCode =
   | "SKETCH_ENTITY_NOT_FOUND"
   | "UNSUPPORTED_TARGET"
   | "INVALID_VALUE"
+  | "INCONSISTENT_CONSTRAINT"
   | "CONFLICTING_CONSTRAINT";
 
 export type SketchDimensionTarget =
@@ -394,13 +403,27 @@ export interface SketchDimensionDeleteOp {
   readonly id: SketchDimensionId;
 }
 
-export interface SketchConstraintCreateOp {
+export type SketchConstraintCreateOp =
+  | SketchOrientationConstraintCreateOp
+  | SketchFixedConstraintCreateOp;
+
+export interface SketchOrientationConstraintCreateOp {
   readonly op: "sketch.constraint.create";
   readonly id?: SketchConstraintId;
   readonly name: string;
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
-  readonly kind: SketchConstraintKind;
+  readonly kind: "horizontal" | "vertical";
+}
+
+export interface SketchFixedConstraintCreateOp {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly kind: "fixed";
+  readonly target: SketchPointTarget;
+  readonly coordinate?: Vec2;
 }
 
 export interface SketchConstraintRenameOp {
@@ -512,6 +535,7 @@ export interface CadSketchConstraintRef {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly kind: SketchConstraintKind;
+  readonly target?: SketchPointTarget;
 }
 
 export interface DocumentSemanticDiff {
@@ -983,12 +1007,26 @@ export interface SketchDimensionSnapshot {
   readonly valueSource: SketchDimensionValueSource;
 }
 
-export interface SketchConstraintSnapshot {
+export type SketchConstraintSnapshot =
+  | SketchOrientationConstraintSnapshot
+  | SketchFixedConstraintSnapshot;
+
+export interface SketchOrientationConstraintSnapshot {
   readonly id: SketchConstraintId;
   readonly name: string;
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
-  readonly kind: SketchConstraintKind;
+  readonly kind: "horizontal" | "vertical";
+}
+
+export interface SketchFixedConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "fixed";
+  readonly target: SketchPointTarget;
+  readonly coordinate: Vec2;
 }
 
 export interface SketchDimensionIssue {
@@ -1008,6 +1046,7 @@ export interface SketchConstraintIssue {
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly sketchConstraintId?: SketchConstraintId;
+  readonly sketchPointTarget?: SketchPointTarget;
   readonly expected?: string;
   readonly received?: string;
 }
@@ -1022,10 +1061,11 @@ export interface SketchDimensionEntry extends SketchDimensionSnapshot {
   readonly effectiveValue?: number;
 }
 
-export interface SketchConstraintEntry extends SketchConstraintSnapshot {
+export type SketchConstraintEntry = SketchConstraintSnapshot & {
   readonly status: SketchDimensionStatus;
   readonly issues: readonly SketchConstraintIssue[];
-}
+  readonly currentCoordinate?: Vec2;
+};
 
 export type SketchAttachmentSnapshot = SketchGeneratedFaceAttachmentSnapshot;
 

@@ -7,6 +7,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import {
   AsyncCadCommandExecutor,
+  CAD_PROJECT_FORMAT_VERSION_V8,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
   type CadProject,
@@ -12607,7 +12608,309 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
-  it("round-trips V8 sketch constraint source data and migrates V7", () => {
+  it("creates fixed point constraints for supported sketch point targets", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [1, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [0, 0],
+        radius: 2
+      }
+    ]);
+
+    const result = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.constraint.create",
+          id: "fix_point",
+          name: "Fixed point",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "point_1", role: "position" }
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "fix_line_start",
+          name: "Fixed line start",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "line_1", role: "start" },
+          coordinate: [2, 1]
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "fix_rect_center",
+          name: "Fixed rectangle center",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "rect_1", role: "center" },
+          coordinate: [3, 4]
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "fix_circle_center",
+          name: "Fixed circle center",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "circle_1", role: "center" },
+          coordinate: [-1, -2]
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: [
+        "fix_point",
+        "fix_line_start",
+        "fix_rect_center",
+        "fix_circle_center"
+      ],
+      modifiedSketchEntityIds: ["point_1", "line_1", "rect_1", "circle_1"]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({ id: "point_1", point: [1, 2] }),
+          expect.objectContaining({ id: "line_1", start: [2, 1] }),
+          expect.objectContaining({ id: "rect_1", center: [3, 4] }),
+          expect.objectContaining({ id: "circle_1", center: [-1, -2] })
+        ])
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      constraintCount: 4,
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          id: "fix_point",
+          kind: "fixed",
+          target: { entityId: "point_1", role: "position" },
+          coordinate: [1, 2],
+          currentCoordinate: [1, 2],
+          status: "healthy"
+        }),
+        expect.objectContaining({
+          id: "fix_line_start",
+          kind: "fixed",
+          currentCoordinate: [2, 1]
+        })
+      ])
+    });
+    expect(engine.getTransactions().at(-1)?.diff).toMatchObject({
+      sketchConstraints: {
+        created: expect.arrayContaining([
+          expect.objectContaining({
+            id: "fix_line_start",
+            kind: "fixed",
+            target: { entityId: "line_1", role: "start" }
+          })
+        ])
+      }
+    });
+  });
+
+  it("validates duplicate, unsupported, and missing fixed point constraint targets", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_start",
+        name: "Fixed start",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" }
+      }
+    ]);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "fix_duplicate",
+            name: "Duplicate fixed start",
+            sketchId: "sketch_1",
+            kind: "fixed",
+            target: { entityId: "line_1", role: "start" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        sketchConstraintId: "fix_duplicate"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "fix_rect_width",
+            name: "Unsupported fixed target",
+            sketchId: "sketch_1",
+            kind: "fixed",
+            target: { entityId: "rect_1", role: "start" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        sketchEntityId: "rect_1"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "fix_missing",
+            name: "Missing fixed target",
+            sketchId: "sketch_1",
+            kind: "fixed",
+            target: { entityId: "missing", role: "position" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_ENTITY_NOT_FOUND", sketchEntityId: "missing" }
+    });
+  });
+
+  it("supports undo, redo, and batch dry-run for fixed constraints", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [1, 2]
+      }
+    ]);
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "sketch.constraint.create",
+          id: "fix_point",
+          name: "Fixed point",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "point_1", role: "position" }
+        }
+      ]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: ["fix_point"]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({ ok: true, constraintCount: 0 });
+
+    engine.apply({
+      op: "sketch.constraint.create",
+      id: "fix_point",
+      name: "Fixed point",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "point_1", role: "position" }
+    });
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({ ok: true, constraintCount: 0 });
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      constraintCount: 1,
+      constraints: [expect.objectContaining({ id: "fix_point", kind: "fixed" })]
+    });
+  });
+
+  it("round-trips V9 sketch constraint source data and migrates V7/V8", () => {
     const engine = new CadEngine();
     engine.applyBatch([
       { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
@@ -12625,19 +12928,36 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         sketchId: "sketch_1",
         entityId: "line_1",
         kind: "horizontal"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_start",
+        name: "Fixed start",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" }
       }
     ]);
 
     const project = engine.exportProject();
     expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
     expect(project.document.sketchConstraints).toEqual([
-      {
+      expect.objectContaining({
         id: "con_horizontal",
         name: "Horizontal line",
         sketchId: "sketch_1",
         entityId: "line_1",
         kind: "horizontal"
-      }
+      }),
+      expect.objectContaining({
+        id: "fix_start",
+        name: "Fixed start",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" },
+        coordinate: expect.any(Array)
+      })
     ]);
 
     const restored = importCadProject(project);
@@ -12648,9 +12968,30 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      constraintCount: 1,
-      constraints: [expect.objectContaining({ id: "con_horizontal" })]
+      constraintCount: 2,
+      constraints: expect.arrayContaining([
+        expect.objectContaining({ id: "con_horizontal" }),
+        expect.objectContaining({ id: "fix_start", kind: "fixed" })
+      ])
     });
+
+    const legacyV8Project = {
+      ...project,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V8,
+      document: {
+        ...project.document,
+        sketchConstraints: project.document.sketchConstraints.filter(
+          (constraint) => constraint.kind !== "fixed"
+        )
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+    const migratedV8 = importCadProject(legacyV8Project).exportProject();
+    expect(migratedV8.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(migratedV8.document.sketchConstraints).toEqual([
+      expect.objectContaining({ id: "con_horizontal", kind: "horizontal" })
+    ]);
 
     const legacyV7Project = {
       ...project,
@@ -12721,6 +13062,76 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       code: "INVALID_SKETCH_CONSTRAINT",
       path: "$.document.sketchConstraints[0].kind",
       message: "does not satisfy"
+    });
+  });
+
+  it("rejects imported V9 fixed constraints with unsupported or inconsistent targets", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [1, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_point",
+        name: "Fixed point",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" }
+      }
+    ]);
+
+    const project = engine.exportProject();
+    const inconsistentProject = {
+      ...project,
+      document: {
+        ...project.document,
+        sketches: project.document.sketches.map((sketch) =>
+          sketch.id === "sketch_1"
+            ? {
+                ...sketch,
+                entities: sketch.entities.map((entity) =>
+                  entity.id === "point_1" && entity.kind === "point"
+                    ? { ...entity, point: [9, 9] }
+                    : entity
+                )
+              }
+            : sketch
+        )
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+
+    expectProjectImportError(() => importCadProject(inconsistentProject), {
+      code: "INVALID_SKETCH_CONSTRAINT",
+      path: "$.document.sketchConstraints[0].coordinate",
+      message: "does not satisfy"
+    });
+
+    const unsupportedProject = {
+      ...project,
+      document: {
+        ...project.document,
+        sketchConstraints: [
+          {
+            ...project.document.sketchConstraints[0],
+            target: { entityId: "point_1", role: "start" }
+          }
+        ]
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+
+    expectProjectImportError(() => importCadProject(unsupportedProject), {
+      code: "INVALID_SKETCH_CONSTRAINT",
+      path: "$.document.sketchConstraints[0].target.role",
+      message: "not supported"
     });
   });
 });

@@ -16,6 +16,7 @@ import type {
   SketchEntitySnapshot,
   SketchId,
   SketchPlane,
+  SketchPointTarget,
   Vec2
 } from "@web-cad/cad-protocol";
 
@@ -258,6 +259,20 @@ export function evaluateSketchConstraint(
   document: SketchSolverDocument,
   constraint: SketchConstraintSnapshot
 ): SketchConstraintEntry {
+  if (constraint.kind === "fixed") {
+    return evaluateFixedSketchConstraint(document, constraint);
+  }
+
+  return evaluateOrientationSketchConstraint(document, constraint);
+}
+
+function evaluateOrientationSketchConstraint(
+  document: SketchSolverDocument,
+  constraint: Extract<
+    SketchConstraintSnapshot,
+    { readonly kind: "horizontal" | "vertical" }
+  >
+): SketchConstraintEntry {
   const issues: SketchConstraintIssue[] = [];
   const sketch = document.sketches.get(constraint.sketchId);
 
@@ -333,7 +348,8 @@ export function evaluateSketchConstraint(
     (candidate) =>
       candidate.id !== constraint.id &&
       candidate.sketchId === constraint.sketchId &&
-      candidate.entityId === constraint.entityId
+      candidate.entityId === constraint.entityId &&
+      (candidate.kind === "horizontal" || candidate.kind === "vertical")
   );
 
   if (conflicting) {
@@ -355,6 +371,115 @@ export function evaluateSketchConstraint(
     ...cloneSketchConstraintSnapshot(constraint),
     status: getSketchEvaluationStatus(issues),
     issues
+  };
+}
+
+function evaluateFixedSketchConstraint(
+  document: SketchSolverDocument,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "fixed" }>
+): SketchConstraintEntry {
+  const issues: SketchConstraintIssue[] = [];
+  const sketch = document.sketches.get(constraint.sketchId);
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${constraint.sketchId}`,
+      sketchId: constraint.sketchId,
+      sketchConstraintId: constraint.id,
+      sketchPointTarget: constraint.target
+    });
+  }
+
+  const entity = sketch?.entities.get(constraint.target.entityId);
+
+  if (sketch && !entity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.target.entityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      sketchPointTarget: constraint.target
+    });
+  }
+
+  if (entity && !isSketchPointTargetSupported(entity, constraint.target)) {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Fixed sketch constraint target role is not supported for this entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      sketchPointTarget: constraint.target,
+      expected: `point target for ${entity.kind}`,
+      received: constraint.target.role
+    });
+  }
+
+  const currentCoordinate =
+    entity && isSketchPointTargetSupported(entity, constraint.target)
+      ? getSketchPointTargetCoordinate(entity, constraint.target)
+      : undefined;
+
+  if (!isFiniteVec2(constraint.coordinate)) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message: "Fixed sketch constraint coordinate must be finite.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      sketchPointTarget: constraint.target,
+      expected: "finite coordinate",
+      received: describeReceived(constraint.coordinate)
+    });
+  }
+
+  if (
+    currentCoordinate &&
+    isFiniteVec2(constraint.coordinate) &&
+    !vec2Equal(currentCoordinate, constraint.coordinate)
+  ) {
+    issues.push({
+      code: "INCONSISTENT_CONSTRAINT",
+      message:
+        "Fixed sketch constraint target does not match its fixed coordinate.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      sketchPointTarget: constraint.target,
+      expected: formatVec2(constraint.coordinate),
+      received: formatVec2(currentCoordinate)
+    });
+  }
+
+  const conflicting = [...document.sketchConstraints.values()].find(
+    (candidate) =>
+      candidate.id !== constraint.id &&
+      candidate.sketchId === constraint.sketchId &&
+      candidate.kind === "fixed" &&
+      sketchPointTargetsEqual(candidate.target, constraint.target)
+  );
+
+  if (conflicting) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message: `Sketch point target already has a fixed constraint: ${conflicting.id}.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      sketchPointTarget: constraint.target,
+      expected: "one fixed constraint per sketch point target",
+      received: conflicting.id
+    });
+  }
+
+  return {
+    ...cloneSketchConstraintSnapshot(constraint),
+    status: getSketchEvaluationStatus(issues),
+    issues,
+    ...(currentCoordinate ? { currentCoordinate } : {})
   };
 }
 
@@ -534,6 +659,10 @@ export function applySketchConstraintValue(
   entity: SketchEntitySnapshot,
   constraint: SketchConstraintSnapshot
 ): SketchSolverEntityResult {
+  if (constraint.kind === "fixed") {
+    return applyFixedSketchConstraintValue(entity, constraint);
+  }
+
   if (entity.kind !== "line") {
     return {
       ok: false,
@@ -616,6 +745,10 @@ export function sketchConstraintMatchesLine(
   kind: SketchConstraintKind,
   entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
 ): boolean {
+  if (kind === "fixed") {
+    return true;
+  }
+
   return kind === "horizontal"
     ? cleanSketchNumber(entity.start[1]) === cleanSketchNumber(entity.end[1])
     : cleanSketchNumber(entity.start[0]) === cleanSketchNumber(entity.end[0]);
@@ -641,6 +774,16 @@ export function getSketchEvaluationStatus(
 
   if (issues.some((issue) => issue.code === "INVALID_VALUE")) {
     return "invalid-value";
+  }
+
+  if (
+    issues.some(
+      (issue) =>
+        issue.code === "INCONSISTENT_CONSTRAINT" ||
+        issue.code === "CONFLICTING_CONSTRAINT"
+    )
+  ) {
+    return "inconsistent";
   }
 
   return "unsupported";
@@ -700,6 +843,135 @@ function applyLineLengthDimensionValue(
   };
 }
 
+function applyFixedSketchConstraintValue(
+  entity: SketchEntitySnapshot,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "fixed" }>
+): SketchSolverEntityResult {
+  if (!isSketchPointTargetSupported(entity, constraint.target)) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Fixed sketch constraint target role is not supported for this entity.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.target.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "target",
+        expected: `point target for ${entity.kind}`,
+        received: constraint.target.role
+      }
+    };
+  }
+
+  if (!isFiniteVec2(constraint.coordinate)) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: "Fixed sketch constraint coordinate must be finite.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.target.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "coordinate",
+        expected: "finite coordinate",
+        received: describeReceived(constraint.coordinate)
+      }
+    };
+  }
+
+  return {
+    ok: true,
+    entity: setSketchPointTargetCoordinate(
+      entity,
+      constraint.target,
+      constraint.coordinate
+    )
+  };
+}
+
+function isSketchPointTargetSupported(
+  entity: SketchEntitySnapshot,
+  target: SketchPointTarget
+): boolean {
+  if (target.entityId !== entity.id) {
+    return false;
+  }
+
+  return (
+    (entity.kind === "point" && target.role === "position") ||
+    (entity.kind === "line" &&
+      (target.role === "start" || target.role === "end")) ||
+    ((entity.kind === "rectangle" || entity.kind === "circle") &&
+      target.role === "center")
+  );
+}
+
+function getSketchPointTargetCoordinate(
+  entity: SketchEntitySnapshot,
+  target: SketchPointTarget
+): Vec2 {
+  if (entity.kind === "point" && target.role === "position") {
+    return cleanVec2(entity.point);
+  }
+
+  if (entity.kind === "line" && target.role === "start") {
+    return cleanVec2(entity.start);
+  }
+
+  if (entity.kind === "line" && target.role === "end") {
+    return cleanVec2(entity.end);
+  }
+
+  if (
+    (entity.kind === "rectangle" || entity.kind === "circle") &&
+    target.role === "center"
+  ) {
+    return cleanVec2(entity.center);
+  }
+
+  return [NaN, NaN];
+}
+
+function setSketchPointTargetCoordinate(
+  entity: SketchEntitySnapshot,
+  target: SketchPointTarget,
+  coordinate: Vec2
+): SketchEntitySnapshot {
+  const cleanCoordinate = cleanVec2(coordinate);
+
+  if (entity.kind === "point" && target.role === "position") {
+    return { ...entity, point: cleanCoordinate };
+  }
+
+  if (entity.kind === "line" && target.role === "start") {
+    return { ...entity, start: cleanCoordinate };
+  }
+
+  if (entity.kind === "line" && target.role === "end") {
+    return { ...entity, end: cleanCoordinate };
+  }
+
+  if (entity.kind === "rectangle" && target.role === "center") {
+    return { ...entity, center: cleanCoordinate };
+  }
+
+  if (entity.kind === "circle" && target.role === "center") {
+    return { ...entity, center: cleanCoordinate };
+  }
+
+  return entity;
+}
+
+function sketchPointTargetsEqual(
+  left: SketchPointTarget,
+  right: SketchPointTarget
+): boolean {
+  return left.entityId === right.entityId && left.role === right.role;
+}
+
 function cloneSketchDimensionSnapshot(
   dimension: SketchDimensionSnapshot
 ): SketchDimensionSnapshot {
@@ -719,6 +991,18 @@ function cloneSketchDimensionSnapshot(
 function cloneSketchConstraintSnapshot(
   constraint: SketchConstraintSnapshot
 ): SketchConstraintSnapshot {
+  if (constraint.kind === "fixed") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "fixed",
+      target: { ...constraint.target },
+      coordinate: cleanVec2(constraint.coordinate)
+    };
+  }
+
   return {
     id: constraint.id,
     name: constraint.name,
@@ -755,4 +1039,23 @@ function describeReceived(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function cleanVec2(value: Vec2): Vec2 {
+  return [cleanSketchNumber(value[0]), cleanSketchNumber(value[1])];
+}
+
+function isFiniteVec2(value: Vec2): boolean {
+  return Number.isFinite(value[0]) && Number.isFinite(value[1]);
+}
+
+function vec2Equal(left: Vec2, right: Vec2): boolean {
+  return (
+    cleanSketchNumber(left[0]) === cleanSketchNumber(right[0]) &&
+    cleanSketchNumber(left[1]) === cleanSketchNumber(right[1])
+  );
+}
+
+function formatVec2(value: Vec2): string {
+  return `[${cleanSketchNumber(value[0])}, ${cleanSketchNumber(value[1])}]`;
 }

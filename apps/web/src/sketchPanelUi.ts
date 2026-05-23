@@ -47,7 +47,7 @@ export interface DimensionStatusDisplay {
 }
 
 export interface SketchConstraintKindOption {
-  readonly kind: SketchConstraintKind;
+  readonly kind: Extract<SketchConstraintKind, "horizontal" | "vertical">;
   readonly label: string;
 }
 
@@ -200,7 +200,14 @@ export function createAvailableSketchConstraintKindOptions(
 export function getSketchConstraintKindLabel(
   kind: SketchConstraintKind
 ): string {
-  return kind === "horizontal" ? "Horizontal" : "Vertical";
+  switch (kind) {
+    case "horizontal":
+      return "Horizontal";
+    case "vertical":
+      return "Vertical";
+    case "fixed":
+      return "Fixed";
+  }
 }
 
 export function formatSketchConstraintStatus(
@@ -389,6 +396,8 @@ export function getSketchDimensionStatusLabel(
       return "Missing target";
     case "invalid-value":
       return "Invalid value";
+    case "inconsistent":
+      return "Inconsistent";
   }
 }
 
@@ -402,6 +411,7 @@ function getSketchDimensionStatusTone(
       return "warning";
     case "missing-target":
     case "invalid-value":
+    case "inconsistent":
       return "error";
   }
 }
