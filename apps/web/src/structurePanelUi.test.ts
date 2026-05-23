@@ -184,6 +184,68 @@ describe("structure panel UI helpers", () => {
     ]);
   });
 
+  it("includes sketch constraint health in affected sketches, features, and bodies", () => {
+    const health = createHealth({
+      authoredExtrudes: [
+        {
+          featureId: "feature_1",
+          bodyId: "body_1",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          profileKind: "rectangle",
+          operationMode: "newBody",
+          status: "healthy",
+          issues: []
+        }
+      ],
+      sketchConstraints: [
+        {
+          constraintId: "co_conflict",
+          constraintName: "Point conflict",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          kind: "coincident",
+          status: "unsupported",
+          affectedFeatureIds: ["feature_1"],
+          affectedBodyIds: ["body_1"],
+          primaryTarget: { entityId: "line_1", role: "start" },
+          secondaryTarget: { entityId: "point_1", role: "position" },
+          primaryCurrentCoordinate: [0, 0],
+          secondaryCurrentCoordinate: [1, 1],
+          issues: [
+            {
+              code: "INCONSISTENT_SKETCH_CONSTRAINT",
+              message:
+                "Coincident sketch constraint cannot satisfy two different fixed coordinates.",
+              sketchConstraintId: "co_conflict",
+              sketchId: "sketch_1",
+              sketchEntityId: "line_1",
+              primaryTarget: { entityId: "line_1", role: "start" },
+              secondaryTarget: { entityId: "point_1", role: "position" }
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(getSketchHealthStatus(health, "sketch_1")).toBe("unsupported");
+    expect(getFeatureHealthStatus(health, "feature_1")).toBe("unsupported");
+    expect(getBodyHealthStatus(health, "body_1")).toBe("unsupported");
+    expect(getHealthIssues(health, { kind: "sketch", id: "sketch_1" })).toEqual(
+      [
+        "Coincident sketch constraint cannot satisfy two different fixed coordinates."
+      ]
+    );
+    expect(
+      getHealthIssues(health, { kind: "feature", id: "feature_1" })
+    ).toEqual([
+      "Coincident sketch constraint cannot satisfy two different fixed coordinates."
+    ]);
+    expect(getHealthIssues(health, { kind: "body", id: "body_1" })).toEqual([
+      "Coincident sketch constraint cannot satisfy two different fixed coordinates."
+    ]);
+  });
+
   it("formats part and authored extrude lines compactly", () => {
     expect(formatPartLine(createPart())).toBe(
       "1 sketches / 2 features / 2 bodies"

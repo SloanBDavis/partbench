@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
+  SketchConstraintEntry,
   SketchDimensionEntry,
   SketchEvaluationQueryResponse,
   SketchSnapshot
@@ -155,6 +156,12 @@ describe("sketch panel UI helpers", () => {
       width: 4,
       height: 2
     };
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [7, 8],
+      radius: 2
+    };
     const point: SketchSnapshot["entities"][number] = {
       id: "point_1",
       kind: "point",
@@ -203,6 +210,77 @@ describe("sketch panel UI helpers", () => {
         }
       ]
     };
+    const missingConstraint: SketchConstraintEntry = {
+      id: "fix_missing",
+      name: "Missing fixed",
+      sketchId: "sketch_1",
+      entityId: "missing_point",
+      kind: "fixed",
+      target: { entityId: "missing_point", role: "position" },
+      coordinate: [0, 0],
+      status: "missing-target",
+      issues: [
+        {
+          code: "SKETCH_ENTITY_NOT_FOUND",
+          message: "Sketch entity does not exist: missing_point",
+          sketchConstraintId: "fix_missing",
+          sketchEntityId: "missing_point"
+        }
+      ]
+    };
+    const unsupportedConstraint: SketchConstraintEntry = {
+      id: "fix_bad_role",
+      name: "Bad fixed",
+      sketchId: "sketch_1",
+      entityId: "point_1",
+      kind: "fixed",
+      target: { entityId: "point_1", role: "start" },
+      coordinate: [0, 0],
+      status: "unsupported",
+      issues: [
+        {
+          code: "UNSUPPORTED_TARGET",
+          message:
+            "Fixed sketch constraint target role is not supported for this entity.",
+          sketchConstraintId: "fix_bad_role",
+          sketchEntityId: "point_1"
+        }
+      ]
+    };
+    const inconsistentConstraint: SketchConstraintEntry = {
+      id: "co_conflict",
+      name: "Conflict",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "coincident",
+      primaryTarget: { entityId: "line_1", role: "start" },
+      secondaryTarget: { entityId: "point_1", role: "position" },
+      status: "inconsistent",
+      issues: [
+        {
+          code: "INCONSISTENT_CONSTRAINT",
+          message:
+            "Coincident sketch constraint cannot satisfy two different fixed coordinates.",
+          sketchConstraintId: "co_conflict"
+        }
+      ]
+    };
+    const conflictingConstraint: SketchConstraintEntry = {
+      id: "con_vertical",
+      name: "Vertical",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "vertical",
+      status: "inconsistent",
+      issues: [
+        {
+          code: "CONFLICTING_CONSTRAINT",
+          message:
+            "Line has a conflicting horizontal constraint: con_horizontal.",
+          sketchConstraintId: "con_vertical"
+        }
+      ]
+    };
 
     expect(
       createSketchPointTargetOptionsForEntity(line).map(
@@ -215,6 +293,22 @@ describe("sketch panel UI helpers", () => {
         label: "point_1 position",
         detail: "Point position",
         coordinate: [5, 6]
+      }
+    ]);
+    expect(createSketchPointTargetOptionsForEntity(rectangle)).toEqual([
+      {
+        target: { entityId: "rect_1", role: "center" },
+        label: "rect_1 center",
+        detail: "Rectangle center",
+        coordinate: [0, 0]
+      }
+    ]);
+    expect(createSketchPointTargetOptionsForEntity(circle)).toEqual([
+      {
+        target: { entityId: "circle_1", role: "center" },
+        label: "circle_1 center",
+        detail: "Circle center",
+        coordinate: [7, 8]
       }
     ]);
     expect(
@@ -263,9 +357,24 @@ describe("sketch panel UI helpers", () => {
       }
     ]);
     expect(
+      createAvailableCoincidentPointTargetOptions(
+        { entityId: "point_1", role: "position" },
+        [line, point],
+        [coincidentConstraint]
+      )
+    ).toEqual([
+      {
+        target: { entityId: "line_1", role: "end" },
+        label: "line_1 end",
+        detail: "Line end",
+        coordinate: [3, 4]
+      }
+    ]);
+    expect(
       isSketchConstraintRelatedToEntity(coincidentConstraint, "point_1")
     ).toBe(true);
     expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
+    expect(getSketchConstraintKindLabel("fixed")).toBe("Fixed point");
     expect(getSketchConstraintKindLabel("coincident")).toBe("Coincident");
     expect(formatSketchPointTarget({ entityId: "line_1", role: "start" })).toBe(
       "line_1 start"
@@ -275,17 +384,36 @@ describe("sketch panel UI helpers", () => {
       "Horizontal · line_1 · Healthy"
     );
     expect(formatSketchConstraintStatus(fixedConstraint)).toBe(
-      "Fixed · line_1 start at 0, 0 · Healthy"
+      "Fixed point · line_1 start at 0, 0 · Healthy"
     );
     expect(formatSketchConstraintStatus(coincidentConstraint)).toBe(
       "Coincident · line_1 start to point_1 position · Healthy"
     );
     expect(formatSketchConstraintStatus(invalidConstraint)).toBe(
-      "Line constraint target cannot be zero length."
+      "Horizontal · line_1 · Line constraint target cannot be zero length."
+    );
+    expect(formatSketchConstraintStatus(missingConstraint)).toBe(
+      "Fixed point · missing_point position at 0, 0 · Sketch entity does not exist: missing_point"
+    );
+    expect(formatSketchConstraintStatus(unsupportedConstraint)).toBe(
+      "Fixed point · point_1 start at 0, 0 · Fixed sketch constraint target role is not supported for this entity."
+    );
+    expect(formatSketchConstraintStatus(inconsistentConstraint)).toBe(
+      "Coincident · line_1 start to point_1 position · Coincident sketch constraint cannot satisfy two different fixed coordinates."
+    );
+    expect(formatSketchConstraintStatus(conflictingConstraint)).toBe(
+      "Vertical · line_1 · Line has a conflicting horizontal constraint: con_horizontal."
     );
     expect(getSketchConstraintStatusDisplay(invalidConstraint)).toEqual({
       label: "Invalid value",
-      detail: "Line constraint target cannot be zero length.",
+      detail:
+        "Horizontal · line_1 · Line constraint target cannot be zero length.",
+      tone: "error"
+    });
+    expect(getSketchConstraintStatusDisplay(inconsistentConstraint)).toEqual({
+      label: "Inconsistent",
+      detail:
+        "Coincident · line_1 start to point_1 position · Coincident sketch constraint cannot satisfy two different fixed coordinates.",
       tone: "error"
     });
   });

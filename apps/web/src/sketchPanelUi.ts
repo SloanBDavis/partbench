@@ -242,7 +242,7 @@ export function getSketchConstraintKindLabel(
     case "vertical":
       return "Vertical";
     case "fixed":
-      return "Fixed";
+      return "Fixed point";
     case "coincident":
       return "Coincident";
   }
@@ -251,13 +251,18 @@ export function getSketchConstraintKindLabel(
 export function formatSketchConstraintStatus(
   constraint: SketchConstraintEntry
 ): string {
+  const summary = `${getSketchConstraintKindLabel(
+    constraint.kind
+  )} · ${formatSketchConstraintTargetSummary(constraint)}`;
+
   if (constraint.status === "healthy") {
-    return `${getSketchConstraintKindLabel(
-      constraint.kind
-    )} · ${formatSketchConstraintTargetSummary(constraint)} · Healthy`;
+    return `${summary} · Healthy`;
   }
 
-  return constraint.issues[0]?.message ?? constraint.status;
+  return `${summary} · ${
+    constraint.issues[0]?.message ??
+    getSketchDimensionStatusLabel(constraint.status)
+  }`;
 }
 
 export function getSketchConstraintStatusDisplay(
