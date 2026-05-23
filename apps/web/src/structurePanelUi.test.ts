@@ -244,10 +244,12 @@ function createHealth(
     authoredExtrudeCount: overrides.authoredExtrudes?.length ?? 0,
     attachedSketchCount: overrides.attachedSketches?.length ?? 0,
     sketchDimensionCount: overrides.sketchDimensions?.length ?? 0,
+    sketchConstraintCount: overrides.sketchConstraints?.length ?? 0,
     namedReferenceCount: overrides.namedReferences?.length ?? 0,
     authoredExtrudes: [],
     attachedSketches: [],
     sketchDimensions: [],
+    sketchConstraints: [],
     namedReferences: [],
     ...overrides
   };

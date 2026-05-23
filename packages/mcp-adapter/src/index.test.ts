@@ -1780,6 +1780,28 @@ describe("mcp-adapter", () => {
       featureId: "mcp_health_feature",
       bodyId: "mcp_health_body"
     });
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_seed_health_constraint",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.constraint.create",
+              id: "fix_mcp_health_center",
+              name: "Fixed MCP health center",
+              sketchId: "mcp_health_sketch",
+              kind: "fixed",
+              target: { entityId: "mcp_health_circle", role: "center" },
+              coordinate: [1, 2]
+            }
+          ]
+        }
+      }
+    });
 
     const healthResult = server.callTool({
       name: "cad.project_health",
@@ -1797,6 +1819,7 @@ describe("mcp-adapter", () => {
         issueCount: 0,
         authoredExtrudeCount: 1,
         sketchDimensionCount: 0,
+        sketchConstraintCount: 1,
         authoredExtrudes: [
           {
             featureId: "mcp_health_feature",
@@ -1804,7 +1827,15 @@ describe("mcp-adapter", () => {
             status: "healthy"
           }
         ],
-        sketchDimensions: []
+        sketchDimensions: [],
+        sketchConstraints: [
+          {
+            constraintId: "fix_mcp_health_center",
+            affectedFeatureIds: ["mcp_health_feature"],
+            affectedBodyIds: ["mcp_health_body"],
+            status: "healthy"
+          }
+        ]
       }
     });
   });

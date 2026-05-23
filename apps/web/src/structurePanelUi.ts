@@ -80,10 +80,14 @@ export function getSketchHealthStatus(
   const dimensionStatuses = health.sketchDimensions
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
+  const constraintStatuses = health.sketchConstraints
+    .filter((entry) => entry.sketchId === sketchId)
+    .map((entry) => entry.status);
 
   return combineHealthStatuses([
     ...dependentFeatureStatuses,
-    ...dimensionStatuses
+    ...dimensionStatuses,
+    ...constraintStatuses
   ]);
 }
 
@@ -96,6 +100,9 @@ export function getFeatureHealthStatus(
       .filter((entry) => entry.featureId === featureId)
       .map((entry) => entry.status),
     ...health.sketchDimensions
+      .filter((entry) => entry.affectedFeatureIds.includes(featureId))
+      .map((entry) => entry.status),
+    ...health.sketchConstraints
       .filter((entry) => entry.affectedFeatureIds.includes(featureId))
       .map((entry) => entry.status)
   ]);
@@ -110,6 +117,9 @@ export function getBodyHealthStatus(
       .filter((entry) => entry.bodyId === bodyId)
       .map((entry) => entry.status),
     ...health.sketchDimensions
+      .filter((entry) => entry.affectedBodyIds.includes(bodyId))
+      .map((entry) => entry.status),
+    ...health.sketchConstraints
       .filter((entry) => entry.affectedBodyIds.includes(bodyId))
       .map((entry) => entry.status)
   ]);
@@ -138,8 +148,11 @@ export function getHealthIssues(
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
+    const constraintIssues = health.sketchConstraints
+      .filter((entry) => entry.affectedFeatureIds.includes(target.id))
+      .flatMap((entry) => entry.issues.map((issue) => issue.message));
 
-    return [...featureIssues, ...dimensionIssues];
+    return [...featureIssues, ...dimensionIssues, ...constraintIssues];
   }
 
   if (target.kind === "body") {
@@ -150,8 +163,11 @@ export function getHealthIssues(
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedBodyIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
+    const constraintIssues = health.sketchConstraints
+      .filter((entry) => entry.affectedBodyIds.includes(target.id))
+      .flatMap((entry) => entry.issues.map((issue) => issue.message));
 
-    return [...bodyIssues, ...dimensionIssues];
+    return [...bodyIssues, ...dimensionIssues, ...constraintIssues];
   }
 
   if (target.kind === "namedReference") {
@@ -171,10 +187,16 @@ export function getHealthIssues(
   const dimensionIssues = health.sketchDimensions
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
+  const constraintIssues = health.sketchConstraints
+    .filter((entry) => entry.sketchId === target.id)
+    .flatMap((entry) => entry.issues);
 
-  return [...attachedIssues, ...featureIssues, ...dimensionIssues].map(
-    (issue) => issue.message
-  );
+  return [
+    ...attachedIssues,
+    ...featureIssues,
+    ...dimensionIssues,
+    ...constraintIssues
+  ].map((issue) => issue.message);
 }
 
 export function formatFeatureLine(

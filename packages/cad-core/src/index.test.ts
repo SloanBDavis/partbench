@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   CadBatch,
   CadQueryRequest,
+  SketchConstraintSnapshot,
   SketchDimensionSnapshot,
   SketchEntitySnapshot
 } from "@web-cad/cad-protocol";
@@ -11962,6 +11963,328 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         ]
       });
     }
+  });
+
+  it("reports constraint health for constrained authored and boolean bodies", () => {
+    for (const operationMode of ["cut", "add"] as const) {
+      const engine = createRectangleExtrudeEngine();
+      const featureId = `feat_${operationMode}_constraint`;
+      const bodyId = `body_${operationMode}_constraint`;
+
+      engine.applyBatch([
+        {
+          op: "sketch.constraint.create",
+          id: "fix_target_center",
+          name: "Fixed target center",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "rect_1", role: "center" },
+          coordinate: [2, 3]
+        },
+        {
+          op: "sketch.create",
+          id: "sketch_tool",
+          name: "Tool",
+          plane: "XY"
+        },
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_tool",
+          id: "rect_tool",
+          center: [2, 3],
+          width: 1,
+          height: 1
+        },
+        {
+          op: "feature.extrude",
+          id: featureId,
+          bodyId,
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_tool",
+          entityId: "rect_tool",
+          depth: 1,
+          operationMode
+        }
+      ]);
+
+      const health = engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      });
+      const targetMeasurements = engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_rect_1" }
+      });
+      const extents = engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.extents" }
+      });
+
+      expect(health).toMatchObject({
+        ok: true,
+        query: "project.health",
+        status: "healthy",
+        sketchConstraintCount: 1,
+        sketchConstraints: [
+          expect.objectContaining({
+            constraintId: "fix_target_center",
+            kind: "fixed",
+            target: { entityId: "rect_1", role: "center" },
+            currentCoordinate: [2, 3],
+            affectedFeatureIds: ["feat_rect_1", featureId],
+            affectedBodyIds: ["body_rect_1", bodyId],
+            status: "healthy",
+            issues: []
+          })
+        ]
+      });
+      expect(targetMeasurements).toMatchObject({
+        ok: true,
+        query: "body.measurements",
+        measurements: {
+          centroid: [2, 3, 1.5],
+          localBounds: {
+            min: [0, 2, 0],
+            max: [4, 4, 3],
+            size: [4, 2, 3]
+          }
+        }
+      });
+      expect(extents).toMatchObject({
+        ok: true,
+        query: "project.extents",
+        bodyCount: 0,
+        warnings: [
+          {
+            code: "BODY_EXTENTS_UNAVAILABLE",
+            bodyId,
+            featureId
+          }
+        ]
+      });
+
+      const restored = importCadProjectJson(exportCadProjectJson(engine));
+      expect(
+        restored.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.health" }
+        })
+      ).toMatchObject({
+        ok: true,
+        query: "project.health",
+        sketchConstraints: [
+          expect.objectContaining({
+            constraintId: "fix_target_center",
+            affectedFeatureIds: ["feat_rect_1", featureId],
+            affectedBodyIds: ["body_rect_1", bodyId],
+            status: "healthy"
+          })
+        ]
+      });
+    }
+  });
+
+  it("reports constraint health for constrained attached and circle-target cut bodies", () => {
+    const attachedEngine = createRectangleExtrudeEngine();
+
+    attachedEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_attached_constraint",
+        name: "Attached constrained profile",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_attached_constraint",
+        id: "rect_attached_constraint",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_attached_center",
+        name: "Fixed attached center",
+        sketchId: "sketch_attached_constraint",
+        kind: "fixed",
+        target: { entityId: "rect_attached_constraint", role: "center" },
+        coordinate: [1, 1]
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_attached_constraint",
+        bodyId: "body_attached_constraint",
+        sketchId: "sketch_attached_constraint",
+        entityId: "rect_attached_constraint",
+        depth: 2
+      }
+    ]);
+
+    expect(
+      attachedEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      sketchConstraints: [
+        expect.objectContaining({
+          constraintId: "fix_attached_center",
+          affectedFeatureIds: ["feat_attached_constraint"],
+          affectedBodyIds: ["body_attached_constraint"],
+          status: "healthy"
+        })
+      ]
+    });
+
+    const circleEngine = createCircleExtrudeEngine();
+
+    circleEngine.applyBatch([
+      {
+        op: "sketch.constraint.create",
+        id: "fix_circle_center",
+        name: "Fixed circle center",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "circle_1", role: "center" },
+        coordinate: [1, -1]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_tool",
+        center: [1, -1],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_cut_constraint",
+        bodyId: "body_circle_cut_constraint",
+        targetBodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "cut"
+      }
+    ]);
+
+    expect(
+      circleEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      sketchConstraints: [
+        expect.objectContaining({
+          constraintId: "fix_circle_center",
+          currentCoordinate: [1, -1],
+          affectedFeatureIds: ["feat_circle_1", "feat_circle_cut_constraint"],
+          affectedBodyIds: ["body_circle_1", "body_circle_cut_constraint"],
+          status: "healthy"
+        })
+      ]
+    });
+  });
+
+  it("surfaces inconsistent sketch constraints through project health", () => {
+    const entities = new Map<string, SketchEntitySnapshot>([
+      ["point_1", { id: "point_1", kind: "point", point: [0, 0] }],
+      ["point_2", { id: "point_2", kind: "point", point: [2, 0] }]
+    ]);
+    const sketchConstraints = new Map<string, SketchConstraintSnapshot>([
+      [
+        "fix_point_1",
+        {
+          id: "fix_point_1",
+          name: "Fixed point 1",
+          sketchId: "sketch_1",
+          entityId: "point_1",
+          kind: "fixed",
+          target: { entityId: "point_1", role: "position" },
+          coordinate: [0, 0]
+        }
+      ],
+      [
+        "fix_point_2",
+        {
+          id: "fix_point_2",
+          name: "Fixed point 2",
+          sketchId: "sketch_1",
+          entityId: "point_2",
+          kind: "fixed",
+          target: { entityId: "point_2", role: "position" },
+          coordinate: [2, 0]
+        }
+      ],
+      [
+        "co_conflict",
+        {
+          id: "co_conflict",
+          name: "Conflicting coincident",
+          sketchId: "sketch_1",
+          entityId: "point_1",
+          kind: "coincident",
+          primaryTarget: { entityId: "point_1", role: "position" },
+          secondaryTarget: { entityId: "point_2", role: "position" }
+        }
+      ]
+    ]);
+    const engine = new CadEngine(
+      createCadDocument(
+        [],
+        "mm",
+        [
+          [
+            "sketch_1",
+            {
+              id: "sketch_1",
+              name: "Profile",
+              plane: "XY",
+              entities
+            }
+          ]
+        ],
+        [],
+        [],
+        sketchConstraints
+      )
+    );
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "unsupported",
+      issueCount: 2,
+      sketchConstraintCount: 3,
+      sketchConstraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "co_conflict",
+          kind: "coincident",
+          status: "unsupported",
+          primaryTarget: { entityId: "point_1", role: "position" },
+          secondaryTarget: { entityId: "point_2", role: "position" },
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INCONSISTENT_SKETCH_CONSTRAINT",
+              sketchConstraintId: "co_conflict",
+              primaryTarget: { entityId: "point_1", role: "position" },
+              secondaryTarget: { entityId: "point_2", role: "position" }
+            })
+          ])
+        })
+      ])
+    });
   });
 
   it("keeps generated and named reference measurements source-derived after parameter edits", () => {

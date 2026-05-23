@@ -322,7 +322,8 @@ Implemented deliverables:
   measurements, extents, generated references, named references, and health
   queries respond coherently;
 - `project.health` reports parameter-bound sketch dimensions, effective values,
-  affected features/bodies, and structured missing/invalid dimension issues;
+  sketch constraints, affected features/bodies, and structured missing,
+  invalid, inconsistent, or unsupported solver issues;
 - derived geometry cache keys and stale async handling include driven sketch
   changes;
 - unsupported cases fail clearly and structurally.

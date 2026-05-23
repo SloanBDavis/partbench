@@ -14,6 +14,7 @@ import type {
   CadDependencyHealthStatus,
   CadFeatureSummary,
   CadNamedReferenceHealth,
+  CadSketchConstraintHealth,
   CadSketchDimensionHealth,
   CadGeneratedBodyReference,
   CadGeneratedEdgeReference,
@@ -262,10 +263,12 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly authoredExtrudeCount: number;
   readonly attachedSketchCount: number;
   readonly sketchDimensionCount: number;
+  readonly sketchConstraintCount: number;
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
+  readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
 }
 
@@ -857,10 +860,12 @@ function toAgentQueryResponse(
       authoredExtrudeCount: response.authoredExtrudeCount,
       attachedSketchCount: response.attachedSketchCount,
       sketchDimensionCount: response.sketchDimensionCount,
+      sketchConstraintCount: response.sketchConstraintCount,
       namedReferenceCount: response.namedReferenceCount,
       authoredExtrudes: response.authoredExtrudes,
       attachedSketches: response.attachedSketches,
       sketchDimensions: response.sketchDimensions,
+      sketchConstraints: response.sketchConstraints,
       namedReferences: response.namedReferences
     };
   }

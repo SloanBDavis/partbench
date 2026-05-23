@@ -288,10 +288,12 @@ function readProjectHealth(): ProjectHealthQueryResponse {
         authoredExtrudeCount: 0,
         attachedSketchCount: 0,
         sketchDimensionCount: 0,
+        sketchConstraintCount: 0,
         namedReferenceCount: 0,
         authoredExtrudes: [],
         attachedSketches: [],
         sketchDimensions: [],
+        sketchConstraints: [],
         namedReferences: []
       };
 }

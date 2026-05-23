@@ -1540,6 +1540,10 @@ export type CadDependencyHealthIssueCode =
   | "PROFILE_KIND_MISMATCH"
   | "UNSUPPORTED_SKETCH_DIMENSION_TARGET"
   | "INVALID_SKETCH_DIMENSION_VALUE"
+  | "UNSUPPORTED_SKETCH_CONSTRAINT_TARGET"
+  | "INVALID_SKETCH_CONSTRAINT_VALUE"
+  | "INCONSISTENT_SKETCH_CONSTRAINT"
+  | "CONFLICTING_SKETCH_CONSTRAINT"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "GENERATED_REFERENCE_NOT_FOUND"
@@ -1558,6 +1562,9 @@ export interface CadDependencyHealthIssue {
   readonly sketchConstraintId?: SketchConstraintId;
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
+  readonly sketchPointTarget?: SketchPointTarget;
+  readonly primaryTarget?: SketchPointTarget;
+  readonly secondaryTarget?: SketchPointTarget;
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly expected?: string;
@@ -1606,6 +1613,25 @@ export interface CadSketchDimensionHealth {
   readonly affectedBodyIds: readonly BodyId[];
   readonly effectiveValue?: number;
   readonly parameterId?: ParameterId;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadSketchConstraintHealth {
+  readonly constraintId: SketchConstraintId;
+  readonly constraintName: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: SketchConstraintKind;
+  readonly status: CadDependencyHealthStatus;
+  readonly affectedFeatureIds: readonly FeatureId[];
+  readonly affectedBodyIds: readonly BodyId[];
+  readonly target?: SketchPointTarget;
+  readonly primaryTarget?: SketchPointTarget;
+  readonly secondaryTarget?: SketchPointTarget;
+  readonly currentCoordinate?: Vec2;
+  readonly primaryCurrentCoordinate?: Vec2;
+  readonly secondaryCurrentCoordinate?: Vec2;
+  readonly resolvedCoordinate?: Vec2;
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 
@@ -1777,10 +1803,12 @@ export interface ProjectHealthQueryResponse {
   readonly authoredExtrudeCount: number;
   readonly attachedSketchCount: number;
   readonly sketchDimensionCount: number;
+  readonly sketchConstraintCount: number;
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
+  readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
 }
 

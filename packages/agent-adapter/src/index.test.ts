@@ -1817,6 +1817,26 @@ describe("agent-adapter", () => {
       featureId: "feat_health",
       bodyId: "body_health"
     });
+    adapter.execute({
+      requestId: "agent_req_seed_health_constraint",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "fix_health_center",
+            name: "Fixed health center",
+            sketchId: "sketch_health",
+            kind: "fixed",
+            target: { entityId: "rect_health", role: "center" },
+            coordinate: [1, 2]
+          }
+        ]
+      }
+    });
 
     const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
       requestId: "agent_project_health",
@@ -1835,6 +1855,7 @@ describe("agent-adapter", () => {
       issueCount: 0,
       authoredExtrudeCount: 1,
       sketchDimensionCount: 0,
+      sketchConstraintCount: 1,
       authoredExtrudes: [
         {
           featureId: "feat_health",
@@ -1844,7 +1865,15 @@ describe("agent-adapter", () => {
           status: "healthy"
         }
       ],
-      sketchDimensions: []
+      sketchDimensions: [],
+      sketchConstraints: [
+        {
+          constraintId: "fix_health_center",
+          affectedFeatureIds: ["feat_health"],
+          affectedBodyIds: ["body_health"],
+          status: "healthy"
+        }
+      ]
     });
   });
 

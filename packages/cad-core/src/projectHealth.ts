@@ -9,6 +9,7 @@ import type {
   CadNamedReferenceHealth,
   CadQueryError,
   CadParameterSnapshot,
+  CadSketchConstraintHealth,
   CadSketchDimensionHealth,
   FeatureExtrudeProfileKind,
   FeatureId,
@@ -18,6 +19,9 @@ import type {
   PartId,
   ProjectHealthQueryResponse,
   SketchAttachmentSnapshot,
+  SketchConstraintId,
+  SketchConstraintIssue,
+  SketchConstraintSnapshot,
   SketchDimensionId,
   SketchDimensionSnapshot,
   SketchDimensionTarget,
@@ -34,6 +38,7 @@ import {
   type GeneratedReferencesFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
+import { evaluateSketchConstraint } from "./sketchSolver";
 
 export interface ProjectHealthOptions {
   readonly document: ProjectHealthDocument;
@@ -49,6 +54,10 @@ export interface ProjectHealthDocument extends GeneratedReferencesDocument {
   readonly sketchDimensions: ReadonlyMap<
     SketchDimensionId,
     SketchDimensionSnapshot
+  >;
+  readonly sketchConstraints: ReadonlyMap<
+    SketchConstraintId,
+    SketchConstraintSnapshot
   >;
   readonly namedReferences: ReadonlyMap<
     NamedReferenceName,
@@ -85,6 +94,11 @@ export function createProjectHealth(
   const sketchDimensions = [...options.document.sketchDimensions.values()].map(
     (dimension) => createSketchDimensionHealth(options.document, dimension)
   );
+  const sketchConstraints = [
+    ...options.document.sketchConstraints.values()
+  ].map((constraint) =>
+    createSketchConstraintHealth(options.document, constraint)
+  );
   const namedReferences = [...options.document.namedReferences.values()].map(
     (reference) => createNamedReferenceHealth(reference, options)
   );
@@ -92,6 +106,7 @@ export function createProjectHealth(
     ...authoredExtrudes,
     ...attachedSketches,
     ...sketchDimensions,
+    ...sketchConstraints,
     ...namedReferences
   ].reduce((count, entry) => count + entry.issues.length, 0);
 
@@ -103,16 +118,19 @@ export function createProjectHealth(
       ...authoredExtrudes.map((entry) => entry.status),
       ...attachedSketches.map((entry) => entry.status),
       ...sketchDimensions.map((entry) => entry.status),
+      ...sketchConstraints.map((entry) => entry.status),
       ...namedReferences.map((entry) => entry.status)
     ]),
     issueCount,
     authoredExtrudeCount: authoredExtrudes.length,
     attachedSketchCount: attachedSketches.length,
     sketchDimensionCount: sketchDimensions.length,
+    sketchConstraintCount: sketchConstraints.length,
     namedReferenceCount: namedReferences.length,
     authoredExtrudes,
     attachedSketches,
     sketchDimensions,
+    sketchConstraints,
     namedReferences
   };
 }
@@ -390,6 +408,49 @@ function createSketchDimensionHealth(
   };
 }
 
+function createSketchConstraintHealth(
+  document: ProjectHealthDocument,
+  constraint: SketchConstraintSnapshot
+): CadSketchConstraintHealth {
+  const entry = evaluateSketchConstraint(document, constraint);
+  const issues = entry.issues.map(createIssueFromSketchConstraintIssue);
+  const affected = collectSketchEntityAffectedFeatures(
+    document,
+    getSketchConstraintAffectedTargets(constraint)
+  );
+
+  return {
+    constraintId: constraint.id,
+    constraintName: constraint.name,
+    sketchId: constraint.sketchId,
+    entityId: constraint.entityId,
+    kind: constraint.kind,
+    status: statusFromIssues(issues),
+    affectedFeatureIds: affected.featureIds,
+    affectedBodyIds: affected.bodyIds,
+    ...(constraint.kind === "fixed" ? { target: constraint.target } : {}),
+    ...(constraint.kind === "coincident"
+      ? {
+          primaryTarget: constraint.primaryTarget,
+          secondaryTarget: constraint.secondaryTarget
+        }
+      : {}),
+    ...(entry.currentCoordinate
+      ? { currentCoordinate: entry.currentCoordinate }
+      : {}),
+    ...(entry.primaryCurrentCoordinate
+      ? { primaryCurrentCoordinate: entry.primaryCurrentCoordinate }
+      : {}),
+    ...(entry.secondaryCurrentCoordinate
+      ? { secondaryCurrentCoordinate: entry.secondaryCurrentCoordinate }
+      : {}),
+    ...(entry.resolvedCoordinate
+      ? { resolvedCoordinate: entry.resolvedCoordinate }
+      : {}),
+    issues
+  };
+}
+
 function createNamedReferenceHealth(
   reference: NamedGeneratedReferenceSnapshot,
   options: ProjectHealthOptions
@@ -477,33 +538,93 @@ function collectSketchDimensionAffectedFeatures(
   readonly featureIds: readonly FeatureId[];
   readonly bodyIds: readonly BodyId[];
 } {
-  const directFeatures = [...document.features.values()].filter(
-    (feature) => feature.sketchId === sketchId && feature.entityId === entityId
-  );
-  const featureIds = new Set<FeatureId>(
-    directFeatures.map((feature) => feature.id)
-  );
-  const bodyIds = new Set<BodyId>(
-    directFeatures.map((feature) => feature.bodyId)
-  );
+  return collectSketchEntityAffectedFeatures(document, [
+    { sketchId, entityId }
+  ]);
+}
+
+function collectSketchEntityAffectedFeatures(
+  document: ProjectHealthDocument,
+  targets: readonly {
+    readonly sketchId: SketchId;
+    readonly entityId: SketchEntityId;
+  }[]
+): {
+  readonly featureIds: readonly FeatureId[];
+  readonly bodyIds: readonly BodyId[];
+} {
+  const featureIds = new Set<FeatureId>();
+  const bodyIds = new Set<BodyId>();
 
   for (const feature of document.features.values()) {
     if (
-      feature.operationMode === "newBody" ||
-      !feature.targetBodyId ||
-      !bodyIds.has(feature.targetBodyId)
+      targets.some(
+        (target) =>
+          feature.sketchId === target.sketchId &&
+          feature.entityId === target.entityId
+      )
     ) {
-      continue;
+      featureIds.add(feature.id);
+      bodyIds.add(feature.bodyId);
     }
+  }
 
-    featureIds.add(feature.id);
-    bodyIds.add(feature.bodyId);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const feature of document.features.values()) {
+      if (
+        feature.operationMode === "newBody" ||
+        !feature.targetBodyId ||
+        !bodyIds.has(feature.targetBodyId) ||
+        featureIds.has(feature.id)
+      ) {
+        continue;
+      }
+
+      featureIds.add(feature.id);
+      bodyIds.add(feature.bodyId);
+      changed = true;
+    }
   }
 
   return {
     featureIds: [...featureIds],
     bodyIds: [...bodyIds]
   };
+}
+
+function getSketchConstraintAffectedTargets(
+  constraint: SketchConstraintSnapshot
+): readonly {
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+}[] {
+  if (constraint.kind === "fixed") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.target.entityId
+      }
+    ];
+  }
+
+  if (constraint.kind === "coincident") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryTarget.entityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryTarget.entityId
+      }
+    ];
+  }
+
+  return [{ sketchId: constraint.sketchId, entityId: constraint.entityId }];
 }
 
 function isSupportedSketchDimensionTarget(
@@ -553,6 +674,51 @@ function createIssueFromGeneratedReferenceError(
     ...(error.actualKind ? { received: error.actualKind } : {}),
     ...(error.requiredOperation ? { expected: error.requiredOperation } : {})
   };
+}
+
+function createIssueFromSketchConstraintIssue(
+  issue: SketchConstraintIssue
+): CadDependencyHealthIssue {
+  return {
+    code: mapSketchConstraintIssueCode(issue.code),
+    message: issue.message,
+    ...(issue.sketchConstraintId
+      ? { sketchConstraintId: issue.sketchConstraintId }
+      : {}),
+    ...(issue.sketchId ? { sketchId: issue.sketchId } : {}),
+    ...(issue.sketchEntityId ? { sketchEntityId: issue.sketchEntityId } : {}),
+    ...(issue.sketchPointTarget
+      ? { sketchPointTarget: issue.sketchPointTarget }
+      : {}),
+    ...(issue.primaryTarget ? { primaryTarget: issue.primaryTarget } : {}),
+    ...(issue.secondaryTarget
+      ? { secondaryTarget: issue.secondaryTarget }
+      : {}),
+    ...(issue.expected ? { expected: issue.expected } : {}),
+    ...(issue.received ? { received: issue.received } : {})
+  };
+}
+
+function mapSketchConstraintIssueCode(
+  code: SketchConstraintIssue["code"]
+): CadDependencyHealthIssue["code"] {
+  switch (code) {
+    case "SKETCH_NOT_FOUND":
+    case "SKETCH_ENTITY_NOT_FOUND":
+      return code;
+
+    case "UNSUPPORTED_TARGET":
+      return "UNSUPPORTED_SKETCH_CONSTRAINT_TARGET";
+
+    case "INVALID_VALUE":
+      return "INVALID_SKETCH_CONSTRAINT_VALUE";
+
+    case "INCONSISTENT_CONSTRAINT":
+      return "INCONSISTENT_SKETCH_CONSTRAINT";
+
+    case "CONFLICTING_CONSTRAINT":
+      return "CONFLICTING_SKETCH_CONSTRAINT";
+  }
 }
 
 function createQueryErrorFromGeneratedReferenceError(
@@ -660,6 +826,10 @@ function statusFromIssue(
     case "PROFILE_KIND_MISMATCH":
     case "UNSUPPORTED_SKETCH_DIMENSION_TARGET":
     case "INVALID_SKETCH_DIMENSION_VALUE":
+    case "UNSUPPORTED_SKETCH_CONSTRAINT_TARGET":
+    case "INVALID_SKETCH_CONSTRAINT_VALUE":
+    case "INCONSISTENT_SKETCH_CONSTRAINT":
+    case "CONFLICTING_SKETCH_CONSTRAINT":
     case "UNSUPPORTED_BODY_REFERENCES":
     case "GENERATED_REFERENCE_KIND_MISMATCH":
     case "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE":
