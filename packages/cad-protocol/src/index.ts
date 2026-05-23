@@ -102,7 +102,8 @@ export type SketchDimensionIssueCode =
   | "SKETCH_NOT_FOUND"
   | "SKETCH_ENTITY_NOT_FOUND"
   | "UNSUPPORTED_TARGET"
-  | "INVALID_VALUE";
+  | "INVALID_VALUE"
+  | "INCONSISTENT_CONSTRAINT";
 
 export type SketchConstraintIssueCode =
   | "SKETCH_NOT_FOUND"

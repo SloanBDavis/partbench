@@ -13381,6 +13381,199 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("solves line length dimensions against fixed and coincident endpoints through CADOps", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "fixed_line",
+        start: [0, 0],
+        end: [3, 4]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "coincident_line",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "anchor",
+        point: [5, 5]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_fixed_line_start",
+        name: "Fixed start",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "fixed_line", role: "start" }
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_fixed_line",
+        name: "Fixed line length",
+        sketchId: "sketch_1",
+        entityId: "fixed_line",
+        target: { entityKind: "line", role: "length" },
+        value: 10
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_coincident_line",
+        name: "Coincident line length",
+        sketchId: "sketch_1",
+        entityId: "coincident_line",
+        target: { entityKind: "line", role: "length" },
+        value: 4
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_anchor_start",
+        name: "Anchor line start",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "anchor", role: "position" },
+        secondaryTarget: { entityId: "coincident_line", role: "start" }
+      }
+    ]);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({
+            id: "fixed_line",
+            start: [0, 0],
+            end: [6, 8]
+          }),
+          expect.objectContaining({
+            id: "coincident_line",
+            start: [5, 5],
+            end: [5, 9]
+          })
+        ])
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      dimensions: expect.arrayContaining([
+        expect.objectContaining({
+          id: "dim_fixed_line",
+          status: "healthy",
+          effectiveValue: 10
+        }),
+        expect.objectContaining({
+          id: "dim_coincident_line",
+          status: "healthy",
+          effectiveValue: 4
+        })
+      ]),
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          id: "fix_fixed_line_start",
+          status: "healthy",
+          currentCoordinate: [0, 0]
+        }),
+        expect.objectContaining({
+          id: "co_anchor_start",
+          status: "healthy",
+          secondaryCurrentCoordinate: [5, 5]
+        })
+      ])
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.update",
+            id: "dim_coincident_line",
+            value: 6
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedSketchDimensionIds: ["dim_coincident_line"],
+      modifiedSketchEntityIds: ["coincident_line"]
+    });
+
+    engine.apply({
+      op: "sketch.dimension.update",
+      id: "dim_coincident_line",
+      value: 6
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({
+            id: "coincident_line",
+            start: [5, 5],
+            end: [5, 11]
+          })
+        ])
+      }
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_coincident_line" }
+      })
+    ).toMatchObject({ ok: true, dimension: { effectiveValue: 4 } });
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_coincident_line" }
+      })
+    ).toMatchObject({ ok: true, dimension: { effectiveValue: 6 } });
+
+    const restored = importCadProject(engine.exportProject());
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      dimensions: expect.arrayContaining([
+        expect.objectContaining({
+          id: "dim_coincident_line",
+          effectiveValue: 6
+        })
+      ])
+    });
+  });
+
   it("round-trips V9 sketch constraint source data and migrates V7/V8", () => {
     const engine = new CadEngine();
     engine.applyBatch([

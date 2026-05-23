@@ -106,16 +106,27 @@ export interface SketchSolverEvaluation {
   readonly evaluatedGeometry: EvaluatedSketchGeometry;
 }
 
+export interface SketchSolverApplyContext {
+  readonly document: SketchSolverDocument;
+  readonly sketchId: SketchId;
+  readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+}
+
 export function evaluateSketch(
   document: SketchSolverDocument,
   sketch: SketchSolverSketch
 ): SketchSolverEvaluation {
+  const evaluatedGeometry = evaluateSketchGeometry(document, sketch);
   const dimensions = [...document.sketchDimensions.values()]
     .filter((dimension) => dimension.sketchId === sketch.id)
-    .map((dimension) => evaluateSketchDimension(document, dimension));
+    .map((dimension) =>
+      evaluateSketchDimension(document, dimension, evaluatedGeometry.entities)
+    );
   const constraints = [...document.sketchConstraints.values()]
     .filter((constraint) => constraint.sketchId === sketch.id)
-    .map((constraint) => evaluateSketchConstraint(document, constraint));
+    .map((constraint) =>
+      evaluateSketchConstraint(document, constraint, evaluatedGeometry.entities)
+    );
   const issues = [
     ...dimensions.flatMap((dimension) => dimension.issues),
     ...constraints.flatMap((constraint) => constraint.issues)
@@ -144,7 +155,7 @@ export function evaluateSketch(
     dimensions,
     constraints,
     issues,
-    evaluatedGeometry: evaluateSketchGeometry(document, sketch)
+    evaluatedGeometry
   };
 }
 
@@ -179,7 +190,9 @@ export function createSketchEvaluationQueryResponse(
 
 export function evaluateSketchDimension(
   document: SketchSolverDocument,
-  dimension: SketchDimensionSnapshot
+  dimension: SketchDimensionSnapshot,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  options: { readonly checkConsistency?: boolean } = {}
 ): SketchDimensionEntry {
   const issues: SketchDimensionIssue[] = [];
   const sketch = document.sketches.get(dimension.sketchId);
@@ -201,7 +214,9 @@ export function evaluateSketchDimension(
     });
   }
 
-  const entity = sketch?.entities.get(dimension.entityId);
+  const entity =
+    evaluatedEntities?.get(dimension.entityId) ??
+    sketch?.entities.get(dimension.entityId);
 
   if (sketch && !entity) {
     issues.push({
@@ -263,6 +278,28 @@ export function evaluateSketchDimension(
     });
   }
 
+  if (
+    entity &&
+    options.checkConsistency !== false &&
+    issues.length === 0 &&
+    effectiveValue !== undefined &&
+    isSupportedSketchDimensionTarget(dimension.target, entity)
+  ) {
+    const currentValue = getSketchDimensionTargetValue(entity, dimension);
+
+    if (currentValue.ok && !numbersEqual(currentValue.value, effectiveValue)) {
+      issues.push({
+        code: "INCONSISTENT_CONSTRAINT",
+        message: "Sketch dimension target does not match its evaluated value.",
+        sketchId: dimension.sketchId,
+        sketchEntityId: dimension.entityId,
+        sketchDimensionId: dimension.id,
+        expected: String(cleanSketchNumber(effectiveValue)),
+        received: String(cleanSketchNumber(currentValue.value))
+      });
+    }
+  }
+
   return {
     ...cloneSketchDimensionSnapshot(dimension),
     status: getSketchEvaluationStatus(issues),
@@ -275,17 +312,30 @@ export function evaluateSketchDimension(
 
 export function evaluateSketchConstraint(
   document: SketchSolverDocument,
-  constraint: SketchConstraintSnapshot
+  constraint: SketchConstraintSnapshot,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
 ): SketchConstraintEntry {
   if (constraint.kind === "fixed") {
-    return evaluateFixedSketchConstraint(document, constraint);
+    return evaluateFixedSketchConstraint(
+      document,
+      constraint,
+      evaluatedEntities
+    );
   }
 
   if (constraint.kind === "coincident") {
-    return evaluateCoincidentSketchConstraint(document, constraint);
+    return evaluateCoincidentSketchConstraint(
+      document,
+      constraint,
+      evaluatedEntities
+    );
   }
 
-  return evaluateOrientationSketchConstraint(document, constraint);
+  return evaluateOrientationSketchConstraint(
+    document,
+    constraint,
+    evaluatedEntities
+  );
 }
 
 function evaluateOrientationSketchConstraint(
@@ -293,7 +343,8 @@ function evaluateOrientationSketchConstraint(
   constraint: Extract<
     SketchConstraintSnapshot,
     { readonly kind: "horizontal" | "vertical" }
-  >
+  >,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
 ): SketchConstraintEntry {
   const issues: SketchConstraintIssue[] = [];
   const sketch = document.sketches.get(constraint.sketchId);
@@ -307,7 +358,9 @@ function evaluateOrientationSketchConstraint(
     });
   }
 
-  const entity = sketch?.entities.get(constraint.entityId);
+  const entity =
+    evaluatedEntities?.get(constraint.entityId) ??
+    sketch?.entities.get(constraint.entityId);
 
   if (sketch && !entity) {
     issues.push({
@@ -398,7 +451,8 @@ function evaluateOrientationSketchConstraint(
 
 function evaluateFixedSketchConstraint(
   document: SketchSolverDocument,
-  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "fixed" }>
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "fixed" }>,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
 ): SketchConstraintEntry {
   const issues: SketchConstraintIssue[] = [];
   const sketch = document.sketches.get(constraint.sketchId);
@@ -413,7 +467,9 @@ function evaluateFixedSketchConstraint(
     });
   }
 
-  const entity = sketch?.entities.get(constraint.target.entityId);
+  const entity =
+    evaluatedEntities?.get(constraint.target.entityId) ??
+    sketch?.entities.get(constraint.target.entityId);
 
   if (sketch && !entity) {
     issues.push({
@@ -507,7 +563,11 @@ function evaluateFixedSketchConstraint(
 
 function evaluateCoincidentSketchConstraint(
   document: SketchSolverDocument,
-  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "coincident" }>
+  constraint: Extract<
+    SketchConstraintSnapshot,
+    { readonly kind: "coincident" }
+  >,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
 ): SketchConstraintEntry {
   const issues: SketchConstraintIssue[] = [];
   const sketch = document.sketches.get(constraint.sketchId);
@@ -523,10 +583,15 @@ function evaluateCoincidentSketchConstraint(
     });
   }
 
-  const primaryEntity = sketch?.entities.get(constraint.primaryTarget.entityId);
+  const primaryEntity =
+    evaluatedEntities?.get(constraint.primaryTarget.entityId) ??
+    sketch?.entities.get(constraint.primaryTarget.entityId);
   const secondaryEntity = sketch?.entities.get(
     constraint.secondaryTarget.entityId
   );
+  const evaluatedSecondaryEntity =
+    evaluatedEntities?.get(constraint.secondaryTarget.entityId) ??
+    secondaryEntity;
 
   if (sketch && !primaryEntity) {
     issues.push({
@@ -571,8 +636,11 @@ function evaluateCoincidentSketchConstraint(
   }
 
   if (
-    secondaryEntity &&
-    !isSketchPointTargetSupported(secondaryEntity, constraint.secondaryTarget)
+    evaluatedSecondaryEntity &&
+    !isSketchPointTargetSupported(
+      evaluatedSecondaryEntity,
+      constraint.secondaryTarget
+    )
   ) {
     issues.push({
       code: "UNSUPPORTED_TARGET",
@@ -583,7 +651,7 @@ function evaluateCoincidentSketchConstraint(
       sketchConstraintId: constraint.id,
       primaryTarget: constraint.primaryTarget,
       secondaryTarget: constraint.secondaryTarget,
-      expected: `point target for ${secondaryEntity.kind}`,
+      expected: `point target for ${evaluatedSecondaryEntity.kind}`,
       received: constraint.secondaryTarget.role
     });
   }
@@ -642,10 +710,13 @@ function evaluateCoincidentSketchConstraint(
       ? getSketchPointTargetCoordinate(primaryEntity, constraint.primaryTarget)
       : undefined;
   const secondaryCurrentCoordinate =
-    secondaryEntity &&
-    isSketchPointTargetSupported(secondaryEntity, constraint.secondaryTarget)
+    evaluatedSecondaryEntity &&
+    isSketchPointTargetSupported(
+      evaluatedSecondaryEntity,
+      constraint.secondaryTarget
+    )
       ? getSketchPointTargetCoordinate(
-          secondaryEntity,
+          evaluatedSecondaryEntity,
           constraint.secondaryTarget
         )
       : undefined;
@@ -743,10 +814,13 @@ export function evaluateSketchGeometry(
     }
 
     const entity = entities.get(dimension.entityId);
-    const entry = evaluateSketchDimension(document, dimension);
+    const entry = evaluateSketchDimension(document, dimension, undefined, {
+      checkConsistency: false
+    });
 
     if (
       !entity ||
+      entity.kind === "line" ||
       entry.status !== "healthy" ||
       entry.effectiveValue === undefined
     ) {
@@ -770,6 +844,13 @@ export function evaluateSketchGeometry(
     }
 
     if (constraint.kind === "coincident") {
+      const primaryEntity = entities.get(constraint.primaryTarget.entityId);
+      const secondaryEntity = entities.get(constraint.secondaryTarget.entityId);
+
+      if (primaryEntity?.kind === "line" || secondaryEntity?.kind === "line") {
+        continue;
+      }
+
       const result = applyCoincidentSketchConstraintValue(
         entities,
         document,
@@ -787,11 +868,27 @@ export function evaluateSketchGeometry(
 
     const entity = entities.get(constraint.entityId);
 
-    if (!entity) {
+    if (!entity || entity.kind === "line") {
       continue;
     }
 
     const result = applySketchConstraintValue(entity, constraint);
+
+    if (result.ok) {
+      entities.set(result.entity.id, result.entity);
+    }
+  }
+
+  for (const entity of [...entities.values()]) {
+    if (entity.kind !== "line") {
+      continue;
+    }
+
+    const result = applySketchLineEvaluation(entity, {
+      document,
+      sketchId: sketch.id,
+      entities
+    });
 
     if (result.ok) {
       entities.set(result.entity.id, result.entity);
@@ -830,7 +927,8 @@ export function isSupportedSketchDimensionTarget(
 export function applySketchDimensionValue(
   entity: SketchEntitySnapshot,
   dimension: SketchDimensionSnapshot,
-  value: number
+  value: number,
+  context?: SketchSolverApplyContext
 ): SketchSolverEntityResult {
   if (
     entity.kind === "rectangle" &&
@@ -856,6 +954,13 @@ export function applySketchDimensionValue(
   }
 
   if (entity.kind === "line" && dimension.target.entityKind === "line") {
+    if (context) {
+      return applySketchLineEvaluation(entity, context, {
+        dimension,
+        dimensionValue: value
+      });
+    }
+
     return applyLineLengthDimensionValue(entity, dimension, value);
   }
 
@@ -921,13 +1026,27 @@ export function getSketchDimensionTargetValue(
 
 export function applySketchConstraintValue(
   entity: SketchEntitySnapshot,
-  constraint: SketchConstraintSnapshot
+  constraint: SketchConstraintSnapshot,
+  context?: SketchSolverApplyContext
 ): SketchSolverEntityResult {
   if (constraint.kind === "fixed") {
+    if (entity.kind === "line" && context) {
+      return applySketchLineEvaluation(entity, context, { constraint });
+    }
+
     return applyFixedSketchConstraintValue(entity, constraint);
   }
 
   if (constraint.kind === "coincident") {
+    if (
+      entity.kind === "line" &&
+      context &&
+      (constraint.primaryTarget.entityId === entity.id ||
+        constraint.secondaryTarget.entityId === entity.id)
+    ) {
+      return applySketchLineEvaluation(entity, context, { constraint });
+    }
+
     return {
       ok: false,
       issue: {
@@ -960,6 +1079,10 @@ export function applySketchConstraintValue(
         received: entity.kind
       }
     };
+  }
+
+  if (context) {
+    return applySketchLineEvaluation(entity, context, { constraint });
   }
 
   const length = getLineLength(entity);
@@ -1122,6 +1245,428 @@ function applyLineLengthDimensionValue(
         cleanSketchNumber(center[1] + uy * half)
       ]
     }
+  };
+}
+
+function applySketchLineEvaluation(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
+  context: SketchSolverApplyContext,
+  override: {
+    readonly dimension?: SketchDimensionSnapshot;
+    readonly dimensionValue?: number;
+    readonly constraint?: SketchConstraintSnapshot;
+  } = {}
+): SketchSolverEntityResult {
+  const lengthDimension = getLineLengthDimension(
+    context,
+    entity.id,
+    override.dimension
+  );
+  const lengthValue =
+    override.dimension &&
+    lengthDimension?.id === override.dimension.id &&
+    override.dimensionValue !== undefined
+      ? override.dimensionValue
+      : lengthDimension
+        ? resolveSketchDimensionEffectiveValue(
+            context.document,
+            lengthDimension
+          )
+        : undefined;
+  const orientation = getLineOrientationConstraint(
+    context,
+    entity.id,
+    override.constraint
+  );
+  const startAnchor = resolveLineEndpointAnchor(context, entity, "start");
+
+  if (!startAnchor.ok) {
+    return { ok: false, issue: startAnchor.issue };
+  }
+
+  const endAnchor = resolveLineEndpointAnchor(context, entity, "end");
+
+  if (!endAnchor.ok) {
+    return { ok: false, issue: endAnchor.issue };
+  }
+
+  const shouldPreserveLength =
+    lengthValue !== undefined || orientation !== undefined;
+
+  if (!shouldPreserveLength) {
+    let next: SketchEntitySnapshot = entity;
+
+    if (startAnchor.coordinate) {
+      next = setSketchPointTargetCoordinate(
+        next,
+        {
+          entityId: entity.id,
+          role: "start"
+        },
+        startAnchor.coordinate
+      );
+    }
+
+    if (endAnchor.coordinate) {
+      next = setSketchPointTargetCoordinate(
+        next,
+        {
+          entityId: entity.id,
+          role: "end"
+        },
+        endAnchor.coordinate
+      );
+    }
+
+    return { ok: true, entity: next };
+  }
+
+  const currentLength = getLineLength(entity);
+  const issueSource =
+    override.dimension ?? lengthDimension ?? override.constraint ?? orientation;
+
+  if (currentLength <= 0) {
+    return {
+      ok: false,
+      issue: createLineAmbiguityApplyIssue(entity, issueSource)
+    };
+  }
+
+  if (startAnchor.coordinate && endAnchor.coordinate) {
+    return {
+      ok: true,
+      entity: {
+        ...entity,
+        start: cleanVec2(startAnchor.coordinate),
+        end: cleanVec2(endAnchor.coordinate)
+      }
+    };
+  }
+
+  const length = cleanSketchNumber(lengthValue ?? currentLength);
+  const direction = getLineSolveDirection(
+    entity,
+    orientation?.kind,
+    startAnchor.coordinate ? "start" : endAnchor.coordinate ? "end" : undefined
+  );
+
+  if (startAnchor.coordinate) {
+    return {
+      ok: true,
+      entity: {
+        ...entity,
+        start: cleanVec2(startAnchor.coordinate),
+        end: cleanVec2([
+          startAnchor.coordinate[0] + direction[0] * length,
+          startAnchor.coordinate[1] + direction[1] * length
+        ])
+      }
+    };
+  }
+
+  if (endAnchor.coordinate) {
+    return {
+      ok: true,
+      entity: {
+        ...entity,
+        start: cleanVec2([
+          endAnchor.coordinate[0] - direction[0] * length,
+          endAnchor.coordinate[1] - direction[1] * length
+        ]),
+        end: cleanVec2(endAnchor.coordinate)
+      }
+    };
+  }
+
+  const center: Vec2 = [
+    (entity.start[0] + entity.end[0]) / 2,
+    (entity.start[1] + entity.end[1]) / 2
+  ];
+  const half = length / 2;
+
+  return {
+    ok: true,
+    entity: {
+      ...entity,
+      start: cleanVec2([
+        center[0] - direction[0] * half,
+        center[1] - direction[1] * half
+      ]),
+      end: cleanVec2([
+        center[0] + direction[0] * half,
+        center[1] + direction[1] * half
+      ])
+    }
+  };
+}
+
+function getLineLengthDimension(
+  context: SketchSolverApplyContext,
+  entityId: SketchEntityId,
+  override?: SketchDimensionSnapshot
+): SketchDimensionSnapshot | undefined {
+  if (
+    override &&
+    override.entityId === entityId &&
+    override.target.entityKind === "line" &&
+    override.target.role === "length"
+  ) {
+    return override;
+  }
+
+  return [...context.document.sketchDimensions.values()].find(
+    (dimension) =>
+      dimension.sketchId === context.sketchId &&
+      dimension.entityId === entityId &&
+      dimension.target.entityKind === "line" &&
+      dimension.target.role === "length"
+  );
+}
+
+function getLineOrientationConstraint(
+  context: SketchSolverApplyContext,
+  entityId: SketchEntityId,
+  override?: SketchConstraintSnapshot
+):
+  | Extract<
+      SketchConstraintSnapshot,
+      { readonly kind: "horizontal" | "vertical" }
+    >
+  | undefined {
+  if (
+    override &&
+    override.entityId === entityId &&
+    (override.kind === "horizontal" || override.kind === "vertical")
+  ) {
+    return override;
+  }
+
+  return [...context.document.sketchConstraints.values()].find(
+    (
+      constraint
+    ): constraint is Extract<
+      SketchConstraintSnapshot,
+      { readonly kind: "horizontal" | "vertical" }
+    > =>
+      constraint.sketchId === context.sketchId &&
+      constraint.entityId === entityId &&
+      (constraint.kind === "horizontal" || constraint.kind === "vertical")
+  );
+}
+
+function resolveSketchDimensionEffectiveValue(
+  document: SketchSolverDocument,
+  dimension: SketchDimensionSnapshot
+): number | undefined {
+  if (dimension.valueSource.type === "literal") {
+    return isPositiveFiniteNumber(dimension.valueSource.value)
+      ? cleanSketchNumber(dimension.valueSource.value)
+      : undefined;
+  }
+
+  const parameter = document.parameters.get(dimension.valueSource.parameterId);
+
+  return parameter && isPositiveFiniteNumber(parameter.value)
+    ? cleanSketchNumber(parameter.value)
+    : undefined;
+}
+
+function resolveLineEndpointAnchor(
+  context: SketchSolverApplyContext,
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
+  role: "start" | "end"
+):
+  | { readonly ok: true; readonly coordinate?: Vec2 }
+  | { readonly ok: false; readonly issue: SketchSolverApplyIssue } {
+  const target: SketchPointTarget = { entityId: entity.id, role };
+  let coordinate: Vec2 | undefined;
+
+  for (const constraint of context.document.sketchConstraints.values()) {
+    if (constraint.sketchId !== context.sketchId) {
+      continue;
+    }
+
+    if (constraint.kind !== "fixed" && constraint.kind !== "coincident") {
+      continue;
+    }
+
+    if (
+      constraint.kind === "fixed" &&
+      sketchPointTargetsEqual(constraint.target, target)
+    ) {
+      coordinate = constraint.coordinate;
+      continue;
+    }
+
+    if (constraint.kind !== "coincident") {
+      continue;
+    }
+
+    const isPrimary = sketchPointTargetsEqual(constraint.primaryTarget, target);
+    const isSecondary = sketchPointTargetsEqual(
+      constraint.secondaryTarget,
+      target
+    );
+
+    if (!isPrimary && !isSecondary) {
+      continue;
+    }
+
+    const primaryFixed = findFixedConstraintCoordinate(
+      context.document,
+      constraint.sketchId,
+      constraint.primaryTarget
+    );
+    const secondaryFixed = findFixedConstraintCoordinate(
+      context.document,
+      constraint.sketchId,
+      constraint.secondaryTarget
+    );
+
+    if (
+      primaryFixed &&
+      secondaryFixed &&
+      !vec2Equal(primaryFixed.coordinate, secondaryFixed.coordinate)
+    ) {
+      return {
+        ok: false,
+        issue: {
+          kind: "constraint",
+          code: "INVALID_SKETCH_CONSTRAINT",
+          message:
+            "Coincident sketch constraint cannot satisfy two different fixed coordinates.",
+          sketchId: constraint.sketchId,
+          sketchEntityId: entity.id,
+          sketchConstraintId: constraint.id,
+          pathField: isPrimary ? "primaryTarget" : "secondaryTarget",
+          expected: formatVec2(primaryFixed.coordinate),
+          received: formatVec2(secondaryFixed.coordinate)
+        }
+      };
+    }
+
+    const nextCoordinate = isPrimary
+      ? secondaryFixed?.coordinate
+      : (primaryFixed?.coordinate ??
+        getSketchPointTargetCoordinateFromEntities(
+          context.entities,
+          constraint.primaryTarget
+        ));
+
+    if (!nextCoordinate) {
+      continue;
+    }
+
+    if (coordinate && !vec2Equal(coordinate, nextCoordinate)) {
+      return {
+        ok: false,
+        issue: {
+          kind: "constraint",
+          code: "INVALID_SKETCH_CONSTRAINT",
+          message:
+            "Line endpoint has conflicting fixed/coincident anchor coordinates.",
+          sketchId: constraint.sketchId,
+          sketchEntityId: entity.id,
+          sketchConstraintId: constraint.id,
+          pathField: isPrimary ? "primaryTarget" : "secondaryTarget",
+          expected: formatVec2(coordinate),
+          received: formatVec2(nextCoordinate)
+        }
+      };
+    }
+
+    coordinate = nextCoordinate;
+  }
+
+  return coordinate
+    ? { ok: true, coordinate: cleanVec2(coordinate) }
+    : { ok: true };
+}
+
+function getSketchPointTargetCoordinateFromEntities(
+  entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  target: SketchPointTarget
+): Vec2 | undefined {
+  const entity = entities.get(target.entityId);
+
+  if (!entity || !isSketchPointTargetSupported(entity, target)) {
+    return undefined;
+  }
+
+  return getSketchPointTargetCoordinate(entity, target);
+}
+
+function getLineSolveDirection(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
+  orientation: "horizontal" | "vertical" | undefined,
+  anchoredRole: "start" | "end" | undefined
+): Vec2 {
+  if (orientation === "horizontal") {
+    const sign =
+      anchoredRole === "end"
+        ? entity.start[0] <= entity.end[0]
+          ? 1
+          : -1
+        : entity.end[0] >= entity.start[0]
+          ? 1
+          : -1;
+
+    return [sign, 0];
+  }
+
+  if (orientation === "vertical") {
+    const sign =
+      anchoredRole === "end"
+        ? entity.start[1] <= entity.end[1]
+          ? 1
+          : -1
+        : entity.end[1] >= entity.start[1]
+          ? 1
+          : -1;
+
+    return [0, sign];
+  }
+
+  const currentLength = getLineLength(entity);
+
+  return [
+    (entity.end[0] - entity.start[0]) / currentLength,
+    (entity.end[1] - entity.start[1]) / currentLength
+  ];
+}
+
+function createLineAmbiguityApplyIssue(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
+  source: SketchDimensionSnapshot | SketchConstraintSnapshot | undefined
+): SketchSolverApplyIssue {
+  if (!source || "valueSource" in source) {
+    const dimension = source as SketchDimensionSnapshot | undefined;
+
+    return {
+      kind: "dimension",
+      code: "INVALID_SKETCH_DIMENSION",
+      message:
+        "Line length dimension cannot update a zero-length line because the direction is ambiguous.",
+      sketchId: dimension?.sketchId ?? "unknown",
+      sketchEntityId: entity.id,
+      sketchDimensionId: dimension?.id,
+      pathField: "target",
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    };
+  }
+
+  return {
+    kind: "constraint",
+    code: "INVALID_SKETCH_CONSTRAINT",
+    message:
+      "Line orientation constraint cannot update a zero-length line because the orientation is ambiguous.",
+    sketchId: source.sketchId,
+    sketchEntityId: entity.id,
+    sketchConstraintId: source.id,
+    pathField: "entityId",
+    expected: "line with a non-zero direction",
+    received: "zero-length line"
   };
 }
 
@@ -1515,6 +2060,10 @@ function vec2Equal(left: Vec2, right: Vec2): boolean {
     cleanSketchNumber(left[0]) === cleanSketchNumber(right[0]) &&
     cleanSketchNumber(left[1]) === cleanSketchNumber(right[1])
   );
+}
+
+function numbersEqual(left: number, right: number): boolean {
+  return cleanSketchNumber(left) === cleanSketchNumber(right);
 }
 
 function formatVec2(value: Vec2): string {

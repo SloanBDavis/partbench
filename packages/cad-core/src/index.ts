@@ -105,7 +105,8 @@ import {
   getSketchDimensionTargetValue,
   isSupportedSketchDimensionTarget,
   sketchConstraintMatchesLine,
-  type SketchSolverApplyIssue
+  type SketchSolverApplyIssue,
+  type SketchSolverDocument
 } from "./sketchSolver";
 
 export type {
@@ -3012,7 +3013,12 @@ function applySketchDimensionToEntity(
     throwSketchEntityNotFound(dimension.sketchId, dimension.entityId, opIndex);
   }
 
-  const result = applySketchDimensionValue(existing, dimension, value);
+  const result = applySketchDimensionValue(
+    existing,
+    dimension,
+    value,
+    createSketchSolverApplyContext(state, sketch)
+  );
 
   if (!result.ok) {
     throwSketchSolverApplyIssue(result.issue, opIndex);
@@ -4018,7 +4024,11 @@ function applySketchConstraintToEntity(
     );
   }
 
-  const result = applySketchConstraintValue(existing, constraint);
+  const result = applySketchConstraintValue(
+    existing,
+    constraint,
+    createSketchSolverApplyContext(state, sketch)
+  );
 
   if (!result.ok) {
     throwSketchSolverApplyIssue(result.issue, opIndex);
@@ -4034,6 +4044,7 @@ function applySketchConstraintsToEntity(
   opIndex: number
 ): SketchEntity {
   let constrained = entity;
+  const sketch = getSketchOrThrow(state.sketches, sketchId, opIndex);
 
   for (const constraint of state.sketchConstraints.values()) {
     if (constraint.sketchId !== sketchId || constraint.entityId !== entity.id) {
@@ -4044,7 +4055,14 @@ function applySketchConstraintsToEntity(
       continue;
     }
 
-    const result = applySketchConstraintValue(constrained, constraint);
+    const result = applySketchConstraintValue(
+      constrained,
+      constraint,
+      createSketchSolverApplyContext(state, {
+        ...sketch,
+        entities: new Map(sketch.entities).set(entity.id, constrained)
+      })
+    );
 
     if (!result.ok) {
       throwSketchSolverApplyIssue(result.issue, opIndex);
@@ -4084,13 +4102,99 @@ function applyCoincidentSketchConstraintToEntities(
     );
   }
 
-  const updated = setSketchPointTargetCoordinate(
-    existing,
-    resolution.target,
-    resolution.coordinate
+  const constrained =
+    existing.kind === "line"
+      ? applySketchLineEntityEvaluation(state, sketch, existing, opIndex)
+      : setSketchPointTargetCoordinate(
+          existing,
+          resolution.target,
+          resolution.coordinate
+        );
+
+  updateSketchEntityAndDependents(state, sketch, constrained, diff, opIndex);
+}
+
+function applySketchLineEntityEvaluation(
+  state: MutableDocumentState,
+  sketch: Sketch,
+  entity: Extract<SketchEntity, { readonly kind: "line" }>,
+  opIndex: number
+): SketchEntity {
+  const localSketch: Sketch = {
+    ...sketch,
+    entities: new Map(sketch.entities).set(entity.id, entity)
+  };
+  const dimension = [...state.sketchDimensions.values()].find(
+    (candidate) =>
+      candidate.sketchId === sketch.id &&
+      candidate.entityId === entity.id &&
+      candidate.target.entityKind === "line" &&
+      candidate.target.role === "length"
   );
 
-  updateSketchEntityAndDependents(state, sketch, updated, diff, opIndex);
+  if (dimension) {
+    const value = resolveSketchDimensionValueOrThrow(state, dimension, opIndex);
+    const result = applySketchDimensionValue(
+      entity,
+      dimension,
+      value,
+      createSketchSolverApplyContext(state, localSketch)
+    );
+
+    if (!result.ok) {
+      throwSketchSolverApplyIssue(result.issue, opIndex);
+    }
+
+    return result.entity;
+  }
+
+  const context = createSketchSolverApplyContext(state, localSketch);
+  const constraint = [...state.sketchConstraints.values()].find(
+    (candidate) =>
+      candidate.sketchId === sketch.id &&
+      (candidate.entityId === entity.id ||
+        (candidate.kind === "coincident" &&
+          (candidate.primaryTarget.entityId === entity.id ||
+            candidate.secondaryTarget.entityId === entity.id)))
+  );
+
+  if (!constraint) {
+    return applySketchConstraintsToEntity(state, sketch.id, entity, opIndex);
+  }
+
+  const result = applySketchConstraintValue(entity, constraint, context);
+
+  if (!result.ok) {
+    throwSketchSolverApplyIssue(result.issue, opIndex);
+  }
+
+  return result.entity;
+}
+
+function createSketchSolverDocumentFromState(
+  state: MutableDocumentState
+): SketchSolverDocument {
+  return {
+    sketches: state.sketches,
+    parameters: state.parameters,
+    sketchDimensions: state.sketchDimensions,
+    sketchConstraints: state.sketchConstraints
+  };
+}
+
+function createSketchSolverApplyContext(
+  state: MutableDocumentState,
+  sketch: Sketch
+): {
+  readonly document: SketchSolverDocument;
+  readonly sketchId: SketchId;
+  readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
+} {
+  return {
+    document: createSketchSolverDocumentFromState(state),
+    sketchId: sketch.id,
+    entities: sketch.entities
+  };
 }
 
 function updateSketchEntityAndDependents(

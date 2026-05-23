@@ -446,6 +446,78 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(undoneSource)).toBe(initialKey);
   });
 
+  it("updates extrude source cache keys across constrained profile edits", () => {
+    const engine = createExtrudedRectangleEngine();
+    engine.applyBatch([
+      { op: "parameter.create", id: "param_w", name: "Width", value: 6 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width dimension",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_w"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_center",
+        name: "Fixed rectangle center",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "rect_1", role: "center" },
+        coordinate: [2, 3]
+      }
+    ]);
+
+    const constrainedSource = getDerivedSources(engine)[0];
+
+    if (!constrainedSource || constrainedSource.kind !== "extrude") {
+      throw new Error("Expected a constrained extrude derived source.");
+    }
+
+    const constrainedKey = createDerivedGeometryCacheKey(constrainedSource);
+    expect(constrainedSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [2, 3],
+      width: 6,
+      height: 2
+    });
+
+    engine.apply({ op: "parameter.update", id: "param_w", value: 9 });
+
+    const editedSource = getDerivedSources(engine)[0];
+
+    if (!editedSource || editedSource.kind !== "extrude") {
+      throw new Error("Expected an edited constrained extrude derived source.");
+    }
+
+    const editedKey = createDerivedGeometryCacheKey(editedSource);
+    expect(editedSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [2, 3],
+      width: 9,
+      height: 2
+    });
+    expect(editedKey).not.toBe(constrainedKey);
+
+    engine.undo();
+
+    const undoneSource = getDerivedSources(engine)[0];
+
+    if (!undoneSource || undoneSource.kind !== "extrude") {
+      throw new Error("Expected an undone constrained extrude derived source.");
+    }
+
+    expect(undoneSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [2, 3],
+      width: 6,
+      height: 2
+    });
+    expect(createDerivedGeometryCacheKey(undoneSource)).toBe(constrainedKey);
+  });
+
   it("derives attached extrude placement from generated face references", () => {
     const engine = createExtrudedRectangleEngine();
 

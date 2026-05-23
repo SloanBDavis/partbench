@@ -157,6 +157,263 @@ describe("sketch solver boundary", () => {
     });
   });
 
+  it("solves line dimensions from fixed and coincident endpoint anchors", () => {
+    const sketch = createSketch([
+      { id: "fixed_line", kind: "line", start: [0, 0], end: [3, 4] },
+      { id: "coincident_line", kind: "line", start: [0, 0], end: [0, 2] },
+      { id: "horizontal_line", kind: "line", start: [0, 0], end: [1, 1] },
+      { id: "anchor", kind: "point", point: [5, 5] },
+      { id: "left", kind: "point", point: [2, 3] },
+      { id: "right", kind: "point", point: [8, 3] }
+    ]);
+    const dimensions: SketchDimensionSnapshot[] = [
+      {
+        id: "dim_fixed_length",
+        name: "Fixed line length",
+        sketchId: sketch.id,
+        entityId: "fixed_line",
+        target: { entityKind: "line", role: "length" },
+        valueSource: { type: "literal", value: 5 }
+      },
+      {
+        id: "dim_coincident_length",
+        name: "Coincident line length",
+        sketchId: sketch.id,
+        entityId: "coincident_line",
+        target: { entityKind: "line", role: "length" },
+        valueSource: { type: "literal", value: 4 }
+      }
+    ];
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_start",
+        name: "Fixed start",
+        sketchId: sketch.id,
+        entityId: "fixed_line",
+        kind: "fixed",
+        target: { entityId: "fixed_line", role: "start" },
+        coordinate: [10, 10]
+      },
+      {
+        id: "co_anchor_start",
+        name: "Anchor start",
+        sketchId: sketch.id,
+        entityId: "anchor",
+        kind: "coincident",
+        primaryTarget: { entityId: "anchor", role: "position" },
+        secondaryTarget: { entityId: "coincident_line", role: "start" }
+      },
+      {
+        id: "co_left",
+        name: "Left endpoint",
+        sketchId: sketch.id,
+        entityId: "left",
+        kind: "coincident",
+        primaryTarget: { entityId: "left", role: "position" },
+        secondaryTarget: { entityId: "horizontal_line", role: "start" }
+      },
+      {
+        id: "co_right",
+        name: "Right endpoint",
+        sketchId: sketch.id,
+        entityId: "right",
+        kind: "coincident",
+        primaryTarget: { entityId: "right", role: "position" },
+        secondaryTarget: { entityId: "horizontal_line", role: "end" }
+      },
+      {
+        id: "con_horizontal",
+        name: "Horizontal",
+        sketchId: sketch.id,
+        entityId: "horizontal_line",
+        kind: "horizontal"
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, dimensions, constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.evaluatedGeometry.entities.get("fixed_line")).toEqual({
+      id: "fixed_line",
+      kind: "line",
+      start: [10, 10],
+      end: [13, 14]
+    });
+    expect(
+      evaluation.evaluatedGeometry.entities.get("coincident_line")
+    ).toEqual({
+      id: "coincident_line",
+      kind: "line",
+      start: [5, 5],
+      end: [5, 9]
+    });
+    expect(
+      evaluation.evaluatedGeometry.entities.get("horizontal_line")
+    ).toEqual({
+      id: "horizontal_line",
+      kind: "line",
+      start: [2, 3],
+      end: [8, 3]
+    });
+    expect(evaluation.dimensions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "dim_fixed_length",
+          status: "healthy",
+          effectiveValue: 5
+        }),
+        expect.objectContaining({
+          id: "dim_coincident_length",
+          status: "healthy",
+          effectiveValue: 4
+        })
+      ])
+    );
+  });
+
+  it("reports anchored line length conflicts as structured inconsistencies", () => {
+    const sketch = createSketch([
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 0] }
+    ]);
+    const dimensions: SketchDimensionSnapshot[] = [
+      {
+        id: "dim_length",
+        name: "Length",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        valueSource: { type: "literal", value: 5 }
+      }
+    ];
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_start",
+        name: "Fixed start",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" },
+        coordinate: [0, 0]
+      },
+      {
+        id: "fix_end",
+        name: "Fixed end",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "end" },
+        coordinate: [3, 0]
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, dimensions, constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.dimensions).toEqual([
+      expect.objectContaining({
+        id: "dim_length",
+        status: "inconsistent",
+        issues: [
+          expect.objectContaining({
+            code: "INCONSISTENT_CONSTRAINT",
+            expected: "5",
+            received: "3"
+          })
+        ]
+      })
+    ]);
+    expect(evaluation.constraints).toEqual([
+      expect.objectContaining({ id: "fix_start", status: "healthy" }),
+      expect.objectContaining({ id: "fix_end", status: "healthy" })
+    ]);
+  });
+
+  it("keeps rectangle and circle center constraints compatible with dimensions", () => {
+    const sketch = createSketch([
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      { id: "circle_1", kind: "circle", center: [0, 0], radius: 1 },
+      { id: "anchor", kind: "point", point: [4, 5] }
+    ]);
+    const dimensions: SketchDimensionSnapshot[] = [
+      {
+        id: "dim_width",
+        name: "Width",
+        sketchId: sketch.id,
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        valueSource: { type: "literal", value: 7 }
+      },
+      {
+        id: "dim_height",
+        name: "Height",
+        sketchId: sketch.id,
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "height" },
+        valueSource: { type: "literal", value: 8 }
+      },
+      {
+        id: "dim_radius",
+        name: "Radius",
+        sketchId: sketch.id,
+        entityId: "circle_1",
+        target: { entityKind: "circle", role: "radius" },
+        valueSource: { type: "literal", value: 3 }
+      }
+    ];
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_rect",
+        name: "Fixed rectangle",
+        sketchId: sketch.id,
+        entityId: "rect_1",
+        kind: "fixed",
+        target: { entityId: "rect_1", role: "center" },
+        coordinate: [2, 3]
+      },
+      {
+        id: "co_circle_anchor",
+        name: "Circle center",
+        sketchId: sketch.id,
+        entityId: "anchor",
+        kind: "coincident",
+        primaryTarget: { entityId: "anchor", role: "position" },
+        secondaryTarget: { entityId: "circle_1", role: "center" }
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, dimensions, constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.evaluatedGeometry.entities.get("rect_1")).toMatchObject({
+      kind: "rectangle",
+      center: [2, 3],
+      width: 7,
+      height: 8
+    });
+    expect(evaluation.evaluatedGeometry.entities.get("circle_1")).toMatchObject(
+      {
+        kind: "circle",
+        center: [4, 5],
+        radius: 3
+      }
+    );
+  });
+
   it("evaluates and applies fixed point constraints for explicit point targets", () => {
     const sketch = createSketch([
       { id: "point_1", kind: "point", point: [1, 2] },
@@ -214,7 +471,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.status).toBe("healthy");
     expect(evaluation.constraints).toEqual([
       expect.objectContaining({
         id: "fix_point",
@@ -223,18 +480,18 @@ describe("sketch solver boundary", () => {
       }),
       expect.objectContaining({
         id: "fix_start",
-        status: "inconsistent",
-        currentCoordinate: [0, 0]
+        status: "healthy",
+        currentCoordinate: [3, 4]
       }),
       expect.objectContaining({
         id: "fix_rect",
-        status: "inconsistent",
-        currentCoordinate: [0, 0]
+        status: "healthy",
+        currentCoordinate: [5, 6]
       }),
       expect.objectContaining({
         id: "fix_circle",
-        status: "inconsistent",
-        currentCoordinate: [0, 0]
+        status: "healthy",
+        currentCoordinate: [7, 8]
       })
     ]);
     expect(evaluation.evaluatedGeometry.entities.get("line_1")).toMatchObject({
@@ -350,7 +607,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.status).toBe("healthy");
     expect(evaluation.drivenEntityIds).toEqual([
       "point_1",
       "line_1",
@@ -362,17 +619,17 @@ describe("sketch solver boundary", () => {
         id: "co_point_end",
         kind: "coincident",
         primaryCurrentCoordinate: [1, 2],
-        secondaryCurrentCoordinate: [4, 0],
+        secondaryCurrentCoordinate: [1, 2],
         resolvedCoordinate: [1, 2],
-        status: "inconsistent"
+        status: "healthy"
       }),
       expect.objectContaining({
         id: "co_rect_circle",
         kind: "coincident",
         primaryCurrentCoordinate: [5, 6],
-        secondaryCurrentCoordinate: [0, 0],
+        secondaryCurrentCoordinate: [5, 6],
         resolvedCoordinate: [5, 6],
-        status: "inconsistent"
+        status: "healthy"
       })
     ]);
     expect(evaluation.evaluatedGeometry.entities.get("line_1")).toMatchObject({

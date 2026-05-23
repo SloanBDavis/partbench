@@ -376,10 +376,15 @@ current parameter value. Deleting a parameter that is still referenced by a
 sketch dimension fails with a structured validation error. Direct dimension
 evaluation updates the target sketch entity deterministically through CADOps:
 rectangle and circle dimensions rewrite their numeric fields, while a line
-length dimension preserves the current line midpoint and direction and moves both
-endpoints symmetrically to match the requested length. A line length dimension
-cannot drive a zero-length line because the direction is ambiguous. This is not a
-general sketch solver, expression system, or constraint graph.
+length dimension preserves the current line direction when no point constraint
+anchors either endpoint. If one endpoint is fixed or coincident, the anchored
+endpoint stays put and the other endpoint moves along the current or
+orientation-constrained direction. If both endpoints are anchored and the
+requested length disagrees with the anchored distance, `sketch.evaluation`
+reports an inconsistent constraint rather than persisting misleading solved
+geometry. A line length dimension cannot drive a zero-length line because the
+direction is ambiguous. This is not a general sketch solver, expression system,
+or constraint graph.
 
 Sketch constraints are separate from numeric dimensions. The V8 constraint slice
 supports line horizontal and line vertical orientation constraints. Creating one
@@ -393,6 +398,12 @@ constraints on the same non-zero line, duplicate fixed constraints on the same
 point target, unsupported roles, missing targets, non-finite coordinates, and
 zero-length orientation targets fail with structured validation errors. This
 persists authored intent only; no solved graph output is saved.
+
+The V4 Phase C evaluator handles the first supported combinations of line
+length, fixed/coincident line endpoints, horizontal/vertical line orientation,
+rectangle width/height, circle radius, and fixed/coincident rectangle or circle
+centers. Unsupported or conflicting combinations remain represented as
+structured evaluator issues instead of becoming saved geometry.
 
 The V10 constraint slice adds coincident point constraints between two explicit
 sketch point targets. Supported targets are point position, line start, line end,
