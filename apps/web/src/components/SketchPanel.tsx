@@ -3,13 +3,13 @@ import type {
   CadParameterSnapshot,
   CadFeatureSummary,
   SketchConstraintEntry,
-  SketchConstraintKind,
   SketchDimensionEntry,
   SketchDimensionTarget,
   SketchEvaluationQueryResponse,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
+  SketchPointTargetRole,
   SketchPlane,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
@@ -31,16 +31,21 @@ import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createAvailableCoincidentPointTargetOptions,
+  createAvailableFixedPointTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
+  createSketchPointTargetOptionsForEntity,
   formatSketchDimensionEffectiveValue,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
+  getDefaultSketchPointTargetRole,
   createParameterBindingOptions,
   formatSketchEvaluationIssue,
   formatSketchEvaluationStatus,
   formatSketchConstraintStatus,
+  formatSketchPointCoordinate,
   formatSketchDimensionStatus,
   formatSketchDimensionValueSource,
   getSketchConstraintKindLabel,
@@ -50,6 +55,7 @@ import {
   getParameterDimensionUsageCount,
   getSketchDimensionTargetLabel,
   getSketchEntityOptionLabel,
+  isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity,
   sketchDimensionTargetsEqual,
   type BooleanTargetBodyOption
@@ -62,11 +68,6 @@ import {
   sketchEntityFormToEntity,
   validateSketchEntityForm
 } from "../sketchEntityForms";
-
-type OrientationSketchConstraintKind = Extract<
-  SketchConstraintKind,
-  "horizontal" | "vertical"
->;
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
@@ -156,7 +157,13 @@ const defaultSketchDimensionForm: SketchDimensionForm = {
 const defaultSketchConstraintForm: SketchConstraintForm = {
   id: "",
   name: "Horizontal",
-  kind: "horizontal"
+  kind: "horizontal",
+  targetRole: "start",
+  coordinateMode: "current",
+  coordinateX: 0,
+  coordinateY: 0,
+  secondaryEntityId: "",
+  secondaryTargetRole: "position"
 };
 
 const defaultExtrudeForm: FeatureExtrudeForm = {
@@ -281,11 +288,8 @@ export function SketchPanel({
   const selectedEntityConstraints = useMemo(
     () =>
       selectedEntity
-        ? selectedSketchConstraints.filter(
-            (constraint) =>
-              constraint.entityId === selectedEntity.id &&
-              (constraint.kind === "horizontal" ||
-                constraint.kind === "vertical")
+        ? selectedSketchConstraints.filter((constraint) =>
+            isSketchConstraintRelatedToEntity(constraint, selectedEntity.id)
           )
         : [],
     [selectedEntity, selectedSketchConstraints]
@@ -369,9 +373,10 @@ export function SketchPanel({
     () =>
       createAvailableSketchConstraintKindOptions(
         selectedEntity,
-        selectedEntityConstraints
+        selectedSketchConstraints,
+        selectedSketch?.entities ?? []
       ),
-    [selectedEntity, selectedEntityConstraints]
+    [selectedEntity, selectedSketch, selectedSketchConstraints]
   );
   const [constraintCreateForm, setConstraintCreateForm] =
     useState<SketchConstraintForm>(defaultSketchConstraintForm);
@@ -393,9 +398,67 @@ export function SketchPanel({
     availableConstraintKinds.find(
       (option) => option.kind === constraintCreateForm.kind
     )?.kind ?? availableConstraintKinds[0]?.kind;
+  const fixedPointTargetOptions = useMemo(
+    () =>
+      createAvailableFixedPointTargetOptions(
+        selectedEntity,
+        selectedSketchConstraints
+      ),
+    [selectedEntity, selectedSketchConstraints]
+  );
+  const primaryPointTargetOptions = useMemo(
+    () => createSketchPointTargetOptionsForEntity(selectedEntity),
+    [selectedEntity]
+  );
+  const selectedPrimaryTargetOptions =
+    selectedCreateConstraintKind === "fixed"
+      ? fixedPointTargetOptions
+      : primaryPointTargetOptions;
+  const selectedPrimaryTargetOption =
+    selectedPrimaryTargetOptions.find(
+      (option) => option.target.role === constraintCreateForm.targetRole
+    ) ?? selectedPrimaryTargetOptions[0];
+  const coincidentTargetOptions = useMemo(
+    () =>
+      createAvailableCoincidentPointTargetOptions(
+        selectedPrimaryTargetOption?.target,
+        selectedSketch?.entities ?? [],
+        selectedSketchConstraints
+      ),
+    [selectedPrimaryTargetOption, selectedSketch, selectedSketchConstraints]
+  );
+  const selectedSecondaryTargetOption =
+    coincidentTargetOptions.find(
+      (option) =>
+        option.target.entityId === constraintCreateForm.secondaryEntityId &&
+        option.target.role === constraintCreateForm.secondaryTargetRole
+    ) ?? coincidentTargetOptions[0];
   const effectiveConstraintCreateForm: SketchConstraintForm = {
     ...constraintCreateForm,
     kind: selectedCreateConstraintKind ?? constraintCreateForm.kind,
+    targetRole:
+      selectedPrimaryTargetOption?.target.role ??
+      getDefaultSketchPointTargetRole(selectedEntity),
+    coordinateX:
+      selectedPrimaryTargetOption &&
+      !selectedPrimaryTargetOptions.some(
+        (option) => option.target.role === constraintCreateForm.targetRole
+      )
+        ? (selectedPrimaryTargetOption.coordinate?.[0] ?? 0)
+        : constraintCreateForm.coordinateX,
+    coordinateY:
+      selectedPrimaryTargetOption &&
+      !selectedPrimaryTargetOptions.some(
+        (option) => option.target.role === constraintCreateForm.targetRole
+      )
+        ? (selectedPrimaryTargetOption.coordinate?.[1] ?? 0)
+        : constraintCreateForm.coordinateY,
+    secondaryEntityId:
+      selectedSecondaryTargetOption?.target.entityId ??
+      constraintCreateForm.secondaryEntityId,
+    secondaryTargetRole:
+      selectedSecondaryTargetOption?.target.role ??
+      constraintCreateForm.secondaryTargetRole,
     name:
       selectedCreateConstraintKind &&
       constraintCreateForm.kind === selectedCreateConstraintKind
@@ -544,6 +607,20 @@ export function SketchPanel({
 
   function createConstraint() {
     if (!selectedSketch || !selectedEntity || !selectedCreateConstraintKind) {
+      return;
+    }
+
+    if (
+      selectedCreateConstraintKind === "fixed" &&
+      !selectedPrimaryTargetOption
+    ) {
+      return;
+    }
+
+    if (
+      selectedCreateConstraintKind === "coincident" &&
+      (!selectedPrimaryTargetOption || !selectedSecondaryTargetOption)
+    ) {
       return;
     }
 
@@ -908,12 +985,14 @@ export function SketchPanel({
                     />
                   )}
                   {selectedEntity &&
-                    (selectedEntity.kind === "line" ||
+                    (availableConstraintKinds.length > 0 ||
                       selectedEntityConstraints.length > 0) && (
                       <SketchConstraintControls
                         disabled={disabled}
                         constraints={selectedEntityConstraints}
                         availableKinds={availableConstraintKinds}
+                        primaryTargetOptions={selectedPrimaryTargetOptions}
+                        coincidentTargetOptions={coincidentTargetOptions}
                         createForm={effectiveConstraintCreateForm}
                         selectedConstraint={selectedConstraint}
                         selectedConstraintId={selectedConstraint?.id}
@@ -1711,6 +1790,8 @@ function SketchConstraintControls({
   disabled,
   constraints,
   availableKinds,
+  primaryTargetOptions,
+  coincidentTargetOptions,
   createForm,
   selectedConstraint,
   selectedConstraintId,
@@ -1725,7 +1806,22 @@ function SketchConstraintControls({
   readonly disabled: boolean;
   readonly constraints: readonly SketchConstraintEntry[];
   readonly availableKinds: readonly {
-    readonly kind: SketchConstraintKind;
+    readonly kind: SketchConstraintForm["kind"];
+    readonly label: string;
+  }[];
+  readonly primaryTargetOptions: readonly {
+    readonly target: {
+      readonly entityId: string;
+      readonly role: SketchPointTargetRole;
+    };
+    readonly label: string;
+    readonly coordinate?: readonly [number, number];
+  }[];
+  readonly coincidentTargetOptions: readonly {
+    readonly target: {
+      readonly entityId: string;
+      readonly role: SketchPointTargetRole;
+    };
     readonly label: string;
   }[];
   readonly createForm: SketchConstraintForm;
@@ -1744,21 +1840,21 @@ function SketchConstraintControls({
 
   if (!supportsConstraints) {
     return (
-      <section className="entity-editor" aria-label="Line constraints">
+      <section className="entity-editor" aria-label="Sketch constraints">
         <div className="command-card-heading">
-          <h3>Line constraints</h3>
+          <h3>Constraints</h3>
         </div>
         <p className="empty-state compact">
-          Select a line to add horizontal or vertical constraints.
+          This entity has no supported constraint targets.
         </p>
       </section>
     );
   }
 
   return (
-    <section className="entity-editor" aria-label="Line constraints">
+    <section className="entity-editor" aria-label="Sketch constraints">
       <div className="command-card-heading">
-        <h3>Line constraints</h3>
+        <h3>Constraints</h3>
         <span>{constraints.length}</span>
       </div>
 
@@ -1798,7 +1894,7 @@ function SketchConstraintControls({
                 disabled={disabled}
                 onChange={(event) => {
                   const kind = event.currentTarget
-                    .value as OrientationSketchConstraintKind;
+                    .value as SketchConstraintForm["kind"];
 
                   onCreateFormChange({
                     ...createForm,
@@ -1814,39 +1910,59 @@ function SketchConstraintControls({
                 ))}
               </select>
             </label>
-            <label>
-              Name
-              <input
-                type="text"
-                value={createForm.name}
-                disabled={disabled}
-                onChange={(event) =>
-                  onCreateFormChange({
-                    ...createForm,
-                    name: event.currentTarget.value
-                  })
-                }
-              />
-            </label>
+            <ConstraintTargetFields
+              disabled={disabled}
+              form={createForm}
+              primaryTargetOptions={primaryTargetOptions}
+              coincidentTargetOptions={coincidentTargetOptions}
+              onChange={onCreateFormChange}
+            />
           </div>
           <details className="advanced-options compact">
-            <summary>Constraint ID</summary>
-            <input
-              type="text"
-              value={createForm.id}
-              disabled={disabled}
-              onChange={(event) =>
-                onCreateFormChange({
-                  ...createForm,
-                  id: event.currentTarget.value
-                })
-              }
-            />
+            <summary>Constraint details</summary>
+            <div className="field-grid two">
+              <label>
+                Name
+                <input
+                  type="text"
+                  value={createForm.name}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onCreateFormChange({
+                      ...createForm,
+                      name: event.currentTarget.value
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Optional ID
+                <input
+                  type="text"
+                  value={createForm.id}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onCreateFormChange({
+                      ...createForm,
+                      id: event.currentTarget.value
+                    })
+                  }
+                />
+              </label>
+            </div>
           </details>
           <div className="button-row compact">
             <button
               type="button"
-              disabled={disabled || availableKinds.length === 0}
+              disabled={
+                disabled ||
+                availableKinds.length === 0 ||
+                (createForm.kind === "fixed" &&
+                  primaryTargetOptions.length === 0) ||
+                (createForm.kind === "coincident" &&
+                  (primaryTargetOptions.length === 0 ||
+                    coincidentTargetOptions.length === 0))
+              }
               onClick={onCreateConstraint}
             >
               Create constraint
@@ -1855,7 +1971,7 @@ function SketchConstraintControls({
         </div>
       ) : (
         <p className="project-message compact">
-          This line already has an orientation constraint.
+          Supported constraint targets for this entity are already constrained.
         </p>
       )}
 
@@ -1931,6 +2047,204 @@ function SketchConstraintControls({
         </div>
       )}
     </section>
+  );
+}
+
+function ConstraintTargetFields({
+  disabled,
+  form,
+  primaryTargetOptions,
+  coincidentTargetOptions,
+  onChange
+}: {
+  readonly disabled: boolean;
+  readonly form: SketchConstraintForm;
+  readonly primaryTargetOptions: readonly {
+    readonly target: {
+      readonly entityId: string;
+      readonly role: SketchPointTargetRole;
+    };
+    readonly label: string;
+    readonly coordinate?: readonly [number, number];
+  }[];
+  readonly coincidentTargetOptions: readonly {
+    readonly target: {
+      readonly entityId: string;
+      readonly role: SketchPointTargetRole;
+    };
+    readonly label: string;
+    readonly coordinate?: readonly [number, number];
+  }[];
+  readonly onChange: (form: SketchConstraintForm) => void;
+}) {
+  const selectedPrimaryOption =
+    primaryTargetOptions.find(
+      (option) => option.target.role === form.targetRole
+    ) ?? primaryTargetOptions[0];
+  const selectedSecondaryOption =
+    coincidentTargetOptions.find(
+      (option) =>
+        option.target.entityId === form.secondaryEntityId &&
+        option.target.role === form.secondaryTargetRole
+    ) ?? coincidentTargetOptions[0];
+
+  if (form.kind === "horizontal" || form.kind === "vertical") {
+    return (
+      <div className="readonly-field">
+        <span>Target</span>
+        <strong>Selected line</strong>
+      </div>
+    );
+  }
+
+  if (form.kind === "fixed") {
+    return (
+      <div className="dimension-value-source">
+        <label>
+          Target
+          <select
+            value={pointTargetToValue(selectedPrimaryOption?.target)}
+            disabled={disabled || primaryTargetOptions.length === 0}
+            onChange={(event) => {
+              const next = primaryTargetOptions.find(
+                (option) =>
+                  pointTargetToValue(option.target) ===
+                  event.currentTarget.value
+              );
+
+              if (next) {
+                onChange({
+                  ...form,
+                  targetRole: next.target.role,
+                  coordinateX: next.coordinate?.[0] ?? form.coordinateX,
+                  coordinateY: next.coordinate?.[1] ?? form.coordinateY
+                });
+              }
+            }}
+          >
+            {primaryTargetOptions.map((option) => (
+              <option
+                key={pointTargetToValue(option.target)}
+                value={pointTargetToValue(option.target)}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Coordinate
+          <select
+            value={form.coordinateMode}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange({
+                ...form,
+                coordinateMode: event.currentTarget
+                  .value as SketchConstraintForm["coordinateMode"],
+                coordinateX:
+                  event.currentTarget.value === "custom"
+                    ? (selectedPrimaryOption?.coordinate?.[0] ??
+                      form.coordinateX)
+                    : form.coordinateX,
+                coordinateY:
+                  event.currentTarget.value === "custom"
+                    ? (selectedPrimaryOption?.coordinate?.[1] ??
+                      form.coordinateY)
+                    : form.coordinateY
+              })
+            }
+          >
+            <option value="current">Capture current</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        {form.coordinateMode === "custom" ? (
+          <>
+            <NumberField
+              disabled={disabled}
+              label="Fixed X"
+              value={form.coordinateX}
+              onChange={(coordinateX) => onChange({ ...form, coordinateX })}
+            />
+            <NumberField
+              disabled={disabled}
+              label="Fixed Y"
+              value={form.coordinateY}
+              onChange={(coordinateY) => onChange({ ...form, coordinateY })}
+            />
+          </>
+        ) : (
+          <div className="readonly-field">
+            <span>Current point</span>
+            <strong>
+              {formatSketchPointCoordinate(selectedPrimaryOption?.coordinate)}
+            </strong>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="dimension-value-source">
+      <label>
+        Primary
+        <select
+          value={pointTargetToValue(selectedPrimaryOption?.target)}
+          disabled={disabled || primaryTargetOptions.length === 0}
+          onChange={(event) => {
+            const next = primaryTargetOptions.find(
+              (option) =>
+                pointTargetToValue(option.target) === event.currentTarget.value
+            );
+
+            if (next) {
+              onChange({ ...form, targetRole: next.target.role });
+            }
+          }}
+        >
+          {primaryTargetOptions.map((option) => (
+            <option
+              key={pointTargetToValue(option.target)}
+              value={pointTargetToValue(option.target)}
+            >
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Coincident with
+        <select
+          value={pointTargetToValue(selectedSecondaryOption?.target)}
+          disabled={disabled || coincidentTargetOptions.length === 0}
+          onChange={(event) => {
+            const next = coincidentTargetOptions.find(
+              (option) =>
+                pointTargetToValue(option.target) === event.currentTarget.value
+            );
+
+            if (next) {
+              onChange({
+                ...form,
+                secondaryEntityId: next.target.entityId,
+                secondaryTargetRole: next.target.role
+              });
+            }
+          }}
+        >
+          {coincidentTargetOptions.map((option) => (
+            <option
+              key={pointTargetToValue(option.target)}
+              value={pointTargetToValue(option.target)}
+            >
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }
 
@@ -2193,15 +2507,37 @@ function sketchDimensionToForm(
 function sketchConstraintToForm(
   constraint: SketchConstraintEntry | undefined
 ): SketchConstraintForm {
-  if (
-    !constraint ||
-    (constraint.kind !== "horizontal" && constraint.kind !== "vertical")
-  ) {
+  if (!constraint) {
     return defaultSketchConstraintForm;
   }
 
+  if (constraint.kind === "fixed") {
+    return {
+      ...defaultSketchConstraintForm,
+      id: "",
+      name: constraint.name,
+      kind: "fixed",
+      targetRole: constraint.target.role,
+      coordinateMode: "custom",
+      coordinateX: constraint.coordinate[0],
+      coordinateY: constraint.coordinate[1]
+    };
+  }
+
+  if (constraint.kind === "coincident") {
+    return {
+      ...defaultSketchConstraintForm,
+      id: "",
+      name: constraint.name,
+      kind: "coincident",
+      targetRole: constraint.primaryTarget.role,
+      secondaryEntityId: constraint.secondaryTarget.entityId,
+      secondaryTargetRole: constraint.secondaryTarget.role
+    };
+  }
+
   return {
-    id: "",
+    ...defaultSketchConstraintForm,
     name: constraint.name,
     kind: constraint.kind
   };
@@ -2209,6 +2545,14 @@ function sketchConstraintToForm(
 
 function targetToValue(target: SketchDimensionTarget | undefined): string {
   return target ? `${target.entityKind}:${target.role}` : "";
+}
+
+function pointTargetToValue(
+  target:
+    | { readonly entityId: string; readonly role: SketchPointTargetRole }
+    | undefined
+): string {
+  return target ? `${target.entityId}:${target.role}` : "";
 }
 
 function NumberField({

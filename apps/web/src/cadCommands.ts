@@ -57,6 +57,7 @@ import type {
   SketchEntitySnapshot,
   SketchId,
   SketchPlane,
+  SketchPointTargetRole,
   SketchRenameOp,
   SketchUpdateEntityOp,
   Transform,
@@ -160,7 +161,13 @@ export interface SketchDimensionForm {
 export interface SketchConstraintForm {
   readonly id: string;
   readonly name: string;
-  readonly kind: Extract<SketchConstraintKind, "horizontal" | "vertical">;
+  readonly kind: SketchConstraintKind;
+  readonly targetRole: SketchPointTargetRole;
+  readonly coordinateMode: "current" | "custom";
+  readonly coordinateX: number;
+  readonly coordinateY: number;
+  readonly secondaryEntityId: string;
+  readonly secondaryTargetRole: SketchPointTargetRole;
 }
 
 export interface SketchEntityForm {
@@ -637,6 +644,35 @@ export function buildCreateSketchConstraintOp(
   entityId: string,
   form: SketchConstraintForm
 ): SketchConstraintCreateOp {
+  if (form.kind === "fixed") {
+    const coordinate: Vec2 = [form.coordinateX, form.coordinateY];
+
+    return {
+      op: "sketch.constraint.create",
+      id: normalizeOptionalId(form.id),
+      name: form.name.trim(),
+      sketchId,
+      kind: "fixed",
+      target: { entityId, role: form.targetRole },
+      ...(form.coordinateMode === "custom" ? { coordinate } : {})
+    };
+  }
+
+  if (form.kind === "coincident") {
+    return {
+      op: "sketch.constraint.create",
+      id: normalizeOptionalId(form.id),
+      name: form.name.trim(),
+      sketchId,
+      kind: "coincident",
+      primaryTarget: { entityId, role: form.targetRole },
+      secondaryTarget: {
+        entityId: form.secondaryEntityId,
+        role: form.secondaryTargetRole
+      }
+    };
+  }
+
   return {
     op: "sketch.constraint.create",
     id: normalizeOptionalId(form.id),

@@ -9,12 +9,17 @@ import type {
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createAvailableCoincidentPointTargetOptions,
+  createAvailableFixedPointTargetOptions,
   createAvailableSketchDimensionTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
   createParameterBindingOptions,
+  createSketchPointTargetOptionsForEntity,
   createSketchDimensionTargetOptions,
+  formatSketchPointCoordinate,
+  formatSketchPointTarget,
   formatSketchDimensionEffectiveValue,
   formatSketchConstraintStatus,
   formatSketchDimensionStatus,
@@ -32,6 +37,7 @@ import {
   getSketchDimensionTargetValue,
   getSketchEntityOptionLabel,
   getSketchEvaluationStatusDisplay,
+  isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity
 } from "./sketchPanelUi";
 
@@ -135,7 +141,7 @@ describe("sketch panel UI helpers", () => {
     ).toBe(false);
   });
 
-  it("derives line orientation constraint options and status display", () => {
+  it("derives sketch constraint options and status display", () => {
     const line: SketchSnapshot["entities"][number] = {
       id: "line_1",
       kind: "line",
@@ -149,12 +155,40 @@ describe("sketch panel UI helpers", () => {
       width: 4,
       height: 2
     };
+    const point: SketchSnapshot["entities"][number] = {
+      id: "point_1",
+      kind: "point",
+      point: [5, 6]
+    };
     const horizontalConstraint = {
       id: "con_horizontal",
       name: "Horizontal",
       sketchId: "sketch_1",
       entityId: "line_1",
       kind: "horizontal" as const,
+      status: "healthy" as const,
+      issues: []
+    };
+    const fixedConstraint = {
+      id: "fix_start",
+      name: "Fixed start",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "fixed" as const,
+      target: { entityId: "line_1", role: "start" as const },
+      coordinate: [0, 0] as const,
+      currentCoordinate: [0, 0] as const,
+      status: "healthy" as const,
+      issues: []
+    };
+    const coincidentConstraint = {
+      id: "co_start_point",
+      name: "Start to point",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "coincident" as const,
+      primaryTarget: { entityId: "line_1", role: "start" as const },
+      secondaryTarget: { entityId: "point_1", role: "position" as const },
       status: "healthy" as const,
       issues: []
     };
@@ -170,20 +204,81 @@ describe("sketch panel UI helpers", () => {
       ]
     };
 
-    expect(createAvailableSketchConstraintKindOptions(line, [])).toEqual([
-      { kind: "horizontal", label: "Horizontal" },
-      { kind: "vertical", label: "Vertical" }
+    expect(
+      createSketchPointTargetOptionsForEntity(line).map(
+        (option) => option.label
+      )
+    ).toEqual(["line_1 start", "line_1 end"]);
+    expect(createSketchPointTargetOptionsForEntity(point)).toEqual([
+      {
+        target: { entityId: "point_1", role: "position" },
+        label: "point_1 position",
+        detail: "Point position",
+        coordinate: [5, 6]
+      }
     ]);
     expect(
-      createAvailableSketchConstraintKindOptions(line, [horizontalConstraint])
-    ).toEqual([]);
-    expect(createAvailableSketchConstraintKindOptions(rectangle, [])).toEqual(
-      []
-    );
+      createAvailableSketchConstraintKindOptions(line, [], [line, point])
+    ).toEqual([
+      { kind: "horizontal", label: "Horizontal" },
+      { kind: "vertical", label: "Vertical" },
+      { kind: "fixed", label: "Fixed point" },
+      { kind: "coincident", label: "Coincident" }
+    ]);
+    expect(
+      createAvailableSketchConstraintKindOptions(
+        line,
+        [horizontalConstraint, fixedConstraint, coincidentConstraint],
+        [line, point]
+      )
+    ).toEqual([
+      { kind: "fixed", label: "Fixed point" },
+      { kind: "coincident", label: "Coincident" }
+    ]);
+    expect(
+      createAvailableSketchConstraintKindOptions(rectangle, [], [rectangle])
+    ).toEqual([{ kind: "fixed", label: "Fixed point" }]);
+    expect(
+      createAvailableFixedPointTargetOptions(line, [fixedConstraint])
+    ).toEqual([
+      {
+        target: { entityId: "line_1", role: "end" },
+        label: "line_1 end",
+        detail: "Line end",
+        coordinate: [3, 4]
+      }
+    ]);
+    expect(
+      createAvailableCoincidentPointTargetOptions(
+        { entityId: "line_1", role: "start" },
+        [line, point],
+        [coincidentConstraint]
+      )
+    ).toEqual([
+      {
+        target: { entityId: "line_1", role: "end" },
+        label: "line_1 end",
+        detail: "Line end",
+        coordinate: [3, 4]
+      }
+    ]);
+    expect(
+      isSketchConstraintRelatedToEntity(coincidentConstraint, "point_1")
+    ).toBe(true);
     expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
     expect(getSketchConstraintKindLabel("coincident")).toBe("Coincident");
+    expect(formatSketchPointTarget({ entityId: "line_1", role: "start" })).toBe(
+      "line_1 start"
+    );
+    expect(formatSketchPointCoordinate([1, 2])).toBe("1, 2");
     expect(formatSketchConstraintStatus(horizontalConstraint)).toBe(
-      "Horizontal · Healthy"
+      "Horizontal · line_1 · Healthy"
+    );
+    expect(formatSketchConstraintStatus(fixedConstraint)).toBe(
+      "Fixed · line_1 start at 0, 0 · Healthy"
+    );
+    expect(formatSketchConstraintStatus(coincidentConstraint)).toBe(
+      "Coincident · line_1 start to point_1 position · Healthy"
     );
     expect(formatSketchConstraintStatus(invalidConstraint)).toBe(
       "Line constraint target cannot be zero length."

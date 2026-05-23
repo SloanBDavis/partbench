@@ -13,6 +13,8 @@ import type {
   SketchEntityKind,
   SketchId,
   SketchEntitySnapshot,
+  SketchPointTarget,
+  SketchPointTargetRole,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 
@@ -47,8 +49,15 @@ export interface DimensionStatusDisplay {
 }
 
 export interface SketchConstraintKindOption {
-  readonly kind: Extract<SketchConstraintKind, "horizontal" | "vertical">;
+  readonly kind: SketchConstraintKind;
   readonly label: string;
+}
+
+export interface SketchPointTargetOption {
+  readonly target: SketchPointTarget;
+  readonly label: string;
+  readonly detail: string;
+  readonly coordinate?: readonly [number, number];
 }
 
 export function chooseSketchPanelSelection(
@@ -177,24 +186,51 @@ export function createAvailableSketchDimensionTargetOptions(
 
 export function createAvailableSketchConstraintKindOptions(
   entity: SketchEntitySnapshot | undefined,
-  constraints: readonly SketchConstraintEntry[]
+  constraints: readonly SketchConstraintEntry[],
+  sketchEntities: readonly SketchEntitySnapshot[] = entity ? [entity] : []
 ): readonly SketchConstraintKindOption[] {
-  if (entity?.kind !== "line") {
+  if (!entity) {
     return [];
   }
 
-  const usedKinds = new Set(constraints.map((constraint) => constraint.kind));
-  const hasOrientationConstraint =
-    usedKinds.has("horizontal") || usedKinds.has("vertical");
+  const options: SketchConstraintKindOption[] = [];
+  const entityConstraints = constraints.filter((constraint) =>
+    isSketchConstraintRelatedToEntity(constraint, entity.id)
+  );
+  const usedKinds = new Set(
+    entityConstraints.map((constraint) => constraint.kind)
+  );
 
-  if (hasOrientationConstraint) {
-    return [];
+  if (
+    entity.kind === "line" &&
+    !usedKinds.has("horizontal") &&
+    !usedKinds.has("vertical")
+  ) {
+    options.push(
+      { kind: "horizontal", label: "Horizontal" },
+      { kind: "vertical", label: "Vertical" }
+    );
   }
 
-  return [
-    { kind: "horizontal", label: "Horizontal" },
-    { kind: "vertical", label: "Vertical" }
-  ];
+  if (createAvailableFixedPointTargetOptions(entity, constraints).length > 0) {
+    options.push({ kind: "fixed", label: "Fixed point" });
+  }
+
+  const primaryTargets = createSketchPointTargetOptionsForEntity(entity);
+  const hasCoincidentTarget = primaryTargets.some(
+    (option) =>
+      createAvailableCoincidentPointTargetOptions(
+        option.target,
+        sketchEntities,
+        constraints
+      ).length > 0
+  );
+
+  if (hasCoincidentTarget) {
+    options.push({ kind: "coincident", label: "Coincident" });
+  }
+
+  return options;
 }
 
 export function getSketchConstraintKindLabel(
@@ -216,7 +252,9 @@ export function formatSketchConstraintStatus(
   constraint: SketchConstraintEntry
 ): string {
   if (constraint.status === "healthy") {
-    return `${getSketchConstraintKindLabel(constraint.kind)} · Healthy`;
+    return `${getSketchConstraintKindLabel(
+      constraint.kind
+    )} · ${formatSketchConstraintTargetSummary(constraint)} · Healthy`;
   }
 
   return constraint.issues[0]?.message ?? constraint.status;
@@ -245,6 +283,178 @@ export function getSketchDimensionTargetLabel(
     case "length":
       return "Length";
   }
+}
+
+export function createSketchPointTargetOptions(
+  entities: readonly SketchEntitySnapshot[]
+): readonly SketchPointTargetOption[] {
+  return entities.flatMap((entity) =>
+    createSketchPointTargetOptionsForEntity(entity)
+  );
+}
+
+export function createSketchPointTargetOptionsForEntity(
+  entity: SketchEntitySnapshot | undefined
+): readonly SketchPointTargetOption[] {
+  if (!entity) {
+    return [];
+  }
+
+  if (entity.kind === "point") {
+    return [
+      {
+        target: { entityId: entity.id, role: "position" },
+        label: `${entity.id} position`,
+        detail: "Point position",
+        coordinate: entity.point
+      }
+    ];
+  }
+
+  if (entity.kind === "line") {
+    return [
+      {
+        target: { entityId: entity.id, role: "start" },
+        label: `${entity.id} start`,
+        detail: "Line start",
+        coordinate: entity.start
+      },
+      {
+        target: { entityId: entity.id, role: "end" },
+        label: `${entity.id} end`,
+        detail: "Line end",
+        coordinate: entity.end
+      }
+    ];
+  }
+
+  if (entity.kind === "rectangle") {
+    return [
+      {
+        target: { entityId: entity.id, role: "center" },
+        label: `${entity.id} center`,
+        detail: "Rectangle center",
+        coordinate: entity.center
+      }
+    ];
+  }
+
+  return [
+    {
+      target: { entityId: entity.id, role: "center" },
+      label: `${entity.id} center`,
+      detail: "Circle center",
+      coordinate: entity.center
+    }
+  ];
+}
+
+export function createAvailableFixedPointTargetOptions(
+  entity: SketchEntitySnapshot | undefined,
+  constraints: readonly SketchConstraintEntry[]
+): readonly SketchPointTargetOption[] {
+  return createSketchPointTargetOptionsForEntity(entity).filter(
+    (option) =>
+      !constraints.some(
+        (constraint) =>
+          constraint.kind === "fixed" &&
+          sketchPointTargetsEqual(constraint.target, option.target)
+      )
+  );
+}
+
+export function createAvailableCoincidentPointTargetOptions(
+  primaryTarget: SketchPointTarget | undefined,
+  entities: readonly SketchEntitySnapshot[],
+  constraints: readonly SketchConstraintEntry[]
+): readonly SketchPointTargetOption[] {
+  if (!primaryTarget) {
+    return [];
+  }
+
+  return createSketchPointTargetOptions(entities).filter((option) => {
+    if (sketchPointTargetsEqual(primaryTarget, option.target)) {
+      return false;
+    }
+
+    return !constraints.some(
+      (constraint) =>
+        constraint.kind === "coincident" &&
+        sketchPointTargetPairKey(
+          constraint.primaryTarget,
+          constraint.secondaryTarget
+        ) === sketchPointTargetPairKey(primaryTarget, option.target)
+    );
+  });
+}
+
+export function isSketchConstraintRelatedToEntity(
+  constraint: SketchConstraintEntry,
+  entityId: SketchEntityId
+): boolean {
+  if (constraint.kind === "fixed") {
+    return constraint.target.entityId === entityId;
+  }
+
+  if (constraint.kind === "coincident") {
+    return (
+      constraint.primaryTarget.entityId === entityId ||
+      constraint.secondaryTarget.entityId === entityId
+    );
+  }
+
+  return constraint.entityId === entityId;
+}
+
+export function getDefaultSketchPointTargetRole(
+  entity: SketchEntitySnapshot | undefined
+): SketchPointTargetRole {
+  if (entity?.kind === "line") {
+    return "start";
+  }
+
+  if (entity?.kind === "point") {
+    return "position";
+  }
+
+  return "center";
+}
+
+export function sketchPointTargetsEqual(
+  left: SketchPointTarget,
+  right: SketchPointTarget
+): boolean {
+  return left.entityId === right.entityId && left.role === right.role;
+}
+
+export function formatSketchPointTarget(target: SketchPointTarget): string {
+  return `${target.entityId} ${target.role}`;
+}
+
+export function formatSketchPointCoordinate(
+  coordinate: readonly [number, number] | undefined
+): string {
+  return coordinate ? `${coordinate[0]}, ${coordinate[1]}` : "current point";
+}
+
+function formatSketchConstraintTargetSummary(
+  constraint: SketchConstraintEntry
+): string {
+  if (constraint.kind === "fixed") {
+    return `${formatSketchPointTarget(
+      constraint.target
+    )} at ${formatSketchPointCoordinate(
+      constraint.currentCoordinate ?? constraint.coordinate
+    )}`;
+  }
+
+  if (constraint.kind === "coincident") {
+    return `${formatSketchPointTarget(
+      constraint.primaryTarget
+    )} to ${formatSketchPointTarget(constraint.secondaryTarget)}`;
+  }
+
+  return constraint.entityId;
 }
 
 export function getSketchDimensionTargetValue(
@@ -279,6 +489,16 @@ function getLineLength(
   );
   const rounded = Math.round(length * 1e12) / 1e12;
   return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function sketchPointTargetPairKey(
+  left: SketchPointTarget,
+  right: SketchPointTarget
+): string {
+  return [left, right]
+    .map((target) => `${target.entityId}:${target.role}`)
+    .sort()
+    .join("|");
 }
 
 export function formatSketchDimensionValueSource(

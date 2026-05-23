@@ -483,7 +483,13 @@ describe("cad command builders", () => {
       buildCreateSketchConstraintOp("sketch_1", "line_1", {
         id: " con_horizontal ",
         name: " Horizontal ",
-        kind: "horizontal"
+        kind: "horizontal",
+        targetRole: "start",
+        coordinateMode: "current",
+        coordinateX: 0,
+        coordinateY: 0,
+        secondaryEntityId: "",
+        secondaryTargetRole: "position"
       })
     ).toEqual({
       op: "sketch.constraint.create",
@@ -492,6 +498,71 @@ describe("cad command builders", () => {
       sketchId: "sketch_1",
       entityId: "line_1",
       kind: "horizontal"
+    });
+
+    expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " fix_start ",
+        name: " Fixed start ",
+        kind: "fixed",
+        targetRole: "start",
+        coordinateMode: "current",
+        coordinateX: 0,
+        coordinateY: 0,
+        secondaryEntityId: "",
+        secondaryTargetRole: "position"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "fix_start",
+      name: "Fixed start",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "start" }
+    });
+
+    expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " fix_custom ",
+        name: " Fixed custom ",
+        kind: "fixed",
+        targetRole: "end",
+        coordinateMode: "custom",
+        coordinateX: 3,
+        coordinateY: 4,
+        secondaryEntityId: "",
+        secondaryTargetRole: "position"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "fix_custom",
+      name: "Fixed custom",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "end" },
+      coordinate: [3, 4]
+    });
+
+    expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " co_start_point ",
+        name: " Start to point ",
+        kind: "coincident",
+        targetRole: "start",
+        coordinateMode: "current",
+        coordinateX: 0,
+        coordinateY: 0,
+        secondaryEntityId: "point_1",
+        secondaryTargetRole: "position"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "co_start_point",
+      name: "Start to point",
+      sketchId: "sketch_1",
+      kind: "coincident",
+      primaryTarget: { entityId: "line_1", role: "start" },
+      secondaryTarget: { entityId: "point_1", role: "position" }
     });
 
     expect(
@@ -521,7 +592,13 @@ describe("cad command builders", () => {
         {
           id: "",
           name: "Base horizontal",
-          kind: "horizontal"
+          kind: "horizontal",
+          targetRole: "start",
+          coordinateMode: "current",
+          coordinateX: 0,
+          coordinateY: 0,
+          secondaryEntityId: "",
+          secondaryTargetRole: "position"
         }
       )
     ).toEqual([
