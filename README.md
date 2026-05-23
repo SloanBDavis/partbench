@@ -5,10 +5,11 @@ current app has a typed CADOps command layer, in-memory document model,
 viewport, project JSON serialization, structured agent/MCP adapters, and an
 isolated OCCT/WASM derived geometry path.
 
-The completed V2 foundation supports primitive scene objects, source-of-truth
+The completed foundation supports primitive scene objects, source-of-truth
 sketches, rectangle/circle extrudes, generated and named references, attached
-sketches, measurements, dependency health, and narrow rectangle-tool add/cut
-boolean workflows through the shared command layer.
+sketches, measurements, dependency health, narrow rectangle-tool add/cut
+boolean workflows, document parameters, driving sketch dimensions, and the first
+line orientation constraints through the shared command layer.
 OCCT-derived meshes are display data only; the source of truth remains the typed
 document and transaction history in `cad-core`.
 
@@ -106,8 +107,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/architecture.md` - long-term architecture.
 - `docs/implementation-plan.md` - current implementation source of truth and
   roadmap.
-- `docs/v2.md` - completed V2 feature/body foundation.
-- `docs/v3.md` - active V3 parametric sketch editing target.
+- `docs/v3.md` - completed V3 parametric sketch foundation.
+- `docs/v4.md` - active V4 constrained sketch solving target.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -128,9 +129,9 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 ## Project Format
 
-Current project JSON exports use `web-cad.project.v6`. V1, V2, V3, V4, and V5
-project JSON remain importable through explicit migrations; derived meshes and
-geometry status are never saved as source-of-truth data.
+Current project JSON exports use `web-cad.project.v8`. V1 through V7 project
+JSON remain importable through explicit migrations; derived meshes, solver
+status, and geometry status are never saved as source-of-truth data.
 
 `web-cad.project.*`, `web-cad.agent-adapter.v1`, and the `@web-cad/*`
 workspace package scope are retained as compatibility identifiers. They are not
@@ -144,11 +145,12 @@ protocol/package migration.
 - OCCT/WASM is intentionally off the default production startup path and
   currently backs primitive tessellation, rectangle/circle extrudes, and narrow
   rectangle-tool add/cut derived meshes.
-- Sketches, rectangle/circle extrude features, and sketches attached to
-  generated planar face references are source-of-truth V2 data, but there is no
+- Sketches, rectangle/circle extrude features, sketches attached to generated
+  planar face references, parameters, driving sketch dimensions, and line
+  orientation constraints are source-of-truth data, but there is no general
   sketch solver, automatic profile recognition, broad feature editing, or full
   topology naming yet.
-- V3 planning is focused on source-of-truth parameters, sketch dimensions, and a
-  minimal sketch solver/evaluator slice before broader CAD features.
+- V4 planning is focused on constrained sketch solving and reliable
+  regeneration before broader CAD features.
 - No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
   natural-language command parsing is implemented.

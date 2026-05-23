@@ -4,12 +4,12 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 next implementation roadmap.
 
-Last updated: 2026-05-22.
+Last updated: 2026-05-23.
 
 Use this document for day-to-day implementation decisions. Use
-`docs/architecture.md` for long-term design, `docs/v2.md` for the completed V2
-feature/body foundation, `docs/v3.md` for the completed V3 parametric sketch
-milestone,
+`docs/architecture.md` for long-term design, `docs/v3.md` for the completed V3
+parametric sketch milestone, `docs/v4.md` for the active constrained sketch
+solving milestone,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
@@ -27,9 +27,9 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2 and V3 are complete. Future work should start from the parametric
-   sketch-driven foundation and avoid broad V4 architecture unless explicitly
-   scoped.
+9. V2 and V3 are complete. V4 is the active milestone and should focus on
+   constrained sketch solving and regeneration without starting unrelated
+   architecture systems.
 
 ## Current Repo State
 
@@ -71,9 +71,8 @@ Compatibility identifiers retained during the Partbench rename:
 
 ## Completed History
 
-The earlier project history is intentionally condensed here. Keep detailed
-historical V2 behavior in `docs/v2.md`; do not recreate long milestone logs in
-this implementation plan.
+The earlier project history is intentionally condensed here. Do not recreate
+long milestone logs in this implementation plan.
 
 ### Initial Foundation
 
@@ -116,8 +115,8 @@ V1 compatibility. It added:
 - project JSON evolution through `web-cad.project.v6`, with explicit migrations
   from older accepted versions.
 
-V2 is complete. Its detailed target, implemented behavior, and non-goals live in
-`docs/v2.md`.
+V2 is complete. Its detailed milestone file has been removed; this implementation
+plan now carries the durable V2 summary needed for future work.
 
 ## Current Scripts
 
@@ -212,10 +211,11 @@ Current limitations:
   build findings are documented separately and should not block future modeling
   work.
 
-## Completed Roadmap: V3 Parametric Sketch Editing
+## Completed Roadmap: V3 Parametric Sketch Foundation
 
-V3 delivered a meaningful usefulness jump without starting unrelated V4 systems.
-The product target was:
+V3 delivered the source-model foundation for parametric sketch editing. It
+intentionally avoided a full sketch solver, so V4 can take that hard problem on
+directly. The V3 product target was:
 
 > A user or agent can define and edit source-of-truth sketch dimensions and
 > parameters, rebuild downstream sketches/features/bodies/measurements through
@@ -385,25 +385,124 @@ V3 is complete when:
 8. Unit and package-level tests cover the behavior without depending on brittle
    browser E2E workflows.
 
-## Post-V3 Direction
+## Active Roadmap: V4 Constrained Sketch Solving
 
-The next milestone should be planned deliberately before implementation. The
-highest-signal options are:
+V4 is the active milestone. Its detailed scope lives in `docs/v4.md`.
 
-- broaden the sketch evaluator into a small true solver for additional
-  constraints such as coincident, parallel/perpendicular, equal length/radius, or
-  fixed points;
-- improve feature/reference behavior for boolean result bodies before adding
-  more feature operations that would depend on generated topology;
-- begin storage/packaging work only after deciding whether modeling or local-file
-  workflow is the next product bottleneck.
+V4 should be a larger step than V3. The purpose is to make constrained sketching
+usable enough that sketches feel like CAD source data rather than independent
+form fields. V4 should still be bounded: it should solve the constrained-sketch
+and regeneration problem without starting unrelated systems such as STEP,
+native storage, WebGPU, or broad topology naming.
 
-Do not start broad V4 architecture work from this document alone. Create a
-scoped milestone doc/prompt first, then implement one slice at a time.
+The V4 product target is:
 
-## Deferred Beyond V3 Unless Explicitly Scoped
+> A user or agent can define a constrained sketch profile, drive it with
+> dimensions and parameters, extrude it, edit the sketch intent later, and see
+> downstream bodies, measurements, extents, references, health, and derived
+> meshes update coherently.
 
-- General sketch constraint solving.
+V4 is agent-first. Constraint source records, solver/evaluator status,
+validation failures, semantic diffs, affected downstream features/bodies, and
+health must be typed/queryable through CADOps and wrapped by agent/MCP adapters.
+The UI should make that same structure usable for humans without hidden UI-only
+model state.
+
+### V4 Phase A: Solver Boundary And Sketch Reference Model
+
+Goal: make the solver/evaluator architecture explicit before adding more
+constraint behavior.
+
+Planned deliverables:
+
+- isolate current direct evaluator logic behind a small internal `cad-core`
+  boundary;
+- define typed solve/evaluation input and output shapes;
+- define durable references for sketch points/entity roles where required for
+  constraints;
+- preserve current V3 command/query behavior;
+- keep solver/evaluator output derived, not persisted;
+- add tests proving V3 rectangle width/height, circle radius, line length, and
+  horizontal/vertical behavior is unchanged.
+
+### V4 Phase B: Coincident And Fixed Point Constraints
+
+Goal: add the first genuinely solver-shaped constraints.
+
+Planned deliverables:
+
+- source-of-truth constraints for fixed points and coincident point/entity roles;
+- CADOps commands and validation for supported targets;
+- clear errors for missing, duplicate, conflicting, or unsupported targets;
+- semantic diffs, undo/redo, batch dry-run/commit, import/export, and
+  adapter/MCP pass-through;
+- tests for successful solve cases and structured failure states.
+
+### V4 Phase C: Solver-Backed Dimensions And Orientation Constraints
+
+Goal: move V3 dimensions and orientation constraints through the common solver
+boundary and make supported combinations coherent.
+
+Planned deliverables:
+
+- line length, rectangle width/height, circle radius, horizontal, and vertical
+  behavior evaluated through the common path;
+- supported combinations such as fixed endpoint plus line length and coincident
+  endpoints plus orientation;
+- conflict detection for supported constraints that disagree;
+- structured under-defined, over-defined, inconsistent, missing-target,
+  invalid-value, and unsupported statuses.
+
+### V4 Phase D: Regeneration And Health Hardening
+
+Goal: prove constrained sketches correctly drive the current feature/body
+pipeline.
+
+Planned deliverables:
+
+- authored extrudes consume evaluated sketch geometry where solver behavior
+  applies;
+- attached-sketch extrudes keep resolving through generated face frames;
+- supported add/cut results rebuild or report honest unsupported status;
+- project extents, measurements, generated references, named references,
+  dependency health, transaction history, and derived geometry cache keys remain
+  coherent;
+- stale async geometry results cannot overwrite newer solved state.
+
+### V4 Phase E: Human And Agent Workflow UI
+
+Goal: make constrained sketching understandable without adding hidden model
+state.
+
+Planned deliverables:
+
+- compact UI for supported dimensions and constraints;
+- clear selected sketch/entity constraint status;
+- concise solver health display;
+- command-building helpers for constraint create/edit/delete;
+- UI filtering so unsupported constraint targets are not presented as available;
+- unit tests for helper formatting, filtering, status, and commands.
+
+### V4 Phase F: Stabilization And Completion
+
+Goal: declare V4 complete only after the constrained sketch workflow is
+coherent, tested, documented, and ready for the next major architecture step.
+
+Planned deliverables:
+
+- review architecture boundaries, model behavior, derived geometry,
+  adapter/MCP wrappers, storage, docs, and UI helpers;
+- fix must-fix issues;
+- add high-signal unit/package coverage;
+- update docs to mark V4 complete and identify the next milestone.
+
+## Deferred Beyond V4 Unless Explicitly Scoped
+
+- Full general sketch solving.
+- Complex constraints such as tangent, concentric, equal, symmetry, spline, and
+  curvature constraints.
+- Dragging solver UX.
+- Arbitrary parameter expressions.
 - Full stable topological naming across broad feature edits.
 - Generated references for boolean result bodies.
 - General booleans/add, fillets, chamfers, shell, patterns, lofts, sweeps,

@@ -697,7 +697,7 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v8
+schemaVersion: web-cad.project.v9
 ```
 
 That format should include a migration from older accepted versions, not silent
@@ -710,6 +710,11 @@ source-of-truth data. Query-only solver/evaluator summaries
 such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
+
+V4 is expected to introduce `web-cad.project.v9` only if it adds persisted
+source-of-truth constraint or sketch-reference records beyond the current V8
+horizontal/vertical line orientation constraint slice. V4 solver/evaluator
+status alone should remain derived query data.
 
 ## Rebuildable Cache
 
@@ -839,15 +844,16 @@ Schema V3 is migrated to V8 by preserving sketches/features, treating all
 sketches as unattached, adding empty named references, empty parameters, empty
 sketch dimensions, empty sketch constraints, and defaulting authored extrude
 operation mode to `newBody`.
-V4 is migrated to V8 by preserving sketches, authored features, and attached
-sketch metadata, plus empty named-reference, parameter, sketch-dimension, and
-sketch-constraint tables and `newBody` operation mode. V5 is migrated to V8 by
-preserving sketches, authored features, attached sketch metadata, and named
-references while defaulting missing operation mode to `newBody` and adding empty
-parameters, sketch dimensions, and sketch constraints. V6 is migrated to V8 by
-preserving all V6 source data and adding empty parameters, sketch dimensions,
-and sketch constraints. V7 is migrated to V8 by preserving parameters and sketch
-dimensions and adding empty sketch constraints. Current imports reject
+Schema V4 is migrated to V8 by preserving sketches, authored features, and
+attached sketch metadata, plus empty named-reference, parameter,
+sketch-dimension, and sketch-constraint tables and `newBody` operation mode.
+Schema V5 is migrated to V8 by preserving sketches, authored features, attached
+sketch metadata, and named references while defaulting missing operation mode to
+`newBody` and adding empty parameters, sketch dimensions, and sketch
+constraints. Schema V6 is migrated to V8 by preserving all V6 source data and
+adding empty parameters, sketch dimensions, and sketch constraints. Schema V7 is
+migrated to V8 by preserving parameters and sketch dimensions and adding empty
+sketch constraints. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,

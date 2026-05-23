@@ -67,15 +67,11 @@ import type {
   ParameterSemanticDiff,
   ReferenceSemanticDiff,
   TransactionId,
-  SketchDimensionEntry,
-  SketchConstraintEntry,
   SketchConstraintId,
-  SketchConstraintIssue,
   SketchConstraintKind,
   SketchConstraintSemanticDiff,
   SketchConstraintSnapshot,
   SketchDimensionId,
-  SketchDimensionIssue,
   SketchDimensionSnapshot,
   SketchDimensionTarget,
   SketchDimensionValueSource,
@@ -99,6 +95,17 @@ import {
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import { createProjectHealth } from "./projectHealth";
+import {
+  applySketchConstraintValue,
+  applySketchDimensionValue,
+  createSketchEvaluationQueryResponse,
+  evaluateSketchDimension,
+  getLineLength,
+  getSketchDimensionTargetValue,
+  isSupportedSketchDimensionTarget,
+  sketchConstraintMatchesLine,
+  type SketchSolverApplyIssue
+} from "./sketchSolver";
 
 export type {
   CadActorMetadata,
@@ -953,7 +960,7 @@ export class CadEngine {
         const dimensions = [...this.#document.sketchDimensions.values()]
           .filter((dimension) => dimension.sketchId === sketch.id)
           .map((dimension) =>
-            createSketchDimensionEntry(this.#document, dimension)
+            evaluateSketchDimension(this.#document, dimension)
           );
 
         return {
@@ -1009,7 +1016,7 @@ export class CadEngine {
           ok: true,
           query: request.query.query,
           cadOpsVersion: request.version,
-          dimension: createSketchDimensionEntry(this.#document, dimension)
+          dimension: evaluateSketchDimension(this.#document, dimension)
         };
       }
 
@@ -2987,32 +2994,6 @@ function validateSketchDimensionTarget(
   return op.target;
 }
 
-function isSupportedSketchDimensionTarget(
-  target: unknown,
-  entity: SketchEntity
-): target is SketchDimensionTarget {
-  if (!isRecord(target)) {
-    return false;
-  }
-
-  if (entity.kind === "rectangle") {
-    return (
-      target.entityKind === "rectangle" &&
-      (target.role === "width" || target.role === "height")
-    );
-  }
-
-  if (entity.kind === "circle") {
-    return target.entityKind === "circle" && target.role === "radius";
-  }
-
-  if (entity.kind === "line") {
-    return target.entityKind === "line" && target.role === "length";
-  }
-
-  return false;
-}
-
 function applySketchDimensionToEntity(
   state: MutableDocumentState,
   dimension: SketchDimension,
@@ -3027,7 +3008,13 @@ function applySketchDimensionToEntity(
     throwSketchEntityNotFound(dimension.sketchId, dimension.entityId, opIndex);
   }
 
-  const entity = applySketchDimensionValue(existing, dimension, value, opIndex);
+  const result = applySketchDimensionValue(existing, dimension, value);
+
+  if (!result.ok) {
+    throwSketchSolverApplyIssue(result.issue, opIndex);
+  }
+
+  const entity = result.entity;
   updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
 }
 
@@ -3066,46 +3053,6 @@ function resolveSketchDimensionValueOrThrow(
     opIndex
   );
   return validatePositiveDimensionValue(parameter.value, opIndex, "value");
-}
-
-function applySketchDimensionValue(
-  entity: SketchEntity,
-  dimension: SketchDimension,
-  value: number,
-  opIndex: number
-): SketchEntity {
-  if (
-    entity.kind === "rectangle" &&
-    dimension.target.entityKind === "rectangle"
-  ) {
-    return {
-      ...entity,
-      [dimension.target.role]: value
-    };
-  }
-
-  if (entity.kind === "circle" && dimension.target.entityKind === "circle") {
-    return {
-      ...entity,
-      radius: value
-    };
-  }
-
-  if (entity.kind === "line" && dimension.target.entityKind === "line") {
-    return applyLineLengthDimensionValue(entity, dimension, value, opIndex);
-  }
-
-  throwValidationError({
-    code: "INVALID_SKETCH_DIMENSION",
-    message: "Sketch dimension target no longer matches the target entity.",
-    opIndex,
-    sketchId: dimension.sketchId,
-    sketchEntityId: dimension.entityId,
-    sketchDimensionId: dimension.id,
-    path: operationPath(opIndex, "target"),
-    expected: `target for ${entity.kind}`,
-    received: `${dimension.target.entityKind}.${dimension.target.role}`
-  });
 }
 
 function assertSketchDimensionTargetsStillValid(
@@ -3151,8 +3098,22 @@ function syncDimensionsForSketchEntityUpdate(
       continue;
     }
 
-    const nextValue = getDimensionTargetValue(after, dimension, opIndex);
-    const previousValue = getDimensionTargetValue(before, dimension, opIndex);
+    const nextValueResult = getSketchDimensionTargetValue(after, dimension);
+    const previousValueResult = getSketchDimensionTargetValue(
+      before,
+      dimension
+    );
+
+    if (!nextValueResult.ok) {
+      throwSketchSolverApplyIssue(nextValueResult.issue, opIndex);
+    }
+
+    if (!previousValueResult.ok) {
+      throwSketchSolverApplyIssue(previousValueResult.issue, opIndex);
+    }
+
+    const nextValue = nextValueResult.value;
+    const previousValue = previousValueResult.value;
 
     if (nextValue === previousValue) {
       continue;
@@ -3196,100 +3157,22 @@ function syncDimensionsForSketchEntityUpdate(
   }
 }
 
-function getDimensionTargetValue(
-  entity: SketchEntity,
-  dimension: SketchDimension,
+function throwSketchSolverApplyIssue(
+  issue: SketchSolverApplyIssue,
   opIndex: number
-): number {
-  if (
-    entity.kind === "rectangle" &&
-    dimension.target.entityKind === "rectangle"
-  ) {
-    return cleanMeasurementNumber(entity[dimension.target.role]);
-  }
-
-  if (entity.kind === "circle" && dimension.target.entityKind === "circle") {
-    return cleanMeasurementNumber(entity.radius);
-  }
-
-  if (entity.kind === "line" && dimension.target.entityKind === "line") {
-    return getLineLength(entity);
-  }
-
+): never {
   throwValidationError({
-    code: "INVALID_SKETCH_DIMENSION",
-    message: "Sketch dimension target no longer matches the target entity.",
+    code: issue.code,
+    message: issue.message,
     opIndex,
-    sketchId: dimension.sketchId,
-    sketchEntityId: dimension.entityId,
-    sketchDimensionId: dimension.id,
-    path: operationPath(opIndex, "target"),
-    expected: `target for ${entity.kind}`,
-    received: `${dimension.target.entityKind}.${dimension.target.role}`
+    sketchId: issue.sketchId,
+    sketchEntityId: issue.sketchEntityId,
+    sketchDimensionId: issue.sketchDimensionId,
+    sketchConstraintId: issue.sketchConstraintId,
+    path: operationPath(opIndex, issue.pathField),
+    expected: issue.expected,
+    received: issue.received
   });
-}
-
-function applyLineLengthDimensionValue(
-  entity: Extract<SketchEntity, { readonly kind: "line" }>,
-  dimension: SketchDimension,
-  value: number,
-  opIndex: number
-): SketchEntity {
-  const currentLength = getLineLength(entity);
-
-  if (currentLength <= 0) {
-    throwValidationError({
-      code: "INVALID_SKETCH_DIMENSION",
-      message:
-        "Line length dimension cannot update a zero-length line because the direction is ambiguous.",
-      opIndex,
-      sketchId: dimension.sketchId,
-      sketchEntityId: dimension.entityId,
-      sketchDimensionId: dimension.id,
-      path: operationPath(opIndex, "target"),
-      expected: "line with a non-zero direction",
-      received: "zero-length line"
-    });
-  }
-
-  const center: Vec2 = [
-    (entity.start[0] + entity.end[0]) / 2,
-    (entity.start[1] + entity.end[1]) / 2
-  ];
-  const ux = (entity.end[0] - entity.start[0]) / currentLength;
-  const uy = (entity.end[1] - entity.start[1]) / currentLength;
-  const half = value / 2;
-
-  return {
-    ...entity,
-    start: [
-      cleanMeasurementNumber(center[0] - ux * half),
-      cleanMeasurementNumber(center[1] - uy * half)
-    ],
-    end: [
-      cleanMeasurementNumber(center[0] + ux * half),
-      cleanMeasurementNumber(center[1] + uy * half)
-    ]
-  };
-}
-
-function getLineLength(
-  entity: Extract<SketchEntity, { readonly kind: "line" }>
-): number {
-  return cleanMeasurementNumber(
-    Math.hypot(entity.end[0] - entity.start[0], entity.end[1] - entity.start[1])
-  );
-}
-
-function sketchConstraintMatchesLine(
-  kind: SketchConstraintKind,
-  entity: Extract<SketchEntity, { readonly kind: "line" }>
-): boolean {
-  return kind === "horizontal"
-    ? cleanMeasurementNumber(entity.start[1]) ===
-        cleanMeasurementNumber(entity.end[1])
-    : cleanMeasurementNumber(entity.start[0]) ===
-        cleanMeasurementNumber(entity.end[0]);
 }
 
 function addSketchConstraint(
@@ -3506,8 +3389,13 @@ function applySketchConstraintToEntity(
     );
   }
 
-  const entity = applySketchConstraintValue(existing, constraint, opIndex);
-  updateSketchEntityAndDependents(state, sketch, entity, diff, opIndex);
+  const result = applySketchConstraintValue(existing, constraint);
+
+  if (!result.ok) {
+    throwSketchSolverApplyIssue(result.issue, opIndex);
+  }
+
+  updateSketchEntityAndDependents(state, sketch, result.entity, diff, opIndex);
 }
 
 function applySketchConstraintsToEntity(
@@ -3523,79 +3411,16 @@ function applySketchConstraintsToEntity(
       continue;
     }
 
-    constrained = applySketchConstraintValue(constrained, constraint, opIndex);
+    const result = applySketchConstraintValue(constrained, constraint);
+
+    if (!result.ok) {
+      throwSketchSolverApplyIssue(result.issue, opIndex);
+    }
+
+    constrained = result.entity;
   }
 
   return constrained;
-}
-
-function applySketchConstraintValue(
-  entity: SketchEntity,
-  constraint: SketchConstraint,
-  opIndex: number
-): SketchEntity {
-  if (entity.kind !== "line") {
-    throwValidationError({
-      code: "INVALID_SKETCH_CONSTRAINT",
-      message: "Sketch constraint target no longer matches a line entity.",
-      opIndex,
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id,
-      path: operationPath(opIndex, "entityId"),
-      expected: "line entity",
-      received: entity.kind
-    });
-  }
-
-  const length = getLineLength(entity);
-
-  if (length <= 0) {
-    throwValidationError({
-      code: "INVALID_SKETCH_CONSTRAINT",
-      message:
-        "Line orientation constraint cannot update a zero-length line because the orientation is ambiguous.",
-      opIndex,
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id,
-      path: operationPath(opIndex, "entityId"),
-      expected: "line with a non-zero direction",
-      received: "zero-length line"
-    });
-  }
-
-  const center: Vec2 = [
-    (entity.start[0] + entity.end[0]) / 2,
-    (entity.start[1] + entity.end[1]) / 2
-  ];
-  const half = length / 2;
-
-  if (constraint.kind === "horizontal") {
-    return {
-      ...entity,
-      start: [
-        cleanMeasurementNumber(center[0] - half),
-        cleanMeasurementNumber(center[1])
-      ],
-      end: [
-        cleanMeasurementNumber(center[0] + half),
-        cleanMeasurementNumber(center[1])
-      ]
-    };
-  }
-
-  return {
-    ...entity,
-    start: [
-      cleanMeasurementNumber(center[0]),
-      cleanMeasurementNumber(center[1] - half)
-    ],
-    end: [
-      cleanMeasurementNumber(center[0]),
-      cleanMeasurementNumber(center[1] + half)
-    ]
-  };
 }
 
 function updateSketchEntityAndDependents(
@@ -5740,281 +5565,6 @@ function cloneSketchDimensionValueSource(
   return valueSource.type === "literal"
     ? { type: "literal", value: valueSource.value }
     : { type: "parameter", parameterId: valueSource.parameterId };
-}
-
-function createSketchDimensionEntry(
-  document: CadDocument,
-  dimension: SketchDimension
-): SketchDimensionEntry {
-  const issues: SketchDimensionIssue[] = [];
-  const sketch = document.sketches.get(dimension.sketchId);
-  const parameter =
-    dimension.valueSource.type === "parameter"
-      ? document.parameters.get(dimension.valueSource.parameterId)
-      : undefined;
-  const effectiveValue =
-    dimension.valueSource.type === "literal"
-      ? dimension.valueSource.value
-      : parameter?.value;
-
-  if (!sketch) {
-    issues.push({
-      code: "SKETCH_NOT_FOUND",
-      message: `Sketch does not exist: ${dimension.sketchId}`,
-      sketchId: dimension.sketchId,
-      sketchDimensionId: dimension.id
-    });
-  }
-
-  const entity = sketch?.entities.get(dimension.entityId);
-
-  if (sketch && !entity) {
-    issues.push({
-      code: "SKETCH_ENTITY_NOT_FOUND",
-      message: `Sketch entity does not exist: ${dimension.entityId}`,
-      sketchId: dimension.sketchId,
-      sketchEntityId: dimension.entityId,
-      sketchDimensionId: dimension.id
-    });
-  }
-
-  const targetLabel = `${dimension.target.entityKind}.${dimension.target.role}`;
-
-  if (entity && !isSupportedSketchDimensionTarget(dimension.target, entity)) {
-    issues.push({
-      code: "UNSUPPORTED_TARGET",
-      message: "Sketch dimension target is not supported for this entity.",
-      sketchId: dimension.sketchId,
-      sketchEntityId: dimension.entityId,
-      sketchDimensionId: dimension.id,
-      expected: `target for ${entity.kind}`,
-      received: targetLabel
-    });
-  }
-
-  if (
-    entity?.kind === "line" &&
-    dimension.target.entityKind === "line" &&
-    getLineLength(entity) <= 0
-  ) {
-    issues.push({
-      code: "INVALID_VALUE",
-      message:
-        "Line length dimension cannot evaluate a zero-length line because the direction is ambiguous.",
-      sketchId: dimension.sketchId,
-      sketchEntityId: dimension.entityId,
-      sketchDimensionId: dimension.id,
-      expected: "line with a non-zero direction",
-      received: "zero-length line"
-    });
-  }
-
-  if (dimension.valueSource.type === "parameter" && !parameter) {
-    issues.push({
-      code: "PARAMETER_NOT_FOUND",
-      message: `Parameter does not exist: ${dimension.valueSource.parameterId}`,
-      parameterId: dimension.valueSource.parameterId,
-      sketchDimensionId: dimension.id
-    });
-  }
-
-  if (effectiveValue !== undefined && !isPositiveFiniteNumber(effectiveValue)) {
-    issues.push({
-      code: "INVALID_VALUE",
-      message: "Sketch dimension effective value must be positive and finite.",
-      sketchDimensionId: dimension.id,
-      expected: "positive finite number",
-      received: describeReceived(effectiveValue)
-    });
-  }
-
-  return {
-    ...cloneSketchDimensionSnapshot(dimension),
-    status: getSketchDimensionStatus(issues),
-    issues,
-    ...(effectiveValue !== undefined
-      ? { effectiveValue: cleanMeasurementNumber(effectiveValue) }
-      : {})
-  };
-}
-
-function createSketchConstraintEntry(
-  document: CadDocument,
-  constraint: SketchConstraint
-): SketchConstraintEntry {
-  const issues: SketchConstraintIssue[] = [];
-  const sketch = document.sketches.get(constraint.sketchId);
-
-  if (!sketch) {
-    issues.push({
-      code: "SKETCH_NOT_FOUND",
-      message: `Sketch does not exist: ${constraint.sketchId}`,
-      sketchId: constraint.sketchId,
-      sketchConstraintId: constraint.id
-    });
-  }
-
-  const entity = sketch?.entities.get(constraint.entityId);
-
-  if (sketch && !entity) {
-    issues.push({
-      code: "SKETCH_ENTITY_NOT_FOUND",
-      message: `Sketch entity does not exist: ${constraint.entityId}`,
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id
-    });
-  }
-
-  if (entity && entity.kind !== "line") {
-    issues.push({
-      code: "UNSUPPORTED_TARGET",
-      message: "Sketch orientation constraint target is not a line entity.",
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id,
-      expected: "line entity",
-      received: entity.kind
-    });
-  }
-
-  if (entity?.kind === "line" && getLineLength(entity) <= 0) {
-    issues.push({
-      code: "INVALID_VALUE",
-      message:
-        "Line orientation constraint cannot evaluate a zero-length line because the orientation is ambiguous.",
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id,
-      expected: "line with a non-zero direction",
-      received: "zero-length line"
-    });
-  }
-
-  if (
-    entity?.kind === "line" &&
-    getLineLength(entity) > 0 &&
-    !sketchConstraintMatchesLine(constraint.kind, entity)
-  ) {
-    issues.push({
-      code: "INVALID_VALUE",
-      message: `Line does not satisfy its ${constraint.kind} constraint.`,
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id,
-      expected:
-        constraint.kind === "horizontal"
-          ? "line with equal endpoint Y values"
-          : "line with equal endpoint X values",
-      received:
-        constraint.kind === "horizontal"
-          ? "line with different endpoint Y values"
-          : "line with different endpoint X values"
-    });
-  }
-
-  const conflicting = [...document.sketchConstraints.values()].find(
-    (candidate) =>
-      candidate.id !== constraint.id &&
-      candidate.sketchId === constraint.sketchId &&
-      candidate.entityId === constraint.entityId
-  );
-
-  if (conflicting) {
-    issues.push({
-      code: "CONFLICTING_CONSTRAINT",
-      message:
-        conflicting.kind === constraint.kind
-          ? `Line has a duplicate ${constraint.kind} constraint: ${conflicting.id}.`
-          : `Line has a conflicting ${conflicting.kind} constraint: ${conflicting.id}.`,
-      sketchId: constraint.sketchId,
-      sketchEntityId: constraint.entityId,
-      sketchConstraintId: constraint.id,
-      expected: "one orientation constraint per line",
-      received: conflicting.kind
-    });
-  }
-
-  return {
-    ...cloneSketchConstraintSnapshot(constraint),
-    status: getSketchEvaluationStatus(issues),
-    issues
-  };
-}
-
-function createSketchEvaluationQueryResponse(
-  document: CadDocument,
-  sketch: Sketch,
-  cadOpsVersion: CadQueryRequest["version"]
-): Extract<
-  CadQueryResponse,
-  { readonly ok: true; readonly query: "sketch.evaluation" }
-> {
-  const dimensions = [...document.sketchDimensions.values()]
-    .filter((dimension) => dimension.sketchId === sketch.id)
-    .map((dimension) => createSketchDimensionEntry(document, dimension));
-  const constraints = [...document.sketchConstraints.values()]
-    .filter((constraint) => constraint.sketchId === sketch.id)
-    .map((constraint) => createSketchConstraintEntry(document, constraint));
-  const issues = [
-    ...dimensions.flatMap((dimension) => dimension.issues),
-    ...constraints.flatMap((constraint) => constraint.issues)
-  ];
-  const drivenEntityIds = [
-    ...new Set([
-      ...dimensions.map((dimension) => dimension.entityId),
-      ...constraints.map((constraint) => constraint.entityId)
-    ])
-  ];
-
-  return {
-    ok: true,
-    query: "sketch.evaluation",
-    cadOpsVersion,
-    sketchId: sketch.id,
-    sketchName: sketch.name,
-    plane: sketch.plane,
-    status: getSketchEvaluationStatus(issues),
-    drivenEntityCount: drivenEntityIds.length,
-    drivenEntityIds,
-    dimensionCount: dimensions.length,
-    dimensions,
-    constraintCount: constraints.length,
-    constraints,
-    issueCount: issues.length,
-    issues
-  };
-}
-
-function getSketchDimensionStatus(
-  issues: readonly SketchDimensionIssue[]
-): SketchDimensionEntry["status"] {
-  return getSketchEvaluationStatus(issues);
-}
-
-function getSketchEvaluationStatus(
-  issues: readonly { readonly code: string }[]
-): SketchDimensionEntry["status"] {
-  if (issues.length === 0) {
-    return "healthy";
-  }
-
-  if (
-    issues.some(
-      (issue) =>
-        issue.code === "SKETCH_NOT_FOUND" ||
-        issue.code === "SKETCH_ENTITY_NOT_FOUND" ||
-        issue.code === "PARAMETER_NOT_FOUND"
-    )
-  ) {
-    return "missing-target";
-  }
-
-  if (issues.some((issue) => issue.code === "INVALID_VALUE")) {
-    return "invalid-value";
-  }
-
-  return "unsupported";
 }
 
 function cloneSketchAttachment(
