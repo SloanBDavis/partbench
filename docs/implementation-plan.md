@@ -8,7 +8,8 @@ Last updated: 2026-05-22.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v2.md` for the completed V2
-feature/body foundation, `docs/v3.md` for the active V3 target,
+feature/body foundation, `docs/v3.md` for the completed V3 parametric sketch
+milestone,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
@@ -26,8 +27,9 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2 is complete. V3 is active and should focus on parametric sketch-driven
-   editing, not broad V4 architecture.
+9. V2 and V3 are complete. Future work should start from the parametric
+   sketch-driven foundation and avoid broad V4 architecture unless explicitly
+   scoped.
 
 ## Current Repo State
 
@@ -41,9 +43,10 @@ and focused packages:
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
-  sketches, document parameters, driving sketch dimensions, authored
-  rectangle/circle extrude features, narrow rectangle-tool add/cut boolean source
-  data, named references, and versioned project JSON import/export.
+  sketches, document parameters, driving sketch dimensions, horizontal/vertical
+  line constraints, authored rectangle/circle extrude features, narrow
+  rectangle-tool add/cut boolean source data, named references, and versioned
+  project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -167,6 +170,8 @@ Current Partbench can:
 - create and edit source-of-truth document parameters through CADOps;
 - create and edit driving sketch dimensions for rectangle width, rectangle
   height, circle radius, and line length through CADOps;
+- create, rename, and delete source-of-truth horizontal/vertical line
+  orientation constraints through CADOps;
 - create rectangle/circle extrude features as new bodies;
 - edit authored extrude depth and side;
 - edit source rectangle/circle profile values through `sketch.updateEntity`;
@@ -182,11 +187,13 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo is a completed V2 feature/body foundation, not yet a full CAD system.
+The repo is a completed V3 parametric sketch foundation, not yet a full CAD
+system.
 
 Current limitations:
 
-- There is no general sketch solver or constraint system.
+- There is no general sketch solver. Current constraints are limited to
+  horizontal/vertical line orientation.
 - Sketch dimensions currently drive only rectangle width/height, circle radius,
   and line length through a direct evaluator path.
 - There is no parameter expression language.
@@ -202,22 +209,23 @@ Current limitations:
   WebGPU, assemblies, hosted collaboration, production MCP auth, or
   natural-language command entry.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
-  build findings are documented separately and should not block V3 modeling
+  build findings are documented separately and should not block future modeling
   work.
 
-## Active Roadmap: V3 Parametric Sketch Editing
+## Completed Roadmap: V3 Parametric Sketch Editing
 
-V3 should be a meaningful usefulness jump without starting unrelated V4 systems.
-The product target is:
+V3 delivered a meaningful usefulness jump without starting unrelated V4 systems.
+The product target was:
 
 > A user or agent can define and edit source-of-truth sketch dimensions and
 > parameters, rebuild downstream sketches/features/bodies/measurements through
 > CADOps, and inspect clear dependency health when something becomes invalid.
 
-V3 is agent-first. Parameters, dimensions, solver results, dependency health,
-validation failures, and rebuild effects must be typed/queryable through CADOps
-and wrapped by agent/MCP adapters. The UI should make the same structure usable
-for humans without adding hidden UI-only model state.
+V3 is agent-first. Parameters, dimensions, constraints, evaluator results,
+dependency health, validation failures, and rebuild effects must be
+typed/queryable through CADOps and wrapped by agent/MCP adapters. The UI should
+make the same structure usable for humans without adding hidden UI-only model
+state.
 
 ### V3 Phase A: Parameter and Driving-Dimension Source Model
 
@@ -251,14 +259,14 @@ Non-goals:
 Goal: broaden the Phase A direct evaluator toward a small sketch
 solver/evaluator structure in a controlled, testable way.
 
-Expected deliverables:
+Implemented deliverables:
 
 - a small internal sketch-solving/evaluation path in the correct package
   boundary;
 - support for the next high-value cases only where endpoint/entity behavior is
   explicit, such as line length or horizontal/vertical constraints;
-- structured solver status for healthy, under-defined, over-defined,
-  unsolved, and unsupported cases where practical;
+- structured evaluator status for healthy, unsupported, missing-target, and
+  invalid-value cases;
 - no UI-only solver state;
 - tests for deterministic inputs/outputs and failure shapes.
 
@@ -327,10 +335,12 @@ Non-goals:
 Goal: make parametric editing understandable in the UI and through structured
 agent queries.
 
-Expected deliverables:
+Completed deliverables:
 
 - compact UI for parameters, sketch dimensions, solver status, and downstream
   dependency health;
+- compact UI for creating, renaming, and deleting horizontal/vertical line
+  constraints;
 - CADOps query support for parameter/dimension summaries and affected features;
 - agent/MCP wrapper coverage as thin pass-throughs;
 - UI helper tests for command building, filtering, status formatting, and
@@ -345,13 +355,14 @@ Non-goals:
 
 Goal: finish V3 as a coherent, well-tested milestone.
 
-Expected deliverables:
+Completed deliverables:
 
 - unit/package-level coverage for command/query contracts, serialization,
   solver/evaluator behavior, rebuild propagation, derived geometry invalidation,
   adapter/MCP wrappers, and UI helpers;
-- docs updated to mark V3 complete when acceptance criteria pass;
-- implementation-plan updated with the next target after V3.
+- docs updated to mark V3 complete;
+- implementation-plan updated so future work starts from the completed V3
+  parametric sketch foundation.
 
 ## V3 Acceptance Criteria
 
@@ -359,8 +370,8 @@ V3 is complete when:
 
 1. Parameters, sketch dimensions, and current line orientation constraints are
    source-of-truth document data.
-2. Current supported dimensions drive rectangle/circle sketch geometry through
-   CADOps.
+2. Current supported dimensions drive rectangle width/height, circle radius, and
+   line length through CADOps.
 3. Editing dimensions/parameters rebuilds downstream authored extrudes,
    attached-sketch extrudes, narrow add/cut results, measurements, extents,
    generated references, named references, and dependency health where
@@ -373,6 +384,22 @@ V3 is complete when:
    impact without relying on debug text.
 8. Unit and package-level tests cover the behavior without depending on brittle
    browser E2E workflows.
+
+## Post-V3 Direction
+
+The next milestone should be planned deliberately before implementation. The
+highest-signal options are:
+
+- broaden the sketch evaluator into a small true solver for additional
+  constraints such as coincident, parallel/perpendicular, equal length/radius, or
+  fixed points;
+- improve feature/reference behavior for boolean result bodies before adding
+  more feature operations that would depend on generated topology;
+- begin storage/packaging work only after deciding whether modeling or local-file
+  workflow is the next product bottleneck.
+
+Do not start broad V4 architecture work from this document alone. Create a
+scoped milestone doc/prompt first, then implement one slice at a time.
 
 ## Deferred Beyond V3 Unless Explicitly Scoped
 

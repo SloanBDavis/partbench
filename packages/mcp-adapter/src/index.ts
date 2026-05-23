@@ -943,7 +943,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.sketch_evaluation",
     description:
-      "Returns derived evaluator status for source-of-truth dimensions in one sketch.",
+      "Returns derived evaluator status for source-of-truth dimensions and constraints in one sketch.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -951,7 +951,8 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       properties: {
         sketchId: {
           type: "string",
-          description: "Sketch ID whose dimension evaluation should be read."
+          description:
+            "Sketch ID whose dimension and constraint evaluation should be read."
         }
       }
     }

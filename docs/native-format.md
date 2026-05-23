@@ -526,8 +526,16 @@ The current source of truth is:
 - sketch planes
 - sketch generated-face attachment metadata
 - sketch entities and entity geometry
+- document parameter IDs, names, numeric values, and optional descriptions
+- sketch dimension IDs, names, source sketch/entity references, target roles,
+  literal values, and parameter bindings
+- sketch constraint IDs, names, source sketch/entity references, and supported
+  constraint kind
 - `document.nextSketchNumber`
 - `document.nextSketchEntityNumber`
+- `document.nextParameterNumber`
+- `document.nextSketchDimensionNumber`
+- `document.nextSketchConstraintNumber`
 - authored feature IDs
 - authored feature names
 - authored feature kind, source sketch, source entity, profile kind, depth, and
@@ -764,6 +772,10 @@ document.
 - sketch dimension IDs, names, source references, supported target roles
   including line length, and literal or parameter-bound value sources
 - parameter-bound dimension references and positive resolved dimension values
+- sketch constraint IDs, names, source references, supported horizontal/vertical
+  line orientation kinds, non-zero line targets, duplicate/conflicting
+  orientation constraints, and consistency between saved line geometry and saved
+  constraint kind
 - transaction and semantic diff shape
 - optional transaction audit metadata
 - committed transaction stack status
@@ -776,6 +788,7 @@ document.
 - `nextBodyNumber` collisions with generated body IDs
 - `nextParameterNumber` collisions with generated parameter IDs
 - `nextSketchDimensionNumber` collisions with generated sketch dimension IDs
+- `nextSketchConstraintNumber` collisions with generated sketch constraint IDs
 - optional transaction actor metadata
 - transaction replay where practical
 - consistency between the saved document and replayed committed transaction

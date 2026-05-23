@@ -10,11 +10,13 @@ import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
   createAvailableSketchDimensionTargetOptions,
+  createAvailableSketchConstraintKindOptions,
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
   createParameterBindingOptions,
   createSketchDimensionTargetOptions,
   formatSketchDimensionEffectiveValue,
+  formatSketchConstraintStatus,
   formatSketchDimensionStatus,
   formatSketchDimensionValueSource,
   formatSketchEvaluationIssue,
@@ -23,6 +25,8 @@ import {
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getParameterDimensionUsageCount,
+  getSketchConstraintKindLabel,
+  getSketchConstraintStatusDisplay,
   getSketchDimensionStatusDisplay,
   getSketchDimensionTargetLabel,
   getSketchDimensionTargetValue,
@@ -129,6 +133,65 @@ describe("sketch panel UI helpers", () => {
         point: [0, 0]
       })
     ).toBe(false);
+  });
+
+  it("derives line orientation constraint options and status display", () => {
+    const line: SketchSnapshot["entities"][number] = {
+      id: "line_1",
+      kind: "line",
+      start: [0, 0],
+      end: [3, 4]
+    };
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const horizontalConstraint = {
+      id: "con_horizontal",
+      name: "Horizontal",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "horizontal" as const,
+      status: "healthy" as const,
+      issues: []
+    };
+    const invalidConstraint = {
+      ...horizontalConstraint,
+      status: "invalid-value" as const,
+      issues: [
+        {
+          code: "INVALID_VALUE" as const,
+          message: "Line constraint target cannot be zero length.",
+          sketchConstraintId: "con_horizontal"
+        }
+      ]
+    };
+
+    expect(createAvailableSketchConstraintKindOptions(line, [])).toEqual([
+      { kind: "horizontal", label: "Horizontal" },
+      { kind: "vertical", label: "Vertical" }
+    ]);
+    expect(
+      createAvailableSketchConstraintKindOptions(line, [horizontalConstraint])
+    ).toEqual([]);
+    expect(createAvailableSketchConstraintKindOptions(rectangle, [])).toEqual(
+      []
+    );
+    expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
+    expect(formatSketchConstraintStatus(horizontalConstraint)).toBe(
+      "Horizontal · Healthy"
+    );
+    expect(formatSketchConstraintStatus(invalidConstraint)).toBe(
+      "Line constraint target cannot be zero length."
+    );
+    expect(getSketchConstraintStatusDisplay(invalidConstraint)).toEqual({
+      label: "Invalid value",
+      detail: "Line constraint target cannot be zero length.",
+      tone: "error"
+    });
   });
 
   it("derives supported dimension targets from the active sketch entity", () => {

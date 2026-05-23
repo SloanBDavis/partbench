@@ -48,6 +48,12 @@ import type {
   SketchDimensionRenameOp,
   SketchDimensionTarget,
   SketchDimensionUpdateOp,
+  SketchConstraintCreateOp,
+  SketchConstraintDeleteOp,
+  SketchConstraintEntry,
+  SketchConstraintId,
+  SketchConstraintKind,
+  SketchConstraintRenameOp,
   SketchEntitySnapshot,
   SketchId,
   SketchPlane,
@@ -149,6 +155,12 @@ export interface SketchDimensionForm {
   readonly valueSourceType: "literal" | "parameter";
   readonly value: number;
   readonly parameterId: string;
+}
+
+export interface SketchConstraintForm {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: SketchConstraintKind;
 }
 
 export interface SketchEntityForm {
@@ -441,9 +453,14 @@ export function buildParameterEditOps(
 
   if (
     form.value !== parameter.value ||
-    (nextDescription !== undefined && nextDescription !== parameter.description)
+    nextDescription !== parameter.description
   ) {
-    ops.push(buildUpdateParameterOp(parameter.id, form));
+    const update = buildUpdateParameterOp(parameter.id, form);
+    ops.push(
+      nextDescription === undefined && parameter.description !== undefined
+        ? { ...update, description: "" }
+        : update
+    );
   }
 
   return ops;
@@ -613,6 +630,52 @@ export function buildSketchDimensionEditOps(
   }
 
   return ops;
+}
+
+export function buildCreateSketchConstraintOp(
+  sketchId: SketchId,
+  entityId: string,
+  form: SketchConstraintForm
+): SketchConstraintCreateOp {
+  return {
+    op: "sketch.constraint.create",
+    id: normalizeOptionalId(form.id),
+    name: form.name.trim(),
+    sketchId,
+    entityId,
+    kind: form.kind
+  };
+}
+
+export function buildRenameSketchConstraintOp(
+  id: SketchConstraintId,
+  name: string
+): SketchConstraintRenameOp {
+  return {
+    op: "sketch.constraint.rename",
+    id,
+    name: name.trim()
+  };
+}
+
+export function buildDeleteSketchConstraintOp(
+  id: SketchConstraintId
+): SketchConstraintDeleteOp {
+  return {
+    op: "sketch.constraint.delete",
+    id
+  };
+}
+
+export function buildSketchConstraintEditOps(
+  constraint: SketchConstraintEntry,
+  form: SketchConstraintForm
+): readonly SketchConstraintRenameOp[] {
+  const nextName = form.name.trim();
+
+  return nextName !== constraint.name
+    ? [buildRenameSketchConstraintOp(constraint.id, nextName)]
+    : [];
 }
 
 export function buildFeatureExtrudeOp(

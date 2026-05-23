@@ -449,6 +449,26 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "parameter.list" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "parameter.get", id: "param_width" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "sketch.dimensions", sketchId: "sketch_1" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "sketch.dimension.get", id: "dim_width" }
+      },
+      {
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "body.generatedReferences", bodyId: "body_1" }
       },
       {
@@ -487,6 +507,11 @@ describe("cad-protocol", () => {
       "object.measurements",
       "project.extents",
       "sketch.get",
+      "parameter.list",
+      "parameter.get",
+      "sketch.dimensions",
+      "sketch.dimension.get",
+      "sketch.evaluation",
       "body.generatedReferences",
       "body.resolveGeneratedReference",
       "body.measurements",

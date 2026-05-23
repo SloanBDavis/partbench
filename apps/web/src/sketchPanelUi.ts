@@ -2,6 +2,8 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
+  SketchConstraintEntry,
+  SketchConstraintKind,
   SketchDimensionEntry,
   SketchDimensionStatus,
   SketchDimensionTarget,
@@ -42,6 +44,11 @@ export interface DimensionStatusDisplay {
   readonly label: string;
   readonly detail: string;
   readonly tone: "healthy" | "warning" | "error";
+}
+
+export interface SketchConstraintKindOption {
+  readonly kind: SketchConstraintKind;
+  readonly label: string;
 }
 
 export function chooseSketchPanelSelection(
@@ -166,6 +173,54 @@ export function createAvailableSketchDimensionTargetOptions(
           sketchDimensionTargetsEqual(dimension.target, option.target)
       )
   );
+}
+
+export function createAvailableSketchConstraintKindOptions(
+  entity: SketchEntitySnapshot | undefined,
+  constraints: readonly SketchConstraintEntry[]
+): readonly SketchConstraintKindOption[] {
+  if (entity?.kind !== "line") {
+    return [];
+  }
+
+  const usedKinds = new Set(constraints.map((constraint) => constraint.kind));
+  const hasOrientationConstraint =
+    usedKinds.has("horizontal") || usedKinds.has("vertical");
+
+  if (hasOrientationConstraint) {
+    return [];
+  }
+
+  return [
+    { kind: "horizontal", label: "Horizontal" },
+    { kind: "vertical", label: "Vertical" }
+  ];
+}
+
+export function getSketchConstraintKindLabel(
+  kind: SketchConstraintKind
+): string {
+  return kind === "horizontal" ? "Horizontal" : "Vertical";
+}
+
+export function formatSketchConstraintStatus(
+  constraint: SketchConstraintEntry
+): string {
+  if (constraint.status === "healthy") {
+    return `${getSketchConstraintKindLabel(constraint.kind)} · Healthy`;
+  }
+
+  return constraint.issues[0]?.message ?? constraint.status;
+}
+
+export function getSketchConstraintStatusDisplay(
+  constraint: SketchConstraintEntry
+): DimensionStatusDisplay {
+  return {
+    label: getSketchDimensionStatusLabel(constraint.status),
+    detail: formatSketchConstraintStatus(constraint),
+    tone: getSketchDimensionStatusTone(constraint.status)
+  };
 }
 
 export function getSketchDimensionTargetLabel(

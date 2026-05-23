@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CadParameterSnapshot,
   CadFeatureSummary,
+  SketchConstraintEntry,
+  SketchConstraintKind,
   SketchDimensionEntry,
   SketchDimensionTarget,
   SketchEvaluationQueryResponse,
@@ -15,6 +17,7 @@ import type {
   FeatureExtrudeForm,
   ParameterCreateForm,
   ParameterEditForm,
+  SketchConstraintForm,
   SketchDimensionForm,
   SketchCreateForm,
   SketchEntityForm
@@ -28,6 +31,7 @@ import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
+  createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
   formatSketchDimensionEffectiveValue,
   getAddOperationStatus,
@@ -36,8 +40,11 @@ import {
   createParameterBindingOptions,
   formatSketchEvaluationIssue,
   formatSketchEvaluationStatus,
+  formatSketchConstraintStatus,
   formatSketchDimensionStatus,
   formatSketchDimensionValueSource,
+  getSketchConstraintKindLabel,
+  getSketchConstraintStatusDisplay,
   getSketchDimensionStatusDisplay,
   getSketchEvaluationStatusDisplay,
   getParameterDimensionUsageCount,
@@ -103,6 +110,16 @@ export interface SketchPanelProps {
     form: SketchDimensionForm
   ) => void;
   readonly onDeleteDimension: (dimensionId: string) => void;
+  readonly onCreateConstraint: (
+    sketchId: string,
+    entityId: string,
+    form: SketchConstraintForm
+  ) => void;
+  readonly onApplyConstraintEdit: (
+    constraint: SketchConstraintEntry,
+    form: SketchConstraintForm
+  ) => void;
+  readonly onDeleteConstraint: (constraintId: string) => void;
   readonly onExtrudeEntity: (
     sketchId: string,
     entityId: string,
@@ -129,6 +146,12 @@ const defaultSketchDimensionForm: SketchDimensionForm = {
   valueSourceType: "literal",
   value: 1,
   parameterId: ""
+};
+
+const defaultSketchConstraintForm: SketchConstraintForm = {
+  id: "",
+  name: "Horizontal",
+  kind: "horizontal"
 };
 
 const defaultExtrudeForm: FeatureExtrudeForm = {
@@ -163,6 +186,9 @@ export function SketchPanel({
   onCreateDimension,
   onApplyDimensionEdit,
   onDeleteDimension,
+  onCreateConstraint,
+  onApplyConstraintEdit,
+  onDeleteConstraint,
   onExtrudeEntity
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
@@ -243,6 +269,19 @@ export function SketchPanel({
         : [],
     [selectedEntity, selectedSketchDimensions]
   );
+  const selectedSketchConstraints = useMemo(
+    () => selectedSketchEvaluation?.constraints ?? [],
+    [selectedSketchEvaluation]
+  );
+  const selectedEntityConstraints = useMemo(
+    () =>
+      selectedEntity
+        ? selectedSketchConstraints.filter(
+            (constraint) => constraint.entityId === selectedEntity.id
+          )
+        : [],
+    [selectedEntity, selectedSketchConstraints]
+  );
   const parameterBindingOptions = createParameterBindingOptions(parameters);
   const parameterUsageCounts = useMemo(
     () =>
@@ -318,6 +357,50 @@ export function SketchPanel({
     dimensionEditDraft?.dimensionId === selectedDimension.id
       ? dimensionEditDraft.form
       : sketchDimensionToForm(selectedDimension);
+  const availableConstraintKinds = useMemo(
+    () =>
+      createAvailableSketchConstraintKindOptions(
+        selectedEntity,
+        selectedEntityConstraints
+      ),
+    [selectedEntity, selectedEntityConstraints]
+  );
+  const [constraintCreateForm, setConstraintCreateForm] =
+    useState<SketchConstraintForm>(defaultSketchConstraintForm);
+  const [selectedConstraintId, setSelectedConstraintId] = useState<
+    string | undefined
+  >();
+  const selectedConstraint =
+    selectedEntityConstraints.find(
+      (constraint) => constraint.id === selectedConstraintId
+    ) ?? selectedEntityConstraints[0];
+  const [constraintEditDraft, setConstraintEditDraft] = useState<
+    | {
+        readonly constraintId: string;
+        readonly form: SketchConstraintForm;
+      }
+    | undefined
+  >();
+  const selectedCreateConstraintKind =
+    availableConstraintKinds.find(
+      (option) => option.kind === constraintCreateForm.kind
+    )?.kind ?? availableConstraintKinds[0]?.kind;
+  const effectiveConstraintCreateForm: SketchConstraintForm = {
+    ...constraintCreateForm,
+    kind: selectedCreateConstraintKind ?? constraintCreateForm.kind,
+    name:
+      selectedCreateConstraintKind &&
+      constraintCreateForm.kind === selectedCreateConstraintKind
+        ? constraintCreateForm.name
+        : selectedCreateConstraintKind
+          ? getSketchConstraintKindLabel(selectedCreateConstraintKind)
+          : constraintCreateForm.name
+  };
+  const constraintEditForm =
+    selectedConstraint &&
+    constraintEditDraft?.constraintId === selectedConstraint.id
+      ? constraintEditDraft.form
+      : sketchConstraintToForm(selectedConstraint);
   const selectedEntityUsages =
     selectedSketch && selectedEntity
       ? getSketchEntityExtrudeUsages(
@@ -451,6 +534,18 @@ export function SketchPanel({
     );
   }
 
+  function createConstraint() {
+    if (!selectedSketch || !selectedEntity || !selectedCreateConstraintKind) {
+      return;
+    }
+
+    onCreateConstraint(
+      selectedSketch.id,
+      selectedEntity.id,
+      effectiveConstraintCreateForm
+    );
+  }
+
   function applyParameterEdit() {
     if (!selectedParameter) {
       return;
@@ -465,6 +560,14 @@ export function SketchPanel({
     }
 
     onApplyDimensionEdit(selectedDimension, dimensionEditForm);
+  }
+
+  function applyConstraintEdit() {
+    if (!selectedConstraint) {
+      return;
+    }
+
+    onApplyConstraintEdit(selectedConstraint, constraintEditForm);
   }
 
   return (
@@ -796,6 +899,34 @@ export function SketchPanel({
                       onDeleteDimension={onDeleteDimension}
                     />
                   )}
+                  {selectedEntity &&
+                    (selectedEntity.kind === "line" ||
+                      selectedEntityConstraints.length > 0) && (
+                      <SketchConstraintControls
+                        disabled={disabled}
+                        constraints={selectedEntityConstraints}
+                        availableKinds={availableConstraintKinds}
+                        createForm={effectiveConstraintCreateForm}
+                        selectedConstraint={selectedConstraint}
+                        selectedConstraintId={selectedConstraint?.id}
+                        editForm={constraintEditForm}
+                        onCreateFormChange={setConstraintCreateForm}
+                        onSelectConstraint={(constraintId) => {
+                          setSelectedConstraintId(constraintId);
+                          setConstraintEditDraft(undefined);
+                        }}
+                        onEditFormChange={(form) =>
+                          selectedConstraint &&
+                          setConstraintEditDraft({
+                            constraintId: selectedConstraint.id,
+                            form
+                          })
+                        }
+                        onCreateConstraint={createConstraint}
+                        onApplyConstraintEdit={applyConstraintEdit}
+                        onDeleteConstraint={onDeleteConstraint}
+                      />
+                    )}
                 </section>
               )}
 
@@ -1568,6 +1699,233 @@ function SketchDimensionControls({
   );
 }
 
+function SketchConstraintControls({
+  disabled,
+  constraints,
+  availableKinds,
+  createForm,
+  selectedConstraint,
+  selectedConstraintId,
+  editForm,
+  onCreateFormChange,
+  onSelectConstraint,
+  onEditFormChange,
+  onCreateConstraint,
+  onApplyConstraintEdit,
+  onDeleteConstraint
+}: {
+  readonly disabled: boolean;
+  readonly constraints: readonly SketchConstraintEntry[];
+  readonly availableKinds: readonly {
+    readonly kind: SketchConstraintKind;
+    readonly label: string;
+  }[];
+  readonly createForm: SketchConstraintForm;
+  readonly selectedConstraint: SketchConstraintEntry | undefined;
+  readonly selectedConstraintId: string | undefined;
+  readonly editForm: SketchConstraintForm;
+  readonly onCreateFormChange: (form: SketchConstraintForm) => void;
+  readonly onSelectConstraint: (constraintId: string | undefined) => void;
+  readonly onEditFormChange: (form: SketchConstraintForm) => void;
+  readonly onCreateConstraint: () => void;
+  readonly onApplyConstraintEdit: () => void;
+  readonly onDeleteConstraint: (constraintId: string) => void;
+}) {
+  const supportsConstraints =
+    availableKinds.length > 0 || constraints.length > 0;
+
+  if (!supportsConstraints) {
+    return (
+      <section className="entity-editor" aria-label="Line constraints">
+        <div className="command-card-heading">
+          <h3>Line constraints</h3>
+        </div>
+        <p className="empty-state compact">
+          Select a line to add horizontal or vertical constraints.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="entity-editor" aria-label="Line constraints">
+      <div className="command-card-heading">
+        <h3>Line constraints</h3>
+        <span>{constraints.length}</span>
+      </div>
+
+      {constraints.length > 0 && (
+        <div className="dimension-status-list" aria-label="Constraint status">
+          {constraints.map((constraint) => {
+            const statusDisplay = getSketchConstraintStatusDisplay(constraint);
+
+            return (
+              <div key={constraint.id} className="dimension-status-row">
+                <div>
+                  <strong>
+                    {constraint.name} ·{" "}
+                    {getSketchConstraintKindLabel(constraint.kind)}
+                  </strong>
+                  <span>{formatSketchConstraintStatus(constraint)}</span>
+                </div>
+                <span
+                  className={`health-text health-${statusDisplay.tone}`}
+                  title={statusDisplay.detail}
+                >
+                  {statusDisplay.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {availableKinds.length > 0 ? (
+        <div className="dimension-create-row">
+          <div className="field-grid two">
+            <label>
+              Constraint
+              <select
+                value={createForm.kind}
+                disabled={disabled}
+                onChange={(event) => {
+                  const kind = event.currentTarget
+                    .value as SketchConstraintKind;
+
+                  onCreateFormChange({
+                    ...createForm,
+                    kind,
+                    name: getSketchConstraintKindLabel(kind)
+                  });
+                }}
+              >
+                {availableKinds.map((option) => (
+                  <option key={option.kind} value={option.kind}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Name
+              <input
+                type="text"
+                value={createForm.name}
+                disabled={disabled}
+                onChange={(event) =>
+                  onCreateFormChange({
+                    ...createForm,
+                    name: event.currentTarget.value
+                  })
+                }
+              />
+            </label>
+          </div>
+          <details className="advanced-options compact">
+            <summary>Constraint ID</summary>
+            <input
+              type="text"
+              value={createForm.id}
+              disabled={disabled}
+              onChange={(event) =>
+                onCreateFormChange({
+                  ...createForm,
+                  id: event.currentTarget.value
+                })
+              }
+            />
+          </details>
+          <div className="button-row compact">
+            <button
+              type="button"
+              disabled={disabled || availableKinds.length === 0}
+              onClick={onCreateConstraint}
+            >
+              Create constraint
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="project-message compact">
+          This line already has an orientation constraint.
+        </p>
+      )}
+
+      {constraints.length > 0 && (
+        <div className="dimension-editor">
+          <label>
+            Edit constraint
+            <select
+              value={selectedConstraintId ?? ""}
+              disabled={disabled}
+              onChange={(event) =>
+                onSelectConstraint(event.currentTarget.value)
+              }
+            >
+              {constraints.map((constraint) => (
+                <option key={constraint.id} value={constraint.id}>
+                  {constraint.name} /{" "}
+                  {getSketchConstraintKindLabel(constraint.kind)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedConstraint && (
+            <>
+              <div className="readonly-field">
+                <span>Kind</span>
+                <strong>
+                  {getSketchConstraintKindLabel(selectedConstraint.kind)}
+                </strong>
+              </div>
+              <p
+                className={
+                  selectedConstraint.status === "healthy"
+                    ? "project-message compact"
+                    : "error-text"
+                }
+              >
+                {formatSketchConstraintStatus(selectedConstraint)}
+              </p>
+              <label>
+                Name
+                <input
+                  type="text"
+                  value={editForm.name}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onEditFormChange({
+                      ...editForm,
+                      name: event.currentTarget.value
+                    })
+                  }
+                />
+              </label>
+              <div className="button-row compact">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={onApplyConstraintEdit}
+                >
+                  Apply constraint
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={disabled}
+                  onClick={() => onDeleteConstraint(selectedConstraint.id)}
+                >
+                  Delete constraint
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DimensionValueSourceFields({
   disabled,
   form,
@@ -1821,6 +2179,20 @@ function sketchDimensionToForm(
       dimension.valueSource.type === "parameter"
         ? dimension.valueSource.parameterId
         : ""
+  };
+}
+
+function sketchConstraintToForm(
+  constraint: SketchConstraintEntry | undefined
+): SketchConstraintForm {
+  if (!constraint) {
+    return defaultSketchConstraintForm;
+  }
+
+  return {
+    id: "",
+    name: constraint.name,
+    kind: constraint.kind
   };
 }
 

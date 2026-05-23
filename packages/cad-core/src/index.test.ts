@@ -10959,6 +10959,29 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       }
     });
 
+    engine.apply({
+      op: "parameter.update",
+      id: "param_width",
+      description: ""
+    });
+    const clearedParameter = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "parameter.get", id: "param_width" }
+    });
+    expect(clearedParameter).toMatchObject({
+      ok: true,
+      parameter: {
+        id: "param_width",
+        name: "Panel width",
+        value: 18
+      }
+    });
+    expect(
+      clearedParameter.ok && clearedParameter.query === "parameter.get"
+        ? clearedParameter.parameter.description
+        : "unexpected response"
+    ).toBeUndefined();
+
     engine.apply({ op: "parameter.delete", id: "param_width" });
 
     const list = engine.executeQuery({
@@ -12649,5 +12672,55 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(migrated.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
     expect(migrated.document.sketchConstraints).toEqual([]);
     expect(migrated.document.nextSketchConstraintNumber).toBe(1);
+  });
+
+  it("rejects imported V8 constraints that conflict with saved line geometry", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [3, 4]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "con_horizontal",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        kind: "horizontal"
+      }
+    ]);
+
+    const project = engine.exportProject();
+    const inconsistentProject = {
+      ...project,
+      document: {
+        ...project.document,
+        sketches: project.document.sketches.map((sketch) =>
+          sketch.id === "sketch_1"
+            ? {
+                ...sketch,
+                entities: sketch.entities.map((entity) =>
+                  entity.id === "line_1" && entity.kind === "line"
+                    ? { ...entity, start: [0, 0], end: [3, 4] }
+                    : entity
+                )
+              }
+            : sketch
+        )
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+
+    expectProjectImportError(() => importCadProject(inconsistentProject), {
+      code: "INVALID_SKETCH_CONSTRAINT",
+      path: "$.document.sketchConstraints[0].kind",
+      message: "does not satisfy"
+    });
   });
 });

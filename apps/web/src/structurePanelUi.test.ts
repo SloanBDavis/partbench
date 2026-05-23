@@ -130,6 +130,60 @@ describe("structure panel UI helpers", () => {
     ).toEqual(["Named reference target is stale."]);
   });
 
+  it("includes sketch dimension health in affected sketches, features, and bodies", () => {
+    const health = createHealth({
+      authoredExtrudes: [
+        {
+          featureId: "feature_1",
+          bodyId: "body_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          operationMode: "newBody",
+          status: "healthy",
+          issues: []
+        }
+      ],
+      sketchDimensions: [
+        {
+          dimensionId: "dim_width",
+          dimensionName: "Width",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: { entityKind: "rectangle", role: "width" },
+          valueSource: { type: "parameter", parameterId: "param_missing" },
+          status: "missing-source",
+          affectedFeatureIds: ["feature_1"],
+          affectedBodyIds: ["body_1"],
+          parameterId: "param_missing",
+          issues: [
+            {
+              code: "PARAMETER_NOT_FOUND",
+              message: "Parameter does not exist: param_missing.",
+              parameterId: "param_missing",
+              sketchDimensionId: "dim_width",
+              sketchId: "sketch_1",
+              sketchEntityId: "rect_1"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(getSketchHealthStatus(health, "sketch_1")).toBe("missing-source");
+    expect(getFeatureHealthStatus(health, "feature_1")).toBe("missing-source");
+    expect(getBodyHealthStatus(health, "body_1")).toBe("missing-source");
+    expect(getHealthIssues(health, { kind: "sketch", id: "sketch_1" })).toEqual(
+      ["Parameter does not exist: param_missing."]
+    );
+    expect(
+      getHealthIssues(health, { kind: "feature", id: "feature_1" })
+    ).toEqual(["Parameter does not exist: param_missing."]);
+    expect(getHealthIssues(health, { kind: "body", id: "body_1" })).toEqual([
+      "Parameter does not exist: param_missing."
+    ]);
+  });
+
   it("formats part and authored extrude lines compactly", () => {
     expect(formatPartLine(createPart())).toBe(
       "1 sketches / 2 features / 2 bodies"

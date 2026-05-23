@@ -25,6 +25,7 @@ import type {
   ProjectHealthQueryResponse,
   SketchDimensionEntry,
   SketchDimensionTarget,
+  SketchConstraintEntry,
   SketchEvaluationQueryResponse,
   SketchEntityKind,
   SketchEntitySnapshot
@@ -43,9 +44,11 @@ import {
   buildCreateConeOp,
   buildCreateCylinderOp,
   buildCreateParameterOp,
+  buildCreateSketchConstraintOp,
   buildCreateSphereOp,
   buildCreateSketchDimensionOp,
   buildCreateTorusOp,
+  buildDeleteSketchConstraintOp,
   buildDeleteParameterOp,
   buildDeleteSketchDimensionOp,
   buildDeleteNamedReferenceOp,
@@ -60,6 +63,7 @@ import {
   buildParameterEditOps,
   buildRenameObjectOp,
   buildRenameSketchOp,
+  buildSketchConstraintEditOps,
   buildSketchDimensionEditOps,
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
@@ -75,6 +79,7 @@ import {
   type FeatureExtrudeForm,
   type ParameterCreateForm,
   type ParameterEditForm,
+  type SketchConstraintForm,
   type PrimitiveCommandForm,
   type SketchDimensionForm,
   type SketchCreateOnFaceForm,
@@ -1062,6 +1067,37 @@ export function App() {
     );
   }
 
+  async function createSketchConstraint(
+    sketchId: string,
+    entityId: string,
+    form: SketchConstraintForm
+  ) {
+    await commitOps(
+      [buildCreateSketchConstraintOp(sketchId, entityId, form)],
+      () => selectedId
+    );
+  }
+
+  async function applySketchConstraintEdit(
+    constraint: SketchConstraintEntry,
+    form: SketchConstraintForm
+  ) {
+    const ops = buildSketchConstraintEditOps(constraint, form);
+
+    if (ops.length === 0) {
+      return;
+    }
+
+    await commitOps(ops, () => selectedId);
+  }
+
+  async function deleteSketchConstraint(constraintId: string) {
+    await commitOps(
+      [buildDeleteSketchConstraintOp(constraintId)],
+      () => selectedId
+    );
+  }
+
   async function extrudeSketchEntity(
     sketchId: string,
     entityId: string,
@@ -1491,6 +1527,15 @@ export function App() {
                   }
                   onDeleteDimension={(dimensionId) =>
                     void deleteSketchDimension(dimensionId)
+                  }
+                  onCreateConstraint={(sketchId, entityId, form) =>
+                    void createSketchConstraint(sketchId, entityId, form)
+                  }
+                  onApplyConstraintEdit={(constraint, form) =>
+                    void applySketchConstraintEdit(constraint, form)
+                  }
+                  onDeleteConstraint={(constraintId) =>
+                    void deleteSketchConstraint(constraintId)
                   }
                   onExtrudeEntity={(sketchId, entityId, form) =>
                     void extrudeSketchEntity(sketchId, entityId, form)

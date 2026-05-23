@@ -5,6 +5,7 @@ import {
   buildCreateBoxOp,
   buildCreateConeOp,
   buildCreateParameterOp,
+  buildCreateSketchConstraintOp,
   buildCreateSphereOp,
   buildCreateSketchDimensionOp,
   buildCreateSketchOp,
@@ -18,6 +19,7 @@ import {
   buildFeatureUpdateExtrudeOp,
   buildDeleteNamedReferenceOp,
   buildDeleteParameterOp,
+  buildDeleteSketchConstraintOp,
   buildDeleteSketchDimensionOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
@@ -28,8 +30,10 @@ import {
   buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildRenameParameterOp,
+  buildRenameSketchConstraintOp,
   buildRenameSketchOp,
   buildRenameSketchDimensionOp,
+  buildSketchConstraintEditOps,
   buildSketchDimensionEditOps,
   buildUpdateBoxDimensionsOp,
   buildUpdateConeDimensionsOp,
@@ -355,6 +359,24 @@ describe("cad command builders", () => {
         value: 14
       }
     ]);
+    expect(
+      buildParameterEditOps(
+        {
+          id: "p_width",
+          name: "Width",
+          value: 12,
+          description: "Stored description"
+        },
+        { name: "Width", value: 12, description: "   " }
+      )
+    ).toEqual([
+      {
+        op: "parameter.update",
+        id: "p_width",
+        value: 12,
+        description: ""
+      }
+    ]);
   });
 
   it("builds sketch dimension commands and edit batches", () => {
@@ -452,6 +474,61 @@ describe("cad command builders", () => {
         op: "sketch.dimension.update",
         id: "dim_width",
         parameterId: "p_width"
+      }
+    ]);
+  });
+
+  it("builds sketch constraint commands and edit batches", () => {
+    expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " con_horizontal ",
+        name: " Horizontal ",
+        kind: "horizontal"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "con_horizontal",
+      name: "Horizontal",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "horizontal"
+    });
+
+    expect(
+      buildRenameSketchConstraintOp("con_horizontal", " Base horizontal ")
+    ).toEqual({
+      op: "sketch.constraint.rename",
+      id: "con_horizontal",
+      name: "Base horizontal"
+    });
+
+    expect(buildDeleteSketchConstraintOp("con_horizontal")).toEqual({
+      op: "sketch.constraint.delete",
+      id: "con_horizontal"
+    });
+
+    expect(
+      buildSketchConstraintEditOps(
+        {
+          id: "con_horizontal",
+          name: "Horizontal",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          kind: "horizontal",
+          status: "healthy",
+          issues: []
+        },
+        {
+          id: "",
+          name: "Base horizontal",
+          kind: "horizontal"
+        }
+      )
+    ).toEqual([
+      {
+        op: "sketch.constraint.rename",
+        id: "con_horizontal",
+        name: "Base horizontal"
       }
     ]);
   });

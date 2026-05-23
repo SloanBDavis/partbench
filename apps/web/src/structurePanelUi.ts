@@ -77,24 +77,42 @@ export function getSketchHealthStatus(
   const dependentFeatureStatuses = health.authoredExtrudes
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
+  const dimensionStatuses = health.sketchDimensions
+    .filter((entry) => entry.sketchId === sketchId)
+    .map((entry) => entry.status);
 
-  return combineHealthStatuses(dependentFeatureStatuses);
+  return combineHealthStatuses([
+    ...dependentFeatureStatuses,
+    ...dimensionStatuses
+  ]);
 }
 
 export function getFeatureHealthStatus(
   health: ProjectHealthQueryResponse,
   featureId: string
 ): CadDependencyHealthStatus | undefined {
-  return health.authoredExtrudes.find((entry) => entry.featureId === featureId)
-    ?.status;
+  return combineHealthStatuses([
+    ...health.authoredExtrudes
+      .filter((entry) => entry.featureId === featureId)
+      .map((entry) => entry.status),
+    ...health.sketchDimensions
+      .filter((entry) => entry.affectedFeatureIds.includes(featureId))
+      .map((entry) => entry.status)
+  ]);
 }
 
 export function getBodyHealthStatus(
   health: ProjectHealthQueryResponse,
   bodyId: string
 ): CadDependencyHealthStatus | undefined {
-  return health.authoredExtrudes.find((entry) => entry.bodyId === bodyId)
-    ?.status;
+  return combineHealthStatuses([
+    ...health.authoredExtrudes
+      .filter((entry) => entry.bodyId === bodyId)
+      .map((entry) => entry.status),
+    ...health.sketchDimensions
+      .filter((entry) => entry.affectedBodyIds.includes(bodyId))
+      .map((entry) => entry.status)
+  ]);
 }
 
 export function getNamedReferenceHealthStatus(
@@ -113,19 +131,27 @@ export function getHealthIssues(
     | { readonly kind: "namedReference"; readonly name: string }
 ): readonly string[] {
   if (target.kind === "feature") {
-    return (
+    const featureIssues =
       health.authoredExtrudes
         .find((entry) => entry.featureId === target.id)
-        ?.issues.map((issue) => issue.message) ?? []
-    );
+        ?.issues.map((issue) => issue.message) ?? [];
+    const dimensionIssues = health.sketchDimensions
+      .filter((entry) => entry.affectedFeatureIds.includes(target.id))
+      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+
+    return [...featureIssues, ...dimensionIssues];
   }
 
   if (target.kind === "body") {
-    return (
+    const bodyIssues =
       health.authoredExtrudes
         .find((entry) => entry.bodyId === target.id)
-        ?.issues.map((issue) => issue.message) ?? []
-    );
+        ?.issues.map((issue) => issue.message) ?? [];
+    const dimensionIssues = health.sketchDimensions
+      .filter((entry) => entry.affectedBodyIds.includes(target.id))
+      .flatMap((entry) => entry.issues.map((issue) => issue.message));
+
+    return [...bodyIssues, ...dimensionIssues];
   }
 
   if (target.kind === "namedReference") {
@@ -142,8 +168,13 @@ export function getHealthIssues(
   const featureIssues = health.authoredExtrudes
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
+  const dimensionIssues = health.sketchDimensions
+    .filter((entry) => entry.sketchId === target.id)
+    .flatMap((entry) => entry.issues);
 
-  return [...attachedIssues, ...featureIssues].map((issue) => issue.message);
+  return [...attachedIssues, ...featureIssues, ...dimensionIssues].map(
+    (issue) => issue.message
+  );
 }
 
 export function formatFeatureLine(

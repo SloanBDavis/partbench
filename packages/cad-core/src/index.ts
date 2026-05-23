@@ -1614,15 +1614,18 @@ function applyOperation(
     case "parameter.update": {
       assertParameterUpdateHasChanges(op, opIndex);
       const existing = getParameterOrThrow(state.parameters, op.id, opIndex);
+      const nextDescription =
+        op.description !== undefined
+          ? normalizeParameterUpdateDescription(op.description, opIndex)
+          : existing.description;
       const updated: CadParameter = {
-        ...existing,
+        id: existing.id,
+        name: existing.name,
         ...(op.value !== undefined
           ? { value: validateFiniteParameterValue(op.value, opIndex, "value") }
-          : {}),
-        ...(op.description !== undefined
-          ? {
-              description: normalizeOptionalDescription(op.description, opIndex)
-            }
+          : { value: existing.value }),
+        ...(nextDescription !== undefined
+          ? { description: nextDescription }
           : {})
       };
 
@@ -2698,6 +2701,25 @@ function normalizeOptionalDescription(value: string, opIndex: number): string {
   return value.trim();
 }
 
+function normalizeParameterUpdateDescription(
+  value: string,
+  opIndex: number
+): string | undefined {
+  if (typeof value !== "string") {
+    throwValidationError({
+      code: "INVALID_PARAMETER",
+      message: "Parameter description must be a string when provided.",
+      opIndex,
+      path: operationPath(opIndex, "description"),
+      expected: "string description",
+      received: describeReceived(value)
+    });
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function validateFiniteParameterValue(
   value: number,
   opIndex: number,
@@ -3257,6 +3279,17 @@ function getLineLength(
   return cleanMeasurementNumber(
     Math.hypot(entity.end[0] - entity.start[0], entity.end[1] - entity.start[1])
   );
+}
+
+function sketchConstraintMatchesLine(
+  kind: SketchConstraintKind,
+  entity: Extract<SketchEntity, { readonly kind: "line" }>
+): boolean {
+  return kind === "horizontal"
+    ? cleanMeasurementNumber(entity.start[1]) ===
+        cleanMeasurementNumber(entity.end[1])
+    : cleanMeasurementNumber(entity.start[0]) ===
+        cleanMeasurementNumber(entity.end[0]);
 }
 
 function addSketchConstraint(
@@ -5855,6 +5888,28 @@ function createSketchConstraintEntry(
       sketchConstraintId: constraint.id,
       expected: "line with a non-zero direction",
       received: "zero-length line"
+    });
+  }
+
+  if (
+    entity?.kind === "line" &&
+    getLineLength(entity) > 0 &&
+    !sketchConstraintMatchesLine(constraint.kind, entity)
+  ) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message: `Line does not satisfy its ${constraint.kind} constraint.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.entityId,
+      sketchConstraintId: constraint.id,
+      expected:
+        constraint.kind === "horizontal"
+          ? "line with equal endpoint Y values"
+          : "line with equal endpoint X values",
+      received:
+        constraint.kind === "horizontal"
+          ? "line with different endpoint Y values"
+          : "line with different endpoint X values"
     });
   }
 
@@ -9288,6 +9343,31 @@ function validateSketchConstraintSnapshot(
         `${path}.entityId`,
         "Line orientation constraint cannot target a zero-length line."
       );
+    }
+
+    if (
+      isRecord(entityRef.entity) &&
+      isVec2(entityRef.entity.start) &&
+      isVec2(entityRef.entity.end)
+    ) {
+      const entity: Extract<SketchEntity, { readonly kind: "line" }> = {
+        id: value.entityId,
+        kind: "line",
+        start: entityRef.entity.start,
+        end: entityRef.entity.end
+      };
+
+      if (
+        getLineLength(entity) > 0 &&
+        !sketchConstraintMatchesLine(value.kind, entity)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.kind`,
+          `Saved line entity does not satisfy its ${value.kind} orientation constraint.`
+        );
+      }
     }
   }
 
