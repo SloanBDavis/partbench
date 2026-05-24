@@ -230,6 +230,14 @@ export function createAvailableSketchConstraintKindOptions(
     options.push({ kind: "coincident", label: "Coincident" });
   }
 
+  if (
+    entity.kind === "line" &&
+    createAvailableMidpointTargetOptions(entity, sketchEntities, constraints)
+      .length > 0
+  ) {
+    options.push({ kind: "midpoint", label: "Midpoint" });
+  }
+
   return options;
 }
 
@@ -395,6 +403,29 @@ export function createAvailableCoincidentPointTargetOptions(
   });
 }
 
+export function createAvailableMidpointTargetOptions(
+  lineEntity: SketchEntitySnapshot | undefined,
+  entities: readonly SketchEntitySnapshot[],
+  constraints: readonly SketchConstraintEntry[]
+): readonly SketchPointTargetOption[] {
+  if (lineEntity?.kind !== "line") {
+    return [];
+  }
+
+  return createMidpointPointTargetOptions(entities).filter((option) => {
+    if (option.target.entityId === lineEntity.id) {
+      return false;
+    }
+
+    return !constraints.some(
+      (constraint) =>
+        constraint.kind === "midpoint" &&
+        constraint.lineEntityId === lineEntity.id &&
+        sketchPointTargetsEqual(constraint.target, option.target)
+    );
+  });
+}
+
 export function isSketchConstraintRelatedToEntity(
   constraint: SketchConstraintEntry,
   entityId: SketchEntityId
@@ -509,6 +540,18 @@ function getLineLength(
   );
   const rounded = Math.round(length * 1e12) / 1e12;
   return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function createMidpointPointTargetOptions(
+  entities: readonly SketchEntitySnapshot[]
+): readonly SketchPointTargetOption[] {
+  return entities.flatMap((entity) => {
+    if (entity.kind === "line") {
+      return [];
+    }
+
+    return createSketchPointTargetOptionsForEntity(entity);
+  });
 }
 
 function sketchPointTargetPairKey(

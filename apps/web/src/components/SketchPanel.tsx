@@ -33,6 +33,7 @@ import {
   chooseSketchPanelSelection,
   createAvailableCoincidentPointTargetOptions,
   createAvailableFixedPointTargetOptions,
+  createAvailableMidpointTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
   createSketchPointTargetOptionsForEntity,
@@ -427,12 +428,25 @@ export function SketchPanel({
       ),
     [selectedPrimaryTargetOption, selectedSketch, selectedSketchConstraints]
   );
+  const midpointTargetOptions = useMemo(
+    () =>
+      createAvailableMidpointTargetOptions(
+        selectedEntity,
+        selectedSketch?.entities ?? [],
+        selectedSketchConstraints
+      ),
+    [selectedEntity, selectedSketch, selectedSketchConstraints]
+  );
+  const secondaryConstraintTargetOptions =
+    selectedCreateConstraintKind === "midpoint"
+      ? midpointTargetOptions
+      : coincidentTargetOptions;
   const selectedSecondaryTargetOption =
-    coincidentTargetOptions.find(
+    secondaryConstraintTargetOptions.find(
       (option) =>
         option.target.entityId === constraintCreateForm.secondaryEntityId &&
         option.target.role === constraintCreateForm.secondaryTargetRole
-    ) ?? coincidentTargetOptions[0];
+    ) ?? secondaryConstraintTargetOptions[0];
   const effectiveConstraintCreateForm: SketchConstraintForm = {
     ...constraintCreateForm,
     kind: selectedCreateConstraintKind ?? constraintCreateForm.kind,
@@ -620,6 +634,13 @@ export function SketchPanel({
     if (
       selectedCreateConstraintKind === "coincident" &&
       (!selectedPrimaryTargetOption || !selectedSecondaryTargetOption)
+    ) {
+      return;
+    }
+
+    if (
+      selectedCreateConstraintKind === "midpoint" &&
+      !selectedSecondaryTargetOption
     ) {
       return;
     }
@@ -993,6 +1014,7 @@ export function SketchPanel({
                         availableKinds={availableConstraintKinds}
                         primaryTargetOptions={selectedPrimaryTargetOptions}
                         coincidentTargetOptions={coincidentTargetOptions}
+                        midpointTargetOptions={midpointTargetOptions}
                         createForm={effectiveConstraintCreateForm}
                         selectedConstraint={selectedConstraint}
                         selectedConstraintId={selectedConstraint?.id}
@@ -1792,6 +1814,7 @@ function SketchConstraintControls({
   availableKinds,
   primaryTargetOptions,
   coincidentTargetOptions,
+  midpointTargetOptions,
   createForm,
   selectedConstraint,
   selectedConstraintId,
@@ -1818,6 +1841,13 @@ function SketchConstraintControls({
     readonly coordinate?: readonly [number, number];
   }[];
   readonly coincidentTargetOptions: readonly {
+    readonly target: {
+      readonly entityId: string;
+      readonly role: SketchPointTargetRole;
+    };
+    readonly label: string;
+  }[];
+  readonly midpointTargetOptions: readonly {
     readonly target: {
       readonly entityId: string;
       readonly role: SketchPointTargetRole;
@@ -1915,6 +1945,7 @@ function SketchConstraintControls({
               form={createForm}
               primaryTargetOptions={primaryTargetOptions}
               coincidentTargetOptions={coincidentTargetOptions}
+              midpointTargetOptions={midpointTargetOptions}
               onChange={onCreateFormChange}
             />
           </div>
@@ -1961,7 +1992,9 @@ function SketchConstraintControls({
                   primaryTargetOptions.length === 0) ||
                 (createForm.kind === "coincident" &&
                   (primaryTargetOptions.length === 0 ||
-                    coincidentTargetOptions.length === 0))
+                    coincidentTargetOptions.length === 0)) ||
+                (createForm.kind === "midpoint" &&
+                  midpointTargetOptions.length === 0)
               }
               onClick={onCreateConstraint}
             >
@@ -2055,6 +2088,7 @@ function ConstraintTargetFields({
   form,
   primaryTargetOptions,
   coincidentTargetOptions,
+  midpointTargetOptions,
   onChange
 }: {
   readonly disabled: boolean;
@@ -2075,6 +2109,14 @@ function ConstraintTargetFields({
     readonly label: string;
     readonly coordinate?: readonly [number, number];
   }[];
+  readonly midpointTargetOptions: readonly {
+    readonly target: {
+      readonly entityId: string;
+      readonly role: SketchPointTargetRole;
+    };
+    readonly label: string;
+    readonly coordinate?: readonly [number, number];
+  }[];
   readonly onChange: (form: SketchConstraintForm) => void;
 }) {
   const selectedPrimaryOption =
@@ -2087,6 +2129,12 @@ function ConstraintTargetFields({
         option.target.entityId === form.secondaryEntityId &&
         option.target.role === form.secondaryTargetRole
     ) ?? coincidentTargetOptions[0];
+  const selectedMidpointTargetOption =
+    midpointTargetOptions.find(
+      (option) =>
+        option.target.entityId === form.secondaryEntityId &&
+        option.target.role === form.secondaryTargetRole
+    ) ?? midpointTargetOptions[0];
 
   if (form.kind === "horizontal" || form.kind === "vertical") {
     return (
@@ -2182,6 +2230,48 @@ function ConstraintTargetFields({
             </strong>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (form.kind === "midpoint") {
+    return (
+      <div className="dimension-value-source">
+        <div className="readonly-field">
+          <span>Line</span>
+          <strong>Selected line midpoint</strong>
+        </div>
+        <label>
+          Target
+          <select
+            value={pointTargetToValue(selectedMidpointTargetOption?.target)}
+            disabled={disabled || midpointTargetOptions.length === 0}
+            onChange={(event) => {
+              const next = midpointTargetOptions.find(
+                (option) =>
+                  pointTargetToValue(option.target) ===
+                  event.currentTarget.value
+              );
+
+              if (next) {
+                onChange({
+                  ...form,
+                  secondaryEntityId: next.target.entityId,
+                  secondaryTargetRole: next.target.role
+                });
+              }
+            }}
+          >
+            {midpointTargetOptions.map((option) => (
+              <option
+                key={pointTargetToValue(option.target)}
+                value={pointTargetToValue(option.target)}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
     );
   }

@@ -12,6 +12,7 @@ import {
   chooseSketchPanelSelection,
   createAvailableCoincidentPointTargetOptions,
   createAvailableFixedPointTargetOptions,
+  createAvailableMidpointTargetOptions,
   createAvailableSketchDimensionTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAddTargetBodyOptions,
@@ -330,7 +331,8 @@ describe("sketch panel UI helpers", () => {
       { kind: "horizontal", label: "Horizontal" },
       { kind: "vertical", label: "Vertical" },
       { kind: "fixed", label: "Fixed point" },
-      { kind: "coincident", label: "Coincident" }
+      { kind: "coincident", label: "Coincident" },
+      { kind: "midpoint", label: "Midpoint" }
     ]);
     expect(
       createAvailableSketchConstraintKindOptions(
@@ -340,7 +342,8 @@ describe("sketch panel UI helpers", () => {
       )
     ).toEqual([
       { kind: "fixed", label: "Fixed point" },
-      { kind: "coincident", label: "Coincident" }
+      { kind: "coincident", label: "Coincident" },
+      { kind: "midpoint", label: "Midpoint" }
     ]);
     expect(
       createAvailableSketchConstraintKindOptions(rectangle, [], [rectangle])
@@ -383,6 +386,40 @@ describe("sketch panel UI helpers", () => {
         coordinate: [3, 4]
       }
     ]);
+    expect(
+      createAvailableMidpointTargetOptions(
+        line,
+        [line, point, rectangle, circle],
+        []
+      )
+    ).toEqual([
+      {
+        target: { entityId: "point_1", role: "position" },
+        label: "point_1 position",
+        detail: "Point position",
+        coordinate: [5, 6]
+      },
+      {
+        target: { entityId: "rect_1", role: "center" },
+        label: "rect_1 center",
+        detail: "Rectangle center",
+        coordinate: [0, 0]
+      },
+      {
+        target: { entityId: "circle_1", role: "center" },
+        label: "circle_1 center",
+        detail: "Circle center",
+        coordinate: [7, 8]
+      }
+    ]);
+    expect(createAvailableMidpointTargetOptions(line, [line], [])).toEqual([]);
+    expect(
+      createAvailableMidpointTargetOptions(
+        line,
+        [line, point],
+        [midpointConstraint]
+      )
+    ).toEqual([]);
     expect(
       isSketchConstraintRelatedToEntity(coincidentConstraint, "point_1")
     ).toBe(true);
