@@ -588,6 +588,28 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " parallel_1 ",
+        name: " Parallel ",
+        kind: "parallel",
+        targetRole: "start",
+        coordinateMode: "current",
+        coordinateX: 0,
+        coordinateY: 0,
+        secondaryEntityId: "line_2",
+        secondaryTargetRole: "position"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "parallel_1",
+      name: "Parallel",
+      sketchId: "sketch_1",
+      kind: "parallel",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2"
+    });
+
+    expect(
       buildRenameSketchConstraintOp("con_horizontal", " Base horizontal ")
     ).toEqual({
       op: "sketch.constraint.rename",

@@ -161,7 +161,7 @@ export interface SketchDimensionForm {
 export interface SketchConstraintForm {
   readonly id: string;
   readonly name: string;
-  readonly kind: Exclude<SketchConstraintKind, "parallel">;
+  readonly kind: SketchConstraintKind;
   readonly targetRole: SketchPointTargetRole;
   readonly coordinateMode: "current" | "custom";
   readonly coordinateX: number;
@@ -685,6 +685,18 @@ export function buildCreateSketchConstraintOp(
         entityId: form.secondaryEntityId,
         role: form.secondaryTargetRole
       }
+    };
+  }
+
+  if (form.kind === "parallel") {
+    return {
+      op: "sketch.constraint.create",
+      id: normalizeOptionalId(form.id),
+      name: form.name.trim(),
+      sketchId,
+      kind: "parallel",
+      primaryLineEntityId: entityId,
+      secondaryLineEntityId: form.secondaryEntityId
     };
   }
 

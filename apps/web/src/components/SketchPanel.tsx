@@ -34,6 +34,7 @@ import {
   createAvailableCoincidentPointTargetOptions,
   createAvailableFixedPointTargetOptions,
   createAvailableMidpointTargetOptions,
+  createAvailableParallelLineTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
   createSketchPointTargetOptionsForEntity,
@@ -59,7 +60,8 @@ import {
   isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity,
   sketchDimensionTargetsEqual,
-  type BooleanTargetBodyOption
+  type BooleanTargetBodyOption,
+  type SketchLineTargetOption
 } from "../sketchPanelUi";
 import {
   defaultSketchEntityForm,
@@ -437,6 +439,15 @@ export function SketchPanel({
       ),
     [selectedEntity, selectedSketch, selectedSketchConstraints]
   );
+  const parallelTargetOptions = useMemo(
+    () =>
+      createAvailableParallelLineTargetOptions(
+        selectedEntity,
+        selectedSketch?.entities ?? [],
+        selectedSketchConstraints
+      ),
+    [selectedEntity, selectedSketch, selectedSketchConstraints]
+  );
   const secondaryConstraintTargetOptions =
     selectedCreateConstraintKind === "midpoint"
       ? midpointTargetOptions
@@ -447,6 +458,10 @@ export function SketchPanel({
         option.target.entityId === constraintCreateForm.secondaryEntityId &&
         option.target.role === constraintCreateForm.secondaryTargetRole
     ) ?? secondaryConstraintTargetOptions[0];
+  const selectedParallelTargetOption =
+    parallelTargetOptions.find(
+      (option) => option.entityId === constraintCreateForm.secondaryEntityId
+    ) ?? parallelTargetOptions[0];
   const effectiveConstraintCreateForm: SketchConstraintForm = {
     ...constraintCreateForm,
     kind: selectedCreateConstraintKind ?? constraintCreateForm.kind,
@@ -468,8 +483,11 @@ export function SketchPanel({
         ? (selectedPrimaryTargetOption.coordinate?.[1] ?? 0)
         : constraintCreateForm.coordinateY,
     secondaryEntityId:
-      selectedSecondaryTargetOption?.target.entityId ??
-      constraintCreateForm.secondaryEntityId,
+      selectedCreateConstraintKind === "parallel"
+        ? (selectedParallelTargetOption?.entityId ??
+          constraintCreateForm.secondaryEntityId)
+        : (selectedSecondaryTargetOption?.target.entityId ??
+          constraintCreateForm.secondaryEntityId),
     secondaryTargetRole:
       selectedSecondaryTargetOption?.target.role ??
       constraintCreateForm.secondaryTargetRole,
@@ -641,6 +659,13 @@ export function SketchPanel({
     if (
       selectedCreateConstraintKind === "midpoint" &&
       !selectedSecondaryTargetOption
+    ) {
+      return;
+    }
+
+    if (
+      selectedCreateConstraintKind === "parallel" &&
+      !selectedParallelTargetOption
     ) {
       return;
     }
@@ -1015,6 +1040,7 @@ export function SketchPanel({
                         primaryTargetOptions={selectedPrimaryTargetOptions}
                         coincidentTargetOptions={coincidentTargetOptions}
                         midpointTargetOptions={midpointTargetOptions}
+                        parallelTargetOptions={parallelTargetOptions}
                         createForm={effectiveConstraintCreateForm}
                         selectedConstraint={selectedConstraint}
                         selectedConstraintId={selectedConstraint?.id}
@@ -1815,6 +1841,7 @@ function SketchConstraintControls({
   primaryTargetOptions,
   coincidentTargetOptions,
   midpointTargetOptions,
+  parallelTargetOptions,
   createForm,
   selectedConstraint,
   selectedConstraintId,
@@ -1854,6 +1881,7 @@ function SketchConstraintControls({
     };
     readonly label: string;
   }[];
+  readonly parallelTargetOptions: readonly SketchLineTargetOption[];
   readonly createForm: SketchConstraintForm;
   readonly selectedConstraint: SketchConstraintEntry | undefined;
   readonly selectedConstraintId: string | undefined;
@@ -1946,6 +1974,7 @@ function SketchConstraintControls({
               primaryTargetOptions={primaryTargetOptions}
               coincidentTargetOptions={coincidentTargetOptions}
               midpointTargetOptions={midpointTargetOptions}
+              parallelTargetOptions={parallelTargetOptions}
               onChange={onCreateFormChange}
             />
           </div>
@@ -1994,7 +2023,9 @@ function SketchConstraintControls({
                   (primaryTargetOptions.length === 0 ||
                     coincidentTargetOptions.length === 0)) ||
                 (createForm.kind === "midpoint" &&
-                  midpointTargetOptions.length === 0)
+                  midpointTargetOptions.length === 0) ||
+                (createForm.kind === "parallel" &&
+                  parallelTargetOptions.length === 0)
               }
               onClick={onCreateConstraint}
             >
@@ -2089,6 +2120,7 @@ function ConstraintTargetFields({
   primaryTargetOptions,
   coincidentTargetOptions,
   midpointTargetOptions,
+  parallelTargetOptions,
   onChange
 }: {
   readonly disabled: boolean;
@@ -2117,6 +2149,7 @@ function ConstraintTargetFields({
     readonly label: string;
     readonly coordinate?: readonly [number, number];
   }[];
+  readonly parallelTargetOptions: readonly SketchLineTargetOption[];
   readonly onChange: (form: SketchConstraintForm) => void;
 }) {
   const selectedPrimaryOption =
@@ -2135,6 +2168,10 @@ function ConstraintTargetFields({
         option.target.entityId === form.secondaryEntityId &&
         option.target.role === form.secondaryTargetRole
     ) ?? midpointTargetOptions[0];
+  const selectedParallelTargetOption =
+    parallelTargetOptions.find(
+      (option) => option.entityId === form.secondaryEntityId
+    ) ?? parallelTargetOptions[0];
 
   if (form.kind === "horizontal" || form.kind === "vertical") {
     return (
@@ -2267,6 +2304,36 @@ function ConstraintTargetFields({
                 key={pointTargetToValue(option.target)}
                 value={pointTargetToValue(option.target)}
               >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  if (form.kind === "parallel") {
+    return (
+      <div className="dimension-value-source">
+        <div className="readonly-field">
+          <span>Primary</span>
+          <strong>Selected line</strong>
+        </div>
+        <label>
+          Parallel to
+          <select
+            value={selectedParallelTargetOption?.entityId ?? ""}
+            disabled={disabled || parallelTargetOptions.length === 0}
+            onChange={(event) =>
+              onChange({
+                ...form,
+                secondaryEntityId: event.currentTarget.value
+              })
+            }
+          >
+            {parallelTargetOptions.map((option) => (
+              <option key={option.entityId} value={option.entityId}>
                 {option.label}
               </option>
             ))}
@@ -2630,7 +2697,9 @@ function sketchConstraintToForm(
     return {
       ...defaultSketchConstraintForm,
       id: "",
-      name: constraint.name
+      name: constraint.name,
+      kind: "parallel",
+      secondaryEntityId: constraint.secondaryLineEntityId
     };
   }
 

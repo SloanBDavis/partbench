@@ -49,7 +49,7 @@ export interface DimensionStatusDisplay {
 }
 
 export interface SketchConstraintKindOption {
-  readonly kind: Exclude<SketchConstraintKind, "parallel">;
+  readonly kind: SketchConstraintKind;
   readonly label: string;
 }
 
@@ -58,6 +58,12 @@ export interface SketchPointTargetOption {
   readonly label: string;
   readonly detail: string;
   readonly coordinate?: readonly [number, number];
+}
+
+export interface SketchLineTargetOption {
+  readonly entityId: SketchEntityId;
+  readonly label: string;
+  readonly detail: string;
 }
 
 export function chooseSketchPanelSelection(
@@ -236,6 +242,17 @@ export function createAvailableSketchConstraintKindOptions(
       .length > 0
   ) {
     options.push({ kind: "midpoint", label: "Midpoint" });
+  }
+
+  if (
+    entity.kind === "line" &&
+    createAvailableParallelLineTargetOptions(
+      entity,
+      sketchEntities,
+      constraints
+    ).length > 0
+  ) {
+    options.push({ kind: "parallel", label: "Parallel" });
   }
 
   return options;
@@ -426,6 +443,40 @@ export function createAvailableMidpointTargetOptions(
         sketchPointTargetsEqual(constraint.target, option.target)
     );
   });
+}
+
+export function createAvailableParallelLineTargetOptions(
+  primaryLine: SketchEntitySnapshot | undefined,
+  entities: readonly SketchEntitySnapshot[],
+  constraints: readonly SketchConstraintEntry[]
+): readonly SketchLineTargetOption[] {
+  if (primaryLine?.kind !== "line") {
+    return [];
+  }
+
+  return entities
+    .filter(
+      (
+        entity
+      ): entity is Extract<SketchEntitySnapshot, { readonly kind: "line" }> =>
+        entity.kind === "line" && entity.id !== primaryLine.id
+    )
+    .filter(
+      (entity) =>
+        !constraints.some(
+          (constraint) =>
+            constraint.kind === "parallel" &&
+            constraint.primaryLineEntityId === primaryLine.id &&
+            constraint.secondaryLineEntityId === entity.id
+        )
+    )
+    .map((entity) => ({
+      entityId: entity.id,
+      label: entity.id,
+      detail: `${formatSketchPointCoordinate(
+        entity.start
+      )} to ${formatSketchPointCoordinate(entity.end)}`
+    }));
 }
 
 export function isSketchConstraintRelatedToEntity(

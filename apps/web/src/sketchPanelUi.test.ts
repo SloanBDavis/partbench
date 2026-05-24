@@ -13,6 +13,7 @@ import {
   createAvailableCoincidentPointTargetOptions,
   createAvailableFixedPointTargetOptions,
   createAvailableMidpointTargetOptions,
+  createAvailableParallelLineTargetOptions,
   createAvailableSketchDimensionTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAddTargetBodyOptions,
@@ -150,6 +151,12 @@ describe("sketch panel UI helpers", () => {
       start: [0, 0],
       end: [3, 4]
     };
+    const secondLine: SketchSnapshot["entities"][number] = {
+      id: "line_2",
+      kind: "line",
+      start: [10, 10],
+      end: [10, 12]
+    };
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
@@ -210,6 +217,19 @@ describe("sketch panel UI helpers", () => {
       target: { entityId: "point_1", role: "position" },
       currentCoordinate: [1.5, 2],
       resolvedCoordinate: [1.5, 2],
+      status: "healthy",
+      issues: []
+    };
+    const parallelConstraint: SketchConstraintEntry = {
+      id: "parallel_1",
+      name: "Parallel",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "parallel",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2",
+      primaryDirection: [0.6, 0.8],
+      secondaryDirection: [0.6, 0.8],
       status: "healthy",
       issues: []
     };
@@ -337,6 +357,20 @@ describe("sketch panel UI helpers", () => {
     expect(
       createAvailableSketchConstraintKindOptions(
         line,
+        [],
+        [line, secondLine, point]
+      )
+    ).toEqual([
+      { kind: "horizontal", label: "Horizontal" },
+      { kind: "vertical", label: "Vertical" },
+      { kind: "fixed", label: "Fixed point" },
+      { kind: "coincident", label: "Coincident" },
+      { kind: "midpoint", label: "Midpoint" },
+      { kind: "parallel", label: "Parallel" }
+    ]);
+    expect(
+      createAvailableSketchConstraintKindOptions(
+        line,
         [horizontalConstraint, fixedConstraint, coincidentConstraint],
         [line, point]
       )
@@ -421,15 +455,39 @@ describe("sketch panel UI helpers", () => {
       )
     ).toEqual([]);
     expect(
+      createAvailableParallelLineTargetOptions(
+        line,
+        [line, secondLine, point],
+        []
+      )
+    ).toEqual([
+      {
+        entityId: "line_2",
+        label: "line_2",
+        detail: "10, 10 to 10, 12"
+      }
+    ]);
+    expect(
+      createAvailableParallelLineTargetOptions(
+        line,
+        [line, secondLine],
+        [parallelConstraint]
+      )
+    ).toEqual([]);
+    expect(
       isSketchConstraintRelatedToEntity(coincidentConstraint, "point_1")
     ).toBe(true);
     expect(
       isSketchConstraintRelatedToEntity(midpointConstraint, "point_1")
     ).toBe(true);
+    expect(
+      isSketchConstraintRelatedToEntity(parallelConstraint, "line_2")
+    ).toBe(true);
     expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
     expect(getSketchConstraintKindLabel("fixed")).toBe("Fixed point");
     expect(getSketchConstraintKindLabel("coincident")).toBe("Coincident");
     expect(getSketchConstraintKindLabel("midpoint")).toBe("Midpoint");
+    expect(getSketchConstraintKindLabel("parallel")).toBe("Parallel");
     expect(formatSketchPointTarget({ entityId: "line_1", role: "start" })).toBe(
       "line_1 start"
     );
@@ -445,6 +503,9 @@ describe("sketch panel UI helpers", () => {
     );
     expect(formatSketchConstraintStatus(midpointConstraint)).toBe(
       "Midpoint · point_1 position at midpoint of line_1 · Healthy"
+    );
+    expect(formatSketchConstraintStatus(parallelConstraint)).toBe(
+      "Parallel · line_2 parallel to line_1 · Healthy"
     );
     expect(formatSketchConstraintStatus(invalidConstraint)).toBe(
       "Horizontal · line_1 · Line constraint target cannot be zero length."
