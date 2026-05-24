@@ -4086,19 +4086,18 @@ function assertMidpointFixedTargetCompatible(
   target: SketchPointTarget,
   opIndex: number
 ): void {
-  const fixedTarget = findFixedConstraintCoordinate(
+  const fixedTargets = findFixedConstraintCoordinatesForTarget(
     constraints,
     sketchId,
     target
   );
 
-  if (!fixedTarget) {
-    return;
-  }
-
   const midpoint = getLineMidpoint(lineEntity);
+  const fixedTarget = fixedTargets.find(
+    (candidate) => !vec2Equal(candidate.coordinate, midpoint)
+  );
 
-  if (vec2Equal(fixedTarget.coordinate, midpoint)) {
+  if (!fixedTarget) {
     return;
   }
 
@@ -4109,10 +4108,62 @@ function assertMidpointFixedTargetCompatible(
     opIndex,
     sketchId,
     sketchEntityId: target.entityId,
+    sketchConstraintId: fixedTarget.id,
     path: operationPath(opIndex, "target"),
     expected: formatVec2(midpoint),
     received: formatVec2(fixedTarget.coordinate)
   });
+}
+
+function findFixedConstraintCoordinatesForTarget(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  sketchId: SketchId,
+  target: SketchPointTarget
+): readonly { readonly id: SketchConstraintId; readonly coordinate: Vec2 }[] {
+  const coordinates: {
+    readonly id: SketchConstraintId;
+    readonly coordinate: Vec2;
+  }[] = [];
+  const directFixed = findFixedConstraintCoordinate(
+    constraints,
+    sketchId,
+    target
+  );
+
+  if (directFixed) {
+    coordinates.push(directFixed);
+  }
+
+  for (const constraint of constraints.values()) {
+    if (constraint.kind !== "coincident" || constraint.sketchId !== sketchId) {
+      continue;
+    }
+
+    const otherTarget = sketchPointTargetsEqual(
+      constraint.primaryTarget,
+      target
+    )
+      ? constraint.secondaryTarget
+      : sketchPointTargetsEqual(constraint.secondaryTarget, target)
+        ? constraint.primaryTarget
+        : undefined;
+
+    if (!otherTarget) {
+      continue;
+    }
+
+    const fixedOtherTarget = findFixedConstraintCoordinate(
+      constraints,
+      sketchId,
+      otherTarget
+    );
+
+    if (fixedOtherTarget) {
+      coordinates.push(fixedOtherTarget);
+    }
+  }
+
+  return coordinates;
 }
 
 function findFixedConstraintCoordinate(
@@ -4186,13 +4237,27 @@ function applySketchConstraintToEntity(
   diff: MutableSemanticDiff,
   opIndex: number
 ): void {
+  const propagation = createSketchConstraintPropagationContext(constraint.id);
+
   if (constraint.kind === "coincident") {
-    applyCoincidentSketchConstraintToEntities(state, constraint, diff, opIndex);
+    applyCoincidentSketchConstraintToEntities(
+      state,
+      constraint,
+      diff,
+      opIndex,
+      propagation
+    );
     return;
   }
 
   if (constraint.kind === "midpoint") {
-    applyMidpointSketchConstraintToEntity(state, constraint, diff, opIndex);
+    applyMidpointSketchConstraintToEntity(
+      state,
+      constraint,
+      diff,
+      opIndex,
+      propagation
+    );
     return;
   }
 
@@ -4217,7 +4282,14 @@ function applySketchConstraintToEntity(
     throwSketchSolverApplyIssue(result.issue, opIndex);
   }
 
-  updateSketchEntityAndDependents(state, sketch, result.entity, diff, opIndex);
+  updateSketchEntityAndDependents(
+    state,
+    sketch,
+    result.entity,
+    diff,
+    opIndex,
+    propagation
+  );
 }
 
 function applySketchConstraintsToEntity(
@@ -4261,7 +4333,8 @@ function applyCoincidentSketchConstraintToEntities(
   state: MutableDocumentState,
   constraint: Extract<SketchConstraint, { readonly kind: "coincident" }>,
   diff: MutableSemanticDiff,
-  opIndex: number
+  opIndex: number,
+  propagation: SketchConstraintPropagationContext
 ): void {
   const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
   const resolution = resolveCoincidentConstraintApplication(
@@ -4294,14 +4367,22 @@ function applyCoincidentSketchConstraintToEntities(
           resolution.coordinate
         );
 
-  updateSketchEntityAndDependents(state, sketch, constrained, diff, opIndex);
+  updateSketchEntityAndDependents(
+    state,
+    sketch,
+    constrained,
+    diff,
+    opIndex,
+    propagation
+  );
 }
 
 function applyMidpointSketchConstraintToEntity(
   state: MutableDocumentState,
   constraint: Extract<SketchConstraint, { readonly kind: "midpoint" }>,
   diff: MutableSemanticDiff,
-  opIndex: number
+  opIndex: number,
+  propagation: SketchConstraintPropagationContext
 ): void {
   const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
   const lineEntity = sketch.entities.get(constraint.lineEntityId);
@@ -4343,6 +4424,13 @@ function applyMidpointSketchConstraintToEntity(
     opIndex,
     constraint.sketchId
   );
+  assertMidpointFixedTargetCompatible(
+    state.sketchConstraints,
+    constraint.sketchId,
+    lineEntity,
+    constraint.target,
+    opIndex
+  );
 
   const constrained = setSketchPointTargetCoordinate(
     targetEntity,
@@ -4350,7 +4438,14 @@ function applyMidpointSketchConstraintToEntity(
     getLineMidpoint(lineEntity)
   );
 
-  updateSketchEntityAndDependents(state, sketch, constrained, diff, opIndex);
+  updateSketchEntityAndDependents(
+    state,
+    sketch,
+    constrained,
+    diff,
+    opIndex,
+    propagation
+  );
 }
 
 function applySketchLineEntityEvaluation(
@@ -4441,7 +4536,8 @@ function updateSketchEntityAndDependents(
   sketch: Sketch,
   entity: SketchEntity,
   diff: MutableSemanticDiff,
-  opIndex: number
+  opIndex: number,
+  propagation: SketchConstraintPropagationContext = createSketchConstraintPropagationContext()
 ): void {
   const dependentFeatures = findFeaturesBySketchEntity(
     state.features,
@@ -4512,6 +4608,79 @@ function updateSketchEntityAndDependents(
     state.features.set(updated.id, updated);
     pushFeatureModified(diff, featureRef(updated));
     pushBodyModified(diff, bodyRef(updated));
+  }
+
+  applyDependentSketchConstraints(
+    state,
+    sketch.id,
+    entity.id,
+    diff,
+    opIndex,
+    propagation
+  );
+}
+
+interface SketchConstraintPropagationContext {
+  readonly visitedConstraintIds: Set<SketchConstraintId>;
+}
+
+function createSketchConstraintPropagationContext(
+  initialConstraintId?: SketchConstraintId
+): SketchConstraintPropagationContext {
+  const visitedConstraintIds = new Set<SketchConstraintId>();
+
+  if (initialConstraintId) {
+    visitedConstraintIds.add(initialConstraintId);
+  }
+
+  return { visitedConstraintIds };
+}
+
+function applyDependentSketchConstraints(
+  state: MutableDocumentState,
+  sketchId: SketchId,
+  entityId: SketchEntityId,
+  diff: MutableSemanticDiff,
+  opIndex: number,
+  propagation: SketchConstraintPropagationContext
+): void {
+  for (const constraint of state.sketchConstraints.values()) {
+    if (
+      constraint.sketchId !== sketchId ||
+      propagation.visitedConstraintIds.has(constraint.id)
+    ) {
+      continue;
+    }
+
+    if (
+      constraint.kind === "midpoint" &&
+      constraint.lineEntityId === entityId
+    ) {
+      propagation.visitedConstraintIds.add(constraint.id);
+      applyMidpointSketchConstraintToEntity(
+        state,
+        constraint,
+        diff,
+        opIndex,
+        propagation
+      );
+      continue;
+    }
+
+    if (
+      constraint.kind === "coincident" &&
+      (constraint.primaryTarget.entityId === entityId ||
+        constraint.secondaryTarget.entityId === entityId)
+    ) {
+      propagation.visitedConstraintIds.add(constraint.id);
+      applyCoincidentSketchConstraintToEntities(
+        state,
+        constraint,
+        diff,
+        opIndex,
+        propagation
+      );
+    }
   }
 }
 

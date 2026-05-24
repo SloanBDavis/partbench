@@ -946,17 +946,16 @@ function evaluateMidpointSketchConstraint(
     isMidpointSketchPointTargetSupported(targetEntity, constraint.target)
       ? getSketchPointTargetCoordinate(targetEntity, constraint.target)
       : undefined;
-  const fixedTarget = findFixedConstraintCoordinate(
+  const fixedTarget = findFixedConstraintCoordinatesForTarget(
     document,
     constraint.sketchId,
     constraint.target
+  ).find(
+    (candidate) =>
+      resolvedCoordinate && !vec2Equal(candidate.coordinate, resolvedCoordinate)
   );
 
-  if (
-    resolvedCoordinate &&
-    fixedTarget &&
-    !vec2Equal(fixedTarget.coordinate, resolvedCoordinate)
-  ) {
+  if (resolvedCoordinate && fixedTarget) {
     issues.push({
       code: "INCONSISTENT_CONSTRAINT",
       message:
@@ -2144,14 +2143,14 @@ function applyMidpointSketchConstraintValue(
     };
   }
 
-  const fixedTarget = findFixedConstraintCoordinate(
+  const midpoint = getLineMidpoint(lineEntity);
+  const fixedTarget = findFixedConstraintCoordinatesForTarget(
     document,
     constraint.sketchId,
     constraint.target
-  );
-  const midpoint = getLineMidpoint(lineEntity);
+  ).find((candidate) => !vec2Equal(candidate.coordinate, midpoint));
 
-  if (fixedTarget && !vec2Equal(fixedTarget.coordinate, midpoint)) {
+  if (fixedTarget) {
     return {
       ok: false,
       issue: {
@@ -2311,6 +2310,53 @@ function findFixedConstraintCoordinate(
   }
 
   return undefined;
+}
+
+function findFixedConstraintCoordinatesForTarget(
+  document: SketchSolverDocument,
+  sketchId: SketchId,
+  target: SketchPointTarget
+): readonly { readonly id: SketchConstraintId; readonly coordinate: Vec2 }[] {
+  const coordinates: {
+    readonly id: SketchConstraintId;
+    readonly coordinate: Vec2;
+  }[] = [];
+  const directFixed = findFixedConstraintCoordinate(document, sketchId, target);
+
+  if (directFixed) {
+    coordinates.push(directFixed);
+  }
+
+  for (const constraint of document.sketchConstraints.values()) {
+    if (constraint.kind !== "coincident" || constraint.sketchId !== sketchId) {
+      continue;
+    }
+
+    const otherTarget = sketchPointTargetsEqual(
+      constraint.primaryTarget,
+      target
+    )
+      ? constraint.secondaryTarget
+      : sketchPointTargetsEqual(constraint.secondaryTarget, target)
+        ? constraint.primaryTarget
+        : undefined;
+
+    if (!otherTarget) {
+      continue;
+    }
+
+    const fixedOtherTarget = findFixedConstraintCoordinate(
+      document,
+      sketchId,
+      otherTarget
+    );
+
+    if (fixedOtherTarget) {
+      coordinates.push(fixedOtherTarget);
+    }
+  }
+
+  return coordinates;
 }
 
 function cloneSketchDimensionSnapshot(

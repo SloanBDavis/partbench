@@ -518,6 +518,100 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(undoneSource)).toBe(constrainedKey);
   });
 
+  it("updates extrude source cache keys across midpoint-driven center edits", () => {
+    const engine = createExtrudedRectangleEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "mid_line",
+        start: [-2, -2],
+        end: [2, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "mid_rect",
+        name: "Rectangle center midpoint",
+        sketchId: "sketch_1",
+        kind: "midpoint",
+        lineEntityId: "mid_line",
+        target: { entityId: "rect_1", role: "center" }
+      }
+    ]);
+
+    const midpointSource = getDerivedSources(engine)[0];
+
+    if (!midpointSource || midpointSource.kind !== "extrude") {
+      throw new Error("Expected a midpoint-constrained extrude source.");
+    }
+
+    const midpointKey = createDerivedGeometryCacheKey(midpointSource);
+    expect(midpointSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    });
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "mid_line",
+        kind: "line",
+        start: [2, 4],
+        end: [6, 8]
+      }
+    });
+
+    const editedSource = getDerivedSources(engine)[0];
+
+    if (!editedSource || editedSource.kind !== "extrude") {
+      throw new Error("Expected an edited midpoint extrude source.");
+    }
+
+    const editedKey = createDerivedGeometryCacheKey(editedSource);
+    expect(editedSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [4, 6],
+      width: 4,
+      height: 2
+    });
+    expect(editedKey).not.toBe(midpointKey);
+
+    engine.undo();
+
+    const undoneSource = getDerivedSources(engine)[0];
+
+    if (!undoneSource || undoneSource.kind !== "extrude") {
+      throw new Error("Expected an undone midpoint extrude source.");
+    }
+
+    expect(undoneSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    });
+    expect(createDerivedGeometryCacheKey(undoneSource)).toBe(midpointKey);
+
+    engine.redo();
+
+    const redoneSource = getDerivedSources(engine)[0];
+
+    if (!redoneSource || redoneSource.kind !== "extrude") {
+      throw new Error("Expected a redone midpoint extrude source.");
+    }
+
+    expect(redoneSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [4, 6],
+      width: 4,
+      height: 2
+    });
+    expect(createDerivedGeometryCacheKey(redoneSource)).toBe(editedKey);
+  });
+
   it("derives attached extrude placement from generated face references", () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -944,6 +1038,130 @@ describe("derivedGeometry", () => {
     service.reconcile([editedSource]);
 
     first.resolve(createResult("body_add_1", createMesh("stale_add")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_add_1", createMesh("body_add_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_add_1"
+    ]);
+  });
+
+  it("ignores stale worker results after midpoint-driven boolean target edits", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "mid_line",
+        start: [-2, -2],
+        end: [2, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "mid_rect",
+        name: "Rectangle center midpoint",
+        sketchId: "sketch_1",
+        kind: "midpoint",
+        lineEntityId: "mid_line",
+        target: { entityId: "rect_1", role: "center" }
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_tool",
+        name: "Tool",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_tool",
+        id: "rect_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_tool",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "add"
+      }
+    ]);
+
+    const initialSource = getDerivedSources(engine).find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean" && source.id === "body_add_1"
+    );
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "mid_line",
+        kind: "line",
+        start: [2, 4],
+        end: [6, 8]
+      }
+    });
+
+    const editedSource = getDerivedSources(engine).find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean" && source.id === "body_add_1"
+    );
+
+    expect(initialSource).toBeDefined();
+    expect(editedSource).toBeDefined();
+    if (!initialSource || !editedSource) {
+      throw new Error("Expected boolean sources.");
+    }
+
+    expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
+      createDerivedGeometryCacheKey(editedSource)
+    );
+    expect(editedSource.target.profile).toMatchObject({
+      kind: "rectangle",
+      center: [4, 6]
+    });
+
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "target" in input &&
+      input.target.profile.kind === "rectangle" &&
+      input.target.profile.center[0] === 0
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    first.resolve(createResult("body_add_1", createMesh("stale_midpoint_add")));
     await flushPromises();
 
     expect(snapshots.at(-1)?.entries[0]).toMatchObject({
