@@ -53,6 +53,10 @@ export function formatHealthStatus(
   switch (status) {
     case "healthy":
       return { label: "Healthy", className: "health-healthy" };
+    case "under-defined":
+      return { label: "Under-defined", className: "health-under-defined" };
+    case "over-defined":
+      return { label: "Over-defined", className: "health-over-defined" };
     case "stale":
       return { label: "Stale", className: "health-stale" };
     case "missing-source":
@@ -70,11 +74,10 @@ export function getSketchHealthStatus(
     (entry) => entry.sketchId === sketchId
   );
 
-  if (attachedSketch) {
-    return attachedSketch.status;
-  }
-
   const dependentFeatureStatuses = health.authoredExtrudes
+    .filter((entry) => entry.sketchId === sketchId)
+    .map((entry) => entry.status);
+  const evaluationStatuses = health.sketchEvaluations
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
   const dimensionStatuses = health.sketchDimensions
@@ -85,7 +88,9 @@ export function getSketchHealthStatus(
     .map((entry) => entry.status);
 
   return combineHealthStatuses([
+    ...(attachedSketch ? [attachedSketch.status] : []),
     ...dependentFeatureStatuses,
+    ...evaluationStatuses,
     ...dimensionStatuses,
     ...constraintStatuses
   ]);
@@ -98,6 +103,9 @@ export function getFeatureHealthStatus(
   return combineHealthStatuses([
     ...health.authoredExtrudes
       .filter((entry) => entry.featureId === featureId)
+      .map((entry) => entry.status),
+    ...health.sketchEvaluations
+      .filter((entry) => entry.affectedFeatureIds.includes(featureId))
       .map((entry) => entry.status),
     ...health.sketchDimensions
       .filter((entry) => entry.affectedFeatureIds.includes(featureId))
@@ -115,6 +123,9 @@ export function getBodyHealthStatus(
   return combineHealthStatuses([
     ...health.authoredExtrudes
       .filter((entry) => entry.bodyId === bodyId)
+      .map((entry) => entry.status),
+    ...health.sketchEvaluations
+      .filter((entry) => entry.affectedBodyIds.includes(bodyId))
       .map((entry) => entry.status),
     ...health.sketchDimensions
       .filter((entry) => entry.affectedBodyIds.includes(bodyId))
@@ -151,8 +162,16 @@ export function getHealthIssues(
     const constraintIssues = health.sketchConstraints
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
+    const evaluationIssues = health.sketchEvaluations
+      .filter((entry) => entry.affectedFeatureIds.includes(target.id))
+      .flatMap((entry) => entry.issues.map((issue) => issue.message));
 
-    return [...featureIssues, ...dimensionIssues, ...constraintIssues];
+    return [
+      ...featureIssues,
+      ...evaluationIssues,
+      ...dimensionIssues,
+      ...constraintIssues
+    ];
   }
 
   if (target.kind === "body") {
@@ -166,8 +185,16 @@ export function getHealthIssues(
     const constraintIssues = health.sketchConstraints
       .filter((entry) => entry.affectedBodyIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
+    const evaluationIssues = health.sketchEvaluations
+      .filter((entry) => entry.affectedBodyIds.includes(target.id))
+      .flatMap((entry) => entry.issues.map((issue) => issue.message));
 
-    return [...bodyIssues, ...dimensionIssues, ...constraintIssues];
+    return [
+      ...bodyIssues,
+      ...evaluationIssues,
+      ...dimensionIssues,
+      ...constraintIssues
+    ];
   }
 
   if (target.kind === "namedReference") {
@@ -184,6 +211,9 @@ export function getHealthIssues(
   const featureIssues = health.authoredExtrudes
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
+  const evaluationIssues = health.sketchEvaluations
+    .filter((entry) => entry.sketchId === target.id)
+    .flatMap((entry) => entry.issues);
   const dimensionIssues = health.sketchDimensions
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
@@ -194,6 +224,7 @@ export function getHealthIssues(
   return [
     ...attachedIssues,
     ...featureIssues,
+    ...evaluationIssues,
     ...dimensionIssues,
     ...constraintIssues
   ].map((issue) => issue.message);
@@ -293,6 +324,14 @@ function combineHealthStatuses(
 
   if (statuses.includes("unsupported")) {
     return "unsupported";
+  }
+
+  if (statuses.includes("over-defined")) {
+    return "over-defined";
+  }
+
+  if (statuses.includes("under-defined")) {
+    return "under-defined";
   }
 
   return "healthy";

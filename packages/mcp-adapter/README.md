@@ -9,14 +9,22 @@ It exposes these MCP-style tools:
 - `cad.project_summary`
 - `cad.project_features`
 - `cad.project_structure`
+- `cad.project_health`
 - `cad.project_sketches`
+- `cad.parameter_list`
+- `cad.parameter_get`
 - `cad.object_measurements`
 - `cad.body_measurements`
 - `cad.project_extents`
 - `cad.sketch_get`
+- `cad.sketch_evaluation`
+- `cad.sketch_dimensions`
+- `cad.sketch_dimension_get`
 - `cad.body_generated_references`
 - `cad.resolve_generated_reference`
 - `cad.generated_reference_measurements`
+- `cad.named_references`
+- `cad.resolve_named_reference`
 - `cad.transaction_history`
 - `cad.batch`
 

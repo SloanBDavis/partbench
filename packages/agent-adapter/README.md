@@ -289,6 +289,7 @@ An external agent should query before submitting a batch, run the proposed batch
 in `dryRun`, inspect the returned IDs and warnings, and only then submit the same
 operation set in `commit` mode when allowed.
 
-An MCP server can later expose this as a tool by accepting the same JSON request
-and returning the same JSON response. That server should remain a transport
-wrapper; it should not own the document model or define CAD commands.
+The MCP adapter and stdio server expose this adapter as transport tools by
+accepting equivalent structured JSON requests and returning equivalent JSON
+responses. Those packages remain wrappers; they do not own the document model or
+define CAD commands.

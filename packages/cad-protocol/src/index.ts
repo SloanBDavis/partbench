@@ -79,6 +79,8 @@ export type SketchEntityKind = "point" | "line" | "rectangle" | "circle";
 
 export type SketchDimensionStatus =
   | "healthy"
+  | "under-defined"
+  | "over-defined"
   | "unsupported"
   | "missing-target"
   | "invalid-value"
@@ -1155,9 +1157,18 @@ export interface SketchConstraintIssue {
   readonly received?: string;
 }
 
+export interface SketchCompletenessIssue {
+  readonly code: "UNDER_DEFINED_SKETCH" | "OVER_DEFINED_SKETCH";
+  readonly message: string;
+  readonly sketchId: SketchId;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
 export type SketchEvaluationIssue =
   | SketchDimensionIssue
-  | SketchConstraintIssue;
+  | SketchConstraintIssue
+  | SketchCompletenessIssue;
 
 export interface SketchDimensionEntry extends SketchDimensionSnapshot {
   readonly status: SketchDimensionStatus;
@@ -1604,6 +1615,8 @@ export interface NamedGeneratedReferenceEntry extends NamedGeneratedReferenceSna
 
 export type CadDependencyHealthStatus =
   | "healthy"
+  | "under-defined"
+  | "over-defined"
   | "stale"
   | "missing-source"
   | "unsupported";
@@ -1619,6 +1632,8 @@ export type CadDependencyHealthIssueCode =
   | "INVALID_SKETCH_CONSTRAINT_VALUE"
   | "INCONSISTENT_SKETCH_CONSTRAINT"
   | "CONFLICTING_SKETCH_CONSTRAINT"
+  | "UNDER_DEFINED_SKETCH"
+  | "OVER_DEFINED_SKETCH"
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "GENERATED_REFERENCE_NOT_FOUND"
@@ -1722,6 +1737,17 @@ export interface CadNamedReferenceHealth {
   readonly kind: CadGeneratedEntityKind;
   readonly status: CadDependencyHealthStatus;
   readonly resolvedKind?: CadGeneratedEntityKind;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadSketchEvaluationHealth {
+  readonly sketchId: SketchId;
+  readonly sketchName: string;
+  readonly plane: SketchPlane;
+  readonly status: CadDependencyHealthStatus;
+  readonly drivenEntityIds: readonly SketchEntityId[];
+  readonly affectedFeatureIds: readonly FeatureId[];
+  readonly affectedBodyIds: readonly BodyId[];
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 
@@ -1882,11 +1908,13 @@ export interface ProjectHealthQueryResponse {
   readonly issueCount: number;
   readonly authoredExtrudeCount: number;
   readonly attachedSketchCount: number;
+  readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
   readonly sketchConstraintCount: number;
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
+  readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
   readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];

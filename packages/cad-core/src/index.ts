@@ -1419,6 +1419,7 @@ export class SnapshotCadCommandWorker implements CadCommandWorker {
         nextSketchEntityNumber: request.document.nextSketchEntityNumber,
         nextParameterNumber: request.document.nextParameterNumber,
         nextSketchDimensionNumber: request.document.nextSketchDimensionNumber,
+        nextSketchConstraintNumber: request.document.nextSketchConstraintNumber,
         nextFeatureNumber: request.document.nextFeatureNumber,
         nextBodyNumber: request.document.nextBodyNumber
       }
@@ -2095,8 +2096,11 @@ function applyOperation(
       }
       for (const constraint of state.sketchConstraints.values()) {
         if (
-          constraint.sketchId !== op.sketchId ||
-          constraint.entityId !== op.entityId
+          !sketchConstraintReferencesEntity(
+            constraint,
+            op.sketchId,
+            op.entityId
+          )
         ) {
           continue;
         }
@@ -3782,19 +3786,7 @@ function assertSketchConstraintTargetsStillValid(
   opIndex: number
 ): void {
   for (const constraint of constraints.values()) {
-    const constraintTouchesEntity =
-      constraint.entityId === entity.id ||
-      (constraint.kind === "coincident" &&
-        (constraint.primaryTarget.entityId === entity.id ||
-          constraint.secondaryTarget.entityId === entity.id)) ||
-      (constraint.kind === "midpoint" &&
-        (constraint.lineEntityId === entity.id ||
-          constraint.target.entityId === entity.id)) ||
-      (isLinePairSketchConstraint(constraint) &&
-        (constraint.primaryLineEntityId === entity.id ||
-          constraint.secondaryLineEntityId === entity.id));
-
-    if (constraint.sketchId !== sketchId || !constraintTouchesEntity) {
+    if (!sketchConstraintReferencesEntity(constraint, sketchId, entity.id)) {
       continue;
     }
 
@@ -3845,6 +3837,43 @@ function assertSketchConstraintTargetsStillValid(
       received: entity.kind
     });
   }
+}
+
+function sketchConstraintReferencesEntity(
+  constraint: SketchConstraint,
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): boolean {
+  if (constraint.sketchId !== sketchId) {
+    return false;
+  }
+
+  if (constraint.entityId === entityId) {
+    return true;
+  }
+
+  if (constraint.kind === "coincident") {
+    return (
+      constraint.primaryTarget.entityId === entityId ||
+      constraint.secondaryTarget.entityId === entityId
+    );
+  }
+
+  if (constraint.kind === "midpoint") {
+    return (
+      constraint.lineEntityId === entityId ||
+      constraint.target.entityId === entityId
+    );
+  }
+
+  if (isLinePairSketchConstraint(constraint)) {
+    return (
+      constraint.primaryLineEntityId === entityId ||
+      constraint.secondaryLineEntityId === entityId
+    );
+  }
+
+  return false;
 }
 
 function assertFixedConstraintsRemainSatisfied(

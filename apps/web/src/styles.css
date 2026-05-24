@@ -611,6 +611,8 @@ code {
 }
 
 .health-text.health-warning,
+.health-text.health-under-defined,
+.health-text.health-over-defined,
 .health-text.health-stale,
 .health-text.health-unsupported {
   color: var(--amber);

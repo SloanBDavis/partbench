@@ -287,11 +287,13 @@ function readProjectHealth(): ProjectHealthQueryResponse {
         issueCount: 0,
         authoredExtrudeCount: 0,
         attachedSketchCount: 0,
+        sketchEvaluationCount: 0,
         sketchDimensionCount: 0,
         sketchConstraintCount: 0,
         namedReferenceCount: 0,
         authoredExtrudes: [],
         attachedSketches: [],
+        sketchEvaluations: [],
         sketchDimensions: [],
         sketchConstraints: [],
         namedReferences: []

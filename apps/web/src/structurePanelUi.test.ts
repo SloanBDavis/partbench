@@ -53,6 +53,14 @@ describe("structure panel UI helpers", () => {
       label: "Missing source",
       className: "health-missing-source"
     });
+    expect(formatHealthStatus("under-defined")).toEqual({
+      label: "Under-defined",
+      className: "health-under-defined"
+    });
+    expect(formatHealthStatus("over-defined")).toEqual({
+      label: "Over-defined",
+      className: "health-over-defined"
+    });
   });
 
   it("finds health by sketch, feature, body, and named reference", () => {
@@ -184,6 +192,107 @@ describe("structure panel UI helpers", () => {
     ]);
   });
 
+  it("includes sketch evaluation completeness health in affected sketches, features, and bodies", () => {
+    const health = createHealth({
+      authoredExtrudes: [
+        {
+          featureId: "feature_1",
+          bodyId: "body_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          operationMode: "newBody",
+          status: "healthy",
+          issues: []
+        }
+      ],
+      sketchEvaluations: [
+        {
+          sketchId: "sketch_1",
+          sketchName: "Profile",
+          plane: "XY",
+          status: "under-defined",
+          drivenEntityIds: ["rect_1"],
+          affectedFeatureIds: ["feature_1"],
+          affectedBodyIds: ["body_1"],
+          issues: [
+            {
+              code: "UNDER_DEFINED_SKETCH",
+              message: "Sketch sketch_1 is under-defined.",
+              sketchId: "sketch_1"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(getSketchHealthStatus(health, "sketch_1")).toBe("under-defined");
+    expect(getFeatureHealthStatus(health, "feature_1")).toBe("under-defined");
+    expect(getBodyHealthStatus(health, "body_1")).toBe("under-defined");
+    expect(getHealthIssues(health, { kind: "sketch", id: "sketch_1" })).toEqual(
+      ["Sketch sketch_1 is under-defined."]
+    );
+    expect(
+      getHealthIssues(health, { kind: "feature", id: "feature_1" })
+    ).toEqual(["Sketch sketch_1 is under-defined."]);
+    expect(getHealthIssues(health, { kind: "body", id: "body_1" })).toEqual([
+      "Sketch sketch_1 is under-defined."
+    ]);
+  });
+
+  it("combines attached sketch status with local dimension and constraint health", () => {
+    const health = createHealth({
+      attachedSketches: [
+        {
+          sketchId: "sketch_face",
+          sketchName: "Face sketch",
+          plane: "XY",
+          bodyId: "body_1",
+          faceStableId: "generated:face:body_1:endCap",
+          sourceFeatureId: "feature_1",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          faceRole: "endCap",
+          status: "healthy",
+          resolves: true,
+          eligibleForSketchPlane: true,
+          resolvedKind: "face",
+          resolvedFaceRole: "endCap",
+          issues: []
+        }
+      ],
+      sketchDimensions: [
+        {
+          dimensionId: "dim_attached_width",
+          dimensionName: "Attached width",
+          sketchId: "sketch_face",
+          entityId: "rect_attached",
+          target: { entityKind: "rectangle", role: "width" },
+          valueSource: { type: "parameter", parameterId: "missing_width" },
+          parameterId: "missing_width",
+          status: "missing-source",
+          affectedFeatureIds: [],
+          affectedBodyIds: [],
+          issues: [
+            {
+              code: "PARAMETER_NOT_FOUND",
+              message: "Parameter does not exist: missing_width.",
+              parameterId: "missing_width",
+              sketchDimensionId: "dim_attached_width",
+              sketchId: "sketch_face",
+              sketchEntityId: "rect_attached"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(getSketchHealthStatus(health, "sketch_face")).toBe("missing-source");
+    expect(
+      getHealthIssues(health, { kind: "sketch", id: "sketch_face" })
+    ).toEqual(["Parameter does not exist: missing_width."]);
+  });
+
   it("includes sketch constraint health in affected sketches, features, and bodies", () => {
     const health = createHealth({
       authoredExtrudes: [
@@ -305,11 +414,13 @@ function createHealth(
     issueCount: 0,
     authoredExtrudeCount: overrides.authoredExtrudes?.length ?? 0,
     attachedSketchCount: overrides.attachedSketches?.length ?? 0,
+    sketchEvaluationCount: overrides.sketchEvaluations?.length ?? 0,
     sketchDimensionCount: overrides.sketchDimensions?.length ?? 0,
     sketchConstraintCount: overrides.sketchConstraints?.length ?? 0,
     namedReferenceCount: overrides.namedReferences?.length ?? 0,
     authoredExtrudes: [],
     attachedSketches: [],
+    sketchEvaluations: [],
     sketchDimensions: [],
     sketchConstraints: [],
     namedReferences: [],

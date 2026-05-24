@@ -2,6 +2,7 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   ParameterId,
+  SketchCompletenessIssue,
   SketchConstraintEntry,
   SketchConstraintId,
   SketchConstraintIssue,
@@ -14,6 +15,7 @@ import type {
   SketchDimensionTarget,
   SketchEntityId,
   SketchEntitySnapshot,
+  SketchEvaluationIssue,
   SketchId,
   SketchPlane,
   SketchPointTarget,
@@ -102,7 +104,7 @@ export interface SketchSolverEvaluation {
   readonly drivenEntityIds: readonly SketchEntityId[];
   readonly dimensions: readonly SketchDimensionEntry[];
   readonly constraints: readonly SketchConstraintEntry[];
-  readonly issues: readonly (SketchDimensionIssue | SketchConstraintIssue)[];
+  readonly issues: readonly SketchEvaluationIssue[];
   readonly evaluatedGeometry: EvaluatedSketchGeometry;
 }
 
@@ -131,6 +133,11 @@ export function evaluateSketch(
     ...dimensions.flatMap((dimension) => dimension.issues),
     ...constraints.flatMap((constraint) => constraint.issues)
   ];
+  const completenessIssues =
+    issues.length === 0
+      ? evaluateSketchCompleteness(sketch, dimensions, constraints)
+      : [];
+  const allIssues = [...issues, ...completenessIssues];
   const drivenEntityIds = [
     ...new Set([
       ...dimensions.map((dimension) => dimension.entityId),
@@ -162,11 +169,11 @@ export function evaluateSketch(
     sketchId: sketch.id,
     sketchName: sketch.name,
     plane: sketch.plane,
-    status: getSketchEvaluationStatus(issues),
+    status: getSketchEvaluationStatus(allIssues),
     drivenEntityIds,
     dimensions,
     constraints,
-    issues,
+    issues: allIssues,
     evaluatedGeometry
   };
 }
@@ -1671,7 +1678,104 @@ export function getSketchEvaluationStatus(
     return "inconsistent";
   }
 
+  if (issues.some((issue) => issue.code === "OVER_DEFINED_SKETCH")) {
+    return "over-defined";
+  }
+
+  if (issues.some((issue) => issue.code === "UNDER_DEFINED_SKETCH")) {
+    return "under-defined";
+  }
+
   return "unsupported";
+}
+
+function evaluateSketchCompleteness(
+  sketch: SketchSolverSketch,
+  dimensions: readonly SketchDimensionEntry[],
+  constraints: readonly SketchConstraintEntry[]
+): readonly SketchCompletenessIssue[] {
+  const requiredDegrees = [...sketch.entities.values()].reduce(
+    (sum, entity) => sum + getSketchEntityDegreesOfFreedom(entity),
+    0
+  );
+
+  if (requiredDegrees === 0) {
+    return [];
+  }
+
+  const constrainedDegrees =
+    dimensions.reduce((sum, dimension) => {
+      if (dimension.status !== "healthy") {
+        return sum;
+      }
+
+      return sum + getSketchDimensionConstraintDegrees();
+    }, 0) +
+    constraints.reduce((sum, constraint) => {
+      if (constraint.status !== "healthy") {
+        return sum;
+      }
+
+      return sum + getSketchConstraintDegrees(constraint);
+    }, 0);
+
+  if (constrainedDegrees < requiredDegrees) {
+    return [
+      {
+        code: "UNDER_DEFINED_SKETCH",
+        message: `Sketch ${sketch.id} is under-defined: ${constrainedDegrees} of ${requiredDegrees} degrees are constrained.`,
+        sketchId: sketch.id,
+        expected: `${requiredDegrees} constrained degrees`,
+        received: `${constrainedDegrees} constrained degrees`
+      }
+    ];
+  }
+
+  if (constrainedDegrees > requiredDegrees) {
+    return [
+      {
+        code: "OVER_DEFINED_SKETCH",
+        message: `Sketch ${sketch.id} is over-defined: ${constrainedDegrees} constrained degrees exceed ${requiredDegrees} entity degrees.`,
+        sketchId: sketch.id,
+        expected: `${requiredDegrees} constrained degrees`,
+        received: `${constrainedDegrees} constrained degrees`
+      }
+    ];
+  }
+
+  return [];
+}
+
+function getSketchEntityDegreesOfFreedom(entity: SketchEntitySnapshot): number {
+  if (entity.kind === "point") {
+    return 2;
+  }
+
+  if (entity.kind === "line") {
+    return 4;
+  }
+
+  if (entity.kind === "circle") {
+    return 3;
+  }
+
+  return 4;
+}
+
+function getSketchDimensionConstraintDegrees(): number {
+  return 1;
+}
+
+function getSketchConstraintDegrees(constraint: SketchConstraintEntry): number {
+  if (
+    constraint.kind === "fixed" ||
+    constraint.kind === "coincident" ||
+    constraint.kind === "midpoint"
+  ) {
+    return 2;
+  }
+
+  return 1;
 }
 
 export function cleanSketchNumber(value: number): number {

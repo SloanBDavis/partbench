@@ -4,11 +4,11 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 next implementation roadmap.
 
-Last updated: 2026-05-23.
+Last updated: 2026-05-24.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v3.md` for the completed V3
-parametric sketch milestone, `docs/v4.md` for the active constrained sketch
+parametric sketch milestone, `docs/v4.md` for the completed constrained sketch
 solving milestone,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
@@ -27,8 +27,8 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2 and V3 are complete. V4 is the active milestone and should focus on
-   constrained sketch solving and regeneration without starting unrelated
+9. V2, V3, and V4 are complete. The next milestone should build on the V4
+   constrained-sketch foundation without accidentally starting unrelated
    architecture systems.
 
 ## Current Repo State
@@ -307,8 +307,9 @@ Solver direction guardrails:
 - solver/evaluator outputs are deterministic derived data;
 - downstream features should consume evaluated sketch geometry once solver
   behavior exists for that path;
-- invalid, unsupported, under-defined, or over-defined sketches must report
-  structured status/errors instead of silently producing misleading geometry;
+- invalid, unsupported, under-defined, over-defined, missing-target, or
+  inconsistent sketches must report structured status/errors instead of silently
+  producing misleading geometry;
 - React, renderer, OCCT, MCP, and agent layers must not own separate solver
   authority.
 
@@ -390,9 +391,9 @@ V3 is complete when:
 8. Unit and package-level tests cover the behavior without depending on brittle
    browser E2E workflows.
 
-## Active Roadmap: V4 Constrained Sketch Solving
+## Completed Roadmap: V4 Constrained Sketch Solving
 
-V4 is the active milestone. Its detailed scope lives in `docs/v4.md`.
+V4 is complete. Its detailed scope and completion notes live in `docs/v4.md`.
 
 V4 should be a larger step than V3. The purpose is to make constrained sketching
 usable enough that sketches feel like CAD source data rather than independent
@@ -418,7 +419,7 @@ model state.
 Goal: make the solver/evaluator architecture explicit before adding more
 constraint behavior.
 
-Planned deliverables:
+Implemented:
 
 - isolate current direct evaluator logic behind a small internal `cad-core`
   boundary;
@@ -479,15 +480,15 @@ Implemented:
 Goal: prove constrained sketches correctly drive the current feature/body
 pipeline.
 
-Planned deliverables:
+Implemented:
 
 - authored extrudes consume evaluated sketch geometry where solver behavior
   applies;
 - attached-sketch extrudes keep resolving through generated face frames;
 - supported add/cut results rebuild or report honest unsupported status;
 - project extents, measurements, generated references, named references,
-  dependency health, transaction history, and derived geometry cache keys remain
-  coherent;
+  dependency health, sketch completeness status, transaction history, and
+  derived geometry cache keys remain coherent;
 - stale async geometry results cannot overwrite newer solved state.
 
 ### V4 Phase E: Human And Agent Workflow UI
@@ -495,7 +496,7 @@ Planned deliverables:
 Goal: make constrained sketching understandable without adding hidden model
 state.
 
-Planned deliverables:
+Implemented:
 
 - compact UI for supported dimensions and constraints;
 - clear selected sketch/entity constraint status;
@@ -509,13 +510,22 @@ Planned deliverables:
 Goal: declare V4 complete only after the constrained sketch workflow is
 coherent, tested, documented, and ready for the next major architecture step.
 
-Planned deliverables:
+Completed:
 
 - review architecture boundaries, model behavior, derived geometry,
   adapter/MCP wrappers, storage, docs, and UI helpers;
 - fix must-fix issues;
 - add high-signal unit/package coverage;
 - update docs to mark V4 complete and identify the next milestone.
+
+## Next Milestone Direction
+
+The recommended next milestone should be scoped separately from this V4
+completion pass. The strongest candidates are exact geometry/topology
+stabilization for boolean result bodies, broader CAD feature operations such as
+revolve or patterning, or persistence/import-export work such as STEP and native
+storage. The next milestone should begin with a dedicated planning doc before
+implementation, because each path touches different architecture boundaries.
 
 ## Deferred Beyond V4 Unless Explicitly Scoped
 

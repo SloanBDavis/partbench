@@ -157,6 +157,12 @@ describe("sketch panel UI helpers", () => {
       start: [10, 10],
       end: [10, 12]
     };
+    const zeroLine: SketchSnapshot["entities"][number] = {
+      id: "line_zero",
+      kind: "line",
+      start: [2, 2],
+      end: [2, 2]
+    };
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
@@ -371,7 +377,7 @@ describe("sketch panel UI helpers", () => {
       createAvailableSketchConstraintKindOptions(
         line,
         [],
-        [line, secondLine, point]
+        [line, secondLine, zeroLine, point]
       )
     ).toEqual([
       { kind: "horizontal", label: "Horizontal" },
@@ -381,6 +387,17 @@ describe("sketch panel UI helpers", () => {
       { kind: "midpoint", label: "Midpoint" },
       { kind: "parallel", label: "Parallel" },
       { kind: "perpendicular", label: "Perpendicular" }
+    ]);
+    expect(
+      createAvailableSketchConstraintKindOptions(
+        zeroLine,
+        [],
+        [line, zeroLine, point]
+      )
+    ).toEqual([
+      { kind: "fixed", label: "Fixed point" },
+      { kind: "coincident", label: "Coincident" },
+      { kind: "midpoint", label: "Midpoint" }
     ]);
     expect(
       createAvailableSketchConstraintKindOptions(
@@ -483,7 +500,7 @@ describe("sketch panel UI helpers", () => {
     expect(
       createAvailableParallelLineTargetOptions(
         line,
-        [line, secondLine, point],
+        [line, secondLine, zeroLine, point],
         []
       )
     ).toEqual([
@@ -493,6 +510,13 @@ describe("sketch panel UI helpers", () => {
         detail: "10, 10 to 10, 12"
       }
     ]);
+    expect(
+      createAvailableParallelLineTargetOptions(
+        zeroLine,
+        [line, secondLine, zeroLine],
+        []
+      )
+    ).toEqual([]);
     expect(
       createAvailableParallelLineTargetOptions(
         line,
@@ -759,6 +783,18 @@ describe("sketch panel UI helpers", () => {
       issueCount: 1,
       issues: badDimension.issues
     };
+    const underDefinedEvaluation: SketchEvaluationQueryResponse = {
+      ...healthyEvaluation,
+      status: "under-defined",
+      issueCount: 1,
+      issues: [
+        {
+          code: "UNDER_DEFINED_SKETCH",
+          message: "Sketch sketch_1 is under-defined.",
+          sketchId: "sketch_1"
+        }
+      ]
+    };
 
     expect(formatSketchEvaluationStatus(undefined)).toBe(
       "Evaluation unavailable"
@@ -769,11 +805,22 @@ describe("sketch panel UI helpers", () => {
     expect(formatSketchEvaluationStatus(invalidEvaluation)).toBe(
       "Missing target · 1 issue"
     );
+    expect(formatSketchEvaluationStatus(underDefinedEvaluation)).toBe(
+      "Under-defined · 1 issue"
+    );
     expect(getSketchEvaluationStatusDisplay(invalidEvaluation)).toEqual({
       label: "Missing target",
       detail: "Missing target · 1 issue",
       tone: "error"
     });
+    expect(getSketchEvaluationStatusDisplay(underDefinedEvaluation)).toEqual({
+      label: "Under-defined",
+      detail: "Under-defined · 1 issue",
+      tone: "warning"
+    });
+    expect(formatSketchEvaluationIssue(underDefinedEvaluation.issues[0])).toBe(
+      "sketch_1: Sketch sketch_1 is under-defined."
+    );
     expect(formatSketchEvaluationIssue(badDimension.issues[0])).toBe(
       "dim_missing_parameter: Parameter does not exist: missing_parameter"
     );

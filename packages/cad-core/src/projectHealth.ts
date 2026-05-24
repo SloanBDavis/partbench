@@ -11,6 +11,7 @@ import type {
   CadParameterSnapshot,
   CadSketchConstraintHealth,
   CadSketchDimensionHealth,
+  CadSketchEvaluationHealth,
   FeatureExtrudeProfileKind,
   FeatureId,
   NamedGeneratedReferenceSnapshot,
@@ -19,12 +20,13 @@ import type {
   PartId,
   ProjectHealthQueryResponse,
   SketchAttachmentSnapshot,
+  SketchCompletenessIssue,
   SketchConstraintId,
   SketchConstraintIssue,
   SketchConstraintSnapshot,
+  SketchDimensionIssue,
   SketchDimensionId,
   SketchDimensionSnapshot,
-  SketchDimensionTarget,
   SketchEntityId,
   SketchEntitySnapshot,
   SketchId,
@@ -38,7 +40,11 @@ import {
   type GeneratedReferencesFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
-import { evaluateSketchConstraint } from "./sketchSolver";
+import {
+  evaluateSketch,
+  evaluateSketchConstraint,
+  evaluateSketchDimension
+} from "./sketchSolver";
 
 export interface ProjectHealthOptions {
   readonly document: ProjectHealthDocument;
@@ -99,12 +105,16 @@ export function createProjectHealth(
   ].map((constraint) =>
     createSketchConstraintHealth(options.document, constraint)
   );
+  const sketchEvaluations = [...options.document.sketches.values()].map(
+    (sketch) => createSketchEvaluationHealth(options.document, sketch)
+  );
   const namedReferences = [...options.document.namedReferences.values()].map(
     (reference) => createNamedReferenceHealth(reference, options)
   );
   const issueCount = [
     ...authoredExtrudes,
     ...attachedSketches,
+    ...sketchEvaluations,
     ...sketchDimensions,
     ...sketchConstraints,
     ...namedReferences
@@ -117,6 +127,7 @@ export function createProjectHealth(
     status: combineHealthStatuses([
       ...authoredExtrudes.map((entry) => entry.status),
       ...attachedSketches.map((entry) => entry.status),
+      ...sketchEvaluations.map((entry) => entry.status),
       ...sketchDimensions.map((entry) => entry.status),
       ...sketchConstraints.map((entry) => entry.status),
       ...namedReferences.map((entry) => entry.status)
@@ -124,11 +135,13 @@ export function createProjectHealth(
     issueCount,
     authoredExtrudeCount: authoredExtrudes.length,
     attachedSketchCount: attachedSketches.length,
+    sketchEvaluationCount: sketchEvaluations.length,
     sketchDimensionCount: sketchDimensions.length,
     sketchConstraintCount: sketchConstraints.length,
     namedReferenceCount: namedReferences.length,
     authoredExtrudes,
     attachedSketches,
+    sketchEvaluations,
     sketchDimensions,
     sketchConstraints,
     namedReferences
@@ -322,69 +335,12 @@ function createSketchDimensionHealth(
   document: ProjectHealthDocument,
   dimension: SketchDimensionSnapshot
 ): CadSketchDimensionHealth {
-  const issues: CadDependencyHealthIssue[] = [];
-  const sketch = document.sketches.get(dimension.sketchId);
+  const entry = evaluateSketchDimension(document, dimension);
+  const issues = entry.issues.map(createIssueFromSketchDimensionIssue);
   const parameterId =
     dimension.valueSource.type === "parameter"
       ? dimension.valueSource.parameterId
       : undefined;
-  let entity: SketchEntitySnapshot | undefined;
-  let effectiveValue: number | undefined;
-
-  if (!sketch) {
-    issues.push({
-      code: "SKETCH_NOT_FOUND",
-      message: `Sketch dimension ${dimension.id} targets a missing sketch: ${dimension.sketchId}`,
-      sketchDimensionId: dimension.id,
-      sketchId: dimension.sketchId,
-      sketchEntityId: dimension.entityId
-    });
-  } else {
-    entity = sketch.entities.get(dimension.entityId);
-
-    if (!entity) {
-      issues.push({
-        code: "SKETCH_ENTITY_NOT_FOUND",
-        message: `Sketch dimension ${dimension.id} targets a missing sketch entity: ${dimension.entityId}`,
-        sketchDimensionId: dimension.id,
-        sketchId: dimension.sketchId,
-        sketchEntityId: dimension.entityId
-      });
-    } else if (!isSupportedSketchDimensionTarget(dimension.target, entity)) {
-      issues.push({
-        code: "UNSUPPORTED_SKETCH_DIMENSION_TARGET",
-        message: `Sketch dimension ${dimension.id} target ${formatDimensionTarget(
-          dimension.target
-        )} is not supported by ${entity.kind} entity ${entity.id}.`,
-        sketchDimensionId: dimension.id,
-        sketchId: dimension.sketchId,
-        sketchEntityId: dimension.entityId,
-        expected: `target for ${entity.kind}`,
-        received: formatDimensionTarget(dimension.target)
-      });
-    }
-  }
-
-  const resolvedValue = resolveSketchDimensionHealthValue(document, dimension);
-
-  if (!resolvedValue.ok) {
-    issues.push(resolvedValue.issue);
-  } else {
-    effectiveValue = resolvedValue.value;
-
-    if (!Number.isFinite(effectiveValue) || effectiveValue <= 0) {
-      issues.push({
-        code: "INVALID_SKETCH_DIMENSION_VALUE",
-        message: `Sketch dimension ${dimension.id} has an invalid effective value: ${effectiveValue}`,
-        parameterId,
-        sketchDimensionId: dimension.id,
-        sketchId: dimension.sketchId,
-        sketchEntityId: dimension.entityId,
-        expected: "positive finite number",
-        received: String(effectiveValue)
-      });
-    }
-  }
 
   const affected = collectSketchDimensionAffectedFeatures(
     document,
@@ -402,10 +358,53 @@ function createSketchDimensionHealth(
     status: statusFromIssues(issues),
     affectedFeatureIds: affected.featureIds,
     affectedBodyIds: affected.bodyIds,
-    ...(effectiveValue !== undefined ? { effectiveValue } : {}),
+    ...(entry.effectiveValue !== undefined
+      ? { effectiveValue: entry.effectiveValue }
+      : {}),
     ...(parameterId ? { parameterId } : {}),
     issues
   };
+}
+
+function createSketchEvaluationHealth(
+  document: ProjectHealthDocument,
+  sketch: ProjectHealthSketch
+): CadSketchEvaluationHealth {
+  const evaluation = evaluateSketch(document, sketch);
+  const issues = evaluation.issues
+    .filter(isSketchCompletenessIssue)
+    .map(createIssueFromSketchCompletenessIssue);
+  const affected = collectSketchEntityAffectedFeatures(
+    document,
+    getSketchEvaluationAffectedEntityIds(
+      sketch,
+      evaluation.drivenEntityIds
+    ).map((entityId) => ({
+      sketchId: sketch.id,
+      entityId
+    }))
+  );
+
+  return {
+    sketchId: sketch.id,
+    sketchName: sketch.name,
+    plane: sketch.plane,
+    status: statusFromSketchSolverStatus(evaluation.status, issues),
+    drivenEntityIds: evaluation.drivenEntityIds,
+    affectedFeatureIds: affected.featureIds,
+    affectedBodyIds: affected.bodyIds,
+    issues
+  };
+}
+
+function getSketchEvaluationAffectedEntityIds(
+  sketch: ProjectHealthSketch,
+  drivenEntityIds: readonly SketchEntityId[]
+): readonly SketchEntityId[] {
+  const entityIds =
+    drivenEntityIds.length > 0 ? drivenEntityIds : [...sketch.entities.keys()];
+
+  return [...new Set(entityIds)];
 }
 
 function createSketchConstraintHealth(
@@ -517,35 +516,6 @@ function createNamedReferenceHealth(
     ...(resolvedKind ? { resolvedKind } : {}),
     issues
   };
-}
-
-function resolveSketchDimensionHealthValue(
-  document: ProjectHealthDocument,
-  dimension: SketchDimensionSnapshot
-):
-  | { readonly ok: true; readonly value: number }
-  | { readonly ok: false; readonly issue: CadDependencyHealthIssue } {
-  if (dimension.valueSource.type === "literal") {
-    return { ok: true, value: dimension.valueSource.value };
-  }
-
-  const parameter = document.parameters.get(dimension.valueSource.parameterId);
-
-  if (!parameter) {
-    return {
-      ok: false,
-      issue: {
-        code: "PARAMETER_NOT_FOUND",
-        message: `Sketch dimension ${dimension.id} references a missing parameter: ${dimension.valueSource.parameterId}`,
-        parameterId: dimension.valueSource.parameterId,
-        sketchDimensionId: dimension.id,
-        sketchId: dimension.sketchId,
-        sketchEntityId: dimension.entityId
-      }
-    };
-  }
-
-  return { ok: true, value: parameter.value };
 }
 
 function collectSketchDimensionAffectedFeatures(
@@ -674,29 +644,6 @@ function isLinePairSketchConstraint(
   return constraint.kind === "parallel" || constraint.kind === "perpendicular";
 }
 
-function isSupportedSketchDimensionTarget(
-  target: SketchDimensionTarget,
-  entity: SketchEntitySnapshot
-): boolean {
-  if (entity.kind === "rectangle") {
-    return target.entityKind === "rectangle";
-  }
-
-  if (entity.kind === "circle") {
-    return target.entityKind === "circle";
-  }
-
-  if (entity.kind === "line") {
-    return target.entityKind === "line";
-  }
-
-  return false;
-}
-
-function formatDimensionTarget(target: SketchDimensionTarget): string {
-  return `${target.entityKind}.${target.role}`;
-}
-
 function createIssueFromGeneratedReferenceError(
   error: GeneratedReferenceValidationError,
   context: {
@@ -720,6 +667,64 @@ function createIssueFromGeneratedReferenceError(
     ...(error.expectedKind ? { expected: error.expectedKind } : {}),
     ...(error.actualKind ? { received: error.actualKind } : {}),
     ...(error.requiredOperation ? { expected: error.requiredOperation } : {})
+  };
+}
+
+function createIssueFromSketchDimensionIssue(
+  issue: SketchDimensionIssue
+): CadDependencyHealthIssue {
+  return {
+    code: mapSketchDimensionIssueCode(issue.code),
+    message: issue.message,
+    ...(issue.parameterId ? { parameterId: issue.parameterId } : {}),
+    ...(issue.sketchDimensionId
+      ? { sketchDimensionId: issue.sketchDimensionId }
+      : {}),
+    ...(issue.sketchId ? { sketchId: issue.sketchId } : {}),
+    ...(issue.sketchEntityId ? { sketchEntityId: issue.sketchEntityId } : {}),
+    ...(issue.expected ? { expected: issue.expected } : {}),
+    ...(issue.received ? { received: issue.received } : {})
+  };
+}
+
+function mapSketchDimensionIssueCode(
+  code: SketchDimensionIssue["code"]
+): CadDependencyHealthIssue["code"] {
+  switch (code) {
+    case "PARAMETER_NOT_FOUND":
+    case "SKETCH_NOT_FOUND":
+    case "SKETCH_ENTITY_NOT_FOUND":
+      return code;
+
+    case "UNSUPPORTED_TARGET":
+      return "UNSUPPORTED_SKETCH_DIMENSION_TARGET";
+
+    case "INVALID_VALUE":
+      return "INVALID_SKETCH_DIMENSION_VALUE";
+
+    case "INCONSISTENT_CONSTRAINT":
+      return "INCONSISTENT_SKETCH_CONSTRAINT";
+  }
+}
+
+function isSketchCompletenessIssue(
+  issue: SketchDimensionIssue | SketchConstraintIssue | SketchCompletenessIssue
+): issue is SketchCompletenessIssue {
+  return (
+    issue.code === "UNDER_DEFINED_SKETCH" ||
+    issue.code === "OVER_DEFINED_SKETCH"
+  );
+}
+
+function createIssueFromSketchCompletenessIssue(
+  issue: SketchCompletenessIssue
+): CadDependencyHealthIssue {
+  return {
+    code: issue.code,
+    message: issue.message,
+    sketchId: issue.sketchId,
+    ...(issue.expected ? { expected: issue.expected } : {}),
+    ...(issue.received ? { received: issue.received } : {})
   };
 }
 
@@ -859,7 +864,26 @@ function combineHealthStatuses(
     return "unsupported";
   }
 
+  if (statuses.includes("over-defined")) {
+    return "over-defined";
+  }
+
+  if (statuses.includes("under-defined")) {
+    return "under-defined";
+  }
+
   return "healthy";
+}
+
+function statusFromSketchSolverStatus(
+  status: "healthy" | "under-defined" | "over-defined" | string,
+  issues: readonly CadDependencyHealthIssue[]
+): CadDependencyHealthStatus {
+  if (status === "under-defined" || status === "over-defined") {
+    return status;
+  }
+
+  return statusFromIssues(issues);
 }
 
 function statusFromIssue(
@@ -882,6 +906,12 @@ function statusFromIssue(
     case "GENERATED_REFERENCE_KIND_MISMATCH":
     case "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE":
       return "unsupported";
+
+    case "OVER_DEFINED_SKETCH":
+      return "over-defined";
+
+    case "UNDER_DEFINED_SKETCH":
+      return "under-defined";
 
     case "BODY_NOT_FOUND":
     case "GENERATED_REFERENCE_NOT_FOUND":

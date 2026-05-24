@@ -692,8 +692,10 @@ The current source of truth is:
 - document parameter IDs, names, numeric values, and optional descriptions
 - sketch dimension IDs, names, source sketch/entity references, target roles,
   literal values, and parameter bindings
-- sketch constraint IDs, names, source sketch/entity references, and supported
-  constraint kind
+- sketch constraint IDs, names, source sketch/entity references, supported
+  constraint kind, fixed coordinates, explicit point targets, midpoint
+  line/target references, and parallel/perpendicular primary/secondary line
+  references
 - `document.nextSketchNumber`
 - `document.nextSketchEntityNumber`
 - `document.nextParameterNumber`
@@ -750,11 +752,12 @@ is source-of-truth feature data.
 The `project.health` query returns read-only dependency health derived from the
 same source-of-truth document. It reports authored extrude source sketch/entity
 status, attached sketch generated-face resolution and eligibility,
-parameter-bound sketch dimension status, affected authored features/bodies, and
+parameter-bound sketch dimension status, sketch constraint status, derived
+sketch evaluation completeness status, affected authored features/bodies, and
 named generated reference target status. Health entries may be `healthy`,
-`stale`, `missing-source`, or `unsupported`, with concise structured issues.
-These results are diagnostic query data only; they are not persisted and do not
-form a separate parametric regeneration graph.
+`under-defined`, `over-defined`, `stale`, `missing-source`, or `unsupported`,
+with concise structured issues. These results are diagnostic query data only;
+they are not persisted and do not form a separate parametric regeneration graph.
 
 The `body.generatedReferences` query returns the first read-only semantic
 reference layer for authored sketch-extrude bodies. It derives a generated body

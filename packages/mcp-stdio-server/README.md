@@ -10,14 +10,22 @@ Only these existing tools are exposed:
 - `cad.project_summary`
 - `cad.project_features`
 - `cad.project_structure`
+- `cad.project_health`
 - `cad.project_sketches`
+- `cad.parameter_list`
+- `cad.parameter_get`
 - `cad.object_measurements`
 - `cad.body_measurements`
 - `cad.project_extents`
 - `cad.sketch_get`
+- `cad.sketch_evaluation`
+- `cad.sketch_dimensions`
+- `cad.sketch_dimension_get`
 - `cad.body_generated_references`
 - `cad.resolve_generated_reference`
 - `cad.generated_reference_measurements`
+- `cad.named_references`
+- `cad.resolve_named_reference`
 - `cad.transaction_history`
 - `cad.batch`
 
@@ -91,8 +99,17 @@ from current scene objects plus authored sketch-extrude feature summaries.
 `cad.project_structure` returns the default part, primitive-derived
 features/bodies, authored sketch-extrude features/bodies, and source mappings
 for the current model.
+`cad.project_health` returns read-only dependency health for authored extrudes,
+attached sketches, sketch dimensions, sketch constraints, and named references.
+`cad.parameter_list` and `cad.parameter_get` return source-of-truth document
+parameters.
 `cad.project_sketches` and `cad.sketch_get` return source-of-truth sketch
 containers and entities from the authoritative document model.
+`cad.sketch_dimensions`, `cad.sketch_dimension_get`, and
+`cad.sketch_evaluation` return current driving dimensions and derived
+solver/evaluator status for one sketch.
+`cad.named_references` and `cad.resolve_named_reference` inspect
+source-of-truth user/agent names assigned to generated references.
 `cad.object_measurements`, `cad.body_measurements`, `cad.project_extents`, and
 `cad.generated_reference_measurements` return read-only source-derived
 measurements from the authoritative document. Generated-reference measurements

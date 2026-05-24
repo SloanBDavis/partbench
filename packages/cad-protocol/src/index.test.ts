@@ -14,6 +14,8 @@ import type {
   CadOp,
   CadQueryRequest,
   CadQueryResponse,
+  ProjectHealthQueryResponse,
+  SketchEvaluationQueryResponse,
   NamedGeneratedReferenceEntry,
   SketchSnapshot
 } from "./index";
@@ -598,6 +600,71 @@ describe("cad-protocol", () => {
       "reference.resolveNamed",
       "transaction.history"
     ]);
+  });
+
+  it("types V4 sketch completeness status responses", () => {
+    const evaluation: SketchEvaluationQueryResponse = {
+      ok: true,
+      query: "sketch.evaluation",
+      cadOpsVersion: "cadops.v1",
+      sketchId: "sketch_1",
+      sketchName: "Profile",
+      plane: "XY",
+      status: "under-defined",
+      drivenEntityCount: 1,
+      drivenEntityIds: ["rect_1"],
+      dimensionCount: 0,
+      dimensions: [],
+      constraintCount: 0,
+      constraints: [],
+      issueCount: 1,
+      issues: [
+        {
+          code: "UNDER_DEFINED_SKETCH",
+          message: "Sketch sketch_1 is under-defined.",
+          sketchId: "sketch_1"
+        }
+      ]
+    };
+    const health: ProjectHealthQueryResponse = {
+      ok: true,
+      query: "project.health",
+      cadOpsVersion: "cadops.v1",
+      status: "under-defined",
+      issueCount: 1,
+      authoredExtrudeCount: 0,
+      attachedSketchCount: 0,
+      sketchEvaluationCount: 1,
+      sketchDimensionCount: 0,
+      sketchConstraintCount: 0,
+      namedReferenceCount: 0,
+      authoredExtrudes: [],
+      attachedSketches: [],
+      sketchEvaluations: [
+        {
+          sketchId: "sketch_1",
+          sketchName: "Profile",
+          plane: "XY",
+          status: "under-defined",
+          drivenEntityIds: ["rect_1"],
+          affectedFeatureIds: [],
+          affectedBodyIds: [],
+          issues: [
+            {
+              code: "UNDER_DEFINED_SKETCH",
+              message: "Sketch sketch_1 is under-defined.",
+              sketchId: "sketch_1"
+            }
+          ]
+        }
+      ],
+      sketchDimensions: [],
+      sketchConstraints: [],
+      namedReferences: []
+    };
+
+    expect(evaluation.status).toBe("under-defined");
+    expect(health.sketchEvaluations[0]?.status).toBe("under-defined");
   });
 
   it("types generated body face and edge references", () => {

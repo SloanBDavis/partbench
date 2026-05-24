@@ -209,6 +209,7 @@ export function createAvailableSketchConstraintKindOptions(
 
   if (
     entity.kind === "line" &&
+    getLineLength(entity) > 0 &&
     !usedKinds.has("horizontal") &&
     !usedKinds.has("vertical")
   ) {
@@ -246,6 +247,7 @@ export function createAvailableSketchConstraintKindOptions(
 
   if (
     entity.kind === "line" &&
+    getLineLength(entity) > 0 &&
     createAvailableParallelLineTargetOptions(
       entity,
       sketchEntities,
@@ -459,12 +461,18 @@ export function createAvailableParallelLineTargetOptions(
     return [];
   }
 
+  if (getLineLength(primaryLine) <= 0) {
+    return [];
+  }
+
   return entities
     .filter(
       (
         entity
       ): entity is Extract<SketchEntitySnapshot, { readonly kind: "line" }> =>
-        entity.kind === "line" && entity.id !== primaryLine.id
+        entity.kind === "line" &&
+        entity.id !== primaryLine.id &&
+        getLineLength(entity) > 0
     )
     .filter(
       (entity) =>
@@ -732,7 +740,7 @@ export function formatSketchEvaluationIssue(
   const subject =
     ("sketchConstraintId" in issue ? issue.sketchConstraintId : undefined) ??
     ("sketchDimensionId" in issue ? issue.sketchDimensionId : undefined) ??
-    issue.sketchEntityId ??
+    ("sketchEntityId" in issue ? issue.sketchEntityId : undefined) ??
     ("parameterId" in issue ? issue.parameterId : undefined) ??
     issue.sketchId;
 
@@ -745,6 +753,10 @@ export function getSketchDimensionStatusLabel(
   switch (status) {
     case "healthy":
       return "Healthy";
+    case "under-defined":
+      return "Under-defined";
+    case "over-defined":
+      return "Over-defined";
     case "unsupported":
       return "Unsupported";
     case "missing-target":
@@ -762,6 +774,9 @@ function getSketchDimensionStatusTone(
   switch (status) {
     case "healthy":
       return "healthy";
+    case "under-defined":
+    case "over-defined":
+      return "warning";
     case "unsupported":
       return "warning";
     case "missing-target":

@@ -44,6 +44,198 @@ function createDocument(
 }
 
 describe("sketch solver boundary", () => {
+  it("classifies under-defined, fully-defined, and over-defined sketches", () => {
+    const underDefinedSketch = createSketch([
+      {
+        id: "rect_under",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      }
+    ]);
+
+    expect(
+      evaluateSketch(
+        createDocument(underDefinedSketch, [
+          {
+            id: "dim_width",
+            name: "Width",
+            sketchId: underDefinedSketch.id,
+            entityId: "rect_under",
+            target: { entityKind: "rectangle", role: "width" },
+            valueSource: { type: "literal", value: 4 }
+          }
+        ]),
+        underDefinedSketch
+      )
+    ).toMatchObject({
+      status: "under-defined",
+      issues: [
+        expect.objectContaining({
+          code: "UNDER_DEFINED_SKETCH",
+          expected: "4 constrained degrees",
+          received: "1 constrained degrees"
+        })
+      ]
+    });
+
+    const fullyDefinedSketch = createSketch([
+      { id: "point_1", kind: "point", point: [0, 0] },
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 0] },
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      { id: "circle_1", kind: "circle", center: [0, 0], radius: 2 }
+    ]);
+    const fullyDefinedDimensions: SketchDimensionSnapshot[] = [
+      {
+        id: "dim_line",
+        name: "Line length",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        valueSource: { type: "literal", value: 4 }
+      },
+      {
+        id: "dim_width",
+        name: "Width",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        valueSource: { type: "literal", value: 4 }
+      },
+      {
+        id: "dim_height",
+        name: "Height",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "height" },
+        valueSource: { type: "literal", value: 2 }
+      },
+      {
+        id: "dim_radius",
+        name: "Radius",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "circle_1",
+        target: { entityKind: "circle", role: "radius" },
+        valueSource: { type: "literal", value: 2 }
+      }
+    ];
+    const fullyDefinedConstraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_point",
+        name: "Fix point",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" },
+        coordinate: [0, 0]
+      },
+      {
+        id: "fix_line_start",
+        name: "Fix line start",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "line_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" },
+        coordinate: [0, 0]
+      },
+      {
+        id: "horizontal_line",
+        name: "Horizontal line",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "line_1",
+        kind: "horizontal"
+      },
+      {
+        id: "fix_rect_center",
+        name: "Fix rectangle",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "rect_1",
+        kind: "fixed",
+        target: { entityId: "rect_1", role: "center" },
+        coordinate: [0, 0]
+      },
+      {
+        id: "fix_circle_center",
+        name: "Fix circle",
+        sketchId: fullyDefinedSketch.id,
+        entityId: "circle_1",
+        kind: "fixed",
+        target: { entityId: "circle_1", role: "center" },
+        coordinate: [0, 0]
+      }
+    ];
+
+    const fullyDefinedEvaluation = evaluateSketch(
+      createDocument(
+        fullyDefinedSketch,
+        fullyDefinedDimensions,
+        fullyDefinedConstraints
+      ),
+      fullyDefinedSketch
+    );
+    expect(fullyDefinedEvaluation.status).toBe("healthy");
+    expect(fullyDefinedEvaluation.issues).toEqual([]);
+
+    const overDefinedSketch = createSketch([
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 0] }
+    ]);
+
+    expect(
+      evaluateSketch(
+        createDocument(
+          overDefinedSketch,
+          [
+            {
+              id: "dim_line",
+              name: "Line length",
+              sketchId: overDefinedSketch.id,
+              entityId: "line_1",
+              target: { entityKind: "line", role: "length" },
+              valueSource: { type: "literal", value: 4 }
+            }
+          ],
+          [
+            {
+              id: "fix_start",
+              name: "Fix start",
+              sketchId: overDefinedSketch.id,
+              entityId: "line_1",
+              kind: "fixed",
+              target: { entityId: "line_1", role: "start" },
+              coordinate: [0, 0]
+            },
+            {
+              id: "fix_end",
+              name: "Fix end",
+              sketchId: overDefinedSketch.id,
+              entityId: "line_1",
+              kind: "fixed",
+              target: { entityId: "line_1", role: "end" },
+              coordinate: [4, 0]
+            }
+          ]
+        ),
+        overDefinedSketch
+      )
+    ).toMatchObject({
+      status: "over-defined",
+      issues: [
+        expect.objectContaining({
+          code: "OVER_DEFINED_SKETCH",
+          expected: "4 constrained degrees",
+          received: "5 constrained degrees"
+        })
+      ]
+    });
+  });
+
   it("evaluates current rectangle, circle, and line dimensions into derived geometry", () => {
     const sketch = createSketch([
       {
@@ -91,7 +283,7 @@ describe("sketch solver boundary", () => {
     const circle = evaluation.evaluatedGeometry.entities.get("circle_1");
     const line = evaluation.evaluatedGeometry.entities.get("line_1");
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.dimensions).toHaveLength(3);
     expect(evaluation.drivenEntityIds).toEqual([
       "rect_1",
@@ -235,7 +427,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.evaluatedGeometry.entities.get("fixed_line")).toEqual({
       id: "fixed_line",
       kind: "line",
@@ -398,7 +590,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.evaluatedGeometry.entities.get("rect_1")).toMatchObject({
       kind: "rectangle",
       center: [2, 3],
@@ -471,7 +663,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.constraints).toEqual([
       expect.objectContaining({
         id: "fix_point",
@@ -607,7 +799,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.drivenEntityIds).toEqual([
       "point_1",
       "line_1",
@@ -853,7 +1045,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.drivenEntityIds).toEqual([
       "line_1",
       "point_1",
@@ -955,7 +1147,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.evaluatedGeometry.entities.get("secondary")).toEqual({
       id: "secondary",
       kind: "line",
@@ -1044,7 +1236,7 @@ describe("sketch solver boundary", () => {
       sketch
     );
 
-    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.status).toBe("under-defined");
     expect(evaluation.evaluatedGeometry.entities.get("secondary")).toEqual({
       id: "secondary",
       kind: "line",

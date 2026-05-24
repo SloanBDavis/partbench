@@ -1815,9 +1815,10 @@ describe("mcp-adapter", () => {
         ok: true,
         requestId: "mcp_req_project_health",
         query: "project.health",
-        status: "healthy",
-        issueCount: 0,
+        status: "under-defined",
+        issueCount: 1,
         authoredExtrudeCount: 1,
+        sketchEvaluationCount: 1,
         sketchDimensionCount: 0,
         sketchConstraintCount: 1,
         authoredExtrudes: [
@@ -1826,6 +1827,15 @@ describe("mcp-adapter", () => {
             bodyId: "mcp_health_body",
             status: "healthy"
           }
+        ],
+        sketchEvaluations: [
+          expect.objectContaining({
+            sketchId: "mcp_health_sketch",
+            status: "under-defined",
+            affectedFeatureIds: ["mcp_health_feature"],
+            affectedBodyIds: ["mcp_health_body"],
+            issues: [expect.objectContaining({ code: "UNDER_DEFINED_SKETCH" })]
+          })
         ],
         sketchDimensions: [],
         sketchConstraints: [
@@ -2478,7 +2488,7 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
         sketchId: "sketch_1",
         sketchName: "Profile",
         plane: "XY",
-        status: "healthy",
+        status: "under-defined",
         drivenEntityIds: [
           "circle_1",
           "line_1",
@@ -2489,7 +2499,8 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
         ],
         dimensionCount: 2,
         constraintCount: 6,
-        issueCount: 0,
+        issueCount: 1,
+        issues: [expect.objectContaining({ code: "UNDER_DEFINED_SKETCH" })],
         constraints: [
           expect.objectContaining({
             id: "con_horizontal",

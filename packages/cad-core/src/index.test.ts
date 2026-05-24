@@ -801,6 +801,141 @@ describe("cad-core", () => {
     ).toBe(false);
   });
 
+  it("deletes dimensions and constraints that reference deleted sketch entities", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_fixed",
+        point: [0, 0]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_coincident",
+        point: [0, 0]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_midpoint",
+        point: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_2",
+        start: [0, 1],
+        end: [4, 1]
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_line_2_length",
+        name: "Line 2 length",
+        sketchId: "sketch_1",
+        entityId: "line_2",
+        target: { entityKind: "line", role: "length" },
+        value: 4
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fixed_point",
+        name: "Fixed point",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "point_fixed", role: "position" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "coincident_point",
+        name: "Point coincident",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "line_1", role: "start" },
+        secondaryTarget: { entityId: "point_coincident", role: "position" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "midpoint_point",
+        name: "Point midpoint",
+        sketchId: "sketch_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "point_midpoint", role: "position" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "parallel_lines",
+        name: "Parallel lines",
+        sketchId: "sketch_1",
+        kind: "parallel",
+        primaryLineEntityId: "line_1",
+        secondaryLineEntityId: "line_2"
+      }
+    ]);
+
+    const result = engine.applyBatch([
+      {
+        op: "sketch.deleteEntity",
+        sketchId: "sketch_1",
+        entityId: "point_fixed"
+      },
+      {
+        op: "sketch.deleteEntity",
+        sketchId: "sketch_1",
+        entityId: "point_coincident"
+      },
+      {
+        op: "sketch.deleteEntity",
+        sketchId: "sketch_1",
+        entityId: "point_midpoint"
+      },
+      {
+        op: "sketch.deleteEntity",
+        sketchId: "sketch_1",
+        entityId: "line_2"
+      }
+    ]);
+
+    expect(engine.getDocument().sketchDimensions.size).toBe(0);
+    expect(engine.getDocument().sketchConstraints.size).toBe(0);
+    expect(result.transaction.diff).toMatchObject({
+      sketches: {
+        entitiesDeleted: expect.arrayContaining([
+          { sketchId: "sketch_1", id: "point_fixed", kind: "point" },
+          { sketchId: "sketch_1", id: "point_coincident", kind: "point" },
+          { sketchId: "sketch_1", id: "point_midpoint", kind: "point" },
+          { sketchId: "sketch_1", id: "line_2", kind: "line" }
+        ])
+      },
+      sketchConstraints: {
+        deleted: expect.arrayContaining([
+          expect.objectContaining({ id: "fixed_point" }),
+          expect.objectContaining({ id: "coincident_point" }),
+          expect.objectContaining({ id: "midpoint_point" }),
+          expect.objectContaining({ id: "parallel_lines" })
+        ])
+      }
+    });
+
+    engine.undo();
+    expect(engine.getDocument().sketchDimensions.size).toBe(1);
+    expect(engine.getDocument().sketchConstraints.size).toBe(4);
+    engine.redo();
+    expect(engine.getDocument().sketchDimensions.size).toBe(0);
+    expect(engine.getDocument().sketchConstraints.size).toBe(0);
+  });
+
   it("validates sketch commands without mutating the document", () => {
     const engine = new CadEngine();
 
@@ -4461,7 +4596,7 @@ describe("cad-core", () => {
     throw new Error("Expected project import error.");
   });
 
-  it("reports healthy authored extrude dependency health", () => {
+  it("reports authored extrude dependency health and sketch completeness", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -4491,11 +4626,39 @@ describe("cad-core", () => {
     ).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
-      issueCount: 0,
+      status: "under-defined",
+      issueCount: 2,
       authoredExtrudeCount: 2,
       attachedSketchCount: 0,
+      sketchEvaluationCount: 2,
       namedReferenceCount: 0,
+      sketchEvaluations: expect.arrayContaining([
+        expect.objectContaining({
+          sketchId: "sketch_1",
+          status: "under-defined",
+          drivenEntityIds: [],
+          affectedFeatureIds: ["feat_rect_1"],
+          affectedBodyIds: ["body_rect_1"],
+          issues: [
+            expect.objectContaining({
+              code: "UNDER_DEFINED_SKETCH",
+              sketchId: "sketch_1"
+            })
+          ]
+        }),
+        expect.objectContaining({
+          sketchId: "sketch_circle",
+          status: "under-defined",
+          affectedFeatureIds: ["feat_circle_1"],
+          affectedBodyIds: ["body_circle_1"],
+          issues: [
+            expect.objectContaining({
+              code: "UNDER_DEFINED_SKETCH",
+              sketchId: "sketch_circle"
+            })
+          ]
+        })
+      ]),
       authoredExtrudes: [
         {
           featureId: "feat_rect_1",
@@ -4555,8 +4718,8 @@ describe("cad-core", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
-      issueCount: 0,
+      status: "under-defined",
+      issueCount: 2,
       authoredExtrudeCount: 2,
       attachedSketchCount: 1,
       attachedSketches: [
@@ -4611,7 +4774,7 @@ describe("cad-core", () => {
     ).toMatchObject({
       ok: true,
       status: "stale",
-      issueCount: 2,
+      issueCount: 3,
       authoredExtrudeCount: 0,
       attachedSketches: [
         {
@@ -4645,7 +4808,7 @@ describe("cad-core", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       authoredExtrudeCount: 1,
       attachedSketches: [{ sketchId: "sketch_face_1", status: "healthy" }],
       namedReferences: [{ name: "Top face", status: "healthy" }]
@@ -4708,8 +4871,8 @@ describe("cad-core", () => {
     ).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
-      issueCount: 0,
+      status: "under-defined",
+      issueCount: 2,
       authoredExtrudeCount: 2,
       attachedSketchCount: 1,
       namedReferenceCount: 1,
@@ -7984,6 +8147,54 @@ describe("cad-core", () => {
     expect(engine.getTransactions()).toEqual([]);
   });
 
+  it("preserves generated sketch constraint counters in worker dry-runs", async () => {
+    const engine = new CadEngine();
+    const worker = new MockCadCommandWorker();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [1, 1]
+      },
+      {
+        op: "sketch.constraint.create",
+        name: "Initial horizontal",
+        sketchId: "sketch_1",
+        kind: "horizontal",
+        entityId: "line_1"
+      },
+      { op: "sketch.constraint.delete", id: "skcon_1" }
+    ]);
+
+    const response = await worker.execute({
+      id: "request_constraint_counter",
+      document: engine.createSnapshot(),
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            name: "Preview vertical",
+            sketchId: "sketch_1",
+            kind: "vertical",
+            entityId: "line_1"
+          }
+        ]
+      }
+    });
+
+    expect(response.response).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchConstraintIds: ["skcon_2"]
+    });
+  });
+
   it("commits async batches through the authoritative engine after worker validation", async () => {
     const engine = new CadEngine();
     const executor = new AsyncCadCommandExecutor(
@@ -8706,7 +8917,7 @@ describe("cad-core", () => {
     expect(health).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
+      status: "under-defined",
       authoredExtrudes: expect.arrayContaining([
         expect.objectContaining({
           featureId: "feat_add",
@@ -8880,7 +9091,7 @@ describe("cad-core", () => {
     expect(health).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
+      status: "under-defined",
       attachedSketches: [
         expect.objectContaining({
           sketchId: "sketch_add_face",
@@ -9051,7 +9262,7 @@ describe("cad-core", () => {
     expect(health).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
+      status: "under-defined",
       authoredExtrudes: expect.arrayContaining([
         expect.objectContaining({
           featureId: "feat_circle_cut",
@@ -11118,11 +11329,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       sketchId: "sketch_1",
       sketchName: "Profile",
       plane: "XY",
-      status: "healthy",
+      status: "under-defined",
       drivenEntityCount: 2,
       drivenEntityIds: ["rect_1", "circle_1"],
       dimensionCount: 3,
-      issueCount: 0,
+      issueCount: 1,
       dimensions: expect.arrayContaining([
         expect.objectContaining({
           id: "dim_w",
@@ -11289,7 +11500,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toMatchObject({
       ok: true,
       query: "sketch.evaluation",
-      status: "healthy",
+      status: "under-defined",
       drivenEntityIds: ["line_1"],
       dimensions: [
         expect.objectContaining({
@@ -11375,7 +11586,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toMatchObject({
       ok: true,
       query: "sketch.evaluation",
-      status: "healthy",
+      status: "under-defined",
       sketchId: "sketch_1",
       dimensions: [
         expect.objectContaining({
@@ -11383,7 +11594,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           effectiveValue: 6
         })
       ],
-      issueCount: 0
+      issueCount: 1
     });
     expect(
       restored.executeQuery({
@@ -11629,6 +11840,41 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           sketchEntityId: "line_zero",
           expected: "line with a non-zero direction",
           received: "zero-length line"
+        })
+      ])
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "missing-source",
+      sketchDimensions: expect.arrayContaining([
+        expect.objectContaining({
+          dimensionId: "dim_zero_line",
+          status: "unsupported",
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INVALID_SKETCH_DIMENSION_VALUE",
+              sketchDimensionId: "dim_zero_line",
+              received: "zero-length line"
+            })
+          ])
+        }),
+        expect.objectContaining({
+          dimensionId: "dim_missing_parameter",
+          status: "missing-source",
+          parameterId: "missing_parameter",
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "PARAMETER_NOT_FOUND",
+              parameterId: "missing_parameter"
+            })
+          ])
         })
       ])
     });
@@ -12026,7 +12272,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       expect(health).toMatchObject({
         ok: true,
         query: "project.health",
-        status: "healthy",
+        status: "under-defined",
         sketchConstraintCount: 1,
         sketchConstraints: [
           expect.objectContaining({
@@ -12294,7 +12540,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
+      status: "under-defined",
       sketchConstraints: [
         expect.objectContaining({
           constraintId: "mid_rect",
@@ -12770,7 +13016,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
+      status: "under-defined",
       sketchConstraints: expect.arrayContaining([
         expect.objectContaining({
           constraintId: "perpendicular_rect",
@@ -12998,7 +13244,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toMatchObject({
       ok: true,
       query: "project.health",
-      status: "healthy",
+      status: "under-defined",
       sketchDimensions: [
         expect.objectContaining({
           dimensionId: "dim_perpendicular_secondary_length",
@@ -13413,7 +13659,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       constraints: expect.arrayContaining([
         expect.objectContaining({
           id: "mid_point",
@@ -13506,7 +13752,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       sketchConstraints: expect.arrayContaining([
         expect.objectContaining({
           constraintId: "mid_point",
@@ -14089,7 +14335,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       drivenEntityIds: ["line_1"],
       constraintCount: 1,
       constraints: [
@@ -14373,7 +14619,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       constraintCount: 4,
       constraints: expect.arrayContaining([
         expect.objectContaining({
@@ -14651,7 +14897,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       drivenEntityIds: ["point_1", "line_1", "rect_1", "circle_1"],
       constraints: expect.arrayContaining([
         expect.objectContaining({
@@ -15131,7 +15377,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       constraints: expect.arrayContaining([
         expect.objectContaining({
           id: "mid_point",
@@ -15475,7 +15721,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       constraints: [
         expect.objectContaining({
           id: "parallel_1",
@@ -15758,7 +16004,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       constraints: [
         expect.objectContaining({
           id: "perpendicular_1",
@@ -16077,7 +16323,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       dimensions: expect.arrayContaining([
         expect.objectContaining({
           id: "dim_fixed_line",
@@ -16169,7 +16415,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).toMatchObject({
       ok: true,
-      status: "healthy",
+      status: "under-defined",
       dimensions: expect.arrayContaining([
         expect.objectContaining({
           id: "dim_coincident_line",
