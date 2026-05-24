@@ -252,7 +252,10 @@ export function createAvailableSketchConstraintKindOptions(
       constraints
     ).length > 0
   ) {
-    options.push({ kind: "parallel", label: "Parallel" });
+    options.push(
+      { kind: "parallel", label: "Parallel" },
+      { kind: "perpendicular", label: "Perpendicular" }
+    );
   }
 
   return options;

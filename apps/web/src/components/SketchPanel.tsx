@@ -482,12 +482,11 @@ export function SketchPanel({
       )
         ? (selectedPrimaryTargetOption.coordinate?.[1] ?? 0)
         : constraintCreateForm.coordinateY,
-    secondaryEntityId:
-      selectedCreateConstraintKind === "parallel"
-        ? (selectedParallelTargetOption?.entityId ??
-          constraintCreateForm.secondaryEntityId)
-        : (selectedSecondaryTargetOption?.target.entityId ??
-          constraintCreateForm.secondaryEntityId),
+    secondaryEntityId: isLinePairConstraintKind(selectedCreateConstraintKind)
+      ? (selectedParallelTargetOption?.entityId ??
+        constraintCreateForm.secondaryEntityId)
+      : (selectedSecondaryTargetOption?.target.entityId ??
+        constraintCreateForm.secondaryEntityId),
     secondaryTargetRole:
       selectedSecondaryTargetOption?.target.role ??
       constraintCreateForm.secondaryTargetRole,
@@ -664,7 +663,7 @@ export function SketchPanel({
     }
 
     if (
-      selectedCreateConstraintKind === "parallel" &&
+      isLinePairConstraintKind(selectedCreateConstraintKind) &&
       !selectedParallelTargetOption
     ) {
       return;
@@ -2024,7 +2023,7 @@ function SketchConstraintControls({
                     coincidentTargetOptions.length === 0)) ||
                 (createForm.kind === "midpoint" &&
                   midpointTargetOptions.length === 0) ||
-                (createForm.kind === "parallel" &&
+                (isLinePairConstraintKind(createForm.kind) &&
                   parallelTargetOptions.length === 0)
               }
               onClick={onCreateConstraint}
@@ -2313,7 +2312,7 @@ function ConstraintTargetFields({
     );
   }
 
-  if (form.kind === "parallel") {
+  if (isLinePairConstraintKind(form.kind)) {
     return (
       <div className="dimension-value-source">
         <div className="readonly-field">
@@ -2321,7 +2320,7 @@ function ConstraintTargetFields({
           <strong>Selected line</strong>
         </div>
         <label>
-          Parallel to
+          {form.kind === "parallel" ? "Parallel to" : "Perpendicular to"}
           <select
             value={selectedParallelTargetOption?.entityId ?? ""}
             disabled={disabled || parallelTargetOptions.length === 0}
@@ -2403,6 +2402,12 @@ function ConstraintTargetFields({
       </label>
     </div>
   );
+}
+
+function isLinePairConstraintKind(
+  kind: SketchConstraintForm["kind"] | undefined
+): kind is "parallel" | "perpendicular" {
+  return kind === "parallel" || kind === "perpendicular";
 }
 
 function DimensionValueSourceFields({

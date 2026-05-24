@@ -379,7 +379,20 @@ describe("sketch panel UI helpers", () => {
       { kind: "fixed", label: "Fixed point" },
       { kind: "coincident", label: "Coincident" },
       { kind: "midpoint", label: "Midpoint" },
-      { kind: "parallel", label: "Parallel" }
+      { kind: "parallel", label: "Parallel" },
+      { kind: "perpendicular", label: "Perpendicular" }
+    ]);
+    expect(
+      createAvailableSketchConstraintKindOptions(
+        line,
+        [perpendicularConstraint],
+        [line, secondLine]
+      )
+    ).toEqual([
+      { kind: "horizontal", label: "Horizontal" },
+      { kind: "vertical", label: "Vertical" },
+      { kind: "fixed", label: "Fixed point" },
+      { kind: "coincident", label: "Coincident" }
     ]);
     expect(
       createAvailableSketchConstraintKindOptions(
