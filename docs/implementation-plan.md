@@ -44,7 +44,8 @@ and focused packages:
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
-  line constraints, fixed and coincident point constraints,
+  line constraints, fixed/coincident/midpoint point constraints, parallel line
+  constraints,
   authored rectangle/circle extrude features, narrow
   rectangle-tool add/cut boolean source data, named references, and versioned
   project JSON import/export.
@@ -428,7 +429,7 @@ Planned deliverables:
 - add tests proving V3 rectangle width/height, circle radius, line length, and
   horizontal/vertical behavior is unchanged.
 
-### V4 Phase B: Coincident And Fixed Point Constraints
+### V4 Phase B: Point And Line Constraints
 
 Goal: add the first genuinely solver-shaped constraints.
 
@@ -442,9 +443,13 @@ Implemented:
 - coincident constraints use a deterministic first-slice evaluator: fixed
   target wins, otherwise secondary target moves to primary target, conflicting
   fixed coordinates fail clearly;
+- source-of-truth midpoint constraints from a line midpoint to a point/center
+  target;
+- source-of-truth parallel line constraints from a primary reference line to a
+  secondary driven line;
 - CADOps validation, semantic diffs, undo/redo, batch dry-run/commit,
   import/export, and adapter/MCP pass-through;
-- `web-cad.project.v10` with V1 through V9 import compatibility;
+- `web-cad.project.v12` with V1 through V11 import compatibility;
 - tests for successful solve cases and structured failure states.
 
 ### V4 Phase C: Solver-Backed Dimensions And Orientation Constraints
@@ -452,12 +457,14 @@ Implemented:
 Goal: move V3 dimensions and orientation constraints through the common solver
 boundary and make supported combinations coherent.
 
-Planned deliverables:
+Implemented:
 
 - line length, rectangle width/height, circle radius, horizontal, and vertical
   behavior evaluated through the common path;
 - supported combinations such as fixed endpoint plus line length and coincident
   endpoints plus orientation;
+- parallel constraints preserve the secondary line midpoint/length and match
+  the primary line direction;
 - conflict detection for supported constraints that disagree;
 - structured under-defined, over-defined, inconsistent, missing-target,
   invalid-value, and unsupported statuses.

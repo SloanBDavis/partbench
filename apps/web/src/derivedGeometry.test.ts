@@ -1186,6 +1186,78 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("updates derived source keys after parallel constraints drive an extruded profile", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "parallel_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "parallel_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "parallel_profile",
+        name: "Profile parallel",
+        sketchId: "sketch_1",
+        kind: "parallel",
+        primaryLineEntityId: "parallel_primary",
+        secondaryLineEntityId: "parallel_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_profile_center",
+        name: "Profile center",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "parallel_secondary", role: "end" },
+        secondaryTarget: { entityId: "rect_1", role: "center" }
+      }
+    ]);
+
+    const initialSource = getDerivedSources(engine).find(
+      (source) => source.kind === "extrude" && source.id === "body_rect_1"
+    );
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "parallel_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    const editedSource = getDerivedSources(engine).find(
+      (source) => source.kind === "extrude" && source.id === "body_rect_1"
+    );
+
+    expect(initialSource).toBeDefined();
+    expect(editedSource).toBeDefined();
+    if (!initialSource || !editedSource || editedSource.kind !== "extrude") {
+      throw new Error("Expected extrude sources.");
+    }
+
+    expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
+      createDerivedGeometryCacheKey(editedSource)
+    );
+    expect(editedSource.profile).toMatchObject({
+      kind: "rectangle",
+      center: [0, 2]
+    });
+  });
+
   it("derives cut result sources from active circle target and rectangle tool extrudes", async () => {
     const engine = new CadEngine();
 

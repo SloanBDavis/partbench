@@ -2293,6 +2293,13 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               end: [3, 4]
             },
             {
+              op: "sketch.addLine",
+              sketchId: "sketch_1",
+              id: "line_2",
+              start: [10, 0],
+              end: [10, 2]
+            },
+            {
               op: "sketch.addPoint",
               sketchId: "sketch_1",
               id: "point_1",
@@ -2362,6 +2369,15 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               kind: "midpoint",
               lineEntityId: "line_1",
               target: { entityId: "point_mid", role: "position" }
+            },
+            {
+              op: "sketch.constraint.create",
+              id: "con_parallel",
+              name: "Parallel lines",
+              sketchId: "sketch_1",
+              kind: "parallel",
+              primaryLineEntityId: "line_1",
+              secondaryLineEntityId: "line_2"
             }
           ]
         }
@@ -2379,7 +2395,8 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
           "con_horizontal",
           "con_fixed_start",
           "con_coincident_end",
-          "con_midpoint"
+          "con_midpoint",
+          "con_parallel"
         ]
       }
     });
@@ -2445,9 +2462,15 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
         sketchName: "Profile",
         plane: "XY",
         status: "healthy",
-        drivenEntityIds: ["circle_1", "line_1", "point_1", "point_mid"],
+        drivenEntityIds: [
+          "circle_1",
+          "line_1",
+          "point_1",
+          "point_mid",
+          "line_2"
+        ],
         dimensionCount: 2,
-        constraintCount: 4,
+        constraintCount: 5,
         issueCount: 0,
         constraints: [
           expect.objectContaining({
@@ -2473,6 +2496,13 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
             kind: "midpoint",
             lineEntityId: "line_1",
             target: { entityId: "point_mid", role: "position" },
+            status: "healthy"
+          }),
+          expect.objectContaining({
+            id: "con_parallel",
+            kind: "parallel",
+            primaryLineEntityId: "line_1",
+            secondaryLineEntityId: "line_2",
             status: "healthy"
           })
         ],

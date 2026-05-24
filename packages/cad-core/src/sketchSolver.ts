@@ -147,7 +147,13 @@ export function evaluateSketch(
                 constraint.lineEntityId,
                 constraint.target.entityId
               ]
-            : [constraint.entityId]
+            : constraint.kind === "parallel"
+              ? [
+                  constraint.entityId,
+                  constraint.primaryLineEntityId,
+                  constraint.secondaryLineEntityId
+                ]
+              : [constraint.entityId]
       )
     ])
   ];
@@ -339,6 +345,14 @@ export function evaluateSketchConstraint(
 
   if (constraint.kind === "midpoint") {
     return evaluateMidpointSketchConstraint(
+      document,
+      constraint,
+      evaluatedEntities
+    );
+  }
+
+  if (constraint.kind === "parallel") {
+    return evaluateParallelSketchConstraint(
       document,
       constraint,
       evaluatedEntities
@@ -998,6 +1012,194 @@ function evaluateMidpointSketchConstraint(
   };
 }
 
+function evaluateParallelSketchConstraint(
+  document: SketchSolverDocument,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "parallel" }>,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
+): SketchConstraintEntry {
+  const issues: SketchConstraintIssue[] = [];
+  const sketch = document.sketches.get(constraint.sketchId);
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${constraint.sketchId}`,
+      sketchId: constraint.sketchId,
+      sketchConstraintId: constraint.id
+    });
+  }
+
+  const primaryLine =
+    evaluatedEntities?.get(constraint.primaryLineEntityId) ??
+    sketch?.entities.get(constraint.primaryLineEntityId);
+  const secondaryLine =
+    evaluatedEntities?.get(constraint.secondaryLineEntityId) ??
+    sketch?.entities.get(constraint.secondaryLineEntityId);
+
+  if (sketch && !primaryLine) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.primaryLineEntityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.primaryLineEntityId,
+      sketchConstraintId: constraint.id
+    });
+  }
+
+  if (sketch && !secondaryLine) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.secondaryLineEntityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryLineEntityId,
+      sketchConstraintId: constraint.id
+    });
+  }
+
+  if (primaryLine && primaryLine.kind !== "line") {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Parallel sketch constraint primary target is not a line entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.primaryLineEntityId,
+      sketchConstraintId: constraint.id,
+      expected: "line entity",
+      received: primaryLine.kind
+    });
+  }
+
+  if (secondaryLine && secondaryLine.kind !== "line") {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Parallel sketch constraint secondary target is not a line entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryLineEntityId,
+      sketchConstraintId: constraint.id,
+      expected: "line entity",
+      received: secondaryLine.kind
+    });
+  }
+
+  if (constraint.primaryLineEntityId === constraint.secondaryLineEntityId) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message: "Parallel sketch constraint line targets must be distinct.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryLineEntityId,
+      sketchConstraintId: constraint.id,
+      expected: "distinct line entity ids",
+      received: "same line entity id"
+    });
+  }
+
+  const duplicate = [...document.sketchConstraints.values()].find(
+    (candidate) =>
+      candidate.id !== constraint.id &&
+      candidate.sketchId === constraint.sketchId &&
+      candidate.kind === "parallel" &&
+      candidate.primaryLineEntityId === constraint.primaryLineEntityId &&
+      candidate.secondaryLineEntityId === constraint.secondaryLineEntityId
+  );
+
+  if (duplicate) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message: `Line pair already has a parallel constraint: ${duplicate.id}.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryLineEntityId,
+      sketchConstraintId: constraint.id,
+      expected: "one parallel constraint per ordered line pair",
+      received: duplicate.id
+    });
+  }
+
+  const primaryDirection =
+    primaryLine?.kind === "line" && getLineLength(primaryLine) > 0
+      ? getLineDirection(primaryLine)
+      : undefined;
+  const secondaryDirection =
+    secondaryLine?.kind === "line" && getLineLength(secondaryLine) > 0
+      ? getLineDirection(secondaryLine)
+      : undefined;
+
+  if (primaryLine?.kind === "line" && getLineLength(primaryLine) <= 0) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message:
+        "Parallel sketch constraint primary line cannot be zero-length because the direction is ambiguous.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.primaryLineEntityId,
+      sketchConstraintId: constraint.id,
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  if (secondaryLine?.kind === "line" && getLineLength(secondaryLine) <= 0) {
+    issues.push({
+      code: "INVALID_VALUE",
+      message:
+        "Parallel sketch constraint secondary line cannot be zero-length because the direction is ambiguous.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.secondaryLineEntityId,
+      sketchConstraintId: constraint.id,
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  if (primaryLine?.kind === "line" && secondaryLine?.kind === "line") {
+    const result = applyParallelSketchConstraintValue(
+      secondaryLine,
+      constraint,
+      {
+        document,
+        sketchId: constraint.sketchId,
+        entities:
+          evaluatedEntities ??
+          sketch?.entities ??
+          new Map<SketchEntityId, SketchEntitySnapshot>()
+      }
+    );
+
+    if (!result.ok) {
+      issues.push({
+        code: "INCONSISTENT_CONSTRAINT",
+        message: result.issue.message,
+        sketchId: result.issue.sketchId,
+        sketchEntityId: result.issue.sketchEntityId,
+        sketchConstraintId: result.issue.sketchConstraintId,
+        expected: result.issue.expected,
+        received: result.issue.received
+      });
+    } else if (
+      result.entity.kind === "line" &&
+      !lineDirectionsParallel(primaryLine, result.entity)
+    ) {
+      issues.push({
+        code: "INCONSISTENT_CONSTRAINT",
+        message:
+          "Parallel sketch constraint secondary line does not match the primary line direction.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.secondaryLineEntityId,
+        sketchConstraintId: constraint.id,
+        expected: formatVec2(getLineDirection(primaryLine)),
+        received: formatVec2(getLineDirection(result.entity))
+      });
+    }
+  }
+
+  return {
+    ...cloneSketchConstraintSnapshot(constraint),
+    status: getSketchEvaluationStatus(issues),
+    issues,
+    ...(primaryDirection ? { primaryDirection } : {}),
+    ...(secondaryDirection ? { secondaryDirection } : {})
+  };
+}
+
 export function evaluateSketchGeometry(
   document: SketchSolverDocument,
   sketch: SketchSolverSketch
@@ -1081,6 +1283,28 @@ export function evaluateSketchGeometry(
     }
 
     const result = applySketchLineEvaluation(entity, {
+      document,
+      sketchId: sketch.id,
+      entities
+    });
+
+    if (result.ok) {
+      entities.set(result.entity.id, result.entity);
+    }
+  }
+
+  for (const constraint of document.sketchConstraints.values()) {
+    if (constraint.sketchId !== sketch.id || constraint.kind !== "parallel") {
+      continue;
+    }
+
+    const secondary = entities.get(constraint.secondaryLineEntityId);
+
+    if (secondary?.kind !== "line") {
+      continue;
+    }
+
+    const result = applyParallelSketchConstraintValue(secondary, constraint, {
       document,
       sketchId: sketch.id,
       entities
@@ -1278,6 +1502,28 @@ export function applySketchConstraintValue(
     };
   }
 
+  if (constraint.kind === "parallel") {
+    if (entity.kind === "line" && context) {
+      return applyParallelSketchConstraintValue(entity, constraint, context);
+    }
+
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: "Parallel sketch constraints require sketch-level evaluation.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.secondaryLineEntityId,
+        sketchConstraintId: constraint.id,
+        pathField: "secondaryLineEntityId",
+        expected: "sketch-level parallel evaluation",
+        received:
+          entity.kind === "line" ? "single entity evaluation" : entity.kind
+      }
+    };
+  }
+
   if (entity.kind !== "line") {
     return {
       ok: false,
@@ -1364,7 +1610,12 @@ export function sketchConstraintMatchesLine(
   kind: SketchConstraintKind,
   entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
 ): boolean {
-  if (kind === "fixed" || kind === "coincident" || kind === "midpoint") {
+  if (
+    kind === "fixed" ||
+    kind === "coincident" ||
+    kind === "midpoint" ||
+    kind === "parallel"
+  ) {
     return true;
   }
 
@@ -1610,6 +1861,211 @@ function applySketchLineEvaluation(
         center[0] + direction[0] * half,
         center[1] + direction[1] * half
       ])
+    }
+  };
+}
+
+function applyParallelSketchConstraintValue(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "parallel" }>,
+  context: SketchSolverApplyContext
+): SketchSolverEntityResult {
+  if (entity.id !== constraint.secondaryLineEntityId) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Parallel sketch constraint can only update its secondary line target.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: entity.id,
+        sketchConstraintId: constraint.id,
+        pathField: "secondaryLineEntityId",
+        expected: constraint.secondaryLineEntityId,
+        received: entity.id
+      }
+    };
+  }
+
+  const primary = context.entities.get(constraint.primaryLineEntityId);
+
+  if (!primary) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: `Sketch entity does not exist: ${constraint.primaryLineEntityId}`,
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.primaryLineEntityId,
+        sketchConstraintId: constraint.id,
+        pathField: "primaryLineEntityId",
+        expected: "existing primary line entity id",
+        received: constraint.primaryLineEntityId
+      }
+    };
+  }
+
+  if (primary.kind !== "line") {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Parallel sketch constraint primary target is not a line entity.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.primaryLineEntityId,
+        sketchConstraintId: constraint.id,
+        pathField: "primaryLineEntityId",
+        expected: "line entity",
+        received: primary.kind
+      }
+    };
+  }
+
+  const primaryLength = getLineLength(primary);
+  const secondaryLength = getLineLength(entity);
+
+  if (primaryLength <= 0) {
+    return createParallelAmbiguityResult(
+      constraint,
+      constraint.primaryLineEntityId,
+      "primaryLineEntityId",
+      "primary"
+    );
+  }
+
+  if (secondaryLength <= 0) {
+    return createParallelAmbiguityResult(
+      constraint,
+      constraint.secondaryLineEntityId,
+      "secondaryLineEntityId",
+      "secondary"
+    );
+  }
+
+  const orientation = getLineOrientationConstraint(context, entity.id);
+  const primaryDirection = getLineDirection(primary);
+
+  if (
+    orientation &&
+    ((orientation.kind === "horizontal" &&
+      !numbersEqual(primaryDirection[1], 0)) ||
+      (orientation.kind === "vertical" &&
+        !numbersEqual(primaryDirection[0], 0)))
+  ) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Parallel sketch constraint cannot satisfy the secondary line's orientation constraint.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: entity.id,
+        sketchConstraintId: constraint.id,
+        pathField: "secondaryLineEntityId",
+        expected: `${orientation.kind} primary line direction`,
+        received: formatVec2(primaryDirection)
+      }
+    };
+  }
+
+  const center = getLineMidpoint(entity);
+  const half = secondaryLength / 2;
+  const candidate: Extract<SketchEntitySnapshot, { readonly kind: "line" }> = {
+    ...entity,
+    start: cleanVec2([
+      center[0] - primaryDirection[0] * half,
+      center[1] - primaryDirection[1] * half
+    ]),
+    end: cleanVec2([
+      center[0] + primaryDirection[0] * half,
+      center[1] + primaryDirection[1] * half
+    ])
+  };
+  const startAnchor = resolveLineEndpointAnchor(context, entity, "start");
+
+  if (!startAnchor.ok) {
+    return { ok: false, issue: startAnchor.issue };
+  }
+
+  if (
+    startAnchor.coordinate &&
+    !vec2Equal(candidate.start, startAnchor.coordinate)
+  ) {
+    return createParallelAnchorConflictResult(
+      constraint,
+      entity.id,
+      "start",
+      startAnchor.coordinate,
+      candidate.start
+    );
+  }
+
+  const endAnchor = resolveLineEndpointAnchor(context, entity, "end");
+
+  if (!endAnchor.ok) {
+    return { ok: false, issue: endAnchor.issue };
+  }
+
+  if (endAnchor.coordinate && !vec2Equal(candidate.end, endAnchor.coordinate)) {
+    return createParallelAnchorConflictResult(
+      constraint,
+      entity.id,
+      "end",
+      endAnchor.coordinate,
+      candidate.end
+    );
+  }
+
+  return { ok: true, entity: candidate };
+}
+
+function createParallelAmbiguityResult(
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "parallel" }>,
+  entityId: SketchEntityId,
+  pathField: string,
+  role: "primary" | "secondary"
+): SketchSolverEntityResult {
+  return {
+    ok: false,
+    issue: {
+      kind: "constraint",
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: `Parallel sketch constraint ${role} line cannot be zero-length because the direction is ambiguous.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: entityId,
+      sketchConstraintId: constraint.id,
+      pathField,
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    }
+  };
+}
+
+function createParallelAnchorConflictResult(
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "parallel" }>,
+  entityId: SketchEntityId,
+  role: "start" | "end",
+  expected: Vec2,
+  received: Vec2
+): SketchSolverEntityResult {
+  return {
+    ok: false,
+    issue: {
+      kind: "constraint",
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        "Parallel sketch constraint cannot satisfy a fixed/coincident endpoint anchor on the secondary line.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: entityId,
+      sketchConstraintId: constraint.id,
+      pathField: `secondaryLineEntityId.${role}`,
+      expected: formatVec2(expected),
+      received: formatVec2(received)
     }
   };
 }
@@ -2215,6 +2671,34 @@ function getLineMidpoint(
   ]);
 }
 
+function getLineDirection(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
+): Vec2 {
+  const length = getLineLength(entity);
+
+  return cleanVec2([
+    (entity.end[0] - entity.start[0]) / length,
+    (entity.end[1] - entity.start[1]) / length
+  ]);
+}
+
+function lineDirectionsParallel(
+  primary: Extract<SketchEntitySnapshot, { readonly kind: "line" }>,
+  secondary: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
+): boolean {
+  if (getLineLength(primary) <= 0 || getLineLength(secondary) <= 0) {
+    return false;
+  }
+
+  const primaryDirection = getLineDirection(primary);
+  const secondaryDirection = getLineDirection(secondary);
+
+  return (
+    numbersEqual(primaryDirection[0], secondaryDirection[0]) &&
+    numbersEqual(primaryDirection[1], secondaryDirection[1])
+  );
+}
+
 function getSketchPointTargetCoordinate(
   entity: SketchEntitySnapshot,
   target: SketchPointTarget
@@ -2411,6 +2895,18 @@ function cloneSketchConstraintSnapshot(
       kind: "midpoint",
       lineEntityId: constraint.lineEntityId,
       target: { ...constraint.target }
+    };
+  }
+
+  if (constraint.kind === "parallel") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "parallel",
+      primaryLineEntityId: constraint.primaryLineEntityId,
+      secondaryLineEntityId: constraint.secondaryLineEntityId
     };
   }
 

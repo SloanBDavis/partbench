@@ -441,6 +441,18 @@ function createSketchConstraintHealth(
           target: constraint.target
         }
       : {}),
+    ...(constraint.kind === "parallel"
+      ? {
+          primaryLineEntityId: constraint.primaryLineEntityId,
+          secondaryLineEntityId: constraint.secondaryLineEntityId
+        }
+      : {}),
+    ...(entry.primaryDirection
+      ? { primaryDirection: entry.primaryDirection }
+      : {}),
+    ...(entry.secondaryDirection
+      ? { secondaryDirection: entry.secondaryDirection }
+      : {}),
     ...(entry.currentCoordinate
       ? { currentCoordinate: entry.currentCoordinate }
       : {}),
@@ -634,6 +646,19 @@ function getSketchConstraintAffectedTargets(
     return [
       { sketchId: constraint.sketchId, entityId: constraint.lineEntityId },
       { sketchId: constraint.sketchId, entityId: constraint.target.entityId }
+    ];
+  }
+
+  if (constraint.kind === "parallel") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryLineEntityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryLineEntityId
+      }
     ];
   }
 

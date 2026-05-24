@@ -89,7 +89,8 @@ export type SketchConstraintKind =
   | "vertical"
   | "fixed"
   | "coincident"
-  | "midpoint";
+  | "midpoint"
+  | "parallel";
 
 export type SketchPointTargetRole = "position" | "start" | "end" | "center";
 
@@ -413,7 +414,8 @@ export type SketchConstraintCreateOp =
   | SketchOrientationConstraintCreateOp
   | SketchFixedConstraintCreateOp
   | SketchCoincidentConstraintCreateOp
-  | SketchMidpointConstraintCreateOp;
+  | SketchMidpointConstraintCreateOp
+  | SketchParallelConstraintCreateOp;
 
 export interface SketchOrientationConstraintCreateOp {
   readonly op: "sketch.constraint.create";
@@ -452,6 +454,16 @@ export interface SketchMidpointConstraintCreateOp {
   readonly kind: "midpoint";
   readonly lineEntityId: SketchEntityId;
   readonly target: SketchPointTarget;
+}
+
+export interface SketchParallelConstraintCreateOp {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly kind: "parallel";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
 }
 
 export interface SketchConstraintRenameOp {
@@ -567,6 +579,8 @@ export interface CadSketchConstraintRef {
   readonly primaryTarget?: SketchPointTarget;
   readonly secondaryTarget?: SketchPointTarget;
   readonly lineEntityId?: SketchEntityId;
+  readonly primaryLineEntityId?: SketchEntityId;
+  readonly secondaryLineEntityId?: SketchEntityId;
 }
 
 export interface DocumentSemanticDiff {
@@ -1042,7 +1056,8 @@ export type SketchConstraintSnapshot =
   | SketchOrientationConstraintSnapshot
   | SketchFixedConstraintSnapshot
   | SketchCoincidentConstraintSnapshot
-  | SketchMidpointConstraintSnapshot;
+  | SketchMidpointConstraintSnapshot
+  | SketchParallelConstraintSnapshot;
 
 export interface SketchOrientationConstraintSnapshot {
   readonly id: SketchConstraintId;
@@ -1080,6 +1095,16 @@ export interface SketchMidpointConstraintSnapshot {
   readonly kind: "midpoint";
   readonly lineEntityId: SketchEntityId;
   readonly target: SketchPointTarget;
+}
+
+export interface SketchParallelConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "parallel";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
 }
 
 export interface SketchDimensionIssue {
@@ -1124,6 +1149,8 @@ export type SketchConstraintEntry = SketchConstraintSnapshot & {
   readonly primaryCurrentCoordinate?: Vec2;
   readonly secondaryCurrentCoordinate?: Vec2;
   readonly resolvedCoordinate?: Vec2;
+  readonly primaryDirection?: Vec2;
+  readonly secondaryDirection?: Vec2;
 };
 
 export type SketchAttachmentSnapshot = SketchGeneratedFaceAttachmentSnapshot;
@@ -1654,10 +1681,14 @@ export interface CadSketchConstraintHealth {
   readonly primaryTarget?: SketchPointTarget;
   readonly secondaryTarget?: SketchPointTarget;
   readonly lineEntityId?: SketchEntityId;
+  readonly primaryLineEntityId?: SketchEntityId;
+  readonly secondaryLineEntityId?: SketchEntityId;
   readonly currentCoordinate?: Vec2;
   readonly primaryCurrentCoordinate?: Vec2;
   readonly secondaryCurrentCoordinate?: Vec2;
   readonly resolvedCoordinate?: Vec2;
+  readonly primaryDirection?: Vec2;
+  readonly secondaryDirection?: Vec2;
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 

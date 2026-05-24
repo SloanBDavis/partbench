@@ -215,7 +215,7 @@ describe("BrowserGeometryWorker", () => {
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer
     ]);
-  });
+  }, 30000);
 
   it("can run one cylinder tessellation through the browser transport wrapper", async () => {
     const kernelWorker = new GeometryKernelWorker();

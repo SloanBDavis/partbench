@@ -49,7 +49,7 @@ export interface DimensionStatusDisplay {
 }
 
 export interface SketchConstraintKindOption {
-  readonly kind: SketchConstraintKind;
+  readonly kind: Exclude<SketchConstraintKind, "parallel">;
   readonly label: string;
 }
 
@@ -255,6 +255,8 @@ export function getSketchConstraintKindLabel(
       return "Coincident";
     case "midpoint":
       return "Midpoint";
+    case "parallel":
+      return "Parallel";
   }
 }
 
@@ -448,6 +450,13 @@ export function isSketchConstraintRelatedToEntity(
     );
   }
 
+  if (constraint.kind === "parallel") {
+    return (
+      constraint.primaryLineEntityId === entityId ||
+      constraint.secondaryLineEntityId === entityId
+    );
+  }
+
   return constraint.entityId === entityId;
 }
 
@@ -503,6 +512,10 @@ function formatSketchConstraintTargetSummary(
     return `${formatSketchPointTarget(constraint.target)} at midpoint of ${
       constraint.lineEntityId
     }`;
+  }
+
+  if (constraint.kind === "parallel") {
+    return `${constraint.secondaryLineEntityId} parallel to ${constraint.primaryLineEntityId}`;
   }
 
   return constraint.entityId;

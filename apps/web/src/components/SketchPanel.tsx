@@ -2626,6 +2626,14 @@ function sketchConstraintToForm(
     };
   }
 
+  if (constraint.kind === "parallel") {
+    return {
+      ...defaultSketchConstraintForm,
+      id: "",
+      name: constraint.name
+    };
+  }
+
   return {
     ...defaultSketchConstraintForm,
     name: constraint.name,

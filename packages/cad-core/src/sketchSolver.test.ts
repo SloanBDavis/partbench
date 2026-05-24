@@ -932,4 +932,93 @@ describe("sketch solver boundary", () => {
       ])
     );
   });
+
+  it("evaluates parallel line constraints by preserving secondary midpoint and length", () => {
+    const sketch = createSketch([
+      { id: "primary", kind: "line", start: [0, 0], end: [3, 4] },
+      { id: "secondary", kind: "line", start: [10, 10], end: [10, 12] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "parallel_1",
+        name: "Parallel",
+        sketchId: sketch.id,
+        entityId: "secondary",
+        kind: "parallel",
+        primaryLineEntityId: "primary",
+        secondaryLineEntityId: "secondary"
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.evaluatedGeometry.entities.get("secondary")).toEqual({
+      id: "secondary",
+      kind: "line",
+      start: [9.4, 10.2],
+      end: [10.6, 11.8]
+    });
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "parallel_1",
+          kind: "parallel",
+          primaryDirection: [0.6, 0.8],
+          secondaryDirection: [0.6, 0.8],
+          status: "healthy"
+        })
+      ])
+    );
+  });
+
+  it("reports parallel constraints as inconsistent when secondary endpoints are fixed away from the solved line", () => {
+    const sketch = createSketch([
+      { id: "primary", kind: "line", start: [0, 0], end: [3, 4] },
+      { id: "secondary", kind: "line", start: [10, 10], end: [10, 12] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_start",
+        name: "Fix start",
+        sketchId: sketch.id,
+        entityId: "secondary",
+        kind: "fixed",
+        target: { entityId: "secondary", role: "start" },
+        coordinate: [10, 10]
+      },
+      {
+        id: "parallel_1",
+        name: "Parallel",
+        sketchId: sketch.id,
+        entityId: "secondary",
+        kind: "parallel",
+        primaryLineEntityId: "primary",
+        secondaryLineEntityId: "secondary"
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "parallel_1",
+          status: "inconsistent",
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INCONSISTENT_CONSTRAINT"
+            })
+          ])
+        })
+      ])
+    );
+  });
 });

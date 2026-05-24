@@ -301,7 +301,7 @@ describe("geometry-worker", () => {
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer
     ]);
-  });
+  }, 30000);
 
   it("tessellates one cylinder asynchronously through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });

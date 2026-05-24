@@ -350,6 +350,15 @@ describe("cad-protocol", () => {
         target: { entityId: "point_1", role: "position" }
       },
       {
+        op: "sketch.constraint.create",
+        id: "con_parallel",
+        name: "Parallel lines",
+        sketchId: "sketch_1",
+        kind: "parallel",
+        primaryLineEntityId: "line_1",
+        secondaryLineEntityId: "line_2"
+      },
+      {
         op: "sketch.constraint.rename",
         id: "con_horizontal",
         name: "Main horizontal"
@@ -364,6 +373,7 @@ describe("cad-protocol", () => {
       "sketch.dimension.update",
       "sketch.dimension.rename",
       "sketch.dimension.delete",
+      "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
@@ -396,6 +406,12 @@ describe("cad-protocol", () => {
       kind: "midpoint",
       lineEntityId: "line_1",
       target: { entityId: "point_1", role: "position" }
+    });
+    expect(ops[9]).toMatchObject({
+      op: "sketch.constraint.create",
+      kind: "parallel",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2"
     });
   });
 

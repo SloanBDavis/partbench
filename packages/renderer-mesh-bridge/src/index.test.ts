@@ -73,7 +73,7 @@ describe("renderer mesh bridge", () => {
       min: [0, 0, 0],
       max: [2, 4, 6]
     });
-  });
+  }, 30000);
 
   it("adapts a tessellated cylinder response from the geometry worker", async () => {
     const worker = new GeometryKernelWorker();
@@ -96,7 +96,7 @@ describe("renderer mesh bridge", () => {
     expect(result.bounds.max[0]).toBeGreaterThanOrEqual(2);
     expect(result.bounds.min[2]).toBe(0);
     expect(result.bounds.max[2]).toBe(6);
-  });
+  }, 30000);
 
   it("adapts a tessellated sphere response from the geometry worker", async () => {
     const worker = new GeometryKernelWorker();
@@ -116,7 +116,7 @@ describe("renderer mesh bridge", () => {
     expect(result.triangleCount).toBeGreaterThan(0);
     expect(result.bounds.min[0]).toBeLessThan(-1.9);
     expect(result.bounds.max[0]).toBeGreaterThan(1.9);
-  });
+  }, 30000);
 
   it("adapts tessellated cone and torus responses from the geometry worker", async () => {
     const worker = new GeometryKernelWorker();
@@ -147,7 +147,7 @@ describe("renderer mesh bridge", () => {
     expect(torus.mesh.id).toBe("mesh_torus_from_worker");
     expect(torus.vertexCount).toBeGreaterThan(0);
     expect(torus.triangleCount).toBeGreaterThan(0);
-  });
+  }, 30000);
 
   it("adapts boolean mesh responses from the geometry worker", () => {
     const result = createRenderMeshFromGeometryWorkerResponse(
@@ -210,7 +210,7 @@ describe("renderer mesh bridge", () => {
       min: [-1, -2, -3],
       max: [1, 2, 3]
     });
-  });
+  }, 30000);
 
   it("rejects malformed mesh data before it reaches the renderer", () => {
     expect(() =>

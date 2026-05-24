@@ -161,7 +161,7 @@ export interface SketchDimensionForm {
 export interface SketchConstraintForm {
   readonly id: string;
   readonly name: string;
-  readonly kind: SketchConstraintKind;
+  readonly kind: Exclude<SketchConstraintKind, "parallel">;
   readonly targetRole: SketchPointTargetRole;
   readonly coordinateMode: "current" | "custom";
   readonly coordinateX: number;

@@ -9,6 +9,7 @@ import type {
 import {
   AsyncCadCommandExecutor,
   CAD_PROJECT_FORMAT_VERSION_V10,
+  CAD_PROJECT_FORMAT_VERSION_V11,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -14726,6 +14727,289 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         message: "before V11"
       }
     );
+  });
+
+  it("creates parallel line constraints through CADOps and preserves project compatibility", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "primary",
+        start: [0, 0],
+        end: [3, 4]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "secondary",
+        start: [10, 10],
+        end: [10, 12]
+      }
+    ]);
+    const op = {
+      op: "sketch.constraint.create" as const,
+      id: "parallel_1",
+      name: "Parallel",
+      sketchId: "sketch_1",
+      kind: "parallel" as const,
+      primaryLineEntityId: "primary",
+      secondaryLineEntityId: "secondary"
+    };
+
+    expect(
+      engine.executeBatch({ version: "cadops.v1", mode: "dryRun", ops: [op] })
+    ).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: ["parallel_1"],
+      modifiedSketchEntityIds: ["secondary"]
+    });
+
+    engine.apply(op);
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({
+            id: "secondary",
+            start: [9.4, 10.2],
+            end: [10.6, 11.8]
+          })
+        ])
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      constraints: [
+        expect.objectContaining({
+          id: "parallel_1",
+          kind: "parallel",
+          primaryLineEntityId: "primary",
+          secondaryLineEntityId: "secondary",
+          primaryDirection: [0.6, 0.8],
+          secondaryDirection: [0.6, 0.8],
+          status: "healthy"
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketchConstraints: [
+        expect.objectContaining({
+          constraintId: "parallel_1",
+          kind: "parallel",
+          primaryLineEntityId: "primary",
+          secondaryLineEntityId: "secondary",
+          primaryDirection: [0.6, 0.8],
+          secondaryDirection: [0.6, 0.8]
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "transaction.history" }
+      })
+    ).toMatchObject({
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: [
+            expect.objectContaining({
+              label: expect.stringContaining("parallel")
+            })
+          ]
+        })
+      ])
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({ ok: true, constraintCount: 0 });
+    engine.redo();
+
+    const project = engine.exportProject();
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.sketchConstraints).toEqual([
+      expect.objectContaining({
+        id: "parallel_1",
+        kind: "parallel",
+        primaryLineEntityId: "primary",
+        secondaryLineEntityId: "secondary"
+      })
+    ]);
+    expect(importCadProject(project).exportProject()).toMatchObject({
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        sketchConstraints: [
+          expect.objectContaining({ id: "parallel_1", kind: "parallel" })
+        ]
+      }
+    });
+
+    const legacyV11Project = {
+      ...project,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V11,
+      document: {
+        ...project.document,
+        sketchConstraints: []
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+    expect(importCadProject(legacyV11Project).exportProject()).toMatchObject({
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: { sketchConstraints: [] }
+    });
+    expectProjectImportError(
+      () =>
+        importCadProject({
+          ...project,
+          schemaVersion: CAD_PROJECT_FORMAT_VERSION_V11
+        }),
+      {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        path: "$.document.sketchConstraints[0].kind",
+        message: "before V12"
+      }
+    );
+  });
+
+  it("rejects invalid parallel line constraints with structured validation errors", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "primary",
+        start: [0, 0],
+        end: [3, 4]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "secondary",
+        start: [10, 10],
+        end: [10, 12]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "zero",
+        start: [1, 1],
+        end: [1, 1]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [1, 1]
+      }
+    ]);
+    const baseOp = {
+      op: "sketch.constraint.create" as const,
+      id: "parallel_1",
+      name: "Parallel",
+      sketchId: "sketch_1",
+      kind: "parallel" as const,
+      primaryLineEntityId: "primary",
+      secondaryLineEntityId: "secondary"
+    };
+
+    engine.apply(baseOp);
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [baseOp]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "SKETCH_CONSTRAINT_ALREADY_EXISTS",
+        sketchConstraintId: "parallel_1"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [{ ...baseOp, id: "parallel_2" }]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "same_line",
+            secondaryLineEntityId: "primary"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "zero_line",
+            primaryLineEntityId: "zero"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT", sketchEntityId: "zero" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "point_target",
+            primaryLineEntityId: "point_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT", sketchEntityId: "point_1" }
+    });
   });
 
   it("solves line length dimensions against fixed and coincident endpoints through CADOps", () => {

@@ -396,7 +396,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V7 = "web-cad.project.v7";
 export const CAD_PROJECT_FORMAT_VERSION_V8 = "web-cad.project.v8";
 export const CAD_PROJECT_FORMAT_VERSION_V9 = "web-cad.project.v9";
 export const CAD_PROJECT_FORMAT_VERSION_V10 = "web-cad.project.v10";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v11";
+export const CAD_PROJECT_FORMAT_VERSION_V11 = "web-cad.project.v11";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v12";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -409,6 +410,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V8
   | typeof CAD_PROJECT_FORMAT_VERSION_V9
   | typeof CAD_PROJECT_FORMAT_VERSION_V10
+  | typeof CAD_PROJECT_FORMAT_VERSION_V11
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -3273,6 +3275,13 @@ function assertSketchConstraintAvailable(
       );
     }
 
+    if (candidate.kind === "parallel" && constraint.kind === "parallel") {
+      return (
+        candidate.primaryLineEntityId === constraint.primaryLineEntityId &&
+        candidate.secondaryLineEntityId === constraint.secondaryLineEntityId
+      );
+    }
+
     return false;
   });
 
@@ -3299,7 +3308,12 @@ function assertSketchConstraintAvailable(
           ? existing.kind === "midpoint" &&
             existing.lineEntityId === constraint.lineEntityId &&
             sketchPointTargetsEqual(existing.target, constraint.target)
-          : true);
+          : constraint.kind === "parallel"
+            ? existing.kind === "parallel" &&
+              existing.primaryLineEntityId === constraint.primaryLineEntityId &&
+              existing.secondaryLineEntityId ===
+                constraint.secondaryLineEntityId
+            : true);
 
   throwValidationError({
     code: isDuplicate
@@ -3312,7 +3326,9 @@ function assertSketchConstraintAvailable(
           ? `Sketch point targets already have a coincident constraint: ${existing.id}.`
           : constraint.kind === "midpoint"
             ? `Line and point target already have a midpoint constraint: ${existing.id}.`
-            : `Line already has a ${constraint.kind} constraint: ${existing.id}.`
+            : constraint.kind === "parallel"
+              ? `Line pair already has a parallel constraint: ${existing.id}.`
+              : `Line already has a ${constraint.kind} constraint: ${existing.id}.`
       : `Line already has a conflicting ${existing.kind} constraint: ${existing.id}.`,
     opIndex,
     sketchId: constraint.sketchId,
@@ -3326,7 +3342,9 @@ function assertSketchConstraintAvailable(
           ? "secondaryTarget"
           : constraint.kind === "midpoint"
             ? "target"
-            : "kind"
+            : constraint.kind === "parallel"
+              ? "secondaryLineEntityId"
+              : "kind"
     ),
     expected:
       constraint.kind === "fixed"
@@ -3335,7 +3353,9 @@ function assertSketchConstraintAvailable(
           ? "unique coincident point pair"
           : constraint.kind === "midpoint"
             ? "unique midpoint line/target pair"
-            : "undriven line orientation",
+            : constraint.kind === "parallel"
+              ? "unique parallel line pair"
+              : "undriven line orientation",
     received: existing.kind
   });
 }
@@ -3398,6 +3418,10 @@ function createSketchConstraintFromOp(
 
   if (op.kind === "midpoint") {
     return createMidpointSketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  if (op.kind === "parallel") {
+    return createParallelSketchConstraintFromOp(state, op, id, opIndex);
   }
 
   return createOrientationSketchConstraintFromOp(state, op, id, opIndex);
@@ -3632,6 +3656,117 @@ function createMidpointSketchConstraintFromOp(
   };
 }
 
+function createParallelSketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    { readonly op: "sketch.constraint.create"; readonly kind: "parallel" }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): SketchConstraint {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const primaryLine = sketch.entities.get(op.primaryLineEntityId);
+  const secondaryLine = sketch.entities.get(op.secondaryLineEntityId);
+
+  if (!primaryLine) {
+    throwSketchEntityNotFound(op.sketchId, op.primaryLineEntityId, opIndex);
+  }
+
+  if (!secondaryLine) {
+    throwSketchEntityNotFound(op.sketchId, op.secondaryLineEntityId, opIndex);
+  }
+
+  assertSketchEntityIsLine(
+    primaryLine,
+    op.sketchId,
+    opIndex,
+    "primaryLineEntityId",
+    "Parallel sketch constraint primary line target must be a line entity."
+  );
+  assertSketchEntityIsLine(
+    secondaryLine,
+    op.sketchId,
+    opIndex,
+    "secondaryLineEntityId",
+    "Parallel sketch constraint secondary line target must be a line entity."
+  );
+
+  if (op.primaryLineEntityId === op.secondaryLineEntityId) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Parallel sketch constraint line targets must be distinct.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.secondaryLineEntityId,
+      path: operationPath(opIndex, "secondaryLineEntityId"),
+      expected: "distinct secondary line entity id",
+      received: op.primaryLineEntityId
+    });
+  }
+
+  if (getLineLength(primaryLine) <= 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        "Parallel sketch constraint primary line cannot be zero-length because the direction is ambiguous.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.primaryLineEntityId,
+      path: operationPath(opIndex, "primaryLineEntityId"),
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  if (getLineLength(secondaryLine) <= 0) {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message:
+        "Parallel sketch constraint secondary line cannot be zero-length because the direction is ambiguous.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.secondaryLineEntityId,
+      path: operationPath(opIndex, "secondaryLineEntityId"),
+      expected: "line with a non-zero direction",
+      received: "zero-length line"
+    });
+  }
+
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: op.secondaryLineEntityId,
+    kind: "parallel",
+    primaryLineEntityId: op.primaryLineEntityId,
+    secondaryLineEntityId: op.secondaryLineEntityId
+  };
+}
+
+function assertSketchEntityIsLine(
+  entity: SketchEntity,
+  sketchId: SketchId,
+  opIndex: number,
+  pathField: string,
+  message: string
+): asserts entity is Extract<SketchEntity, { readonly kind: "line" }> {
+  if (entity.kind === "line") {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_CONSTRAINT",
+    message,
+    opIndex,
+    sketchId,
+    sketchEntityId: entity.id,
+    path: operationPath(opIndex, pathField),
+    expected: "line entity",
+    received: entity.kind
+  });
+}
+
 function assertSketchConstraintTargetsStillValid(
   constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
   sketchId: SketchId,
@@ -3646,7 +3781,10 @@ function assertSketchConstraintTargetsStillValid(
           constraint.secondaryTarget.entityId === entity.id)) ||
       (constraint.kind === "midpoint" &&
         (constraint.lineEntityId === entity.id ||
-          constraint.target.entityId === entity.id));
+          constraint.target.entityId === entity.id)) ||
+      (constraint.kind === "parallel" &&
+        (constraint.primaryLineEntityId === entity.id ||
+          constraint.secondaryLineEntityId === entity.id));
 
     if (constraint.sketchId !== sketchId || !constraintTouchesEntity) {
       continue;
@@ -3679,6 +3817,10 @@ function assertSketchConstraintTargetsStillValid(
         (constraint.target.entityId === entity.id &&
           isMidpointSketchPointTargetSupported(entity, constraint.target)))
     ) {
+      continue;
+    }
+
+    if (constraint.kind === "parallel" && entity.kind === "line") {
       continue;
     }
 
@@ -4261,6 +4403,17 @@ function applySketchConstraintToEntity(
     return;
   }
 
+  if (constraint.kind === "parallel") {
+    applyParallelSketchConstraintToEntity(
+      state,
+      constraint,
+      diff,
+      opIndex,
+      propagation
+    );
+    return;
+  }
+
   const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
   const existing = sketch.entities.get(constraint.entityId);
 
@@ -4442,6 +4595,68 @@ function applyMidpointSketchConstraintToEntity(
     state,
     sketch,
     constrained,
+    diff,
+    opIndex,
+    propagation
+  );
+}
+
+function applyParallelSketchConstraintToEntity(
+  state: MutableDocumentState,
+  constraint: Extract<SketchConstraint, { readonly kind: "parallel" }>,
+  diff: MutableSemanticDiff,
+  opIndex: number,
+  propagation: SketchConstraintPropagationContext
+): void {
+  const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
+  const primaryLine = sketch.entities.get(constraint.primaryLineEntityId);
+  const secondaryLine = sketch.entities.get(constraint.secondaryLineEntityId);
+
+  if (!primaryLine) {
+    throwSketchEntityNotFound(
+      constraint.sketchId,
+      constraint.primaryLineEntityId,
+      opIndex
+    );
+  }
+
+  if (!secondaryLine) {
+    throwSketchEntityNotFound(
+      constraint.sketchId,
+      constraint.secondaryLineEntityId,
+      opIndex
+    );
+  }
+
+  assertSketchEntityIsLine(
+    primaryLine,
+    constraint.sketchId,
+    opIndex,
+    "primaryLineEntityId",
+    "Parallel sketch constraint primary line target must be a line entity."
+  );
+  assertSketchEntityIsLine(
+    secondaryLine,
+    constraint.sketchId,
+    opIndex,
+    "secondaryLineEntityId",
+    "Parallel sketch constraint secondary line target must be a line entity."
+  );
+
+  const result = applySketchConstraintValue(
+    secondaryLine,
+    constraint,
+    createSketchSolverApplyContext(state, sketch)
+  );
+
+  if (!result.ok) {
+    throwSketchSolverApplyIssue(result.issue, opIndex);
+  }
+
+  updateSketchEntityAndDependents(
+    state,
+    sketch,
+    result.entity,
     diff,
     opIndex,
     propagation
@@ -4674,6 +4889,21 @@ function applyDependentSketchConstraints(
     ) {
       propagation.visitedConstraintIds.add(constraint.id);
       applyCoincidentSketchConstraintToEntities(
+        state,
+        constraint,
+        diff,
+        opIndex,
+        propagation
+      );
+    }
+
+    if (
+      constraint.kind === "parallel" &&
+      (constraint.primaryLineEntityId === entityId ||
+        constraint.secondaryLineEntityId === entityId)
+    ) {
+      propagation.visitedConstraintIds.add(constraint.id);
+      applyParallelSketchConstraintToEntity(
         state,
         constraint,
         diff,
@@ -6148,6 +6378,12 @@ function sketchConstraintRef(
           lineEntityId: constraint.lineEntityId,
           target: { ...constraint.target }
         }
+      : {}),
+    ...(constraint.kind === "parallel"
+      ? {
+          primaryLineEntityId: constraint.primaryLineEntityId,
+          secondaryLineEntityId: constraint.secondaryLineEntityId
+        }
       : {})
   };
 }
@@ -6780,6 +7016,18 @@ function cloneSketchConstraintSnapshot(
       kind: "midpoint",
       lineEntityId: constraint.lineEntityId,
       target: { ...constraint.target }
+    };
+  }
+
+  if (constraint.kind === "parallel") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "parallel",
+      primaryLineEntityId: constraint.primaryLineEntityId,
+      secondaryLineEntityId: constraint.secondaryLineEntityId
     };
   }
 
@@ -8667,9 +8915,13 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 }
 
 function normalizeCadProject(value: CadProject): CadProject {
-  if (value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+  if (
+    value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11
+  ) {
     return {
       ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       document: {
         ...value.document,
         parameters: value.document.parameters.map(cloneParameterSnapshot),
@@ -9029,6 +9281,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V10 &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V11 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V9 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V8 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
@@ -9164,6 +9417,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -9174,6 +9428,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -9183,6 +9438,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -9191,26 +9447,34 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsMidpointSketchConstraints =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsParallelSketchConstraints =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -9223,6 +9487,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -9476,7 +9741,8 @@ function validateCadDocumentSnapshot(
             sketchEntityRefs,
             allowsFixedSketchConstraints,
             allowsCoincidentSketchConstraints,
-            allowsMidpointSketchConstraints
+            allowsMidpointSketchConstraints,
+            allowsParallelSketchConstraints
           )
         );
       }
@@ -10194,7 +10460,8 @@ function validateSketchConstraintSnapshot(
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowsFixedConstraints: boolean,
   allowsCoincidentConstraints: boolean,
-  allowsMidpointConstraints: boolean
+  allowsMidpointConstraints: boolean,
+  allowsParallelConstraints: boolean
 ): number {
   let maxGeneratedSketchConstraintNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
@@ -10204,6 +10471,10 @@ function validateSketchConstraintSnapshot(
   let secondaryTarget: SketchPointTarget | undefined;
   let lineEntityRef: SketchEntityImportRef | undefined;
   let lineEntityId: string | undefined;
+  let primaryLineEntityId: string | undefined;
+  let secondaryLineEntityId: string | undefined;
+  let primaryLineEntityRef: SketchEntityImportRef | undefined;
+  let secondaryLineEntityRef: SketchEntityImportRef | undefined;
 
   if (!isRecord(value)) {
     addProjectIssue(
@@ -10264,7 +10535,7 @@ function validateSketchConstraintSnapshot(
       issues,
       "INVALID_SKETCH_CONSTRAINT",
       `${path}.kind`,
-      "Sketch constraint kind must be horizontal, vertical, fixed, coincident, or midpoint."
+      "Sketch constraint kind must be horizontal, vertical, fixed, coincident, midpoint, or parallel."
     );
   }
 
@@ -10396,6 +10667,71 @@ function validateSketchConstraintSnapshot(
         "Midpoint sketch constraint entityId must match lineEntityId."
       );
     }
+  } else if (value.kind === "parallel") {
+    if (!allowsParallelConstraints) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.kind`,
+        "Project documents before V12 must not include parallel sketch constraints."
+      );
+    }
+
+    if (
+      typeof value.primaryLineEntityId !== "string" ||
+      value.primaryLineEntityId.length === 0
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.primaryLineEntityId`,
+        "Parallel sketch constraint primaryLineEntityId must be a non-empty string."
+      );
+    } else {
+      primaryLineEntityId = value.primaryLineEntityId;
+    }
+
+    if (
+      typeof value.secondaryLineEntityId !== "string" ||
+      value.secondaryLineEntityId.length === 0
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.secondaryLineEntityId`,
+        "Parallel sketch constraint secondaryLineEntityId must be a non-empty string."
+      );
+    } else {
+      secondaryLineEntityId = value.secondaryLineEntityId;
+    }
+
+    entityId = secondaryLineEntityId;
+
+    if (
+      typeof value.entityId === "string" &&
+      secondaryLineEntityId &&
+      value.entityId !== secondaryLineEntityId
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.entityId`,
+        "Parallel sketch constraint entityId must match secondaryLineEntityId."
+      );
+    }
+
+    if (
+      primaryLineEntityId &&
+      secondaryLineEntityId &&
+      primaryLineEntityId === secondaryLineEntityId
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.secondaryLineEntityId`,
+        "Parallel sketch constraint line targets must be distinct."
+      );
+    }
   } else if (typeof value.entityId === "string" && value.entityId.length > 0) {
     entityId = value.entityId;
   } else {
@@ -10420,7 +10756,9 @@ function validateSketchConstraintSnapshot(
             ? `${path}.primaryTarget.entityId`
             : value.kind === "midpoint"
               ? `${path}.lineEntityId`
-              : `${path}.entityId`,
+              : value.kind === "parallel"
+                ? `${path}.secondaryLineEntityId`
+                : `${path}.entityId`,
         "Sketch constraint entityId must reference an existing sketch entity."
       );
     } else {
@@ -10434,7 +10772,9 @@ function validateSketchConstraintSnapshot(
               ? `${path}.primaryTarget.entityId`
               : value.kind === "midpoint"
                 ? `${path}.lineEntityId`
-                : `${path}.entityId`,
+                : value.kind === "parallel"
+                  ? `${path}.secondaryLineEntityId`
+                  : `${path}.entityId`,
           "Sketch constraint entityId must belong to the referenced sketch."
         );
       }
@@ -10457,6 +10797,15 @@ function validateSketchConstraintSnapshot(
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.lineEntityId`,
           "Midpoint sketch constraint lineEntityId must reference a line sketch entity."
+        );
+      }
+
+      if (value.kind === "parallel" && entityRef.kind !== "line") {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryLineEntityId`,
+          "Parallel sketch constraint secondaryLineEntityId must reference a line sketch entity."
         );
       }
 
@@ -10571,6 +10920,62 @@ function validateSketchConstraintSnapshot(
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.secondaryTarget.role`,
           "Coincident sketch constraint secondary target role is not supported for this entity."
+        );
+      }
+    }
+  }
+
+  if (value.kind === "parallel") {
+    primaryLineEntityRef = primaryLineEntityId
+      ? sketchEntityRefs.get(primaryLineEntityId)
+      : undefined;
+    secondaryLineEntityRef = secondaryLineEntityId
+      ? sketchEntityRefs.get(secondaryLineEntityId)
+      : undefined;
+
+    if (primaryLineEntityId && !primaryLineEntityRef) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.primaryLineEntityId`,
+        "Parallel sketch constraint primaryLineEntityId must reference an existing sketch entity."
+      );
+    } else if (primaryLineEntityRef) {
+      if (primaryLineEntityRef.sketchId !== value.sketchId) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.primaryLineEntityId`,
+          "Parallel sketch constraint primaryLineEntityId must belong to the referenced sketch."
+        );
+      }
+
+      if (primaryLineEntityRef.kind !== "line") {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.primaryLineEntityId`,
+          "Parallel sketch constraint primaryLineEntityId must reference a line sketch entity."
+        );
+      }
+    }
+
+    if (secondaryLineEntityRef) {
+      if (secondaryLineEntityRef.sketchId !== value.sketchId) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryLineEntityId`,
+          "Parallel sketch constraint secondaryLineEntityId must belong to the referenced sketch."
+        );
+      }
+
+      if (secondaryLineEntityRef.kind !== "line") {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryLineEntityId`,
+          "Parallel sketch constraint secondaryLineEntityId must reference a line sketch entity."
         );
       }
     }
@@ -10838,6 +11243,56 @@ function validateSketchConstraintSnapshot(
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.target`,
           "Midpoint sketch constraint cannot target a point fixed away from the line midpoint."
+        );
+      }
+    }
+  }
+
+  if (
+    typeof value.sketchId === "string" &&
+    value.kind === "parallel" &&
+    primaryLineEntityId &&
+    secondaryLineEntityId
+  ) {
+    const targetKey = `${value.sketchId}\0parallel\0${primaryLineEntityId}\0${secondaryLineEntityId}`;
+    const existing = seenSketchConstraintTargets.get(targetKey);
+
+    if (existing) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.secondaryLineEntityId`,
+        "Line pair already has a duplicate parallel constraint."
+      );
+    } else {
+      seenSketchConstraintTargets.set(targetKey, value.kind);
+    }
+
+    for (const [field, ref] of [
+      ["primaryLineEntityId", primaryLineEntityRef],
+      ["secondaryLineEntityId", secondaryLineEntityRef]
+    ] as const) {
+      if (
+        ref &&
+        ref.kind === "line" &&
+        isRecord(ref.entity) &&
+        isVec2(ref.entity.start) &&
+        isVec2(ref.entity.end) &&
+        getLineLength({
+          id:
+            field === "primaryLineEntityId"
+              ? primaryLineEntityId
+              : secondaryLineEntityId,
+          kind: "line",
+          start: ref.entity.start,
+          end: ref.entity.end
+        }) <= 0
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.${field}`,
+          `Parallel sketch constraint ${field === "primaryLineEntityId" ? "primary" : "secondary"} line cannot be zero-length.`
         );
       }
     }
@@ -12592,6 +13047,13 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
+    if (value.kind === "parallel") {
+      return (
+        typeof value.primaryLineEntityId === "string" &&
+        typeof value.secondaryLineEntityId === "string"
+      );
+    }
+
     return typeof value.entityId === "string";
   }
 
@@ -13050,7 +13512,8 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "vertical" ||
     value === "fixed" ||
     value === "coincident" ||
-    value === "midpoint"
+    value === "midpoint" ||
+    value === "parallel"
   );
 }
 

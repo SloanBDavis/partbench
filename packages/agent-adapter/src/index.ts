@@ -1462,6 +1462,13 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
+    if (value.kind === "parallel") {
+      return (
+        typeof value.primaryLineEntityId === "string" &&
+        typeof value.secondaryLineEntityId === "string"
+      );
+    }
+
     return typeof value.entityId === "string";
   }
 
@@ -1645,7 +1652,8 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "vertical" ||
     value === "fixed" ||
     value === "coincident" ||
-    value === "midpoint"
+    value === "midpoint" ||
+    value === "parallel"
   );
 }
 
