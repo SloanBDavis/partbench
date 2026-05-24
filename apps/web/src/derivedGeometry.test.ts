@@ -1186,6 +1186,148 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("ignores stale worker results after perpendicular-driven boolean target edits", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "perpendicular_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "perpendicular_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_rect",
+        name: "Target rectangle perpendicular",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "perpendicular_primary",
+        secondaryLineEntityId: "perpendicular_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_rect_center",
+        name: "Target rectangle center",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "perpendicular_secondary", role: "end" },
+        secondaryTarget: { entityId: "rect_1", role: "center" }
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_tool",
+        name: "Tool",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_tool",
+        id: "rect_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_tool",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "add"
+      }
+    ]);
+
+    const initialSource = getDerivedSources(engine).find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean" && source.id === "body_add_1"
+    );
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "perpendicular_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    const editedSource = getDerivedSources(engine).find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean" && source.id === "body_add_1"
+    );
+
+    expect(initialSource).toBeDefined();
+    expect(editedSource).toBeDefined();
+    if (!initialSource || !editedSource) {
+      throw new Error("Expected boolean sources.");
+    }
+
+    expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
+      createDerivedGeometryCacheKey(editedSource)
+    );
+    expect(editedSource.target.profile).toMatchObject({
+      kind: "rectangle",
+      center: [-1, 1]
+    });
+
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "target" in input &&
+      input.target.profile.kind === "rectangle" &&
+      input.target.profile.center[0] === 0
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    first.resolve(
+      createResult("body_add_1", createMesh("stale_perpendicular_add"))
+    );
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_add_1", createMesh("body_add_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_add_1",
+      objectKind: "extrudeBoolean",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_add_1"
+    ]);
+  });
+
   it("updates derived source keys after parallel constraints drive an extruded profile", () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -1327,6 +1469,117 @@ describe("derivedGeometry", () => {
     expect(editedSource.profile).toMatchObject({
       kind: "rectangle",
       center: [-1, 1]
+    });
+  });
+
+  it("updates attached extrude source keys after perpendicular constraints drive the attached profile", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_attached_perpendicular",
+        name: "Attached perpendicular profile",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_attached_perpendicular",
+        id: "attached_perpendicular_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_attached_perpendicular",
+        id: "attached_perpendicular_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_attached_perpendicular",
+        id: "attached_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_attached_rect",
+        name: "Attached rectangle perpendicular",
+        sketchId: "sketch_attached_perpendicular",
+        kind: "perpendicular",
+        primaryLineEntityId: "attached_perpendicular_primary",
+        secondaryLineEntityId: "attached_perpendicular_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_attached_rect_center",
+        name: "Attached rectangle center",
+        sketchId: "sketch_attached_perpendicular",
+        kind: "coincident",
+        primaryTarget: {
+          entityId: "attached_perpendicular_secondary",
+          role: "end"
+        },
+        secondaryTarget: { entityId: "attached_rect", role: "center" }
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_attached_perpendicular",
+        bodyId: "body_attached_perpendicular",
+        sketchId: "sketch_attached_perpendicular",
+        entityId: "attached_rect",
+        depth: 2
+      }
+    ]);
+
+    const generatedFaces = getGeneratedFacesByKey(engine, ["body_rect_1"]);
+    const getSourcesWithFaces = () =>
+      createDerivedGeometrySourcesFromDocument(
+        engine.getDocument(),
+        getProjectStructureFeatures(engine),
+        generatedFaces
+      );
+
+    const initialSource = getSourcesWithFaces().find(
+      (source) =>
+        source.kind === "extrude" && source.id === "body_attached_perpendicular"
+    );
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_attached_perpendicular",
+      entity: {
+        id: "attached_perpendicular_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    const editedSource = getSourcesWithFaces().find(
+      (source) =>
+        source.kind === "extrude" && source.id === "body_attached_perpendicular"
+    );
+
+    expect(initialSource).toBeDefined();
+    expect(editedSource).toBeDefined();
+    if (!initialSource || !editedSource || editedSource.kind !== "extrude") {
+      throw new Error("Expected attached extrude sources.");
+    }
+
+    expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
+      createDerivedGeometryCacheKey(editedSource)
+    );
+    expect(editedSource).toMatchObject({
+      profile: {
+        kind: "rectangle",
+        center: [-1, 1]
+      },
+      placementFrame: expect.any(Object)
     });
   });
 

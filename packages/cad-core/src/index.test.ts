@@ -12663,6 +12663,689 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("propagates perpendicular line edits through rectangle and circle newBody extrudes", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+    rectangleEngine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "perpendicular_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "perpendicular_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_rect",
+        name: "Rectangle perpendicular driver",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "perpendicular_primary",
+        secondaryLineEntityId: "perpendicular_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_rect_center",
+        name: "Rectangle center follows perpendicular line",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "perpendicular_secondary", role: "end" },
+        secondaryTarget: { entityId: "rect_1", role: "center" }
+      }
+    ]);
+
+    const update = rectangleEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "perpendicular_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    expect(update.transaction.diff).toMatchObject({
+      sketches: {
+        entitiesModified: expect.arrayContaining([
+          { sketchId: "sketch_1", id: "perpendicular_primary", kind: "line" },
+          {
+            sketchId: "sketch_1",
+            id: "perpendicular_secondary",
+            kind: "line"
+          },
+          { sketchId: "sketch_1", id: "rect_1", kind: "rectangle" }
+        ])
+      },
+      features: {
+        modified: [expect.objectContaining({ id: "feat_rect_1" })],
+        bodiesModified: [
+          { id: "body_rect_1", kind: "solid", featureId: "feat_rect_1" }
+        ]
+      }
+    });
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        localBounds: {
+          min: [-3, 0, 0],
+          max: [1, 2, 3],
+          center: [-1, 1, 1.5]
+        },
+        centroid: [-1, 1, 1.5],
+        volume: 24
+      }
+    });
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.extents" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bounds: {
+        min: [-3, 0, 0],
+        max: [1, 2, 3],
+        center: [-1, 1, 1.5]
+      }
+    });
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      sketchConstraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "perpendicular_rect",
+          kind: "perpendicular",
+          primaryDirection: [0, 1],
+          secondaryDirection: [-1, 0],
+          status: "healthy"
+        }),
+        expect.objectContaining({
+          constraintId: "co_rect_center",
+          affectedFeatureIds: ["feat_rect_1"],
+          affectedBodyIds: ["body_rect_1"],
+          secondaryCurrentCoordinate: [-1, 1],
+          status: "healthy"
+        })
+      ])
+    });
+
+    rectangleEngine.undo();
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      measurements: { centroid: [0, 2, 1.5] }
+    });
+    rectangleEngine.redo();
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      measurements: { centroid: [-1, 1, 1.5] }
+    });
+
+    const restoredRectangle = importCadProjectJson(
+      exportCadProjectJson(rectangleEngine)
+    );
+    expect(
+      restoredRectangle.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      measurements: { centroid: [-1, 1, 1.5] }
+    });
+
+    const circleEngine = createCircleExtrudeEngine();
+    circleEngine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "circle_perpendicular_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "circle_perpendicular_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_circle",
+        name: "Circle perpendicular driver",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "circle_perpendicular_primary",
+        secondaryLineEntityId: "circle_perpendicular_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_circle_center",
+        name: "Circle center follows perpendicular line",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: {
+          entityId: "circle_perpendicular_secondary",
+          role: "end"
+        },
+        secondaryTarget: { entityId: "circle_1", role: "center" }
+      }
+    ]);
+
+    circleEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "circle_perpendicular_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    const circleMeasurements = circleEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId: "body_circle_1" }
+    });
+    expect(circleMeasurements).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        localBounds: {
+          min: [-3, -1, 0],
+          max: [1, 3, 4],
+          center: [-1, 1, 2]
+        },
+        centroid: [-1, 1, 2]
+      }
+    });
+    if (
+      circleMeasurements.ok &&
+      circleMeasurements.query === "body.measurements"
+    ) {
+      expect(circleMeasurements.measurements.volume).toBeCloseTo(16 * Math.PI);
+    }
+  });
+
+  it("keeps perpendicular-driven line length dimensions coherent for downstream extrudes", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "perpendicular_length_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "perpendicular_length_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_perpendicular_secondary_length",
+        name: "Perpendicular secondary length",
+        sketchId: "sketch_1",
+        entityId: "perpendicular_length_secondary",
+        target: { entityKind: "line", role: "length" },
+        value: 4
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_length",
+        name: "Perpendicular with length",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "perpendicular_length_primary",
+        secondaryLineEntityId: "perpendicular_length_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_length_rect_center",
+        name: "Rectangle center follows length-controlled line",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: {
+          entityId: "perpendicular_length_secondary",
+          role: "end"
+        },
+        secondaryTarget: { entityId: "rect_1", role: "center" }
+      }
+    ]);
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "perpendicular_length_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({
+            id: "perpendicular_length_secondary",
+            start: [2, 1],
+            end: [-2, 1]
+          }),
+          expect.objectContaining({ id: "rect_1", center: [-2, 1] })
+        ])
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.measurements", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      measurements: {
+        centroid: [-2, 1, 1.5],
+        localBounds: {
+          min: [-4, 0, 0],
+          max: [0, 2, 3]
+        }
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      status: "healthy",
+      sketchDimensions: [
+        expect.objectContaining({
+          dimensionId: "dim_perpendicular_secondary_length",
+          effectiveValue: 4,
+          status: "healthy"
+        })
+      ],
+      sketchConstraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "perpendicular_length",
+          primaryDirection: [0, 1],
+          secondaryDirection: [-1, 0],
+          status: "healthy"
+        }),
+        expect.objectContaining({
+          constraintId: "co_length_rect_center",
+          secondaryCurrentCoordinate: [-2, 1],
+          affectedFeatureIds: ["feat_rect_1"],
+          affectedBodyIds: ["body_rect_1"],
+          status: "healthy"
+        })
+      ])
+    });
+  });
+
+  it("propagates perpendicular line edits through attached extrudes and boolean add/cut health", () => {
+    const attachedEngine = createRectangleExtrudeEngine();
+    attachedEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_attached_perpendicular",
+        name: "Attached perpendicular profile",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_attached_perpendicular",
+        id: "attached_perpendicular_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_attached_perpendicular",
+        id: "attached_perpendicular_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_attached_perpendicular",
+        id: "attached_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_attached_rect",
+        name: "Attached rectangle perpendicular",
+        sketchId: "sketch_attached_perpendicular",
+        kind: "perpendicular",
+        primaryLineEntityId: "attached_perpendicular_primary",
+        secondaryLineEntityId: "attached_perpendicular_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_attached_rect_center",
+        name: "Attached rectangle center",
+        sketchId: "sketch_attached_perpendicular",
+        kind: "coincident",
+        primaryTarget: {
+          entityId: "attached_perpendicular_secondary",
+          role: "end"
+        },
+        secondaryTarget: { entityId: "attached_rect", role: "center" }
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_attached_perpendicular",
+        bodyId: "body_attached_perpendicular",
+        sketchId: "sketch_attached_perpendicular",
+        entityId: "attached_rect",
+        depth: 2
+      }
+    ]);
+
+    attachedEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_attached_perpendicular",
+      entity: {
+        id: "attached_perpendicular_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    expect(
+      attachedEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.measurements",
+          bodyId: "body_attached_perpendicular"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.measurements",
+      measurements: {
+        localExtents: [1, 1, 2],
+        centroid: [-1, 1, 4]
+      }
+    });
+    expect(
+      attachedEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.extents" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_attached_perpendicular",
+          worldBounds: expect.objectContaining({
+            center: [-1, 1, 4]
+          })
+        })
+      ])
+    });
+
+    for (const operationMode of ["cut", "add"] as const) {
+      const engine = createRectangleExtrudeEngine();
+      const featureId = `feat_${operationMode}_perpendicular`;
+      const bodyId = `body_${operationMode}_perpendicular`;
+
+      engine.applyBatch([
+        {
+          op: "sketch.addLine",
+          sketchId: "sketch_1",
+          id: "target_perpendicular_primary",
+          start: [0, 0],
+          end: [4, 0]
+        },
+        {
+          op: "sketch.addLine",
+          sketchId: "sketch_1",
+          id: "target_perpendicular_secondary",
+          start: [0, 0],
+          end: [0, 2]
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "perpendicular_target_rect",
+          name: "Target rectangle perpendicular",
+          sketchId: "sketch_1",
+          kind: "perpendicular",
+          primaryLineEntityId: "target_perpendicular_primary",
+          secondaryLineEntityId: "target_perpendicular_secondary"
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "co_target_rect_center",
+          name: "Target rectangle center",
+          sketchId: "sketch_1",
+          kind: "coincident",
+          primaryTarget: {
+            entityId: "target_perpendicular_secondary",
+            role: "end"
+          },
+          secondaryTarget: { entityId: "rect_1", role: "center" }
+        },
+        {
+          op: "sketch.create",
+          id: "sketch_tool",
+          name: "Tool",
+          plane: "XY"
+        },
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_tool",
+          id: "rect_tool",
+          center: [0, 0],
+          width: 1,
+          height: 1
+        },
+        {
+          op: "feature.extrude",
+          id: featureId,
+          bodyId,
+          targetBodyId: "body_rect_1",
+          sketchId: "sketch_tool",
+          entityId: "rect_tool",
+          depth: 1,
+          operationMode
+        }
+      ]);
+
+      const update = engine.apply({
+        op: "sketch.updateEntity",
+        sketchId: "sketch_1",
+        entity: {
+          id: "target_perpendicular_primary",
+          kind: "line",
+          start: [0, 0],
+          end: [0, 4]
+        }
+      });
+
+      expect(update.transaction.diff.features).toMatchObject({
+        modified: expect.arrayContaining([
+          expect.objectContaining({ id: "feat_rect_1" }),
+          expect.objectContaining({ id: featureId })
+        ]),
+        bodiesModified: expect.arrayContaining([
+          expect.objectContaining({ id: "body_rect_1" }),
+          expect.objectContaining({ id: bodyId })
+        ])
+      });
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "body.measurements", bodyId: "body_rect_1" }
+        })
+      ).toMatchObject({
+        ok: true,
+        measurements: { centroid: [-1, 1, 1.5] }
+      });
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "project.health" }
+        })
+      ).toMatchObject({
+        ok: true,
+        query: "project.health",
+        sketchConstraints: expect.arrayContaining([
+          expect.objectContaining({
+            constraintId: "perpendicular_target_rect",
+            primaryDirection: [0, 1],
+            secondaryDirection: [-1, 0],
+            status: "healthy"
+          }),
+          expect.objectContaining({
+            constraintId: "co_target_rect_center",
+            affectedFeatureIds: ["feat_rect_1", featureId],
+            affectedBodyIds: ["body_rect_1", bodyId],
+            secondaryCurrentCoordinate: [-1, 1],
+            status: "healthy"
+          })
+        ])
+      });
+    }
+
+    const circleCutEngine = createCircleExtrudeEngine();
+    circleCutEngine.applyBatch([
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "circle_target_perpendicular_primary",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "circle_target_perpendicular_secondary",
+        start: [0, 0],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_target_circle",
+        name: "Target circle perpendicular",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "circle_target_perpendicular_primary",
+        secondaryLineEntityId: "circle_target_perpendicular_secondary"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "co_target_circle_center",
+        name: "Target circle center",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: {
+          entityId: "circle_target_perpendicular_secondary",
+          role: "end"
+        },
+        secondaryTarget: { entityId: "circle_1", role: "center" }
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_cut_perpendicular",
+        bodyId: "body_circle_cut_perpendicular",
+        targetBodyId: "body_circle_1",
+        sketchId: "sketch_1",
+        entityId: "rect_tool",
+        depth: 1,
+        operationMode: "cut"
+      }
+    ]);
+
+    circleCutEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "circle_target_perpendicular_primary",
+        kind: "line",
+        start: [0, 0],
+        end: [0, 4]
+      }
+    });
+
+    expect(
+      circleCutEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      sketchConstraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "co_target_circle_center",
+          secondaryCurrentCoordinate: [-1, 1],
+          affectedFeatureIds: [
+            "feat_circle_1",
+            "feat_circle_cut_perpendicular"
+          ],
+          affectedBodyIds: ["body_circle_1", "body_circle_cut_perpendicular"],
+          status: "healthy"
+        })
+      ])
+    });
+  });
+
   it("rejects midpoint line edits that would violate fixed target constraints", () => {
     const engine = new CadEngine();
     engine.applyBatch([
