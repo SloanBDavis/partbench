@@ -444,7 +444,7 @@ function createOperationSummaries(
               ? op.primaryTarget.entityId
               : op.kind === "midpoint"
                 ? op.lineEntityId
-                : op.kind === "parallel"
+                : op.kind === "parallel" || op.kind === "perpendicular"
                   ? op.secondaryLineEntityId
                   : op.entityId;
         const targetLabel =
@@ -454,8 +454,8 @@ function createOperationSummaries(
               ? `${op.sketchId}/${op.primaryTarget.entityId}.${op.primaryTarget.role} = ${op.secondaryTarget.entityId}.${op.secondaryTarget.role}`
               : op.kind === "midpoint"
                 ? `${op.sketchId}/${op.lineEntityId} midpoint -> ${op.target.entityId}.${op.target.role}`
-                : op.kind === "parallel"
-                  ? `${op.sketchId}/${op.primaryLineEntityId} parallel -> ${op.secondaryLineEntityId}`
+                : op.kind === "parallel" || op.kind === "perpendicular"
+                  ? `${op.sketchId}/${op.primaryLineEntityId} ${op.kind} -> ${op.secondaryLineEntityId}`
                   : `${op.sketchId}/${op.entityId}`;
 
         return createSketchConstraintOperationSummary({

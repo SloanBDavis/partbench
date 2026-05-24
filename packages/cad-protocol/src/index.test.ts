@@ -359,6 +359,15 @@ describe("cad-protocol", () => {
         secondaryLineEntityId: "line_2"
       },
       {
+        op: "sketch.constraint.create",
+        id: "con_perpendicular",
+        name: "Perpendicular lines",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "line_1",
+        secondaryLineEntityId: "line_2"
+      },
+      {
         op: "sketch.constraint.rename",
         id: "con_horizontal",
         name: "Main horizontal"
@@ -373,6 +382,7 @@ describe("cad-protocol", () => {
       "sketch.dimension.update",
       "sketch.dimension.rename",
       "sketch.dimension.delete",
+      "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
@@ -410,6 +420,12 @@ describe("cad-protocol", () => {
     expect(ops[9]).toMatchObject({
       op: "sketch.constraint.create",
       kind: "parallel",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2"
+    });
+    expect(ops[10]).toMatchObject({
+      op: "sketch.constraint.create",
+      kind: "perpendicular",
       primaryLineEntityId: "line_1",
       secondaryLineEntityId: "line_2"
     });

@@ -688,13 +688,13 @@ export function buildCreateSketchConstraintOp(
     };
   }
 
-  if (form.kind === "parallel") {
+  if (form.kind === "parallel" || form.kind === "perpendicular") {
     return {
       op: "sketch.constraint.create",
       id: normalizeOptionalId(form.id),
       name: form.name.trim(),
       sketchId,
-      kind: "parallel",
+      kind: form.kind,
       primaryLineEntityId: entityId,
       secondaryLineEntityId: form.secondaryEntityId
     };

@@ -2693,12 +2693,12 @@ function sketchConstraintToForm(
     };
   }
 
-  if (constraint.kind === "parallel") {
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
     return {
       ...defaultSketchConstraintForm,
       id: "",
       name: constraint.name,
-      kind: "parallel",
+      kind: constraint.kind,
       secondaryEntityId: constraint.secondaryLineEntityId
     };
   }

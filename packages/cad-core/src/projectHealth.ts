@@ -441,7 +441,7 @@ function createSketchConstraintHealth(
           target: constraint.target
         }
       : {}),
-    ...(constraint.kind === "parallel"
+    ...(isLinePairSketchConstraint(constraint)
       ? {
           primaryLineEntityId: constraint.primaryLineEntityId,
           secondaryLineEntityId: constraint.secondaryLineEntityId
@@ -649,7 +649,7 @@ function getSketchConstraintAffectedTargets(
     ];
   }
 
-  if (constraint.kind === "parallel") {
+  if (isLinePairSketchConstraint(constraint)) {
     return [
       {
         sketchId: constraint.sketchId,
@@ -663,6 +663,15 @@ function getSketchConstraintAffectedTargets(
   }
 
   return [{ sketchId: constraint.sketchId, entityId: constraint.entityId }];
+}
+
+function isLinePairSketchConstraint(
+  constraint: SketchConstraintSnapshot
+): constraint is Extract<
+  SketchConstraintSnapshot,
+  { readonly kind: "parallel" | "perpendicular" }
+> {
+  return constraint.kind === "parallel" || constraint.kind === "perpendicular";
 }
 
 function isSupportedSketchDimensionTarget(

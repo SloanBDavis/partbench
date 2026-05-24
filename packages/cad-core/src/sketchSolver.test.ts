@@ -1021,4 +1021,93 @@ describe("sketch solver boundary", () => {
       ])
     );
   });
+
+  it("evaluates perpendicular line constraints by preserving secondary midpoint and length", () => {
+    const sketch = createSketch([
+      { id: "primary", kind: "line", start: [0, 0], end: [3, 4] },
+      { id: "secondary", kind: "line", start: [10, 10], end: [10, 12] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "perpendicular_1",
+        name: "Perpendicular",
+        sketchId: sketch.id,
+        entityId: "secondary",
+        kind: "perpendicular",
+        primaryLineEntityId: "primary",
+        secondaryLineEntityId: "secondary"
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.evaluatedGeometry.entities.get("secondary")).toEqual({
+      id: "secondary",
+      kind: "line",
+      start: [10.8, 10.4],
+      end: [9.2, 11.6]
+    });
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "perpendicular_1",
+          kind: "perpendicular",
+          primaryDirection: [0.6, 0.8],
+          secondaryDirection: [-0.8, 0.6],
+          status: "healthy"
+        })
+      ])
+    );
+  });
+
+  it("reports perpendicular constraints as inconsistent when secondary endpoints are fixed away from the solved line", () => {
+    const sketch = createSketch([
+      { id: "primary", kind: "line", start: [0, 0], end: [3, 4] },
+      { id: "secondary", kind: "line", start: [10, 10], end: [10, 12] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_start",
+        name: "Fix start",
+        sketchId: sketch.id,
+        entityId: "secondary",
+        kind: "fixed",
+        target: { entityId: "secondary", role: "start" },
+        coordinate: [10, 10]
+      },
+      {
+        id: "perpendicular_1",
+        name: "Perpendicular",
+        sketchId: sketch.id,
+        entityId: "secondary",
+        kind: "perpendicular",
+        primaryLineEntityId: "primary",
+        secondaryLineEntityId: "secondary"
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "perpendicular_1",
+          status: "inconsistent",
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INCONSISTENT_CONSTRAINT"
+            })
+          ])
+        })
+      ])
+    );
+  });
 });

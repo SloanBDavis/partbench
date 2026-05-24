@@ -90,7 +90,8 @@ export type SketchConstraintKind =
   | "fixed"
   | "coincident"
   | "midpoint"
-  | "parallel";
+  | "parallel"
+  | "perpendicular";
 
 export type SketchPointTargetRole = "position" | "start" | "end" | "center";
 
@@ -415,7 +416,8 @@ export type SketchConstraintCreateOp =
   | SketchFixedConstraintCreateOp
   | SketchCoincidentConstraintCreateOp
   | SketchMidpointConstraintCreateOp
-  | SketchParallelConstraintCreateOp;
+  | SketchParallelConstraintCreateOp
+  | SketchPerpendicularConstraintCreateOp;
 
 export interface SketchOrientationConstraintCreateOp {
   readonly op: "sketch.constraint.create";
@@ -462,6 +464,16 @@ export interface SketchParallelConstraintCreateOp {
   readonly name: string;
   readonly sketchId: SketchId;
   readonly kind: "parallel";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
+}
+
+export interface SketchPerpendicularConstraintCreateOp {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly kind: "perpendicular";
   readonly primaryLineEntityId: SketchEntityId;
   readonly secondaryLineEntityId: SketchEntityId;
 }
@@ -1057,7 +1069,8 @@ export type SketchConstraintSnapshot =
   | SketchFixedConstraintSnapshot
   | SketchCoincidentConstraintSnapshot
   | SketchMidpointConstraintSnapshot
-  | SketchParallelConstraintSnapshot;
+  | SketchParallelConstraintSnapshot
+  | SketchPerpendicularConstraintSnapshot;
 
 export interface SketchOrientationConstraintSnapshot {
   readonly id: SketchConstraintId;
@@ -1103,6 +1116,16 @@ export interface SketchParallelConstraintSnapshot {
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
   readonly kind: "parallel";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
+}
+
+export interface SketchPerpendicularConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "perpendicular";
   readonly primaryLineEntityId: SketchEntityId;
   readonly secondaryLineEntityId: SketchEntityId;
 }

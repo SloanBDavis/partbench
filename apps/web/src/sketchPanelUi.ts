@@ -274,6 +274,8 @@ export function getSketchConstraintKindLabel(
       return "Midpoint";
     case "parallel":
       return "Parallel";
+    case "perpendicular":
+      return "Perpendicular";
   }
 }
 
@@ -465,7 +467,8 @@ export function createAvailableParallelLineTargetOptions(
       (entity) =>
         !constraints.some(
           (constraint) =>
-            constraint.kind === "parallel" &&
+            (constraint.kind === "parallel" ||
+              constraint.kind === "perpendicular") &&
             constraint.primaryLineEntityId === primaryLine.id &&
             constraint.secondaryLineEntityId === entity.id
         )
@@ -501,7 +504,7 @@ export function isSketchConstraintRelatedToEntity(
     );
   }
 
-  if (constraint.kind === "parallel") {
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
     return (
       constraint.primaryLineEntityId === entityId ||
       constraint.secondaryLineEntityId === entityId
@@ -565,8 +568,8 @@ function formatSketchConstraintTargetSummary(
     }`;
   }
 
-  if (constraint.kind === "parallel") {
-    return `${constraint.secondaryLineEntityId} parallel to ${constraint.primaryLineEntityId}`;
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+    return `${constraint.secondaryLineEntityId} ${constraint.kind} to ${constraint.primaryLineEntityId}`;
   }
 
   return constraint.entityId;

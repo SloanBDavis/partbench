@@ -610,6 +610,28 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " perpendicular_1 ",
+        name: " Perpendicular ",
+        kind: "perpendicular",
+        targetRole: "start",
+        coordinateMode: "current",
+        coordinateX: 0,
+        coordinateY: 0,
+        secondaryEntityId: "line_2",
+        secondaryTargetRole: "position"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "perpendicular_1",
+      name: "Perpendicular",
+      sketchId: "sketch_1",
+      kind: "perpendicular",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2"
+    });
+
+    expect(
       buildRenameSketchConstraintOp("con_horizontal", " Base horizontal ")
     ).toEqual({
       op: "sketch.constraint.rename",

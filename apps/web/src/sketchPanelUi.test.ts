@@ -233,6 +233,19 @@ describe("sketch panel UI helpers", () => {
       status: "healthy",
       issues: []
     };
+    const perpendicularConstraint: SketchConstraintEntry = {
+      id: "perpendicular_1",
+      name: "Perpendicular",
+      sketchId: "sketch_1",
+      entityId: "line_2",
+      kind: "perpendicular",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2",
+      primaryDirection: [0.6, 0.8],
+      secondaryDirection: [-0.8, 0.6],
+      status: "healthy",
+      issues: []
+    };
     const invalidConstraint = {
       ...horizontalConstraint,
       status: "invalid-value" as const,
@@ -475,6 +488,13 @@ describe("sketch panel UI helpers", () => {
       )
     ).toEqual([]);
     expect(
+      createAvailableParallelLineTargetOptions(
+        line,
+        [line, secondLine],
+        [perpendicularConstraint]
+      )
+    ).toEqual([]);
+    expect(
       isSketchConstraintRelatedToEntity(coincidentConstraint, "point_1")
     ).toBe(true);
     expect(
@@ -483,11 +503,15 @@ describe("sketch panel UI helpers", () => {
     expect(
       isSketchConstraintRelatedToEntity(parallelConstraint, "line_2")
     ).toBe(true);
+    expect(
+      isSketchConstraintRelatedToEntity(perpendicularConstraint, "line_2")
+    ).toBe(true);
     expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
     expect(getSketchConstraintKindLabel("fixed")).toBe("Fixed point");
     expect(getSketchConstraintKindLabel("coincident")).toBe("Coincident");
     expect(getSketchConstraintKindLabel("midpoint")).toBe("Midpoint");
     expect(getSketchConstraintKindLabel("parallel")).toBe("Parallel");
+    expect(getSketchConstraintKindLabel("perpendicular")).toBe("Perpendicular");
     expect(formatSketchPointTarget({ entityId: "line_1", role: "start" })).toBe(
       "line_1 start"
     );
@@ -506,6 +530,9 @@ describe("sketch panel UI helpers", () => {
     );
     expect(formatSketchConstraintStatus(parallelConstraint)).toBe(
       "Parallel · line_2 parallel to line_1 · Healthy"
+    );
+    expect(formatSketchConstraintStatus(perpendicularConstraint)).toBe(
+      "Perpendicular · line_2 perpendicular to line_1 · Healthy"
     );
     expect(formatSketchConstraintStatus(invalidConstraint)).toBe(
       "Horizontal · line_1 · Line constraint target cannot be zero length."

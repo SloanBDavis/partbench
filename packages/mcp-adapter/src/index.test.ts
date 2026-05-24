@@ -2300,6 +2300,13 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               end: [10, 2]
             },
             {
+              op: "sketch.addLine",
+              sketchId: "sketch_1",
+              id: "line_3",
+              start: [20, 0],
+              end: [20, 2]
+            },
+            {
               op: "sketch.addPoint",
               sketchId: "sketch_1",
               id: "point_1",
@@ -2378,6 +2385,15 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
               kind: "parallel",
               primaryLineEntityId: "line_1",
               secondaryLineEntityId: "line_2"
+            },
+            {
+              op: "sketch.constraint.create",
+              id: "con_perpendicular",
+              name: "Perpendicular lines",
+              sketchId: "sketch_1",
+              kind: "perpendicular",
+              primaryLineEntityId: "line_1",
+              secondaryLineEntityId: "line_3"
             }
           ]
         }
@@ -2396,7 +2412,8 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
           "con_fixed_start",
           "con_coincident_end",
           "con_midpoint",
-          "con_parallel"
+          "con_parallel",
+          "con_perpendicular"
         ]
       }
     });
@@ -2467,10 +2484,11 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
           "line_1",
           "point_1",
           "point_mid",
-          "line_2"
+          "line_2",
+          "line_3"
         ],
         dimensionCount: 2,
-        constraintCount: 5,
+        constraintCount: 6,
         issueCount: 0,
         constraints: [
           expect.objectContaining({
@@ -2503,6 +2521,13 @@ describe("mcp-adapter V3 parameter and dimension pass-through", () => {
             kind: "parallel",
             primaryLineEntityId: "line_1",
             secondaryLineEntityId: "line_2",
+            status: "healthy"
+          }),
+          expect.objectContaining({
+            id: "con_perpendicular",
+            kind: "perpendicular",
+            primaryLineEntityId: "line_1",
+            secondaryLineEntityId: "line_3",
             status: "healthy"
           })
         ],

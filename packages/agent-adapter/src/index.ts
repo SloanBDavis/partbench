@@ -1462,7 +1462,7 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
-    if (value.kind === "parallel") {
+    if (value.kind === "parallel" || value.kind === "perpendicular") {
       return (
         typeof value.primaryLineEntityId === "string" &&
         typeof value.secondaryLineEntityId === "string"
@@ -1653,7 +1653,8 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "fixed" ||
     value === "coincident" ||
     value === "midpoint" ||
-    value === "parallel"
+    value === "parallel" ||
+    value === "perpendicular"
   );
 }
 
