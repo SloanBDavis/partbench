@@ -341,6 +341,15 @@ describe("cad-protocol", () => {
         secondaryTarget: { entityId: "line_1", role: "end" }
       },
       {
+        op: "sketch.constraint.create",
+        id: "con_midpoint",
+        name: "Point at midpoint",
+        sketchId: "sketch_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "point_1", role: "position" }
+      },
+      {
         op: "sketch.constraint.rename",
         id: "con_horizontal",
         name: "Main horizontal"
@@ -355,6 +364,7 @@ describe("cad-protocol", () => {
       "sketch.dimension.update",
       "sketch.dimension.rename",
       "sketch.dimension.delete",
+      "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
       "sketch.constraint.create",
@@ -380,6 +390,12 @@ describe("cad-protocol", () => {
       kind: "coincident",
       primaryTarget: { entityId: "point_1", role: "position" },
       secondaryTarget: { entityId: "line_1", role: "end" }
+    });
+    expect(ops[8]).toMatchObject({
+      op: "sketch.constraint.create",
+      kind: "midpoint",
+      lineEntityId: "line_1",
+      target: { entityId: "point_1", role: "position" }
     });
   });
 

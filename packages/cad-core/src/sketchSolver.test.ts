@@ -804,4 +804,132 @@ describe("sketch solver boundary", () => {
       }
     });
   });
+
+  it("evaluates midpoint constraints for point, rectangle, and circle center targets", () => {
+    const sketch = createSketch([
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 2] },
+      { id: "point_1", kind: "point", point: [9, 9] },
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [5, 5],
+        width: 2,
+        height: 3
+      },
+      { id: "circle_1", kind: "circle", center: [-5, -5], radius: 1 }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "mid_point",
+        name: "Point midpoint",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "point_1", role: "position" }
+      },
+      {
+        id: "mid_rect",
+        name: "Rectangle midpoint",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "rect_1", role: "center" }
+      },
+      {
+        id: "mid_circle",
+        name: "Circle midpoint",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "circle_1", role: "center" }
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("healthy");
+    expect(evaluation.drivenEntityIds).toEqual([
+      "line_1",
+      "point_1",
+      "rect_1",
+      "circle_1"
+    ]);
+    expect(evaluation.evaluatedGeometry.entities.get("point_1")).toMatchObject({
+      point: [2, 1]
+    });
+    expect(evaluation.evaluatedGeometry.entities.get("rect_1")).toMatchObject({
+      center: [2, 1]
+    });
+    expect(evaluation.evaluatedGeometry.entities.get("circle_1")).toMatchObject(
+      {
+        center: [2, 1]
+      }
+    );
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "mid_point",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          currentCoordinate: [2, 1],
+          resolvedCoordinate: [2, 1],
+          status: "healthy"
+        })
+      ])
+    );
+  });
+
+  it("reports midpoint conflicts with fixed target coordinates", () => {
+    const sketch = createSketch([
+      { id: "line_1", kind: "line", start: [0, 0], end: [4, 2] },
+      { id: "point_1", kind: "point", point: [9, 9] }
+    ]);
+    const constraints: SketchConstraintSnapshot[] = [
+      {
+        id: "fix_point",
+        name: "Fixed point",
+        sketchId: sketch.id,
+        entityId: "point_1",
+        kind: "fixed",
+        target: { entityId: "point_1", role: "position" },
+        coordinate: [9, 9]
+      },
+      {
+        id: "mid_point",
+        name: "Point midpoint",
+        sketchId: sketch.id,
+        entityId: "line_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "point_1", role: "position" }
+      }
+    ];
+
+    const evaluation = evaluateSketch(
+      createDocument(sketch, [], constraints),
+      sketch
+    );
+
+    expect(evaluation.status).toBe("inconsistent");
+    expect(evaluation.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "mid_point",
+          status: "inconsistent",
+          issues: expect.arrayContaining([
+            expect.objectContaining({
+              code: "INCONSISTENT_CONSTRAINT",
+              lineEntityId: "line_1"
+            })
+          ])
+        })
+      ])
+    );
+  });
 });

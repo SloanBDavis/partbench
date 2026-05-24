@@ -245,6 +245,8 @@ export function getSketchConstraintKindLabel(
       return "Fixed point";
     case "coincident":
       return "Coincident";
+    case "midpoint":
+      return "Midpoint";
   }
 }
 
@@ -408,6 +410,13 @@ export function isSketchConstraintRelatedToEntity(
     );
   }
 
+  if (constraint.kind === "midpoint") {
+    return (
+      constraint.lineEntityId === entityId ||
+      constraint.target.entityId === entityId
+    );
+  }
+
   return constraint.entityId === entityId;
 }
 
@@ -457,6 +466,12 @@ function formatSketchConstraintTargetSummary(
     return `${formatSketchPointTarget(
       constraint.primaryTarget
     )} to ${formatSketchPointTarget(constraint.secondaryTarget)}`;
+  }
+
+  if (constraint.kind === "midpoint") {
+    return `${formatSketchPointTarget(constraint.target)} at midpoint of ${
+      constraint.lineEntityId
+    }`;
   }
 
   return constraint.entityId;

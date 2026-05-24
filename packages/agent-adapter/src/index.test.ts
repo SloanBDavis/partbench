@@ -2301,6 +2301,12 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
             id: "point_1",
             point: [10, 10]
           },
+          {
+            op: "sketch.addPoint",
+            sketchId: "sketch_1",
+            id: "point_mid",
+            point: [0, 0]
+          },
           { op: "parameter.create", id: "param_w", name: "Width", value: 5 },
           {
             op: "parameter.create",
@@ -2350,6 +2356,15 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
             kind: "coincident",
             primaryTarget: { entityId: "line_1", role: "end" },
             secondaryTarget: { entityId: "point_1", role: "position" }
+          },
+          {
+            op: "sketch.constraint.create",
+            id: "con_midpoint",
+            name: "Line midpoint",
+            sketchId: "sketch_1",
+            kind: "midpoint",
+            lineEntityId: "line_1",
+            target: { entityId: "point_mid", role: "position" }
           }
         ]
       }
@@ -2362,9 +2377,10 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
       createdSketchConstraintIds: [
         "con_horizontal",
         "con_fixed_start",
-        "con_coincident_end"
+        "con_coincident_end",
+        "con_midpoint"
       ],
-      modifiedSketchEntityIds: ["rect_1", "line_1", "point_1"]
+      modifiedSketchEntityIds: ["rect_1", "line_1", "point_1", "point_mid"]
     });
 
     expect(
@@ -2431,9 +2447,9 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
       sketchName: "Profile",
       plane: "XY",
       status: "healthy",
-      drivenEntityIds: ["rect_1", "line_1", "point_1"],
+      drivenEntityIds: ["rect_1", "line_1", "point_1", "point_mid"],
       dimensionCount: 2,
-      constraintCount: 3,
+      constraintCount: 4,
       issueCount: 0,
       constraints: [
         expect.objectContaining({
@@ -2452,6 +2468,13 @@ describe("agent-adapter V3 parameter and dimension pass-through", () => {
           kind: "coincident",
           primaryTarget: { entityId: "line_1", role: "end" },
           secondaryTarget: { entityId: "point_1", role: "position" },
+          status: "healthy"
+        }),
+        expect.objectContaining({
+          id: "con_midpoint",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "point_mid", role: "position" },
           status: "healthy"
         })
       ],

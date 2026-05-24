@@ -12,10 +12,11 @@ document parameters and driving sketch dimensions. Schema V8 added
 source-of-truth sketch constraint records for the first horizontal/vertical
 line orientation slice. Schema V9 added source-of-truth fixed point constraints
 with durable sketch point targets. Schema V10 added source-of-truth coincident
-point constraints using the same durable sketch point target model. Current
-exports use `web-cad.project.v10` while the loader still accepts V1 through V9
-projects through explicit
-migration. The `web-cad.project.*` names are retained as compatibility schema
+point constraints using the same durable sketch point target model. Schema V11
+added source-of-truth midpoint constraints tying a point/center target to a line
+midpoint. Current exports use `web-cad.project.v11` while the loader still
+accepts V1 through V10 projects through explicit migration. The
+`web-cad.project.*` names are retained as compatibility schema
 identifiers after the Partbench product rename; changing them would require a
 deliberate project-format migration. Future storage work should use this
 document to evolve toward a native package without prematurely introducing
@@ -37,6 +38,7 @@ schemaVersion: web-cad.project.v7
 schemaVersion: web-cad.project.v8
 schemaVersion: web-cad.project.v9
 schemaVersion: web-cad.project.v10
+schemaVersion: web-cad.project.v11
 ```
 
 It is produced by:
@@ -63,8 +65,8 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV10 {
-  schemaVersion: "web-cad.project.v10"
+ProjectV11 {
+  schemaVersion: "web-cad.project.v11"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -291,7 +293,7 @@ from that face. Those frames and meshes are rebuildable view/cache data and are
 not saved.
 
 Document parameters, sketch dimensions, and sketch constraints are
-source-of-truth V10 document data:
+source-of-truth V11 document data:
 
 ```ts
 CadParameter {
@@ -366,6 +368,19 @@ CoincidentSketchConstraint {
     role: "position" | "start" | "end" | "center"
   }
 }
+
+MidpointSketchConstraint {
+  id: string
+  name: string
+  sketchId: string
+  entityId: string
+  kind: "midpoint"
+  lineEntityId: string
+  target: {
+    entityId: string
+    role: "position" | "center"
+  }
+}
 ```
 
 Parameter names and sketch dimension names must be non-empty after trimming.
@@ -414,6 +429,14 @@ primary target coordinate; if both targets are fixed to different coordinates,
 the command or evaluation reports an inconsistent constraint. This is still not
 a general geometric constraint solver.
 
+The V11 constraint slice adds midpoint constraints. A midpoint constraint stores
+the source line entity ID and a point/center target. Supported targets are point
+position, rectangle center, and circle center; the target may not be either
+endpoint of the same line. The evaluator computes the current midpoint of the
+line and moves the target point/center there. Zero-length lines are valid for
+midpoint constraints because the midpoint is defined. A target fixed to a
+different coordinate is reported as inconsistent.
+
 The `sketch.evaluation` query is derived from these persisted parameter,
 dimension, constraint, and sketch records. It reports current evaluator status,
 driven dimension entries, constraint entries, effective values, driven entity
@@ -444,7 +467,7 @@ derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
-defaults to `newBody` when omitted, and current V10 exports include an explicit
+defaults to `newBody` when omitted, and current V11 exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
 `targetBodyId`. Boolean operation modes are supported only for narrow
 source-modeled slices. `cut` supports a rectangle sketch-extrude tool cutting
@@ -470,7 +493,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10 Storage Decision
+## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -513,7 +536,10 @@ fixed coordinates that cannot be represented by the V8 orientation-only shape.
 That persisted intent introduced `web-cad.project.v9`. V4 coincident point
 constraints add two durable point targets to one source record and cannot be
 represented by the V9 fixed-target shape. That persisted intent introduced
-`web-cad.project.v10`. Current exports therefore use `web-cad.project.v10`.
+`web-cad.project.v10`. V4 midpoint constraints add one durable line target and
+one point/center target to one source record and cannot be represented by the
+V10 coincident-target shape. That persisted intent introduced
+`web-cad.project.v11`. Current exports therefore use `web-cad.project.v11`.
 
 The loader accepts:
 
@@ -528,6 +554,7 @@ web-cad.project.v7
 web-cad.project.v8
 web-cad.project.v9
 web-cad.project.v10
+web-cad.project.v11
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -554,6 +581,9 @@ Fixed point constraints are a V9 source shape and are rejected in V8 documents.
 
 Schema V9 projects migrate with fixed point constraints intact. Coincident point
 constraints are a V10 source shape and are rejected in V9 documents.
+
+Schema V10 projects migrate with coincident point constraints intact. Midpoint
+constraints are a V11 source shape and are rejected in V10 documents.
 
 Schema V6 projects migrate with all V6 source data intact, plus empty parameter
 and sketch-dimension tables and fresh parameter/dimension counters.
@@ -634,7 +664,7 @@ Primitive summaries include the derived default part ID and derived body ID for
 each object. Extrude summaries include the source sketch/entity, profile kind,
 depth, side, operation mode, optional target body ID, and authored body ID.
 
-The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -744,15 +774,15 @@ named-reference lookup results, or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v10`
+that cannot be faithfully represented by the current `web-cad.project.v11`
 document shape.
 
 Likely triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
 - future source-of-truth sketch profiles, solver state, expression records, or
-  constraint families beyond current V10 horizontal/vertical/fixed/coincident
-  constraints;
+  constraint families beyond current V11
+  horizontal/vertical/fixed/coincident/midpoint constraints;
 - additional feature records that require new persisted inputs, such as revolve,
   sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
@@ -761,7 +791,7 @@ Likely triggers:
   generated references, such as exact topology-backed faces, edges, vertices,
   sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level materials/named views that are not represented by V10;
+- project-level materials/named views that are not represented by V11;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -769,7 +799,7 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v11
+schemaVersion: web-cad.project.v12
 ```
 
 That format should include a migration from older accepted versions, not silent
@@ -781,13 +811,14 @@ became persisted source-of-truth data. V3 Phase B introduced
 source-of-truth data. V4 Phase B introduced `web-cad.project.v9` when fixed
 point constraints became persisted source-of-truth data and
 `web-cad.project.v10` when coincident point constraints became persisted
-source-of-truth data. Query-only solver/evaluator summaries
+source-of-truth data, and `web-cad.project.v11` when midpoint constraints
+became persisted source-of-truth data. Query-only solver/evaluator summaries
 such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
 Future V4 slices should introduce another project format only if they add
-persisted source-of-truth data that cannot be represented by the current V10
+persisted source-of-truth data that cannot be represented by the current V11
 constraint records. Solver/evaluator status alone should remain derived query
 data.
 
@@ -854,8 +885,9 @@ document.
 - parameter-bound dimension references and positive resolved dimension values
 - sketch constraint IDs, names, source references, supported horizontal/vertical
   line orientation kinds, fixed point targets, coincident point target pairs,
-  non-zero line targets, duplicate/conflicting orientation constraints,
-  duplicate fixed/coincident records, unsupported point-target roles, and
+  midpoint line/target pairs, non-zero line targets,
+  duplicate/conflicting orientation constraints, duplicate fixed/coincident/
+  midpoint records, unsupported point-target roles, and
   consistency between saved line geometry and saved constraint intent
 - transaction and semantic diff shape
 - optional transaction audit metadata
@@ -909,31 +941,33 @@ web-cad.project.v7
 web-cad.project.v8
 web-cad.project.v9
 web-cad.project.v10
+web-cad.project.v11
 ```
 
-Schema V1 is migrated to V10 on parse/load by adding empty sketches, empty
+Schema V1 is migrated to V11 on parse/load by adding empty sketches, empty
 authored features, empty named references, empty parameters, empty sketch
 dimensions, empty sketch constraints, and fresh
 sketch/feature/body/parameter/dimension/constraint counters. Schema V2 is
-migrated to V10 by preserving sketches and adding empty authored features, empty
+migrated to V11 by preserving sketches and adding empty authored features, empty
 named references, empty parameters, empty sketch dimensions, empty sketch
 constraints, and fresh feature/body/parameter/dimension/constraint counters.
-Schema V3 is migrated to V10 by preserving sketches/features, treating all
+Schema V3 is migrated to V11 by preserving sketches/features, treating all
 sketches as unattached, adding empty named references, empty parameters, empty
 sketch dimensions, empty sketch constraints, and defaulting authored extrude
 operation mode to `newBody`.
-Schema V4 is migrated to V10 by preserving sketches, authored features, and
+Schema V4 is migrated to V11 by preserving sketches, authored features, and
 attached sketch metadata, plus empty named-reference, parameter,
 sketch-dimension, and sketch-constraint tables and `newBody` operation mode.
-Schema V5 is migrated to V10 by preserving sketches, authored features, attached
+Schema V5 is migrated to V11 by preserving sketches, authored features, attached
 sketch metadata, and named references while defaulting missing operation mode to
 `newBody` and adding empty parameters, sketch dimensions, and sketch
-constraints. Schema V6 is migrated to V10 by preserving all V6 source data and
+constraints. Schema V6 is migrated to V11 by preserving all V6 source data and
 adding empty parameters, sketch dimensions, and sketch constraints. Schema V7 is
-migrated to V10 by preserving parameters and sketch dimensions and adding empty
-sketch constraints. Schema V8 is migrated to V10 by preserving horizontal and
-vertical sketch constraints. Schema V9 is migrated to V10 by preserving fixed
-point constraints. Current imports reject
+migrated to V11 by preserving parameters and sketch dimensions and adding empty
+sketch constraints. Schema V8 is migrated to V11 by preserving horizontal and
+vertical sketch constraints. Schema V9 is migrated to V11 by preserving fixed
+point constraints. Schema V10 is migrated to V11 by preserving coincident point
+constraints. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,
@@ -992,7 +1026,7 @@ Likely rebuildable cache files are:
 - thumbnails
 - geometry diagnostics
 
-The current JSON format is the source-of-truth interchange format for the V4/V10
+The current JSON format is the source-of-truth interchange format for the V4/V11
 foundation. It is not the final storage backend and does not imply OPFS or File
 System Access API behavior.
 

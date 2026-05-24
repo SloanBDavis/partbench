@@ -8,6 +8,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import {
   AsyncCadCommandExecutor,
+  CAD_PROJECT_FORMAT_VERSION_V10,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -13700,6 +13701,383 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         code: "INVALID_SKETCH_CONSTRAINT",
         path: "$.document.sketchConstraints[0].secondaryTarget",
         message: "different coordinates"
+      }
+    );
+  });
+
+  it("creates midpoint constraints and updates point and center targets", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 2]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [9, 9]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [5, 5],
+        width: 2,
+        height: 3
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [-5, -5],
+        radius: 1
+      }
+    ]);
+
+    const result = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.constraint.create",
+          id: "mid_point",
+          name: "Point midpoint",
+          sketchId: "sketch_1",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "point_1", role: "position" }
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "mid_rect",
+          name: "Rectangle midpoint",
+          sketchId: "sketch_1",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "rect_1", role: "center" }
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "mid_circle",
+          name: "Circle midpoint",
+          sketchId: "sketch_1",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "circle_1", role: "center" }
+        }
+      ]
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: ["mid_point", "mid_rect", "mid_circle"],
+      modifiedSketchEntityIds: ["point_1", "rect_1", "circle_1"]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.get", id: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketch: {
+        entities: expect.arrayContaining([
+          expect.objectContaining({ id: "point_1", point: [2, 1] }),
+          expect.objectContaining({ id: "rect_1", center: [2, 1] }),
+          expect.objectContaining({ id: "circle_1", center: [2, 1] })
+        ])
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "healthy",
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          id: "mid_point",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "point_1", role: "position" },
+          currentCoordinate: [2, 1],
+          resolvedCoordinate: [2, 1],
+          status: "healthy"
+        })
+      ])
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      sketchConstraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "mid_point",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "point_1", role: "position" },
+          status: "healthy"
+        })
+      ])
+    });
+    expect(engine.getTransactions().at(-1)?.diff).toMatchObject({
+      sketchConstraints: {
+        created: expect.arrayContaining([
+          expect.objectContaining({
+            id: "mid_point",
+            kind: "midpoint",
+            lineEntityId: "line_1",
+            target: { entityId: "point_1", role: "position" }
+          })
+        ])
+      }
+    });
+  });
+
+  it("validates duplicate, unsupported, and fixed-conflicting midpoint constraints", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 2]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [2, 1]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "fixed_point",
+        point: [9, 9]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "mid_point",
+        name: "Point midpoint",
+        sketchId: "sketch_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "point_1", role: "position" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_point",
+        name: "Fixed point",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "fixed_point", role: "position" }
+      }
+    ]);
+
+    const baseOp = {
+      op: "sketch.constraint.create" as const,
+      name: "Bad midpoint",
+      sketchId: "sketch_1",
+      kind: "midpoint" as const,
+      lineEntityId: "line_1"
+    };
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "mid_duplicate",
+            target: { entityId: "point_1", role: "position" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        sketchConstraintId: "mid_duplicate"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "mid_endpoint",
+            target: { entityId: "line_1", role: "start" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_CONSTRAINT", sketchEntityId: "line_1" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "mid_fixed_conflict",
+            target: { entityId: "fixed_point", role: "position" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        sketchEntityId: "fixed_point"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            ...baseOp,
+            id: "mid_missing",
+            target: { entityId: "missing", role: "position" }
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "SKETCH_ENTITY_NOT_FOUND", sketchEntityId: "missing" }
+    });
+  });
+
+  it("supports undo, redo, batch dry-run, and project round trip for midpoint constraints", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 2]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [9, 9]
+      }
+    ]);
+    const op = {
+      op: "sketch.constraint.create" as const,
+      id: "mid_point",
+      name: "Point midpoint",
+      sketchId: "sketch_1",
+      kind: "midpoint" as const,
+      lineEntityId: "line_1",
+      target: { entityId: "point_1", role: "position" as const }
+    };
+
+    expect(
+      engine.executeBatch({ version: "cadops.v1", mode: "dryRun", ops: [op] })
+    ).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: ["mid_point"],
+      modifiedSketchEntityIds: ["point_1"]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({ ok: true, constraintCount: 0 });
+
+    engine.apply(op);
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({ ok: true, constraintCount: 0 });
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      constraintCount: 1,
+      constraints: [
+        expect.objectContaining({
+          id: "mid_point",
+          kind: "midpoint",
+          lineEntityId: "line_1",
+          target: { entityId: "point_1", role: "position" }
+        })
+      ]
+    });
+
+    const project = engine.exportProject();
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.sketchConstraints).toEqual([
+      expect.objectContaining({ id: "mid_point", kind: "midpoint" })
+    ]);
+
+    const restored = importCadProject(project);
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "sketch.evaluation", sketchId: "sketch_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      constraintCount: 1,
+      constraints: [expect.objectContaining({ id: "mid_point" })]
+    });
+
+    const legacyV10Project = {
+      ...project,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V10,
+      document: {
+        ...project.document,
+        sketchConstraints: []
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+    expect(importCadProject(legacyV10Project).exportProject()).toMatchObject({
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: { sketchConstraints: [] }
+    });
+
+    expectProjectImportError(
+      () =>
+        importCadProject({
+          ...project,
+          schemaVersion: CAD_PROJECT_FORMAT_VERSION_V10
+        }),
+      {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        path: "$.document.sketchConstraints[0].kind",
+        message: "before V11"
       }
     );
   });

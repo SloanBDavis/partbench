@@ -435,6 +435,12 @@ function createSketchConstraintHealth(
           secondaryTarget: constraint.secondaryTarget
         }
       : {}),
+    ...(constraint.kind === "midpoint"
+      ? {
+          lineEntityId: constraint.lineEntityId,
+          target: constraint.target
+        }
+      : {}),
     ...(entry.currentCoordinate
       ? { currentCoordinate: entry.currentCoordinate }
       : {}),
@@ -624,6 +630,13 @@ function getSketchConstraintAffectedTargets(
     ];
   }
 
+  if (constraint.kind === "midpoint") {
+    return [
+      { sketchId: constraint.sketchId, entityId: constraint.lineEntityId },
+      { sketchId: constraint.sketchId, entityId: constraint.target.entityId }
+    ];
+  }
+
   return [{ sketchId: constraint.sketchId, entityId: constraint.entityId }];
 }
 
@@ -694,6 +707,7 @@ function createIssueFromSketchConstraintIssue(
     ...(issue.secondaryTarget
       ? { secondaryTarget: issue.secondaryTarget }
       : {}),
+    ...(issue.lineEntityId ? { lineEntityId: issue.lineEntityId } : {}),
     ...(issue.expected ? { expected: issue.expected } : {}),
     ...(issue.received ? { received: issue.received } : {})
   };

@@ -199,6 +199,19 @@ describe("sketch panel UI helpers", () => {
       status: "healthy" as const,
       issues: []
     };
+    const midpointConstraint: SketchConstraintEntry = {
+      id: "mid_point",
+      name: "Line midpoint",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      kind: "midpoint",
+      lineEntityId: "line_1",
+      target: { entityId: "point_1", role: "position" },
+      currentCoordinate: [1.5, 2],
+      resolvedCoordinate: [1.5, 2],
+      status: "healthy",
+      issues: []
+    };
     const invalidConstraint = {
       ...horizontalConstraint,
       status: "invalid-value" as const,
@@ -373,9 +386,13 @@ describe("sketch panel UI helpers", () => {
     expect(
       isSketchConstraintRelatedToEntity(coincidentConstraint, "point_1")
     ).toBe(true);
+    expect(
+      isSketchConstraintRelatedToEntity(midpointConstraint, "point_1")
+    ).toBe(true);
     expect(getSketchConstraintKindLabel("vertical")).toBe("Vertical");
     expect(getSketchConstraintKindLabel("fixed")).toBe("Fixed point");
     expect(getSketchConstraintKindLabel("coincident")).toBe("Coincident");
+    expect(getSketchConstraintKindLabel("midpoint")).toBe("Midpoint");
     expect(formatSketchPointTarget({ entityId: "line_1", role: "start" })).toBe(
       "line_1 start"
     );
@@ -388,6 +405,9 @@ describe("sketch panel UI helpers", () => {
     );
     expect(formatSketchConstraintStatus(coincidentConstraint)).toBe(
       "Coincident · line_1 start to point_1 position · Healthy"
+    );
+    expect(formatSketchConstraintStatus(midpointConstraint)).toBe(
+      "Midpoint · point_1 position at midpoint of line_1 · Healthy"
     );
     expect(formatSketchConstraintStatus(invalidConstraint)).toBe(
       "Horizontal · line_1 · Line constraint target cannot be zero length."

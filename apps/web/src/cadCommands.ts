@@ -673,6 +673,21 @@ export function buildCreateSketchConstraintOp(
     };
   }
 
+  if (form.kind === "midpoint") {
+    return {
+      op: "sketch.constraint.create",
+      id: normalizeOptionalId(form.id),
+      name: form.name.trim(),
+      sketchId,
+      kind: "midpoint",
+      lineEntityId: entityId,
+      target: {
+        entityId: form.secondaryEntityId,
+        role: form.secondaryTargetRole
+      }
+    };
+  }
+
   return {
     op: "sketch.constraint.create",
     id: normalizeOptionalId(form.id),

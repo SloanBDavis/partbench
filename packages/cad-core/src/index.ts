@@ -395,7 +395,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V6 = "web-cad.project.v6";
 export const CAD_PROJECT_FORMAT_VERSION_V7 = "web-cad.project.v7";
 export const CAD_PROJECT_FORMAT_VERSION_V8 = "web-cad.project.v8";
 export const CAD_PROJECT_FORMAT_VERSION_V9 = "web-cad.project.v9";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v10";
+export const CAD_PROJECT_FORMAT_VERSION_V10 = "web-cad.project.v10";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v11";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -407,6 +408,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V7
   | typeof CAD_PROJECT_FORMAT_VERSION_V8
   | typeof CAD_PROJECT_FORMAT_VERSION_V9
+  | typeof CAD_PROJECT_FORMAT_VERSION_V10
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -3264,6 +3266,13 @@ function assertSketchConstraintAvailable(
       );
     }
 
+    if (candidate.kind === "midpoint" && constraint.kind === "midpoint") {
+      return (
+        candidate.lineEntityId === constraint.lineEntityId &&
+        sketchPointTargetsEqual(candidate.target, constraint.target)
+      );
+    }
+
     return false;
   });
 
@@ -3283,9 +3292,14 @@ function assertSketchConstraintAvailable(
             constraint.primaryTarget,
             constraint.secondaryTarget
           )
-      : constraint.kind !== "fixed" ||
-        (existing.kind === "fixed" &&
-          sketchPointTargetsEqual(existing.target, constraint.target)));
+      : constraint.kind === "fixed"
+        ? existing.kind === "fixed" &&
+          sketchPointTargetsEqual(existing.target, constraint.target)
+        : constraint.kind === "midpoint"
+          ? existing.kind === "midpoint" &&
+            existing.lineEntityId === constraint.lineEntityId &&
+            sketchPointTargetsEqual(existing.target, constraint.target)
+          : true);
 
   throwValidationError({
     code: isDuplicate
@@ -3296,7 +3310,9 @@ function assertSketchConstraintAvailable(
         ? `Sketch point target already has a fixed constraint: ${existing.id}.`
         : constraint.kind === "coincident"
           ? `Sketch point targets already have a coincident constraint: ${existing.id}.`
-          : `Line already has a ${constraint.kind} constraint: ${existing.id}.`
+          : constraint.kind === "midpoint"
+            ? `Line and point target already have a midpoint constraint: ${existing.id}.`
+            : `Line already has a ${constraint.kind} constraint: ${existing.id}.`
       : `Line already has a conflicting ${existing.kind} constraint: ${existing.id}.`,
     opIndex,
     sketchId: constraint.sketchId,
@@ -3308,14 +3324,18 @@ function assertSketchConstraintAvailable(
         ? "target"
         : constraint.kind === "coincident"
           ? "secondaryTarget"
-          : "kind"
+          : constraint.kind === "midpoint"
+            ? "target"
+            : "kind"
     ),
     expected:
       constraint.kind === "fixed"
         ? "unfixed sketch point target"
         : constraint.kind === "coincident"
           ? "unique coincident point pair"
-          : "undriven line orientation",
+          : constraint.kind === "midpoint"
+            ? "unique midpoint line/target pair"
+            : "undriven line orientation",
     received: existing.kind
   });
 }
@@ -3374,6 +3394,10 @@ function createSketchConstraintFromOp(
 
   if (op.kind === "coincident") {
     return createCoincidentSketchConstraintFromOp(state, op, id, opIndex);
+  }
+
+  if (op.kind === "midpoint") {
+    return createMidpointSketchConstraintFromOp(state, op, id, opIndex);
   }
 
   return createOrientationSketchConstraintFromOp(state, op, id, opIndex);
@@ -3546,6 +3570,68 @@ function createCoincidentSketchConstraintFromOp(
   };
 }
 
+function createMidpointSketchConstraintFromOp(
+  state: MutableDocumentState,
+  op: Extract<
+    CadOp,
+    { readonly op: "sketch.constraint.create"; readonly kind: "midpoint" }
+  >,
+  id: SketchConstraintId,
+  opIndex: number
+): SketchConstraint {
+  const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+  const lineEntity = sketch.entities.get(op.lineEntityId);
+  const target = validateSketchPointTarget(op.target, opIndex);
+
+  if (!lineEntity) {
+    throwSketchEntityNotFound(op.sketchId, op.lineEntityId, opIndex);
+  }
+
+  if (lineEntity.kind !== "line") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Midpoint sketch constraint line target must be a line entity.",
+      opIndex,
+      sketchId: op.sketchId,
+      sketchEntityId: op.lineEntityId,
+      path: operationPath(opIndex, "lineEntityId"),
+      expected: "line entity",
+      received: lineEntity.kind
+    });
+  }
+
+  const targetEntity = sketch.entities.get(target.entityId);
+
+  if (!targetEntity) {
+    throwSketchEntityNotFound(op.sketchId, target.entityId, opIndex);
+  }
+
+  assertMidpointSketchPointTargetSupported(
+    targetEntity,
+    target,
+    opIndex,
+    op.sketchId
+  );
+
+  assertMidpointFixedTargetCompatible(
+    state.sketchConstraints,
+    op.sketchId,
+    lineEntity,
+    target,
+    opIndex
+  );
+
+  return {
+    id,
+    name: normalizeSketchConstraintName(op.name, opIndex, op.id),
+    sketchId: op.sketchId,
+    entityId: op.lineEntityId,
+    kind: "midpoint",
+    lineEntityId: op.lineEntityId,
+    target
+  };
+}
+
 function assertSketchConstraintTargetsStillValid(
   constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
   sketchId: SketchId,
@@ -3557,7 +3643,10 @@ function assertSketchConstraintTargetsStillValid(
       constraint.entityId === entity.id ||
       (constraint.kind === "coincident" &&
         (constraint.primaryTarget.entityId === entity.id ||
-          constraint.secondaryTarget.entityId === entity.id));
+          constraint.secondaryTarget.entityId === entity.id)) ||
+      (constraint.kind === "midpoint" &&
+        (constraint.lineEntityId === entity.id ||
+          constraint.target.entityId === entity.id));
 
     if (constraint.sketchId !== sketchId || !constraintTouchesEntity) {
       continue;
@@ -3580,6 +3669,15 @@ function assertSketchConstraintTargetsStillValid(
         isSketchPointTargetSupported(entity, constraint.primaryTarget)) ||
         (constraint.secondaryTarget.entityId === entity.id &&
           isSketchPointTargetSupported(entity, constraint.secondaryTarget)))
+    ) {
+      continue;
+    }
+
+    if (
+      constraint.kind === "midpoint" &&
+      ((constraint.lineEntityId === entity.id && entity.kind === "line") ||
+        (constraint.target.entityId === entity.id &&
+          isMidpointSketchPointTargetSupported(entity, constraint.target)))
     ) {
       continue;
     }
@@ -3713,6 +3811,29 @@ function assertSketchPointTargetSupported(
   });
 }
 
+function assertMidpointSketchPointTargetSupported(
+  entity: SketchEntity,
+  target: SketchPointTarget,
+  opIndex: number,
+  sketchId: SketchId
+): void {
+  if (isMidpointSketchPointTargetSupported(entity, target)) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_CONSTRAINT",
+    message:
+      "Midpoint sketch constraint target role is not supported for this entity.",
+    opIndex,
+    sketchId,
+    sketchEntityId: entity.id,
+    path: operationPath(opIndex, "target.role"),
+    expected: `point, rectangle center, or circle center target for ${entity.kind}`,
+    received: target.role
+  });
+}
+
 function isSketchPointTargetSupported(
   entity: SketchEntity,
   target: SketchPointTarget
@@ -3727,6 +3848,18 @@ function isSketchPointTargetSupported(
       (target.role === "start" || target.role === "end")) ||
     ((entity.kind === "rectangle" || entity.kind === "circle") &&
       target.role === "center")
+  );
+}
+
+function isMidpointSketchPointTargetSupported(
+  entity: SketchEntity,
+  target: SketchPointTarget
+): boolean {
+  return (
+    target.entityId === entity.id &&
+    ((entity.kind === "point" && target.role === "position") ||
+      ((entity.kind === "rectangle" || entity.kind === "circle") &&
+        target.role === "center"))
   );
 }
 
@@ -3799,6 +3932,15 @@ function setSketchPointTargetCoordinate(
   }
 
   return entity;
+}
+
+function getLineMidpoint(
+  entity: Extract<SketchEntity, { readonly kind: "line" }>
+): Vec2 {
+  return [
+    cleanMeasurementNumber((entity.start[0] + entity.end[0]) / 2),
+    cleanMeasurementNumber((entity.start[1] + entity.end[1]) / 2)
+  ];
 }
 
 function resolveCoincidentConstraintApplication(
@@ -3937,6 +4079,42 @@ function assertCoincidentFixedTargetsCompatible(
   });
 }
 
+function assertMidpointFixedTargetCompatible(
+  constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
+  sketchId: SketchId,
+  lineEntity: Extract<SketchEntity, { readonly kind: "line" }>,
+  target: SketchPointTarget,
+  opIndex: number
+): void {
+  const fixedTarget = findFixedConstraintCoordinate(
+    constraints,
+    sketchId,
+    target
+  );
+
+  if (!fixedTarget) {
+    return;
+  }
+
+  const midpoint = getLineMidpoint(lineEntity);
+
+  if (vec2Equal(fixedTarget.coordinate, midpoint)) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_SKETCH_CONSTRAINT",
+    message:
+      "Midpoint sketch constraint cannot target a point fixed away from the line midpoint.",
+    opIndex,
+    sketchId,
+    sketchEntityId: target.entityId,
+    path: operationPath(opIndex, "target"),
+    expected: formatVec2(midpoint),
+    received: formatVec2(fixedTarget.coordinate)
+  });
+}
+
 function findFixedConstraintCoordinate(
   constraints: ReadonlyMap<SketchConstraintId, SketchConstraint>,
   sketchId: SketchId,
@@ -4010,6 +4188,11 @@ function applySketchConstraintToEntity(
 ): void {
   if (constraint.kind === "coincident") {
     applyCoincidentSketchConstraintToEntities(state, constraint, diff, opIndex);
+    return;
+  }
+
+  if (constraint.kind === "midpoint") {
+    applyMidpointSketchConstraintToEntity(state, constraint, diff, opIndex);
     return;
   }
 
@@ -4110,6 +4293,62 @@ function applyCoincidentSketchConstraintToEntities(
           resolution.target,
           resolution.coordinate
         );
+
+  updateSketchEntityAndDependents(state, sketch, constrained, diff, opIndex);
+}
+
+function applyMidpointSketchConstraintToEntity(
+  state: MutableDocumentState,
+  constraint: Extract<SketchConstraint, { readonly kind: "midpoint" }>,
+  diff: MutableSemanticDiff,
+  opIndex: number
+): void {
+  const sketch = getSketchOrThrow(state.sketches, constraint.sketchId, opIndex);
+  const lineEntity = sketch.entities.get(constraint.lineEntityId);
+  const targetEntity = sketch.entities.get(constraint.target.entityId);
+
+  if (!lineEntity) {
+    throwSketchEntityNotFound(
+      constraint.sketchId,
+      constraint.lineEntityId,
+      opIndex
+    );
+  }
+
+  if (!targetEntity) {
+    throwSketchEntityNotFound(
+      constraint.sketchId,
+      constraint.target.entityId,
+      opIndex
+    );
+  }
+
+  if (lineEntity.kind !== "line") {
+    throwValidationError({
+      code: "INVALID_SKETCH_CONSTRAINT",
+      message: "Midpoint sketch constraint line target must be a line entity.",
+      opIndex,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.lineEntityId,
+      sketchConstraintId: constraint.id,
+      path: operationPath(opIndex, "lineEntityId"),
+      expected: "line entity",
+      received: lineEntity.kind
+    });
+  }
+
+  assertMidpointSketchPointTargetSupported(
+    targetEntity,
+    constraint.target,
+    opIndex,
+    constraint.sketchId
+  );
+
+  const constrained = setSketchPointTargetCoordinate(
+    targetEntity,
+    constraint.target,
+    getLineMidpoint(lineEntity)
+  );
 
   updateSketchEntityAndDependents(state, sketch, constrained, diff, opIndex);
 }
@@ -5734,6 +5973,12 @@ function sketchConstraintRef(
           primaryTarget: { ...constraint.primaryTarget },
           secondaryTarget: { ...constraint.secondaryTarget }
         }
+      : {}),
+    ...(constraint.kind === "midpoint"
+      ? {
+          lineEntityId: constraint.lineEntityId,
+          target: { ...constraint.target }
+        }
       : {})
   };
 }
@@ -6354,6 +6599,18 @@ function cloneSketchConstraintSnapshot(
       kind: "coincident",
       primaryTarget: { ...constraint.primaryTarget },
       secondaryTarget: { ...constraint.secondaryTarget }
+    };
+  }
+
+  if (constraint.kind === "midpoint") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "midpoint",
+      lineEntityId: constraint.lineEntityId,
+      target: { ...constraint.target }
     };
   }
 
@@ -8263,6 +8520,29 @@ function normalizeCadProject(value: CadProject): CadProject {
     };
   }
 
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10) {
+    return {
+      ...value,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      document: {
+        ...value.document,
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        sketchDimensions: value.document.sketchDimensions.map(
+          cloneSketchDimensionSnapshot
+        ),
+        sketchConstraints: value.document.sketchConstraints.map(
+          cloneSketchConstraintSnapshot
+        ),
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        )
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
+    };
+  }
+
   if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9) {
     return {
       ...value,
@@ -8579,6 +8859,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V10 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V9 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V8 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
@@ -8713,6 +8994,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -8722,6 +9004,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -8730,6 +9013,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -8737,20 +9021,27 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsCoincidentSketchConstraints =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsMidpointSketchConstraints =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -8762,6 +9053,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -9014,7 +9306,8 @@ function validateCadDocumentSnapshot(
             seenSketchIds,
             sketchEntityRefs,
             allowsFixedSketchConstraints,
-            allowsCoincidentSketchConstraints
+            allowsCoincidentSketchConstraints,
+            allowsMidpointSketchConstraints
           )
         );
       }
@@ -9681,6 +9974,17 @@ function isSketchPointTargetSupportedForImport(
   );
 }
 
+function isMidpointSketchPointTargetSupportedForImport(
+  entityKind: SketchEntityKind,
+  target: SketchPointTarget
+): boolean {
+  return (
+    (entityKind === "point" && target.role === "position") ||
+    ((entityKind === "rectangle" || entityKind === "circle") &&
+      target.role === "center")
+  );
+}
+
 function getImportSketchPointTargetCoordinate(
   entity: Record<string, unknown>,
   target: SketchPointTarget
@@ -9720,7 +10024,8 @@ function validateSketchConstraintSnapshot(
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowsFixedConstraints: boolean,
-  allowsCoincidentConstraints: boolean
+  allowsCoincidentConstraints: boolean,
+  allowsMidpointConstraints: boolean
 ): number {
   let maxGeneratedSketchConstraintNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
@@ -9728,6 +10033,8 @@ function validateSketchConstraintSnapshot(
   let target: SketchPointTarget | undefined;
   let primaryTarget: SketchPointTarget | undefined;
   let secondaryTarget: SketchPointTarget | undefined;
+  let lineEntityRef: SketchEntityImportRef | undefined;
+  let lineEntityId: string | undefined;
 
   if (!isRecord(value)) {
     addProjectIssue(
@@ -9788,7 +10095,7 @@ function validateSketchConstraintSnapshot(
       issues,
       "INVALID_SKETCH_CONSTRAINT",
       `${path}.kind`,
-      "Sketch constraint kind must be horizontal, vertical, fixed, or coincident."
+      "Sketch constraint kind must be horizontal, vertical, fixed, coincident, or midpoint."
     );
   }
 
@@ -9877,6 +10184,49 @@ function validateSketchConstraintSnapshot(
         "Coincident sketch constraint targets must be distinct."
       );
     }
+  } else if (value.kind === "midpoint") {
+    if (!allowsMidpointConstraints) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.kind`,
+        "Project documents before V11 must not include midpoint sketch constraints."
+      );
+    }
+
+    if (
+      typeof value.lineEntityId !== "string" ||
+      value.lineEntityId.length === 0
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.lineEntityId`,
+        "Midpoint sketch constraint lineEntityId must be a non-empty string."
+      );
+    } else {
+      lineEntityId = value.lineEntityId;
+    }
+
+    target = validateSketchPointTargetSnapshot(
+      value.target,
+      `${path}.target`,
+      issues
+    );
+    entityId = lineEntityId;
+
+    if (
+      typeof value.entityId === "string" &&
+      lineEntityId &&
+      value.entityId !== lineEntityId
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.entityId`,
+        "Midpoint sketch constraint entityId must match lineEntityId."
+      );
+    }
   } else if (typeof value.entityId === "string" && value.entityId.length > 0) {
     entityId = value.entityId;
   } else {
@@ -9899,7 +10249,9 @@ function validateSketchConstraintSnapshot(
           ? `${path}.target.entityId`
           : value.kind === "coincident"
             ? `${path}.primaryTarget.entityId`
-            : `${path}.entityId`,
+            : value.kind === "midpoint"
+              ? `${path}.lineEntityId`
+              : `${path}.entityId`,
         "Sketch constraint entityId must reference an existing sketch entity."
       );
     } else {
@@ -9911,7 +10263,9 @@ function validateSketchConstraintSnapshot(
             ? `${path}.target.entityId`
             : value.kind === "coincident"
               ? `${path}.primaryTarget.entityId`
-              : `${path}.entityId`,
+              : value.kind === "midpoint"
+                ? `${path}.lineEntityId`
+                : `${path}.entityId`,
           "Sketch constraint entityId must belong to the referenced sketch."
         );
       }
@@ -9925,6 +10279,15 @@ function validateSketchConstraintSnapshot(
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.entityId`,
           "Sketch orientation constraint entityId must reference a line sketch entity."
+        );
+      }
+
+      if (value.kind === "midpoint" && entityRef.kind !== "line") {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.lineEntityId`,
+          "Midpoint sketch constraint lineEntityId must reference a line sketch entity."
         );
       }
 
@@ -9951,6 +10314,58 @@ function validateSketchConstraintSnapshot(
           "INVALID_SKETCH_CONSTRAINT",
           `${path}.primaryTarget.role`,
           "Coincident sketch constraint primary target role is not supported for this entity."
+        );
+      }
+    }
+  }
+
+  if (value.kind === "midpoint" && target) {
+    const targetEntityRef = sketchEntityRefs.get(target.entityId);
+    lineEntityRef = lineEntityId
+      ? sketchEntityRefs.get(lineEntityId)
+      : undefined;
+
+    if (!targetEntityRef) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.target.entityId`,
+        "Midpoint sketch constraint target entityId must reference an existing sketch entity."
+      );
+    } else {
+      if (targetEntityRef.sketchId !== value.sketchId) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.target.entityId`,
+          "Midpoint sketch constraint target must belong to the referenced sketch."
+        );
+      }
+
+      if (
+        !isMidpointSketchPointTargetSupportedForImport(
+          targetEntityRef.kind,
+          target
+        )
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.target.role`,
+          "Midpoint sketch constraint target role is not supported for this entity."
+        );
+      }
+
+      if (
+        lineEntityId &&
+        target.entityId === lineEntityId &&
+        (target.role === "start" || target.role === "end")
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.target`,
+          "Midpoint sketch constraint target cannot be one of the same line endpoints."
         );
       }
     }
@@ -10204,6 +10619,58 @@ function validateSketchConstraintSnapshot(
         `${path}.secondaryTarget`,
         "Coincident sketch constraint cannot target points fixed to different coordinates."
       );
+    }
+  }
+
+  if (
+    typeof value.sketchId === "string" &&
+    value.kind === "midpoint" &&
+    lineEntityId &&
+    target
+  ) {
+    const targetKey = `${value.sketchId}\0midpoint\0${lineEntityId}\0${target.entityId}\0${target.role}`;
+    const existing = seenSketchConstraintTargets.get(targetKey);
+
+    if (existing) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.target`,
+        "Line and point target already have a duplicate midpoint constraint."
+      );
+    } else {
+      seenSketchConstraintTargets.set(targetKey, value.kind);
+    }
+
+    if (
+      lineEntityRef &&
+      isRecord(lineEntityRef.entity) &&
+      isVec2(lineEntityRef.entity.start) &&
+      isVec2(lineEntityRef.entity.end)
+    ) {
+      const midpoint: Vec2 = [
+        cleanMeasurementNumber(
+          (lineEntityRef.entity.start[0] + lineEntityRef.entity.end[0]) / 2
+        ),
+        cleanMeasurementNumber(
+          (lineEntityRef.entity.start[1] + lineEntityRef.entity.end[1]) / 2
+        )
+      ];
+      const targetFixedCoordinate = seenFixedSketchConstraintCoordinates.get(
+        targetKeyForImportPointTarget(target, value.sketchId)
+      );
+
+      if (
+        targetFixedCoordinate &&
+        !vec2Equal(targetFixedCoordinate, midpoint)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.target`,
+          "Midpoint sketch constraint cannot target a point fixed away from the line midpoint."
+        );
+      }
     }
   }
 
@@ -11949,6 +12416,13 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
+    if (value.kind === "midpoint") {
+      return (
+        typeof value.lineEntityId === "string" &&
+        isSketchPointTarget(value.target)
+      );
+    }
+
     return typeof value.entityId === "string";
   }
 
@@ -12406,7 +12880,8 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "horizontal" ||
     value === "vertical" ||
     value === "fixed" ||
-    value === "coincident"
+    value === "coincident" ||
+    value === "midpoint"
   );
 }
 

@@ -566,6 +566,28 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildCreateSketchConstraintOp("sketch_1", "line_1", {
+        id: " mid_point ",
+        name: " Point midpoint ",
+        kind: "midpoint",
+        targetRole: "start",
+        coordinateMode: "current",
+        coordinateX: 0,
+        coordinateY: 0,
+        secondaryEntityId: "point_1",
+        secondaryTargetRole: "position"
+      })
+    ).toEqual({
+      op: "sketch.constraint.create",
+      id: "mid_point",
+      name: "Point midpoint",
+      sketchId: "sketch_1",
+      kind: "midpoint",
+      lineEntityId: "line_1",
+      target: { entityId: "point_1", role: "position" }
+    });
+
+    expect(
       buildRenameSketchConstraintOp("con_horizontal", " Base horizontal ")
     ).toEqual({
       op: "sketch.constraint.rename",

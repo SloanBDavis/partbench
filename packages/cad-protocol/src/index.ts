@@ -88,7 +88,8 @@ export type SketchConstraintKind =
   | "horizontal"
   | "vertical"
   | "fixed"
-  | "coincident";
+  | "coincident"
+  | "midpoint";
 
 export type SketchPointTargetRole = "position" | "start" | "end" | "center";
 
@@ -411,7 +412,8 @@ export interface SketchDimensionDeleteOp {
 export type SketchConstraintCreateOp =
   | SketchOrientationConstraintCreateOp
   | SketchFixedConstraintCreateOp
-  | SketchCoincidentConstraintCreateOp;
+  | SketchCoincidentConstraintCreateOp
+  | SketchMidpointConstraintCreateOp;
 
 export interface SketchOrientationConstraintCreateOp {
   readonly op: "sketch.constraint.create";
@@ -440,6 +442,16 @@ export interface SketchCoincidentConstraintCreateOp {
   readonly kind: "coincident";
   readonly primaryTarget: SketchPointTarget;
   readonly secondaryTarget: SketchPointTarget;
+}
+
+export interface SketchMidpointConstraintCreateOp {
+  readonly op: "sketch.constraint.create";
+  readonly id?: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly kind: "midpoint";
+  readonly lineEntityId: SketchEntityId;
+  readonly target: SketchPointTarget;
 }
 
 export interface SketchConstraintRenameOp {
@@ -554,6 +566,7 @@ export interface CadSketchConstraintRef {
   readonly target?: SketchPointTarget;
   readonly primaryTarget?: SketchPointTarget;
   readonly secondaryTarget?: SketchPointTarget;
+  readonly lineEntityId?: SketchEntityId;
 }
 
 export interface DocumentSemanticDiff {
@@ -1028,7 +1041,8 @@ export interface SketchDimensionSnapshot {
 export type SketchConstraintSnapshot =
   | SketchOrientationConstraintSnapshot
   | SketchFixedConstraintSnapshot
-  | SketchCoincidentConstraintSnapshot;
+  | SketchCoincidentConstraintSnapshot
+  | SketchMidpointConstraintSnapshot;
 
 export interface SketchOrientationConstraintSnapshot {
   readonly id: SketchConstraintId;
@@ -1058,6 +1072,16 @@ export interface SketchCoincidentConstraintSnapshot {
   readonly secondaryTarget: SketchPointTarget;
 }
 
+export interface SketchMidpointConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "midpoint";
+  readonly lineEntityId: SketchEntityId;
+  readonly target: SketchPointTarget;
+}
+
 export interface SketchDimensionIssue {
   readonly code: SketchDimensionIssueCode;
   readonly message: string;
@@ -1078,6 +1102,7 @@ export interface SketchConstraintIssue {
   readonly sketchPointTarget?: SketchPointTarget;
   readonly primaryTarget?: SketchPointTarget;
   readonly secondaryTarget?: SketchPointTarget;
+  readonly lineEntityId?: SketchEntityId;
   readonly expected?: string;
   readonly received?: string;
 }
@@ -1628,6 +1653,7 @@ export interface CadSketchConstraintHealth {
   readonly target?: SketchPointTarget;
   readonly primaryTarget?: SketchPointTarget;
   readonly secondaryTarget?: SketchPointTarget;
+  readonly lineEntityId?: SketchEntityId;
   readonly currentCoordinate?: Vec2;
   readonly primaryCurrentCoordinate?: Vec2;
   readonly secondaryCurrentCoordinate?: Vec2;

@@ -1455,6 +1455,13 @@ function isCadOp(value: unknown): value is CadOp {
       );
     }
 
+    if (value.kind === "midpoint") {
+      return (
+        typeof value.lineEntityId === "string" &&
+        isSketchPointTarget(value.target)
+      );
+    }
+
     return typeof value.entityId === "string";
   }
 
@@ -1637,7 +1644,8 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "horizontal" ||
     value === "vertical" ||
     value === "fixed" ||
-    value === "coincident"
+    value === "coincident" ||
+    value === "midpoint"
   );
 }
 

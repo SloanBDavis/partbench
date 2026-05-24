@@ -141,7 +141,13 @@ export function evaluateSketch(
               constraint.primaryTarget.entityId,
               constraint.secondaryTarget.entityId
             ]
-          : [constraint.entityId]
+          : constraint.kind === "midpoint"
+            ? [
+                constraint.entityId,
+                constraint.lineEntityId,
+                constraint.target.entityId
+              ]
+            : [constraint.entityId]
       )
     ])
   ];
@@ -325,6 +331,14 @@ export function evaluateSketchConstraint(
 
   if (constraint.kind === "coincident") {
     return evaluateCoincidentSketchConstraint(
+      document,
+      constraint,
+      evaluatedEntities
+    );
+  }
+
+  if (constraint.kind === "midpoint") {
+    return evaluateMidpointSketchConstraint(
       document,
       constraint,
       evaluatedEntities
@@ -802,6 +816,189 @@ function evaluateCoincidentSketchConstraint(
   };
 }
 
+function evaluateMidpointSketchConstraint(
+  document: SketchSolverDocument,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "midpoint" }>,
+  evaluatedEntities?: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>
+): SketchConstraintEntry {
+  const issues: SketchConstraintIssue[] = [];
+  const sketch = document.sketches.get(constraint.sketchId);
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Sketch does not exist: ${constraint.sketchId}`,
+      sketchId: constraint.sketchId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target
+    });
+  }
+
+  const lineEntity =
+    evaluatedEntities?.get(constraint.lineEntityId) ??
+    sketch?.entities.get(constraint.lineEntityId);
+  const targetEntity =
+    evaluatedEntities?.get(constraint.target.entityId) ??
+    sketch?.entities.get(constraint.target.entityId);
+
+  if (sketch && !lineEntity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.lineEntityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.lineEntityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target
+    });
+  }
+
+  if (sketch && !targetEntity) {
+    issues.push({
+      code: "SKETCH_ENTITY_NOT_FOUND",
+      message: `Sketch entity does not exist: ${constraint.target.entityId}`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target
+    });
+  }
+
+  if (lineEntity && lineEntity.kind !== "line") {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message: "Midpoint sketch constraint line target is not a line entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.lineEntityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target,
+      expected: "line entity",
+      received: lineEntity.kind
+    });
+  }
+
+  if (
+    targetEntity &&
+    !isMidpointSketchPointTargetSupported(targetEntity, constraint.target)
+  ) {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Midpoint sketch constraint target role is not supported for this entity.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target,
+      expected: `point, rectangle center, or circle center target for ${targetEntity.kind}`,
+      received: constraint.target.role
+    });
+  }
+
+  if (
+    constraint.target.entityId === constraint.lineEntityId &&
+    (constraint.target.role === "start" || constraint.target.role === "end")
+  ) {
+    issues.push({
+      code: "UNSUPPORTED_TARGET",
+      message:
+        "Midpoint sketch constraint target cannot be one of the same line endpoints.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target,
+      expected: "point, rectangle center, or circle center target",
+      received: constraint.target.role
+    });
+  }
+
+  const duplicate = [...document.sketchConstraints.values()].find(
+    (candidate) =>
+      candidate.id !== constraint.id &&
+      candidate.sketchId === constraint.sketchId &&
+      candidate.kind === "midpoint" &&
+      candidate.lineEntityId === constraint.lineEntityId &&
+      sketchPointTargetsEqual(candidate.target, constraint.target)
+  );
+
+  if (duplicate) {
+    issues.push({
+      code: "CONFLICTING_CONSTRAINT",
+      message: `Line and point target already have a midpoint constraint: ${duplicate.id}.`,
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target,
+      expected: "one midpoint constraint per line/target pair",
+      received: duplicate.id
+    });
+  }
+
+  const resolvedCoordinate =
+    lineEntity?.kind === "line" ? getLineMidpoint(lineEntity) : undefined;
+  const currentCoordinate =
+    targetEntity &&
+    isMidpointSketchPointTargetSupported(targetEntity, constraint.target)
+      ? getSketchPointTargetCoordinate(targetEntity, constraint.target)
+      : undefined;
+  const fixedTarget = findFixedConstraintCoordinate(
+    document,
+    constraint.sketchId,
+    constraint.target
+  );
+
+  if (
+    resolvedCoordinate &&
+    fixedTarget &&
+    !vec2Equal(fixedTarget.coordinate, resolvedCoordinate)
+  ) {
+    issues.push({
+      code: "INCONSISTENT_CONSTRAINT",
+      message:
+        "Midpoint sketch constraint cannot satisfy the target's fixed coordinate.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target,
+      expected: formatVec2(fixedTarget.coordinate),
+      received: formatVec2(resolvedCoordinate)
+    });
+  }
+
+  if (
+    resolvedCoordinate &&
+    currentCoordinate &&
+    !vec2Equal(currentCoordinate, resolvedCoordinate)
+  ) {
+    issues.push({
+      code: "INCONSISTENT_CONSTRAINT",
+      message:
+        "Midpoint sketch constraint target does not match the line midpoint.",
+      sketchId: constraint.sketchId,
+      sketchEntityId: constraint.target.entityId,
+      sketchConstraintId: constraint.id,
+      lineEntityId: constraint.lineEntityId,
+      sketchPointTarget: constraint.target,
+      expected: formatVec2(resolvedCoordinate),
+      received: formatVec2(currentCoordinate)
+    });
+  }
+
+  return {
+    ...cloneSketchConstraintSnapshot(constraint),
+    status: getSketchEvaluationStatus(issues),
+    issues,
+    ...(currentCoordinate ? { currentCoordinate } : {}),
+    ...(resolvedCoordinate ? { resolvedCoordinate } : {})
+  };
+}
+
 export function evaluateSketchGeometry(
   document: SketchSolverDocument,
   sketch: SketchSolverSketch
@@ -892,6 +1089,24 @@ export function evaluateSketchGeometry(
 
     if (result.ok) {
       entities.set(result.entity.id, result.entity);
+    }
+  }
+
+  for (const constraint of document.sketchConstraints.values()) {
+    if (constraint.sketchId !== sketch.id || constraint.kind !== "midpoint") {
+      continue;
+    }
+
+    const result = applyMidpointSketchConstraintValue(
+      entities,
+      document,
+      constraint
+    );
+
+    if (result.ok) {
+      for (const entity of result.entities.values()) {
+        entities.set(entity.id, entity);
+      }
     }
   }
 
@@ -1150,7 +1365,7 @@ export function sketchConstraintMatchesLine(
   kind: SketchConstraintKind,
   entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
 ): boolean {
-  if (kind === "fixed" || kind === "coincident") {
+  if (kind === "fixed" || kind === "coincident" || kind === "midpoint") {
     return true;
   }
 
@@ -1852,6 +2067,117 @@ function applyCoincidentSketchConstraintValue(
   return { ok: true, entities: new Map([[next.id, next]]) };
 }
 
+function applyMidpointSketchConstraintValue(
+  entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>,
+  document: SketchSolverDocument,
+  constraint: Extract<SketchConstraintSnapshot, { readonly kind: "midpoint" }>
+): SketchSolverEntitiesResult {
+  const lineEntity = entities.get(constraint.lineEntityId);
+  const targetEntity = entities.get(constraint.target.entityId);
+
+  if (!lineEntity) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: `Sketch entity does not exist: ${constraint.lineEntityId}`,
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.lineEntityId,
+        sketchConstraintId: constraint.id,
+        pathField: "lineEntityId",
+        expected: "existing line sketch entity id",
+        received: constraint.lineEntityId
+      }
+    };
+  }
+
+  if (!targetEntity) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: `Sketch entity does not exist: ${constraint.target.entityId}`,
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.target.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "target.entityId",
+        expected: "existing sketch point target entity id",
+        received: constraint.target.entityId
+      }
+    };
+  }
+
+  if (lineEntity.kind !== "line") {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message: "Midpoint sketch constraint line target is not a line entity.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.lineEntityId,
+        sketchConstraintId: constraint.id,
+        pathField: "lineEntityId",
+        expected: "line entity",
+        received: lineEntity.kind
+      }
+    };
+  }
+
+  if (!isMidpointSketchPointTargetSupported(targetEntity, constraint.target)) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Midpoint sketch constraint target role is not supported for this entity.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.target.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "target.role",
+        expected: `point, rectangle center, or circle center target for ${targetEntity.kind}`,
+        received: constraint.target.role
+      }
+    };
+  }
+
+  const fixedTarget = findFixedConstraintCoordinate(
+    document,
+    constraint.sketchId,
+    constraint.target
+  );
+  const midpoint = getLineMidpoint(lineEntity);
+
+  if (fixedTarget && !vec2Equal(fixedTarget.coordinate, midpoint)) {
+    return {
+      ok: false,
+      issue: {
+        kind: "constraint",
+        code: "INVALID_SKETCH_CONSTRAINT",
+        message:
+          "Midpoint sketch constraint cannot satisfy the target's fixed coordinate.",
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.target.entityId,
+        sketchConstraintId: constraint.id,
+        pathField: "target",
+        expected: formatVec2(fixedTarget.coordinate),
+        received: formatVec2(midpoint)
+      }
+    };
+  }
+
+  const next = setSketchPointTargetCoordinate(
+    targetEntity,
+    constraint.target,
+    midpoint
+  );
+
+  return { ok: true, entities: new Map([[next.id, next]]) };
+}
+
 function isSketchPointTargetSupported(
   entity: SketchEntitySnapshot,
   target: SketchPointTarget
@@ -1867,6 +2193,27 @@ function isSketchPointTargetSupported(
     ((entity.kind === "rectangle" || entity.kind === "circle") &&
       target.role === "center")
   );
+}
+
+function isMidpointSketchPointTargetSupported(
+  entity: SketchEntitySnapshot,
+  target: SketchPointTarget
+): boolean {
+  return (
+    target.entityId === entity.id &&
+    ((entity.kind === "point" && target.role === "position") ||
+      ((entity.kind === "rectangle" || entity.kind === "circle") &&
+        target.role === "center"))
+  );
+}
+
+function getLineMidpoint(
+  entity: Extract<SketchEntitySnapshot, { readonly kind: "line" }>
+): Vec2 {
+  return cleanVec2([
+    (entity.start[0] + entity.end[0]) / 2,
+    (entity.start[1] + entity.end[1]) / 2
+  ]);
 }
 
 function getSketchPointTargetCoordinate(
@@ -2006,6 +2353,18 @@ function cloneSketchConstraintSnapshot(
       kind: "coincident",
       primaryTarget: { ...constraint.primaryTarget },
       secondaryTarget: { ...constraint.secondaryTarget }
+    };
+  }
+
+  if (constraint.kind === "midpoint") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "midpoint",
+      lineEntityId: constraint.lineEntityId,
+      target: { ...constraint.target }
     };
   }
 
