@@ -107,8 +107,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/architecture.md` - long-term architecture.
 - `docs/implementation-plan.md` - current implementation source of truth and
   roadmap.
-- `docs/v3.md` - completed V3 parametric sketch foundation.
-- `docs/v4.md` - active V4 constrained sketch solving target.
+- `docs/v4.md` - completed V4 constrained sketch solving milestone.
+- `docs/v5.md` - active V5 exact geometry/topology target.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.

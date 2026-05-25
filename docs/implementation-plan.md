@@ -4,14 +4,13 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 next implementation roadmap.
 
-Last updated: 2026-05-24.
+Last updated: 2026-05-25.
 
 Use this document for day-to-day implementation decisions. Use
-`docs/architecture.md` for long-term design, `docs/v3.md` for the completed V3
-parametric sketch milestone, `docs/v4.md` for the completed constrained sketch
-solving milestone,
-`docs/native-format.md` for project-format direction, and
-`docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
+`docs/architecture.md` for long-term design, `docs/v4.md` for the completed
+constrained sketch solving milestone, `docs/v5.md` for the active exact
+geometry/topology milestone, `docs/native-format.md` for project-format
+direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
 
@@ -27,9 +26,9 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2, V3, and V4 are complete. The next milestone should build on the V4
-   constrained-sketch foundation without accidentally starting unrelated
-   architecture systems.
+9. V2, V3, and V4 are complete. V5 is active and should build exact
+   geometry/topology confidence for current authored bodies without starting
+   unrelated architecture systems.
 
 ## Current Repo State
 
@@ -189,7 +188,7 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo is a completed V3 parametric sketch foundation, not yet a full CAD
+The repo is a completed V4 constrained-sketch foundation, not yet a full CAD
 system.
 
 Current limitations:
@@ -518,27 +517,127 @@ Completed:
 - add high-signal unit/package coverage;
 - update docs to mark V4 complete and identify the next milestone.
 
-## Next Milestone Direction
+## Active Roadmap: V5 Exact Geometry And Topology Foundation
 
-The recommended next milestone should be scoped separately from this V4
-completion pass. The strongest candidates are exact geometry/topology
-stabilization for boolean result bodies, broader CAD feature operations such as
-revolve or patterning, or persistence/import-export work such as STEP and native
-storage. The next milestone should begin with a dedicated planning doc before
-implementation, because each path touches different architecture boundaries.
+V5 is the active milestone. Its detailed scope lives in `docs/v5.md`.
 
-## Deferred Beyond V4 Unless Explicitly Scoped
+V5 should make the current authored bodies more CAD-real without broadening the
+modeling surface too quickly. V4 made sketches and regeneration coherent. V5
+should close the next hard architecture gap: supported authored bodies,
+including current narrow boolean result bodies, need derived exact geometry,
+topology/reference health, generated references where safe, and trustworthy
+measurements/extents.
 
-- Full general sketch solving.
+The V5 product target is:
+
+> A user or agent can create the current supported bodies, including narrow
+> add/cut results, and inspect them as real CAD bodies with generated
+> references, exact/kernel-derived measurements where available, clear topology
+> health, and honest unsupported or ambiguous states.
+
+V5 is agent-first. Exact/topology status, reference health, measurement
+confidence, validation failures, stale/ambiguous diagnostics, and affected
+features/bodies must be typed/queryable through CADOps and wrapped by
+agent/MCP adapters. The UI should expose the same data compactly without
+claiming broad topological naming is solved.
+
+### V5 Phase A: Exact Geometry And Topology Boundary
+
+Goal: define the derived exact/topology result model before wiring it into more
+queries.
+
+Planned deliverables:
+
+- typed protocol/query shapes for derived body topology and exact measurement
+  status;
+- internal result shapes for kernel-derived body metadata;
+- structured topology errors for unsupported body, stale source, ambiguous
+  topology, empty result, invalid result, and kernel failure;
+- cache-key rules for exact/topology data;
+- tests proving the new boundary is read-only and does not mutate source
+  document data.
+
+### V5 Phase B: Simple Extrude Exact/Topology Parity
+
+Goal: route simple rectangle/circle `newBody` extrudes through the new
+exact/topology boundary while preserving existing semantic generated reference
+behavior.
+
+Planned deliverables:
+
+- derived topology/measurement responses for rectangle and circle newBody
+  extrudes;
+- parity tests for existing generated references;
+- exact/kernel-derived measurements where available;
+- project health entries for exact/topology status.
+
+### V5 Phase C: Boolean Result Topology
+
+Goal: make current supported boolean result bodies inspectable without claiming
+a full topological naming solution.
+
+Planned deliverables:
+
+- generated body/face references for supported narrow boolean result bodies
+  where roles or kernel-derived matching are stable enough;
+- explicit unsupported or ambiguous responses where safe stable references
+  cannot be produced;
+- resolver and named-reference behavior for supported boolean result
+  references;
+- tests for rectangle cut, circle-target cut, rectangle add/fuse, source edits,
+  undo/redo, import/export, and stale reference behavior.
+
+### V5 Phase D: Exact Measurements And Project Extents
+
+Goal: make supported body measurements and project extents use the best
+available derived exact data while preserving honest fallbacks.
+
+Planned deliverables:
+
+- kernel-derived volume, surface area, bounds, and centroid where practical;
+- structured measurement confidence/source metadata;
+- project extents that include supported boolean result bodies when exact
+  bounds are available;
+- warnings for unsupported or failed exact geometry.
+
+### V5 Phase E: Agent/MCP And UI Integration
+
+Goal: expose V5 exact/topology data in the same command/query-driven way as the
+rest of Partbench.
+
+Planned deliverables:
+
+- agent-adapter and MCP pass-through for body topology and exact measurement
+  queries;
+- compact UI for selected body topology/reference health;
+- generated/named reference UI updates for supported boolean result references;
+- measurement display that shows exact/source/fallback confidence clearly.
+
+### V5 Phase F: Stabilization And Completion
+
+Goal: declare V5 complete only when supported authored bodies and narrow boolean
+result bodies have coherent exact/topology behavior, tests, and docs.
+
+Planned deliverables:
+
+- architecture-boundary review for cad-core, geometry-kernel, geometry-worker,
+  renderer, adapter/MCP, storage, and UI helpers;
+- focused fixes for must-fix findings;
+- broad unit/package-level coverage for V5 workflows;
+- docs updated to mark V5 complete and identify the next milestone.
+
+## Deferred Beyond V5 Unless Explicitly Scoped
+
+- Full general sketch solving beyond the current V4 constrained-sketch scope.
 - Complex constraints such as tangent, concentric, equal, symmetry, spline, and
   curvature constraints.
 - Dragging solver UX.
 - Arbitrary parameter expressions.
-- Full stable topological naming across broad feature edits.
-- Generated references for boolean result bodies.
-- General booleans/add, fillets, chamfers, shell, patterns, lofts, sweeps,
-  revolve, and direct edits.
-- STEP import/export.
+- Broad stable topological naming across arbitrary feature edits.
+- General booleans beyond the current narrow add/cut cases.
+- Fillets, chamfers, shell, patterns, lofts, sweeps, revolve, and direct edits.
+- Persistent exact B-rep checkpoints.
+- STEP/IGES import/export.
 - OPFS cache implementation and File System Access open/save.
 - Native `.wcad` package implementation.
 - Local launcher with cross-origin isolation headers.

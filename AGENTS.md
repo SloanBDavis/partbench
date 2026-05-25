@@ -12,8 +12,8 @@ The long-term architecture is in:
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
-- `docs/v3.md` — completed V3 parametric sketch foundation
-- `docs/v4.md` — active V4 constrained sketch solving target
+- `docs/v4.md` — completed V4 constrained sketch solving milestone
+- `docs/v5.md` — active V5 exact geometry/topology target
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 
