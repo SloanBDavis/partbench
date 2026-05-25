@@ -15,6 +15,7 @@ It exposes these MCP-style tools:
 - `cad.parameter_get`
 - `cad.object_measurements`
 - `cad.body_measurements`
+- `cad.body_topology`
 - `cad.project_extents`
 - `cad.sketch_get`
 - `cad.sketch_evaluation`

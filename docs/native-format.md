@@ -823,6 +823,17 @@ expose vertex measurements because the current circular profile has no stable
 discrete semantic vertices. These measurements are derived query results, not
 saved source data, and they are not exact persisted B-rep topology.
 
+The `body.topology` query is the first V5 exact/topology boundary. It accepts a
+body ID and returns derived availability/status metadata for exact geometry,
+topology, and exact measurement confidence. The response includes a deterministic
+source identity/cache key derived from existing document source records, plus
+structured topology issues such as unsupported body, stale source, ambiguous
+topology, empty/invalid exact result, or kernel failure. In the initial V5 Phase
+A slice, current bodies return honest `unsupported` topology snapshots because
+exact topology execution is not wired yet. This query is read-only derived data;
+it does not persist OCCT state, B-rep data, mesh data, topology indexes, or a
+new source-of-truth project field, so it does not require a schema version.
+
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts either a body ID plus generated face stable ID, or a named reference
 that resolves to a generated reference. Both paths resolve through the same

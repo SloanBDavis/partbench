@@ -94,6 +94,7 @@ import {
   validateGeneratedReference
 } from "./generatedReferences";
 import { createBodyMeasurements } from "./bodyMeasurements";
+import { createBodyTopology } from "./bodyTopology";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import { createProjectHealth } from "./projectHealth";
 import {
@@ -119,6 +120,13 @@ export type {
   CadAxisAlignedBounds,
   CadBodyRef,
   CadBodySnapshot,
+  CadBodyTopologyIssue,
+  CadBodyTopologyIssueCode,
+  CadBodyTopologyMeasurementConfidence,
+  CadBodyTopologySnapshot,
+  CadBodyTopologySourceIdentity,
+  CadBodyTopologySourceKind,
+  CadBodyTopologyStatus,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
   CadDependencyHealthIssue,
@@ -1030,6 +1038,37 @@ export class CadEngine {
           query: request.query.query,
           cadOpsVersion: request.version,
           dimension: evaluateSketchDimension(this.#document, dimension)
+        };
+      }
+
+      case "body.topology": {
+        const { bodyId } = request.query;
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const topology = createBodyTopology({
+          document: this.#document,
+          bodyId,
+          units: this.#document.units,
+          bodyExists: (candidateBodyId) =>
+            structure.bodies.some((body) => body.id === candidateBodyId)
+        });
+
+        if (!topology.ok) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: topology.error
+          };
+        }
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          topology: topology.topology
         };
       }
 
@@ -2581,6 +2620,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "sketch.dimension.get":
     case "body.generatedReferences":
     case "body.resolveGeneratedReference":
+    case "body.topology":
     case "body.measurements":
     case "body.generatedReferenceMeasurements":
     case "reference.listNamed":
@@ -2618,6 +2658,7 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.dimensions":
       return typeof value.sketchId === "string";
     case "body.generatedReferences":
+    case "body.topology":
     case "body.measurements":
       return typeof value.bodyId === "string";
     case "body.resolveGeneratedReference":

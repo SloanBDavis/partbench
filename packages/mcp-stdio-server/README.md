@@ -16,6 +16,7 @@ Only these existing tools are exposed:
 - `cad.parameter_get`
 - `cad.object_measurements`
 - `cad.body_measurements`
+- `cad.body_topology`
 - `cad.project_extents`
 - `cad.sketch_get`
 - `cad.sketch_evaluation`
@@ -110,11 +111,12 @@ containers and entities from the authoritative document model.
 solver/evaluator status for one sketch.
 `cad.named_references` and `cad.resolve_named_reference` inspect
 source-of-truth user/agent names assigned to generated references.
-`cad.object_measurements`, `cad.body_measurements`, `cad.project_extents`, and
-`cad.generated_reference_measurements` return read-only source-derived
-measurements from the authoritative document. Generated-reference measurements
-use semantic body/face/edge/vertex references for authored sketch-extrude bodies,
-not raw kernel, mesh, or renderer indexes. Unit changes go through CADOps:
+`cad.object_measurements`, `cad.body_measurements`, `cad.body_topology`,
+`cad.project_extents`, and `cad.generated_reference_measurements` return
+read-only source-derived measurements or derived exact/topology status from the
+authoritative document. Generated-reference measurements use semantic
+body/face/edge/vertex references for authored sketch-extrude bodies, not raw
+kernel, mesh, or renderer indexes. Unit changes go through CADOps:
 `metadataOnly` relabels numeric values, while
 `preservePhysicalSize` scales current dimensions and transform translations in
 `cad-core`.

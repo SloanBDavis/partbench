@@ -837,6 +837,7 @@ export type CadQueryKind =
   | "sketch.dimension.get"
   | "body.generatedReferences"
   | "body.resolveGeneratedReference"
+  | "body.topology"
   | "body.measurements"
   | "body.generatedReferenceMeasurements"
   | "reference.listNamed"
@@ -860,6 +861,7 @@ export type CadQuery =
   | SketchDimensionGetQuery
   | BodyGeneratedReferencesQuery
   | BodyResolveGeneratedReferenceQuery
+  | BodyTopologyQuery
   | BodyMeasurementsQuery
   | BodyGeneratedReferenceMeasurementsQuery
   | ReferenceListNamedQuery
@@ -938,6 +940,11 @@ export interface BodyResolveGeneratedReferenceQuery {
   readonly query: "body.resolveGeneratedReference";
   readonly bodyId: BodyId;
   readonly stableId: string;
+}
+
+export interface BodyTopologyQuery {
+  readonly query: "body.topology";
+  readonly bodyId: BodyId;
 }
 
 export interface BodyMeasurementsQuery {
@@ -1815,6 +1822,12 @@ export type CadQueryErrorCode =
   | "BODY_NOT_FOUND"
   | "UNSUPPORTED_BODY_REFERENCES"
   | "UNSUPPORTED_BODY_MEASUREMENTS"
+  | "UNSUPPORTED_BODY_TOPOLOGY"
+  | "STALE_BODY_TOPOLOGY"
+  | "AMBIGUOUS_BODY_TOPOLOGY"
+  | "EMPTY_EXACT_GEOMETRY_RESULT"
+  | "INVALID_EXACT_GEOMETRY_RESULT"
+  | "EXACT_GEOMETRY_KERNEL_FAILED"
   | "GENERATED_REFERENCE_NOT_FOUND"
   | "NAMED_REFERENCE_NOT_FOUND"
   | "UNSUPPORTED_GENERATED_REFERENCE_MEASUREMENTS";
@@ -1827,8 +1840,73 @@ export interface CadQueryError {
   readonly sketchId?: SketchId;
   readonly sketchDimensionId?: SketchDimensionId;
   readonly bodyId?: BodyId;
+  readonly featureId?: FeatureId;
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
+}
+
+export type CadBodyTopologyStatus =
+  | "healthy"
+  | "unsupported"
+  | "ambiguous"
+  | "stale"
+  | "kernel-failed";
+
+export type CadBodyTopologySourceKind =
+  | "authoredExtrude"
+  | "primitiveCompatibility";
+
+export type CadBodyTopologyMeasurementConfidence =
+  | "none"
+  | "source-analytic"
+  | "kernel-derived";
+
+export type CadBodyTopologyIssueCode =
+  | "UNSUPPORTED_BODY_TOPOLOGY"
+  | "STALE_BODY_TOPOLOGY"
+  | "AMBIGUOUS_BODY_TOPOLOGY"
+  | "EMPTY_EXACT_GEOMETRY_RESULT"
+  | "INVALID_EXACT_GEOMETRY_RESULT"
+  | "EXACT_GEOMETRY_KERNEL_FAILED";
+
+export interface CadBodyTopologySourceIdentity {
+  readonly bodyId: BodyId;
+  readonly sourceKind: CadBodyTopologySourceKind;
+  readonly cacheKey: string;
+  readonly units: DocumentUnits;
+  readonly featureId?: FeatureId;
+  readonly operationMode?: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
+  readonly sourceSketchId?: SketchId;
+  readonly sourceSketchEntityId?: SketchEntityId;
+  readonly profileKind?: FeatureExtrudeProfileKind;
+  readonly side?: FeatureExtrudeSide;
+  readonly depth?: number;
+}
+
+export interface CadBodyTopologyIssue {
+  readonly code: CadBodyTopologyIssueCode;
+  readonly message: string;
+  readonly bodyId: BodyId;
+  readonly featureId?: FeatureId;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadBodyTopologySnapshot {
+  readonly bodyId: BodyId;
+  readonly units: DocumentUnits;
+  readonly status: CadBodyTopologyStatus;
+  readonly sourceKind: CadBodyTopologySourceKind;
+  readonly sourceIdentity: CadBodyTopologySourceIdentity;
+  readonly topologyAvailable: boolean;
+  readonly exactGeometryAvailable: boolean;
+  readonly exactMeasurementsAvailable: boolean;
+  readonly measurementConfidence: CadBodyTopologyMeasurementConfidence;
+  readonly faceCount?: number;
+  readonly edgeCount?: number;
+  readonly vertexCount?: number;
+  readonly issues: readonly CadBodyTopologyIssue[];
 }
 
 export type CadQueryResponse =
@@ -1848,6 +1926,7 @@ export type CadQueryResponse =
   | SketchDimensionGetQueryResponse
   | BodyGeneratedReferencesQueryResponse
   | BodyResolveGeneratedReferenceQueryResponse
+  | BodyTopologyQueryResponse
   | BodyMeasurementsQueryResponse
   | BodyGeneratedReferenceMeasurementsQueryResponse
   | ReferenceListNamedQueryResponse
@@ -2026,6 +2105,13 @@ export interface BodyResolveGeneratedReferenceQueryResponse {
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
   readonly reference: CadGeneratedReference;
+}
+
+export interface BodyTopologyQueryResponse {
+  readonly ok: true;
+  readonly query: "body.topology";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly topology: CadBodyTopologySnapshot;
 }
 
 export interface BodyMeasurementsQueryResponse {

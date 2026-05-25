@@ -1217,6 +1217,48 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns derived body topology status through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_body_topology",
+      entityId: "rect_body_topology",
+      featureId: "feat_body_topology",
+      bodyId: "body_topology"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_body_topology",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_topology" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_body_topology",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "body.topology",
+      topology: {
+        bodyId: "body_topology",
+        status: "unsupported",
+        sourceIdentity: {
+          featureId: "feat_body_topology",
+          sourceSketchId: "sketch_body_topology",
+          sourceSketchEntityId: "rect_body_topology",
+          operationMode: "newBody"
+        },
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
+      }
+    });
+  });
+
   it("accepts sphere commands and exposes sphere measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

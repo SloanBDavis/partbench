@@ -562,6 +562,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "body.measurements", bodyId: "body_1" }
       },
       {
@@ -595,6 +599,7 @@ describe("cad-protocol", () => {
       "sketch.evaluation",
       "body.generatedReferences",
       "body.resolveGeneratedReference",
+      "body.topology",
       "body.measurements",
       "reference.listNamed",
       "reference.resolveNamed",
@@ -911,6 +916,56 @@ describe("cad-protocol", () => {
         measurementModel: "sourceAnalytic",
         localExtents: [4, 2, 3],
         volume: 24
+      }
+    });
+  });
+
+  it("types derived body topology status", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "body.topology",
+      cadOpsVersion: "cadops.v1",
+      topology: {
+        bodyId: "body_1",
+        units: "mm",
+        status: "unsupported",
+        sourceKind: "authoredExtrude",
+        sourceIdentity: {
+          bodyId: "body_1",
+          sourceKind: "authoredExtrude",
+          cacheKey: "body-topology:v1:{}",
+          units: "mm",
+          featureId: "feat_1",
+          operationMode: "newBody",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          profileKind: "rectangle",
+          side: "positive",
+          depth: 3
+        },
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        measurementConfidence: "none",
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            message: "Exact topology is not derived yet.",
+            bodyId: "body_1",
+            featureId: "feat_1"
+          }
+        ]
+      }
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        status: "unsupported",
+        topologyAvailable: false,
+        exactMeasurementsAvailable: false,
+        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
       }
     });
   });

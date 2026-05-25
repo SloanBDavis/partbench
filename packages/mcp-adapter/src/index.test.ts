@@ -15,6 +15,7 @@ describe("mcp-adapter", () => {
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
+      "cad.body_topology",
       "cad.project_extents",
       "cad.sketch_get",
       "cad.sketch_dimensions",
@@ -365,6 +366,76 @@ describe("mcp-adapter", () => {
         error: {
           code: "BODY_NOT_FOUND",
           bodyId: "missing_body"
+        }
+      }
+    });
+  });
+
+  it("returns derived body topology status through cad.body_topology", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_body_topology",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_body_topology",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_body_topology",
+              id: "rect_body_topology",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_body_topology",
+              bodyId: "body_topology",
+              sketchId: "sketch_body_topology",
+              entityId: "rect_body_topology",
+              depth: 3
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.body_topology",
+      requestId: "mcp_req_body_topology",
+      arguments: { bodyId: "body_topology" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.body_topology",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_body_topology",
+        cadOpsVersion: "cadops.v1",
+        query: "body.topology",
+        topology: {
+          bodyId: "body_topology",
+          status: "unsupported",
+          sourceIdentity: {
+            featureId: "feat_body_topology",
+            sourceSketchId: "sketch_body_topology",
+            sourceSketchEntityId: "rect_body_topology"
+          },
+          topologyAvailable: false,
+          exactGeometryAvailable: false,
+          exactMeasurementsAvailable: false,
+          issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
         }
       }
     });
@@ -2127,6 +2198,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },
+          { name: "cad.body_topology" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.sketch_dimensions" },

@@ -11,6 +11,7 @@ import type {
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
   CadBodySnapshot,
+  CadBodyTopologySnapshot,
   CadDependencyHealthStatus,
   CadFeatureSummary,
   CadNamedReferenceHealth,
@@ -184,6 +185,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
+  | CadOpsAgentBodyTopologyQueryResponse
   | CadOpsAgentBodyMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
@@ -310,6 +312,15 @@ export interface CadOpsAgentBodyMeasurementsQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "body.measurements";
   readonly measurements: BodyMeasurementsSnapshot;
+}
+
+export interface CadOpsAgentBodyTopologyQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "body.topology";
+  readonly topology: CadBodyTopologySnapshot;
 }
 
 export interface CadOpsAgentProjectExtentsQueryResponse {
@@ -463,6 +474,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.sketches"
     | "object.get"
     | "object.measurements"
+    | "body.topology"
     | "body.measurements"
     | "project.extents"
     | "sketch.get"
@@ -898,6 +910,17 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "body.topology") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      topology: response.topology
+    };
+  }
+
   if (response.query === "body.measurements") {
     return {
       ok: true,
@@ -1181,6 +1204,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         typeof value.query.id === "string") ||
       (value.query.query === "object.measurements" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "body.topology" &&
+        typeof value.query.bodyId === "string") ||
       (value.query.query === "body.measurements" &&
         typeof value.query.bodyId === "string") ||
       (value.query.query === "project.extents" &&

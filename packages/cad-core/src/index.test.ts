@@ -6744,6 +6744,185 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns unsupported derived topology status for authored extrude bodies", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_rect_1" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      cadOpsVersion: "cadops.v1",
+      topology: {
+        bodyId: "body_rect_1",
+        units: "mm",
+        status: "unsupported",
+        sourceKind: "authoredExtrude",
+        sourceIdentity: {
+          bodyId: "body_rect_1",
+          sourceKind: "authoredExtrude",
+          featureId: "feat_rect_1",
+          operationMode: "newBody",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          profileKind: "rectangle",
+          side: "positive",
+          depth: 3
+        },
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        measurementConfidence: "none",
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_rect_1",
+            featureId: "feat_rect_1"
+          }
+        ]
+      }
+    });
+
+    if (response.ok && response.query === "body.topology") {
+      expect(response.topology.sourceIdentity.cacheKey).toContain(
+        '"featureId":"feat_rect_1"'
+      );
+    } else {
+      throw new Error("Expected body topology response.");
+    }
+  });
+
+  it("returns unsupported derived topology status for boolean result bodies", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_add_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_add_1",
+        status: "unsupported",
+        sourceIdentity: {
+          featureId: "feat_add_1",
+          operationMode: "add",
+          targetBodyId: "body_rect_1"
+        },
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_add_1",
+            featureId: "feat_add_1"
+          }
+        ]
+      }
+    });
+  });
+
+  it("returns primitive unsupported and missing body topology responses", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body:box_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body:box_1",
+        status: "unsupported",
+        sourceKind: "primitiveCompatibility",
+        sourceIdentity: {
+          bodyId: "body:box_1",
+          sourceKind: "primitiveCompatibility"
+        },
+        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY", bodyId: "body:box_1" }]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "missing_body" }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.topology",
+      error: { code: "BODY_NOT_FOUND", bodyId: "missing_body" }
+    });
+  });
+
+  it("keeps project JSON unchanged when querying derived topology", () => {
+    const engine = createRectangleExtrudeEngine();
+    const before = exportCadProjectJson(engine);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: { bodyId: "body_rect_1", status: "unsupported" }
+    });
+
+    expect(exportCadProjectJson(engine)).toEqual(before);
+
+    const restored = importCadProjectJson(before);
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_rect_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_rect_1",
+        sourceIdentity: { featureId: "feat_rect_1" }
+      }
+    });
+  });
+
   it("returns source-derived measurements for rectangle generated references", () => {
     const engine = createRectangleExtrudeEngine();
     const body = engine.executeQuery({

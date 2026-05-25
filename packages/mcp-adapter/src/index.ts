@@ -18,6 +18,7 @@ export type CadMcpToolName =
   | "cad.project_health"
   | "cad.project_sketches"
   | "cad.object_measurements"
+  | "cad.body_topology"
   | "cad.body_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
@@ -152,6 +153,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.object_measurements") {
       return this.#callObjectMeasurements(request);
+    }
+
+    if (request.name === "cad.body_topology") {
+      return this.#callBodyTopology(request);
     }
 
     if (request.name === "cad.body_measurements") {
@@ -457,6 +462,31 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "body.measurements",
+            bodyId: request.arguments.bodyId
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callBodyTopology(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isBodyTopologyToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.body_topology expects arguments shaped as { bodyId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.topology",
             bodyId: request.arguments.bodyId
           }
         }
@@ -901,6 +931,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.body_topology",
+    description:
+      "Returns derived exact/topology availability and status for one body.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Body ID to inspect for exact/topology data."
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_extents",
     description:
       "Returns aggregate derived extents and approximate volume for the current CAD document.",
@@ -1141,6 +1187,14 @@ function isIdToolArguments(value: unknown): value is { readonly id: string } {
 }
 
 function isBodyMeasurementsToolArguments(
+  value: unknown
+): value is { readonly bodyId: string } {
+  return (
+    isRecord(value) && typeof value.bodyId === "string" && value.bodyId !== ""
+  );
+}
+
+function isBodyTopologyToolArguments(
   value: unknown
 ): value is { readonly bodyId: string } {
   return (
