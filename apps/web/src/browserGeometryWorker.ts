@@ -117,7 +117,9 @@ export class BrowserGeometryWorker implements GeometryWorker {
     this.#transport.addEventListener("error", this.#handleError);
   }
 
-  execute(request: GeometryWorkerRequest): Promise<GeometryWorkerResponse> {
+  execute<TPayload extends GeometryWorkerRequest["payload"]>(
+    request: GeometryWorkerRequest<TPayload>
+  ): Promise<GeometryWorkerResponse<TPayload>> {
     if (this.#pendingRequests.has(request.id)) {
       return Promise.reject(
         new BrowserGeometryWorkerError(
@@ -131,7 +133,7 @@ export class BrowserGeometryWorker implements GeometryWorker {
       );
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise<GeometryWorkerResponse<TPayload>>((resolve, reject) => {
       this.#pendingRequests.set(request.id, { resolve, reject });
 
       try {

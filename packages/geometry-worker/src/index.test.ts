@@ -4,6 +4,7 @@ import {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
@@ -250,6 +251,47 @@ describe("geometry-worker", () => {
         id: "worker_req_boolean_add:payload",
         op: "geometry.booleanExtrudes",
         operation: "add"
+      }
+    });
+  });
+
+  it("creates a typed exact body metadata worker request", () => {
+    expect(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_exact_metadata",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 3
+          },
+          depth: 5,
+          side: "positive"
+        }
+      })
+    ).toEqual({
+      id: "worker_req_exact_metadata",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payload: {
+        id: "worker_req_exact_metadata:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 3
+          },
+          depth: 5,
+          side: "positive"
+        }
       }
     });
   });
@@ -566,6 +608,49 @@ describe("geometry-worker", () => {
       response.response.mesh.indices.buffer
     ]);
   });
+
+  it("returns exact body metadata through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_exact_metadata_execute",
+        payloadId: "geometry_req_exact_metadata_execute",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_exact_metadata_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payloadId: "geometry_req_exact_metadata_execute",
+      transferables: [],
+      response: {
+        ok: true,
+        id: "geometry_req_exact_metadata_execute",
+        op: "geometry.exactBodyMetadata",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.metadata.volume).toBeCloseTo(60, 6);
+    expect(response.response.metadata.surfaceArea).toBeCloseTo(94, 6);
+    expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
 
   it("returns structured kernel validation errors without transferables", async () => {
     const worker = new GeometryKernelWorker();

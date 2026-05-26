@@ -124,7 +124,7 @@ export function createOcctBooleanExtrudeMeshWithInstance(
   }
 }
 
-function makeBooleanExtrudeShape(
+export function makeBooleanExtrudeShape(
   oc: OpenCascadeInstance,
   source: OcctBooleanExtrudeSource
 ):

@@ -1,5 +1,6 @@
 import type {
   GeometryKernelErrorResponse,
+  GeometryKernelRequest,
   GeometryKernelResponse
 } from "@web-cad/geometry-kernel";
 import {
@@ -16,6 +17,7 @@ export {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
@@ -43,9 +45,9 @@ export class GeometryKernelWorker implements GeometryWorker {
     this.#delayMs = options.delayMs ?? 0;
   }
 
-  async execute(
-    request: GeometryWorkerRequest
-  ): Promise<GeometryWorkerResponse> {
+  async execute<TPayload extends GeometryKernelRequest>(
+    request: GeometryWorkerRequest<TPayload>
+  ): Promise<GeometryWorkerResponse<TPayload>> {
     if (this.#delayMs > 0) {
       await delay(this.#delayMs);
     }
@@ -60,7 +62,7 @@ export class GeometryKernelWorker implements GeometryWorker {
         request,
         response as GeometryKernelResponse,
         geometryKernel.getGeometryResponseTransferables(response)
-      );
+      ) as GeometryWorkerResponse<TPayload>;
     } catch (error) {
       return createGeometryWorkerResponse(
         request,
@@ -69,7 +71,7 @@ export class GeometryKernelWorker implements GeometryWorker {
           error
         ) as GeometryKernelErrorResponse,
         []
-      );
+      ) as GeometryWorkerResponse<TPayload>;
     }
   }
 }

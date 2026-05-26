@@ -111,7 +111,7 @@ describe("BrowserGeometryWorker", () => {
       response: {
         ok: true,
         id: request.payload.id,
-        op: request.payload.op,
+        op: "geometry.tessellateBox",
         mesh: {
           primitive: "box",
           positions,

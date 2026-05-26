@@ -173,6 +173,8 @@ V6 candidate bindings include:
 - exact metadata and mass properties:
   - shape bounds APIs such as `BRepBndLib`,
   - mass-property APIs such as `BRepGProp` / `GProp_GProps`,
+  - unique topology counts through `TopExp.MapShapes_1` and
+    `TopTools_IndexedMapOfShape`,
   - shape validity/checking APIs where available;
 - revolve:
   - profile face construction,
@@ -192,6 +194,27 @@ Do not shrink or swap the OCCT package during V6 feature implementation unless
 that work is explicitly scoped. The safer path is to prove modeling behavior
 against the full package first, then run a dedicated custom-build experiment
 once the required symbol set is known.
+
+## V6 Phase A Exact Metadata Findings
+
+The installed full OpenCascade.js package exposes the exact metadata APIs needed
+for the first V6 geometry-only boundary:
+
+- `BRepBndLib.AddOptimal` with `Bnd_Box.CornerMin/CornerMax` for exact-kernel
+  bounds;
+- `BRepGProp.VolumeProperties_1` and `GProp_GProps.Mass/CentreOfMass` for
+  volume and centroid;
+- `BRepGProp.SurfaceProperties_1` and `GProp_GProps.Mass` for surface area;
+- `TopExp.MapShapes_1` with `TopTools_IndexedMapOfShape` for unique solid,
+  face, edge, and vertex counts.
+
+`geometry.exactBodyMetadata` now uses these APIs for rectangle/circle extrude
+sources and current narrow boolean-extrude sources. Results are derived
+geometry metadata only. They are not persisted, do not change project schema,
+and do not expose raw OCCT topology indexes as stable generated references.
+If any required binding is missing at runtime, the geometry-kernel response uses
+structured `UNAVAILABLE_BINDING` diagnostics instead of falling back to mesh
+triangle measurements.
 
 ## Boolean Feasibility Risks
 

@@ -4,7 +4,8 @@ import {
   createCylinderTessellationWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createSphereTessellationWorkerRequest,
-  createTorusTessellationWorkerRequest
+  createTorusTessellationWorkerRequest,
+  type GeometryWorkerRequest
 } from "@web-cad/geometry-worker/browser";
 import { createRenderMeshFromGeometryWorkerResponse } from "@web-cad/renderer-mesh-bridge";
 import { BrowserGeometryWorker } from "./browserGeometryWorker";
@@ -22,7 +23,10 @@ async function runGeometryWorkerSmoke(): Promise<void> {
 
   try {
     const meshResults = [];
-    const requests = [
+    const requests: Array<{
+      readonly scenario: string;
+      readonly request: GeometryWorkerRequest;
+    }> = [
       {
         scenario: "box-2x3x4",
         request: createBoxTessellationWorkerRequest({
@@ -136,6 +140,10 @@ async function runGeometryWorkerSmoke(): Promise<void> {
 
       if (!response.response.ok) {
         throw createDerivedGeometryErrorFromWorkerResponse(response);
+      }
+
+      if (!("mesh" in response.response)) {
+        throw new Error("Geometry worker smoke expected mesh response data.");
       }
 
       const renderMesh = createRenderMeshFromGeometryWorkerResponse(response, {

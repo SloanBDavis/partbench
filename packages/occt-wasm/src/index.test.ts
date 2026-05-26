@@ -4,6 +4,7 @@ import {
   createOcctBoxMesh,
   createOcctConeMesh,
   createOcctCylinderMesh,
+  createOcctExactBodyMetadata,
   createOcctSphereMesh,
   createOcctTorusMesh
 } from "./index";
@@ -127,6 +128,91 @@ describe("occt-wasm", () => {
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
       expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "returns exact rectangle extrude metadata through Open CASCADE WASM",
+    async () => {
+      const metadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      });
+
+      expect(metadata.sourceKind).toBe("extrude");
+      expect(metadata.bounds.min[0]).toBeCloseTo(-1, 6);
+      expect(metadata.bounds.min[1]).toBeCloseTo(0.5, 6);
+      expect(metadata.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(metadata.bounds.max[0]).toBeCloseTo(3, 6);
+      expect(metadata.bounds.max[1]).toBeCloseTo(3.5, 6);
+      expect(metadata.bounds.max[2]).toBeCloseTo(5, 6);
+      expect(metadata.volume).toBeCloseTo(60, 6);
+      expect(metadata.surfaceArea).toBeCloseTo(94, 6);
+      expect(metadata.centroid).toEqual([1, 2, 2.5]);
+      expect(metadata.topologyCounts).toEqual({
+        solidCount: 1,
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8
+      });
+      expect(metadata.measurementSource).toBe("kernel-derived");
+      expect(metadata.measurementConfidence).toBe("kernel-derived");
+      expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "returns exact boolean extrude metadata through Open CASCADE WASM",
+    async () => {
+      const metadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 4,
+              height: 4
+            },
+            depth: 4
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 2
+            },
+            depth: 4
+          }
+        }
+      });
+
+      expect(metadata.sourceKind).toBe("booleanExtrudes");
+      expect(metadata.volume).toBeCloseTo(48, 6);
+      expect(metadata.surfaceArea).toBeGreaterThan(0);
+      expect(metadata.centroid[0]).toBeCloseTo(0, 6);
+      expect(metadata.centroid[1]).toBeCloseTo(0, 6);
+      expect(metadata.centroid[2]).toBeCloseTo(2, 6);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(metadata.measurementSource).toBe("kernel-derived");
+      expect(metadata.measurementConfidence).toBe("kernel-derived");
+      expect(metadata.diagnostics).toEqual([]);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

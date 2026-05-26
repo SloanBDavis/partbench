@@ -5,7 +5,8 @@ import {
   createOcctSphereMeshWithInstance,
   createOcctTorusMeshWithInstance,
   loadBrowserOcct,
-  createOcctBooleanExtrudeMeshWithInstance
+  createOcctBooleanExtrudeMeshWithInstance,
+  createOcctExactBodyMetadataWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -15,17 +16,31 @@ import {
   type BoxGeometryDimensions,
   type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
+  type ExactBodyMetadataRequest,
+  type ExactBodyMetadataSource,
+  type ExactBooleanExtrudesMetadataSource,
+  type ExactExtrudeMetadataSource,
+  type GeometryKernelBounds,
   type GeometryKernelBooleanOperation,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
+  type GeometryKernelExactBodyMetadata,
+  type GeometryKernelExactBodyMetadataSuccessResponse,
+  type GeometryKernelExactMetadataDiagnostic,
   type GeometryKernelOp,
   type GeometryKernelPrimitive,
+  type GeometryKernelResponseForRequest,
   type GeometryKernelRequest,
   type GeometryKernelResponse,
   type GeometryKernelSuccessResponse,
   type GeometryKernelVersion,
   type GeometryKernelErrorResponse,
   type GeometryKernelExtrudeProfileKind,
+  type GeometryKernelMeasurementConfidence,
+  type GeometryKernelMeasurementSource,
+  type GeometryKernelMeshRequest,
+  type GeometryKernelMeshSuccessResponse,
+  type GeometryKernelTopologyCounts,
   type SerializableMeshData,
   type SphereGeometryDimensions,
   type TessellateExtrudeRequest,
@@ -49,15 +64,29 @@ export type {
   BoxGeometryDimensions,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
+  ExactBodyMetadataRequest,
+  ExactBodyMetadataSource,
+  ExactBooleanExtrudesMetadataSource,
+  ExactExtrudeMetadataSource,
+  GeometryKernelBounds,
   GeometryKernelBooleanOperation,
   GeometryKernelError,
   GeometryKernelErrorCode,
+  GeometryKernelExactBodyMetadata,
+  GeometryKernelExactBodyMetadataSuccessResponse,
+  GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeProfileKind,
+  GeometryKernelMeasurementConfidence,
+  GeometryKernelMeasurementSource,
+  GeometryKernelMeshRequest,
+  GeometryKernelMeshSuccessResponse,
   GeometryKernelOp,
   GeometryKernelPrimitive,
+  GeometryKernelResponseForRequest,
   GeometryKernelRequest,
   GeometryKernelResponse,
   GeometryKernelSuccessResponse,
+  GeometryKernelTopologyCounts,
   GeometryKernelVersion,
   GeometryKernelErrorResponse,
   SerializableMeshData,
@@ -87,15 +116,20 @@ export interface TimedBrowserGeometryKernelResponse {
   readonly timings: BrowserGeometryKernelTimings;
 }
 
-export async function executeGeometryKernelRequest(
-  request: GeometryKernelRequest
-): Promise<GeometryKernelResponse> {
+export async function executeGeometryKernelRequest<
+  T extends GeometryKernelRequest
+>(request: T): Promise<GeometryKernelResponseForRequest<T>> {
   return (await executeTimedBrowserGeometryKernelRequest(request)).response;
 }
 
-export async function executeTimedBrowserGeometryKernelRequest(
-  request: GeometryKernelRequest
-): Promise<TimedBrowserGeometryKernelResponse> {
+export async function executeTimedBrowserGeometryKernelRequest<
+  T extends GeometryKernelRequest
+>(
+  request: T
+): Promise<{
+  readonly response: GeometryKernelResponseForRequest<T>;
+  readonly timings: BrowserGeometryKernelTimings;
+}> {
   let occtLoadMs = 0;
   let tessellationMs = 0;
   let failureStage: BrowserGeometryKernelFailureStage | undefined;
@@ -108,7 +142,8 @@ export async function executeTimedBrowserGeometryKernelRequest(
       createSphereMesh: (input) => createMeshWithBrowserOcct(input, "sphere"),
       createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
       createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus"),
-      createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct
+      createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct,
+      createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct
     },
     request
   );
@@ -204,6 +239,34 @@ export async function executeTimedBrowserGeometryKernelRequest(
 
     try {
       return createOcctBooleanExtrudeMeshWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createExactBodyMetadataWithBrowserOcct(
+    input: Omit<ExactBodyMetadataRequest, "id" | "version" | "op">
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctExactBodyMetadataWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

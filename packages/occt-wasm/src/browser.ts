@@ -34,6 +34,12 @@ import {
   createOcctBooleanExtrudeMeshWithLoader,
   type OcctBooleanExtrudeInput
 } from "./booleanExtrudes";
+import {
+  createOcctExactBodyMetadataWithInstance,
+  createOcctExactBodyMetadataWithLoader,
+  type OcctExactBodyMetadata,
+  type OcctExactBodyMetadataInput
+} from "./exactMetadata";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -42,6 +48,8 @@ export type {
   OcctSphereInput,
   OcctConeInput,
   OcctTorusInput,
+  OcctExactBodyMetadata,
+  OcctExactBodyMetadataInput,
   OcctMeshData
 };
 export {
@@ -56,7 +64,9 @@ export {
   createOcctTorusMeshWithInstance,
   createOcctTorusMeshWithLoader,
   createOcctBooleanExtrudeMeshWithInstance,
-  createOcctBooleanExtrudeMeshWithLoader
+  createOcctBooleanExtrudeMeshWithLoader,
+  createOcctExactBodyMetadataWithInstance,
+  createOcctExactBodyMetadataWithLoader
 };
 
 type OpenCascadeModuleObject = Record<string, unknown>;
@@ -166,4 +176,10 @@ export async function createOcctBooleanExtrudeMesh(
   input: OcctBooleanExtrudeInput
 ): Promise<OcctMeshData> {
   return createOcctBooleanExtrudeMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctExactBodyMetadata(
+  input: OcctExactBodyMetadataInput
+): Promise<OcctExactBodyMetadata> {
+  return createOcctExactBodyMetadataWithLoader(loadBrowserOcct, input);
 }

@@ -6,7 +6,8 @@ export type GeometryKernelOp =
   | "geometry.tessellateCone"
   | "geometry.tessellateTorus"
   | "geometry.tessellateExtrude"
-  | "geometry.booleanExtrudes";
+  | "geometry.booleanExtrudes"
+  | "geometry.exactBodyMetadata";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -142,6 +143,28 @@ export interface BooleanExtrudesRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type ExactBodyMetadataSource =
+  | ExactExtrudeMetadataSource
+  | ExactBooleanExtrudesMetadataSource;
+
+export interface ExactExtrudeMetadataSource extends BooleanExtrudeSource {
+  readonly kind: "extrude";
+}
+
+export interface ExactBooleanExtrudesMetadataSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly target: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudeSource;
+}
+
+export interface ExactBodyMetadataRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.exactBodyMetadata";
+  readonly source: ExactBodyMetadataSource;
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
   | TessellateCylinderRequest
@@ -149,7 +172,13 @@ export type GeometryKernelRequest =
   | TessellateConeRequest
   | TessellateTorusRequest
   | TessellateExtrudeRequest
-  | BooleanExtrudesRequest;
+  | BooleanExtrudesRequest
+  | ExactBodyMetadataRequest;
+
+export type GeometryKernelMeshRequest = Exclude<
+  GeometryKernelRequest,
+  ExactBodyMetadataRequest
+>;
 
 export interface SerializableMeshData {
   readonly primitive: GeometryKernelPrimitive;
@@ -164,11 +193,23 @@ export type GeometryKernelResponse =
   | GeometryKernelSuccessResponse
   | GeometryKernelErrorResponse;
 
-export interface GeometryKernelSuccessResponse {
+export type GeometryKernelSuccessResponse =
+  | GeometryKernelMeshSuccessResponse
+  | GeometryKernelExactBodyMetadataSuccessResponse;
+
+export interface GeometryKernelMeshSuccessResponse {
   readonly ok: true;
   readonly id: string;
-  readonly op: GeometryKernelOp;
+  readonly op: GeometryKernelMeshRequest["op"];
   readonly mesh: SerializableMeshData;
+  readonly warnings: readonly string[];
+}
+
+export interface GeometryKernelExactBodyMetadataSuccessResponse {
+  readonly ok: true;
+  readonly id: string;
+  readonly op: "geometry.exactBodyMetadata";
+  readonly metadata: GeometryKernelExactBodyMetadata;
   readonly warnings: readonly string[];
 }
 
@@ -186,11 +227,44 @@ export type GeometryKernelErrorCode =
   | "UNSUPPORTED_PROFILE"
   | "KERNEL_FAILURE"
   | "EMPTY_RESULT"
-  | "INVALID_RESULT";
+  | "INVALID_RESULT"
+  | "UNAVAILABLE_BINDING";
 
 export interface GeometryKernelError {
   readonly code: GeometryKernelErrorCode;
   readonly message: string;
+}
+
+export interface GeometryKernelBounds {
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+}
+
+export interface GeometryKernelTopologyCounts {
+  readonly solidCount: number;
+  readonly faceCount: number;
+  readonly edgeCount: number;
+  readonly vertexCount: number;
+}
+
+export type GeometryKernelMeasurementSource = "kernel-derived";
+export type GeometryKernelMeasurementConfidence = "kernel-derived";
+
+export interface GeometryKernelExactMetadataDiagnostic {
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface GeometryKernelExactBodyMetadata {
+  readonly sourceKind: ExactBodyMetadataSource["kind"];
+  readonly bounds: GeometryKernelBounds;
+  readonly volume: number;
+  readonly surfaceArea: number;
+  readonly centroid: readonly [number, number, number];
+  readonly topologyCounts: GeometryKernelTopologyCounts;
+  readonly measurementSource: GeometryKernelMeasurementSource;
+  readonly measurementConfidence: GeometryKernelMeasurementConfidence;
+  readonly diagnostics: readonly GeometryKernelExactMetadataDiagnostic[];
 }
 
 export interface GeometryKernelMeshResult {
@@ -227,6 +301,10 @@ export type GeometryKernelBooleanExtrudeMeshFactory = (
     TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelExactBodyMetadataFactory = (
+  input: Omit<ExactBodyMetadataRequest, "id" | "version" | "op">
+) => Promise<GeometryKernelExactBodyMetadata>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -234,26 +312,59 @@ export interface GeometryKernelMeshFactories {
   readonly createConeMesh: GeometryKernelConeMeshFactory;
   readonly createTorusMesh: GeometryKernelTorusMeshFactory;
   readonly createBooleanExtrudeMesh: GeometryKernelBooleanExtrudeMeshFactory;
+  readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
 }
 
-export async function executeGeometryKernelRequestWithMeshFactory(
+export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
+  T extends ExactBodyMetadataRequest
+    ?
+        | GeometryKernelExactBodyMetadataSuccessResponse
+        | GeometryKernelErrorResponse
+    : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+
+export async function executeGeometryKernelRequestWithMeshFactory<
+  T extends GeometryKernelRequest
+>(
   factories: GeometryKernelMeshFactories,
-  request: GeometryKernelRequest
-): Promise<GeometryKernelResponse> {
+  request: T
+): Promise<GeometryKernelResponseForRequest<T>> {
   const validationError = validateRequest(request);
 
   if (validationError) {
-    return errorResponse(request, validationError);
+    return errorResponse(
+      request,
+      validationError
+    ) as GeometryKernelResponseForRequest<T>;
   }
 
   try {
+    if (request.op === "geometry.exactBodyMetadata") {
+      const metadata = await createExactBodyMetadata(factories, request);
+
+      if (isInvalidExactBodyMetadata(metadata)) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned exact metadata with invalid or non-finite values."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+
+      return {
+        ok: true,
+        id: request.id,
+        op: request.op,
+        metadata,
+        warnings: []
+      } as unknown as GeometryKernelResponseForRequest<T>;
+    }
+
     const mesh = await createMesh(factories, request);
 
     if (isEmptyMesh(mesh)) {
       return errorResponse(request, {
         code: "EMPTY_RESULT",
         message: "The geometry kernel returned an empty or invalid mesh."
-      });
+      }) as GeometryKernelResponseForRequest<T>;
     }
 
     if (isInvalidMesh(mesh)) {
@@ -261,7 +372,7 @@ export async function executeGeometryKernelRequestWithMeshFactory(
         code: "INVALID_RESULT",
         message:
           "The geometry kernel returned mesh data with inconsistent counts or invalid values."
-      });
+      }) as GeometryKernelResponseForRequest<T>;
     }
 
     return {
@@ -277,22 +388,19 @@ export async function executeGeometryKernelRequestWithMeshFactory(
         faceCount: mesh.faceCount
       },
       warnings: []
-    };
+    } as unknown as GeometryKernelResponseForRequest<T>;
   } catch (error) {
-    return errorResponse(request, {
-      code: "KERNEL_FAILURE",
-      message:
-        error instanceof Error
-          ? error.message
-          : "The geometry kernel failed to tessellate the request."
-    });
+    return errorResponse(
+      request,
+      toGeometryKernelError(error)
+    ) as GeometryKernelResponseForRequest<T>;
   }
 }
 
 export function getGeometryResponseTransferables(
   response: GeometryKernelResponse
 ): readonly ArrayBuffer[] {
-  if (!response.ok) {
+  if (!response.ok || !("mesh" in response)) {
     return [];
   }
 
@@ -375,6 +483,14 @@ function validateRequest(
           "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
       };
     }
+  } else if (request.op === "geometry.exactBodyMetadata") {
+    if (!isValidExactBodyMetadataSource(request.source)) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Exact body metadata requests require supported extrude or booleanExtrudes source data with finite positive dimensions."
+      };
+    }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
     !isPositiveFiniteNumber(request.dimensions.minorRadius) ||
@@ -388,8 +504,9 @@ function validateRequest(
   }
 
   if (
-    !isOptionalPositiveFiniteNumber(request.tessellation?.linearDeflection) ||
-    !isOptionalPositiveFiniteNumber(request.tessellation?.angularDeflection)
+    "tessellation" in request &&
+    (!isOptionalPositiveFiniteNumber(request.tessellation?.linearDeflection) ||
+      !isOptionalPositiveFiniteNumber(request.tessellation?.angularDeflection))
   ) {
     return {
       code: "INVALID_TESSELLATION_OPTIONS",
@@ -402,7 +519,7 @@ function validateRequest(
 
 function createMesh(
   factories: GeometryKernelMeshFactories,
-  request: GeometryKernelRequest
+  request: GeometryKernelMeshRequest
 ): Promise<GeometryKernelMeshResult> {
   switch (request.op) {
     case "geometry.tessellateBox":
@@ -446,6 +563,23 @@ function createMesh(
         angularDeflection: request.tessellation?.angularDeflection
       });
   }
+}
+
+function createExactBodyMetadata(
+  factories: GeometryKernelMeshFactories,
+  request: ExactBodyMetadataRequest
+): Promise<GeometryKernelExactBodyMetadata> {
+  if (!factories.createExactBodyMetadata) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Exact body metadata requires an exact metadata factory with OCCT mass-property and bounds bindings."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createExactBodyMetadata({
+    source: request.source
+  });
 }
 
 async function createExtrudeMesh(
@@ -588,6 +722,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Extrude";
     case "geometry.booleanExtrudes":
       return "Boolean extrude";
+    case "geometry.exactBodyMetadata":
+      return "Exact body metadata";
   }
 }
 
@@ -602,6 +738,55 @@ function errorResponse(
     error,
     warnings: []
   };
+}
+
+function toGeometryKernelError(error: unknown): GeometryKernelError {
+  if (isGeometryKernelError(error)) {
+    return error;
+  }
+
+  return {
+    code: "KERNEL_FAILURE",
+    message:
+      error instanceof Error
+        ? error.message
+        : "The geometry kernel failed to execute the request."
+  };
+}
+
+function isGeometryKernelError(error: unknown): error is GeometryKernelError {
+  if (
+    !error ||
+    typeof error !== "object" ||
+    !("code" in error) ||
+    !("message" in error)
+  ) {
+    return false;
+  }
+
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly message?: unknown;
+  };
+
+  return (
+    typeof candidate.message === "string" &&
+    isGeometryKernelErrorCode(candidate.code)
+  );
+}
+
+function isGeometryKernelErrorCode(
+  value: unknown
+): value is GeometryKernelErrorCode {
+  return (
+    value === "INVALID_DIMENSIONS" ||
+    value === "INVALID_TESSELLATION_OPTIONS" ||
+    value === "UNSUPPORTED_PROFILE" ||
+    value === "KERNEL_FAILURE" ||
+    value === "EMPTY_RESULT" ||
+    value === "INVALID_RESULT" ||
+    value === "UNAVAILABLE_BINDING"
+  );
 }
 
 function isOptionalPositiveFiniteNumber(value: number | undefined): boolean {
@@ -653,12 +838,70 @@ function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
   );
 }
 
+function isValidExactBodyMetadataSource(
+  source: ExactBodyMetadataSource
+): boolean {
+  if (source.kind === "extrude") {
+    return isValidBooleanExtrudeSource(source);
+  }
+
+  if (source.kind === "booleanExtrudes") {
+    const request: BooleanExtrudesRequest = {
+      id: "exact-metadata-validation",
+      version: "geometry-kernel.v1",
+      op: "geometry.booleanExtrudes",
+      operation: source.operation,
+      target: source.target,
+      tool: source.tool
+    };
+
+    return (
+      isBooleanOperation(source.operation) &&
+      isValidBooleanExtrudeSource(source.target) &&
+      isValidBooleanExtrudeSource(source.tool) &&
+      isSupportedBooleanExtrudeProfilePair(request)
+    );
+  }
+
+  return false;
+}
+
 function isEmptyMesh(mesh: GeometryKernelMeshResult): boolean {
   return (
     mesh.vertexCount <= 0 ||
     mesh.triangleCount <= 0 ||
     mesh.positions.length === 0 ||
     mesh.indices.length === 0
+  );
+}
+
+function isInvalidExactBodyMetadata(
+  metadata: GeometryKernelExactBodyMetadata
+): boolean {
+  return (
+    (metadata.sourceKind !== "extrude" &&
+      metadata.sourceKind !== "booleanExtrudes") ||
+    !isVec3(metadata.bounds.min) ||
+    !isVec3(metadata.bounds.max) ||
+    !isVec3(metadata.centroid) ||
+    !isFiniteNumber(metadata.volume) ||
+    !isFiniteNumber(metadata.surfaceArea) ||
+    metadata.volume < 0 ||
+    metadata.surfaceArea < 0 ||
+    !isNonNegativeInteger(metadata.topologyCounts.solidCount) ||
+    !isNonNegativeInteger(metadata.topologyCounts.faceCount) ||
+    !isNonNegativeInteger(metadata.topologyCounts.edgeCount) ||
+    !isNonNegativeInteger(metadata.topologyCounts.vertexCount) ||
+    metadata.measurementSource !== "kernel-derived" ||
+    metadata.measurementConfidence !== "kernel-derived" ||
+    !Array.isArray(metadata.diagnostics) ||
+    metadata.diagnostics.some(
+      (diagnostic) =>
+        typeof diagnostic.code !== "string" ||
+        diagnostic.code.trim().length === 0 ||
+        typeof diagnostic.message !== "string" ||
+        diagnostic.message.trim().length === 0
+    )
   );
 }
 
@@ -723,6 +966,14 @@ function isVec3(value: readonly [number, number, number]): boolean {
 
 function vectorLength(vector: readonly [number, number, number]): number {
   return Math.hypot(vector[0], vector[1], vector[2]);
+}
+
+function isFiniteNumber(value: number): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonNegativeInteger(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
 }
 
 function crossVec3(

@@ -1,32 +1,46 @@
 import type {
   BooleanExtrudeSource,
+  BooleanExtrudesRequest,
+  ExactBodyMetadataRequest,
   GeometryKernelErrorResponse,
   GeometryKernelRequest,
+  GeometryKernelResponseForRequest,
   GeometryKernelResponse,
   GeometryKernelBooleanOperation,
   GeometryKernelExtrudeSide,
-  GeometryKernelSketchPlane
+  GeometryKernelSketchPlane,
+  TessellateBoxRequest,
+  TessellateConeRequest,
+  TessellateCylinderRequest,
+  TessellateExtrudeRequest,
+  TessellateSphereRequest,
+  TessellateTorusRequest
 } from "@web-cad/geometry-kernel";
 
 export type GeometryWorkerVersion = "geometry-worker.v1";
 export type GeometryWorkerRequestKind =
   | "geometry-worker.tessellatePrimitive"
   | "geometry-worker.tessellateFeature"
-  | "geometry-worker.booleanFeature";
+  | "geometry-worker.booleanFeature"
+  | "geometry-worker.exactMetadata";
 
-export interface GeometryWorkerRequest {
+export interface GeometryWorkerRequest<
+  TPayload extends GeometryKernelRequest = GeometryKernelRequest
+> {
   readonly id: string;
   readonly version: GeometryWorkerVersion;
   readonly kind: GeometryWorkerRequestKind;
-  readonly payload: GeometryKernelRequest;
+  readonly payload: TPayload;
 }
 
-export interface GeometryWorkerResponse {
+export interface GeometryWorkerResponse<
+  TPayload extends GeometryKernelRequest = GeometryKernelRequest
+> {
   readonly id: string;
   readonly version: GeometryWorkerVersion;
   readonly kind: GeometryWorkerRequestKind;
   readonly payloadId: string;
-  readonly response: GeometryKernelResponse;
+  readonly response: GeometryKernelResponseForRequest<TPayload>;
   readonly transferables: readonly ArrayBuffer[];
   readonly timings?: GeometryWorkerTimings;
   readonly diagnostics?: GeometryWorkerDiagnostics;
@@ -71,7 +85,9 @@ export interface GeometryWorkerDiagnostics {
 }
 
 export interface GeometryWorker {
-  execute(request: GeometryWorkerRequest): Promise<GeometryWorkerResponse>;
+  execute<TPayload extends GeometryKernelRequest>(
+    request: GeometryWorkerRequest<TPayload>
+  ): Promise<GeometryWorkerResponse<TPayload>>;
 }
 
 export interface GeometryWorkerOptions {
@@ -137,7 +153,7 @@ export function createBoxTessellationWorkerRequest(input: {
   readonly depth: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<TessellateBoxRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -165,7 +181,7 @@ export function createCylinderTessellationWorkerRequest(input: {
   readonly height: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<TessellateCylinderRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -191,7 +207,7 @@ export function createSphereTessellationWorkerRequest(input: {
   readonly radius: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<TessellateSphereRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -217,7 +233,7 @@ export function createConeTessellationWorkerRequest(input: {
   readonly height: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<TessellateConeRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -244,7 +260,7 @@ export function createTorusTessellationWorkerRequest(input: {
   readonly minorRadius: number;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<TessellateTorusRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -284,7 +300,7 @@ export function createExtrudeTessellationWorkerRequest(input: {
   readonly side?: GeometryKernelExtrudeSide;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<TessellateExtrudeRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -312,7 +328,7 @@ export function createExtrudeBooleanWorkerRequest(input: {
   readonly tool: BooleanExtrudeSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
-}): GeometryWorkerRequest {
+}): GeometryWorkerRequest<BooleanExtrudesRequest> {
   const tessellation = createTessellationOptions(input);
 
   return {
@@ -327,6 +343,49 @@ export function createExtrudeBooleanWorkerRequest(input: {
       target: input.target,
       tool: input.tool,
       ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createExactBodyMetadataWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly source:
+    | {
+        readonly kind: "extrude";
+        readonly sketchPlane: GeometryKernelSketchPlane;
+        readonly profile:
+          | {
+              readonly kind: "rectangle";
+              readonly center: readonly [number, number];
+              readonly width: number;
+              readonly height: number;
+            }
+          | {
+              readonly kind: "circle";
+              readonly center: readonly [number, number];
+              readonly radius: number;
+            };
+        readonly depth: number;
+        readonly side?: GeometryKernelExtrudeSide;
+        readonly placementFrame?: BooleanExtrudeSource["placementFrame"];
+      }
+    | {
+        readonly kind: "booleanExtrudes";
+        readonly operation: GeometryKernelBooleanOperation;
+        readonly target: BooleanExtrudeSource;
+        readonly tool: BooleanExtrudeSource;
+      };
+}): GeometryWorkerRequest<ExactBodyMetadataRequest> {
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.exactMetadata",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.exactBodyMetadata",
+      source: input.source
     }
   };
 }

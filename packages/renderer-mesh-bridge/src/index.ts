@@ -67,6 +67,10 @@ export function createRenderMeshFromGeometryWorkerResponse(
     throw new Error(response.response.error.message);
   }
 
+  if (!("mesh" in response.response)) {
+    throw new Error("Geometry worker response does not contain mesh data.");
+  }
+
   return createRenderMeshFromSerializableMesh(response.response.mesh, {
     ...options,
     source: options.source ?? response.kind

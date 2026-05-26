@@ -2,6 +2,7 @@ import {
   executeTimedBrowserGeometryKernelRequest,
   getGeometryResponseTransferables,
   type GeometryKernelErrorResponse,
+  type GeometryKernelRequest,
   type GeometryKernelResponse
 } from "@web-cad/geometry-kernel/browser";
 import {
@@ -20,6 +21,7 @@ export {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createSphereTessellationWorkerRequest,
@@ -47,9 +49,9 @@ export class GeometryKernelBrowserWorker implements GeometryWorker {
     this.#delayMs = options.delayMs ?? 0;
   }
 
-  async execute(
-    request: GeometryWorkerRequest
-  ): Promise<GeometryWorkerResponse> {
+  async execute<TPayload extends GeometryKernelRequest>(
+    request: GeometryWorkerRequest<TPayload>
+  ): Promise<GeometryWorkerResponse<TPayload>> {
     if (this.#delayMs > 0) {
       await delay(this.#delayMs);
     }
@@ -70,7 +72,7 @@ export class GeometryKernelBrowserWorker implements GeometryWorker {
           code: "UNSUPPORTED_PRIMITIVE",
           message: unsupportedMessage
         })
-      );
+      ) as GeometryWorkerResponse<TPayload>;
     }
 
     try {
@@ -113,7 +115,7 @@ export class GeometryKernelBrowserWorker implements GeometryWorker {
           workerExecutionMs
         },
         diagnostics
-      );
+      ) as GeometryWorkerResponse<TPayload>;
     } catch (error) {
       return createGeometryWorkerResponse(
         request,
@@ -131,7 +133,7 @@ export class GeometryKernelBrowserWorker implements GeometryWorker {
               ? error.message
               : "The geometry worker failed before it returned a kernel response."
         })
-      );
+      ) as GeometryWorkerResponse<TPayload>;
     }
   }
 }
@@ -151,7 +153,8 @@ function getUnsupportedPrimitiveMessage(
   if (
     kind !== "geometry-worker.tessellatePrimitive" &&
     kind !== "geometry-worker.tessellateFeature" &&
-    kind !== "geometry-worker.booleanFeature"
+    kind !== "geometry-worker.booleanFeature" &&
+    kind !== "geometry-worker.exactMetadata"
   ) {
     return `Unsupported geometry worker request kind: ${kind}.`;
   }
@@ -163,7 +166,8 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.tessellateCone" &&
     op !== "geometry.tessellateTorus" &&
     op !== "geometry.tessellateExtrude" &&
-    op !== "geometry.booleanExtrudes"
+    op !== "geometry.booleanExtrudes" &&
+    op !== "geometry.exactBodyMetadata"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;
   }

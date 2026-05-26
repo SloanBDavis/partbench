@@ -242,6 +242,110 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "returns exact rectangle extrude metadata through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_rect_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      expect(response.id).toBe("geometry_req_rect_exact_metadata");
+      expect(response.op).toBe("geometry.exactBodyMetadata");
+      expect(response.warnings).toEqual([]);
+      expect(response.metadata.sourceKind).toBe("extrude");
+      expect(response.metadata.bounds.min[0]).toBeCloseTo(-1, 6);
+      expect(response.metadata.bounds.min[1]).toBeCloseTo(0.5, 6);
+      expect(response.metadata.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(response.metadata.bounds.max[0]).toBeCloseTo(3, 6);
+      expect(response.metadata.bounds.max[1]).toBeCloseTo(3.5, 6);
+      expect(response.metadata.bounds.max[2]).toBeCloseTo(5, 6);
+      expect(response.metadata.volume).toBeCloseTo(60, 6);
+      expect(response.metadata.surfaceArea).toBeCloseTo(94, 6);
+      expect(response.metadata.centroid).toEqual([1, 2, 2.5]);
+      expect(response.metadata.topologyCounts).toEqual({
+        solidCount: 1,
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8
+      });
+      expect(response.metadata.measurementSource).toBe("kernel-derived");
+      expect(response.metadata.measurementConfidence).toBe("kernel-derived");
+      expect(response.metadata.diagnostics).toEqual([]);
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "returns exact circle extrude metadata through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_circle_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XZ",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 2
+          },
+          depth: 6
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      expect(response.metadata.sourceKind).toBe("extrude");
+      expect(response.metadata.bounds.min[0]).toBeCloseTo(-2, 6);
+      expect(response.metadata.bounds.max[0]).toBeCloseTo(2, 6);
+      expect(response.metadata.bounds.min[1]).toBeCloseTo(0, 6);
+      expect(response.metadata.bounds.max[1]).toBeCloseTo(6, 6);
+      expect(response.metadata.bounds.min[2]).toBeCloseTo(-2, 6);
+      expect(response.metadata.bounds.max[2]).toBeCloseTo(2, 6);
+      expect(response.metadata.volume).toBeCloseTo(Math.PI * 4 * 6, 6);
+      expect(response.metadata.surfaceArea).toBeCloseTo(
+        2 * Math.PI * 2 * (2 + 6),
+        6
+      );
+      expect(response.metadata.centroid[0]).toBeCloseTo(0, 6);
+      expect(response.metadata.centroid[1]).toBeCloseTo(3, 6);
+      expect(response.metadata.centroid[2]).toBeCloseTo(0, 6);
+      expect(response.metadata.topologyCounts.solidCount).toBe(1);
+      expect(response.metadata.topologyCounts.faceCount).toBeGreaterThanOrEqual(
+        3
+      );
+      expect(response.metadata.measurementSource).toBe("kernel-derived");
+      expect(response.metadata.measurementConfidence).toBe("kernel-derived");
+      expect(response.metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "maps extrude mesh bounds for negative and symmetric sides",
     async () => {
       const negative = await executeGeometryKernelRequest({
@@ -811,6 +915,198 @@ describe("geometry-kernel facade", () => {
         code: "INVALID_RESULT",
         message:
           "The geometry kernel returned mesh data with inconsistent counts or invalid values."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns exact metadata from an injected metadata factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactBodyMetadata: async (input) => ({
+        sourceKind: input.source.kind,
+        bounds: {
+          min: [0, 0, 0],
+          max: [2, 3, 4]
+        },
+        volume: 24,
+        surfaceArea: 52,
+        centroid: [1, 1.5, 2],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8
+        },
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived",
+        diagnostics: [
+          {
+            code: "TEST_DIAGNOSTIC",
+            message: "Metadata came from the injected test factory."
+          }
+        ]
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "booleanExtrudes",
+          operation: "add",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 3
+            },
+            depth: 4
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [1, 0],
+              width: 2,
+              height: 3
+            },
+            depth: 4
+          }
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      metadata: {
+        sourceKind: "booleanExtrudes",
+        bounds: {
+          min: [0, 0, 0],
+          max: [2, 3, 4]
+        },
+        volume: 24,
+        surfaceArea: 52,
+        centroid: [1, 1.5, 2],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8
+        },
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived",
+        diagnostics: [
+          {
+            code: "TEST_DIAGNOSTIC",
+            message: "Metadata came from the injected test factory."
+          }
+        ]
+      },
+      warnings: []
+    });
+    expect(getGeometryResponseTransferables(response)).toEqual([]);
+  });
+
+  it("returns structured unavailable-binding errors when exact metadata factory is absent", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_unavailable_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_unavailable_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      error: {
+        code: "UNAVAILABLE_BINDING",
+        message:
+          "Exact body metadata requires an exact metadata factory with OCCT mass-property and bounds bindings."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured validation errors for unsupported exact metadata sources", async () => {
+    const response = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_exact_metadata",
+      version: "geometry-kernel.v1",
+      op: "geometry.exactBodyMetadata",
+      source: {
+        kind: "booleanExtrudes",
+        operation: "add",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 4
+        }
+      }
+    });
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_bad_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Exact body metadata requests require supported extrude or booleanExtrudes source data with finite positive dimensions."
       },
       warnings: []
     });

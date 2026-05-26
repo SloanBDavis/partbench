@@ -4,7 +4,8 @@ import {
   createOcctSphereMesh,
   createOcctConeMesh,
   createOcctTorusMesh,
-  createOcctBooleanExtrudeMesh
+  createOcctBooleanExtrudeMesh,
+  createOcctExactBodyMetadata
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -14,17 +15,31 @@ import {
   type BoxGeometryDimensions,
   type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
+  type ExactBodyMetadataRequest,
+  type ExactBodyMetadataSource,
+  type ExactBooleanExtrudesMetadataSource,
+  type ExactExtrudeMetadataSource,
+  type GeometryKernelBounds,
   type GeometryKernelBooleanOperation,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
+  type GeometryKernelExactBodyMetadata,
+  type GeometryKernelExactBodyMetadataSuccessResponse,
+  type GeometryKernelExactMetadataDiagnostic,
   type GeometryKernelExtrudeSide,
   type GeometryKernelExtrudeProfileKind,
+  type GeometryKernelMeasurementConfidence,
+  type GeometryKernelMeasurementSource,
+  type GeometryKernelMeshRequest,
+  type GeometryKernelMeshSuccessResponse,
   type GeometryKernelOp,
   type GeometryKernelPrimitive,
+  type GeometryKernelResponseForRequest,
   type GeometryKernelSketchPlane,
   type GeometryKernelRequest,
   type GeometryKernelResponse,
   type GeometryKernelSuccessResponse,
+  type GeometryKernelTopologyCounts,
   type GeometryKernelVersion,
   type GeometryKernelErrorResponse,
   type ExtrudeGeometryProfile,
@@ -48,17 +63,31 @@ export type {
   BoxGeometryDimensions,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
+  ExactBodyMetadataRequest,
+  ExactBodyMetadataSource,
+  ExactBooleanExtrudesMetadataSource,
+  ExactExtrudeMetadataSource,
+  GeometryKernelBounds,
   GeometryKernelBooleanOperation,
   GeometryKernelError,
   GeometryKernelErrorCode,
+  GeometryKernelExactBodyMetadata,
+  GeometryKernelExactBodyMetadataSuccessResponse,
+  GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeSide,
   GeometryKernelExtrudeProfileKind,
+  GeometryKernelMeasurementConfidence,
+  GeometryKernelMeasurementSource,
+  GeometryKernelMeshRequest,
+  GeometryKernelMeshSuccessResponse,
   GeometryKernelOp,
   GeometryKernelPrimitive,
+  GeometryKernelResponseForRequest,
   GeometryKernelSketchPlane,
   GeometryKernelRequest,
   GeometryKernelResponse,
   GeometryKernelSuccessResponse,
+  GeometryKernelTopologyCounts,
   GeometryKernelVersion,
   GeometryKernelErrorResponse,
   ExtrudeGeometryProfile,
@@ -77,9 +106,9 @@ export type {
 };
 export { getGeometryResponseTransferables };
 
-export async function executeGeometryKernelRequest(
-  request: GeometryKernelRequest
-): Promise<GeometryKernelResponse> {
+export async function executeGeometryKernelRequest<
+  T extends GeometryKernelRequest
+>(request: T): Promise<GeometryKernelResponseForRequest<T>> {
   return executeGeometryKernelRequestWithMeshFactory(
     {
       createBoxMesh: createOcctBoxMesh,
@@ -87,7 +116,8 @@ export async function executeGeometryKernelRequest(
       createSphereMesh: createOcctSphereMesh,
       createConeMesh: createOcctConeMesh,
       createTorusMesh: createOcctTorusMesh,
-      createBooleanExtrudeMesh: createOcctBooleanExtrudeMesh
+      createBooleanExtrudeMesh: createOcctBooleanExtrudeMesh,
+      createExactBodyMetadata: createOcctExactBodyMetadata
     },
     request
   );
