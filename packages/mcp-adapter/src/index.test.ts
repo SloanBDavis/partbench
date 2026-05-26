@@ -426,16 +426,21 @@ describe("mcp-adapter", () => {
         query: "body.topology",
         topology: {
           bodyId: "body_topology",
-          status: "unsupported",
+          status: "healthy",
           sourceIdentity: {
             featureId: "feat_body_topology",
             sourceSketchId: "sketch_body_topology",
             sourceSketchEntityId: "rect_body_topology"
           },
-          topologyAvailable: false,
+          topologyModel: "semantic-source",
+          topologyAvailable: true,
           exactGeometryAvailable: false,
-          exactMeasurementsAvailable: false,
-          issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
+          exactMeasurementsAvailable: true,
+          measurementConfidence: "source-analytic",
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8,
+          issues: []
         }
       }
     });

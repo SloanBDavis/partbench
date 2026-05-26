@@ -1,4 +1,8 @@
-import type { CadAxisAlignedBounds, SceneObject } from "@web-cad/cad-core";
+import type {
+  CadAxisAlignedBounds,
+  CadBodyTopologySnapshot,
+  SceneObject
+} from "@web-cad/cad-core";
 import type { CadQueryError } from "@web-cad/cad-protocol";
 
 export function formatObjectKind(kind: SceneObject["kind"]): string {
@@ -86,6 +90,68 @@ export function formatBodyMeasurementError(error: CadQueryError): string {
 
   if (error.code === "UNSUPPORTED_BODY_MEASUREMENTS") {
     return `Body measurements unavailable for ${error.bodyId ?? "selected body"}. Authored rectangle and circle extrude bodies are supported.`;
+  }
+
+  return error.message;
+}
+
+export function formatBodyTopologyStatus(
+  status: CadBodyTopologySnapshot["status"]
+): string {
+  switch (status) {
+    case "healthy":
+      return "Healthy";
+    case "unsupported":
+      return "Unsupported";
+    case "ambiguous":
+      return "Ambiguous";
+    case "stale":
+      return "Stale";
+    case "kernel-failed":
+      return "Kernel failed";
+  }
+}
+
+export function formatBodyTopologyModel(
+  topology: CadBodyTopologySnapshot
+): string {
+  if (topology.topologyModel === "semantic-source") {
+    return "Semantic source";
+  }
+
+  return "Unavailable";
+}
+
+export function formatBodyTopologyCounts(
+  topology: CadBodyTopologySnapshot
+): string {
+  if (!topology.topologyAvailable) {
+    return "Unavailable";
+  }
+
+  return `${topology.faceCount ?? 0} faces, ${topology.edgeCount ?? 0} edges, ${topology.vertexCount ?? 0} vertices`;
+}
+
+export function formatBodyMeasurementConfidence(
+  topology: CadBodyTopologySnapshot
+): string {
+  switch (topology.measurementConfidence) {
+    case "source-analytic":
+      return "Source analytic";
+    case "kernel-derived":
+      return "Kernel derived";
+    case "none":
+      return "Unavailable";
+  }
+}
+
+export function formatBodyTopologyError(error: CadQueryError): string {
+  if (error.code === "BODY_NOT_FOUND") {
+    return `Body topology unavailable: ${error.bodyId ?? "selected body"} was not found.`;
+  }
+
+  if (error.code === "UNSUPPORTED_BODY_TOPOLOGY") {
+    return `Body topology unavailable for ${error.bodyId ?? "selected body"}.`;
   }
 
   return error.message;

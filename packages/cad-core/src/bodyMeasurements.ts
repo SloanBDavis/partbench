@@ -6,7 +6,11 @@ import type {
   Vec3
 } from "@web-cad/cad-protocol";
 
-import type { CadDocument, Feature, SketchEntity } from "./index";
+import type { SketchEntity } from "./index";
+import type {
+  GeneratedReferencesDocument,
+  GeneratedReferencesFeature
+} from "./generatedReferences";
 import {
   cleanMeasurementNumber,
   createExtrudeMeasurementDepthRange,
@@ -16,7 +20,7 @@ import {
 } from "./sourceMeasurementGeometry";
 
 export function createBodyMeasurements(
-  document: CadDocument,
+  document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits,
   ownerPartId: PartId
@@ -86,7 +90,7 @@ type ExtrudeMeasurementEntity =
   | Extract<SketchEntity, { readonly kind: "circle" }>;
 
 function isExtrudeMeasurementEntity(
-  feature: Feature,
+  feature: GeneratedReferencesFeature,
   entity: SketchEntity
 ): entity is ExtrudeMeasurementEntity {
   return (

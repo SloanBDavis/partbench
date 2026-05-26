@@ -6744,7 +6744,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("returns unsupported derived topology status for authored extrude bodies", () => {
+  it("returns healthy semantic topology status for authored newBody extrude bodies", () => {
     const engine = createRectangleExtrudeEngine();
 
     const response = engine.executeQuery({
@@ -6759,7 +6759,7 @@ describe("cad-core", () => {
       topology: {
         bodyId: "body_rect_1",
         units: "mm",
-        status: "unsupported",
+        status: "healthy",
         sourceKind: "authoredExtrude",
         sourceIdentity: {
           bodyId: "body_rect_1",
@@ -6769,20 +6769,24 @@ describe("cad-core", () => {
           sourceSketchId: "sketch_1",
           sourceSketchEntityId: "rect_1",
           profileKind: "rectangle",
+          profileSignature: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 2
+          },
           side: "positive",
           depth: 3
         },
-        topologyAvailable: false,
+        topologyModel: "semantic-source",
+        topologyAvailable: true,
         exactGeometryAvailable: false,
-        exactMeasurementsAvailable: false,
-        measurementConfidence: "none",
-        issues: [
-          {
-            code: "UNSUPPORTED_BODY_TOPOLOGY",
-            bodyId: "body_rect_1",
-            featureId: "feat_rect_1"
-          }
-        ]
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "source-analytic",
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8,
+        issues: []
       }
     });
 
@@ -6795,7 +6799,133 @@ describe("cad-core", () => {
     }
   });
 
-  it("returns unsupported derived topology status for boolean result bodies", () => {
+  it("returns healthy semantic topology counts for circle newBody extrudes", () => {
+    const engine = createCircleExtrudeEngine();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_circle_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_circle_1",
+        status: "healthy",
+        topologyModel: "semantic-source",
+        topologyAvailable: true,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "source-analytic",
+        sourceIdentity: {
+          featureId: "feat_circle_1",
+          profileKind: "circle",
+          profileSignature: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 2
+          }
+        },
+        faceCount: 3,
+        edgeCount: 2,
+        vertexCount: 0,
+        issues: []
+      }
+    });
+  });
+
+  it("updates simple body topology identity across source edits", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const initial = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_rect_1" }
+    });
+    if (!initial.ok || initial.query !== "body.topology") {
+      throw new Error("Expected initial body topology response.");
+    }
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [1, 2],
+        width: 6,
+        height: 5
+      }
+    });
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 7,
+      side: "symmetric"
+    });
+
+    const updated = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_rect_1" }
+    });
+    expect(updated).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        status: "healthy",
+        sourceIdentity: {
+          depth: 7,
+          side: "symmetric",
+          profileSignature: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 6,
+            height: 5
+          }
+        }
+      }
+    });
+
+    if (updated.ok && updated.query === "body.topology") {
+      expect(updated.topology.sourceIdentity.cacheKey).not.toEqual(
+        initial.topology.sourceIdentity.cacheKey
+      );
+      expect(updated.topology.sourceIdentity.cacheKey).toContain(
+        '"side":"symmetric"'
+      );
+      expect(updated.topology.sourceIdentity.cacheKey).toContain('"width":6');
+    } else {
+      throw new Error("Expected updated body topology response.");
+    }
+  });
+
+  it("includes simple body topology status in project health entries", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredExtrudes: [
+        {
+          featureId: "feat_rect_1",
+          bodyId: "body_rect_1",
+          status: "healthy",
+          topologyStatus: "healthy",
+          topologyModel: "semantic-source",
+          topologyAvailable: true,
+          exactMeasurementsAvailable: true,
+          topologyIssueCount: 0
+        }
+      ]
+    });
+  });
+
+  it("returns ambiguous derived topology status for boolean result bodies", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -6829,7 +6959,7 @@ describe("cad-core", () => {
       query: "body.topology",
       topology: {
         bodyId: "body_add_1",
-        status: "unsupported",
+        status: "ambiguous",
         sourceIdentity: {
           featureId: "feat_add_1",
           operationMode: "add",
@@ -6840,7 +6970,7 @@ describe("cad-core", () => {
         exactMeasurementsAvailable: false,
         issues: [
           {
-            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            code: "AMBIGUOUS_BODY_TOPOLOGY",
             bodyId: "body_add_1",
             featureId: "feat_add_1"
           }
@@ -6902,7 +7032,7 @@ describe("cad-core", () => {
     ).toMatchObject({
       ok: true,
       query: "body.topology",
-      topology: { bodyId: "body_rect_1", status: "unsupported" }
+      topology: { bodyId: "body_rect_1", status: "healthy" }
     });
 
     expect(exportCadProjectJson(engine)).toEqual(before);
@@ -9103,6 +9233,11 @@ describe("cad-core", () => {
           bodyId: "body_add",
           targetBodyId: "body_rect_1",
           operationMode: "add",
+          topologyStatus: "ambiguous",
+          topologyModel: "none",
+          topologyAvailable: false,
+          exactMeasurementsAvailable: false,
+          topologyIssueCount: 1,
           status: "healthy",
           issues: []
         })

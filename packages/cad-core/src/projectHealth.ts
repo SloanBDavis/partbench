@@ -12,6 +12,7 @@ import type {
   CadSketchConstraintHealth,
   CadSketchDimensionHealth,
   CadSketchEvaluationHealth,
+  DocumentUnits,
   FeatureExtrudeProfileKind,
   FeatureId,
   NamedGeneratedReferenceSnapshot,
@@ -33,6 +34,7 @@ import type {
   SketchPlane
 } from "@web-cad/cad-protocol";
 
+import { createBodyTopology } from "./bodyTopology";
 import {
   validateGeneratedReference,
   type GeneratedReferenceValidationError,
@@ -50,6 +52,7 @@ export interface ProjectHealthOptions {
   readonly document: ProjectHealthDocument;
   readonly cadOpsVersion: ProjectHealthQueryResponse["cadOpsVersion"];
   readonly ownerPartId: PartId;
+  readonly units: DocumentUnits;
   readonly bodyExists: (bodyId: BodyId) => boolean;
 }
 
@@ -85,7 +88,7 @@ export function createProjectHealth(
   options: ProjectHealthOptions
 ): ProjectHealthQueryResponse {
   const authoredExtrudes = [...options.document.features.values()].map(
-    (feature) => createAuthoredExtrudeHealth(options.document, feature)
+    (feature) => createAuthoredExtrudeHealth(options.document, feature, options)
   );
   const attachedSketches = [...options.document.sketches.values()]
     .filter((sketch) => sketch.attachment !== undefined)
@@ -150,7 +153,8 @@ export function createProjectHealth(
 
 function createAuthoredExtrudeHealth(
   document: ProjectHealthDocument,
-  feature: ProjectHealthFeature
+  feature: ProjectHealthFeature,
+  options: ProjectHealthOptions
 ): CadAuthoredExtrudeHealth {
   const issues: CadDependencyHealthIssue[] = [];
   const sketch = document.sketches.get(feature.sketchId);
@@ -229,6 +233,15 @@ function createAuthoredExtrudeHealth(
     }
   }
 
+  const topology = createBodyTopology({
+    document,
+    bodyId: feature.bodyId,
+    units: options.units,
+    ownerPartId: options.ownerPartId,
+    bodyExists: options.bodyExists
+  });
+  const topologySnapshot = topology.ok ? topology.topology : undefined;
+
   return {
     featureId: feature.id,
     bodyId: feature.bodyId,
@@ -237,6 +250,16 @@ function createAuthoredExtrudeHealth(
     profileKind: feature.profileKind,
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+    ...(topologySnapshot
+      ? {
+          topologyStatus: topologySnapshot.status,
+          topologyModel: topologySnapshot.topologyModel,
+          topologyAvailable: topologySnapshot.topologyAvailable,
+          exactMeasurementsAvailable:
+            topologySnapshot.exactMeasurementsAvailable,
+          topologyIssueCount: topologySnapshot.issues.length
+        }
+      : {}),
     status: statusFromIssues(issues),
     issues
   };

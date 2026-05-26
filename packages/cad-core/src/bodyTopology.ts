@@ -4,15 +4,22 @@ import type {
   CadBodyTopologySnapshot,
   CadBodyTopologySourceIdentity,
   CadQueryError,
-  DocumentUnits
+  DocumentUnits,
+  PartId
 } from "@web-cad/cad-protocol";
 
-import type { CadDocument, Feature } from "./index";
+import {
+  createBodyGeneratedReferences,
+  type GeneratedReferencesDocument,
+  type GeneratedReferencesFeature
+} from "./generatedReferences";
+import { createBodyMeasurements } from "./bodyMeasurements";
 
 export interface BodyTopologyRequest {
-  readonly document: CadDocument;
+  readonly document: GeneratedReferencesDocument;
   readonly bodyId: BodyId;
   readonly units: DocumentUnits;
+  readonly ownerPartId: PartId;
   readonly bodyExists: (bodyId: BodyId) => boolean;
 }
 
@@ -34,13 +41,17 @@ export function createBodyTopology(
   );
 
   if (feature) {
+    const topology = createAuthoredFeatureTopology(
+      request.document,
+      request.bodyId,
+      request.units,
+      request.ownerPartId,
+      feature
+    );
+
     return {
       ok: true,
-      topology: createUnsupportedAuthoredFeatureTopology(
-        request.bodyId,
-        request.units,
-        feature
-      )
+      topology
     };
   }
 
@@ -64,11 +75,25 @@ export function createBodyTopology(
   };
 }
 
-function createUnsupportedAuthoredFeatureTopology(
+function createAuthoredFeatureTopology(
+  document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits,
-  feature: Feature
+  ownerPartId: PartId,
+  feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
+  const references = createBodyGeneratedReferences(
+    document,
+    bodyId,
+    ownerPartId
+  );
+  const measurements = createBodyMeasurements(
+    document,
+    bodyId,
+    units,
+    ownerPartId
+  );
+  const profileSignature = references?.body.geometricSignature.profile;
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     bodyId,
     sourceKind: "authoredExtrude",
@@ -82,6 +107,7 @@ function createUnsupportedAuthoredFeatureTopology(
       sourceSketchId: feature.sketchId,
       sourceSketchEntityId: feature.entityId,
       profileKind: feature.profileKind,
+      profileSignature,
       side: feature.side,
       depth: feature.depth
     }),
@@ -92,16 +118,40 @@ function createUnsupportedAuthoredFeatureTopology(
     sourceSketchId: feature.sketchId,
     sourceSketchEntityId: feature.entityId,
     profileKind: feature.profileKind,
+    profileSignature,
     side: feature.side,
     depth: feature.depth
   };
+
+  if (feature.operationMode === "newBody" && references && measurements) {
+    return {
+      bodyId,
+      units,
+      status: "healthy",
+      sourceKind: "authoredExtrude",
+      sourceIdentity,
+      topologyModel: "semantic-source",
+      topologyAvailable: true,
+      exactGeometryAvailable: false,
+      exactMeasurementsAvailable: true,
+      measurementConfidence: "source-analytic",
+      faceCount: references.faces.length,
+      edgeCount: references.edges.length,
+      vertexCount: references.vertices.length,
+      issues: []
+    };
+  }
+
   const issues: CadBodyTopologyIssue[] = [
     {
-      code: "UNSUPPORTED_BODY_TOPOLOGY",
+      code:
+        feature.operationMode === "newBody"
+          ? "STALE_BODY_TOPOLOGY"
+          : "AMBIGUOUS_BODY_TOPOLOGY",
       message:
         feature.operationMode === "newBody"
-          ? "Exact topology is not derived yet for authored sketch-extrude bodies. Semantic generated references remain available through body.generatedReferences where supported."
-          : "Exact topology is not derived yet for authored boolean result bodies.",
+          ? "Semantic topology could not be derived because the authored extrude source profile or placement is stale."
+          : "Stable generated topology references are ambiguous for authored boolean result bodies until boolean topology matching is implemented.",
       bodyId,
       featureId: feature.id
     }
@@ -111,7 +161,8 @@ function createUnsupportedAuthoredFeatureTopology(
     bodyId,
     units,
     sourceIdentity,
-    issues
+    issues,
+    status: feature.operationMode === "newBody" ? "stale" : "ambiguous"
   });
 }
 
@@ -150,13 +201,15 @@ function createUnsupportedTopologySnapshot(input: {
   readonly units: DocumentUnits;
   readonly sourceIdentity: CadBodyTopologySourceIdentity;
   readonly issues: readonly CadBodyTopologyIssue[];
+  readonly status?: CadBodyTopologySnapshot["status"];
 }): CadBodyTopologySnapshot {
   return {
     bodyId: input.bodyId,
     units: input.units,
-    status: "unsupported",
+    status: input.status ?? "unsupported",
     sourceKind: input.sourceIdentity.sourceKind,
     sourceIdentity: input.sourceIdentity,
+    topologyModel: "none",
     topologyAvailable: false,
     exactGeometryAvailable: false,
     exactMeasurementsAvailable: false,

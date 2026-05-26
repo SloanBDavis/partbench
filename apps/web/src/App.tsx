@@ -4,6 +4,7 @@ import {
   exportCadProject,
   exportCadProjectJson,
   type CadBodySnapshot,
+  type CadBodyTopologySnapshot,
   type CadDocument,
   type CadFeatureSummary,
   type CadPartSnapshot,
@@ -110,6 +111,7 @@ import {
 } from "./derivedGeometrySources";
 import {
   formatBodyMeasurementError,
+  formatBodyTopologyError,
   getObjectDisplayName,
   formatObjectKind
 } from "./sceneObjectDisplay";
@@ -464,6 +466,28 @@ function readBodyMeasurements(bodyId: string | undefined): {
     : {};
 }
 
+function readBodyTopology(bodyId: string | undefined): {
+  readonly topology?: CadBodyTopologySnapshot;
+  readonly error?: string;
+} {
+  if (!bodyId) {
+    return {};
+  }
+
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+
+  if (response.ok && response.query === "body.topology") {
+    return { topology: response.topology };
+  }
+
+  return !response.ok && response.query === "body.topology"
+    ? { error: formatBodyTopologyError(response.error) }
+    : {};
+}
+
 function readGeneratedFaceReferencesByKey(
   bodies: readonly CadBodySnapshot[]
 ): ReadonlyMap<string, CadGeneratedFaceReference> {
@@ -631,6 +655,8 @@ export function App() {
     selectedFeature?.kind === "extrude"
       ? readBodyMeasurements(selectedBody?.id)
       : {};
+  const selectedBodyTopology =
+    selectedBody !== undefined ? readBodyTopology(selectedBody.id) : {};
   const namedReferences = readNamedReferences();
   const transactionHistory = readTransactionHistory();
   const parameters = readParameters();
@@ -1431,6 +1457,8 @@ export function App() {
             measurements={selectedMeasurements}
             bodyMeasurements={selectedBodyMeasurements.measurements}
             bodyMeasurementsError={selectedBodyMeasurements.error}
+            bodyTopology={selectedBodyTopology.topology}
+            bodyTopologyError={selectedBodyTopology.error}
             body={selectedBody}
             feature={selectedFeature}
             generatedReferences={selectedBodyGeneratedReferences.references}

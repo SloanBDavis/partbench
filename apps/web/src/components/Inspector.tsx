@@ -1,6 +1,7 @@
 import type {
   BodyMeasurementsSnapshot,
   CadBodySnapshot,
+  CadBodyTopologySnapshot,
   CadFeatureSummary,
   DocumentUnits,
   FeatureExtrudeSide,
@@ -61,6 +62,10 @@ import {
   formatDimensions,
   formatArea,
   formatBounds,
+  formatBodyMeasurementConfidence,
+  formatBodyTopologyCounts,
+  formatBodyTopologyModel,
+  formatBodyTopologyStatus,
   getObjectDisplayName,
   formatObjectKind,
   formatVector,
@@ -74,6 +79,8 @@ export function Inspector({
   body,
   bodyMeasurements,
   bodyMeasurementsError,
+  bodyTopology,
+  bodyTopologyError,
   feature,
   generatedReferences,
   generatedReferencesError,
@@ -99,6 +106,8 @@ export function Inspector({
   readonly body?: CadBodySnapshot;
   readonly bodyMeasurements?: BodyMeasurementsSnapshot;
   readonly bodyMeasurementsError?: string;
+  readonly bodyTopology?: CadBodyTopologySnapshot;
+  readonly bodyTopologyError?: string;
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
@@ -139,6 +148,8 @@ export function Inspector({
         body,
         bodyMeasurements,
         bodyMeasurementsError,
+        bodyTopology,
+        bodyTopologyError,
         disabled,
         feature,
         generatedReferences,
@@ -176,6 +187,8 @@ function renderInspectorSelection(input: {
   readonly body?: CadBodySnapshot;
   readonly bodyMeasurements?: BodyMeasurementsSnapshot;
   readonly bodyMeasurementsError?: string;
+  readonly bodyTopology?: CadBodyTopologySnapshot;
+  readonly bodyTopologyError?: string;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
@@ -216,6 +229,8 @@ function renderInspectorSelection(input: {
         body={input.body}
         measurements={input.bodyMeasurements}
         measurementsError={input.bodyMeasurementsError}
+        topology={input.bodyTopology}
+        topologyError={input.bodyTopologyError}
         disabled={input.disabled}
         feature={input.feature}
         generatedReferences={input.generatedReferences}
@@ -314,6 +329,8 @@ function BodyInspector({
   onDeleteFeature,
   onUpdateExtrude,
   selectedGeneratedReference,
+  topology,
+  topologyError,
   units
 }: {
   readonly body: CadBodySnapshot;
@@ -327,6 +344,8 @@ function BodyInspector({
   >;
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly measurementsError?: string;
+  readonly topology?: CadBodyTopologySnapshot;
+  readonly topologyError?: string;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteNamedReference: (name: string) => void;
@@ -422,6 +441,7 @@ function BodyInspector({
         measurements={measurements}
         units={units}
       />
+      <BodyTopologyPanel error={topologyError} topology={topology} />
       {feature?.kind === "extrude" && (
         <ExtrudeDepthEditor
           key={`${feature.id}-${feature.depth}-${feature.side}`}
@@ -514,6 +534,53 @@ function BodyMeasurementPanel({
             <dt>Model</dt>
             <dd>Source analytic</dd>
           </div>
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function BodyTopologyPanel({
+  error,
+  topology
+}: {
+  readonly error?: string;
+  readonly topology?: CadBodyTopologySnapshot;
+}) {
+  if (!topology && !error) {
+    return null;
+  }
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Topology</h3>
+      </div>
+      {error && <p className="error-text">{error}</p>}
+      {topology && (
+        <dl>
+          <div>
+            <dt>Status</dt>
+            <dd>{formatBodyTopologyStatus(topology.status)}</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd>{formatBodyTopologyModel(topology)}</dd>
+          </div>
+          <div>
+            <dt>Entities</dt>
+            <dd>{formatBodyTopologyCounts(topology)}</dd>
+          </div>
+          <div>
+            <dt>Measurements</dt>
+            <dd>{formatBodyMeasurementConfidence(topology)}</dd>
+          </div>
+          {topology.issues.length > 0 && (
+            <div>
+              <dt>Issue</dt>
+              <dd>{topology.issues[0]?.message}</dd>
+            </div>
+          )}
         </dl>
       )}
     </section>

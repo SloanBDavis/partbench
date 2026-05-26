@@ -123,6 +123,7 @@ export type {
   CadBodyTopologyIssue,
   CadBodyTopologyIssueCode,
   CadBodyTopologyMeasurementConfidence,
+  CadBodyTopologyModel,
   CadBodyTopologySnapshot,
   CadBodyTopologySourceIdentity,
   CadBodyTopologySourceKind,
@@ -830,6 +831,7 @@ export class CadEngine {
           document: this.#document,
           cadOpsVersion: request.version,
           ownerPartId: DEFAULT_PART_ID,
+          units: this.#document.units,
           bodyExists: (bodyId) =>
             structure.bodies.some((body) => body.id === bodyId)
         });
@@ -1051,6 +1053,7 @@ export class CadEngine {
           document: this.#document,
           bodyId,
           units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
           bodyExists: (candidateBodyId) =>
             structure.bodies.some((body) => body.id === candidateBodyId)
         });

@@ -828,11 +828,15 @@ body ID and returns derived availability/status metadata for exact geometry,
 topology, and exact measurement confidence. The response includes a deterministic
 source identity/cache key derived from existing document source records, plus
 structured topology issues such as unsupported body, stale source, ambiguous
-topology, empty/invalid exact result, or kernel failure. In the initial V5 Phase
-A slice, current bodies return honest `unsupported` topology snapshots because
-exact topology execution is not wired yet. This query is read-only derived data;
-it does not persist OCCT state, B-rep data, mesh data, topology indexes, or a
-new source-of-truth project field, so it does not require a schema version.
+topology, empty/invalid exact result, or kernel failure. Rectangle and circle
+newBody authored extrudes return healthy `semantic-source` topology snapshots
+with face/edge/vertex counts and `source-analytic` measurement confidence.
+Primitive compatibility bodies return `unsupported` snapshots, and current
+boolean result bodies return `ambiguous` snapshots because stable generated
+topology roles cannot be proven from the narrow boolean mesh result yet. This
+query is read-only derived data; it does not persist OCCT state, B-rep data,
+mesh data, topology indexes, or a new source-of-truth project field, so it does
+not require a schema version.
 
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts either a body ID plus generated face stable ID, or a named reference

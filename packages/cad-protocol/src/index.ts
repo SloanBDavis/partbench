@@ -1676,6 +1676,11 @@ export interface CadAuthoredExtrudeHealth {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly topologyStatus?: CadBodyTopologyStatus;
+  readonly topologyModel?: CadBodyTopologyModel;
+  readonly topologyAvailable?: boolean;
+  readonly exactMeasurementsAvailable?: boolean;
+  readonly topologyIssueCount?: number;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];
 }
@@ -1856,6 +1861,8 @@ export type CadBodyTopologySourceKind =
   | "authoredExtrude"
   | "primitiveCompatibility";
 
+export type CadBodyTopologyModel = "none" | "semantic-source";
+
 export type CadBodyTopologyMeasurementConfidence =
   | "none"
   | "source-analytic"
@@ -1880,6 +1887,7 @@ export interface CadBodyTopologySourceIdentity {
   readonly sourceSketchId?: SketchId;
   readonly sourceSketchEntityId?: SketchEntityId;
   readonly profileKind?: FeatureExtrudeProfileKind;
+  readonly profileSignature?: CadGeneratedReferenceProfileSignature;
   readonly side?: FeatureExtrudeSide;
   readonly depth?: number;
 }
@@ -1899,6 +1907,7 @@ export interface CadBodyTopologySnapshot {
   readonly status: CadBodyTopologyStatus;
   readonly sourceKind: CadBodyTopologySourceKind;
   readonly sourceIdentity: CadBodyTopologySourceIdentity;
+  readonly topologyModel: CadBodyTopologyModel;
   readonly topologyAvailable: boolean;
   readonly exactGeometryAvailable: boolean;
   readonly exactMeasurementsAvailable: boolean;

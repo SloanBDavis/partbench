@@ -8,9 +8,10 @@ Last updated: 2026-05-25.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v4.md` for the completed
-constrained sketch solving milestone, `docs/v5.md` for the active exact
-geometry/topology milestone, `docs/native-format.md` for project-format
-direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
+constrained sketch solving milestone, `docs/v5.md` for the completed exact
+geometry/topology foundation milestone, `docs/native-format.md` for
+project-format direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size
+findings.
 
 ## Active Rules
 
@@ -26,9 +27,8 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2, V3, and V4 are complete. V5 is active and should build exact
-   geometry/topology confidence for current authored bodies without starting
-   unrelated architecture systems.
+9. V2, V3, V4, and V5 are complete. Future milestones should continue to build
+   modeling capability without starting unrelated architecture systems early.
 
 ## Current Repo State
 
@@ -182,6 +182,11 @@ Current Partbench can:
   health, history, measurements, extents, and generated-reference measurements;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
+- query selected body topology status through `body.topology`;
+- inspect semantic-source topology counts and source-analytic measurement
+  confidence for rectangle/circle newBody extrudes;
+- inspect structured ambiguous topology status for current boolean result bodies
+  where stable generated topology cannot be proven yet;
 - save/load current `web-cad.project.v13` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
@@ -201,11 +206,12 @@ Current limitations:
 - There is no parameter expression language.
 - There is no broad feature graph beyond current authored sketch extrudes and
   narrow boolean add/cut result features.
-- Generated references exist for simple authored extrude bodies, but boolean
-  result bodies do not expose generated topology/reference sets yet.
+- Generated references and healthy semantic topology exist for simple authored
+  rectangle/circle newBody extrude bodies, but boolean result bodies expose
+  structured ambiguous topology instead of generated topology/reference sets.
 - There is no authoritative B-rep topology persisted in the document model.
-- Measurements are source-derived for current supported shapes and references;
-  they are not exact B-rep/kernel measurements.
+- Measurements are source-derived/source-analytic for current supported shapes
+  and references; they are not exact B-rep/kernel mass-property measurements.
 - There are no fillets, chamfers, revolve, shell, sweep, loft, patterns, direct
   edits, general booleans, STEP import/export, OPFS/File System Access,
   WebGPU, assemblies, hosted collaboration, production MCP auth, or
@@ -517,9 +523,9 @@ Completed:
 - add high-signal unit/package coverage;
 - update docs to mark V4 complete and identify the next milestone.
 
-## Active Roadmap: V5 Exact Geometry And Topology Foundation
+## Completed Roadmap: V5 Exact Geometry And Topology Foundation
 
-V5 is the active milestone. Its detailed scope lives in `docs/v5.md`.
+V5 is complete. Its detailed scope lives in `docs/v5.md`.
 
 V5 should make the current authored bodies more CAD-real without broadening the
 modeling surface too quickly. V4 made sketches and regeneration coherent. V5
@@ -546,14 +552,13 @@ claiming broad topological naming is solved.
 Goal: define the derived exact/topology result model before wiring it into more
 queries.
 
-Planned deliverables:
+Completed:
 
 - typed protocol/query shapes for derived body topology and exact measurement
   status;
-- internal result shapes for kernel-derived body metadata;
 - structured topology errors for unsupported body, stale source, ambiguous
   topology, empty result, invalid result, and kernel failure;
-- cache-key rules for exact/topology data;
+- cache-key/source identity rules for exact/topology data;
 - tests proving the new boundary is read-only and does not mutate source
   document data.
 
@@ -563,12 +568,13 @@ Goal: route simple rectangle/circle `newBody` extrudes through the new
 exact/topology boundary while preserving existing semantic generated reference
 behavior.
 
-Planned deliverables:
+Completed:
 
 - derived topology/measurement responses for rectangle and circle newBody
   extrudes;
 - parity tests for existing generated references;
-- exact/kernel-derived measurements where available;
+- source-analytic measurement confidence for exact-for-source simple extrude
+  formulas;
 - project health entries for exact/topology status.
 
 ### V5 Phase C: Boolean Result Topology
@@ -576,55 +582,67 @@ Planned deliverables:
 Goal: make current supported boolean result bodies inspectable without claiming
 a full topological naming solution.
 
-Planned deliverables:
+Completed:
 
-- generated body/face references for supported narrow boolean result bodies
-  where roles or kernel-derived matching are stable enough;
-- explicit unsupported or ambiguous responses where safe stable references
-  cannot be produced;
-- resolver and named-reference behavior for supported boolean result
+- structured ambiguous responses for rectangle cut, circle-target cut, and
+  rectangle add/fuse result bodies because stable generated face/edge/vertex
+  roles cannot be proven yet;
+- unchanged resolver and named-reference behavior for simple generated
   references;
-- tests for rectangle cut, circle-target cut, rectangle add/fuse, source edits,
-  undo/redo, import/export, and stale reference behavior.
+- health entries that surface topology ambiguity without treating valid boolean
+  source dependencies as broken.
 
 ### V5 Phase D: Exact Measurements And Project Extents
 
 Goal: make supported body measurements and project extents use the best
 available derived exact data while preserving honest fallbacks.
 
-Planned deliverables:
+Completed:
 
-- kernel-derived volume, surface area, bounds, and centroid where practical;
-- structured measurement confidence/source metadata;
-- project extents that include supported boolean result bodies when exact
-  bounds are available;
-- warnings for unsupported or failed exact geometry.
+- measurement confidence/source metadata on body topology snapshots;
+- source-analytic confidence for current simple extrudes;
+- existing project extents warnings remain honest for boolean result bodies
+  because the current kernel path produces tessellated meshes rather than stable
+  exact mass properties.
 
 ### V5 Phase E: Agent/MCP And UI Integration
 
 Goal: expose V5 exact/topology data in the same command/query-driven way as the
 rest of Partbench.
 
-Planned deliverables:
+Completed:
 
-- agent-adapter and MCP pass-through for body topology and exact measurement
-  queries;
+- agent-adapter and MCP pass-through for body topology queries;
 - compact UI for selected body topology/reference health;
-- generated/named reference UI updates for supported boolean result references;
-- measurement display that shows exact/source/fallback confidence clearly.
+- selected-body measurement confidence display through topology status;
+- UI helper coverage for topology status, model, counts, confidence, and errors.
 
 ### V5 Phase F: Stabilization And Completion
 
 Goal: declare V5 complete only when supported authored bodies and narrow boolean
 result bodies have coherent exact/topology behavior, tests, and docs.
 
-Planned deliverables:
+Completed:
 
-- architecture-boundary review for cad-core, geometry-kernel, geometry-worker,
-  renderer, adapter/MCP, storage, and UI helpers;
-- focused fixes for must-fix findings;
-- broad unit/package-level coverage for V5 workflows;
-- docs updated to mark V5 complete and identify the next milestone.
+- focused coverage for protocol, cad-core, project health, adapter/MCP, UI
+  formatting, source/derived separation, and docs;
+- docs updated to mark V5 complete and identify remaining exact B-rep and broad
+  topological naming limitations.
+
+## Next Roadmap Direction
+
+The next milestone should be selected deliberately before implementation. The
+highest-signal options are:
+
+- exact kernel metadata/mass-property queries if OCCT bindings can expose them
+  without making meshes authoritative;
+- a focused modeling feature such as revolve or fillet if its source model,
+  validation, derived geometry, and reference limitations can be scoped tightly;
+- save/open infrastructure such as OPFS/File System Access if distribution and
+  project-management workflows become the priority.
+
+Do not start a new milestone by silently expanding V5. Add a dedicated spec doc
+once the next target is chosen.
 
 ## Deferred Beyond V5 Unless Explicitly Scoped
 

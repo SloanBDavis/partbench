@@ -928,7 +928,7 @@ describe("cad-protocol", () => {
       topology: {
         bodyId: "body_1",
         units: "mm",
-        status: "unsupported",
+        status: "healthy",
         sourceKind: "authoredExtrude",
         sourceIdentity: {
           bodyId: "body_1",
@@ -940,21 +940,24 @@ describe("cad-protocol", () => {
           sourceSketchId: "sketch_1",
           sourceSketchEntityId: "rect_1",
           profileKind: "rectangle",
+          profileSignature: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 2
+          },
           side: "positive",
           depth: 3
         },
-        topologyAvailable: false,
+        topologyModel: "semantic-source",
+        topologyAvailable: true,
         exactGeometryAvailable: false,
-        exactMeasurementsAvailable: false,
-        measurementConfidence: "none",
-        issues: [
-          {
-            code: "UNSUPPORTED_BODY_TOPOLOGY",
-            message: "Exact topology is not derived yet.",
-            bodyId: "body_1",
-            featureId: "feat_1"
-          }
-        ]
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "source-analytic",
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8,
+        issues: []
       }
     };
 
@@ -962,10 +965,10 @@ describe("cad-protocol", () => {
       ok: true,
       query: "body.topology",
       topology: {
-        status: "unsupported",
-        topologyAvailable: false,
-        exactMeasurementsAvailable: false,
-        issues: [{ code: "UNSUPPORTED_BODY_TOPOLOGY" }]
+        status: "healthy",
+        topologyAvailable: true,
+        exactMeasurementsAvailable: true,
+        faceCount: 6
       }
     });
   });

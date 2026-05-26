@@ -10,6 +10,11 @@ import {
   formatBounds,
   formatArea,
   formatBodyMeasurementError,
+  formatBodyMeasurementConfidence,
+  formatBodyTopologyCounts,
+  formatBodyTopologyError,
+  formatBodyTopologyModel,
+  formatBodyTopologyStatus,
   formatDimensions,
   getObjectDisplayName,
   formatObjectKind,
@@ -89,6 +94,55 @@ describe("scene object display helpers", () => {
     ).toBe(
       "Body measurements unavailable for body:box_1. Authored rectangle and circle extrude bodies are supported."
     );
+  });
+
+  it("formats body topology status and confidence", () => {
+    const topology = {
+      bodyId: "body_1",
+      units: "mm",
+      status: "healthy",
+      sourceKind: "authoredExtrude",
+      sourceIdentity: {
+        bodyId: "body_1",
+        sourceKind: "authoredExtrude",
+        cacheKey: "topology:key",
+        units: "mm"
+      },
+      topologyModel: "semantic-source",
+      topologyAvailable: true,
+      exactGeometryAvailable: false,
+      exactMeasurementsAvailable: true,
+      measurementConfidence: "source-analytic",
+      faceCount: 6,
+      edgeCount: 12,
+      vertexCount: 8,
+      issues: []
+    } as const;
+
+    expect(formatBodyTopologyStatus(topology.status)).toBe("Healthy");
+    expect(formatBodyTopologyModel(topology)).toBe("Semantic source");
+    expect(formatBodyTopologyCounts(topology)).toBe(
+      "6 faces, 12 edges, 8 vertices"
+    );
+    expect(formatBodyMeasurementConfidence(topology)).toBe("Source analytic");
+  });
+
+  it("formats body topology errors clearly", () => {
+    expect(
+      formatBodyTopologyError({
+        code: "BODY_NOT_FOUND",
+        message: "Body not found.",
+        bodyId: "missing_body"
+      })
+    ).toBe("Body topology unavailable: missing_body was not found.");
+
+    expect(
+      formatBodyTopologyError({
+        code: "UNSUPPORTED_BODY_TOPOLOGY",
+        message: "Topology is not supported.",
+        bodyId: "body:box_1"
+      })
+    ).toBe("Body topology unavailable for body:box_1.");
   });
 });
 
