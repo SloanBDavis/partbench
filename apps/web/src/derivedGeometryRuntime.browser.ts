@@ -4,6 +4,7 @@ import type {
 } from "@web-cad/geometry-worker";
 import {
   createDerivedGeometryErrorFromWorkerResponse,
+  createDerivedExactMetadataMetrics,
   createDerivedGeometryMetrics,
   type DerivedGeometryBoxInput,
   type DerivedGeometryBooleanExtrudeInput,
@@ -13,7 +14,9 @@ import {
   type DerivedGeometrySphereInput,
   type DerivedGeometryTorusInput,
   type DerivedGeometryResult,
-  type DerivedGeometryRuntime
+  type DerivedGeometryRuntime,
+  type DerivedExactMetadataInput,
+  type DerivedExactMetadataResult
 } from "./derivedGeometryRuntime";
 
 type DisposableGeometryWorker = GeometryWorker & {
@@ -88,6 +91,36 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         roundTripMs
       }),
       message: `Displayed derived OCCT mesh for ${input.id}.`
+    };
+  }
+
+  async function executeExactMetadataRequest(
+    input: DerivedExactMetadataInput,
+    request: GeometryWorkerRequest
+  ): Promise<DerivedExactMetadataResult> {
+    const worker = await getGeometryWorker();
+    const roundTripStart = performance.now();
+    const response = await worker.execute(request);
+    const roundTripMs = performance.now() - roundTripStart;
+
+    if (!response.response.ok) {
+      throw createDerivedGeometryErrorFromWorkerResponse(response);
+    }
+
+    if (!("metadata" in response.response)) {
+      throw new Error(
+        "Geometry worker response does not contain exact metadata."
+      );
+    }
+
+    return {
+      metadata: response.response.metadata,
+      metrics: createDerivedExactMetadataMetrics({
+        objectId: input.id,
+        response,
+        roundTripMs
+      }),
+      message: `Derived exact metadata for ${input.id}.`
     };
   }
 
@@ -211,6 +244,20 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           tool: input.tool,
           linearDeflection: 0.25,
           angularDeflection: 0.5
+        })
+      );
+    },
+    async exactBodyMetadata(input: DerivedExactMetadataInput) {
+      const { createExactBodyMetadataWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeExactMetadataRequest(
+        input,
+        createExactBodyMetadataWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          source: input.source
         })
       );
     },

@@ -17,6 +17,8 @@ import type {
   TessellateTorusRequest
 } from "@web-cad/geometry-kernel";
 
+export type { GeometryKernelExactBodyMetadata } from "@web-cad/geometry-kernel";
+
 export type GeometryWorkerVersion = "geometry-worker.v1";
 export type GeometryWorkerRequestKind =
   | "geometry-worker.tessellatePrimitive"

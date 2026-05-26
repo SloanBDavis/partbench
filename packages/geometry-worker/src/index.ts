@@ -28,6 +28,7 @@ export {
   type GeometryWorkerDiagnostics,
   type GeometryWorkerErrorCode,
   type GeometryWorkerErrorDetails,
+  type GeometryKernelExactBodyMetadata,
   type GeometryWorkerOptions,
   type GeometryWorkerRequest,
   type GeometryWorkerRequestKind,

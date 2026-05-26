@@ -1,4 +1,5 @@
 import type {
+  GeometryKernelExactBodyMetadata,
   GeometryWorkerDiagnostics,
   GeometryWorkerResponse
 } from "@web-cad/geometry-worker";
@@ -91,6 +92,27 @@ export interface DerivedGeometryBooleanExtrudeInput {
   readonly tool: DerivedGeometryBooleanExtrudeInputSource;
 }
 
+export type DerivedExactBodyMetadata = GeometryKernelExactBodyMetadata;
+
+export interface DerivedExactMetadataInput {
+  readonly id: string;
+  readonly source:
+    | {
+        readonly kind: "extrude";
+        readonly sketchPlane: "XY" | "XZ" | "YZ";
+        readonly profile: DerivedGeometryExtrudeInput["profile"];
+        readonly depth: number;
+        readonly side: "positive" | "negative" | "symmetric";
+        readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+      }
+    | {
+        readonly kind: "booleanExtrudes";
+        readonly operation: "add" | "cut";
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly tool: DerivedGeometryBooleanExtrudeInputSource;
+      };
+}
+
 export interface DerivedGeometryMetrics {
   readonly objectId: string;
   readonly occtLoadMs?: number;
@@ -102,9 +124,24 @@ export interface DerivedGeometryMetrics {
   readonly triangleCount: number;
 }
 
+export interface DerivedExactMetadataMetrics {
+  readonly objectId: string;
+  readonly occtLoadMs?: number;
+  readonly tessellationMs?: number;
+  readonly geometryKernelMs?: number;
+  readonly workerExecutionMs?: number;
+  readonly roundTripMs: number;
+}
+
 export interface DerivedGeometryResult {
   readonly mesh: RenderTriangleMesh;
   readonly metrics: DerivedGeometryMetrics;
+  readonly message: string;
+}
+
+export interface DerivedExactMetadataResult {
+  readonly metadata: DerivedExactBodyMetadata;
+  readonly metrics: DerivedExactMetadataMetrics;
   readonly message: string;
 }
 
@@ -136,6 +173,9 @@ export interface DerivedGeometryRuntime {
   booleanExtrudes(
     input: DerivedGeometryBooleanExtrudeInput
   ): Promise<DerivedGeometryResult>;
+  exactBodyMetadata(
+    input: DerivedExactMetadataInput
+  ): Promise<DerivedExactMetadataResult>;
   dispose(): void;
 }
 
@@ -164,6 +204,21 @@ export function createDerivedGeometryMetrics(input: {
     roundTripMs: input.roundTripMs,
     vertexCount: input.bridgeResult.vertexCount,
     triangleCount: input.bridgeResult.triangleCount
+  };
+}
+
+export function createDerivedExactMetadataMetrics(input: {
+  readonly objectId: string;
+  readonly response: GeometryWorkerResponse;
+  readonly roundTripMs: number;
+}): DerivedExactMetadataMetrics {
+  return {
+    objectId: input.objectId,
+    occtLoadMs: input.response.timings?.occtLoadMs,
+    tessellationMs: input.response.timings?.tessellationMs,
+    geometryKernelMs: input.response.timings?.geometryKernelMs,
+    workerExecutionMs: input.response.timings?.workerExecutionMs,
+    roundTripMs: input.roundTripMs
   };
 }
 

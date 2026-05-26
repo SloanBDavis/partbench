@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createDerivedGeometryErrorDetails,
   createDerivedGeometryErrorFromWorkerResponse,
+  createDerivedExactMetadataMetrics,
   createDerivedGeometryMetrics,
   formatMetricMs,
   formatDerivedGeometryError
@@ -75,6 +76,61 @@ describe("derivedGeometryRuntime", () => {
       roundTripMs: 1225.9,
       vertexCount: 24,
       triangleCount: 12
+    });
+  });
+
+  it("creates exact metadata metrics from a geometry worker response", () => {
+    const response: GeometryWorkerResponse = {
+      id: "worker_req_metadata",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payloadId: "kernel_req_metadata",
+      response: {
+        ok: true,
+        id: "kernel_req_metadata",
+        op: "geometry.exactBodyMetadata",
+        metadata: {
+          sourceKind: "extrude",
+          bounds: {
+            min: [0, 0, 0],
+            max: [1, 2, 3]
+          },
+          volume: 6,
+          surfaceArea: 22,
+          centroid: [0.5, 1, 1.5],
+          topologyCounts: {
+            solidCount: 1,
+            faceCount: 6,
+            edgeCount: 12,
+            vertexCount: 8
+          },
+          measurementSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          diagnostics: []
+        },
+        warnings: []
+      },
+      transferables: [],
+      timings: {
+        occtLoadMs: 1200.4,
+        geometryKernelMs: 1208.1,
+        workerExecutionMs: 1210.7
+      }
+    };
+
+    expect(
+      createDerivedExactMetadataMetrics({
+        objectId: "body_1",
+        response,
+        roundTripMs: 1225.9
+      })
+    ).toEqual({
+      objectId: "body_1",
+      occtLoadMs: 1200.4,
+      tessellationMs: undefined,
+      geometryKernelMs: 1208.1,
+      workerExecutionMs: 1210.7,
+      roundTripMs: 1225.9
     });
   });
 

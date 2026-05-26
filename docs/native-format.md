@@ -922,6 +922,7 @@ data.
 These are not source of truth and must not be required to load a project:
 
 - OCCT tessellation results
+- derived exact-kernel metadata results
 - renderer meshes
 - renderer buffers
 - viewport camera state

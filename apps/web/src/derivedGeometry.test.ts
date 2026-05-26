@@ -26,6 +26,7 @@ import type {
   DerivedGeometryBooleanExtrudeInput,
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
+  DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryResult,
   DerivedGeometryRuntime,
@@ -2797,6 +2798,9 @@ function createRuntime(
     booleanExtrudes(input) {
       inputs.push(input);
       return handler(input);
+    },
+    exactBodyMetadata(): Promise<DerivedExactMetadataResult> {
+      throw new Error("Exact metadata is not used by derived geometry tests.");
     },
     dispose() {
       disposeCount += 1;
