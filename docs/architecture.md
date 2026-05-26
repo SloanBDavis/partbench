@@ -10,6 +10,7 @@ The current implementation source of truth is:
 - `docs/implementation-plan.md`
 - `docs/v4.md`
 - `docs/v5.md`
+- `docs/v6.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.

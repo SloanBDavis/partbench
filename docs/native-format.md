@@ -857,6 +857,11 @@ new project format is justified when the saved source-of-truth model gains data
 that cannot be faithfully represented by the current `web-cad.project.v13`
 document shape.
 
+V6 is expected to introduce the next format version when its first new authored
+feature source record lands. Exact-kernel metadata, topology snapshots,
+measurement outputs, mesh results, and UI selection state remain derived and do
+not justify a schema version by themselves.
+
 Likely triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
@@ -884,7 +889,12 @@ schemaVersion: web-cad.project.v14
 ```
 
 That format should include a migration from older accepted versions, not silent
-shape guessing.
+shape guessing. For V6, `web-cad.project.v14` should preserve V1-V13 import
+compatibility and add only the source records actually implemented, such as
+revolve, hole, chamfer, or fillet feature inputs. It should not persist B-rep
+checkpoints, OCCT topology IDs, exact metadata query results, or tessellated
+mesh caches unless a later milestone explicitly changes the source-of-truth
+model.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced

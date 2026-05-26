@@ -13,7 +13,8 @@ The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
 - `docs/v4.md` — completed V4 constrained sketch solving milestone
-- `docs/v5.md` — active V5 exact geometry/topology target
+- `docs/v5.md` — completed V5 exact geometry/topology foundation
+- `docs/v6.md` — active V6 practical solid-modeling target
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 

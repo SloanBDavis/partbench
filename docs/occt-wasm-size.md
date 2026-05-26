@@ -161,6 +161,38 @@ box/cylinder/sphere/cone/torus smoke correctness
 That experiment should stay behind the existing geometry-worker boundary until
 it proves smaller, stable, and compatible with the current smoke path.
 
+## V6 API Surface Watchlist
+
+V6 is expected to exercise more of OCCT than V5. The current full
+OpenCascade.js package is still acceptable for development while these paths are
+being proven, but any future custom build experiment must account for the V6
+modeling surface before it can replace the full package.
+
+V6 candidate bindings include:
+
+- exact metadata and mass properties:
+  - shape bounds APIs such as `BRepBndLib`,
+  - mass-property APIs such as `BRepGProp` / `GProp_GProps`,
+  - shape validity/checking APIs where available;
+- revolve:
+  - profile face construction,
+  - axis construction,
+  - revolve/make-revolution APIs;
+- hole:
+  - cylinder/tool construction,
+  - cut APIs,
+  - through-all depth calculation from exact or reliable derived bounds;
+- chamfer and fillet:
+  - edge lookup/traversal,
+  - `BRepFilletAPI_MakeChamfer`,
+  - `BRepFilletAPI_MakeFillet`,
+  - failure/status inspection.
+
+Do not shrink or swap the OCCT package during V6 feature implementation unless
+that work is explicitly scoped. The safer path is to prove modeling behavior
+against the full package first, then run a dedicated custom-build experiment
+once the required symbol set is known.
+
 ## Boolean Feasibility Risks
 
 The extrude boolean path does not change the binary-size recommendation, but it

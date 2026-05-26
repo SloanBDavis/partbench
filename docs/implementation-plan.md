@@ -9,9 +9,9 @@ Last updated: 2026-05-25.
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v4.md` for the completed
 constrained sketch solving milestone, `docs/v5.md` for the completed exact
-geometry/topology foundation milestone, `docs/native-format.md` for
-project-format direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size
-findings.
+geometry/topology foundation milestone, `docs/v6.md` for the active practical
+solid-modeling milestone, `docs/native-format.md` for project-format direction,
+and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
 
@@ -27,8 +27,9 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2, V3, V4, and V5 are complete. Future milestones should continue to build
-   modeling capability without starting unrelated architecture systems early.
+9. V2, V3, V4, and V5 are complete. V6 is active and should expand practical
+   solid modeling without starting unrelated storage, renderer, or import/export
+   systems early.
 
 ## Current Repo State
 
@@ -629,20 +630,140 @@ Completed:
 - docs updated to mark V5 complete and identify remaining exact B-rep and broad
   topological naming limitations.
 
-## Next Roadmap Direction
+## Active Roadmap: V6 Practical Solid Modeling On Exact Geometry
 
-The next milestone should be selected deliberately before implementation. The
-highest-signal options are:
+V6 is the active milestone. Its detailed scope lives in `docs/v6.md`.
 
-- exact kernel metadata/mass-property queries if OCCT bindings can expose them
-  without making meshes authoritative;
-- a focused modeling feature such as revolve or fillet if its source model,
-  validation, derived geometry, and reference limitations can be scoped tightly;
-- save/open infrastructure such as OPFS/File System Access if distribution and
-  project-management workflows become the priority.
+V6 should be substantially larger than V5. V5 established the exact/topology
+boundary and honest status model. V6 should use that foundation to add practical
+solid-modeling capability: exact-kernel metadata, revolve, circular holes, and
+first edge-finishing operations.
 
-Do not start a new milestone by silently expanding V5. Add a dedicated spec doc
-once the next target is chosen.
+The V6 product target is:
+
+> A user or agent can create a constrained sketch, build a part with extrudes,
+> revolves, holes, and simple edge finishing, then inspect measurements,
+> topology health, history, and unsupported states through the same CADOps
+> command/query layer.
+
+V6 remains iterative. Each phase should be implemented with focused prompts and
+unit/package coverage, but the milestone decisions are made up front:
+
+- new persisted V6 feature records should introduce `web-cad.project.v14`;
+- exact-kernel metadata remains derived and should not be persisted as source;
+- target-consuming features such as hole, chamfer, and fillet create result
+  bodies rather than mutating body identity in place;
+- generated references for V6 result bodies are exposed only where stable and
+  otherwise return structured ambiguity.
+
+### V6 Phase A: Exact Kernel Metadata And Measurement Upgrade
+
+Goal: upgrade the geometry boundary so current and future bodies can return
+kernel-derived metadata where practical.
+
+Planned deliverables:
+
+- typed geometry-kernel/worker requests for exact metadata;
+- derived bounds, volume, surface area, centroid, and topology/entity counts
+  where OCCT bindings allow;
+- structured diagnostics for unavailable bindings, kernel failure, empty result,
+  and invalid result;
+- cad-core read/query plumbing that keeps source JSON unchanged;
+- OCCT binding audit for mass properties, revolve, hole/cut, chamfer, and
+  fillet APIs.
+
+### V6 Phase B: `feature.revolve` Core
+
+Goal: add the first new major authored feature type since extrude.
+
+Planned deliverables:
+
+- source-of-truth `feature.revolve` records and commands;
+- support for closed rectangle/circle profiles revolved around a non-zero sketch
+  line axis;
+- `newBody` only unless add/cut is deliberately promoted later;
+- semantic diffs, undo/redo, batch dry-run/commit, project import/export,
+  transaction history, health, measurements/extents, adapter/MCP, and tests.
+
+### V6 Phase C: Revolve Geometry And UI Integration
+
+Goal: make revolve visible and usable in the app.
+
+Planned deliverables:
+
+- geometry-kernel/worker/OCCT revolve mesh path;
+- compact feature creation UI that lets the user choose Extrude or Revolve;
+- valid axis filtering and clear validation messages;
+- selected-body topology/measurement health for revolve results.
+
+### V6 Phase D: `feature.hole` Circular Cut Workflow
+
+Goal: add a practical face-based machining workflow.
+
+Planned deliverables:
+
+- source-of-truth `feature.hole` records and commands;
+- circular sketch entity tools on base-plane and attached planar-face sketches;
+- blind and through-all hole behavior where exact target bounds make it safe;
+- target body consumption and authored result body creation;
+- derived geometry, health, measurements/extents, adapter/MCP, UI, and tests.
+
+### V6 Phase E: Edge Finishing With Chamfer And Fillet
+
+Goal: add the first generated-edge-consuming modeling features.
+
+Planned deliverables:
+
+- `feature.chamfer` and `feature.fillet` source records and commands;
+- generated or named edge reference input;
+- initial support for one stable semantic rectangle-extrude edge per feature;
+- target body consumption and authored result body creation;
+- structured failures for ambiguous topology, stale references, too-large
+  radius/distance, and kernel failures;
+- derived geometry, health, measurements/extents, adapter/MCP, UI, and tests.
+
+### V6 Phase F: Topology, Measurement, And Reference Health
+
+Goal: keep V6 result bodies inspectable without overstating topological naming.
+
+Planned deliverables:
+
+- topology/measurement health for revolve, hole, chamfer, and fillet bodies;
+- named-reference stale/ambiguous handling after V6 features;
+- project health entries for consumed target chains and exact metadata
+  confidence;
+- project extents using kernel-derived bounds where available.
+
+### V6 Phase G: Agent/MCP And UI Workflow Completion
+
+Goal: expose V6 workflows through the same command/query layer for humans and
+agents.
+
+Planned deliverables:
+
+- agent-adapter and MCP pass-through for all V6 commands and queries;
+- compact UI workflows for Extrude, Revolve, Hole, Chamfer, and Fillet;
+- target/reference filtering so unsupported options are not offered;
+- helper tests for command building, filtering, status formatting, and project
+  JSON preview behavior.
+
+### V6 Phase H: Stabilization And Completion
+
+Goal: declare V6 complete only after the practical solid-modeling workflow is
+coherent, tested, documented, and browser-verified.
+
+Planned deliverables:
+
+- coverage across protocol, cad-core, geometry-kernel, geometry-worker,
+  adapter/MCP, UI helpers, serialization, undo/redo, measurements/extents,
+  topology health, and docs;
+- required checks:
+  - `pnpm test`
+  - `pnpm typecheck`
+  - `pnpm build`
+  - `pnpm lint`
+  - `pnpm format:check`
+- manual browser verification of representative V6 workflows.
 
 ## Deferred Beyond V5 Unless Explicitly Scoped
 
@@ -652,8 +773,9 @@ once the next target is chosen.
 - Dragging solver UX.
 - Arbitrary parameter expressions.
 - Broad stable topological naming across arbitrary feature edits.
-- General booleans beyond the current narrow add/cut cases.
-- Fillets, chamfers, shell, patterns, lofts, sweeps, revolve, and direct edits.
+- General booleans beyond current add/cut plus scoped V6 hole behavior.
+- Shell, patterns, lofts, sweeps, mirror, direct edits, and broad feature
+  editing beyond scoped V6 revolve/hole/chamfer/fillet workflows.
 - Persistent exact B-rep checkpoints.
 - STEP/IGES import/export.
 - OPFS cache implementation and File System Access open/save.
