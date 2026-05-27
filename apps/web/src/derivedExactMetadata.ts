@@ -1,4 +1,11 @@
 import type {
+  CadAxisAlignedBounds,
+  CadBodyDerivedExactMetadataSnapshot,
+  CadBodyExactMetadataDiagnostic,
+  CadBodyExactMetadataSnapshot
+} from "@web-cad/cad-protocol";
+
+import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometrySource,
@@ -277,6 +284,81 @@ export function createDerivedExactMetadataCacheKey(
   });
 }
 
+export function getDerivedExactMetadataEntryForBody(
+  snapshot: DerivedExactMetadataSnapshot,
+  bodyId: string | undefined
+): DerivedExactMetadataEntry | undefined {
+  if (!bodyId) {
+    return undefined;
+  }
+
+  return snapshot.entries.find((entry) => entry.bodyId === bodyId);
+}
+
+export function createBodyTopologyDerivedExactMetadataSnapshot(
+  entry: DerivedExactMetadataEntry | undefined,
+  sourceIdentityCacheKey: string
+): CadBodyDerivedExactMetadataSnapshot | undefined {
+  if (!entry || entry.status === "pending") {
+    return undefined;
+  }
+
+  if (entry.status === "ready") {
+    return {
+      bodyId: entry.bodyId,
+      sourceIdentityCacheKey,
+      status: "ready",
+      metadata: createCadExactMetadata(entry.metadata)
+    };
+  }
+
+  if (entry.status === "unsupported") {
+    return {
+      bodyId: entry.bodyId,
+      sourceIdentityCacheKey,
+      status: "unsupported",
+      error: {
+        code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
+        message: entry.message
+      }
+    };
+  }
+
+  return {
+    bodyId: entry.bodyId,
+    sourceIdentityCacheKey,
+    status:
+      entry.error.code === "UNAVAILABLE_BINDING"
+        ? "unavailable-binding"
+        : "kernel-failed",
+    error: {
+      code: entry.error.code,
+      message: entry.error.message
+    }
+  };
+}
+
+export function formatDerivedExactMetadataEntryStatus(
+  entry: DerivedExactMetadataEntry | undefined
+): string | undefined {
+  if (!entry) {
+    return undefined;
+  }
+
+  switch (entry.status) {
+    case "pending":
+      return "Pending";
+    case "ready":
+      return "Ready";
+    case "unsupported":
+      return "Unsupported";
+    case "error":
+      return entry.error.code === "UNAVAILABLE_BINDING"
+        ? "Binding unavailable"
+        : "Kernel failed";
+  }
+}
+
 export function createExactMetadataRuntimeInput(
   source: DerivedExactMetadataSource
 ): Parameters<DerivedGeometryRuntime["exactBodyMetadata"]>[0] {
@@ -336,6 +418,51 @@ export function createExactMetadataRuntimeInput(
           : {})
       }
     }
+  };
+}
+
+function createCadExactMetadata(
+  metadata: DerivedExactBodyMetadata
+): Omit<CadBodyExactMetadataSnapshot, "status"> {
+  return {
+    source: "kernel-derived",
+    confidence: "kernel-derived",
+    bounds: createCadBounds(metadata.bounds),
+    volume: metadata.volume,
+    surfaceArea: metadata.surfaceArea,
+    centroid: metadata.centroid,
+    topologyCounts: metadata.topologyCounts,
+    diagnostics: metadata.diagnostics.map(createCadExactMetadataDiagnostic)
+  };
+}
+
+function createCadBounds(
+  bounds: DerivedExactBodyMetadata["bounds"]
+): CadAxisAlignedBounds {
+  const size = [
+    bounds.max[0] - bounds.min[0],
+    bounds.max[1] - bounds.min[1],
+    bounds.max[2] - bounds.min[2]
+  ] as const;
+
+  return {
+    min: bounds.min,
+    max: bounds.max,
+    size,
+    center: [
+      (bounds.min[0] + bounds.max[0]) / 2,
+      (bounds.min[1] + bounds.max[1]) / 2,
+      (bounds.min[2] + bounds.max[2]) / 2
+    ] as const
+  };
+}
+
+function createCadExactMetadataDiagnostic(
+  diagnostic: DerivedExactBodyMetadata["diagnostics"][number]
+): CadBodyExactMetadataDiagnostic {
+  return {
+    code: diagnostic.code,
+    message: diagnostic.message
   };
 }
 

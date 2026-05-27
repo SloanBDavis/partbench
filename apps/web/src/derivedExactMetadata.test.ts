@@ -1,11 +1,19 @@
-import { CadEngine, type CadFeatureSummary } from "@web-cad/cad-core";
+import {
+  CadEngine,
+  exportCadProjectJson,
+  type CadFeatureSummary
+} from "@web-cad/cad-core";
 import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
   createDerivedExactMetadataCacheKey,
+  createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
   createExactMetadataRuntimeInput,
   DerivedExactMetadataService,
+  formatDerivedExactMetadataEntryStatus,
+  getDerivedExactMetadataEntryForBody,
+  type DerivedExactMetadataEntry,
   type DerivedExactMetadataSnapshot
 } from "./derivedExactMetadata";
 import {
@@ -92,6 +100,226 @@ describe("derivedExactMetadata", () => {
     expect(createDerivedExactMetadataCacheKey(revolveSource)).not.toBe(
       createDerivedExactMetadataCacheKey(editedAngleSource)
     );
+  });
+
+  it("maps ready exact metadata entries into body.topology query snapshots", () => {
+    const entry = createReadyExactMetadataEntry("body_rect_1", "extrude", 42);
+    expect(
+      getDerivedExactMetadataEntryForBody(
+        {
+          entries: [entry],
+          supportedCount: 1,
+          pendingCount: 0,
+          readyCount: 1,
+          errorCount: 0
+        },
+        "body_rect_1"
+      )
+    ).toBe(entry);
+
+    const snapshot = createBodyTopologyDerivedExactMetadataSnapshot(
+      entry,
+      'body-topology:v1:{"bodyId":"body_rect_1"}'
+    );
+
+    expect(snapshot).toEqual({
+      bodyId: "body_rect_1",
+      sourceIdentityCacheKey: 'body-topology:v1:{"bodyId":"body_rect_1"}',
+      status: "ready",
+      metadata: {
+        source: "kernel-derived",
+        confidence: "kernel-derived",
+        bounds: {
+          min: [0, 0, 0],
+          max: [1, 2, 3],
+          size: [1, 2, 3],
+          center: [0.5, 1, 1.5]
+        },
+        volume: 42,
+        surfaceArea: 20,
+        centroid: [0.5, 1, 1.5],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8
+        },
+        diagnostics: []
+      }
+    });
+  });
+
+  it("maps exact metadata terminal states and leaves pending query-only", () => {
+    expect(
+      createBodyTopologyDerivedExactMetadataSnapshot(
+        {
+          bodyId: "body_pending",
+          sourceKind: "extrude",
+          cacheKey: "exact:pending",
+          status: "pending"
+        },
+        "topology:pending"
+      )
+    ).toBeUndefined();
+    expect(formatDerivedExactMetadataEntryStatus(undefined)).toBeUndefined();
+    expect(
+      formatDerivedExactMetadataEntryStatus({
+        bodyId: "body_pending",
+        sourceKind: "extrude",
+        cacheKey: "exact:pending",
+        status: "pending"
+      })
+    ).toBe("Pending");
+    expect(
+      createBodyTopologyDerivedExactMetadataSnapshot(
+        {
+          bodyId: "body_unsupported",
+          sourceKind: "extrudeBoolean",
+          cacheKey: "exact:unsupported",
+          status: "unsupported",
+          message: "Circle tool exact metadata is unsupported."
+        },
+        "topology:unsupported"
+      )
+    ).toMatchObject({
+      bodyId: "body_unsupported",
+      status: "unsupported",
+      error: {
+        code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
+        message: "Circle tool exact metadata is unsupported."
+      }
+    });
+    expect(
+      createBodyTopologyDerivedExactMetadataSnapshot(
+        {
+          bodyId: "body_unavailable",
+          sourceKind: "revolve",
+          cacheKey: "exact:unavailable",
+          status: "error",
+          error: {
+            code: "UNAVAILABLE_BINDING",
+            stage: "occt",
+            message: "Exact metadata binding is unavailable.",
+            workerStarted: true,
+            wasmLoadStatus: "ready"
+          }
+        },
+        "topology:unavailable"
+      )
+    ).toMatchObject({
+      bodyId: "body_unavailable",
+      status: "unavailable-binding",
+      error: {
+        code: "UNAVAILABLE_BINDING",
+        message: "Exact metadata binding is unavailable."
+      }
+    });
+    expect(
+      formatDerivedExactMetadataEntryStatus({
+        bodyId: "body_failed",
+        sourceKind: "revolve",
+        cacheKey: "exact:failed",
+        status: "error",
+        error: {
+          code: "KERNEL_FAILED",
+          stage: "kernel",
+          message: "Kernel failed.",
+          workerStarted: true,
+          wasmLoadStatus: "ready"
+        }
+      })
+    ).toBe("Kernel failed");
+  });
+
+  it("enriches selected-body topology with matching exact metadata without mutating project JSON", () => {
+    const engine = createExtrudedRectangleEngine();
+    const bodyId = "body_rect_1";
+    const beforeJson = exportCadProjectJson(engine);
+    const sourceIdentityCacheKey = readBodyTopologyCacheKey(engine, bodyId);
+    const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
+      createReadyExactMetadataEntry(bodyId, "extrude", 42),
+      sourceIdentityCacheKey
+    );
+
+    if (!derivedExactMetadata) {
+      throw new Error("Expected exact metadata query snapshot.");
+    }
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId,
+        derivedExactMetadata
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId,
+        status: "healthy",
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 42
+        }
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("enriches authored revolve topology with derived exact metadata while generated references remain unsupported", () => {
+    const engine = createRevolvedRectangleEngine();
+    const bodyId = "body_revolve_1";
+    const sourceIdentityCacheKey = readBodyTopologyCacheKey(engine, bodyId);
+    const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
+      createReadyExactMetadataEntry(bodyId, "revolve", 64),
+      sourceIdentityCacheKey
+    );
+
+    if (!derivedExactMetadata) {
+      throw new Error("Expected exact metadata query snapshot.");
+    }
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId,
+        derivedExactMetadata
+      }
+    });
+    const generatedReferences = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId,
+        sourceKind: "authoredRevolve",
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 64
+        }
+      }
+    });
+    expect(generatedReferences).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES"
+      }
+    });
   });
 
   it("requests and caches exact metadata for authored extrude sources", async () => {
@@ -601,6 +829,38 @@ function createMetadataResult(
     },
     message: `Derived exact metadata for ${objectId}.`
   };
+}
+
+function createReadyExactMetadataEntry(
+  bodyId: string,
+  sourceKind: "extrude" | "booleanExtrudes" | "revolve",
+  volume = 10
+): DerivedExactMetadataEntry {
+  return {
+    bodyId,
+    sourceKind:
+      sourceKind === "booleanExtrudes" ? "extrudeBoolean" : sourceKind,
+    cacheKey: `exact:${bodyId}`,
+    status: "ready",
+    metadata: createMetadataResult(bodyId, sourceKind, volume).metadata,
+    metrics: {
+      objectId: bodyId,
+      roundTripMs: 1
+    }
+  };
+}
+
+function readBodyTopologyCacheKey(engine: CadEngine, bodyId: string): string {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+
+  if (!response.ok || response.query !== "body.topology") {
+    throw new Error(`Expected topology response for ${bodyId}.`);
+  }
+
+  return response.topology.sourceIdentity.cacheKey;
 }
 
 function createRuntime(

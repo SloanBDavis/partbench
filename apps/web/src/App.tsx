@@ -108,6 +108,14 @@ import {
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import {
+  createBodyTopologyDerivedExactMetadataSnapshot,
+  createEmptyDerivedExactMetadataSnapshot,
+  DerivedExactMetadataService,
+  formatDerivedExactMetadataEntryStatus,
+  getDerivedExactMetadataEntryForBody,
+  type DerivedExactMetadataSnapshot
+} from "./derivedExactMetadata";
+import {
   createAuthoredFeatureDerivedGeometrySources,
   createDerivedGeometrySourcesFromDocument
 } from "./derivedGeometrySources";
@@ -470,25 +478,60 @@ function readBodyMeasurements(bodyId: string | undefined): {
     : {};
 }
 
-function readBodyTopology(bodyId: string | undefined): {
+function readBodyTopology(
+  bodyId: string | undefined,
+  exactMetadata: DerivedExactMetadataSnapshot
+): {
   readonly topology?: CadBodyTopologySnapshot;
   readonly error?: string;
+  readonly exactMetadataStatus?: string;
 } {
   if (!bodyId) {
     return {};
   }
 
+  const exactMetadataEntry = getDerivedExactMetadataEntryForBody(
+    exactMetadata,
+    bodyId
+  );
+  const exactMetadataStatus =
+    formatDerivedExactMetadataEntryStatus(exactMetadataEntry);
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: { query: "body.topology", bodyId }
   });
 
   if (response.ok && response.query === "body.topology") {
-    return { topology: response.topology };
+    const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
+      exactMetadataEntry,
+      response.topology.sourceIdentity.cacheKey
+    );
+
+    if (!derivedExactMetadata) {
+      return { topology: response.topology, exactMetadataStatus };
+    }
+
+    const enrichedResponse = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId,
+        derivedExactMetadata
+      }
+    });
+
+    if (enrichedResponse.ok && enrichedResponse.query === "body.topology") {
+      return {
+        topology: enrichedResponse.topology,
+        exactMetadataStatus
+      };
+    }
+
+    return { topology: response.topology, exactMetadataStatus };
   }
 
   return !response.ok && response.query === "body.topology"
-    ? { error: formatBodyTopologyError(response.error) }
+    ? { error: formatBodyTopologyError(response.error), exactMetadataStatus }
     : {};
 }
 
@@ -518,6 +561,9 @@ export function App() {
   const derivedGeometryServiceRef = useRef<DerivedGeometryService | undefined>(
     undefined
   );
+  const derivedExactMetadataServiceRef = useRef<
+    DerivedExactMetadataService | undefined
+  >(undefined);
   const [document, setDocument] = useState<CadDocument>(() =>
     engine.getDocument()
   );
@@ -548,6 +594,10 @@ export function App() {
     useState<DerivedGeometrySnapshot>(() =>
       createEmptyDerivedGeometrySnapshot()
     );
+  const [derivedExactMetadata, setDerivedExactMetadata] =
+    useState<DerivedExactMetadataSnapshot>(() =>
+      createEmptyDerivedExactMetadataSnapshot()
+    );
   const getDerivedGeometryRuntime = useCallback((): DerivedGeometryRuntime => {
     if (!derivedGeometryRuntimeRef.current) {
       derivedGeometryRuntimeRef.current = createDerivedGeometryRuntime();
@@ -565,6 +615,18 @@ export function App() {
 
     return derivedGeometryServiceRef.current;
   }, [getDerivedGeometryRuntime]);
+  const getDerivedExactMetadataService =
+    useCallback((): DerivedExactMetadataService => {
+      if (!derivedExactMetadataServiceRef.current) {
+        derivedExactMetadataServiceRef.current =
+          new DerivedExactMetadataService({
+            runtime: getDerivedGeometryRuntime(),
+            onChange: setDerivedExactMetadata
+          });
+      }
+
+      return derivedExactMetadataServiceRef.current;
+    }, [getDerivedGeometryRuntime]);
 
   const sceneObjects = useMemo(
     () => [...document.objects.values()],
@@ -660,7 +722,9 @@ export function App() {
       ? readBodyMeasurements(selectedBody?.id)
       : {};
   const selectedBodyTopology =
-    selectedBody !== undefined ? readBodyTopology(selectedBody.id) : {};
+    selectedBody !== undefined
+      ? readBodyTopology(selectedBody.id, derivedExactMetadata)
+      : {};
   const namedReferences = readNamedReferences();
   const transactionHistory = readTransactionHistory();
   const parameters = readParameters();
@@ -771,6 +835,8 @@ export function App() {
     return () => {
       derivedGeometryServiceRef.current?.dispose();
       derivedGeometryServiceRef.current = undefined;
+      derivedExactMetadataServiceRef.current?.dispose();
+      derivedExactMetadataServiceRef.current = undefined;
       derivedGeometryRuntimeRef.current = undefined;
     };
   }, []);
@@ -781,7 +847,12 @@ export function App() {
     }
 
     getDerivedGeometryService().reconcile(derivedGeometrySources);
-  }, [derivedGeometrySources, getDerivedGeometryService]);
+    getDerivedExactMetadataService().reconcile(derivedGeometrySources);
+  }, [
+    derivedGeometrySources,
+    getDerivedExactMetadataService,
+    getDerivedGeometryService
+  ]);
 
   function syncDocument(nextSelectedId = selectedId) {
     const nextDocument = engine.getDocument();
@@ -822,13 +893,13 @@ export function App() {
       nextSketchExtrudeBodies
     );
 
-    getDerivedGeometryService().reconcile(
-      createDerivedGeometrySourcesFromDocument(
-        nextDocument,
-        nextStructure.features,
-        nextGeneratedFacesByKey
-      )
+    const nextDerivedGeometrySources = createDerivedGeometrySourcesFromDocument(
+      nextDocument,
+      nextStructure.features,
+      nextGeneratedFacesByKey
     );
+    getDerivedGeometryService().reconcile(nextDerivedGeometrySources);
+    getDerivedExactMetadataService().reconcile(nextDerivedGeometrySources);
   }
 
   function refreshDerivedGeometry() {
@@ -837,6 +908,7 @@ export function App() {
     }
 
     getDerivedGeometryService().refresh(derivedGeometrySources);
+    getDerivedExactMetadataService().refresh(derivedGeometrySources);
   }
 
   async function commitOps(
@@ -1474,6 +1546,9 @@ export function App() {
             bodyMeasurementsError={selectedBodyMeasurements.error}
             bodyTopology={selectedBodyTopology.topology}
             bodyTopologyError={selectedBodyTopology.error}
+            bodyTopologyExactMetadataStatus={
+              selectedBodyTopology.exactMetadataStatus
+            }
             body={selectedBody}
             feature={selectedFeature}
             generatedReferences={selectedBodyGeneratedReferences.references}

@@ -128,6 +128,8 @@ describe("scene object display helpers", () => {
   });
 
   it("formats unavailable exact metadata binding status", () => {
+    expect(formatBodyTopologyStatus("stale")).toBe("Stale");
+    expect(formatBodyTopologyStatus("kernel-failed")).toBe("Kernel failed");
     expect(formatBodyTopologyStatus("unavailable-binding")).toBe(
       "Binding unavailable"
     );

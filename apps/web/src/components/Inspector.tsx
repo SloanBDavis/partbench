@@ -81,6 +81,7 @@ export function Inspector({
   bodyMeasurementsError,
   bodyTopology,
   bodyTopologyError,
+  bodyTopologyExactMetadataStatus,
   feature,
   generatedReferences,
   generatedReferencesError,
@@ -108,6 +109,7 @@ export function Inspector({
   readonly bodyMeasurementsError?: string;
   readonly bodyTopology?: CadBodyTopologySnapshot;
   readonly bodyTopologyError?: string;
+  readonly bodyTopologyExactMetadataStatus?: string;
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
@@ -150,6 +152,7 @@ export function Inspector({
         bodyMeasurementsError,
         bodyTopology,
         bodyTopologyError,
+        bodyTopologyExactMetadataStatus,
         disabled,
         feature,
         generatedReferences,
@@ -189,6 +192,7 @@ function renderInspectorSelection(input: {
   readonly bodyMeasurementsError?: string;
   readonly bodyTopology?: CadBodyTopologySnapshot;
   readonly bodyTopologyError?: string;
+  readonly bodyTopologyExactMetadataStatus?: string;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
@@ -229,6 +233,7 @@ function renderInspectorSelection(input: {
         body={input.body}
         measurements={input.bodyMeasurements}
         measurementsError={input.bodyMeasurementsError}
+        topologyExactMetadataStatus={input.bodyTopologyExactMetadataStatus}
         topology={input.bodyTopology}
         topologyError={input.bodyTopologyError}
         disabled={input.disabled}
@@ -330,6 +335,7 @@ function BodyInspector({
   onUpdateExtrude,
   selectedGeneratedReference,
   topology,
+  topologyExactMetadataStatus,
   topologyError,
   units
 }: {
@@ -345,6 +351,7 @@ function BodyInspector({
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly measurementsError?: string;
   readonly topology?: CadBodyTopologySnapshot;
+  readonly topologyExactMetadataStatus?: string;
   readonly topologyError?: string;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
@@ -441,7 +448,11 @@ function BodyInspector({
         measurements={measurements}
         units={units}
       />
-      <BodyTopologyPanel error={topologyError} topology={topology} />
+      <BodyTopologyPanel
+        error={topologyError}
+        exactMetadataStatus={topologyExactMetadataStatus}
+        topology={topology}
+      />
       {feature?.kind === "extrude" && (
         <ExtrudeDepthEditor
           key={`${feature.id}-${feature.depth}-${feature.side}`}
@@ -542,12 +553,14 @@ function BodyMeasurementPanel({
 
 function BodyTopologyPanel({
   error,
+  exactMetadataStatus,
   topology
 }: {
   readonly error?: string;
+  readonly exactMetadataStatus?: string;
   readonly topology?: CadBodyTopologySnapshot;
 }) {
-  if (!topology && !error) {
+  if (!topology && !error && !exactMetadataStatus) {
     return null;
   }
 
@@ -575,6 +588,12 @@ function BodyTopologyPanel({
             <dt>Measurements</dt>
             <dd>{formatBodyMeasurementConfidence(topology)}</dd>
           </div>
+          {exactMetadataStatus && (
+            <div>
+              <dt>Kernel metadata</dt>
+              <dd>{exactMetadataStatus}</dd>
+            </div>
+          )}
           {topology.issues.length > 0 && (
             <div>
               <dt>Issue</dt>
