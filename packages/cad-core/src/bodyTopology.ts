@@ -92,6 +92,10 @@ function createAuthoredFeatureTopology(
   ownerPartId: PartId,
   feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
+  if (feature.kind !== "extrude") {
+    return createUnsupportedAuthoredFeatureTopology(bodyId, units, feature);
+  }
+
   const references = createBodyGeneratedReferences(
     document,
     bodyId,
@@ -173,6 +177,42 @@ function createAuthoredFeatureTopology(
     sourceIdentity,
     issues,
     status: feature.operationMode === "newBody" ? "stale" : "ambiguous"
+  });
+}
+
+function createUnsupportedAuthoredFeatureTopology(
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: GeneratedReferencesFeature
+): CadBodyTopologySnapshot {
+  const sourceKind =
+    feature.kind === "revolve" ? "authoredRevolve" : "authoredExtrude";
+  const sourceIdentity: CadBodyTopologySourceIdentity = {
+    bodyId,
+    sourceKind,
+    cacheKey: createTopologyCacheKey({
+      bodyId,
+      sourceKind,
+      units,
+      featureId: feature.id
+    }),
+    units,
+    featureId: feature.id
+  };
+
+  return createUnsupportedTopologySnapshot({
+    bodyId,
+    units,
+    sourceIdentity,
+    issues: [
+      {
+        code: "UNSUPPORTED_BODY_TOPOLOGY",
+        message:
+          "Semantic topology references are not derived for authored revolve bodies yet.",
+        bodyId,
+        featureId: feature.id
+      }
+    ]
   });
 }
 

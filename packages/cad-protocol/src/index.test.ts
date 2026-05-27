@@ -12,8 +12,10 @@ import type {
   CadPartSnapshot,
   CadPrimitiveFeatureSummary,
   CadOp,
+  CadRevolveFeatureSummary,
   CadQueryRequest,
   CadQueryResponse,
+  RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   SketchEvaluationQueryResponse,
   NamedGeneratedReferenceEntry,
@@ -174,6 +176,21 @@ describe("cad-protocol", () => {
         targetBodyId: "body_target"
       },
       {
+        op: "feature.revolve",
+        id: "feat_revolve_1",
+        bodyId: "body_revolve_1",
+        name: "Turn",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_1",
+          entityId: "axis_1"
+        },
+        angleDegrees: 180,
+        operationMode: "newBody"
+      },
+      {
         op: "feature.updateExtrude",
         id: "feat_1",
         depth: 7,
@@ -221,6 +238,7 @@ describe("cad-protocol", () => {
       "sketch.rename",
       "sketch.delete",
       "feature.extrude",
+      "feature.revolve",
       "feature.updateExtrude",
       "feature.delete",
       "reference.nameGenerated",
@@ -638,12 +656,14 @@ describe("cad-protocol", () => {
       status: "under-defined",
       issueCount: 1,
       authoredExtrudeCount: 0,
+      authoredRevolveCount: 0,
       attachedSketchCount: 0,
       sketchEvaluationCount: 1,
       sketchDimensionCount: 0,
       sketchConstraintCount: 0,
       namedReferenceCount: 0,
       authoredExtrudes: [],
+      authoredRevolves: [],
       attachedSketches: [],
       sketchEvaluations: [
         {
@@ -1124,6 +1144,49 @@ describe("cad-protocol", () => {
       kind: "extrude",
       bodyId: "body_1",
       profileKind: "rectangle"
+    });
+  });
+
+  it("types sketch revolve feature snapshots and summaries", () => {
+    const snapshot: RevolveFeatureSnapshot = {
+      id: "feat_revolve_1",
+      kind: "revolve",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle",
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 270,
+      operationMode: "newBody",
+      bodyId: "body_revolve_1"
+    };
+    const feature: CadRevolveFeatureSummary = {
+      id: snapshot.id,
+      kind: "revolve",
+      partId: "part:default",
+      bodyId: snapshot.bodyId,
+      sketchId: snapshot.sketchId,
+      entityId: snapshot.entityId,
+      profileKind: snapshot.profileKind,
+      axis: snapshot.axis,
+      angleDegrees: snapshot.angleDegrees,
+      operationMode: "newBody",
+      source: {
+        type: "sketchEntityWithAxis",
+        sketchId: snapshot.sketchId,
+        entityId: snapshot.entityId,
+        axis: snapshot.axis
+      }
+    };
+
+    expect(feature).toMatchObject({
+      id: "feat_revolve_1",
+      kind: "revolve",
+      bodyId: "body_revolve_1",
+      angleDegrees: 270
     });
   });
 

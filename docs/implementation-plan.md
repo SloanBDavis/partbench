@@ -47,8 +47,8 @@ and focused packages:
   line constraints, fixed/coincident/midpoint point constraints, parallel and
   perpendicular line constraints,
   authored rectangle/circle extrude features, narrow
-  rectangle-tool add/cut boolean source data, named references, and versioned
-  project JSON import/export.
+  rectangle-tool add/cut boolean source data, authored revolve source intent,
+  named references, and versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -67,7 +67,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v13` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v14` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
@@ -188,7 +188,7 @@ Current Partbench can:
   confidence for rectangle/circle newBody extrudes;
 - inspect structured ambiguous topology status for current boolean result bodies
   where stable generated topology cannot be proven yet;
-- save/load current `web-cad.project.v13` JSON with migrations from older accepted
+- save/load current `web-cad.project.v14` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
@@ -213,7 +213,7 @@ Current limitations:
 - There is no authoritative B-rep topology persisted in the document model.
 - Measurements are source-derived/source-analytic for current supported shapes
   and references; they are not exact B-rep/kernel mass-property measurements.
-- There are no fillets, chamfers, revolve, shell, sweep, loft, patterns, direct
+- There are no fillets, chamfers, rendered revolve geometry, shell, sweep, loft, patterns, direct
   edits, general booleans, STEP import/export, OPFS/File System Access,
   WebGPU, assemblies, hosted collaboration, production MCP auth, or
   natural-language command entry.
@@ -676,14 +676,16 @@ Planned deliverables:
 
 Goal: add the first new major authored feature type since extrude.
 
-Planned deliverables:
+Initial implementation:
 
 - source-of-truth `feature.revolve` records and commands;
-- support for closed rectangle/circle profiles revolved around a non-zero sketch
+- support for rectangle/circle profiles revolved around a non-zero same-sketch
   line axis;
-- `newBody` only unless add/cut is deliberately promoted later;
-- semantic diffs, undo/redo, batch dry-run/commit, project import/export,
-  transaction history, health, measurements/extents, adapter/MCP, and tests.
+- positive finite angle validation up to 360 degrees;
+- `newBody` only, with add/cut revolve modes rejected structurally;
+- semantic diffs, undo/redo, batch dry-run/commit, project structure/health,
+  transaction history, V14 import/export, adapter/MCP pass-through, and tests;
+- no revolve rendering, generated references, measurements/extents, or UI yet.
 
 ### V6 Phase C: Revolve Geometry And UI Integration
 

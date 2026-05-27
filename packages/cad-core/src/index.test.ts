@@ -12,11 +12,13 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V10,
   CAD_PROJECT_FORMAT_VERSION_V11,
   CAD_PROJECT_FORMAT_VERSION_V12,
+  CAD_PROJECT_FORMAT_VERSION_V13,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
   type CadProject,
+  type ExtrudeFeature,
   CadProjectImportError,
   DEFAULT_PART_ID,
   createCadDocument,
@@ -28,6 +30,19 @@ import {
   parseCadProjectJson
 } from "./index";
 import { validateGeneratedReference } from "./generatedReferences";
+
+function getExtrudeFeature(
+  engine: CadEngine,
+  featureId: string
+): ExtrudeFeature {
+  const feature = engine.getDocument().features.get(featureId);
+
+  if (!feature || feature.kind !== "extrude") {
+    throw new Error(`Expected extrude feature: ${featureId}`);
+  }
+
+  return feature;
+}
 
 function createRectangleExtrudeEngine(): CadEngine {
   const engine = new CadEngine();
@@ -4996,6 +5011,380 @@ describe("cad-core", () => {
     expect(engine.getDocument().features.size).toBe(0);
   });
 
+  it("creates authored revolve features as source intent only", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [2, 0],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, -2],
+        end: [0, 2]
+      }
+    ]);
+
+    const result = engine.apply({
+      op: "feature.revolve",
+      id: "feat_revolve_1",
+      bodyId: "body_revolve_1",
+      name: "Revolved boss",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+      angleDegrees: 270
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(result.transaction.diff.features).toMatchObject({
+      created: [
+        {
+          id: "feat_revolve_1",
+          kind: "revolve",
+          bodyId: "body_revolve_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          axis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          },
+          angleDegrees: 270,
+          operationMode: "newBody"
+        }
+      ],
+      bodiesCreated: [
+        { id: "body_revolve_1", kind: "solid", featureId: "feat_revolve_1" }
+      ]
+    });
+    expect(engine.getDocument().features.get("feat_revolve_1")).toMatchObject({
+      kind: "revolve",
+      operationMode: "newBody",
+      angleDegrees: 270,
+      bodyId: "body_revolve_1"
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: [
+        {
+          id: "feat_revolve_1",
+          kind: "revolve",
+          operationMode: "newBody",
+          axis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          }
+        }
+      ],
+      bodies: [
+        {
+          id: "body_revolve_1",
+          featureId: "feat_revolve_1",
+          source: {
+            type: "sketchRevolveFeature",
+            axis: {
+              type: "sketchLine",
+              sketchId: "sketch_1",
+              entityId: "axis_1"
+            }
+          }
+        }
+      ]
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredExtrudeCount: 0,
+      authoredRevolveCount: 1,
+      authoredRevolves: [
+        {
+          featureId: "feat_revolve_1",
+          bodyId: "body_revolve_1",
+          status: "healthy",
+          topologyStatus: "unsupported",
+          topologyAvailable: false
+        }
+      ]
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactions: [
+        expect.anything(),
+        {
+          ops: [
+            expect.objectContaining({
+              op: "feature.revolve",
+              label:
+                "Create new body revolve feature feat_revolve_1 from sketch_1/rect_1 around axis_1 at 270 degrees -> body body_revolve_1",
+              featureId: "feat_revolve_1",
+              bodyId: "body_revolve_1",
+              sketchId: "sketch_1",
+              sketchEntityId: "rect_1",
+              operationMode: "newBody"
+            })
+          ]
+        }
+      ]
+    });
+  });
+
+  it("supports revolve dry-run, commit, undo, redo, and project round trip", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [2, 0],
+        radius: 1
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, -2],
+        end: [0, 2]
+      }
+    ]);
+
+    const revolveOp = {
+      op: "feature.revolve" as const,
+      id: "feat_revolve_1",
+      bodyId: "body_revolve_1",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      axis: {
+        type: "sketchLine" as const,
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 360
+    };
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [revolveOp]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_revolve_1"],
+      createdBodyIds: ["body_revolve_1"]
+    });
+    expect(engine.getDocument().features.has("feat_revolve_1")).toBe(false);
+
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [revolveOp]
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_revolve_1"],
+      createdBodyIds: ["body_revolve_1"]
+    });
+    expect(engine.getDocument().features.get("feat_revolve_1")).toMatchObject({
+      kind: "revolve",
+      profileKind: "circle"
+    });
+
+    engine.undo();
+    expect(engine.getDocument().features.has("feat_revolve_1")).toBe(false);
+
+    engine.redo();
+    expect(engine.getDocument().features.get("feat_revolve_1")).toMatchObject({
+      kind: "revolve",
+      angleDegrees: 360
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.features).toMatchObject([
+      {
+        id: "feat_revolve_1",
+        kind: "revolve",
+        profileKind: "circle",
+        angleDegrees: 360,
+        operationMode: "newBody",
+        bodyId: "body_revolve_1"
+      }
+    ]);
+
+    const restored = importCadProject(project);
+    expect(restored.getDocument().features.get("feat_revolve_1")).toMatchObject(
+      {
+        kind: "revolve",
+        angleDegrees: 360,
+        bodyId: "body_revolve_1"
+      }
+    );
+  });
+
+  it("validates revolve source, axis, angle, and unsupported operation modes", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [2, 0],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_1",
+        point: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, -2],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_zero",
+        start: [0, 0],
+        end: [0, 0]
+      }
+    ]);
+
+    const base = {
+      op: "feature.revolve" as const,
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      axis: {
+        type: "sketchLine" as const,
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 180
+    };
+    const cases = [
+      {
+        op: { ...base, sketchId: "missing_sketch" },
+        code: "SKETCH_NOT_FOUND",
+        path: "$.ops[0].sketchId"
+      },
+      {
+        op: { ...base, entityId: "point_1" },
+        code: "UNSUPPORTED_SKETCH_PROFILE",
+        path: "$.ops[0].entityId"
+      },
+      {
+        op: { ...base, axis: { ...base.axis, entityId: "point_1" } },
+        code: "INVALID_FEATURE",
+        path: "$.ops[0].axis.entityId"
+      },
+      {
+        op: { ...base, axis: { ...base.axis, entityId: "axis_zero" } },
+        code: "INVALID_FEATURE",
+        path: "$.ops[0].axis.entityId"
+      },
+      {
+        op: { ...base, angleDegrees: 361 },
+        code: "INVALID_FEATURE",
+        path: "$.ops[0].angleDegrees"
+      },
+      {
+        op: { ...base, operationMode: "cut" as const, targetBodyId: "body_1" },
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].operationMode"
+      }
+    ];
+
+    for (const testCase of cases) {
+      const result = engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [testCase.op]
+      });
+
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          code: testCase.code,
+          path: testCase.path
+        }
+      });
+    }
+  });
+
+  it("rejects persisted revolve features before project format V14", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [2, 0],
+        radius: 1
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, -2],
+        end: [0, 2]
+      },
+      {
+        op: "feature.revolve",
+        id: "feat_revolve_1",
+        bodyId: "body_revolve_1",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+        angleDegrees: 180
+      }
+    ]);
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expect(() =>
+      importCadProjectJson(
+        JSON.stringify({
+          ...project,
+          schemaVersion: CAD_PROJECT_FORMAT_VERSION_V13
+        })
+      )
+    ).toThrow(CadProjectImportError);
+  });
+
   it("defaults extrudes to newBody, supports rectangle cut, and rejects unsupported modes", () => {
     const engine = new CadEngine();
 
@@ -5657,10 +6046,8 @@ describe("cad-core", () => {
       query: { query: "project.structure" }
     });
 
-    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
-    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "negative"
-    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(8);
+    expect(getExtrudeFeature(engine, "feat_rect_1").side).toBe("negative");
     expect(result.transaction.diff.features).toMatchObject({
       modified: [
         {
@@ -5773,22 +6160,16 @@ describe("cad-core", () => {
       depth: 8,
       side: "symmetric"
     });
-    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
-    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "symmetric"
-    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(8);
+    expect(getExtrudeFeature(engine, "feat_rect_1").side).toBe("symmetric");
 
     engine.undo();
-    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
-    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "positive"
-    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+    expect(getExtrudeFeature(engine, "feat_rect_1").side).toBe("positive");
 
     engine.redo();
-    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
-    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "symmetric"
-    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(8);
+    expect(getExtrudeFeature(engine, "feat_rect_1").side).toBe("symmetric");
   });
 
   it("supports extrude depth and side updates through batch dry-run and commit", () => {
@@ -5812,10 +6193,8 @@ describe("cad-core", () => {
       modifiedFeatureIds: ["feat_rect_1"],
       modifiedBodyIds: ["body_rect_1"]
     });
-    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
-    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "positive"
-    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+    expect(getExtrudeFeature(engine, "feat_rect_1").side).toBe("positive");
 
     const commit = engine.executeBatch({
       version: "cadops.v1",
@@ -5836,10 +6215,8 @@ describe("cad-core", () => {
       modifiedBodyIds: ["body_rect_1"],
       transactionId: "txn_2"
     });
-    expect(engine.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
-    expect(engine.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "symmetric"
-    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(8);
+    expect(getExtrudeFeature(engine, "feat_rect_1").side).toBe("symmetric");
   });
 
   it("round-trips extrude depth and side updates through project JSON and history summaries", () => {
@@ -5858,10 +6235,8 @@ describe("cad-core", () => {
       query: { query: "transaction.history" }
     });
 
-    expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
-    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "negative"
-    );
+    expect(getExtrudeFeature(restored, "feat_rect_1").depth).toBe(8);
+    expect(getExtrudeFeature(restored, "feat_rect_1").side).toBe("negative");
     expect(history).toMatchObject({
       ok: true,
       query: "transaction.history",
@@ -5885,16 +6260,12 @@ describe("cad-core", () => {
     );
 
     restored.undo();
-    expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(3);
-    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "positive"
-    );
+    expect(getExtrudeFeature(restored, "feat_rect_1").depth).toBe(3);
+    expect(getExtrudeFeature(restored, "feat_rect_1").side).toBe("positive");
 
     restored.redo();
-    expect(restored.getDocument().features.get("feat_rect_1")?.depth).toBe(8);
-    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "negative"
-    );
+    expect(getExtrudeFeature(restored, "feat_rect_1").depth).toBe(8);
+    expect(getExtrudeFeature(restored, "feat_rect_1").side).toBe("negative");
   });
 
   it("updates rectangle extrude source profiles and marks dependent bodies modified", () => {
@@ -9271,9 +9642,7 @@ describe("cad-core", () => {
     const restored = importCadProjectJson(JSON.stringify(legacyProject));
     const restoredProject = parseCadProjectJson(exportCadProjectJson(restored));
 
-    expect(restored.getDocument().features.get("feat_rect_1")?.side).toBe(
-      "positive"
-    );
+    expect(getExtrudeFeature(restored, "feat_rect_1").side).toBe("positive");
     expect(restoredProject.document.features[0]).toMatchObject({
       id: "feat_rect_1",
       side: "positive"
@@ -10690,7 +11059,7 @@ describe("cad-core", () => {
       .getDocument()
       .sketches.get("sketch_1")
       ?.entities.get("rect_1");
-    const convertedFeature = restored.getDocument().features.get("feat_1");
+    const convertedFeature = getExtrudeFeature(restored, "feat_1");
 
     expect(convertedEntity).toEqual({
       id: "rect_1",
@@ -10699,7 +11068,7 @@ describe("cad-core", () => {
       width: 3,
       height: 4
     });
-    expect(convertedFeature?.depth).toBe(5);
+    expect(convertedFeature.depth).toBe(5);
     expect(restored.getTransactions()[1]?.diff.features).toMatchObject({
       modified: [{ id: "feat_1" }],
       bodiesModified: [{ id: "body_1" }]
@@ -10711,7 +11080,7 @@ describe("cad-core", () => {
       .getDocument()
       .sketches.get("sketch_1")
       ?.entities.get("rect_1");
-    const undoneFeature = restored.getDocument().features.get("feat_1");
+    const undoneFeature = getExtrudeFeature(restored, "feat_1");
 
     expect(undoneEntity).toEqual({
       id: "rect_1",
@@ -10720,7 +11089,7 @@ describe("cad-core", () => {
       width: 30,
       height: 40
     });
-    expect(undoneFeature?.depth).toBe(50);
+    expect(undoneFeature.depth).toBe(50);
   });
 
   it("round-trips redo history for an undone generated-ID transaction", () => {

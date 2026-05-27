@@ -58,10 +58,14 @@ import type {
   BodyId,
   CadTransactionAuditMetadata,
   ExtrudeFeatureSnapshot,
+  FeatureSnapshot,
   FeatureExtrudeOperationMode,
   FeatureId,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
+  FeatureRevolveAxis,
+  FeatureRevolveOperationMode,
+  FeatureRevolveProfileKind,
   FeatureSemanticDiff,
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
@@ -138,6 +142,7 @@ export type {
   CadBodyTopologyStatus,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredRevolveHealth,
   CadDependencyHealthIssue,
   CadDependencyHealthIssueCode,
   CadDependencyHealthStatus,
@@ -200,10 +205,14 @@ export type {
   SketchDimensionValueSource,
   SketchDimensionSemanticDiff,
   ExtrudeFeatureSnapshot,
+  FeatureSnapshot,
   FeatureId,
   FeatureExtrudeOperationMode,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
+  FeatureRevolveAxis,
+  FeatureRevolveOperationMode,
+  FeatureRevolveProfileKind,
   FeatureSemanticDiff,
   ConeDimensions,
   CylinderDimensions,
@@ -214,6 +223,7 @@ export type {
   ObjectId,
   PartId,
   SemanticDiff,
+  RevolveFeatureSnapshot,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -303,7 +313,7 @@ export type SketchDimension = SketchDimensionSnapshot;
 
 export type SketchConstraint = SketchConstraintSnapshot;
 
-export type Feature = ExtrudeFeature;
+export type Feature = ExtrudeFeature | RevolveFeature;
 
 export interface ExtrudeFeature {
   readonly id: FeatureId;
@@ -315,6 +325,20 @@ export interface ExtrudeFeature {
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
+  readonly bodyId: BodyId;
+}
+
+export interface RevolveFeature {
+  readonly id: FeatureId;
+  readonly kind: "revolve";
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
   readonly bodyId: BodyId;
 }
@@ -370,7 +394,7 @@ export interface CadDocumentSnapshot {
   readonly parameters: readonly CadParameterSnapshot[];
   readonly sketchDimensions: readonly SketchDimensionSnapshot[];
   readonly sketchConstraints: readonly SketchConstraintSnapshot[];
-  readonly features: readonly ExtrudeFeatureSnapshot[];
+  readonly features: readonly FeatureSnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
@@ -415,7 +439,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V9 = "web-cad.project.v9";
 export const CAD_PROJECT_FORMAT_VERSION_V10 = "web-cad.project.v10";
 export const CAD_PROJECT_FORMAT_VERSION_V11 = "web-cad.project.v11";
 export const CAD_PROJECT_FORMAT_VERSION_V12 = "web-cad.project.v12";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v13";
+export const CAD_PROJECT_FORMAT_VERSION_V13 = "web-cad.project.v13";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v14";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -430,6 +455,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V10
   | typeof CAD_PROJECT_FORMAT_VERSION_V11
   | typeof CAD_PROJECT_FORMAT_VERSION_V12
+  | typeof CAD_PROJECT_FORMAT_VERSION_V13
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -2317,6 +2343,48 @@ function applyOperation(
       return;
     }
 
+    case "feature.revolve": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity = sketch.entities.get(op.entityId);
+
+      if (!entity) {
+        throwSketchEntityNotFound(op.sketchId, op.entityId, opIndex);
+      }
+
+      const profileKind = assertRevolvableProfile(
+        entity,
+        opIndex,
+        op.sketchId,
+        op.entityId
+      );
+      const axis = validateRevolveAxis(state, op.axis, op.sketchId, opIndex);
+      const angleDegrees = validateRevolveAngleDegrees(
+        op.angleDegrees,
+        opIndex
+      );
+      const operationMode = parseRevolveOperationMode(
+        op.operationMode,
+        opIndex
+      );
+      validateRevolveTargetBodyId(operationMode, op.targetBodyId, opIndex);
+
+      const feature: RevolveFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "revolve",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        sketchId: op.sketchId,
+        entityId: op.entityId,
+        profileKind,
+        axis,
+        angleDegrees,
+        operationMode,
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
       return;
@@ -2530,6 +2598,7 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.constraint.rename":
     case "sketch.constraint.delete":
     case "feature.extrude":
+    case "feature.revolve":
     case "feature.delete":
     case "feature.updateExtrude":
     case "reference.nameGenerated":
@@ -5388,6 +5457,18 @@ function updateExtrudeFeature(
     });
   }
 
+  if (feature.kind !== "extrude") {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature cannot be edited through feature.updateExtrude because it is ${feature.kind}: ${featureId}`,
+      opIndex,
+      featureId,
+      path: operationPath(opIndex, "id"),
+      expected: "authored extrude feature id",
+      received: feature.kind
+    });
+  }
+
   if (op.depth === undefined && op.side === undefined) {
     throwValidationError({
       code: "INVALID_FEATURE",
@@ -5483,6 +5564,7 @@ function findConsumingBooleanFeatureByTargetBodyId(
 ): Feature | undefined {
   return [...features.values()].find(
     (feature) =>
+      feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode) &&
       feature.targetBodyId === targetBodyId
   );
@@ -5570,12 +5652,13 @@ function findFeaturesBySketchEntity(
   features: ReadonlyMap<FeatureId, Feature>,
   sketchId: SketchId,
   entityId: SketchEntityId
-): readonly ExtrudeFeature[] {
+): readonly Feature[] {
   return [...features.values()].filter(
-    (feature): feature is ExtrudeFeature =>
-      feature.kind === "extrude" &&
-      feature.sketchId === sketchId &&
-      feature.entityId === entityId
+    (feature) =>
+      (feature.sketchId === sketchId && feature.entityId === entityId) ||
+      (feature.kind === "revolve" &&
+        feature.axis.sketchId === sketchId &&
+        feature.axis.entityId === entityId)
   );
 }
 
@@ -5585,20 +5668,184 @@ function assertExtrudableProfile(
   sketchId: SketchId,
   entityId: SketchEntityId
 ): FeatureExtrudeProfileKind {
+  return assertSupportedFeatureProfile(
+    entity,
+    opIndex,
+    sketchId,
+    entityId,
+    "feature.extrude"
+  );
+}
+
+function assertRevolvableProfile(
+  entity: SketchEntity,
+  opIndex: number | undefined,
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): FeatureRevolveProfileKind {
+  return assertSupportedFeatureProfile(
+    entity,
+    opIndex,
+    sketchId,
+    entityId,
+    "feature.revolve"
+  );
+}
+
+function assertSupportedFeatureProfile(
+  entity: SketchEntity,
+  opIndex: number | undefined,
+  sketchId: SketchId,
+  entityId: SketchEntityId,
+  commandName: "feature.extrude" | "feature.revolve"
+): FeatureExtrudeProfileKind {
   if (entity.kind === "rectangle" || entity.kind === "circle") {
     return entity.kind;
   }
 
   throwValidationError({
     code: "UNSUPPORTED_SKETCH_PROFILE",
-    message:
-      "feature.extrude currently supports rectangle and circle entities only.",
+    message: `${commandName} currently supports rectangle and circle entities only.`,
     opIndex,
     sketchId,
     sketchEntityId: entityId,
     path: operationPath(opIndex, "entityId"),
     expected: "rectangle or circle sketch entity",
     received: entity.kind
+  });
+}
+
+function validateRevolveAxis(
+  state: MutableDocumentState,
+  value: FeatureRevolveAxis,
+  sketchId: SketchId,
+  opIndex?: number
+): FeatureRevolveAxis {
+  if (!isRecord(value) || value.type !== "sketchLine") {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Revolve axis must be a sketchLine axis.",
+      opIndex,
+      path: operationPath(opIndex, "axis"),
+      expected: "sketchLine axis",
+      received: describeReceived(value)
+    });
+  }
+
+  if (value.sketchId !== sketchId) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Revolve axis line must belong to the same sketch.",
+      opIndex,
+      sketchId,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "axis.sketchId"),
+      expected: sketchId,
+      received: describeReceived(value.sketchId)
+    });
+  }
+
+  const sketch = getSketchOrThrow(state.sketches, value.sketchId, opIndex);
+  const axisEntity = sketch.entities.get(value.entityId);
+
+  if (!axisEntity) {
+    throwSketchEntityNotFound(value.sketchId, value.entityId, opIndex);
+  }
+
+  if (axisEntity.kind !== "line") {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Revolve axis must reference a line sketch entity.",
+      opIndex,
+      sketchId: value.sketchId,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "axis.entityId"),
+      expected: "line sketch entity",
+      received: axisEntity.kind
+    });
+  }
+
+  if (getLineLength(axisEntity) <= 0) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Revolve axis line must have non-zero length.",
+      opIndex,
+      sketchId: value.sketchId,
+      sketchEntityId: value.entityId,
+      path: operationPath(opIndex, "axis.entityId"),
+      expected: "non-zero line entity",
+      received: "zero-length line"
+    });
+  }
+
+  return {
+    type: "sketchLine",
+    sketchId: value.sketchId,
+    entityId: value.entityId
+  };
+}
+
+function validateRevolveAngleDegrees(value: number, opIndex?: number): number {
+  if (isPositiveFiniteNumber(value) && value <= 360) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "Revolve angleDegrees must be a positive finite number <= 360.",
+    opIndex,
+    path: operationPath(opIndex, "angleDegrees"),
+    expected: "positive finite number <= 360",
+    received: describeReceived(value)
+  });
+}
+
+function parseRevolveOperationMode(
+  value: FeatureRevolveOperationMode | undefined,
+  opIndex?: number
+): FeatureRevolveOperationMode {
+  if (value === undefined || value === "newBody") {
+    return "newBody";
+  }
+
+  if (value === "add" || value === "cut") {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: "feature.revolve currently supports operationMode newBody only.",
+      opIndex,
+      path: operationPath(opIndex, "operationMode"),
+      expected: "newBody",
+      received: value
+    });
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `Unsupported revolve operation mode: ${String(value)}.`,
+    opIndex,
+    path: operationPath(opIndex, "operationMode"),
+    expected: "newBody, add, or cut",
+    received: describeReceived(value)
+  });
+}
+
+function validateRevolveTargetBodyId(
+  operationMode: FeatureRevolveOperationMode,
+  targetBodyId: BodyId | undefined,
+  opIndex?: number
+): void {
+  if (operationMode !== "newBody" || targetBodyId === undefined) {
+    return;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "newBody revolve features must not include targetBodyId.",
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "targetBodyId"),
+    expected: "omitted targetBodyId for newBody",
+    received: describeReceived(targetBodyId)
   });
 }
 
@@ -5747,7 +5994,7 @@ function assertSupportedExtrudeOperation(
   if (
     operationMode === "cut" &&
     targetBodyId &&
-    targetFeature &&
+    targetFeature?.kind === "extrude" &&
     profileKind === "rectangle" &&
     isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
     targetFeature.operationMode === "newBody" &&
@@ -5759,7 +6006,7 @@ function assertSupportedExtrudeOperation(
   if (
     operationMode === "add" &&
     targetBodyId &&
-    targetFeature &&
+    targetFeature?.kind === "extrude" &&
     profileKind === "rectangle" &&
     isSupportedAddTargetProfileKind(targetFeature.profileKind) &&
     targetFeature.operationMode === "newBody" &&
@@ -5788,8 +6035,12 @@ function assertSupportedExtrudeOperation(
       operationMode,
       profileKind,
       targetBodyId,
-      targetProfileKind: targetFeature?.profileKind,
+      targetProfileKind:
+        targetFeature?.kind === "extrude"
+          ? targetFeature.profileKind
+          : undefined,
       targetOperationMode: targetFeature?.operationMode,
+      targetFeatureKind: targetFeature?.kind,
       targetConsumedByFeatureId: hasBlockingConsumingFeature
         ? consumingFeature?.id
         : undefined
@@ -6500,6 +6751,21 @@ function sketchEntityRef(
 }
 
 function featureRef(feature: Feature): CadFeatureRef {
+  if (feature.kind === "revolve") {
+    return {
+      id: feature.id,
+      kind: "revolve",
+      bodyId: feature.bodyId,
+      sketchId: feature.sketchId,
+      entityId: feature.entityId,
+      profileKind: feature.profileKind,
+      axis: feature.axis,
+      angleDegrees: feature.angleDegrees,
+      operationMode: feature.operationMode,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
+    };
+  }
+
   return {
     id: feature.id,
     kind: "extrude",
@@ -6878,13 +7144,15 @@ function scaleDocumentLengthValues(
   }
 
   for (const feature of state.features.values()) {
-    const scaled: ExtrudeFeature = {
-      ...feature,
-      depth: scaleLength(feature.depth, scaleFactor)
-    };
-    state.features.set(feature.id, scaled);
-    pushFeatureModified(diff, featureRef(scaled));
-    pushBodyModified(diff, bodyRef(scaled));
+    if (feature.kind === "extrude") {
+      const scaled: ExtrudeFeature = {
+        ...feature,
+        depth: scaleLength(feature.depth, scaleFactor)
+      };
+      state.features.set(feature.id, scaled);
+      pushFeatureModified(diff, featureRef(scaled));
+      pushBodyModified(diff, bodyRef(scaled));
+    }
   }
 }
 
@@ -7254,7 +7522,23 @@ function cloneSketchAttachment(
   };
 }
 
-function createFeatureSnapshot(feature: Feature): ExtrudeFeatureSnapshot {
+function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
+  if (feature.kind === "revolve") {
+    return {
+      id: feature.id,
+      kind: "revolve",
+      name: feature.name,
+      sketchId: feature.sketchId,
+      entityId: feature.entityId,
+      profileKind: feature.profileKind,
+      axis: feature.axis,
+      angleDegrees: feature.angleDegrees,
+      operationMode: feature.operationMode,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+      bodyId: feature.bodyId
+    };
+  }
+
   return {
     id: feature.id,
     kind: "extrude",
@@ -7270,9 +7554,23 @@ function createFeatureSnapshot(feature: Feature): ExtrudeFeatureSnapshot {
   };
 }
 
-function createFeatureFromSnapshot(
-  snapshot: ExtrudeFeatureSnapshot
-): ExtrudeFeature {
+function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
+  if (snapshot.kind === "revolve") {
+    return {
+      id: snapshot.id,
+      kind: "revolve",
+      name: snapshot.name,
+      sketchId: snapshot.sketchId,
+      entityId: snapshot.entityId,
+      profileKind: snapshot.profileKind,
+      axis: snapshot.axis,
+      angleDegrees: snapshot.angleDegrees,
+      operationMode: snapshot.operationMode ?? "newBody",
+      targetBodyId: snapshot.targetBodyId,
+      bodyId: snapshot.bodyId
+    };
+  }
+
   return {
     id: snapshot.id,
     kind: "extrude",
@@ -7354,18 +7652,18 @@ function createProjectStructure(
       }
     )
   );
-  const extrudeFeatures = [...document.features.values()].map(
-    createExtrudeFeatureSummary
+  const authoredFeatures = [...document.features.values()].map(
+    createFeatureSummary
   );
   const consumedBodyIds = createConsumedBodyMap(document.features);
   const features: readonly CadFeatureSummary[] = [
     ...primitiveFeatures,
-    ...extrudeFeatures
+    ...authoredFeatures
   ];
   const bodies = [
     ...objects.map(createPrimitiveBodySnapshot),
     ...[...document.features.values()].map((feature) =>
-      createExtrudeBodySnapshot(feature, consumedBodyIds.get(feature.bodyId))
+      createFeatureBodySnapshot(feature, consumedBodyIds.get(feature.bodyId))
     )
   ];
   const objectSources = objects.map(createObjectModelSource);
@@ -7435,7 +7733,30 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
   };
 }
 
-function createExtrudeFeatureSummary(feature: Feature): CadFeatureSummary {
+function createFeatureSummary(feature: Feature): CadFeatureSummary {
+  if (feature.kind === "revolve") {
+    return {
+      id: feature.id,
+      kind: "revolve",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      name: feature.name,
+      sketchId: feature.sketchId,
+      entityId: feature.entityId,
+      profileKind: feature.profileKind,
+      axis: feature.axis,
+      angleDegrees: feature.angleDegrees,
+      operationMode: feature.operationMode,
+      ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+      source: {
+        type: "sketchEntityWithAxis",
+        sketchId: feature.sketchId,
+        entityId: feature.entityId,
+        axis: feature.axis
+      }
+    };
+  }
+
   return {
     id: feature.id,
     kind: "extrude",
@@ -7457,10 +7778,29 @@ function createExtrudeFeatureSummary(feature: Feature): CadFeatureSummary {
   };
 }
 
-function createExtrudeBodySnapshot(
+function createFeatureBodySnapshot(
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
+  if (feature.kind === "revolve") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "sketchRevolveFeature",
+        featureId: feature.id,
+        sketchId: feature.sketchId,
+        entityId: feature.entityId,
+        profileKind: feature.profileKind,
+        axis: feature.axis
+      }
+    };
+  }
+
   return {
     id: feature.bodyId,
     kind: "solid",
@@ -7485,6 +7825,7 @@ function createConsumedBodyMap(
 
   for (const feature of features.values()) {
     if (
+      feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode) &&
       feature.targetBodyId
     ) {
@@ -7688,6 +8029,16 @@ function createBodyExtents(
   const warnings: ProjectExtentsWarning[] = [];
 
   for (const body of structure.bodies) {
+    if (body.source.type === "sketchRevolveFeature") {
+      warnings.push({
+        code: "BODY_EXTENTS_UNAVAILABLE",
+        message: `Body extents are unavailable because authored revolve bodies do not have source-derived extents yet: ${body.id}`,
+        bodyId: body.id,
+        featureId: body.featureId
+      });
+      continue;
+    }
+
     if (body.source.type !== "sketchExtrudeFeature") {
       continue;
     }
@@ -9084,19 +9435,43 @@ function vec2Equal(left: Vec2, right: Vec2): boolean {
 }
 
 function featuresEqual(left: Feature, right: Feature): boolean {
-  return (
-    left.id === right.id &&
-    left.kind === right.kind &&
-    left.name === right.name &&
-    left.sketchId === right.sketchId &&
-    left.entityId === right.entityId &&
-    left.profileKind === right.profileKind &&
-    left.depth === right.depth &&
-    left.side === right.side &&
-    left.operationMode === right.operationMode &&
-    left.targetBodyId === right.targetBodyId &&
-    left.bodyId === right.bodyId
-  );
+  if (left.kind !== right.kind) {
+    return false;
+  }
+
+  if (left.kind === "revolve" && right.kind === "revolve") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.sketchId === right.sketchId &&
+      left.entityId === right.entityId &&
+      left.profileKind === right.profileKind &&
+      left.axis.type === right.axis.type &&
+      left.axis.sketchId === right.axis.sketchId &&
+      left.axis.entityId === right.axis.entityId &&
+      left.angleDegrees === right.angleDegrees &&
+      left.operationMode === right.operationMode &&
+      left.targetBodyId === right.targetBodyId &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "extrude" && right.kind === "extrude") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.sketchId === right.sketchId &&
+      left.entityId === right.entityId &&
+      left.profileKind === right.profileKind &&
+      left.depth === right.depth &&
+      left.side === right.side &&
+      left.operationMode === right.operationMode &&
+      left.targetBodyId === right.targetBodyId &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  return false;
 }
 
 function parseCadProject(value: unknown): CadProject {
@@ -9115,6 +9490,7 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 function normalizeCadProject(value: CadProject): CadProject {
   if (
     value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11
   ) {
@@ -9361,9 +9737,14 @@ function normalizeCadProject(value: CadProject): CadProject {
   };
 }
 
-function normalizeFeatureSnapshot(
-  feature: ExtrudeFeatureSnapshot
-): ExtrudeFeatureSnapshot {
+function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
+  if (feature.kind === "revolve") {
+    return {
+      ...feature,
+      operationMode: feature.operationMode ?? "newBody"
+    };
+  }
+
   return {
     ...feature,
     side: feature.side ?? "positive",
@@ -9380,15 +9761,22 @@ function normalizeTransactionSnapshot(transaction: Transaction): Transaction {
 }
 
 function normalizeCadOpSnapshot(op: CadOp): CadOp {
-  if (op.op !== "feature.extrude") {
-    return op;
+  if (op.op === "feature.extrude") {
+    return {
+      ...op,
+      side: op.side ?? "positive",
+      operationMode: op.operationMode ?? "newBody"
+    };
   }
 
-  return {
-    ...op,
-    side: op.side ?? "positive",
-    operationMode: op.operationMode ?? "newBody"
-  };
+  if (op.op === "feature.revolve") {
+    return {
+      ...op,
+      operationMode: op.operationMode ?? "newBody"
+    };
+  }
+
+  return op;
 }
 
 function normalizeSemanticDiffSnapshot(diff: SemanticDiff): SemanticDiff {
@@ -9420,6 +9808,13 @@ function normalizeSemanticDiffSnapshot(diff: SemanticDiff): SemanticDiff {
 }
 
 function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
+  if (ref.kind === "revolve") {
+    return {
+      ...ref,
+      operationMode: ref.operationMode ?? "newBody"
+    };
+  }
+
   return {
     ...ref,
     side: ref.side ?? "positive",
@@ -9480,6 +9875,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V10 &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V13 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V12 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V11 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V9 &&
@@ -9619,6 +10015,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -9631,6 +10028,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -9642,6 +10040,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -9652,6 +10051,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
@@ -9660,6 +10060,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
@@ -9667,12 +10068,14 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
@@ -9682,11 +10085,16 @@ function validateCadDocumentSnapshot(
   const allowsMidpointSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsParallelSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsPerpendicularSketchConstraints =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsRevolveFeatures =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -9701,6 +10109,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
@@ -9991,7 +10400,8 @@ function validateCadDocumentSnapshot(
           seenFeatureIds,
           seenBodyIds,
           seenSketchIds,
-          sketchEntityRefs
+          sketchEntityRefs,
+          allowsRevolveFeatures
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -12079,10 +12489,8 @@ function validateFeatureSnapshot(
   seenFeatureIds: Set<string>,
   seenBodyIds: Set<string>,
   seenSketchIds: ReadonlySet<string>,
-  sketchEntityRefs: ReadonlyMap<
-    SketchEntityId,
-    { readonly sketchId: SketchId; readonly kind: SketchEntityKind }
-  >
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
+  allowsRevolveFeatures: boolean
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -12119,16 +12527,47 @@ function validateFeatureSnapshot(
     maxGeneratedFeatureNumber = parseFeatureNumber(value.id);
   }
 
-  if (value.kind !== "extrude") {
+  if (
+    value.kind !== "extrude" &&
+    (value.kind !== "revolve" || !allowsRevolveFeatures)
+  ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.kind`,
-      "Feature kind must be extrude."
+      allowsRevolveFeatures
+        ? "Feature kind must be extrude or revolve."
+        : "Feature kind must be extrude."
     );
   }
 
   validateOptionalFeatureName(value.name, `${path}.name`, issues);
+
+  if (value.kind === "revolve") {
+    if (!allowsRevolveFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Revolve features require web-cad.project.v14."
+      );
+    }
+
+    validateRevolveFeatureSnapshotFields(
+      value,
+      path,
+      issues,
+      seenBodyIds,
+      seenSketchIds,
+      sketchEntityRefs
+    );
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
 
   if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
     addProjectIssue(
@@ -12284,6 +12723,261 @@ function validateFeatureSnapshot(
   }
 
   return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+}
+
+function validateRevolveFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>,
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Revolve feature sketchId must be a non-empty string."
+    );
+  } else if (!seenSketchIds.has(value.sketchId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Revolve feature sketchId must reference an existing sketch."
+    );
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve feature entityId must be a non-empty string."
+    );
+  } else if (!sketchEntityRefs.has(value.entityId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve feature entityId must reference an existing sketch entity."
+    );
+  } else {
+    const referencedEntity = sketchEntityRefs.get(value.entityId);
+
+    if (referencedEntity && referencedEntity.sketchId !== value.sketchId) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.entityId`,
+        "Revolve feature entityId must belong to the referenced sketch."
+      );
+    }
+
+    if (
+      referencedEntity &&
+      referencedEntity.kind !== "rectangle" &&
+      referencedEntity.kind !== "circle"
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.entityId`,
+        "Revolve feature entityId must reference a rectangle or circle sketch entity."
+      );
+    }
+  }
+
+  if (value.profileKind !== "rectangle" && value.profileKind !== "circle") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.profileKind`,
+      "Revolve feature profileKind must be rectangle or circle."
+    );
+  } else if (
+    typeof value.entityId === "string" &&
+    sketchEntityRefs.has(value.entityId) &&
+    sketchEntityRefs.get(value.entityId)?.kind !== value.profileKind
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.profileKind`,
+      "Revolve feature profileKind must match the referenced sketch entity kind."
+    );
+  }
+
+  validateRevolveAxisSnapshot(
+    value.axis,
+    `${path}.axis`,
+    value.sketchId,
+    issues,
+    sketchEntityRefs
+  );
+
+  if (
+    typeof value.angleDegrees !== "number" ||
+    !isPositiveFiniteNumber(value.angleDegrees) ||
+    value.angleDegrees > 360
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_DIMENSIONS",
+      `${path}.angleDegrees`,
+      "Revolve angleDegrees must be a positive finite number <= 360."
+    );
+  }
+
+  if (
+    value.operationMode !== undefined &&
+    !isRevolveOperationMode(value.operationMode)
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.operationMode`,
+      "Revolve feature operationMode must be newBody, add, or cut."
+    );
+  } else if (value.operationMode === "add" || value.operationMode === "cut") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.operationMode`,
+      "Revolve feature operationMode currently supports newBody only."
+    );
+  }
+
+  if (value.targetBodyId !== undefined) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      "newBody revolve features must not include targetBodyId."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Revolve feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
+function validateRevolveAxisSnapshot(
+  value: unknown,
+  path: string,
+  sketchId: unknown,
+  issues: CadProjectImportIssue[],
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      path,
+      "Revolve axis must be an object."
+    );
+    return;
+  }
+
+  if (value.type !== "sketchLine") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.type`,
+      "Revolve axis type must be sketchLine."
+    );
+  }
+
+  if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Revolve axis sketchId must be a non-empty string."
+    );
+  } else if (value.sketchId !== sketchId) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Revolve axis sketchId must match the feature sketchId."
+    );
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve axis entityId must be a non-empty string."
+    );
+    return;
+  }
+
+  const axisRef = sketchEntityRefs.get(value.entityId);
+
+  if (!axisRef) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve axis entityId must reference an existing sketch entity."
+    );
+    return;
+  }
+
+  if (axisRef.sketchId !== sketchId) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve axis entityId must belong to the feature sketch."
+    );
+  }
+
+  if (axisRef.kind !== "line") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve axis entityId must reference a line sketch entity."
+    );
+    return;
+  }
+
+  if (
+    isRecord(axisRef.entity) &&
+    isVec2(axisRef.entity.start) &&
+    isVec2(axisRef.entity.end) &&
+    getLineLength({
+      id: value.entityId,
+      kind: "line",
+      start: axisRef.entity.start,
+      end: axisRef.entity.end
+    }) <= 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.entityId`,
+      "Revolve axis line must have non-zero length."
+    );
+  }
 }
 
 function validateOptionalFeatureName(
@@ -12962,7 +13656,7 @@ function materializeGeneratedObjectIds(
       return createdRef ? { ...op, id: createdRef.id } : op;
     }
 
-    if (op.op === "feature.extrude") {
+    if (op.op === "feature.extrude" || op.op === "feature.revolve") {
       const createdRef =
         transaction.diff.features?.created?.[createdFeatureIndex];
       createdFeatureIndex += 1;
@@ -13310,6 +14004,23 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.revolve") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.targetBodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isFeatureRevolveAxis(value.axis) &&
+      typeof value.angleDegrees === "number" &&
+      isPositiveFiniteNumber(value.angleDegrees) &&
+      value.angleDegrees <= 360 &&
+      (value.operationMode === undefined ||
+        isRevolveOperationMode(value.operationMode))
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -13513,19 +14224,37 @@ function isCadSketchEntityRef(value: unknown): value is CadSketchEntityRef {
 }
 
 function isCadFeatureRef(value: unknown): value is CadFeatureRef {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.kind === "extrude" &&
-    typeof value.bodyId === "string" &&
-    typeof value.sketchId === "string" &&
-    typeof value.entityId === "string" &&
-    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
-    (value.targetBodyId === undefined ||
-      typeof value.targetBodyId === "string") &&
-    (value.operationMode === undefined ||
-      isExtrudeOperationMode(value.operationMode))
-  );
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.bodyId !== "string" ||
+    typeof value.sketchId !== "string" ||
+    typeof value.entityId !== "string" ||
+    (value.profileKind !== "rectangle" && value.profileKind !== "circle") ||
+    (value.targetBodyId !== undefined && typeof value.targetBodyId !== "string")
+  ) {
+    return false;
+  }
+
+  if (value.kind === "extrude") {
+    return (
+      value.operationMode === undefined ||
+      isExtrudeOperationMode(value.operationMode)
+    );
+  }
+
+  if (value.kind === "revolve") {
+    return (
+      isFeatureRevolveAxis(value.axis) &&
+      typeof value.angleDegrees === "number" &&
+      isPositiveFiniteNumber(value.angleDegrees) &&
+      value.angleDegrees <= 360 &&
+      (value.operationMode === undefined ||
+        isRevolveOperationMode(value.operationMode))
+    );
+  }
+
+  return false;
 }
 
 function isCadBodyRef(value: unknown): value is CadBodyRef {
@@ -13776,6 +14505,21 @@ function isExtrudeOperationMode(
   value: unknown
 ): value is FeatureExtrudeOperationMode {
   return value === "newBody" || value === "add" || value === "cut";
+}
+
+function isRevolveOperationMode(
+  value: unknown
+): value is FeatureRevolveOperationMode {
+  return value === "newBody" || value === "add" || value === "cut";
+}
+
+function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {
+  return (
+    isRecord(value) &&
+    value.type === "sketchLine" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string"
+  );
 }
 
 function isGeneratedExtrudeFaceRole(

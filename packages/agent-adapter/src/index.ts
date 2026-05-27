@@ -10,6 +10,7 @@ import type {
   BodyExtentSnapshot,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredRevolveHealth,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
   CadBodySnapshot,
@@ -55,6 +56,8 @@ import type {
   DocumentUnits,
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
+  FeatureRevolveAxis,
+  FeatureRevolveOperationMode,
   ObjectExtentSnapshot,
   ObjectMeasurementsSnapshot,
   ObjectId,
@@ -266,12 +269,14 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly status: CadDependencyHealthStatus;
   readonly issueCount: number;
   readonly authoredExtrudeCount: number;
+  readonly authoredRevolveCount: number;
   readonly attachedSketchCount: number;
   readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
   readonly sketchConstraintCount: number;
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
+  readonly authoredRevolves: readonly CadAuthoredRevolveHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
@@ -875,12 +880,14 @@ function toAgentQueryResponse(
       status: response.status,
       issueCount: response.issueCount,
       authoredExtrudeCount: response.authoredExtrudeCount,
+      authoredRevolveCount: response.authoredRevolveCount,
       attachedSketchCount: response.attachedSketchCount,
       sketchEvaluationCount: response.sketchEvaluationCount,
       sketchDimensionCount: response.sketchDimensionCount,
       sketchConstraintCount: response.sketchConstraintCount,
       namedReferenceCount: response.namedReferenceCount,
       authoredExtrudes: response.authoredExtrudes,
+      authoredRevolves: response.authoredRevolves,
       attachedSketches: response.attachedSketches,
       sketchEvaluations: response.sketchEvaluations,
       sketchDimensions: response.sketchDimensions,
@@ -1621,6 +1628,21 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.revolve") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.targetBodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isFeatureRevolveAxis(value.axis) &&
+      typeof value.angleDegrees === "number" &&
+      (value.operationMode === undefined ||
+        isRevolveOperationMode(value.operationMode))
+    );
+  }
+
   if (value.op === "feature.updateExtrude") {
     return (
       typeof value.id === "string" &&
@@ -1803,6 +1825,21 @@ function isExtrudeOperationMode(
   value: unknown
 ): value is FeatureExtrudeOperationMode {
   return value === "newBody" || value === "add" || value === "cut";
+}
+
+function isRevolveOperationMode(
+  value: unknown
+): value is FeatureRevolveOperationMode {
+  return value === "newBody" || value === "add" || value === "cut";
+}
+
+function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {
+  return (
+    isRecord(value) &&
+    value.type === "sketchLine" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

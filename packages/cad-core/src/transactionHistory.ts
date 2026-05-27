@@ -105,7 +105,7 @@ function createOperationSummaries(
       ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
       : undefined;
     const createdFeatureRef =
-      op.op === "feature.extrude"
+      op.op === "feature.extrude" || op.op === "feature.revolve"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
     const deletedFeatureRef =
@@ -491,6 +491,25 @@ function createOperationSummaries(
         return createFeatureOperationSummary({
           op: op.op,
           label: `Create ${operationLabel} extrude feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId}${
+            bodyId ? ` -> body ${bodyId}` : ""
+          }`,
+          sketchId: op.sketchId,
+          sketchEntityId: op.entityId,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId,
+          operationMode
+        });
+      }
+
+      case "feature.revolve": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const operationMode = op.operationMode ?? "newBody";
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create new body revolve feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.entityId} around ${op.axis.entityId} at ${op.angleDegrees} degrees${
             bodyId ? ` -> body ${bodyId}` : ""
           }`,
           sketchId: op.sketchId,

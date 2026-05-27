@@ -15,9 +15,10 @@ with durable sketch point targets. Schema V10 added source-of-truth coincident
 point constraints using the same durable sketch point target model. Schema V11
 added source-of-truth midpoint constraints tying a point/center target to a line
 midpoint. Schema V12 added source-of-truth parallel line constraints. Schema
-V13 added source-of-truth perpendicular line constraints. Current exports use
-`web-cad.project.v13` while the loader still accepts V1 through V12 projects
-through explicit migration. The
+V13 added source-of-truth perpendicular line constraints. Schema V14 added the
+first authored non-extrude feature source records for `feature.revolve`.
+Current exports use `web-cad.project.v14` while the loader still accepts V1
+through V13 projects through explicit migration. The
 `web-cad.project.*` names are retained as compatibility schema
 identifiers after the Partbench product rename; changing them would require a
 deliberate project-format migration. Future storage work should use this
@@ -43,6 +44,7 @@ schemaVersion: web-cad.project.v10
 schemaVersion: web-cad.project.v11
 schemaVersion: web-cad.project.v12
 schemaVersion: web-cad.project.v13
+schemaVersion: web-cad.project.v14
 ```
 
 It is produced by:
@@ -69,13 +71,13 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV13 {
-  schemaVersion: "web-cad.project.v13"
+ProjectV14 {
+  schemaVersion: "web-cad.project.v14"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
     sketches: Sketch[]
-    features: ExtrudeFeature[]
+    features: Feature[]
     namedReferences: NamedGeneratedReference[]
     parameters: CadParameter[]
     sketchDimensions: SketchDimension[]
@@ -487,7 +489,7 @@ driven dimension entries, constraint entries, effective values, driven entity
 IDs, and structured issues, but none of that query output is saved in the
 project file.
 
-Current authored features are source-of-truth V3 document data:
+Current authored features are source-of-truth document data:
 
 ```ts
 ExtrudeFeature {
@@ -503,6 +505,24 @@ ExtrudeFeature {
   targetBodyId?: string
   bodyId: string
 }
+
+RevolveFeature {
+  id: string
+  kind: "revolve"
+  name?: string
+  sketchId: string
+  entityId: string
+  profileKind: "rectangle" | "circle"
+  axis: {
+    type: "sketchLine"
+    sketchId: string
+    entityId: string
+  }
+  angleDegrees: number
+  operationMode?: "newBody" | "add" | "cut"
+  targetBodyId?: string
+  bodyId: string
+}
 ```
 
 Extrude features reference an existing rectangle or circle sketch entity. The
@@ -511,7 +531,7 @@ derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
-defaults to `newBody` when omitted, and current V13 exports include an explicit
+defaults to `newBody` when omitted, and current V14 exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
 `targetBodyId`. Boolean operation modes are supported only for narrow
 source-modeled slices. `cut` supports a rectangle sketch-extrude tool cutting
@@ -531,13 +551,22 @@ sketch-extrude features can be removed with `feature.delete` and can have depth
 and side updated with `feature.updateExtrude`. Missing side values in older
 compatible project data normalize to `positive`; missing operation mode values
 normalize to `newBody`.
+Revolve features reference an existing rectangle or circle sketch entity plus a
+non-zero line entity in the same sketch as the revolve axis. V14 stores this as
+feature intent only: no B-rep, mesh, OCCT topology ID, or renderer cache is
+persisted. Current command support is `operationMode: "newBody"` only, with
+positive finite `angleDegrees` less than or equal to 360. Add/cut revolve modes
+are reserved in the typed shape but rejected until deliberately implemented.
+Revolve result bodies appear in project structure and health, but generated
+semantic references, source-analytic measurements, extents, and geometry-worker
+rendering for revolve bodies are not implemented in this command-first slice.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13 Storage Decision
+## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -589,7 +618,12 @@ by the V11 midpoint shape. That persisted intent introduced
 `web-cad.project.v12`. V4 perpendicular line constraints use the same durable
 line-pair source shape but carry distinct relationship intent that cannot be
 represented by V12 without changing meaning. That persisted intent introduced
-`web-cad.project.v13`. Current exports therefore use `web-cad.project.v13`.
+`web-cad.project.v13`.
+
+Authored revolve feature records carry a profile reference, a same-sketch axis
+line reference, angle, body ID, and operation mode. That source intent cannot be
+represented by the V13 extrude-only feature shape, so it introduced
+`web-cad.project.v14`. Current exports therefore use `web-cad.project.v14`.
 
 The loader accepts:
 
@@ -607,6 +641,7 @@ web-cad.project.v10
 web-cad.project.v11
 web-cad.project.v12
 web-cad.project.v13
+web-cad.project.v14
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -650,6 +685,9 @@ Schema V12 projects migrate with parallel line constraints intact.
 Perpendicular line constraints are a V13 source shape and are rejected in V12
 documents.
 
+Schema V13 projects migrate with perpendicular line constraints intact. Revolve
+features are a V14 source shape and are rejected in V13 documents.
+
 The derived mapping is deterministic:
 
 ```text
@@ -657,7 +695,8 @@ document.objects[]                -> part:default
 scene object <objectId>           -> feature:<objectId>
 feature:<objectId>                -> body:<objectId>
 document.features[] extrude       -> feat_N or caller-provided feature ID
-extrude feature body              -> body_N or caller-provided body ID
+document.features[] revolve       -> feat_N or caller-provided feature ID
+extrude/revolve feature body      -> body_N or caller-provided body ID
 sketch.createOnFace attachment    -> stored on the created sketch
 ```
 
@@ -723,18 +762,20 @@ transaction model for UI, scripts, agents, and MCP clients. Those summaries are
 not separately persisted; they are derived from `history` and `redoStack`.
 The `project.features` query currently returns read-only feature summaries. It
 includes primitive feature summaries derived from `document.objects` and
-authored sketch-extrude feature summaries derived from `document.features`.
-Primitive summaries include the derived default part ID and derived body ID for
-each object. Extrude summaries include the source sketch/entity, profile kind,
-depth, side, operation mode, optional target body ID, and authored body ID.
+authored sketch feature summaries derived from `document.features`. Primitive
+summaries include the derived default part ID and derived body ID for each
+object. Extrude summaries include the source sketch/entity, profile kind, depth,
+side, operation mode, optional target body ID, and authored body ID. Revolve
+summaries include the source sketch/entity, profile kind, same-sketch axis line,
+angle, operation mode, and authored body ID.
 
-The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
 - one derived solid body per scene object, `body:<objectId>`;
-- authored extrude features from `document.features`;
-- authored sketch-extrude bodies referenced by those features; and
+- authored extrude/revolve features from `document.features`;
+- authored sketch feature bodies referenced by those features; and
 - object-to-part/feature/body source mappings.
 
 When a supported `add` or `cut` feature targets an authored body, the target
@@ -860,11 +901,11 @@ named-reference lookup results, or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v13`
+that cannot be faithfully represented by the current `web-cad.project.v14`
 document shape.
 
-V6 is expected to introduce the next format version when its first new authored
-feature source record lands. Exact-kernel metadata, topology snapshots,
+V6 introduced `web-cad.project.v14` when `feature.revolve` added the first
+authored non-extrude feature source record. Exact-kernel metadata, topology snapshots,
 measurement outputs, mesh results, and UI selection state remain derived and do
 not justify a schema version by themselves.
 
@@ -875,15 +916,15 @@ Likely triggers:
   constraint families beyond current V13
   horizontal/vertical/fixed/coincident/midpoint/parallel/perpendicular
   constraints;
-- additional feature records that require new persisted inputs, such as revolve,
-  sweep, loft, shell, patterns, or edit features;
+- additional feature records that require new persisted inputs beyond current
+  extrude/revolve, such as sweep, loft, shell, patterns, or edit features;
 - body definitions or exact geometry checkpoints that are source of truth or
   required rebuild inputs;
 - persisted durable topological references beyond the current semantic named
   generated references, such as exact topology-backed faces, edges, vertices,
   sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level materials/named views that are not represented by V13;
+- project-level materials/named views that are not represented by V14;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -891,16 +932,14 @@ Likely triggers:
 When any of those become real source data, the next format should be explicit:
 
 ```text
-schemaVersion: web-cad.project.v14
+schemaVersion: web-cad.project.v15
 ```
 
 That format should include a migration from older accepted versions, not silent
-shape guessing. For V6, `web-cad.project.v14` should preserve V1-V13 import
-compatibility and add only the source records actually implemented, such as
-revolve, hole, chamfer, or fillet feature inputs. It should not persist B-rep
-checkpoints, OCCT topology IDs, exact metadata query results, or tessellated
-mesh caches unless a later milestone explicitly changes the source-of-truth
-model.
+shape guessing. Current `web-cad.project.v14` preserves V1-V13 import
+compatibility and adds only the currently implemented revolve source record. It
+does not persist B-rep checkpoints, OCCT topology IDs, exact metadata query
+results, or tessellated mesh caches.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
@@ -912,16 +951,18 @@ source-of-truth data, and `web-cad.project.v11` when midpoint constraints
 became persisted source-of-truth data. V4 Phase B/C introduced
 `web-cad.project.v12` when parallel line constraints became persisted
 source-of-truth data and `web-cad.project.v13` when perpendicular line
-constraints became persisted source-of-truth data. Query-only solver/evaluator
+constraints became persisted source-of-truth data. V6 Phase B introduced
+`web-cad.project.v14` when authored revolve feature intent became persisted
+source-of-truth data. Query-only solver/evaluator
 summaries
 such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
-Future V4 slices should introduce another project format only if they add
-persisted source-of-truth data that cannot be represented by the current V13
-constraint records. Solver/evaluator status alone should remain derived query
-data.
+Future V6 slices should introduce another project format only if they add
+persisted source-of-truth data that cannot be represented by the current V14
+feature and constraint records. Solver/evaluator status and exact-kernel query
+results should remain derived query/cache data.
 
 ## Rebuildable Cache
 
@@ -1047,41 +1088,47 @@ web-cad.project.v10
 web-cad.project.v11
 web-cad.project.v12
 web-cad.project.v13
+web-cad.project.v14
 ```
 
-Schema V1 is migrated to V13 on parse/load by adding empty sketches, empty
+Schema V1 is migrated to V14 on parse/load by adding empty sketches, empty
 authored features, empty named references, empty parameters, empty sketch
 dimensions, empty sketch constraints, and fresh
 sketch/feature/body/parameter/dimension/constraint counters. Schema V2 is
-migrated to V13 by preserving sketches and adding empty authored features, empty
+migrated to V14 by preserving sketches and adding empty authored features, empty
 named references, empty parameters, empty sketch dimensions, empty sketch
 constraints, and fresh feature/body/parameter/dimension/constraint counters.
-Schema V3 is migrated to V13 by preserving sketches/features, treating all
+Schema V3 is migrated to V14 by preserving sketches/features, treating all
 sketches as unattached, adding empty named references, empty parameters, empty
 sketch dimensions, empty sketch constraints, and defaulting authored extrude
 operation mode to `newBody`.
-Schema V4 is migrated to V13 by preserving sketches, authored features, and
+Schema V4 is migrated to V14 by preserving sketches, authored features, and
 attached sketch metadata, plus empty named-reference, parameter,
 sketch-dimension, and sketch-constraint tables and `newBody` operation mode.
-Schema V5 is migrated to V13 by preserving sketches, authored features, attached
+Schema V5 is migrated to V14 by preserving sketches, authored features, attached
 sketch metadata, and named references while defaulting missing operation mode to
 `newBody` and adding empty parameters, sketch dimensions, and sketch
-constraints. Schema V6 is migrated to V13 by preserving all V6 source data and
+constraints. Schema V6 is migrated to V14 by preserving all V6 source data and
 adding empty parameters, sketch dimensions, and sketch constraints. Schema V7 is
-migrated to V13 by preserving parameters and sketch dimensions and adding empty
-sketch constraints. Schema V8 is migrated to V13 by preserving horizontal and
-vertical sketch constraints. Schema V9 is migrated to V13 by preserving fixed
-point constraints. Schema V10 is migrated to V13 by preserving coincident point
-constraints. Schema V11 is migrated to V13 by preserving midpoint constraints
+migrated to V14 by preserving parameters and sketch dimensions and adding empty
+sketch constraints. Schema V8 is migrated to V14 by preserving horizontal and
+vertical sketch constraints. Schema V9 is migrated to V14 by preserving fixed
+point constraints. Schema V10 is migrated to V14 by preserving coincident point
+constraints. Schema V11 is migrated to V14 by preserving midpoint constraints
 and rejecting parallel constraints because they are a V12 source shape. Schema
-V12 is migrated to V13 by preserving parallel constraints and rejecting
-perpendicular constraints because they are a V13 source shape. Current
-imports reject
+V12 is migrated to V14 by preserving parallel constraints and rejecting
+perpendicular constraints because they are a V13 source shape. Schema V13 is
+migrated to V14 by preserving perpendicular constraints and rejecting revolve
+features because they are a V14 source shape. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,
 circle-target add, and records outside the currently supported
 rectangle-tool/active-target contracts.
+Current imports also reject unsupported revolve records, including add/cut
+operation modes, missing or zero-length sketch-line axes, unsupported profile
+entities, and angles that are not positive finite values less than or equal to
+360.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 

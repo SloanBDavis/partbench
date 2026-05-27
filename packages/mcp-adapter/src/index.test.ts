@@ -816,6 +816,87 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes feature.revolve through cad.batch", () => {
+    const server = new CadMcpServer();
+    const batchResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_revolve",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_1",
+              name: "Revolve",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_1",
+              id: "rect_1",
+              center: [2, 0],
+              width: 1,
+              height: 2
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "sketch_1",
+              id: "axis_1",
+              start: [0, -2],
+              end: [0, 2]
+            },
+            {
+              op: "feature.revolve",
+              id: "feat_revolve_1",
+              bodyId: "body_revolve_1",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              axis: {
+                type: "sketchLine",
+                sketchId: "sketch_1",
+                entityId: "axis_1"
+              },
+              angleDegrees: 180,
+              operationMode: "newBody"
+            }
+          ]
+        }
+      }
+    });
+    const structureResult = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_revolve_structure"
+    });
+
+    expect(batchResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_revolve_1"],
+        createdBodyIds: ["body_revolve_1"]
+      }
+    });
+    expect(structureResult).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: [
+          { id: "feat_revolve_1", kind: "revolve", angleDegrees: 180 }
+        ],
+        bodies: [
+          {
+            id: "body_revolve_1",
+            featureId: "feat_revolve_1",
+            source: { type: "sketchRevolveFeature" }
+          }
+        ]
+      }
+    });
+  });
+
   it("passes unsupported extrude operation mode errors through cad.batch", () => {
     const server = new CadMcpServer();
     seedMcpExtrudeFeature(server, {

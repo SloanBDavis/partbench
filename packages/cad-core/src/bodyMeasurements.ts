@@ -9,7 +9,7 @@ import type {
 import type { SketchEntity } from "./index";
 import type {
   GeneratedReferencesDocument,
-  GeneratedReferencesFeature
+  GeneratedReferencesExtrudeFeature
 } from "./generatedReferences";
 import {
   cleanMeasurementNumber,
@@ -30,6 +30,10 @@ export function createBodyMeasurements(
   );
 
   if (!feature) {
+    return undefined;
+  }
+
+  if (feature.kind !== "extrude") {
     return undefined;
   }
 
@@ -90,7 +94,7 @@ type ExtrudeMeasurementEntity =
   | Extract<SketchEntity, { readonly kind: "circle" }>;
 
 function isExtrudeMeasurementEntity(
-  feature: GeneratedReferencesFeature,
+  feature: GeneratedReferencesExtrudeFeature,
   entity: SketchEntity
 ): entity is ExtrudeMeasurementEntity {
   return (

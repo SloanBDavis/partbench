@@ -867,7 +867,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_features",
     description:
-      "Returns read-only feature summaries, including primitive-derived and authored sketch-extrude features.",
+      "Returns read-only feature summaries, including primitive-derived and authored sketch feature bodies.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -877,7 +877,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_structure",
     description:
-      "Returns the default part, primitive-derived features/bodies, authored sketch-extrude features/bodies, and source mappings.",
+      "Returns the default part, primitive-derived features/bodies, authored sketch feature bodies, and source mappings.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -887,7 +887,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_health",
     description:
-      "Returns read-only dependency and health status for authored sketches, extrudes, generated bodies, and named references.",
+      "Returns read-only dependency and health status for authored sketches, features, generated bodies, and named references.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

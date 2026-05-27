@@ -25,9 +25,18 @@ export type CadRequestIntent = CadBatchMode;
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
 export type SketchPlane = "XY" | "XZ" | "YZ";
-export type FeatureExtrudeProfileKind = "rectangle" | "circle";
+export type FeatureProfileKind = "rectangle" | "circle";
+export type FeatureExtrudeProfileKind = FeatureProfileKind;
+export type FeatureRevolveProfileKind = FeatureProfileKind;
 export type FeatureExtrudeSide = "positive" | "negative" | "symmetric";
 export type FeatureExtrudeOperationMode = "newBody" | "add" | "cut";
+export type FeatureRevolveOperationMode = "newBody" | "add" | "cut";
+
+export interface FeatureRevolveAxis {
+  readonly type: "sketchLine";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+}
 
 export interface CadActorMetadata {
   readonly type: CadActorType;
@@ -189,6 +198,7 @@ export type CadOp =
   | SketchConstraintRenameOp
   | SketchConstraintDeleteOp
   | FeatureExtrudeOp
+  | FeatureRevolveOp
   | FeatureUpdateExtrudeOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
@@ -504,6 +514,19 @@ export interface FeatureExtrudeOp {
   readonly operationMode?: FeatureExtrudeOperationMode;
 }
 
+export interface FeatureRevolveOp {
+  readonly op: "feature.revolve";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode?: FeatureRevolveOperationMode;
+}
+
 export interface FeatureDeleteOp {
   readonly op: "feature.delete";
   readonly id: FeatureId;
@@ -543,7 +566,9 @@ export interface CadSketchEntityRef {
   readonly kind: SketchEntityKind;
 }
 
-export interface CadFeatureRef {
+export type CadFeatureRef = CadExtrudeFeatureRef | CadRevolveFeatureRef;
+
+export interface CadExtrudeFeatureRef {
   readonly id: FeatureId;
   readonly kind: "extrude";
   readonly bodyId: BodyId;
@@ -553,6 +578,19 @@ export interface CadFeatureRef {
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
+  readonly targetBodyId?: BodyId;
+}
+
+export interface CadRevolveFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "revolve";
+  readonly bodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
 }
 
@@ -1229,6 +1267,22 @@ export interface ExtrudeFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface RevolveFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "revolve";
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode?: FeatureRevolveOperationMode;
+  readonly targetBodyId?: BodyId;
+  readonly bodyId: BodyId;
+}
+
+export type FeatureSnapshot = ExtrudeFeatureSnapshot | RevolveFeatureSnapshot;
+
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
   readonly max: Vec3;
@@ -1412,9 +1466,33 @@ export interface CadExtrudeFeatureSummary {
   readonly source: CadExtrudeFeatureSource;
 }
 
+export interface CadRevolveFeatureSource {
+  readonly type: "sketchEntityWithAxis";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly axis: FeatureRevolveAxis;
+}
+
+export interface CadRevolveFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "revolve";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly name?: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode: FeatureRevolveOperationMode;
+  readonly targetBodyId?: BodyId;
+  readonly source: CadRevolveFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
-  | CadExtrudeFeatureSummary;
+  | CadExtrudeFeatureSummary
+  | CadRevolveFeatureSummary;
 
 export interface CadPartSource {
   readonly type: "defaultScenePart";
@@ -1445,7 +1523,19 @@ export interface CadSketchExtrudeBodySource {
   readonly profileKind: FeatureExtrudeProfileKind;
 }
 
-export type CadBodySource = CadPrimitiveBodySource | CadSketchExtrudeBodySource;
+export interface CadSketchRevolveBodySource {
+  readonly type: "sketchRevolveFeature";
+  readonly featureId: FeatureId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+}
+
+export type CadBodySource =
+  | CadPrimitiveBodySource
+  | CadSketchExtrudeBodySource
+  | CadSketchRevolveBodySource;
 
 export interface CadBodySnapshot {
   readonly id: BodyId;
@@ -1686,6 +1776,25 @@ export interface CadAuthoredExtrudeHealth {
   readonly issues: readonly CadDependencyHealthIssue[];
 }
 
+export interface CadAuthoredRevolveHealth {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode: FeatureRevolveOperationMode;
+  readonly targetBodyId?: BodyId;
+  readonly topologyStatus?: CadBodyTopologyStatus;
+  readonly topologyModel?: CadBodyTopologyModel;
+  readonly topologyAvailable?: boolean;
+  readonly exactMeasurementsAvailable?: boolean;
+  readonly topologyIssueCount?: number;
+  readonly status: CadDependencyHealthStatus;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
 export interface CadAttachedSketchHealth {
   readonly sketchId: SketchId;
   readonly sketchName: string;
@@ -1861,6 +1970,7 @@ export type CadBodyTopologyStatus =
 
 export type CadBodyTopologySourceKind =
   | "authoredExtrude"
+  | "authoredRevolve"
   | "primitiveCompatibility";
 
 export type CadBodyTopologyModel = "none" | "semantic-source";
@@ -1936,6 +2046,8 @@ export interface CadBodyTopologySourceIdentity {
   readonly sourceSketchId?: SketchId;
   readonly sourceSketchEntityId?: SketchEntityId;
   readonly profileKind?: FeatureExtrudeProfileKind;
+  readonly revolveAxis?: FeatureRevolveAxis;
+  readonly revolveAngleDegrees?: number;
   readonly profileSignature?: CadGeneratedReferenceProfileSignature;
   readonly side?: FeatureExtrudeSide;
   readonly depth?: number;
@@ -2045,12 +2157,14 @@ export interface ProjectHealthQueryResponse {
   readonly status: CadDependencyHealthStatus;
   readonly issueCount: number;
   readonly authoredExtrudeCount: number;
+  readonly authoredRevolveCount: number;
   readonly attachedSketchCount: number;
   readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
   readonly sketchConstraintCount: number;
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
+  readonly authoredRevolves: readonly CadAuthoredRevolveHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];

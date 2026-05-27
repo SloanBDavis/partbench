@@ -2,6 +2,7 @@ import type {
   BodyId,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredRevolveHealth,
   CadDependencyHealthIssue,
   CadDependencyHealthStatus,
   CadGeneratedEntityKind,
@@ -14,6 +15,9 @@ import type {
   CadSketchEvaluationHealth,
   DocumentUnits,
   FeatureExtrudeProfileKind,
+  FeatureRevolveAxis,
+  FeatureRevolveOperationMode,
+  FeatureRevolveProfileKind,
   FeatureId,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
@@ -39,7 +43,7 @@ import {
   validateGeneratedReference,
   type GeneratedReferenceValidationError,
   type GeneratedReferencesDocument,
-  type GeneratedReferencesFeature,
+  type GeneratedReferencesExtrudeFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
 import {
@@ -82,14 +86,43 @@ export interface ProjectHealthSketch extends GeneratedReferencesSketch {
   readonly entities: ReadonlyMap<SketchEntityId, SketchEntitySnapshot>;
 }
 
-export type ProjectHealthFeature = GeneratedReferencesFeature;
+export type ProjectHealthFeature =
+  | GeneratedReferencesExtrudeFeature
+  | ProjectHealthRevolveFeature;
+
+export interface ProjectHealthRevolveFeature {
+  readonly id: FeatureId;
+  readonly kind: "revolve";
+  readonly bodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode: FeatureRevolveOperationMode;
+  readonly targetBodyId?: BodyId;
+}
 
 export function createProjectHealth(
   options: ProjectHealthOptions
 ): ProjectHealthQueryResponse {
-  const authoredExtrudes = [...options.document.features.values()].map(
-    (feature) => createAuthoredExtrudeHealth(options.document, feature, options)
-  );
+  const authoredFeatures = [...options.document.features.values()];
+  const authoredExtrudes = authoredFeatures
+    .filter(
+      (feature): feature is GeneratedReferencesExtrudeFeature =>
+        feature.kind === "extrude"
+    )
+    .map((feature) =>
+      createAuthoredExtrudeHealth(options.document, feature, options)
+    );
+  const authoredRevolves = authoredFeatures
+    .filter(
+      (feature): feature is ProjectHealthRevolveFeature =>
+        feature.kind === "revolve"
+    )
+    .map((feature) =>
+      createAuthoredRevolveHealth(options.document, feature, options)
+    );
   const attachedSketches = [...options.document.sketches.values()]
     .filter((sketch) => sketch.attachment !== undefined)
     .map((sketch) =>
@@ -116,6 +149,7 @@ export function createProjectHealth(
   );
   const issueCount = [
     ...authoredExtrudes,
+    ...authoredRevolves,
     ...attachedSketches,
     ...sketchEvaluations,
     ...sketchDimensions,
@@ -129,6 +163,7 @@ export function createProjectHealth(
     cadOpsVersion: options.cadOpsVersion,
     status: combineHealthStatuses([
       ...authoredExtrudes.map((entry) => entry.status),
+      ...authoredRevolves.map((entry) => entry.status),
       ...attachedSketches.map((entry) => entry.status),
       ...sketchEvaluations.map((entry) => entry.status),
       ...sketchDimensions.map((entry) => entry.status),
@@ -137,12 +172,14 @@ export function createProjectHealth(
     ]),
     issueCount,
     authoredExtrudeCount: authoredExtrudes.length,
+    authoredRevolveCount: authoredRevolves.length,
     attachedSketchCount: attachedSketches.length,
     sketchEvaluationCount: sketchEvaluations.length,
     sketchDimensionCount: sketchDimensions.length,
     sketchConstraintCount: sketchConstraints.length,
     namedReferenceCount: namedReferences.length,
     authoredExtrudes,
+    authoredRevolves,
     attachedSketches,
     sketchEvaluations,
     sketchDimensions,
@@ -153,7 +190,7 @@ export function createProjectHealth(
 
 function createAuthoredExtrudeHealth(
   document: ProjectHealthDocument,
-  feature: ProjectHealthFeature,
+  feature: GeneratedReferencesExtrudeFeature,
   options: ProjectHealthOptions
 ): CadAuthoredExtrudeHealth {
   const issues: CadDependencyHealthIssue[] = [];
@@ -248,6 +285,117 @@ function createAuthoredExtrudeHealth(
     sketchId: feature.sketchId,
     entityId: feature.entityId,
     profileKind: feature.profileKind,
+    operationMode: feature.operationMode,
+    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+    ...(topologySnapshot
+      ? {
+          topologyStatus: topologySnapshot.status,
+          topologyModel: topologySnapshot.topologyModel,
+          topologyAvailable: topologySnapshot.topologyAvailable,
+          exactMeasurementsAvailable:
+            topologySnapshot.exactMeasurementsAvailable,
+          topologyIssueCount: topologySnapshot.issues.length
+        }
+      : {}),
+    status: statusFromIssues(issues),
+    issues
+  };
+}
+
+function createAuthoredRevolveHealth(
+  document: ProjectHealthDocument,
+  feature: ProjectHealthRevolveFeature,
+  options: ProjectHealthOptions
+): CadAuthoredRevolveHealth {
+  const issues: CadDependencyHealthIssue[] = [];
+  const sketch = document.sketches.get(feature.sketchId);
+
+  if (!sketch) {
+    issues.push({
+      code: "SKETCH_NOT_FOUND",
+      message: `Source sketch does not exist for revolve feature ${feature.id}: ${feature.sketchId}`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      sketchId: feature.sketchId
+    });
+  } else {
+    const entity = sketch.entities.get(feature.entityId);
+
+    if (!entity) {
+      issues.push({
+        code: "SKETCH_ENTITY_NOT_FOUND",
+        message: `Source sketch entity does not exist for revolve feature ${feature.id}: ${feature.entityId}`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.entityId
+      });
+    } else if (!entityMatchesProfileKind(entity, feature.profileKind)) {
+      issues.push({
+        code: "PROFILE_KIND_MISMATCH",
+        message: `Source sketch entity ${feature.entityId} is ${entity.kind}, but revolve feature ${feature.id} expects ${feature.profileKind}.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.entityId,
+        expected: feature.profileKind,
+        received: entity.kind
+      });
+    }
+
+    const axisEntity = sketch.entities.get(feature.axis.entityId);
+
+    if (feature.axis.sketchId !== feature.sketchId) {
+      issues.push({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: `Revolve feature ${feature.id} axis must reference the same sketch.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.axis.entityId,
+        expected: feature.sketchId,
+        received: feature.axis.sketchId
+      });
+    } else if (!axisEntity) {
+      issues.push({
+        code: "SKETCH_ENTITY_NOT_FOUND",
+        message: `Revolve axis line does not exist for feature ${feature.id}: ${feature.axis.entityId}`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.axis.entityId
+      });
+    } else if (axisEntity.kind !== "line") {
+      issues.push({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: `Revolve axis entity ${feature.axis.entityId} is ${axisEntity.kind}, but feature ${feature.id} expects a line.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        sketchId: feature.sketchId,
+        sketchEntityId: feature.axis.entityId,
+        expected: "line",
+        received: axisEntity.kind
+      });
+    }
+  }
+
+  const topology = createBodyTopology({
+    document,
+    bodyId: feature.bodyId,
+    units: options.units,
+    ownerPartId: options.ownerPartId,
+    bodyExists: options.bodyExists
+  });
+  const topologySnapshot = topology.ok ? topology.topology : undefined;
+
+  return {
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    sketchId: feature.sketchId,
+    entityId: feature.entityId,
+    profileKind: feature.profileKind,
+    axis: feature.axis,
+    angleDegrees: feature.angleDegrees,
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
     ...(topologySnapshot
@@ -835,10 +983,11 @@ function isSupportedAddTargetProfileKind(
 }
 
 function isSupportedBooleanTarget(
-  feature: ProjectHealthFeature,
+  feature: GeneratedReferencesExtrudeFeature,
   targetFeature: ProjectHealthFeature
 ): boolean {
   if (
+    targetFeature.kind !== "extrude" ||
     feature.profileKind !== "rectangle" ||
     targetFeature.operationMode !== "newBody"
   ) {

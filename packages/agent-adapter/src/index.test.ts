@@ -398,6 +398,85 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes feature.revolve through JSON batch commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_revolve",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "sketch_1",
+                name: "Revolve",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "sketch_1",
+                id: "rect_1",
+                center: [2, 0],
+                width: 1,
+                height: 2
+              },
+              {
+                op: "sketch.addLine",
+                sketchId: "sketch_1",
+                id: "axis_1",
+                start: [0, -2],
+                end: [0, 2]
+              },
+              {
+                op: "feature.revolve",
+                id: "feat_revolve_1",
+                bodyId: "body_revolve_1",
+                sketchId: "sketch_1",
+                entityId: "rect_1",
+                axis: {
+                  type: "sketchLine",
+                  sketchId: "sketch_1",
+                  entityId: "axis_1"
+                },
+                angleDegrees: 180,
+                operationMode: "newBody"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+    };
+    const structure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_revolve_1"],
+      createdBodyIds: ["body_revolve_1"]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      features: [{ id: "feat_revolve_1", kind: "revolve", angleDegrees: 180 }],
+      bodies: [
+        {
+          id: "body_revolve_1",
+          featureId: "feat_revolve_1",
+          source: { type: "sketchRevolveFeature" }
+        }
+      ]
+    });
+  });
+
   it("passes rectangle add extrudes through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
 
