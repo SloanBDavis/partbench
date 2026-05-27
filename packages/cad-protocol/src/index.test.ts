@@ -8,6 +8,7 @@ import type {
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedVertexReference,
+  CadHoleFeatureSummary,
   CadObjectModelSource,
   CadPartSnapshot,
   CadPrimitiveFeatureSummary,
@@ -15,6 +16,7 @@ import type {
   CadRevolveFeatureSummary,
   CadQueryRequest,
   CadQueryResponse,
+  HoleFeatureSnapshot,
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   SketchEvaluationQueryResponse,
@@ -191,6 +193,18 @@ describe("cad-protocol", () => {
         operationMode: "newBody"
       },
       {
+        op: "feature.hole",
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_target",
+        name: "Mounting hole",
+        sketchId: "sketch_1",
+        circleEntityId: "circle_1",
+        depthMode: "blind",
+        depth: 4,
+        direction: "negative"
+      },
+      {
         op: "feature.updateExtrude",
         id: "feat_1",
         depth: 7,
@@ -239,6 +253,7 @@ describe("cad-protocol", () => {
       "sketch.delete",
       "feature.extrude",
       "feature.revolve",
+      "feature.hole",
       "feature.updateExtrude",
       "feature.delete",
       "reference.nameGenerated",
@@ -657,6 +672,7 @@ describe("cad-protocol", () => {
       issueCount: 1,
       authoredExtrudeCount: 0,
       authoredRevolveCount: 0,
+      authoredHoleCount: 0,
       attachedSketchCount: 0,
       sketchEvaluationCount: 1,
       sketchDimensionCount: 0,
@@ -664,6 +680,7 @@ describe("cad-protocol", () => {
       namedReferenceCount: 0,
       authoredExtrudes: [],
       authoredRevolves: [],
+      authoredHoles: [],
       attachedSketches: [],
       sketchEvaluations: [
         {
@@ -1187,6 +1204,46 @@ describe("cad-protocol", () => {
       kind: "revolve",
       bodyId: "body_revolve_1",
       angleDegrees: 270
+    });
+  });
+
+  it("types sketch hole feature snapshots and summaries", () => {
+    const snapshot: HoleFeatureSnapshot = {
+      id: "feat_hole_1",
+      kind: "hole",
+      targetBodyId: "body_target",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      depthMode: "blind",
+      depth: 4,
+      direction: "negative",
+      bodyId: "body_hole_1"
+    };
+    const feature: CadHoleFeatureSummary = {
+      id: snapshot.id,
+      kind: "hole",
+      partId: "part:default",
+      bodyId: snapshot.bodyId,
+      targetBodyId: snapshot.targetBodyId,
+      sketchId: snapshot.sketchId,
+      circleEntityId: snapshot.circleEntityId,
+      depthMode: snapshot.depthMode,
+      depth: snapshot.depth,
+      direction: snapshot.direction,
+      source: {
+        type: "sketchCircleHole",
+        sketchId: snapshot.sketchId,
+        circleEntityId: snapshot.circleEntityId,
+        targetBodyId: snapshot.targetBodyId
+      }
+    };
+
+    expect(feature).toMatchObject({
+      id: "feat_hole_1",
+      kind: "hole",
+      bodyId: "body_hole_1",
+      targetBodyId: "body_target",
+      depthMode: "blind"
     });
   });
 

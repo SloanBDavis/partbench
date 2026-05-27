@@ -5,6 +5,7 @@ import type {
   CadSemanticDiffSummary,
   CadSketchConstraintRef,
   CadSketchDimensionRef,
+  CadFeatureRef,
   CadSketchEntityRef,
   CadTransactionAuditMetadata,
   CadTransactionHistoryEntry,
@@ -105,7 +106,9 @@ function createOperationSummaries(
       ? transaction.diff.sketches?.entitiesCreated?.[createdSketchEntityIndex++]
       : undefined;
     const createdFeatureRef =
-      op.op === "feature.extrude" || op.op === "feature.revolve"
+      op.op === "feature.extrude" ||
+      op.op === "feature.revolve" ||
+      op.op === "feature.hole"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
     const deletedFeatureRef =
@@ -371,7 +374,7 @@ function createOperationSummaries(
         const modifiedFeatureRef = transaction.diff.features?.modified?.find(
           (feature) =>
             feature.sketchId === op.sketchId &&
-            feature.entityId === op.entity.id
+            getFeatureRefSketchEntityId(feature) === op.entity.id
         );
 
         return createSketchOperationSummary({
@@ -521,6 +524,26 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.hole": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const depthLabel =
+          op.depthMode === "blind" ? `blind ${op.depth}` : "through all";
+        const direction = op.direction ?? "positive";
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create ${depthLabel} ${direction} hole feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.circleEntityId} into ${op.targetBodyId}${
+            bodyId ? ` -> body ${bodyId}` : ""
+          }`,
+          sketchId: op.sketchId,
+          sketchEntityId: op.circleEntityId,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId
+        });
+      }
+
       case "feature.delete": {
         const bodyLabel = deletedFeatureRef?.bodyId
           ? ` and body ${deletedFeatureRef.bodyId}`
@@ -532,7 +555,9 @@ function createOperationSummaries(
           featureId: op.id,
           bodyId: deletedFeatureRef?.bodyId,
           sketchId: deletedFeatureRef?.sketchId,
-          sketchEntityId: deletedFeatureRef?.entityId
+          sketchEntityId: deletedFeatureRef
+            ? getFeatureRefSketchEntityId(deletedFeatureRef)
+            : undefined
         });
       }
 
@@ -547,7 +572,9 @@ function createOperationSummaries(
           featureId: op.id,
           bodyId: modifiedFeatureRef?.bodyId,
           sketchId: modifiedFeatureRef?.sketchId,
-          sketchEntityId: modifiedFeatureRef?.entityId
+          sketchEntityId: modifiedFeatureRef
+            ? getFeatureRefSketchEntityId(modifiedFeatureRef)
+            : undefined
         });
       }
 
@@ -582,6 +609,12 @@ function createOperationSummaries(
       }
     }
   });
+}
+
+function getFeatureRefSketchEntityId(
+  feature: CadFeatureRef
+): SketchEntityId | undefined {
+  return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
 }
 
 function formatUnitUpdateModeLabel(

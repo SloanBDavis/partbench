@@ -194,16 +194,22 @@ function createUnsupportedAuthoredFeatureTopology(
   feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
   const sourceKind =
-    feature.kind === "revolve" ? "authoredRevolve" : "authoredExtrude";
+    feature.kind === "revolve"
+      ? "authoredRevolve"
+      : feature.kind === "hole"
+        ? "authoredHole"
+        : "authoredExtrude";
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "cacheKey"> =
     feature.kind === "revolve"
       ? createRevolveSourceIdentityInput(document, bodyId, units, feature)
-      : {
-          bodyId,
-          sourceKind,
-          units,
-          featureId: feature.id
-        };
+      : feature.kind === "hole"
+        ? createHoleSourceIdentityInput(document, bodyId, units, feature)
+        : {
+            bodyId,
+            sourceKind,
+            units,
+            featureId: feature.id
+          };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     ...sourceIdentityInput,
     cacheKey: createTopologyCacheKey(sourceIdentityInput)
@@ -217,12 +223,54 @@ function createUnsupportedAuthoredFeatureTopology(
       {
         code: "UNSUPPORTED_BODY_TOPOLOGY",
         message:
-          "Semantic topology references are not derived for authored revolve bodies yet.",
+          feature.kind === "hole"
+            ? "Semantic topology references are not derived for authored hole result bodies yet."
+            : "Semantic topology references are not derived for authored revolve bodies yet.",
         bodyId,
         featureId: feature.id
       }
     ]
   });
+}
+
+function createHoleSourceIdentityInput(
+  document: GeneratedReferencesDocument,
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: Extract<GeneratedReferencesFeature, { kind: "hole" }>
+): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+  return {
+    bodyId,
+    sourceKind: "authoredHole",
+    units,
+    featureId: feature.id,
+    targetBodyId: feature.targetBodyId,
+    sourceSketchId: feature.sketchId,
+    holeCircleEntityId: feature.circleEntityId,
+    profileKind: "circle",
+    profileSignature: createHoleCircleProfileSignature(document, feature),
+    holeDepthMode: feature.depthMode,
+    holeDepth: feature.depth,
+    holeDirection: feature.direction
+  };
+}
+
+function createHoleCircleProfileSignature(
+  document: GeneratedReferencesDocument,
+  feature: Extract<GeneratedReferencesFeature, { kind: "hole" }>
+): CadGeneratedReferenceProfileSignature | undefined {
+  const sketch = document.sketches.get(feature.sketchId);
+  const entity = sketch?.entities.get(feature.circleEntityId);
+
+  if (entity?.kind !== "circle") {
+    return undefined;
+  }
+
+  return {
+    kind: "circle",
+    center: entity.center,
+    radius: entity.radius
+  };
 }
 
 function createRevolveSourceIdentityInput(
@@ -354,7 +402,8 @@ function applyDerivedExactMetadata(
 
   if (
     topology.sourceKind !== "authoredExtrude" &&
-    topology.sourceKind !== "authoredRevolve"
+    topology.sourceKind !== "authoredRevolve" &&
+    topology.sourceKind !== "authoredHole"
   ) {
     return applyDerivedExactMetadataIssue(topology, {
       code: "UNSUPPORTED_BODY_TOPOLOGY",

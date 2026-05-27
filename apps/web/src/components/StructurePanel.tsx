@@ -25,6 +25,7 @@ import {
   formatBodyStatusLine,
   formatFeatureLine,
   formatFeatureKindLabel,
+  formatFeatureSourceLine,
   formatHealthStatus,
   formatPartLine,
   getBodyHealthStatus,
@@ -235,9 +236,7 @@ export function StructurePanel({
                       </span>
                       <strong>{formatFeatureKindLabel(feature)}</strong>
                       <small>{formatFeatureLine(feature, units)}</small>
-                      <small>
-                        Sketch {feature.sketchId} / entity {feature.entityId}
-                      </small>
+                      <small>{formatFeatureSourceLine(feature)}</small>
                       <small>Body {feature.bodyId}</small>
                       <HealthStatus status={status} />
                       <HealthIssues issues={issues} />

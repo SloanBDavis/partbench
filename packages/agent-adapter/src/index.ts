@@ -10,6 +10,7 @@ import type {
   BodyExtentSnapshot,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredHoleHealth,
   CadAuthoredRevolveHealth,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
@@ -56,6 +57,8 @@ import type {
   DocumentUnits,
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
+  FeatureHoleDepthMode,
+  FeatureHoleDirection,
   FeatureRevolveAxis,
   FeatureRevolveOperationMode,
   ObjectExtentSnapshot,
@@ -270,6 +273,7 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly issueCount: number;
   readonly authoredExtrudeCount: number;
   readonly authoredRevolveCount: number;
+  readonly authoredHoleCount: number;
   readonly attachedSketchCount: number;
   readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
@@ -277,6 +281,7 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly namedReferenceCount: number;
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly authoredRevolves: readonly CadAuthoredRevolveHealth[];
+  readonly authoredHoles: readonly CadAuthoredHoleHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
@@ -881,6 +886,7 @@ function toAgentQueryResponse(
       issueCount: response.issueCount,
       authoredExtrudeCount: response.authoredExtrudeCount,
       authoredRevolveCount: response.authoredRevolveCount,
+      authoredHoleCount: response.authoredHoleCount,
       attachedSketchCount: response.attachedSketchCount,
       sketchEvaluationCount: response.sketchEvaluationCount,
       sketchDimensionCount: response.sketchDimensionCount,
@@ -888,6 +894,7 @@ function toAgentQueryResponse(
       namedReferenceCount: response.namedReferenceCount,
       authoredExtrudes: response.authoredExtrudes,
       authoredRevolves: response.authoredRevolves,
+      authoredHoles: response.authoredHoles,
       attachedSketches: response.attachedSketches,
       sketchEvaluations: response.sketchEvaluations,
       sketchDimensions: response.sketchDimensions,
@@ -1643,6 +1650,20 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.hole") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.circleEntityId === "string" &&
+      isHoleDepthMode(value.depthMode) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.direction === undefined || isHoleDirection(value.direction))
+    );
+  }
+
   if (value.op === "feature.updateExtrude") {
     return (
       typeof value.id === "string" &&
@@ -1831,6 +1852,14 @@ function isRevolveOperationMode(
   value: unknown
 ): value is FeatureRevolveOperationMode {
   return value === "newBody" || value === "add" || value === "cut";
+}
+
+function isHoleDepthMode(value: unknown): value is FeatureHoleDepthMode {
+  return value === "blind" || value === "throughAll";
+}
+
+function isHoleDirection(value: unknown): value is FeatureHoleDirection {
+  return value === "positive" || value === "negative";
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

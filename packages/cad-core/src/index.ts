@@ -60,6 +60,8 @@ import type {
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
   FeatureExtrudeOperationMode,
+  FeatureHoleDepthMode,
+  FeatureHoleDirection,
   FeatureId,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
@@ -313,7 +315,7 @@ export type SketchDimension = SketchDimensionSnapshot;
 
 export type SketchConstraint = SketchConstraintSnapshot;
 
-export type Feature = ExtrudeFeature | RevolveFeature;
+export type Feature = ExtrudeFeature | RevolveFeature | HoleFeature;
 
 export interface ExtrudeFeature {
   readonly id: FeatureId;
@@ -340,6 +342,19 @@ export interface RevolveFeature {
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly bodyId: BodyId;
+}
+
+export interface HoleFeature {
+  readonly id: FeatureId;
+  readonly kind: "hole";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly circleEntityId: SketchEntityId;
+  readonly depthMode: FeatureHoleDepthMode;
+  readonly depth?: number;
+  readonly direction: FeatureHoleDirection;
   readonly bodyId: BodyId;
 }
 
@@ -440,7 +455,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V10 = "web-cad.project.v10";
 export const CAD_PROJECT_FORMAT_VERSION_V11 = "web-cad.project.v11";
 export const CAD_PROJECT_FORMAT_VERSION_V12 = "web-cad.project.v12";
 export const CAD_PROJECT_FORMAT_VERSION_V13 = "web-cad.project.v13";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v14";
+export const CAD_PROJECT_FORMAT_VERSION_V14 = "web-cad.project.v14";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v15";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -456,6 +472,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V11
   | typeof CAD_PROJECT_FORMAT_VERSION_V12
   | typeof CAD_PROJECT_FORMAT_VERSION_V13
+  | typeof CAD_PROJECT_FORMAT_VERSION_V14
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -2385,6 +2402,42 @@ function applyOperation(
       return;
     }
 
+    case "feature.hole": {
+      const sketch = getSketchOrThrow(state.sketches, op.sketchId, opIndex);
+      const entity = sketch.entities.get(op.circleEntityId);
+
+      if (!entity) {
+        throwSketchEntityNotFound(op.sketchId, op.circleEntityId, opIndex);
+      }
+
+      assertHoleCircleEntity(entity, opIndex, op.sketchId, op.circleEntityId);
+      validateHoleSketchAttachment(state, sketch, opIndex);
+
+      const targetBodyId = validateHoleTargetBodyId(
+        state,
+        op.targetBodyId,
+        opIndex
+      );
+      const depthMode = validateHoleDepthMode(op.depthMode, opIndex);
+      const depth = validateHoleDepth(depthMode, op.depth, opIndex);
+      const direction = validateHoleDirection(op.direction, opIndex);
+      const feature: HoleFeature = {
+        id: op.id ?? createFeatureId(),
+        kind: "hole",
+        name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
+        targetBodyId,
+        sketchId: op.sketchId,
+        circleEntityId: op.circleEntityId,
+        depthMode,
+        ...(depth !== undefined ? { depth } : {}),
+        direction,
+        bodyId: op.bodyId ?? createBodyId()
+      };
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
       return;
@@ -2599,6 +2652,7 @@ function isCadOperationKind(value: string): boolean {
     case "sketch.constraint.delete":
     case "feature.extrude":
     case "feature.revolve":
+    case "feature.hole":
     case "feature.delete":
     case "feature.updateExtrude":
     case "reference.nameGenerated":
@@ -5057,23 +5111,29 @@ function updateSketchEntityAndDependents(
   const downstreamFeatures: Feature[] = [];
 
   for (const feature of nextFeatures.values()) {
+    const targetBodyId = isTargetConsumingFeature(feature)
+      ? feature.targetBodyId
+      : undefined;
+
     if (
-      feature.operationMode === "newBody" ||
-      !feature.targetBodyId ||
-      !updatedBodyIds.has(feature.targetBodyId) ||
+      !targetBodyId ||
+      !updatedBodyIds.has(targetBodyId) ||
       updatedFeatureIds.has(feature.id)
     ) {
       continue;
     }
 
-    assertSupportedExtrudeOperation(
-      { ...state, features: nextFeatures },
-      feature.operationMode,
-      feature.profileKind,
-      feature.targetBodyId,
-      opIndex,
-      feature.id
-    );
+    if (feature.kind === "extrude") {
+      assertSupportedExtrudeOperation(
+        { ...state, features: nextFeatures },
+        feature.operationMode,
+        feature.profileKind,
+        feature.targetBodyId,
+        opIndex,
+        feature.id
+      );
+    }
+
     downstreamFeatures.push(feature);
   }
 
@@ -5111,6 +5171,11 @@ function updateDependentFeatureForSketchEntity(
   ) {
     assertRevolveAxisLineEntity(entity, opIndex, sketchId, entity.id);
 
+    return feature;
+  }
+
+  if (feature.kind === "hole") {
+    assertHoleCircleEntity(entity, opIndex, sketchId, entity.id);
     return feature;
   }
 
@@ -5426,7 +5491,7 @@ function deleteFeature(
     });
   }
 
-  const consumingFeature = findConsumingBooleanFeatureByTargetBodyId(
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
     state.features,
     feature.bodyId
   );
@@ -5434,12 +5499,12 @@ function deleteFeature(
   if (consumingFeature) {
     throwValidationError({
       code: "FEATURE_NOT_DELETABLE",
-      message: `Feature ${featureId} cannot be deleted because its body is targeted by boolean feature ${consumingFeature.id}.`,
+      message: `Feature ${featureId} cannot be deleted because its body is targeted by consuming feature ${consumingFeature.id}.`,
       opIndex,
       featureId,
       bodyId: feature.bodyId,
       path: operationPath(opIndex, "id"),
-      expected: "feature body not targeted by a boolean feature",
+      expected: "feature body not targeted by a consuming feature",
       received: consumingFeature.id
     });
   }
@@ -5583,15 +5648,24 @@ function findFeatureByBodyId(
   return [...features.values()].find((feature) => feature.bodyId === bodyId);
 }
 
-function findConsumingBooleanFeatureByTargetBodyId(
+function findConsumingFeatureByTargetBodyId(
   features: ReadonlyMap<FeatureId, Feature>,
   targetBodyId: BodyId
 ): Feature | undefined {
   return [...features.values()].find(
     (feature) =>
-      feature.kind === "extrude" &&
+      isTargetConsumingFeature(feature) && feature.targetBodyId === targetBodyId
+  );
+}
+
+function isTargetConsumingFeature(
+  feature: Feature
+): feature is Extract<Feature, { readonly targetBodyId: BodyId }> {
+  return (
+    (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode) &&
-      feature.targetBodyId === targetBodyId
+      feature.targetBodyId !== undefined) ||
+    feature.kind === "hole"
   );
 }
 
@@ -5678,13 +5752,29 @@ function findFeaturesBySketchEntity(
   sketchId: SketchId,
   entityId: SketchEntityId
 ): readonly Feature[] {
-  return [...features.values()].filter(
-    (feature) =>
-      (feature.sketchId === sketchId && feature.entityId === entityId) ||
-      (feature.kind === "revolve" &&
-        feature.axis.sketchId === sketchId &&
-        feature.axis.entityId === entityId)
-  );
+  return [...features.values()].filter((feature) => {
+    if (
+      feature.kind === "hole" &&
+      feature.sketchId === sketchId &&
+      feature.circleEntityId === entityId
+    ) {
+      return true;
+    }
+
+    if (
+      feature.kind !== "hole" &&
+      feature.sketchId === sketchId &&
+      feature.entityId === entityId
+    ) {
+      return true;
+    }
+
+    return (
+      feature.kind === "revolve" &&
+      feature.axis.sketchId === sketchId &&
+      feature.axis.entityId === entityId
+    );
+  });
 }
 
 function assertExtrudableProfile(
@@ -5907,6 +5997,204 @@ function validateRevolveTargetBodyId(
   });
 }
 
+function assertHoleCircleEntity(
+  entity: SketchEntity,
+  opIndex: number | undefined,
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): asserts entity is Extract<SketchEntity, { readonly kind: "circle" }> {
+  if (entity.kind !== "circle") {
+    throwValidationError({
+      code: "UNSUPPORTED_SKETCH_PROFILE",
+      message: "feature.hole currently supports circle sketch entities only.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entityId,
+      path: operationPath(opIndex, "circleEntityId"),
+      expected: "circle sketch entity",
+      received: entity.kind
+    });
+  }
+
+  if (!isPositiveFiniteNumber(entity.radius)) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Hole circle radius must be a positive finite number.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entityId,
+      path: operationPath(opIndex, "circleEntityId"),
+      expected: "circle entity with positive finite radius",
+      received: describeReceived(entity.radius)
+    });
+  }
+}
+
+function validateHoleSketchAttachment(
+  state: MutableDocumentState,
+  sketch: Sketch,
+  opIndex?: number
+): void {
+  if (!sketch.attachment) {
+    return;
+  }
+
+  const result = validateGeneratedReference({
+    document: state,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: sketch.attachment.bodyId,
+    stableId: sketch.attachment.faceStableId,
+    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+    expectedKind: "face",
+    requiredOperation: "feature.attachSketchPlane"
+  });
+
+  if (!result.ok) {
+    throwGeneratedReferenceValidationError(
+      result.error,
+      opIndex,
+      "faceStableId"
+    );
+  }
+}
+
+function validateHoleTargetBodyId(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  opIndex?: number
+): BodyId {
+  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "TARGET_BODY_REQUIRED",
+      message: "feature.hole requires targetBodyId.",
+      opIndex,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active authored target body id",
+      received: describeReceived(targetBodyId)
+    });
+  }
+
+  const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+
+  if (!targetFeature) {
+    if (isPrimitiveBodyId(state, targetBodyId)) {
+      throwValidationError({
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        message: `Primitive-derived body cannot be targeted by feature.hole: ${targetBodyId}`,
+        opIndex,
+        bodyId: targetBodyId,
+        path: operationPath(opIndex, "targetBodyId"),
+        expected: "authored target body id",
+        received: targetBodyId
+      });
+    }
+
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Target body does not exist: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active authored target body id",
+      received: targetBodyId
+    });
+  }
+
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    targetBodyId
+  );
+
+  if (consumingFeature) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `feature.hole target body is already consumed by feature ${consumingFeature.id}: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      featureId: consumingFeature.id,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "active authored target body",
+      received: targetBodyId
+    });
+  }
+
+  return targetFeature.bodyId;
+}
+
+function validateHoleDepthMode(
+  value: FeatureHoleDepthMode,
+  opIndex?: number
+): FeatureHoleDepthMode {
+  if (value === "blind" || value === "throughAll") {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `Unsupported hole depthMode: ${String(value)}.`,
+    opIndex,
+    path: operationPath(opIndex, "depthMode"),
+    expected: "blind or throughAll",
+    received: describeReceived(value)
+  });
+}
+
+function validateHoleDepth(
+  depthMode: FeatureHoleDepthMode,
+  depth: number | undefined,
+  opIndex?: number
+): number | undefined {
+  if (depthMode === "blind") {
+    if (depth !== undefined && isPositiveFiniteNumber(depth)) {
+      return depth;
+    }
+
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Blind holes require a positive finite depth.",
+      opIndex,
+      path: operationPath(opIndex, "depth"),
+      expected: "positive finite number",
+      received: describeReceived(depth)
+    });
+  }
+
+  if (depth === undefined) {
+    return undefined;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: "throughAll holes must not include depth.",
+    opIndex,
+    path: operationPath(opIndex, "depth"),
+    expected: "omitted depth for throughAll",
+    received: describeReceived(depth)
+  });
+}
+
+function validateHoleDirection(
+  value: FeatureHoleDirection | undefined,
+  opIndex?: number
+): FeatureHoleDirection {
+  if (value === undefined || value === "positive") {
+    return "positive";
+  }
+
+  if (value === "negative") {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `Unsupported hole direction: ${String(value)}.`,
+    opIndex,
+    path: operationPath(opIndex, "direction"),
+    expected: "positive or negative",
+    received: describeReceived(value)
+  });
+}
+
 function validateExtrudeDepth(value: number, opIndex?: number): number {
   if (isPositiveFiniteNumber(value)) {
     return value;
@@ -6043,7 +6331,7 @@ function assertSupportedExtrudeOperation(
       ? undefined
       : findFeatureByBodyId(state.features, targetBodyId);
   const consumingFeature = targetBodyId
-    ? findConsumingBooleanFeatureByTargetBodyId(state.features, targetBodyId)
+    ? findConsumingFeatureByTargetBodyId(state.features, targetBodyId)
     : undefined;
   const hasBlockingConsumingFeature =
     consumingFeature !== undefined &&
@@ -6097,7 +6385,10 @@ function assertSupportedExtrudeOperation(
         targetFeature?.kind === "extrude"
           ? targetFeature.profileKind
           : undefined,
-      targetOperationMode: targetFeature?.operationMode,
+      targetOperationMode:
+        targetFeature?.kind === "extrude"
+          ? targetFeature.operationMode
+          : undefined,
       targetFeatureKind: targetFeature?.kind,
       targetConsumedByFeatureId: hasBlockingConsumingFeature
         ? consumingFeature?.id
@@ -6809,6 +7100,20 @@ function sketchEntityRef(
 }
 
 function featureRef(feature: Feature): CadFeatureRef {
+  if (feature.kind === "hole") {
+    return {
+      id: feature.id,
+      kind: "hole",
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      sketchId: feature.sketchId,
+      circleEntityId: feature.circleEntityId,
+      depthMode: feature.depthMode,
+      ...(feature.depth !== undefined ? { depth: feature.depth } : {}),
+      direction: feature.direction
+    };
+  }
+
   if (feature.kind === "revolve") {
     return {
       id: feature.id,
@@ -7211,6 +7516,16 @@ function scaleDocumentLengthValues(
       pushFeatureModified(diff, featureRef(scaled));
       pushBodyModified(diff, bodyRef(scaled));
     }
+
+    if (feature.kind === "hole" && feature.depth !== undefined) {
+      const scaled: HoleFeature = {
+        ...feature,
+        depth: scaleLength(feature.depth, scaleFactor)
+      };
+      state.features.set(feature.id, scaled);
+      pushFeatureModified(diff, featureRef(scaled));
+      pushBodyModified(diff, bodyRef(scaled));
+    }
   }
 }
 
@@ -7581,6 +7896,21 @@ function cloneSketchAttachment(
 }
 
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
+  if (feature.kind === "hole") {
+    return {
+      id: feature.id,
+      kind: "hole",
+      name: feature.name,
+      targetBodyId: feature.targetBodyId,
+      sketchId: feature.sketchId,
+      circleEntityId: feature.circleEntityId,
+      depthMode: feature.depthMode,
+      ...(feature.depth !== undefined ? { depth: feature.depth } : {}),
+      direction: feature.direction,
+      bodyId: feature.bodyId
+    };
+  }
+
   if (feature.kind === "revolve") {
     return {
       id: feature.id,
@@ -7613,6 +7943,21 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
 }
 
 function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
+  if (snapshot.kind === "hole") {
+    return {
+      id: snapshot.id,
+      kind: "hole",
+      name: snapshot.name,
+      targetBodyId: snapshot.targetBodyId,
+      sketchId: snapshot.sketchId,
+      circleEntityId: snapshot.circleEntityId,
+      depthMode: snapshot.depthMode,
+      depth: snapshot.depth,
+      direction: snapshot.direction ?? "positive",
+      bodyId: snapshot.bodyId
+    };
+  }
+
   if (snapshot.kind === "revolve") {
     return {
       id: snapshot.id,
@@ -7792,6 +8137,28 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
 }
 
 function createFeatureSummary(feature: Feature): CadFeatureSummary {
+  if (feature.kind === "hole") {
+    return {
+      id: feature.id,
+      kind: "hole",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      name: feature.name,
+      sketchId: feature.sketchId,
+      circleEntityId: feature.circleEntityId,
+      depthMode: feature.depthMode,
+      ...(feature.depth !== undefined ? { depth: feature.depth } : {}),
+      direction: feature.direction,
+      source: {
+        type: "sketchCircleHole",
+        sketchId: feature.sketchId,
+        circleEntityId: feature.circleEntityId,
+        targetBodyId: feature.targetBodyId
+      }
+    };
+  }
+
   if (feature.kind === "revolve") {
     return {
       id: feature.id,
@@ -7840,6 +8207,24 @@ function createFeatureBodySnapshot(
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
+  if (feature.kind === "hole") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "sketchHoleFeature",
+        featureId: feature.id,
+        targetBodyId: feature.targetBodyId,
+        sketchId: feature.sketchId,
+        circleEntityId: feature.circleEntityId
+      }
+    };
+  }
+
   if (feature.kind === "revolve") {
     return {
       id: feature.bodyId,
@@ -7882,11 +8267,7 @@ function createConsumedBodyMap(
   const consumed = new Map<BodyId, FeatureId>();
 
   for (const feature of features.values()) {
-    if (
-      feature.kind === "extrude" &&
-      isConsumingExtrudeOperationMode(feature.operationMode) &&
-      feature.targetBodyId
-    ) {
+    if (isTargetConsumingFeature(feature)) {
       consumed.set(feature.targetBodyId, feature.id);
     }
   }
@@ -9514,6 +9895,20 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "hole" && right.kind === "hole") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.targetBodyId === right.targetBodyId &&
+      left.sketchId === right.sketchId &&
+      left.circleEntityId === right.circleEntityId &&
+      left.depthMode === right.depthMode &&
+      left.depth === right.depth &&
+      left.direction === right.direction &&
+      left.bodyId === right.bodyId
+    );
+  }
+
   if (left.kind === "extrude" && right.kind === "extrude") {
     return (
       left.id === right.id &&
@@ -9548,6 +9943,7 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 function normalizeCadProject(value: CadProject): CadProject {
   if (
     value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11
@@ -9803,6 +10199,13 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     };
   }
 
+  if (feature.kind === "hole") {
+    return {
+      ...feature,
+      direction: feature.direction ?? "positive"
+    };
+  }
+
   return {
     ...feature,
     side: feature.side ?? "positive",
@@ -9831,6 +10234,13 @@ function normalizeCadOpSnapshot(op: CadOp): CadOp {
     return {
       ...op,
       operationMode: op.operationMode ?? "newBody"
+    };
+  }
+
+  if (op.op === "feature.hole") {
+    return {
+      ...op,
+      direction: op.direction ?? "positive"
     };
   }
 
@@ -9870,6 +10280,13 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     return {
       ...ref,
       operationMode: ref.operationMode ?? "newBody"
+    };
+  }
+
+  if (ref.kind === "hole") {
+    return {
+      ...ref,
+      direction: ref.direction ?? "positive"
     };
   }
 
@@ -9933,6 +10350,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V10 &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V14 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V13 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V12 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V11 &&
@@ -10074,6 +10492,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -10087,6 +10506,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -10099,6 +10519,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -10110,6 +10531,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
@@ -10119,6 +10541,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
@@ -10127,6 +10550,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
@@ -10134,25 +10558,34 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsMidpointSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsParallelSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsPerpendicularSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsRevolveFeatures =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsHoleFeatures =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -10168,12 +10601,13 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
   const authoredFeatureByBodyId = new Map<
     BodyId,
-    ExtrudeFeatureSnapshot & { readonly path: string }
+    FeatureSnapshot & { readonly path: string }
   >();
   const sketchEntityRefs = new Map<SketchEntityId, SketchEntityImportRef>();
   const sketchAttachments: {
@@ -10459,7 +10893,8 @@ function validateCadDocumentSnapshot(
           seenBodyIds,
           seenSketchIds,
           sketchEntityRefs,
-          allowsRevolveFeatures
+          allowsRevolveFeatures,
+          allowsHoleFeatures
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -12151,10 +12586,7 @@ function collectValidExtrudeFeatureByBodyId(
 function collectValidAuthoredFeatureByBodyId(
   value: unknown,
   path: string,
-  featuresByBodyId: Map<
-    BodyId,
-    ExtrudeFeatureSnapshot & { readonly path: string }
-  >
+  featuresByBodyId: Map<BodyId, FeatureSnapshot & { readonly path: string }>
 ): void {
   if (
     isRecord(value) &&
@@ -12186,24 +12618,80 @@ function collectValidAuthoredFeatureByBodyId(
       bodyId: value.bodyId,
       path
     });
+    return;
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "revolve" &&
+    typeof value.id === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.entityId === "string" &&
+    (value.profileKind === "rectangle" || value.profileKind === "circle") &&
+    isFeatureRevolveAxis(value.axis) &&
+    typeof value.angleDegrees === "number" &&
+    isPositiveFiniteNumber(value.angleDegrees) &&
+    value.angleDegrees <= 360 &&
+    (value.operationMode === undefined || value.operationMode === "newBody") &&
+    value.targetBodyId === undefined &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "revolve",
+      name: typeof value.name === "string" ? value.name : undefined,
+      sketchId: value.sketchId,
+      entityId: value.entityId,
+      profileKind: value.profileKind,
+      axis: value.axis,
+      angleDegrees: value.angleDegrees,
+      operationMode: "newBody",
+      bodyId: value.bodyId,
+      path
+    });
+    return;
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "hole" &&
+    typeof value.id === "string" &&
+    typeof value.targetBodyId === "string" &&
+    typeof value.sketchId === "string" &&
+    typeof value.circleEntityId === "string" &&
+    (value.depthMode === "blind" || value.depthMode === "throughAll") &&
+    (value.depthMode === "throughAll" ||
+      (typeof value.depth === "number" &&
+        isPositiveFiniteNumber(value.depth))) &&
+    (value.depthMode !== "throughAll" || value.depth === undefined) &&
+    (value.direction === "positive" || value.direction === "negative") &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "hole",
+      name: typeof value.name === "string" ? value.name : undefined,
+      targetBodyId: value.targetBodyId,
+      sketchId: value.sketchId,
+      circleEntityId: value.circleEntityId,
+      depthMode: value.depthMode,
+      ...(typeof value.depth === "number" ? { depth: value.depth } : {}),
+      direction: value.direction,
+      bodyId: value.bodyId,
+      path
+    });
   }
 }
 
 function validateFeatureTargetBodyReferences(
   featuresByBodyId: ReadonlyMap<
     BodyId,
-    ExtrudeFeatureSnapshot & { readonly path: string }
+    FeatureSnapshot & { readonly path: string }
   >,
   issues: CadProjectImportIssue[]
 ): void {
   for (const feature of featuresByBodyId.values()) {
-    const operationMode = feature.operationMode ?? "newBody";
-
-    if (!isConsumingExtrudeOperationMode(operationMode)) {
-      continue;
-    }
-
-    const targetBodyId = feature.targetBodyId;
+    const targetBodyId = getImportFeatureTargetBodyId(feature);
 
     if (!targetBodyId) {
       continue;
@@ -12216,7 +12704,17 @@ function validateFeatureTargetBodyReferences(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        `${formatExtrudeOperationModeForIssue(operationMode)} extrude targetBodyId must reference an existing authored extrude body.`
+        `${formatTargetConsumingFeatureForIssue(feature)} targetBodyId must reference an existing authored body.`
+      );
+      continue;
+    }
+
+    if (target.id === feature.id) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.targetBodyId`,
+        `${formatTargetConsumingFeatureForIssue(feature)} targetBodyId must not reference its own result body.`
       );
       continue;
     }
@@ -12224,8 +12722,8 @@ function validateFeatureTargetBodyReferences(
     const consumedBy = [...featuresByBodyId.values()].find(
       (candidate) =>
         candidate.id !== feature.id &&
-        isConsumingExtrudeOperationMode(candidate.operationMode ?? "newBody") &&
-        candidate.targetBodyId === targetBodyId
+        isImportTargetConsumingFeature(candidate) &&
+        getImportFeatureTargetBodyId(candidate) === targetBodyId
     );
 
     if (consumedBy) {
@@ -12233,20 +12731,50 @@ function validateFeatureTargetBodyReferences(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        `${formatExtrudeOperationModeForIssue(operationMode)} extrude targetBodyId must reference an active authored body that is not already consumed by another boolean feature.`
+        `${formatTargetConsumingFeatureForIssue(feature)} targetBodyId must reference an active authored body that is not already consumed by another feature.`
       );
       continue;
     }
 
-    if (!isSupportedBooleanExtrudeCombination(feature, target)) {
+    if (
+      feature.kind === "extrude" &&
+      (!isExtrudeFeatureSnapshot(target) ||
+        !isSupportedBooleanExtrudeCombination(feature, target))
+    ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.operationMode`,
-        getUnsupportedBooleanExtrudeMessage(operationMode)
+        getUnsupportedBooleanExtrudeMessage(feature.operationMode ?? "newBody")
       );
     }
   }
+}
+
+function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
+  return (
+    (feature.kind === "extrude" &&
+      isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody") &&
+      typeof feature.targetBodyId === "string" &&
+      feature.targetBodyId.length > 0) ||
+    feature.kind === "hole"
+  );
+}
+
+function getImportFeatureTargetBodyId(
+  feature: FeatureSnapshot
+): BodyId | undefined {
+  return isImportTargetConsumingFeature(feature)
+    ? feature.kind === "hole"
+      ? feature.targetBodyId
+      : feature.targetBodyId
+    : undefined;
+}
+
+function isExtrudeFeatureSnapshot(
+  feature: FeatureSnapshot
+): feature is ExtrudeFeatureSnapshot {
+  return feature.kind === "extrude";
 }
 
 function isSupportedBooleanExtrudeCombination(
@@ -12281,6 +12809,25 @@ function getUnsupportedBooleanExtrudeMessage(
   }
 
   return "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.";
+}
+
+function formatTargetConsumingFeatureForIssue(
+  feature: FeatureSnapshot
+): string {
+  if (feature.kind === "hole") {
+    return "Hole feature";
+  }
+
+  if (
+    feature.kind === "extrude" &&
+    isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody")
+  ) {
+    return `${formatExtrudeOperationModeForIssue(
+      feature.operationMode ?? "newBody"
+    )} extrude`;
+  }
+
+  return "Consuming feature";
 }
 
 function formatExtrudeOperationModeForIssue(
@@ -12548,7 +13095,8 @@ function validateFeatureSnapshot(
   seenBodyIds: Set<string>,
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
-  allowsRevolveFeatures: boolean
+  allowsRevolveFeatures: boolean,
+  allowsHoleFeatures: boolean
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -12587,15 +13135,18 @@ function validateFeatureSnapshot(
 
   if (
     value.kind !== "extrude" &&
-    (value.kind !== "revolve" || !allowsRevolveFeatures)
+    (value.kind !== "revolve" || !allowsRevolveFeatures) &&
+    (value.kind !== "hole" || !allowsHoleFeatures)
   ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.kind`,
-      allowsRevolveFeatures
-        ? "Feature kind must be extrude or revolve."
-        : "Feature kind must be extrude."
+      allowsHoleFeatures
+        ? "Feature kind must be extrude, revolve, or hole."
+        : allowsRevolveFeatures
+          ? "Feature kind must be extrude or revolve."
+          : "Feature kind must be extrude."
     );
   }
 
@@ -12612,6 +13163,32 @@ function validateFeatureSnapshot(
     }
 
     validateRevolveFeatureSnapshotFields(
+      value,
+      path,
+      issues,
+      seenBodyIds,
+      seenSketchIds,
+      sketchEntityRefs
+    );
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "hole") {
+    if (!allowsHoleFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Hole features require web-cad.project.v15."
+      );
+    }
+
+    validateHoleFeatureSnapshotFields(
       value,
       path,
       issues,
@@ -12922,6 +13499,134 @@ function validateRevolveFeatureSnapshotFields(
       "INVALID_FEATURE",
       `${path}.bodyId`,
       "Revolve feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
+function validateHoleFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>,
+  seenSketchIds: ReadonlySet<string>,
+  sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>
+): void {
+  if (
+    typeof value.targetBodyId !== "string" ||
+    value.targetBodyId.length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      "Hole feature targetBodyId must be a non-empty string."
+    );
+  }
+
+  if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Hole feature sketchId must be a non-empty string."
+    );
+  } else if (!seenSketchIds.has(value.sketchId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.sketchId`,
+      "Hole feature sketchId must reference an existing sketch."
+    );
+  }
+
+  if (
+    typeof value.circleEntityId !== "string" ||
+    value.circleEntityId.length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.circleEntityId`,
+      "Hole feature circleEntityId must be a non-empty string."
+    );
+  } else if (!sketchEntityRefs.has(value.circleEntityId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.circleEntityId`,
+      "Hole feature circleEntityId must reference an existing sketch entity."
+    );
+  } else {
+    const referencedEntity = sketchEntityRefs.get(value.circleEntityId);
+
+    if (referencedEntity && referencedEntity.sketchId !== value.sketchId) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.circleEntityId`,
+        "Hole feature circleEntityId must belong to the referenced sketch."
+      );
+    }
+
+    if (referencedEntity && referencedEntity.kind !== "circle") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.circleEntityId`,
+        "Hole feature circleEntityId must reference a circle sketch entity."
+      );
+    }
+  }
+
+  if (value.depthMode !== "blind" && value.depthMode !== "throughAll") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.depthMode`,
+      "Hole feature depthMode must be blind or throughAll."
+    );
+  }
+
+  if (value.depthMode === "blind") {
+    validatePositiveFiniteField(
+      value.depth,
+      `${path}.depth`,
+      "Blind hole depth",
+      issues
+    );
+  } else if (value.depth !== undefined) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.depth`,
+      "throughAll hole features must not include depth."
+    );
+  }
+
+  if (value.direction !== "positive" && value.direction !== "negative") {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.direction`,
+      "Hole feature direction must be positive or negative."
+    );
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      "Hole feature bodyId must be a non-empty string."
     );
   } else if (seenBodyIds.has(value.bodyId)) {
     addProjectIssue(
@@ -14079,6 +14784,22 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.hole") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.circleEntityId === "string" &&
+      isHoleDepthMode(value.depthMode) &&
+      (value.depth === undefined ||
+        (typeof value.depth === "number" &&
+          isPositiveFiniteNumber(value.depth))) &&
+      (value.direction === undefined || isHoleDirection(value.direction))
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -14285,7 +15006,25 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
-    typeof value.bodyId !== "string" ||
+    typeof value.bodyId !== "string"
+  ) {
+    return false;
+  }
+
+  if (value.kind === "hole") {
+    return (
+      typeof value.targetBodyId === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.circleEntityId === "string" &&
+      isHoleDepthMode(value.depthMode) &&
+      (value.depth === undefined ||
+        (typeof value.depth === "number" &&
+          isPositiveFiniteNumber(value.depth))) &&
+      isHoleDirection(value.direction)
+    );
+  }
+
+  if (
     typeof value.sketchId !== "string" ||
     typeof value.entityId !== "string" ||
     (value.profileKind !== "rectangle" && value.profileKind !== "circle") ||
@@ -14569,6 +15308,14 @@ function isRevolveOperationMode(
   value: unknown
 ): value is FeatureRevolveOperationMode {
   return value === "newBody" || value === "add" || value === "cut";
+}
+
+function isHoleDepthMode(value: unknown): value is FeatureHoleDepthMode {
+  return value === "blind" || value === "throughAll";
+}
+
+function isHoleDirection(value: unknown): value is FeatureHoleDirection {
+  return value === "positive" || value === "negative";
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

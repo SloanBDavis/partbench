@@ -15,6 +15,8 @@ import type {
   FeatureExtrudeOperationMode,
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
+  FeatureHoleDepthMode,
+  FeatureHoleDirection,
   FeatureId,
   FeatureRevolveAxis,
   FeatureRevolveOperationMode,
@@ -67,6 +69,7 @@ export type GeneratedReferencesSketchEntity =
 
 export type GeneratedReferencesFeature =
   | GeneratedReferencesExtrudeFeature
+  | GeneratedReferencesHoleFeature
   | GeneratedReferencesUnsupportedFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
@@ -92,6 +95,18 @@ export interface GeneratedReferencesUnsupportedFeature {
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesHoleFeature {
+  readonly id: FeatureId;
+  readonly kind: "hole";
+  readonly targetBodyId: BodyId;
+  readonly sketchId: SketchId;
+  readonly circleEntityId: SketchEntityId;
+  readonly depthMode: FeatureHoleDepthMode;
+  readonly depth?: number;
+  readonly direction: FeatureHoleDirection;
   readonly bodyId: BodyId;
 }
 

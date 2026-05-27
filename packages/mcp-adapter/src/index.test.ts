@@ -897,6 +897,104 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes feature.hole through cad.batch", () => {
+    const server = new CadMcpServer();
+    const batchResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_hole",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_target",
+              name: "Target",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_target",
+              id: "rect_target",
+              center: [0, 0],
+              width: 4,
+              height: 3
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_target",
+              bodyId: "body_target",
+              sketchId: "sketch_target",
+              entityId: "rect_target",
+              depth: 2
+            },
+            {
+              op: "sketch.create",
+              id: "sketch_hole",
+              name: "Hole",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_hole",
+              id: "circle_hole",
+              center: [0, 0],
+              radius: 0.5
+            },
+            {
+              op: "feature.hole",
+              id: "feat_hole",
+              bodyId: "body_hole",
+              targetBodyId: "body_target",
+              sketchId: "sketch_hole",
+              circleEntityId: "circle_hole",
+              depthMode: "throughAll"
+            }
+          ]
+        }
+      }
+    });
+    const structureResult = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_hole_structure"
+    });
+
+    expect(batchResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_target", "feat_hole"],
+        createdBodyIds: ["body_target", "body_hole"]
+      }
+    });
+    expect(structureResult).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: expect.arrayContaining([
+          expect.objectContaining({
+            id: "feat_hole",
+            kind: "hole",
+            targetBodyId: "body_target"
+          })
+        ]),
+        bodies: expect.arrayContaining([
+          expect.objectContaining({
+            id: "body_target",
+            consumedByFeatureId: "feat_hole"
+          }),
+          expect.objectContaining({
+            id: "body_hole",
+            featureId: "feat_hole",
+            source: expect.objectContaining({ type: "sketchHoleFeature" })
+          })
+        ])
+      }
+    });
+  });
+
   it("passes unsupported extrude operation mode errors through cad.batch", () => {
     const server = new CadMcpServer();
     seedMcpExtrudeFeature(server, {

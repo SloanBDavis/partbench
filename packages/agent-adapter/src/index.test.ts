@@ -477,6 +477,120 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes feature.hole through JSON batch commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_hole",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "sketch_target",
+                name: "Target",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "sketch_target",
+                id: "rect_target",
+                center: [0, 0],
+                width: 4,
+                height: 3
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_target",
+                bodyId: "body_target",
+                sketchId: "sketch_target",
+                entityId: "rect_target",
+                depth: 2
+              },
+              {
+                op: "sketch.create",
+                id: "sketch_hole",
+                name: "Hole",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addCircle",
+                sketchId: "sketch_hole",
+                id: "circle_hole",
+                center: [0, 0],
+                radius: 0.5
+              },
+              {
+                op: "feature.hole",
+                id: "feat_hole",
+                bodyId: "body_hole",
+                targetBodyId: "body_target",
+                sketchId: "sketch_hole",
+                circleEntityId: "circle_hole",
+                depthMode: "throughAll",
+                direction: "positive"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+    };
+    const structure = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const health = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_target", "feat_hole"],
+      createdBodyIds: ["body_target", "body_hole"]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_hole",
+          kind: "hole",
+          targetBodyId: "body_target"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_target",
+          consumedByFeatureId: "feat_hole"
+        }),
+        expect.objectContaining({
+          id: "body_hole",
+          source: expect.objectContaining({ type: "sketchHoleFeature" })
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      authoredHoleCount: 1,
+      authoredHoles: [
+        {
+          featureId: "feat_hole",
+          bodyId: "body_hole",
+          targetBodyId: "body_target",
+          status: "healthy"
+        }
+      ]
+    });
+  });
+
   it("passes rectangle add extrudes through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
 

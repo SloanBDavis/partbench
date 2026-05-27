@@ -13,6 +13,7 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V11,
   CAD_PROJECT_FORMAT_VERSION_V12,
   CAD_PROJECT_FORMAT_VERSION_V13,
+  CAD_PROJECT_FORMAT_VERSION_V14,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -5281,6 +5282,404 @@ describe("cad-core", () => {
     );
   });
 
+  it("creates authored hole features as consuming source intent only", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_target", name: "Target", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_target",
+        id: "rect_target",
+        center: [0, 0],
+        width: 6,
+        height: 4
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_target",
+        bodyId: "body_target",
+        sketchId: "sketch_target",
+        entityId: "rect_target",
+        depth: 3
+      },
+      { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [1, 1],
+        radius: 0.5
+      }
+    ]);
+
+    const result = engine.apply({
+      op: "feature.hole",
+      id: "feat_hole",
+      bodyId: "body_hole",
+      name: "Mounting hole",
+      targetBodyId: "body_target",
+      sketchId: "sketch_hole",
+      circleEntityId: "circle_hole",
+      depthMode: "blind",
+      depth: 2,
+      direction: "negative"
+    });
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+    const topology = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_hole" }
+    });
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(result.transaction.diff.features).toMatchObject({
+      created: [
+        {
+          id: "feat_hole",
+          kind: "hole",
+          bodyId: "body_hole",
+          targetBodyId: "body_target",
+          sketchId: "sketch_hole",
+          circleEntityId: "circle_hole",
+          depthMode: "blind",
+          depth: 2,
+          direction: "negative"
+        }
+      ],
+      bodiesCreated: [
+        { id: "body_hole", kind: "solid", featureId: "feat_hole" }
+      ]
+    });
+    expect(structure).toMatchObject({
+      ok: true,
+      query: "project.structure",
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_hole",
+          kind: "hole",
+          bodyId: "body_hole",
+          targetBodyId: "body_target",
+          depthMode: "blind",
+          depth: 2,
+          direction: "negative"
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_target",
+          consumedByFeatureId: "feat_hole"
+        }),
+        expect.objectContaining({
+          id: "body_hole",
+          featureId: "feat_hole",
+          source: expect.objectContaining({
+            type: "sketchHoleFeature",
+            featureId: "feat_hole",
+            targetBodyId: "body_target",
+            sketchId: "sketch_hole",
+            circleEntityId: "circle_hole"
+          })
+        })
+      ])
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredHoleCount: 1,
+      authoredHoles: [
+        {
+          featureId: "feat_hole",
+          bodyId: "body_hole",
+          targetBodyId: "body_target",
+          status: "healthy",
+          topologyStatus: "unsupported",
+          topologyAvailable: false
+        }
+      ]
+    });
+    expect(topology).toMatchObject({
+      ok: true,
+      topology: {
+        bodyId: "body_hole",
+        sourceKind: "authoredHole",
+        topologyAvailable: false
+      }
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: [
+            expect.objectContaining({
+              op: "feature.hole",
+              label:
+                "Create blind 2 negative hole feature feat_hole from sketch_hole/circle_hole into body_target -> body body_hole",
+              featureId: "feat_hole",
+              bodyId: "body_hole",
+              targetBodyId: "body_target",
+              sketchEntityId: "circle_hole"
+            })
+          ]
+        })
+      ])
+    });
+  });
+
+  it("supports attached sketch holes, dry-run, undo, redo, and project round trip", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_target", name: "Target", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_target",
+        id: "rect_target",
+        center: [0, 0],
+        width: 4,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_target",
+        bodyId: "body_target",
+        sketchId: "sketch_target",
+        entityId: "rect_target",
+        depth: 2
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_hole",
+        name: "Hole sketch",
+        bodyId: "body_target",
+        faceStableId: "generated:face:body_target:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [0, 0],
+        radius: 0.4
+      }
+    ]);
+
+    const holeOp = {
+      op: "feature.hole" as const,
+      id: "feat_hole",
+      bodyId: "body_hole",
+      targetBodyId: "body_target",
+      sketchId: "sketch_hole",
+      circleEntityId: "circle_hole",
+      depthMode: "throughAll" as const,
+      direction: "positive" as const
+    };
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [holeOp]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_hole"],
+      createdBodyIds: ["body_hole"]
+    });
+    expect(engine.getDocument().features.has("feat_hole")).toBe(false);
+
+    const commit = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [holeOp]
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_hole"],
+      createdBodyIds: ["body_hole"]
+    });
+    expect(engine.getDocument().features.get("feat_hole")).toMatchObject({
+      kind: "hole",
+      depthMode: "throughAll",
+      targetBodyId: "body_target"
+    });
+
+    engine.undo();
+    expect(engine.getDocument().features.has("feat_hole")).toBe(false);
+
+    engine.redo();
+    expect(engine.getDocument().features.get("feat_hole")).toMatchObject({
+      kind: "hole",
+      direction: "positive"
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_hole",
+          kind: "hole",
+          targetBodyId: "body_target",
+          depthMode: "throughAll",
+          direction: "positive",
+          bodyId: "body_hole"
+        })
+      ])
+    );
+
+    const restored = importCadProject(project);
+    expect(restored.getDocument().features.get("feat_hole")).toMatchObject({
+      kind: "hole",
+      bodyId: "body_hole",
+      targetBodyId: "body_target"
+    });
+
+    const mislabeledV14 = {
+      ...project,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V14
+    } satisfies CadProject;
+
+    expect(() => importCadProject(mislabeledV14)).toThrow(
+      CadProjectImportError
+    );
+  });
+
+  it("validates hole source and target inputs", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_target", name: "Target", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_target",
+        id: "rect_target",
+        center: [0, 0],
+        width: 4,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_target",
+        bodyId: "body_target",
+        sketchId: "sketch_target",
+        entityId: "rect_target",
+        depth: 2
+      },
+      { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [0, 0],
+        radius: 0.4
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_hole",
+        id: "rect_hole",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole",
+        bodyId: "body_hole",
+        targetBodyId: "body_target",
+        sketchId: "sketch_hole",
+        circleEntityId: "circle_hole",
+        depthMode: "throughAll"
+      }
+    ]);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.hole",
+            targetBodyId: "body_target",
+            sketchId: "sketch_hole",
+            circleEntityId: "rect_hole",
+            depthMode: "blind",
+            depth: 1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_SKETCH_PROFILE" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.hole",
+            targetBodyId: "body_hole",
+            sketchId: "sketch_hole",
+            circleEntityId: "circle_hole",
+            depthMode: "blind"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_FEATURE", path: "$.ops[0].depth" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.hole",
+            targetBodyId: "body_hole",
+            sketchId: "sketch_hole",
+            circleEntityId: "circle_hole",
+            depthMode: "throughAll",
+            depth: 1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_FEATURE", path: "$.ops[0].depth" }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.hole",
+            targetBodyId: "body_target",
+            sketchId: "sketch_hole",
+            circleEntityId: "circle_hole",
+            depthMode: "throughAll"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+    });
+  });
+
   it("allows valid revolve axis line edits and rejects invalid axis updates", () => {
     const engine = new CadEngine();
 
@@ -10074,9 +10473,9 @@ describe("cad-core", () => {
         expect.arrayContaining([
           {
             code: "INVALID_FEATURE",
-            path: "$.document.features[0].operationMode",
+            path: "$.document.features[0].targetBodyId",
             message:
-              "Add extrudes currently support rectangle tools fusing with one active rectangle newBody target body."
+              "Add extrude targetBodyId must not reference its own result body."
           }
         ])
       );

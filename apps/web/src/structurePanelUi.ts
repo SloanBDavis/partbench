@@ -26,19 +26,24 @@ export interface StructureTreeSummary {
 
 export type AuthoredStructureFeature = Extract<
   CadFeatureSummary,
-  { readonly kind: "extrude" | "revolve" }
+  { readonly kind: "extrude" | "revolve" | "hole" }
 >;
 
 export function isAuthoredStructureFeature(
   feature: CadFeatureSummary
 ): feature is AuthoredStructureFeature {
-  return feature.kind === "extrude" || feature.kind === "revolve";
+  return (
+    feature.kind === "extrude" ||
+    feature.kind === "revolve" ||
+    feature.kind === "hole"
+  );
 }
 
 export function isAuthoredStructureBody(body: CadBodySnapshot): boolean {
   return (
     body.source.type === "sketchExtrudeFeature" ||
-    body.source.type === "sketchRevolveFeature"
+    body.source.type === "sketchRevolveFeature" ||
+    body.source.type === "sketchHoleFeature"
   );
 }
 
@@ -95,6 +100,9 @@ export function getSketchHealthStatus(
   const dependentRevolveStatuses = health.authoredRevolves
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
+  const dependentHoleStatuses = health.authoredHoles
+    .filter((entry) => entry.sketchId === sketchId)
+    .map((entry) => entry.status);
   const evaluationStatuses = health.sketchEvaluations
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
@@ -109,6 +117,7 @@ export function getSketchHealthStatus(
     ...(attachedSketch ? [attachedSketch.status] : []),
     ...dependentFeatureStatuses,
     ...dependentRevolveStatuses,
+    ...dependentHoleStatuses,
     ...evaluationStatuses,
     ...dimensionStatuses,
     ...constraintStatuses
@@ -124,6 +133,9 @@ export function getFeatureHealthStatus(
       .filter((entry) => entry.featureId === featureId)
       .map((entry) => entry.status),
     ...health.authoredRevolves
+      .filter((entry) => entry.featureId === featureId)
+      .map((entry) => entry.status),
+    ...health.authoredHoles
       .filter((entry) => entry.featureId === featureId)
       .map((entry) => entry.status),
     ...health.sketchEvaluations
@@ -147,6 +159,9 @@ export function getBodyHealthStatus(
       .filter((entry) => entry.bodyId === bodyId)
       .map((entry) => entry.status),
     ...health.authoredRevolves
+      .filter((entry) => entry.bodyId === bodyId)
+      .map((entry) => entry.status),
+    ...health.authoredHoles
       .filter((entry) => entry.bodyId === bodyId)
       .map((entry) => entry.status),
     ...health.sketchEvaluations
@@ -185,6 +200,10 @@ export function getHealthIssues(
       health.authoredRevolves
         .find((entry) => entry.featureId === target.id)
         ?.issues.map((issue) => issue.message) ?? [];
+    const holeIssues =
+      health.authoredHoles
+        .find((entry) => entry.featureId === target.id)
+        ?.issues.map((issue) => issue.message) ?? [];
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
@@ -198,6 +217,7 @@ export function getHealthIssues(
     return [
       ...featureIssues,
       ...revolveIssues,
+      ...holeIssues,
       ...evaluationIssues,
       ...dimensionIssues,
       ...constraintIssues
@@ -213,6 +233,10 @@ export function getHealthIssues(
       health.authoredRevolves
         .find((entry) => entry.bodyId === target.id)
         ?.issues.map((issue) => issue.message) ?? [];
+    const holeIssues =
+      health.authoredHoles
+        .find((entry) => entry.bodyId === target.id)
+        ?.issues.map((issue) => issue.message) ?? [];
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedBodyIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
@@ -226,6 +250,7 @@ export function getHealthIssues(
     return [
       ...bodyIssues,
       ...revolveIssues,
+      ...holeIssues,
       ...evaluationIssues,
       ...dimensionIssues,
       ...constraintIssues
@@ -249,6 +274,9 @@ export function getHealthIssues(
   const revolveIssues = health.authoredRevolves
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
+  const holeIssues = health.authoredHoles
+    .filter((entry) => entry.sketchId === target.id)
+    .flatMap((entry) => entry.issues);
   const evaluationIssues = health.sketchEvaluations
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
@@ -263,6 +291,7 @@ export function getHealthIssues(
     ...attachedIssues,
     ...featureIssues,
     ...revolveIssues,
+    ...holeIssues,
     ...evaluationIssues,
     ...dimensionIssues,
     ...constraintIssues
@@ -282,6 +311,15 @@ export function formatFeatureLine(
     return `${formatRevolveOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.angleDegrees} deg / axis ${feature.axis.entityId}${target}`;
   }
 
+  if (feature.kind === "hole") {
+    const depth =
+      feature.depthMode === "blind"
+        ? `${feature.depth} ${units}`
+        : "through all";
+
+    return `hole / circle / ${depth} / ${feature.direction} / target ${feature.targetBodyId}`;
+  }
+
   const target =
     (feature.operationMode === "add" || feature.operationMode === "cut") &&
     feature.targetBodyId
@@ -289,6 +327,15 @@ export function formatFeatureLine(
       : "";
 
   return `${formatExtrudeOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.depth} ${units} / ${feature.side}${target}`;
+}
+
+export function formatFeatureSourceLine(
+  feature: AuthoredStructureFeature
+): string {
+  const entityId =
+    feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
+
+  return `Sketch ${feature.sketchId} / entity ${entityId}`;
 }
 
 export function formatBodyRole(
@@ -305,6 +352,10 @@ export function formatBodyRole(
 
   if (feature?.kind === "extrude" && feature.operationMode === "cut") {
     return "Cut result";
+  }
+
+  if (feature?.kind === "hole") {
+    return "Hole result";
   }
 
   return "Generated body";
@@ -328,13 +379,25 @@ export function formatBodyStatusLine(
       : `Cuts ${feature.targetBodyId}`;
   }
 
+  if (feature?.kind === "hole") {
+    return `Holes ${feature.targetBodyId}`;
+  }
+
   return `Feature ${body.featureId}`;
 }
 
 export function formatFeatureKindLabel(
   feature: AuthoredStructureFeature
 ): string {
-  return feature.kind === "extrude" ? "Extrude" : "Revolve";
+  if (feature.kind === "extrude") {
+    return "Extrude";
+  }
+
+  if (feature.kind === "revolve") {
+    return "Revolve";
+  }
+
+  return "Hole";
 }
 
 export function formatExtrudeOperationMode(

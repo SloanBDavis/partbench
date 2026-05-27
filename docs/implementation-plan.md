@@ -67,7 +67,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v14` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v15` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
@@ -188,7 +188,7 @@ Current Partbench can:
   confidence for rectangle/circle newBody extrudes;
 - inspect structured ambiguous topology status for current boolean result bodies
   where stable generated topology cannot be proven yet;
-- save/load current `web-cad.project.v14` JSON with migrations from older accepted
+- save/load current `web-cad.project.v15` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
@@ -649,7 +649,8 @@ The V6 product target is:
 V6 remains iterative. Each phase should be implemented with focused prompts and
 unit/package coverage, but the milestone decisions are made up front:
 
-- new persisted V6 feature records should introduce `web-cad.project.v14`;
+- new persisted V6 feature records should introduce explicit schema versions
+  (`web-cad.project.v14` for revolve, `web-cad.project.v15` for hole);
 - exact-kernel metadata remains derived and should not be persisted as source;
 - target-consuming features such as hole, chamfer, and fillet create result
   bodies rather than mutating body identity in place;
@@ -709,9 +710,12 @@ Planned deliverables:
 
 - source-of-truth `feature.hole` records and commands;
 - circular sketch entity tools on base-plane and attached planar-face sketches;
-- blind and through-all hole behavior where exact target bounds make it safe;
+- blind and through-all source intent with positive/negative direction;
 - target body consumption and authored result body creation;
-- derived geometry, health, measurements/extents, adapter/MCP, UI, and tests.
+- project structure/health, semantic diffs, undo/redo, batch dry-run/commit,
+  transaction history, V15 import/export, adapter/MCP pass-through, and tests
+  for the command-first source model;
+- derived geometry, measurements/extents, and UI are follow-up Phase D slices.
 
 ### V6 Phase E: Edge Finishing With Chamfer And Fillet
 
