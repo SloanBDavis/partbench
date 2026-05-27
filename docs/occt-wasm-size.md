@@ -239,6 +239,13 @@ profiles, zero-length axes, and angles that are not positive finite values less
 than or equal to 360 degrees before invoking OCCT. If a revolve factory is not
 available, the response uses structured `UNAVAILABLE_BINDING` diagnostics.
 
+The same revolve shape construction now feeds `geometry.exactBodyMetadata` for
+authored rectangle/circle revolve sources. Exact revolve metadata uses the
+existing OCCT bounds, mass-property, centroid, and topology-count bindings and
+remains derived query/cache data only. If the revolve construction bindings are
+not available, the geometry response reports structured `UNAVAILABLE_BINDING`
+diagnostics rather than estimating metadata from tessellated mesh triangles.
+
 ## Boolean Feasibility Risks
 
 The extrude boolean path does not change the binary-size recommendation, but it

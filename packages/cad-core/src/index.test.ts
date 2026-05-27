@@ -95,6 +95,40 @@ function createCircleExtrudeEngine(): CadEngine {
   return engine;
 }
 
+function createRectangleRevolveEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [2, 0],
+      width: 1,
+      height: 3
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "axis_1",
+      start: [0, -2],
+      end: [0, 2]
+    },
+    {
+      op: "feature.revolve",
+      id: "feat_revolve_1",
+      bodyId: "body_revolve_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+      angleDegrees: 360
+    }
+  ]);
+
+  return engine;
+}
+
 function readBodyTopologySourceCacheKey(
   engine: CadEngine,
   bodyId: string
@@ -7773,6 +7807,156 @@ describe("cad-core", () => {
     });
   });
 
+  it("reports derived exact metadata for revolve bodies without generated topology references", () => {
+    const engine = createRectangleRevolveEngine();
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body_revolve_1"
+    );
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_revolve_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_revolve_1",
+        status: "unsupported",
+        sourceKind: "authoredRevolve",
+        sourceIdentity: {
+          featureId: "feat_revolve_1",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          profileKind: "rectangle",
+          profileSignature: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          revolveAxis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          },
+          revolveAxisSignature: {
+            start: [0, -2],
+            end: [0, 2]
+          },
+          revolveAngleDegrees: 360
+        },
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_revolve_1",
+            featureId: "feat_revolve_1"
+          }
+        ]
+      }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId: "body_revolve_1",
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_revolve_1",
+          sourceIdentityCacheKey,
+          volume: 12 * Math.PI,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8
+        })
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_revolve_1",
+        status: "unsupported",
+        topologyModel: "none",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 12 * Math.PI,
+          topologyCounts: { faceCount: 6, edgeCount: 12, vertexCount: 8 }
+        },
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_revolve_1"
+          }
+        ]
+      }
+    });
+  });
+
+  it("marks derived revolve exact metadata stale after profile or axis edits", () => {
+    const engine = createRectangleRevolveEngine();
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body_revolve_1"
+    );
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "axis_1",
+        kind: "line",
+        start: [0, -3],
+        end: [0, 3]
+      }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId: "body_revolve_1",
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_revolve_1",
+          sourceIdentityCacheKey
+        })
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_revolve_1",
+        status: "stale",
+        exactGeometryAvailable: false,
+        measurementConfidence: "none",
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_revolve_1"
+          },
+          {
+            code: "STALE_BODY_TOPOLOGY",
+            bodyId: "body_revolve_1",
+            expected: readBodyTopologySourceCacheKey(engine, "body_revolve_1"),
+            received: sourceIdentityCacheKey
+          }
+        ]
+      }
+    });
+  });
+
   it("returns primitive unsupported and missing body topology responses", () => {
     const engine = new CadEngine();
 
@@ -7888,6 +8072,55 @@ describe("cad-core", () => {
       topology: {
         bodyId: "body_rect_1",
         sourceIdentity: { featureId: "feat_rect_1" }
+      }
+    });
+  });
+
+  it("keeps project JSON unchanged when querying derived revolve exact metadata", () => {
+    const engine = createRectangleRevolveEngine();
+    const before = exportCadProjectJson(engine);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_revolve_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_revolve_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              engine,
+              "body_revolve_1"
+            ),
+            volume: 12 * Math.PI
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_revolve_1",
+        exactGeometryAvailable: true,
+        measurementConfidence: "kernel-derived"
+      }
+    });
+
+    expect(exportCadProjectJson(engine)).toEqual(before);
+
+    const restored = importCadProjectJson(before);
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_revolve_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_revolve_1",
+        sourceKind: "authoredRevolve",
+        exactGeometryAvailable: false
       }
     });
   });

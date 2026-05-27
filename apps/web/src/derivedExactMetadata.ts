@@ -1,7 +1,8 @@
 import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
-  DerivedGeometrySource
+  DerivedGeometrySource,
+  DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
@@ -20,7 +21,8 @@ export type DerivedExactMetadataStatusKind =
 
 export type DerivedExactMetadataSource =
   | DerivedExtrudeGeometrySource
-  | DerivedBooleanExtrudeGeometrySource;
+  | DerivedBooleanExtrudeGeometrySource
+  | DerivedRevolveGeometrySource;
 
 export type DerivedExactMetadataEntry =
   | DerivedExactMetadataUnsupportedEntry
@@ -294,6 +296,22 @@ export function createExactMetadataRuntimeInput(
     };
   }
 
+  if (source.kind === "revolve") {
+    return {
+      id: source.id,
+      source: {
+        kind: "revolve",
+        sketchPlane: source.sketchPlane,
+        profile: source.profile,
+        axis: source.axis,
+        angleDegrees: source.angleDegrees,
+        ...(source.placementFrame
+          ? { placementFrame: source.placementFrame }
+          : {})
+      }
+    };
+  }
+
   return {
     id: source.id,
     source: {
@@ -336,13 +354,21 @@ function createPendingEntry(
 function isExactMetadataSource(
   source: DerivedGeometrySource
 ): source is DerivedExactMetadataSource {
-  return source.kind === "extrude" || source.kind === "extrudeBoolean";
+  return (
+    source.kind === "extrude" ||
+    source.kind === "extrudeBoolean" ||
+    source.kind === "revolve"
+  );
 }
 
 function getUnsupportedExactMetadataSourceMessage(
   source: DerivedExactMetadataSource
 ): string | undefined {
   if (source.kind === "extrude") {
+    return source.placementError;
+  }
+
+  if (source.kind === "revolve") {
     return source.placementError;
   }
 

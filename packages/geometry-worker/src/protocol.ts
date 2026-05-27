@@ -396,32 +396,7 @@ export function createExtrudeBooleanWorkerRequest(input: {
 export function createExactBodyMetadataWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
-  readonly source:
-    | {
-        readonly kind: "extrude";
-        readonly sketchPlane: GeometryKernelSketchPlane;
-        readonly profile:
-          | {
-              readonly kind: "rectangle";
-              readonly center: readonly [number, number];
-              readonly width: number;
-              readonly height: number;
-            }
-          | {
-              readonly kind: "circle";
-              readonly center: readonly [number, number];
-              readonly radius: number;
-            };
-        readonly depth: number;
-        readonly side?: GeometryKernelExtrudeSide;
-        readonly placementFrame?: BooleanExtrudeSource["placementFrame"];
-      }
-    | {
-        readonly kind: "booleanExtrudes";
-        readonly operation: GeometryKernelBooleanOperation;
-        readonly target: BooleanExtrudeSource;
-        readonly tool: BooleanExtrudeSource;
-      };
+  readonly source: ExactBodyMetadataRequest["source"];
 }): GeometryWorkerRequest<ExactBodyMetadataRequest> {
   return {
     id: input.id,

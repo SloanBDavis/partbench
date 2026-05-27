@@ -16,6 +16,9 @@ import type {
   FeatureExtrudeProfileKind,
   FeatureExtrudeSide,
   FeatureId,
+  FeatureRevolveAxis,
+  FeatureRevolveOperationMode,
+  FeatureRevolveProfileKind,
   PartId,
   SketchCircleEntitySnapshot,
   SketchEntityId,
@@ -82,6 +85,13 @@ export interface GeneratedReferencesExtrudeFeature {
 export interface GeneratedReferencesUnsupportedFeature {
   readonly id: FeatureId;
   readonly kind: "revolve";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly profileKind: FeatureRevolveProfileKind;
+  readonly axis: FeatureRevolveAxis;
+  readonly angleDegrees: number;
+  readonly operationMode: FeatureRevolveOperationMode;
+  readonly targetBodyId?: BodyId;
   readonly bodyId: BodyId;
 }
 

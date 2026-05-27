@@ -4,11 +4,19 @@ import {
   type OcctBooleanExtrudeInput,
   type OcctBooleanExtrudeSource
 } from "./booleanExtrudes";
+import {
+  makeRevolveProfileShape,
+  type OcctRevolveAxis,
+  type OcctRevolvePlacementFrame,
+  type OcctRevolveProfile,
+  type OcctRevolveSketchPlane
+} from "./revolveProfile";
 import type { OcctLoader } from "./tessellateBox";
 
 export type OcctExactBodyMetadataSource =
   | OcctExactExtrudeMetadataSource
-  | OcctExactBooleanExtrudesMetadataSource;
+  | OcctExactBooleanExtrudesMetadataSource
+  | OcctExactRevolveMetadataSource;
 
 export interface OcctExactExtrudeMetadataSource extends OcctBooleanExtrudeSource {
   readonly kind: "extrude";
@@ -19,6 +27,15 @@ export interface OcctExactBooleanExtrudesMetadataSource {
   readonly operation: OcctBooleanExtrudeInput["operation"];
   readonly target: OcctBooleanExtrudeSource;
   readonly tool: OcctBooleanExtrudeSource;
+}
+
+export interface OcctExactRevolveMetadataSource {
+  readonly kind: "revolve";
+  readonly sketchPlane: OcctRevolveSketchPlane;
+  readonly profile: OcctRevolveProfile;
+  readonly axis: OcctRevolveAxis;
+  readonly angleDegrees: number;
+  readonly placementFrame?: OcctRevolvePlacementFrame;
 }
 
 export interface OcctExactBodyMetadataInput {
@@ -80,6 +97,16 @@ export function createOcctExactBodyMetadataWithInstance(
       return readExactBodyMetadata(oc, shapeBuilder.Shape(), input.source.kind);
     } finally {
       shapeBuilder.delete();
+    }
+  }
+
+  if (input.source.kind === "revolve") {
+    const shapeHandle = makeRevolveProfileShape(oc, input.source);
+
+    try {
+      return readExactBodyMetadata(oc, shapeHandle.shape, input.source.kind);
+    } finally {
+      shapeHandle.delete();
     }
   }
 

@@ -122,6 +122,14 @@ export interface DerivedExactMetadataInput {
         readonly operation: "add" | "cut";
         readonly target: DerivedGeometryBooleanExtrudeInputSource;
         readonly tool: DerivedGeometryBooleanExtrudeInputSource;
+      }
+    | {
+        readonly kind: "revolve";
+        readonly sketchPlane: "XY" | "XZ" | "YZ";
+        readonly profile: DerivedGeometryExtrudeInput["profile"];
+        readonly axis: DerivedGeometryRevolveInput["axis"];
+        readonly angleDegrees: number;
+        readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
       };
 }
 

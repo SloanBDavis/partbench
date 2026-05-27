@@ -340,6 +340,45 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("creates a typed exact body metadata worker request for revolve sources", () => {
+    expect(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_revolve_exact_metadata",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [2, 0],
+            radius: 0.5
+          },
+          axis: { start: [0, -2], end: [0, 2] },
+          angleDegrees: 180
+        }
+      })
+    ).toEqual({
+      id: "worker_req_revolve_exact_metadata",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payload: {
+        id: "worker_req_revolve_exact_metadata:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [2, 0],
+            radius: 0.5
+          },
+          axis: { start: [0, -2], end: [0, 2] },
+          angleDegrees: 180
+        }
+      }
+    });
+  });
+
   it("tessellates one box asynchronously through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });
     const responsePromise = worker.execute(
@@ -739,6 +778,50 @@ describe("geometry-worker", () => {
 
     expect(response.response.metadata.volume).toBeCloseTo(60, 6);
     expect(response.response.metadata.surfaceArea).toBeCloseTo(94, 6);
+    expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
+
+  it("returns revolve exact body metadata through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_revolve_exact_metadata_execute",
+        payloadId: "geometry_req_revolve_exact_metadata_execute",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          axis: { start: [0, -2], end: [0, 2] },
+          angleDegrees: 360
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_revolve_exact_metadata_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payloadId: "geometry_req_revolve_exact_metadata_execute",
+      transferables: [],
+      response: {
+        ok: true,
+        id: "geometry_req_revolve_exact_metadata_execute",
+        op: "geometry.exactBodyMetadata",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.metadata.sourceKind).toBe("revolve");
+    expect(response.response.metadata.volume).toBeGreaterThan(0);
     expect(response.response.metadata.measurementSource).toBe("kernel-derived");
   }, 120_000);
 

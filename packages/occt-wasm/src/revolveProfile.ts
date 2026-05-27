@@ -1,4 +1,8 @@
-import type { OpenCascadeInstance, TopoDS_Face } from "opencascade.js";
+import type {
+  OpenCascadeInstance,
+  TopoDS_Face,
+  TopoDS_Shape
+} from "opencascade.js";
 import {
   readTriangulatedShape,
   type OcctMeshData
@@ -29,11 +33,18 @@ export interface OcctRevolveAxis {
   readonly end: readonly [number, number];
 }
 
+export interface OcctRevolvePlacementFrame {
+  readonly origin: readonly [number, number, number];
+  readonly uAxis: readonly [number, number, number];
+  readonly vAxis: readonly [number, number, number];
+}
+
 export interface OcctRevolveProfileInput {
   readonly sketchPlane: OcctRevolveSketchPlane;
   readonly profile: OcctRevolveProfile;
   readonly axis: OcctRevolveAxis;
   readonly angleDegrees: number;
+  readonly placementFrame?: OcctRevolvePlacementFrame;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }
@@ -47,6 +58,11 @@ interface SketchFrame {
 
 interface ProfileFaceHandle {
   readonly face: TopoDS_Face;
+  readonly delete: () => void;
+}
+
+export interface RevolveShapeHandle {
+  readonly shape: TopoDS_Shape;
   readonly delete: () => void;
 }
 
@@ -65,7 +81,40 @@ export function createOcctRevolveProfileMeshWithInstance(
 ): OcctMeshData {
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
-  const frame = getSketchFrame(input.sketchPlane);
+  const shapeHandle = makeRevolveProfileShape(oc, input);
+
+  try {
+    const mesh = new oc.BRepMesh_IncrementalMesh_2(
+      shapeHandle.shape,
+      linearDeflection,
+      false,
+      angularDeflection,
+      false
+    );
+
+    try {
+      if (!mesh.IsDone()) {
+        throw new Error(
+          `Open CASCADE meshing failed with status ${mesh.GetStatusFlags()}.`
+        );
+      }
+
+      return readTriangulatedShape(oc, shapeHandle.shape, "revolve");
+    } finally {
+      mesh.delete();
+    }
+  } finally {
+    shapeHandle.delete();
+  }
+}
+
+export function makeRevolveProfileShape(
+  oc: OpenCascadeInstance,
+  input: Omit<OcctRevolveProfileInput, "linearDeflection" | "angularDeflection">
+): RevolveShapeHandle {
+  assertRevolveProfileBindings(oc);
+
+  const frame = getSketchFrame(input.sketchPlane, input.placementFrame);
   const profileFace = makeProfileFace(oc, frame, input.profile);
   const revolveAxis = createRevolveAxis(oc, frame, input.axis);
   const range = new oc.Message_ProgressRange_1();
@@ -95,31 +144,51 @@ export function createOcctRevolveProfileMeshWithInstance(
       throw new Error("Open CASCADE revolve failed.");
     }
 
-    const resultShape = revolve.Shape();
-    const mesh = new oc.BRepMesh_IncrementalMesh_2(
-      resultShape,
-      linearDeflection,
-      false,
-      angularDeflection,
-      false
-    );
+    const shape = revolve.Shape();
 
-    try {
-      if (!mesh.IsDone()) {
-        throw new Error(
-          `Open CASCADE meshing failed with status ${mesh.GetStatusFlags()}.`
-        );
+    return {
+      shape,
+      delete: () => {
+        shape.delete();
+        revolve?.delete();
+        range.delete();
+        revolveAxis.delete();
+        profileFace.delete();
       }
-
-      return readTriangulatedShape(oc, resultShape, "revolve");
-    } finally {
-      mesh.delete();
-    }
-  } finally {
+    };
+  } catch (error) {
     revolve?.delete();
     range.delete();
     revolveAxis.delete();
     profileFace.delete();
+    throw error;
+  }
+}
+
+function assertRevolveProfileBindings(oc: OpenCascadeInstance): void {
+  const bindings: readonly [string, unknown][] = [
+    ["BRepBuilderAPI_MakePolygon_4", oc.BRepBuilderAPI_MakePolygon_4],
+    ["BRepBuilderAPI_MakeEdge_8", oc.BRepBuilderAPI_MakeEdge_8],
+    ["BRepBuilderAPI_MakeWire_2", oc.BRepBuilderAPI_MakeWire_2],
+    ["BRepBuilderAPI_MakeFace_15", oc.BRepBuilderAPI_MakeFace_15],
+    ["BRepPrimAPI_MakeRevol_1", oc.BRepPrimAPI_MakeRevol_1],
+    ["BRepPrimAPI_MakeRevol_2", oc.BRepPrimAPI_MakeRevol_2],
+    ["Message_ProgressRange_1", oc.Message_ProgressRange_1],
+    ["gp_Pnt_3", oc.gp_Pnt_3],
+    ["gp_Dir_4", oc.gp_Dir_4],
+    ["gp_Ax1_2", oc.gp_Ax1_2],
+    ["gp_Ax2_2", oc.gp_Ax2_2],
+    ["gp_Circ_2", oc.gp_Circ_2]
+  ];
+  const missing = bindings
+    .filter(([, value]) => value === undefined || value === null)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw {
+      code: "UNAVAILABLE_BINDING",
+      message: `Open CASCADE revolve bindings are unavailable: ${missing.join(", ")}.`
+    };
   }
 }
 
@@ -268,7 +337,22 @@ function createOcctAxes(
   };
 }
 
-function getSketchFrame(sketchPlane: OcctRevolveSketchPlane): SketchFrame {
+function getSketchFrame(
+  sketchPlane: OcctRevolveSketchPlane,
+  placementFrame?: OcctRevolvePlacementFrame
+): SketchFrame {
+  if (placementFrame) {
+    const uAxis = normalizeVec3(placementFrame.uAxis);
+    const vAxis = normalizeVec3(placementFrame.vAxis);
+
+    return {
+      origin: placementFrame.origin,
+      uAxis,
+      vAxis,
+      normalAxis: normalizeVec3(crossVec3(uAxis, vAxis))
+    };
+  }
+
   switch (sketchPlane) {
     case "XY":
       return {
@@ -323,4 +407,15 @@ function normalizeVec3(
   }
 
   return [vector[0] / length, vector[1] / length, vector[2] / length];
+}
+
+function crossVec3(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number]
+): readonly [number, number, number] {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0]
+  ];
 }

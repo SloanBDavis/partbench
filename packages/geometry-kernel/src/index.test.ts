@@ -404,6 +404,46 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "returns exact revolve metadata through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_revolve_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          axis: { start: [0, -2], end: [0, 2] },
+          angleDegrees: 360
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      expect(response.metadata.sourceKind).toBe("revolve");
+      expect(response.metadata.volume).toBeCloseTo(12 * Math.PI, 6);
+      expect(response.metadata.surfaceArea).toBeCloseTo(32 * Math.PI, 6);
+      expect(response.metadata.centroid[0]).toBeCloseTo(0, 6);
+      expect(response.metadata.topologyCounts.solidCount).toBe(1);
+      expect(response.metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(response.metadata.measurementSource).toBe("kernel-derived");
+      expect(response.metadata.measurementConfidence).toBe("kernel-derived");
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "maps extrude mesh bounds for negative and symmetric sides",
     async () => {
       const negative = await executeGeometryKernelRequest({
@@ -1185,6 +1225,73 @@ describe("geometry-kernel facade", () => {
     expect(getGeometryResponseTransferables(response)).toEqual([]);
   });
 
+  it("returns exact metadata for revolve sources from an injected metadata factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactBodyMetadata: async (input) => ({
+        sourceKind: input.source.kind,
+        bounds: {
+          min: [-2.5, -1.5, -2.5],
+          max: [2.5, 1.5, 2.5]
+        },
+        volume: 37.7,
+        surfaceArea: 100.5,
+        centroid: [0, 0, 0],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 6,
+          edgeCount: 12,
+          vertexCount: 8
+        },
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived",
+        diagnostics: []
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_revolve_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          axis: { start: [0, -2], end: [0, 2] },
+          angleDegrees: 360
+        }
+      }
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      id: "geometry_req_injected_revolve_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      metadata: {
+        sourceKind: "revolve",
+        volume: 37.7,
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived"
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured unavailable-binding errors when exact metadata factory is absent", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1268,7 +1375,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Exact body metadata requests require supported extrude or booleanExtrudes source data with finite positive dimensions."
+          "Exact body metadata requests require supported extrude, booleanExtrudes, or revolve source data with finite positive dimensions."
       },
       warnings: []
     });

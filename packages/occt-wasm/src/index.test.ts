@@ -264,4 +264,46 @@ describe("occt-wasm", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it(
+    "returns exact revolve metadata through Open CASCADE WASM",
+    async () => {
+      const metadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          axis: {
+            start: [0, -2],
+            end: [0, 2]
+          },
+          angleDegrees: 360
+        }
+      });
+
+      expect(metadata.sourceKind).toBe("revolve");
+      expect(metadata.bounds.min[0]).toBeCloseTo(-2.5, 6);
+      expect(metadata.bounds.max[0]).toBeCloseTo(2.5, 6);
+      expect(metadata.bounds.min[1]).toBeCloseTo(-1.5, 6);
+      expect(metadata.bounds.max[1]).toBeCloseTo(1.5, 6);
+      expect(metadata.bounds.min[2]).toBeCloseTo(-2.5, 6);
+      expect(metadata.bounds.max[2]).toBeCloseTo(2.5, 6);
+      expect(metadata.volume).toBeCloseTo(12 * Math.PI, 6);
+      expect(metadata.surfaceArea).toBeCloseTo(32 * Math.PI, 6);
+      expect(metadata.centroid[0]).toBeCloseTo(0, 6);
+      expect(metadata.centroid[1]).toBeCloseTo(0, 6);
+      expect(metadata.centroid[2]).toBeCloseTo(0, 6);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(metadata.measurementSource).toBe("kernel-derived");
+      expect(metadata.measurementConfidence).toBe("kernel-derived");
+      expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 });

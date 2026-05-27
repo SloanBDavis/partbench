@@ -2047,6 +2047,10 @@ export interface CadBodyTopologySourceIdentity {
   readonly sourceSketchEntityId?: SketchEntityId;
   readonly profileKind?: FeatureExtrudeProfileKind;
   readonly revolveAxis?: FeatureRevolveAxis;
+  readonly revolveAxisSignature?: {
+    readonly start: Vec2;
+    readonly end: Vec2;
+  };
   readonly revolveAngleDegrees?: number;
   readonly profileSignature?: CadGeneratedReferenceProfileSignature;
   readonly side?: FeatureExtrudeSide;

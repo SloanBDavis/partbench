@@ -165,7 +165,8 @@ export interface BooleanExtrudesRequest {
 
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
-  | ExactBooleanExtrudesMetadataSource;
+  | ExactBooleanExtrudesMetadataSource
+  | ExactRevolveMetadataSource;
 
 export interface ExactExtrudeMetadataSource extends BooleanExtrudeSource {
   readonly kind: "extrude";
@@ -176,6 +177,15 @@ export interface ExactBooleanExtrudesMetadataSource {
   readonly operation: GeometryKernelBooleanOperation;
   readonly target: BooleanExtrudeSource;
   readonly tool: BooleanExtrudeSource;
+}
+
+export interface ExactRevolveMetadataSource {
+  readonly kind: "revolve";
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: RevolveGeometryProfile;
+  readonly axis: RevolveGeometryAxis;
+  readonly angleDegrees: number;
+  readonly placementFrame?: BooleanExtrudePlacementFrame;
 }
 
 export interface ExactBodyMetadataRequest {
@@ -529,7 +539,7 @@ function validateRequest(
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Exact body metadata requests require supported extrude or booleanExtrudes source data with finite positive dimensions."
+          "Exact body metadata requests require supported extrude, booleanExtrudes, or revolve source data with finite positive dimensions."
       };
     }
   } else if (
@@ -938,6 +948,18 @@ function isValidExactBodyMetadataSource(
     );
   }
 
+  if (source.kind === "revolve") {
+    return (
+      isSketchPlane(source.sketchPlane) &&
+      isValidExtrudeProfile(source.profile) &&
+      isValidRevolveAxis(source.axis) &&
+      isPositiveFiniteNumber(source.angleDegrees) &&
+      source.angleDegrees <= 360 &&
+      (source.placementFrame === undefined ||
+        isValidBooleanExtrudePlacementFrame(source.placementFrame))
+    );
+  }
+
   return false;
 }
 
@@ -955,7 +977,8 @@ function isInvalidExactBodyMetadata(
 ): boolean {
   return (
     (metadata.sourceKind !== "extrude" &&
-      metadata.sourceKind !== "booleanExtrudes") ||
+      metadata.sourceKind !== "booleanExtrudes" &&
+      metadata.sourceKind !== "revolve") ||
     !isVec3(metadata.bounds.min) ||
     !isVec3(metadata.bounds.max) ||
     !isVec3(metadata.centroid) ||

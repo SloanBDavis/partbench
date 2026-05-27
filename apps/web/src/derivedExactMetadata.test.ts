@@ -13,7 +13,8 @@ import {
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
   type DerivedExtrudeGeometrySource,
-  type DerivedGeometrySource
+  type DerivedGeometrySource,
+  type DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
 import type {
@@ -67,6 +68,29 @@ describe("derivedExactMetadata", () => {
     );
     expect(createDerivedExactMetadataCacheKey(source)).not.toBe(
       createDerivedExactMetadataCacheKey(placedSource)
+    );
+
+    const revolveSource = createRevolveSource("body_revolve_1");
+    const editedAxisSource: DerivedRevolveGeometrySource = {
+      ...revolveSource,
+      axis: { start: [0, -2], end: [0, 3] }
+    };
+    const editedAngleSource: DerivedRevolveGeometrySource = {
+      ...revolveSource,
+      angleDegrees: 180
+    };
+
+    expect(
+      JSON.parse(createDerivedExactMetadataCacheKey(revolveSource))
+    ).toEqual({
+      kind: "exactMetadata",
+      source: createDerivedGeometryCacheKey(revolveSource)
+    });
+    expect(createDerivedExactMetadataCacheKey(revolveSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedAxisSource)
+    );
+    expect(createDerivedExactMetadataCacheKey(revolveSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedAngleSource)
     );
   });
 
@@ -169,6 +193,56 @@ describe("derivedExactMetadata", () => {
     ]);
   });
 
+  it("requests and caches exact metadata for authored revolve sources", async () => {
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+    const source: DerivedRevolveGeometrySource = {
+      ...createRevolveSource("body_revolve_1"),
+      placementFrame: {
+        origin: [0, 0, 3],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 1, 0]
+      }
+    };
+
+    service.reconcile([source]);
+    await flushPromises();
+
+    expect(runtime.exactInputs).toEqual([
+      {
+        id: "body_revolve_1",
+        source: {
+          kind: "revolve",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          axis: { start: [0, -2], end: [0, 2] },
+          angleDegrees: 360,
+          placementFrame: {
+            origin: [0, 0, 3],
+            uAxis: [1, 0, 0],
+            vAxis: [0, 1, 0]
+          }
+        }
+      }
+    ]);
+    expect(service.getSnapshot().entries[0]).toMatchObject({
+      bodyId: "body_revolve_1",
+      sourceKind: "revolve",
+      status: "ready",
+      metadata: { sourceKind: "revolve", volume: 10 }
+    });
+  });
+
   it("marks unsupported sources without requesting exact metadata", () => {
     const snapshots: DerivedExactMetadataSnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -201,6 +275,10 @@ describe("derivedExactMetadata", () => {
         ...createExtrudeSource("body_stale_attachment"),
         placementError: "Attachment unresolved."
       },
+      {
+        ...createRevolveSource("body_stale_revolve_attachment"),
+        placementError: "Attachment unresolved for revolve."
+      },
       unsupportedBoolean
     ]);
 
@@ -212,6 +290,11 @@ describe("derivedExactMetadata", () => {
         bodyId: "body_stale_attachment",
         status: "unsupported",
         message: "Attachment unresolved."
+      },
+      {
+        bodyId: "body_stale_revolve_attachment",
+        status: "unsupported",
+        message: "Attachment unresolved for revolve."
       },
       {
         bodyId: "body_cut_unsupported",
@@ -348,6 +431,47 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("ignores stale revolve exact metadata after axis edits", async () => {
+    const initialSource = createRevolveSource("body_revolve_1");
+    const editedSource: DerivedRevolveGeometrySource = {
+      ...initialSource,
+      axis: { start: [0, -3], end: [0, 3] }
+    };
+    const first = createDeferred<DerivedExactMetadataResult>();
+    const second = createDeferred<DerivedExactMetadataResult>();
+    const snapshots: DerivedExactMetadataSnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      input.source.kind === "revolve" && input.source.axis.start[1] === -2
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    first.resolve(createMetadataResult("body_revolve_1", "revolve"));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      bodyId: "body_revolve_1",
+      status: "pending",
+      cacheKey: createDerivedExactMetadataCacheKey(editedSource)
+    });
+
+    second.resolve(createMetadataResult("body_revolve_1", "revolve", 32));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      bodyId: "body_revolve_1",
+      status: "ready",
+      metadata: { sourceKind: "revolve", volume: 32 }
+    });
+  });
+
   it("builds exact metadata runtime input with placement frames intact", () => {
     const source: DerivedExtrudeGeometrySource = {
       ...createExtrudeSource("body_attached_1"),
@@ -369,6 +493,33 @@ describe("derivedExactMetadata", () => {
         }
       }
     });
+  });
+
+  it("removes revolve exact metadata entries across feature delete and undo", async () => {
+    const engine = createRevolvedRectangleEngine();
+    const service = new DerivedExactMetadataService({
+      runtime: createRuntime(async (input) =>
+        createMetadataResult(input.id, input.source.kind)
+      ),
+      onChange: () => {}
+    });
+
+    service.reconcile(getDerivedSources(engine, ["body_revolve_1"]));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_revolve_1"
+    ]);
+
+    engine.apply({ op: "feature.delete", id: "feat_revolve_1" });
+    service.reconcile(getDerivedSources(engine, ["body_revolve_1"]));
+    expect(service.getSnapshot().entries).toEqual([]);
+
+    engine.undo();
+    service.reconcile(getDerivedSources(engine, ["body_revolve_1"]));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_revolve_1"
+    ]);
   });
 });
 
@@ -403,9 +554,25 @@ function createCircleExtrudeSource(id: string): DerivedExtrudeGeometrySource {
   };
 }
 
+function createRevolveSource(id: string): DerivedRevolveGeometrySource {
+  return {
+    id,
+    kind: "revolve",
+    sketchPlane: "XY",
+    profile: {
+      kind: "rectangle",
+      center: [2, 0],
+      width: 1,
+      height: 3
+    },
+    axis: { start: [0, -2], end: [0, 2] },
+    angleDegrees: 360
+  };
+}
+
 function createMetadataResult(
   objectId: string,
-  sourceKind: "extrude" | "booleanExtrudes",
+  sourceKind: "extrude" | "booleanExtrudes" | "revolve",
   volume = 10
 ): DerivedExactMetadataResult {
   return {
@@ -505,13 +672,48 @@ function createExtrudedRectangleEngine(): CadEngine {
   return engine;
 }
 
+function createRevolvedRectangleEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [2, 0],
+      width: 1,
+      height: 3
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "axis_1",
+      start: [0, -2],
+      end: [0, 2]
+    },
+    {
+      op: "feature.revolve",
+      id: "feat_revolve_1",
+      bodyId: "body_revolve_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+      angleDegrees: 360
+    }
+  ]);
+
+  return engine;
+}
+
 function getDerivedSources(
-  engine: CadEngine
+  engine: CadEngine,
+  generatedReferenceBodyIds: readonly string[] = ["body_rect_1"]
 ): readonly DerivedGeometrySource[] {
   return createDerivedGeometrySourcesFromDocument(
     engine.getDocument(),
     getProjectStructureFeatures(engine),
-    getGeneratedFacesByKey(engine, ["body_rect_1"])
+    getGeneratedFacesByKey(engine, generatedReferenceBodyIds)
   );
 }
 

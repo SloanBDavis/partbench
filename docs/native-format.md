@@ -883,9 +883,12 @@ status/issues. Primitive compatibility bodies return `unsupported` snapshots,
 and current boolean result bodies still do not claim generated semantic
 topology roles. Boolean result bodies may report matching kernel-derived exact
 metadata while keeping `topologyAvailable: false` until boolean topology naming
-is deliberately scoped. This query is read-only derived data; it does not
-persist OCCT state, B-rep data, mesh data, topology indexes, kernel metadata, or
-a new source-of-truth project field, so it does not require a schema version.
+is deliberately scoped. Authored revolve bodies may also report matching
+kernel-derived exact metadata while keeping generated references unsupported
+until stable revolve topology roles are deliberately scoped. This query is
+read-only derived data; it does not persist OCCT state, B-rep data, mesh data,
+topology indexes, kernel metadata, or a new source-of-truth project field, so it
+does not require a schema version.
 
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts either a body ID plus generated face stable ID, or a named reference

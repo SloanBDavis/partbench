@@ -5,9 +5,11 @@ import type {
   CadBodyTopologyIssueCode,
   CadBodyTopologySnapshot,
   CadBodyTopologySourceIdentity,
+  CadGeneratedReferenceProfileSignature,
   CadQueryError,
   DocumentUnits,
-  PartId
+  PartId,
+  Vec2
 } from "@web-cad/cad-protocol";
 
 import {
@@ -93,7 +95,12 @@ function createAuthoredFeatureTopology(
   feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
   if (feature.kind !== "extrude") {
-    return createUnsupportedAuthoredFeatureTopology(bodyId, units, feature);
+    return createUnsupportedAuthoredFeatureTopology(
+      document,
+      bodyId,
+      units,
+      feature
+    );
   }
 
   const references = createBodyGeneratedReferences(
@@ -181,23 +188,25 @@ function createAuthoredFeatureTopology(
 }
 
 function createUnsupportedAuthoredFeatureTopology(
+  document: GeneratedReferencesDocument,
   bodyId: BodyId,
   units: DocumentUnits,
   feature: GeneratedReferencesFeature
 ): CadBodyTopologySnapshot {
   const sourceKind =
     feature.kind === "revolve" ? "authoredRevolve" : "authoredExtrude";
+  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "cacheKey"> =
+    feature.kind === "revolve"
+      ? createRevolveSourceIdentityInput(document, bodyId, units, feature)
+      : {
+          bodyId,
+          sourceKind,
+          units,
+          featureId: feature.id
+        };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
-    bodyId,
-    sourceKind,
-    cacheKey: createTopologyCacheKey({
-      bodyId,
-      sourceKind,
-      units,
-      featureId: feature.id
-    }),
-    units,
-    featureId: feature.id
+    ...sourceIdentityInput,
+    cacheKey: createTopologyCacheKey(sourceIdentityInput)
   };
 
   return createUnsupportedTopologySnapshot({
@@ -214,6 +223,73 @@ function createUnsupportedAuthoredFeatureTopology(
       }
     ]
   });
+}
+
+function createRevolveSourceIdentityInput(
+  document: GeneratedReferencesDocument,
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
+): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+  return {
+    bodyId,
+    sourceKind: "authoredRevolve",
+    units,
+    featureId: feature.id,
+    operationMode: feature.operationMode,
+    targetBodyId: feature.targetBodyId,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.entityId,
+    profileKind: feature.profileKind,
+    profileSignature: createRevolveProfileSignature(document, feature),
+    revolveAxis: feature.axis,
+    revolveAxisSignature: createRevolveAxisSignature(document, feature),
+    revolveAngleDegrees: feature.angleDegrees
+  };
+}
+
+function createRevolveProfileSignature(
+  document: GeneratedReferencesDocument,
+  feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
+): CadGeneratedReferenceProfileSignature | undefined {
+  const sketch = document.sketches.get(feature.sketchId);
+  const entity = sketch?.entities.get(feature.entityId);
+
+  if (feature.profileKind === "rectangle" && entity?.kind === "rectangle") {
+    return {
+      kind: "rectangle",
+      center: entity.center,
+      width: entity.width,
+      height: entity.height
+    };
+  }
+
+  if (feature.profileKind === "circle" && entity?.kind === "circle") {
+    return {
+      kind: "circle",
+      center: entity.center,
+      radius: entity.radius
+    };
+  }
+
+  return undefined;
+}
+
+function createRevolveAxisSignature(
+  document: GeneratedReferencesDocument,
+  feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
+): { readonly start: Vec2; readonly end: Vec2 } | undefined {
+  const sketch = document.sketches.get(feature.axis.sketchId);
+  const axis = sketch?.entities.get(feature.axis.entityId);
+
+  if (axis?.kind !== "line") {
+    return undefined;
+  }
+
+  return {
+    start: axis.start,
+    end: axis.end
+  };
 }
 
 function createUnsupportedPrimitiveCompatibilityTopology(
@@ -276,7 +352,10 @@ function applyDerivedExactMetadata(
     return topology;
   }
 
-  if (topology.sourceKind !== "authoredExtrude") {
+  if (
+    topology.sourceKind !== "authoredExtrude" &&
+    topology.sourceKind !== "authoredRevolve"
+  ) {
     return applyDerivedExactMetadataIssue(topology, {
       code: "UNSUPPORTED_BODY_TOPOLOGY",
       status: "unsupported",
