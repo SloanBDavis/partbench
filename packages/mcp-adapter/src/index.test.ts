@@ -444,6 +444,62 @@ describe("mcp-adapter", () => {
         }
       }
     });
+
+    const topologyContent = result.structuredContent as {
+      readonly topology: {
+        readonly sourceIdentity: { readonly cacheKey: string };
+      };
+    };
+    const exactResult = server.callTool({
+      name: "cad.body_topology",
+      requestId: "mcp_req_body_topology_exact",
+      arguments: {
+        bodyId: "body_topology",
+        derivedExactMetadata: {
+          bodyId: "body_topology",
+          sourceIdentityCacheKey:
+            topologyContent.topology.sourceIdentity.cacheKey,
+          status: "ready",
+          metadata: {
+            source: "kernel-derived",
+            confidence: "kernel-derived",
+            bounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3],
+              size: [4, 2, 3],
+              center: [2, 1, 1.5]
+            },
+            volume: 24,
+            surfaceArea: 52,
+            centroid: [2, 1, 1.5],
+            topologyCounts: {
+              solidCount: 1,
+              faceCount: 6,
+              edgeCount: 12,
+              vertexCount: 8
+            },
+            diagnostics: []
+          }
+        }
+      }
+    });
+
+    expect(exactResult).toMatchObject({
+      toolName: "cad.body_topology",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_body_topology_exact",
+        query: "body.topology",
+        topology: {
+          bodyId: "body_topology",
+          exactGeometryAvailable: true,
+          exactMeasurementsAvailable: true,
+          measurementConfidence: "kernel-derived",
+          exactMetadata: { status: "healthy", volume: 24 }
+        }
+      }
+    });
   });
 
   it("accepts sphere batches and exposes sphere measurements", () => {

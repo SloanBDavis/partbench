@@ -1262,6 +1262,60 @@ describe("agent-adapter", () => {
         issues: []
       }
     });
+
+    if (!response.ok || response.query !== "body.topology") {
+      throw new Error("Expected body topology response.");
+    }
+
+    const withExactMetadata = adapter.query({
+      requestId: "agent_body_topology_exact",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_topology",
+          derivedExactMetadata: {
+            bodyId: "body_topology",
+            sourceIdentityCacheKey: response.topology.sourceIdentity.cacheKey,
+            status: "ready",
+            metadata: {
+              source: "kernel-derived",
+              confidence: "kernel-derived",
+              bounds: {
+                min: [0, 0, 0],
+                max: [4, 2, 3],
+                size: [4, 2, 3],
+                center: [2, 1, 1.5]
+              },
+              volume: 24,
+              surfaceArea: 52,
+              centroid: [2, 1, 1.5],
+              topologyCounts: {
+                solidCount: 1,
+                faceCount: 6,
+                edgeCount: 12,
+                vertexCount: 8
+              },
+              diagnostics: []
+            }
+          }
+        }
+      }
+    });
+
+    expect(withExactMetadata).toMatchObject({
+      ok: true,
+      requestId: "agent_body_topology_exact",
+      query: "body.topology",
+      topology: {
+        bodyId: "body_topology",
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: { status: "healthy", volume: 24 }
+      }
+    });
   });
 
   it("accepts sphere commands and exposes sphere measurements through adapter queries", () => {

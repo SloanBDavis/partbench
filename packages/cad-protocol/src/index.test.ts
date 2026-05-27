@@ -973,6 +973,105 @@ describe("cad-protocol", () => {
     });
   });
 
+  it("types derived exact body metadata snapshots on body topology queries", () => {
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId: "body_1",
+        derivedExactMetadata: {
+          bodyId: "body_1",
+          sourceIdentityCacheKey: "body-topology:v1:{}",
+          status: "ready",
+          metadata: {
+            source: "kernel-derived",
+            confidence: "kernel-derived",
+            bounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3],
+              size: [4, 2, 3],
+              center: [2, 1, 1.5]
+            },
+            volume: 24,
+            surfaceArea: 52,
+            centroid: [2, 1, 1.5],
+            topologyCounts: {
+              solidCount: 1,
+              faceCount: 6,
+              edgeCount: 12,
+              vertexCount: 8
+            },
+            diagnostics: []
+          }
+        }
+      }
+    };
+
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "body.topology",
+      cadOpsVersion: request.version,
+      topology: {
+        bodyId: "body_1",
+        units: "mm",
+        status: "healthy",
+        sourceKind: "authoredExtrude",
+        sourceIdentity: {
+          bodyId: "body_1",
+          sourceKind: "authoredExtrude",
+          cacheKey: "body-topology:v1:{}",
+          units: "mm"
+        },
+        topologyModel: "semantic-source",
+        topologyAvailable: true,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          source: "kernel-derived",
+          confidence: "kernel-derived",
+          bounds: {
+            min: [0, 0, 0],
+            max: [4, 2, 3],
+            size: [4, 2, 3],
+            center: [2, 1, 1.5]
+          },
+          volume: 24,
+          surfaceArea: 52,
+          centroid: [2, 1, 1.5],
+          topologyCounts: {
+            solidCount: 1,
+            faceCount: 6,
+            edgeCount: 12,
+            vertexCount: 8
+          },
+          diagnostics: []
+        },
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8,
+        issues: []
+      }
+    };
+
+    expect(request.query).toMatchObject({
+      query: "body.topology",
+      derivedExactMetadata: { status: "ready" }
+    });
+    expect(response).toMatchObject({
+      topology: {
+        exactGeometryAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 24,
+          topologyCounts: { faceCount: 6 }
+        }
+      }
+    });
+  });
+
   it("types primitive feature summaries", () => {
     const feature: CadPrimitiveFeatureSummary = {
       id: "feature:torus_1",

@@ -7,6 +7,8 @@ import type {
   CadBatchValidationResult,
   CadAxisAlignedBounds,
   BodyExtentSnapshot,
+  CadBodyDerivedExactMetadataSnapshot,
+  CadBodyExactMetadataSnapshot,
   CadBodyRef,
   CadBodySnapshot,
   CadFeatureRef,
@@ -118,6 +120,12 @@ export type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadBodyDerivedExactMetadataSnapshot,
+  CadBodyDerivedExactMetadataStatus,
+  CadBodyExactMetadataDiagnostic,
+  CadBodyExactMetadataSnapshot,
+  CadBodyExactMetadataStatus,
+  CadBodyExactMetadataTopologyCounts,
   CadBodyRef,
   CadBodySnapshot,
   CadBodyTopologyIssue,
@@ -1054,6 +1062,7 @@ export class CadEngine {
           bodyId,
           units: this.#document.units,
           ownerPartId: DEFAULT_PART_ID,
+          derivedExactMetadata: request.query.derivedExactMetadata,
           bodyExists: (candidateBodyId) =>
             structure.bodies.some((body) => body.id === candidateBodyId)
         });
@@ -2661,9 +2670,14 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.dimensions":
       return typeof value.sketchId === "string";
     case "body.generatedReferences":
-    case "body.topology":
     case "body.measurements":
       return typeof value.bodyId === "string";
+    case "body.topology":
+      return (
+        typeof value.bodyId === "string" &&
+        (value.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+      );
     case "body.resolveGeneratedReference":
     case "body.generatedReferenceMeasurements":
       return (
@@ -2674,6 +2688,96 @@ function isCadQuery(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isCadBodyDerivedExactMetadataSnapshot(
+  value: unknown
+): value is CadBodyDerivedExactMetadataSnapshot {
+  if (
+    !isRecord(value) ||
+    typeof value.bodyId !== "string" ||
+    typeof value.sourceIdentityCacheKey !== "string" ||
+    !isCadBodyDerivedExactMetadataStatus(value.status)
+  ) {
+    return false;
+  }
+
+  return (
+    (value.metadata === undefined ||
+      isCadBodyExactMetadataSnapshotWithoutStatus(value.metadata)) &&
+    (value.error === undefined || isCadBodyExactMetadataDiagnostic(value.error))
+  );
+}
+
+function isCadBodyDerivedExactMetadataStatus(
+  value: unknown
+): value is CadBodyDerivedExactMetadataSnapshot["status"] {
+  return (
+    value === "ready" ||
+    value === "unsupported" ||
+    value === "stale" ||
+    value === "kernel-failed" ||
+    value === "unavailable-binding"
+  );
+}
+
+function isCadBodyExactMetadataSnapshotWithoutStatus(
+  value: unknown
+): value is Omit<CadBodyExactMetadataSnapshot, "status"> {
+  return (
+    isRecord(value) &&
+    value.source === "kernel-derived" &&
+    value.confidence === "kernel-derived" &&
+    (value.bounds === undefined || isCadAxisAlignedBounds(value.bounds)) &&
+    (value.volume === undefined ||
+      (typeof value.volume === "number" && Number.isFinite(value.volume))) &&
+    (value.surfaceArea === undefined ||
+      (typeof value.surfaceArea === "number" &&
+        Number.isFinite(value.surfaceArea))) &&
+    (value.centroid === undefined || isVec3(value.centroid)) &&
+    (value.topologyCounts === undefined ||
+      isCadBodyExactMetadataTopologyCounts(value.topologyCounts)) &&
+    Array.isArray(value.diagnostics) &&
+    value.diagnostics.every(isCadBodyExactMetadataDiagnostic)
+  );
+}
+
+function isCadAxisAlignedBounds(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isVec3(value.min) &&
+    isVec3(value.max) &&
+    isVec3(value.size) &&
+    isVec3(value.center)
+  );
+}
+
+function isCadBodyExactMetadataTopologyCounts(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.solidCount === "number" &&
+    Number.isInteger(value.solidCount) &&
+    value.solidCount >= 0 &&
+    typeof value.faceCount === "number" &&
+    Number.isInteger(value.faceCount) &&
+    value.faceCount >= 0 &&
+    typeof value.edgeCount === "number" &&
+    Number.isInteger(value.edgeCount) &&
+    value.edgeCount >= 0 &&
+    typeof value.vertexCount === "number" &&
+    Number.isInteger(value.vertexCount) &&
+    value.vertexCount >= 0
+  );
+}
+
+function isCadBodyExactMetadataDiagnostic(
+  value: unknown
+): value is { readonly code: string; readonly message: string } {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    typeof value.message === "string"
+  );
 }
 
 function addParameter(

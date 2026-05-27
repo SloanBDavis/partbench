@@ -945,6 +945,7 @@ export interface BodyResolveGeneratedReferenceQuery {
 export interface BodyTopologyQuery {
   readonly query: "body.topology";
   readonly bodyId: BodyId;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 }
 
 export interface BodyMeasurementsQuery {
@@ -1855,7 +1856,8 @@ export type CadBodyTopologyStatus =
   | "unsupported"
   | "ambiguous"
   | "stale"
-  | "kernel-failed";
+  | "kernel-failed"
+  | "unavailable-binding";
 
 export type CadBodyTopologySourceKind =
   | "authoredExtrude"
@@ -1874,7 +1876,54 @@ export type CadBodyTopologyIssueCode =
   | "AMBIGUOUS_BODY_TOPOLOGY"
   | "EMPTY_EXACT_GEOMETRY_RESULT"
   | "INVALID_EXACT_GEOMETRY_RESULT"
-  | "EXACT_GEOMETRY_KERNEL_FAILED";
+  | "EXACT_GEOMETRY_KERNEL_FAILED"
+  | "EXACT_GEOMETRY_BINDING_UNAVAILABLE";
+
+export type CadBodyExactMetadataStatus =
+  | "healthy"
+  | "unsupported"
+  | "stale"
+  | "kernel-failed"
+  | "unavailable-binding";
+
+export interface CadBodyExactMetadataDiagnostic {
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface CadBodyExactMetadataTopologyCounts {
+  readonly solidCount: number;
+  readonly faceCount: number;
+  readonly edgeCount: number;
+  readonly vertexCount: number;
+}
+
+export interface CadBodyExactMetadataSnapshot {
+  readonly status: CadBodyExactMetadataStatus;
+  readonly source: "kernel-derived";
+  readonly confidence: "kernel-derived";
+  readonly bounds?: CadAxisAlignedBounds;
+  readonly volume?: number;
+  readonly surfaceArea?: number;
+  readonly centroid?: Vec3;
+  readonly topologyCounts?: CadBodyExactMetadataTopologyCounts;
+  readonly diagnostics: readonly CadBodyExactMetadataDiagnostic[];
+}
+
+export type CadBodyDerivedExactMetadataStatus =
+  | "ready"
+  | "unsupported"
+  | "stale"
+  | "kernel-failed"
+  | "unavailable-binding";
+
+export interface CadBodyDerivedExactMetadataSnapshot {
+  readonly bodyId: BodyId;
+  readonly sourceIdentityCacheKey: string;
+  readonly status: CadBodyDerivedExactMetadataStatus;
+  readonly metadata?: Omit<CadBodyExactMetadataSnapshot, "status">;
+  readonly error?: CadBodyExactMetadataDiagnostic;
+}
 
 export interface CadBodyTopologySourceIdentity {
   readonly bodyId: BodyId;
@@ -1912,6 +1961,7 @@ export interface CadBodyTopologySnapshot {
   readonly exactGeometryAvailable: boolean;
   readonly exactMeasurementsAvailable: boolean;
   readonly measurementConfidence: CadBodyTopologyMeasurementConfidence;
+  readonly exactMetadata?: CadBodyExactMetadataSnapshot;
   readonly faceCount?: number;
   readonly edgeCount?: number;
   readonly vertexCount?: number;

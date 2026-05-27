@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  CadBodyDerivedExactMetadataSnapshot,
   CadBatch,
   CadQueryRequest,
   SketchConstraintSnapshot,
@@ -77,6 +78,57 @@ function createCircleExtrudeEngine(): CadEngine {
   ]);
 
   return engine;
+}
+
+function readBodyTopologySourceCacheKey(
+  engine: CadEngine,
+  bodyId: string
+): string {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "body.topology", bodyId }
+  });
+
+  if (!response.ok || response.query !== "body.topology") {
+    throw new Error(`Expected body topology response for ${bodyId}.`);
+  }
+
+  return response.topology.sourceIdentity.cacheKey;
+}
+
+function createExactMetadataSnapshot(input: {
+  readonly bodyId: string;
+  readonly sourceIdentityCacheKey: string;
+  readonly volume?: number;
+  readonly faceCount?: number;
+  readonly edgeCount?: number;
+  readonly vertexCount?: number;
+}): CadBodyDerivedExactMetadataSnapshot {
+  return {
+    bodyId: input.bodyId,
+    sourceIdentityCacheKey: input.sourceIdentityCacheKey,
+    status: "ready",
+    metadata: {
+      source: "kernel-derived",
+      confidence: "kernel-derived",
+      bounds: {
+        min: [0, 0, 0],
+        max: [4, 2, 3],
+        size: [4, 2, 3],
+        center: [2, 1, 1.5]
+      },
+      volume: input.volume ?? 24,
+      surfaceArea: 52,
+      centroid: [2, 1, 1.5],
+      topologyCounts: {
+        solidCount: 1,
+        faceCount: input.faceCount ?? 6,
+        edgeCount: input.edgeCount ?? 12,
+        vertexCount: input.vertexCount ?? 8
+      },
+      diagnostics: []
+    }
+  };
 }
 
 function validateEngineGeneratedReference(
@@ -6835,6 +6887,200 @@ describe("cad-core", () => {
     });
   });
 
+  it("reports matching derived exact metadata for rectangle and circle extrude bodies", () => {
+    const rectangleEngine = createRectangleExtrudeEngine();
+    const circleEngine = createCircleExtrudeEngine();
+
+    expect(
+      rectangleEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_rect_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_rect_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              rectangleEngine,
+              "body_rect_1"
+            )
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_rect_1",
+        status: "healthy",
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          source: "kernel-derived",
+          confidence: "kernel-derived",
+          volume: 24,
+          topologyCounts: { faceCount: 6, edgeCount: 12, vertexCount: 8 }
+        },
+        topologyModel: "semantic-source",
+        topologyAvailable: true,
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8
+      }
+    });
+
+    expect(
+      circleEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_circle_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_circle_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              circleEngine,
+              "body_circle_1"
+            ),
+            faceCount: 3,
+            edgeCount: 2,
+            vertexCount: 0
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_circle_1",
+        status: "healthy",
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          topologyCounts: { faceCount: 3, edgeCount: 2, vertexCount: 0 }
+        },
+        topologyAvailable: true,
+        faceCount: 3,
+        edgeCount: 2,
+        vertexCount: 0
+      }
+    });
+  });
+
+  it("reports stale and unavailable derived exact metadata without mutating source measurements", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_rect_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_rect_1",
+            sourceIdentityCacheKey: "old-cache-key"
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_rect_1",
+        status: "stale",
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "source-analytic",
+        issues: [
+          {
+            code: "STALE_BODY_TOPOLOGY",
+            bodyId: "body_rect_1",
+            expected: readBodyTopologySourceCacheKey(engine, "body_rect_1"),
+            received: "old-cache-key"
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_rect_1",
+          derivedExactMetadata: {
+            bodyId: "body_rect_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              engine,
+              "body_rect_1"
+            ),
+            status: "kernel-failed",
+            error: {
+              code: "KERNEL_FAILURE",
+              message: "OCCT could not read exact metadata."
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_rect_1",
+        status: "kernel-failed",
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "source-analytic",
+        issues: [
+          {
+            code: "EXACT_GEOMETRY_KERNEL_FAILED",
+            received: "KERNEL_FAILURE"
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_rect_1",
+          derivedExactMetadata: {
+            bodyId: "body_rect_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              engine,
+              "body_rect_1"
+            ),
+            status: "unavailable-binding",
+            error: {
+              code: "UNAVAILABLE_BINDING",
+              message: "OCCT exact metadata binding is not available."
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_rect_1",
+        status: "unavailable-binding",
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "source-analytic",
+        issues: [
+          {
+            code: "EXACT_GEOMETRY_BINDING_UNAVAILABLE",
+            received: "UNAVAILABLE_BINDING"
+          }
+        ]
+      }
+    });
+  });
+
   it("updates simple body topology identity across source edits", () => {
     const engine = createRectangleExtrudeEngine();
 
@@ -6979,6 +7225,75 @@ describe("cad-core", () => {
     });
   });
 
+  it("reports derived exact metadata for supported boolean result bodies without generated topology references", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId: "body_add_1",
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_add_1",
+          sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            engine,
+            "body_add_1"
+          ),
+          volume: 30,
+          faceCount: 10,
+          edgeCount: 24,
+          vertexCount: 16
+        })
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_add_1",
+        status: "ambiguous",
+        topologyModel: "none",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 30,
+          topologyCounts: { faceCount: 10, edgeCount: 24, vertexCount: 16 }
+        },
+        issues: [
+          {
+            code: "AMBIGUOUS_BODY_TOPOLOGY",
+            bodyId: "body_add_1"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns primitive unsupported and missing body topology responses", () => {
     const engine = new CadEngine();
 
@@ -7008,6 +7323,37 @@ describe("cad-core", () => {
       }
     });
 
+    const primitiveCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body:box_1"
+    );
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body:box_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body:box_1",
+            sourceIdentityCacheKey: primitiveCacheKey
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body:box_1",
+        status: "unsupported",
+        exactGeometryAvailable: false,
+        measurementConfidence: "none",
+        issues: [
+          { code: "UNSUPPORTED_BODY_TOPOLOGY", bodyId: "body:box_1" },
+          { code: "UNSUPPORTED_BODY_TOPOLOGY", bodyId: "body:box_1" }
+        ]
+      }
+    });
+
     expect(
       engine.executeQuery({
         version: "cadops.v1",
@@ -7027,12 +7373,26 @@ describe("cad-core", () => {
     expect(
       engine.executeQuery({
         version: "cadops.v1",
-        query: { query: "body.topology", bodyId: "body_rect_1" }
+        query: {
+          query: "body.topology",
+          bodyId: "body_rect_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_rect_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              engine,
+              "body_rect_1"
+            )
+          })
+        }
       })
     ).toMatchObject({
       ok: true,
       query: "body.topology",
-      topology: { bodyId: "body_rect_1", status: "healthy" }
+      topology: {
+        bodyId: "body_rect_1",
+        status: "healthy",
+        measurementConfidence: "kernel-derived"
+      }
     });
 
     expect(exportCadProjectJson(engine)).toEqual(before);

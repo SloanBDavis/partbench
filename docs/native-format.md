@@ -823,20 +823,26 @@ expose vertex measurements because the current circular profile has no stable
 discrete semantic vertices. These measurements are derived query results, not
 saved source data, and they are not exact persisted B-rep topology.
 
-The `body.topology` query is the first V5 exact/topology boundary. It accepts a
-body ID and returns derived availability/status metadata for exact geometry,
+The `body.topology` query is the first V5/V6 exact/topology boundary. It accepts
+a body ID and returns derived availability/status metadata for exact geometry,
 topology, and exact measurement confidence. The response includes a deterministic
 source identity/cache key derived from existing document source records, plus
 structured topology issues such as unsupported body, stale source, ambiguous
-topology, empty/invalid exact result, or kernel failure. Rectangle and circle
-newBody authored extrudes return healthy `semantic-source` topology snapshots
-with face/edge/vertex counts and `source-analytic` measurement confidence.
-Primitive compatibility bodies return `unsupported` snapshots, and current
-boolean result bodies return `ambiguous` snapshots because stable generated
-topology roles cannot be proven from the narrow boolean mesh result yet. This
-query is read-only derived data; it does not persist OCCT state, B-rep data,
-mesh data, topology indexes, or a new source-of-truth project field, so it does
-not require a schema version.
+topology, empty/invalid exact result, unavailable kernel binding, or kernel
+failure. Rectangle and circle newBody authored extrudes return healthy
+`semantic-source` topology snapshots with face/edge/vertex counts and
+`source-analytic` measurement confidence when no kernel snapshot is supplied.
+When an app or adapter has a derived exact metadata snapshot for the same source
+identity, it may pass that snapshot into the read-only query. Matching snapshots
+upgrade exact geometry/measurement availability to `kernel-derived`; stale,
+unsupported, failed, or unavailable-binding snapshots are reported as structured
+status/issues. Primitive compatibility bodies return `unsupported` snapshots,
+and current boolean result bodies still do not claim generated semantic
+topology roles. Boolean result bodies may report matching kernel-derived exact
+metadata while keeping `topologyAvailable: false` until boolean topology naming
+is deliberately scoped. This query is read-only derived data; it does not
+persist OCCT state, B-rep data, mesh data, topology indexes, kernel metadata, or
+a new source-of-truth project field, so it does not require a schema version.
 
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts either a body ID plus generated face stable ID, or a named reference

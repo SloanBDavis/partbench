@@ -7,7 +7,12 @@ import {
   type CadOpsAgentQueryResponse,
   type CadOpsAgentResponse
 } from "@web-cad/agent-adapter";
-import type { CadActorMetadata, CadBatch } from "@web-cad/cad-protocol";
+import type {
+  CadActorMetadata,
+  CadBatch,
+  CadBodyDerivedExactMetadataSnapshot,
+  CadBodyExactMetadataSnapshot
+} from "@web-cad/cad-protocol";
 
 export type CadMcpToolName =
   | "cad.parameter_list"
@@ -475,7 +480,7 @@ export class CadMcpServer {
     if (!isBodyTopologyToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.body_topology expects arguments shaped as { bodyId: string }."
+        "cad.body_topology expects arguments shaped as { bodyId: string, derivedExactMetadata?: object }."
       );
     }
 
@@ -487,7 +492,8 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: {
             query: "body.topology",
-            bodyId: request.arguments.bodyId
+            bodyId: request.arguments.bodyId,
+            derivedExactMetadata: request.arguments.derivedExactMetadata
           }
         }
       })
@@ -942,6 +948,11 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         bodyId: {
           type: "string",
           description: "Body ID to inspect for exact/topology data."
+        },
+        derivedExactMetadata: {
+          type: "object",
+          description:
+            "Optional derived exact metadata snapshot for this body. This is read-only cache data and is not persisted."
         }
       }
     }
@@ -1194,11 +1205,16 @@ function isBodyMeasurementsToolArguments(
   );
 }
 
-function isBodyTopologyToolArguments(
-  value: unknown
-): value is { readonly bodyId: string } {
+function isBodyTopologyToolArguments(value: unknown): value is {
+  readonly bodyId: string;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
+} {
   return (
-    isRecord(value) && typeof value.bodyId === "string" && value.bodyId !== ""
+    isRecord(value) &&
+    typeof value.bodyId === "string" &&
+    value.bodyId !== "" &&
+    (value.derivedExactMetadata === undefined ||
+      isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
   );
 }
 
@@ -1313,6 +1329,104 @@ function createJsonRpcError(
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Invalid MCP tool arguments.";
+}
+
+function isCadBodyDerivedExactMetadataSnapshot(
+  value: unknown
+): value is CadBodyDerivedExactMetadataSnapshot {
+  if (
+    !isRecord(value) ||
+    typeof value.bodyId !== "string" ||
+    typeof value.sourceIdentityCacheKey !== "string" ||
+    !isCadBodyDerivedExactMetadataStatus(value.status)
+  ) {
+    return false;
+  }
+
+  return (
+    (value.metadata === undefined ||
+      isCadBodyExactMetadataSnapshotWithoutStatus(value.metadata)) &&
+    (value.error === undefined || isCadBodyExactMetadataDiagnostic(value.error))
+  );
+}
+
+function isCadBodyDerivedExactMetadataStatus(
+  value: unknown
+): value is CadBodyDerivedExactMetadataSnapshot["status"] {
+  return (
+    value === "ready" ||
+    value === "unsupported" ||
+    value === "stale" ||
+    value === "kernel-failed" ||
+    value === "unavailable-binding"
+  );
+}
+
+function isCadBodyExactMetadataSnapshotWithoutStatus(
+  value: unknown
+): value is Omit<CadBodyExactMetadataSnapshot, "status"> {
+  return (
+    isRecord(value) &&
+    value.source === "kernel-derived" &&
+    value.confidence === "kernel-derived" &&
+    (value.bounds === undefined || isCadAxisAlignedBounds(value.bounds)) &&
+    (value.volume === undefined ||
+      (typeof value.volume === "number" && Number.isFinite(value.volume))) &&
+    (value.surfaceArea === undefined ||
+      (typeof value.surfaceArea === "number" &&
+        Number.isFinite(value.surfaceArea))) &&
+    (value.centroid === undefined || isVec3(value.centroid)) &&
+    (value.topologyCounts === undefined ||
+      isCadBodyExactMetadataTopologyCounts(value.topologyCounts)) &&
+    Array.isArray(value.diagnostics) &&
+    value.diagnostics.every(isCadBodyExactMetadataDiagnostic)
+  );
+}
+
+function isCadAxisAlignedBounds(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isVec3(value.min) &&
+    isVec3(value.max) &&
+    isVec3(value.size) &&
+    isVec3(value.center)
+  );
+}
+
+function isCadBodyExactMetadataTopologyCounts(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.solidCount === "number" &&
+    Number.isInteger(value.solidCount) &&
+    value.solidCount >= 0 &&
+    typeof value.faceCount === "number" &&
+    Number.isInteger(value.faceCount) &&
+    value.faceCount >= 0 &&
+    typeof value.edgeCount === "number" &&
+    Number.isInteger(value.edgeCount) &&
+    value.edgeCount >= 0 &&
+    typeof value.vertexCount === "number" &&
+    Number.isInteger(value.vertexCount) &&
+    value.vertexCount >= 0
+  );
+}
+
+function isCadBodyExactMetadataDiagnostic(
+  value: unknown
+): value is { readonly code: string; readonly message: string } {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    typeof value.message === "string"
+  );
+}
+
+function isVec3(value: unknown): value is readonly [number, number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -109,6 +109,8 @@ export function formatBodyTopologyStatus(
       return "Stale";
     case "kernel-failed":
       return "Kernel failed";
+    case "unavailable-binding":
+      return "Binding unavailable";
   }
 }
 

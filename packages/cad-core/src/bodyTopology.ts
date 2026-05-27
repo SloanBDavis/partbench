@@ -1,6 +1,8 @@
 import type {
   BodyId,
+  CadBodyDerivedExactMetadataSnapshot,
   CadBodyTopologyIssue,
+  CadBodyTopologyIssueCode,
   CadBodyTopologySnapshot,
   CadBodyTopologySourceIdentity,
   CadQueryError,
@@ -21,6 +23,7 @@ export interface BodyTopologyRequest {
   readonly units: DocumentUnits;
   readonly ownerPartId: PartId;
   readonly bodyExists: (bodyId: BodyId) => boolean;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 }
 
 export type BodyTopologyResult =
@@ -51,16 +54,23 @@ export function createBodyTopology(
 
     return {
       ok: true,
-      topology
+      topology: applyDerivedExactMetadata(
+        topology,
+        request.derivedExactMetadata
+      )
     };
   }
 
   if (request.bodyExists(request.bodyId)) {
+    const topology = createUnsupportedPrimitiveCompatibilityTopology(
+      request.bodyId,
+      request.units
+    );
     return {
       ok: true,
-      topology: createUnsupportedPrimitiveCompatibilityTopology(
-        request.bodyId,
-        request.units
+      topology: applyDerivedExactMetadata(
+        topology,
+        request.derivedExactMetadata
       )
     };
   }
@@ -216,6 +226,137 @@ function createUnsupportedTopologySnapshot(input: {
     measurementConfidence: "none",
     issues: input.issues
   };
+}
+
+function applyDerivedExactMetadata(
+  topology: CadBodyTopologySnapshot,
+  metadata: CadBodyDerivedExactMetadataSnapshot | undefined
+): CadBodyTopologySnapshot {
+  if (!metadata) {
+    return topology;
+  }
+
+  if (topology.sourceKind !== "authoredExtrude") {
+    return applyDerivedExactMetadataIssue(topology, {
+      code: "UNSUPPORTED_BODY_TOPOLOGY",
+      status: "unsupported",
+      message:
+        "Derived exact metadata snapshots are supported only for authored bodies."
+    });
+  }
+
+  if (metadata.bodyId !== topology.bodyId) {
+    return applyDerivedExactMetadataIssue(topology, {
+      code: "STALE_BODY_TOPOLOGY",
+      status: "stale",
+      message: `Derived exact metadata body mismatch for ${topology.bodyId}.`,
+      expected: topology.bodyId,
+      received: metadata.bodyId
+    });
+  }
+
+  if (metadata.sourceIdentityCacheKey !== topology.sourceIdentity.cacheKey) {
+    return applyDerivedExactMetadataIssue(topology, {
+      code: "STALE_BODY_TOPOLOGY",
+      status: "stale",
+      message:
+        "Derived exact metadata is stale for the current body source identity.",
+      expected: topology.sourceIdentity.cacheKey,
+      received: metadata.sourceIdentityCacheKey
+    });
+  }
+
+  if (metadata.status === "ready") {
+    if (!metadata.metadata) {
+      return applyDerivedExactMetadataIssue(topology, {
+        code: "INVALID_EXACT_GEOMETRY_RESULT",
+        status: "kernel-failed",
+        message:
+          "Derived exact metadata was marked ready but did not include kernel metadata."
+      });
+    }
+
+    return {
+      ...topology,
+      exactGeometryAvailable: true,
+      exactMeasurementsAvailable: true,
+      measurementConfidence: "kernel-derived",
+      exactMetadata: {
+        status: "healthy",
+        ...metadata.metadata
+      }
+    };
+  }
+
+  return applyDerivedExactMetadataIssue(topology, {
+    code: getDerivedExactMetadataIssueCode(metadata.status),
+    status: metadata.status,
+    message:
+      metadata.error?.message ??
+      getDerivedExactMetadataIssueMessage(metadata.status, topology.bodyId),
+    received: metadata.error?.code
+  });
+}
+
+function applyDerivedExactMetadataIssue(
+  topology: CadBodyTopologySnapshot,
+  issue: {
+    readonly code: CadBodyTopologyIssueCode;
+    readonly status: CadBodyTopologySnapshot["status"];
+    readonly message: string;
+    readonly expected?: string;
+    readonly received?: string;
+  }
+): CadBodyTopologySnapshot {
+  return {
+    ...topology,
+    status: issue.status,
+    exactGeometryAvailable: false,
+    issues: [
+      ...topology.issues,
+      {
+        code: issue.code,
+        message: issue.message,
+        bodyId: topology.bodyId,
+        featureId: topology.sourceIdentity.featureId,
+        expected: issue.expected,
+        received: issue.received
+      }
+    ]
+  };
+}
+
+function getDerivedExactMetadataIssueCode(
+  status: CadBodyDerivedExactMetadataSnapshot["status"]
+): CadBodyTopologyIssueCode {
+  switch (status) {
+    case "ready":
+      return "INVALID_EXACT_GEOMETRY_RESULT";
+    case "unsupported":
+      return "UNSUPPORTED_BODY_TOPOLOGY";
+    case "stale":
+      return "STALE_BODY_TOPOLOGY";
+    case "kernel-failed":
+      return "EXACT_GEOMETRY_KERNEL_FAILED";
+    case "unavailable-binding":
+      return "EXACT_GEOMETRY_BINDING_UNAVAILABLE";
+  }
+}
+
+function getDerivedExactMetadataIssueMessage(
+  status: Exclude<CadBodyDerivedExactMetadataSnapshot["status"], "ready">,
+  bodyId: BodyId
+): string {
+  switch (status) {
+    case "unsupported":
+      return `Derived exact metadata is unsupported for body: ${bodyId}`;
+    case "stale":
+      return `Derived exact metadata is stale for body: ${bodyId}`;
+    case "kernel-failed":
+      return `Kernel-derived exact metadata failed for body: ${bodyId}`;
+    case "unavailable-binding":
+      return `Kernel exact metadata bindings are unavailable for body: ${bodyId}`;
+  }
 }
 
 function createTopologyCacheKey(

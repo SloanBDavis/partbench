@@ -127,6 +127,12 @@ describe("scene object display helpers", () => {
     expect(formatBodyMeasurementConfidence(topology)).toBe("Source analytic");
   });
 
+  it("formats unavailable exact metadata binding status", () => {
+    expect(formatBodyTopologyStatus("unavailable-binding")).toBe(
+      "Binding unavailable"
+    );
+  });
+
   it("formats body topology errors clearly", () => {
     expect(
       formatBodyTopologyError({
