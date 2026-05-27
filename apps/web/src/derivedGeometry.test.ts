@@ -215,6 +215,30 @@ describe("derivedGeometry", () => {
     expect(getDerivedSourceIds(engine)).toEqual([]);
   });
 
+  it("updates revolve sources across feature delete undo and redo", () => {
+    const engine = createRevolveEngine();
+
+    expect(getDerivedSourceIds(engine)).toEqual([
+      "body_revolve_rect_1",
+      "body_revolve_circle_1"
+    ]);
+
+    engine.apply({ op: "feature.delete", id: "feat_revolve_rect_1" });
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_revolve_circle_1"]);
+
+    engine.undo();
+
+    expect(getDerivedSourceIds(engine)).toEqual([
+      "body_revolve_rect_1",
+      "body_revolve_circle_1"
+    ]);
+
+    engine.redo();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_revolve_circle_1"]);
+  });
+
   it("creates authored revolve sources from rectangle and circle profiles", () => {
     const engine = createRevolveEngine();
     const sources = getDerivedSources(engine);
@@ -2542,6 +2566,24 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("ignores stale worker results after revolve body deletion", async () => {
+    const pending = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(() => pending.promise),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([createRevolveSource("body_revolve_1")]);
+    service.reconcile([]);
+    pending.resolve(createResult("body_revolve_1", createMesh("stale_mesh")));
+    await flushPromises();
+
+    const snapshot = snapshots.at(-1) ?? createEmptyDerivedGeometrySnapshot();
+    expect(snapshot.entries).toEqual([]);
+    expect(snapshot.meshes).toEqual([]);
+  });
+
   it("ignores stale worker results after object deletion", async () => {
     const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -2758,6 +2800,29 @@ describe("derivedGeometry", () => {
     expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
       "Revolve mesh error"
     );
+  });
+
+  it("labels unsupported revolve placement without implying primitive fallback", () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async (input) =>
+        createResult(input.id, createMesh(input.id))
+      ),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([
+      {
+        ...createRevolveSource("body_revolve_1"),
+        placementError:
+          "Revolve display currently supports newBody revolve features only."
+      }
+    ]);
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Revolve display currently supports newBody revolve features only."
+    );
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
   });
 
   it("disposes runtime and ignores pending work after disposal", async () => {

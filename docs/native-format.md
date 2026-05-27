@@ -558,8 +558,10 @@ persisted. Current command support is `operationMode: "newBody"` only, with
 positive finite `angleDegrees` less than or equal to 360. Add/cut revolve modes
 are reserved in the typed shape but rejected until deliberately implemented.
 Revolve result bodies appear in project structure and health, but generated
-semantic references, source-analytic measurements, extents, and geometry-worker
-rendering for revolve bodies are not implemented in this command-first slice.
+semantic references, source-analytic measurements, and extents for revolve
+bodies are not implemented yet. App rendering can rebuild revolve bodies as
+derived mesh/cache data through the geometry-worker path; those meshes are not
+persisted.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived
@@ -701,8 +703,8 @@ sketch.createOnFace attachment    -> stored on the created sketch
 ```
 
 Primitive-derived IDs are query/API affordances and are not separately
-persisted as part/feature/body records. Authored extrude feature IDs and body IDs
-are persisted because they are user-visible rebuild inputs.
+persisted as part/feature/body records. Authored extrude/revolve feature IDs and
+body IDs are persisted because they are user-visible rebuild inputs.
 
 This avoids duplicating source-of-truth state. Duplicated saved part/feature/body
 records would create unnecessary consistency rules while primitive bodies remain

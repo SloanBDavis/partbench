@@ -478,6 +478,18 @@ describe("renderScene", () => {
     expect(pendingScene.meshes).toEqual([]);
   });
 
+  it("does not render a primitive-style fallback for unsupported revolve sources", () => {
+    const source: DerivedRevolveGeometrySource = {
+      ...createRevolveSource("body_revolve_1"),
+      placementError:
+        "Revolve display currently supports newBody revolve features only."
+    };
+    const scene = createRenderSceneInputs([], new Map(), [source]);
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes).toEqual([]);
+  });
+
   it("adds sketch display edges so authored sketches are visible in the viewport", () => {
     const sketch: SketchSnapshot = {
       id: "sketch_1",
