@@ -27,12 +27,14 @@ export type DerivedGeometryStatusKind =
 export type DerivedGeometrySourceKind =
   | SceneObject["kind"]
   | "extrude"
-  | "extrudeBoolean";
+  | "extrudeBoolean"
+  | "revolve";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
   | DerivedExtrudeGeometrySource
-  | DerivedBooleanExtrudeGeometrySource;
+  | DerivedBooleanExtrudeGeometrySource
+  | DerivedRevolveGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -69,6 +71,20 @@ export interface DerivedBooleanExtrudeGeometrySource {
   readonly operation: "add" | "cut";
   readonly target: DerivedExtrudeGeometrySource;
   readonly tool: DerivedExtrudeGeometrySource;
+  readonly placementError?: string;
+}
+
+export interface DerivedRevolveGeometrySource {
+  readonly id: string;
+  readonly kind: "revolve";
+  readonly sketchPlane: "XY" | "XZ" | "YZ";
+  readonly profile: DerivedExtrudeGeometrySource["profile"];
+  readonly axis: {
+    readonly start: readonly [number, number];
+    readonly end: readonly [number, number];
+  };
+  readonly angleDegrees: number;
+  readonly placementFrame?: SketchDisplayFrame;
   readonly placementError?: string;
 }
 
@@ -130,7 +146,8 @@ type SupportedDerivedGeometryObject =
 type SupportedDerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
   | DerivedExtrudeGeometrySource
-  | DerivedBooleanExtrudeGeometrySource;
+  | DerivedBooleanExtrudeGeometrySource
+  | DerivedRevolveGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -355,7 +372,8 @@ function toDerivedGeometrySource(
   if (
     "object" in input ||
     input.kind === "extrude" ||
-    input.kind === "extrudeBoolean"
+    input.kind === "extrudeBoolean" ||
+    input.kind === "revolve"
   ) {
     return input;
   }
@@ -372,6 +390,10 @@ function isSupportedDerivedGeometrySource(
 
   if (source.kind === "extrudeBoolean") {
     return !source.placementError && isSupportedBooleanExtrudeSource(source);
+  }
+
+  if (source.kind === "revolve") {
+    return !source.placementError;
   }
 
   return isSupportedDerivedGeometryObject(source.object);
@@ -410,6 +432,33 @@ function deriveSourceMesh(
         }
       })
       .then((result) => applyExtrudePlacement(source, result));
+  }
+
+  if (source.kind === "revolve") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    return runtime
+      .revolveProfile({
+        id: source.id,
+        sketchPlane: source.sketchPlane,
+        profile: source.profile,
+        axis: source.axis,
+        angleDegrees: source.angleDegrees,
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      })
+      .then((result) =>
+        applySketchPlanePlacement(
+          result,
+          source.sketchPlane,
+          source.placementFrame
+        )
+      );
   }
 
   if (source.kind === "extrudeBoolean") {
@@ -483,7 +532,19 @@ export function applyExtrudePlacement(
   source: DerivedExtrudeGeometrySource,
   result: DerivedGeometryResult
 ): DerivedGeometryResult {
-  if (!source.placementFrame) {
+  return applySketchPlanePlacement(
+    result,
+    source.sketchPlane,
+    source.placementFrame
+  );
+}
+
+export function applySketchPlanePlacement(
+  result: DerivedGeometryResult,
+  sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"],
+  placementFrame?: SketchDisplayFrame
+): DerivedGeometryResult {
+  if (!placementFrame) {
     return result;
   }
 
@@ -491,8 +552,8 @@ export function applyExtrudePlacement(
     ...result,
     mesh: transformExtrudeMeshToPlacement(
       result.mesh,
-      source.sketchPlane,
-      source.placementFrame
+      sketchPlane,
+      placementFrame
     )
   };
 }
@@ -535,7 +596,11 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, and rectangle-tool boolean results.";
+  if (source.kind === "revolve" && source.placementError) {
+    return source.placementError;
+  }
+
+  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, and authored revolves.";
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -603,11 +668,21 @@ export function createDerivedGeometryCacheKey(
             tool: createDerivedGeometryCacheKey(source.tool),
             placementError: source.placementError
           }
-        : {
-            kind: source.kind,
-            dimensions: source.object.dimensions,
-            transform: source.object.transform
-          };
+        : source.kind === "revolve"
+          ? {
+              kind: source.kind,
+              sketchPlane: source.sketchPlane,
+              profile: source.profile,
+              axis: source.axis,
+              angleDegrees: source.angleDegrees,
+              placementFrame: source.placementFrame,
+              placementError: source.placementError
+            }
+          : {
+              kind: source.kind,
+              dimensions: source.object.dimensions,
+              transform: source.object.transform
+            };
 
   return JSON.stringify(base);
 }
@@ -629,11 +704,16 @@ export function getDerivedGeometryStatusLabel(
         return "Boolean mesh error";
       }
 
+      if (entry.sourceKind === "revolve") {
+        return "Revolve mesh error";
+      }
+
       return "Primitive fallback";
     case "unsupported":
       if (
         entry.sourceKind === "extrude" ||
-        entry.sourceKind === "extrudeBoolean"
+        entry.sourceKind === "extrudeBoolean" ||
+        entry.sourceKind === "revolve"
       ) {
         return entry.message;
       }

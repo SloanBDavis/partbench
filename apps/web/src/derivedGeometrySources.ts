@@ -8,7 +8,8 @@ import {
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
   type DerivedExtrudeGeometrySource,
-  type DerivedGeometrySource
+  type DerivedGeometrySource,
+  type DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
   createAttachedSketchGeometryFrame,
@@ -34,7 +35,33 @@ export function createDerivedGeometrySourcesFromDocument(
 
   return [
     ...[...document.objects.values()].map(createPrimitiveDerivedGeometrySource),
+    ...createAuthoredFeatureDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey
+    )
+  ];
+}
+
+export function createAuthoredFeatureDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map()
+): readonly (
+  | DerivedExtrudeGeometrySource
+  | DerivedBooleanExtrudeGeometrySource
+  | DerivedRevolveGeometrySource
+)[] {
+  return [
     ...createExtrudeDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey
+    ),
+    ...createRevolveDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey
@@ -125,6 +152,27 @@ export function createExtrudeDerivedGeometrySources(
   return sources;
 }
 
+export function createRevolveDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map()
+): readonly DerivedRevolveGeometrySource[] {
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "revolve" }> =>
+        feature.kind === "revolve"
+    )
+    .map((feature) =>
+      createRevolveSourceForFeature(feature, sketches, generatedFacesByKey)
+    )
+    .filter(
+      (source): source is DerivedRevolveGeometrySource => source !== undefined
+    );
+}
+
 function createExtrudeSourceForFeature(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   sketches: readonly SketchSnapshot[],
@@ -141,9 +189,10 @@ function createExtrudeSourceForFeature(
     return undefined;
   }
 
-  const placement = createAttachedSketchExtrudePlacement(
+  const placement = createAttachedSketchFeaturePlacement(
     sketch,
-    generatedFacesByKey
+    generatedFacesByKey,
+    "extrude"
   );
 
   if (entity.kind === "rectangle") {
@@ -176,6 +225,74 @@ function createExtrudeSourceForFeature(
       depth: feature.depth,
       side: feature.side,
       ...placement
+    };
+  }
+
+  return undefined;
+}
+
+function createRevolveSourceForFeature(
+  feature: Extract<CadFeatureSummary, { kind: "revolve" }>,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): DerivedRevolveGeometrySource | undefined {
+  const sketch = sketches.find(
+    (candidate) => candidate.id === feature.sketchId
+  );
+  const entity = sketch?.entities.find(
+    (candidate) => candidate.id === feature.entityId
+  );
+  const axis = sketch?.entities.find(
+    (candidate) => candidate.id === feature.axis.entityId
+  );
+
+  if (!sketch || !entity || !axis || axis.kind !== "line") {
+    return undefined;
+  }
+
+  const placement = createAttachedSketchFeaturePlacement(
+    sketch,
+    generatedFacesByKey,
+    "revolve"
+  );
+  const placementState =
+    feature.operationMode === "newBody"
+      ? placement
+      : {
+          placementError:
+            "Revolve display currently supports newBody revolve features only."
+        };
+
+  if (entity.kind === "rectangle") {
+    return {
+      id: feature.bodyId,
+      kind: "revolve",
+      sketchPlane: sketch.plane,
+      profile: {
+        kind: entity.kind,
+        center: entity.center,
+        width: entity.width,
+        height: entity.height
+      },
+      axis: { start: axis.start, end: axis.end },
+      angleDegrees: feature.angleDegrees,
+      ...placementState
+    };
+  }
+
+  if (entity.kind === "circle") {
+    return {
+      id: feature.bodyId,
+      kind: "revolve",
+      sketchPlane: sketch.plane,
+      profile: {
+        kind: entity.kind,
+        center: entity.center,
+        radius: entity.radius
+      },
+      axis: { start: axis.start, end: axis.end },
+      angleDegrees: feature.angleDegrees,
+      ...placementState
     };
   }
 
@@ -220,9 +337,10 @@ function createUnavailableExtrudeSource(
   };
 }
 
-function createAttachedSketchExtrudePlacement(
+function createAttachedSketchFeaturePlacement(
   sketch: SketchSnapshot,
-  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  featureKind: "extrude" | "revolve"
 ): {
   readonly placementFrame?: SketchDisplayFrame;
   readonly placementError?: string;
@@ -239,7 +357,7 @@ function createAttachedSketchExtrudePlacement(
 
   if (!face) {
     return {
-      placementError: `Attachment unresolved for ${sketch.name}; derived extrude mesh is unavailable.`
+      placementError: `Attachment unresolved for ${sketch.name}; derived ${featureKind} mesh is unavailable.`
     };
   }
 
@@ -247,7 +365,7 @@ function createAttachedSketchExtrudePlacement(
 
   if (!frame) {
     return {
-      placementError: `Attachment face cannot place ${sketch.name}; derived extrude mesh is unavailable.`
+      placementError: `Attachment face cannot place ${sketch.name}; derived ${featureKind} mesh is unavailable.`
     };
   }
 

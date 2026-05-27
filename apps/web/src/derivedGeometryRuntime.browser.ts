@@ -11,6 +11,7 @@ import {
   type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
   type DerivedGeometryExtrudeInput,
+  type DerivedGeometryRevolveInput,
   type DerivedGeometrySphereInput,
   type DerivedGeometryTorusInput,
   type DerivedGeometryResult,
@@ -50,6 +51,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryConeInput
       | DerivedGeometryTorusInput
       | DerivedGeometryExtrudeInput
+      | DerivedGeometryRevolveInput
       | DerivedGeometryBooleanExtrudeInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
@@ -68,6 +70,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       id: input.id,
       alignment:
         request.payload.op === "geometry.tessellateExtrude" ||
+        request.payload.op === "geometry.revolveProfile" ||
         request.payload.op === "geometry.booleanExtrudes"
           ? "source"
           : "boundsCenter",
@@ -224,6 +227,25 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           profile: input.profile,
           depth: input.depth,
           side: input.side,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async revolveProfile(input: DerivedGeometryRevolveInput) {
+      const { createRevolveProfileWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createRevolveProfileWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          sketchPlane: input.sketchPlane,
+          profile: input.profile,
+          axis: input.axis,
+          angleDegrees: input.angleDegrees,
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

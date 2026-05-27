@@ -5247,6 +5247,114 @@ describe("cad-core", () => {
     );
   });
 
+  it("allows valid revolve axis line edits and rejects invalid axis updates", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Revolve", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [2, 0],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "axis_1",
+        start: [0, -2],
+        end: [0, 2]
+      },
+      {
+        op: "feature.revolve",
+        id: "feat_revolve_1",
+        bodyId: "body_revolve_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_1",
+          entityId: "axis_1"
+        },
+        angleDegrees: 180
+      }
+    ]);
+
+    const result = engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "axis_1",
+        kind: "line",
+        start: [0, -3],
+        end: [0, 3]
+      }
+    });
+
+    expect(result.transaction.diff.features).toMatchObject({
+      modified: [
+        {
+          id: "feat_revolve_1",
+          kind: "revolve",
+          bodyId: "body_revolve_1",
+          axis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          }
+        }
+      ],
+      bodiesModified: [
+        { id: "body_revolve_1", kind: "solid", featureId: "feat_revolve_1" }
+      ]
+    });
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("axis_1")
+    ).toMatchObject({
+      kind: "line",
+      start: [0, -3],
+      end: [0, 3]
+    });
+
+    const invalid = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "sketch.updateEntity",
+          sketchId: "sketch_1",
+          entity: {
+            id: "axis_1",
+            kind: "line",
+            start: [0, 0],
+            end: [0, 0]
+          }
+        }
+      ]
+    });
+
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_FEATURE",
+        message: "Revolve axis line must have non-zero length.",
+        sketchId: "sketch_1",
+        sketchEntityId: "axis_1"
+      }
+    });
+
+    engine.undo();
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("axis_1")
+    ).toMatchObject({
+      kind: "line",
+      start: [0, -2],
+      end: [0, 2]
+    });
+  });
+
   it("validates revolve source, axis, angle, and unsupported operation modes", () => {
     const engine = new CadEngine();
 

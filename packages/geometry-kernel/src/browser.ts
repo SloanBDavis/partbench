@@ -6,6 +6,7 @@ import {
   createOcctTorusMeshWithInstance,
   loadBrowserOcct,
   createOcctBooleanExtrudeMeshWithInstance,
+  createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
@@ -40,7 +41,11 @@ import {
   type GeometryKernelMeasurementSource,
   type GeometryKernelMeshRequest,
   type GeometryKernelMeshSuccessResponse,
+  type GeometryKernelRevolveProfileMeshFactory,
   type GeometryKernelTopologyCounts,
+  type RevolveGeometryAxis,
+  type RevolveGeometryProfile,
+  type RevolveProfileRequest,
   type SerializableMeshData,
   type SphereGeometryDimensions,
   type TessellateExtrudeRequest,
@@ -55,7 +60,7 @@ import {
 
 type BrowserOcctPrimitive = Exclude<
   GeometryKernelPrimitive,
-  "extrude" | "boolean"
+  "extrude" | "revolve" | "boolean"
 >;
 
 export type {
@@ -80,6 +85,7 @@ export type {
   GeometryKernelMeasurementSource,
   GeometryKernelMeshRequest,
   GeometryKernelMeshSuccessResponse,
+  GeometryKernelRevolveProfileMeshFactory,
   GeometryKernelOp,
   GeometryKernelPrimitive,
   GeometryKernelResponseForRequest,
@@ -87,6 +93,9 @@ export type {
   GeometryKernelResponse,
   GeometryKernelSuccessResponse,
   GeometryKernelTopologyCounts,
+  RevolveGeometryAxis,
+  RevolveGeometryProfile,
+  RevolveProfileRequest,
   GeometryKernelVersion,
   GeometryKernelErrorResponse,
   SerializableMeshData,
@@ -143,6 +152,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
       createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus"),
       createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct,
+      createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
       createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct
     },
     request
@@ -267,6 +277,35 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctExactBodyMetadataWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createRevolveProfileMeshWithBrowserOcct(
+    input: Omit<RevolveProfileRequest, "id" | "version" | "op"> &
+      TessellationOptions
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctRevolveProfileMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

@@ -242,6 +242,64 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "tessellates rectangle and circle revolve profiles through the isolated OCCT WASM adapter",
+    async () => {
+      const rectangle = await executeGeometryKernelRequest({
+        id: "geometry_req_rect_revolve",
+        version: "geometry-kernel.v1",
+        op: "geometry.revolveProfile",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [2, 0],
+          width: 1,
+          height: 3
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 360
+      });
+      const circle = await executeGeometryKernelRequest({
+        id: "geometry_req_circle_revolve",
+        version: "geometry-kernel.v1",
+        op: "geometry.revolveProfile",
+        sketchPlane: "XZ",
+        profile: {
+          kind: "circle",
+          center: [2, 0],
+          radius: 0.5
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 180
+      });
+
+      expect(rectangle.ok).toBe(true);
+      expect(circle.ok).toBe(true);
+
+      if (!rectangle.ok || !circle.ok) {
+        throw new Error("Expected revolve profile tessellation to succeed.");
+      }
+
+      expect(rectangle.mesh.primitive).toBe("revolve");
+      expect(rectangle.mesh.vertexCount).toBeGreaterThan(0);
+      expect(rectangle.mesh.triangleCount).toBeGreaterThan(0);
+      expect(circle.mesh.primitive).toBe("revolve");
+      expect(circle.mesh.vertexCount).toBeGreaterThan(0);
+      expect(circle.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getGeometryResponseTransferables(rectangle)).toEqual([
+        rectangle.mesh.positions.buffer,
+        rectangle.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "returns exact rectangle extrude metadata through the isolated OCCT WASM adapter",
     async () => {
       const response = await executeGeometryKernelRequest({
@@ -920,6 +978,110 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("returns revolve meshes from an injected factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createRevolveProfileMesh: async () => ({
+        primitive: "revolve",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_revolve",
+        version: "geometry-kernel.v1",
+        op: "geometry.revolveProfile",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [1, 0],
+          width: 2,
+          height: 3
+        },
+        axis: {
+          start: [0, -1],
+          end: [0, 1]
+        },
+        angleDegrees: 90
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_revolve",
+      op: "geometry.revolveProfile",
+      mesh: {
+        primitive: "revolve",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured unavailable-binding errors when revolve factory is absent", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_unavailable_revolve",
+        version: "geometry-kernel.v1",
+        op: "geometry.revolveProfile",
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [2, 0],
+          radius: 1
+        },
+        axis: {
+          start: [0, -1],
+          end: [0, 1]
+        },
+        angleDegrees: 180
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_unavailable_revolve",
+      op: "geometry.revolveProfile",
+      error: {
+        code: "UNAVAILABLE_BINDING",
+        message:
+          "Revolve profile tessellation requires an OCCT revolve mesh factory."
+      },
+      warnings: []
+    });
+  });
+
   it("returns exact metadata from an injected metadata factory", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1219,6 +1381,65 @@ describe("geometry-kernel facade", () => {
         code: "INVALID_DIMENSIONS",
         message:
           "Torus dimensions must be finite numbers greater than zero with minorRadius smaller than majorRadius."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured revolve validation errors before calling the kernel", async () => {
+    const zeroAxis = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_revolve_axis",
+      version: "geometry-kernel.v1",
+      op: "geometry.revolveProfile",
+      sketchPlane: "XY",
+      profile: {
+        kind: "rectangle",
+        center: [1, 0],
+        width: 2,
+        height: 3
+      },
+      axis: {
+        start: [0, 0],
+        end: [0, 0]
+      },
+      angleDegrees: 90
+    });
+    const badAngle = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_revolve_angle",
+      version: "geometry-kernel.v1",
+      op: "geometry.revolveProfile",
+      sketchPlane: "XY",
+      profile: {
+        kind: "circle",
+        center: [2, 0],
+        radius: 1
+      },
+      axis: {
+        start: [0, -1],
+        end: [0, 1]
+      },
+      angleDegrees: 361
+    });
+
+    expect(zeroAxis).toEqual({
+      ok: false,
+      id: "geometry_req_bad_revolve_axis",
+      op: "geometry.revolveProfile",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Revolve profile requests require a supported sketch plane, rectangle or circle profile, non-zero finite axis, and positive finite angle no greater than 360 degrees."
+      },
+      warnings: []
+    });
+    expect(badAngle).toEqual({
+      ok: false,
+      id: "geometry_req_bad_revolve_angle",
+      op: "geometry.revolveProfile",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Revolve profile requests require a supported sketch plane, rectangle or circle profile, non-zero finite axis, and positive finite angle no greater than 360 degrees."
       },
       warnings: []
     });

@@ -16,8 +16,9 @@ import {
   DerivedGeometryService,
   getDerivedGeometryStatusLabel,
   transformExtrudeMeshToPlacement,
-  type DerivedExtrudeGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
+  type DerivedExtrudeGeometrySource,
+  type DerivedRevolveGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
@@ -28,6 +29,7 @@ import type {
   DerivedGeometryCylinderInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
+  DerivedGeometryRevolveInput,
   DerivedGeometryResult,
   DerivedGeometryRuntime,
   DerivedGeometrySphereInput,
@@ -43,6 +45,7 @@ type RuntimeInput =
   | DerivedGeometryConeInput
   | DerivedGeometryTorusInput
   | DerivedGeometryExtrudeInput
+  | DerivedGeometryRevolveInput
   | DerivedGeometryBooleanExtrudeInput;
 
 describe("derivedGeometry", () => {
@@ -210,6 +213,126 @@ describe("derivedGeometry", () => {
     engine.redo();
 
     expect(getDerivedSourceIds(engine)).toEqual([]);
+  });
+
+  it("creates authored revolve sources from rectangle and circle profiles", () => {
+    const engine = createRevolveEngine();
+    const sources = getDerivedSources(engine);
+
+    expect(sources.map((source) => source.id)).toEqual([
+      "body_revolve_rect_1",
+      "body_revolve_circle_1"
+    ]);
+    expect(sources).toMatchObject([
+      {
+        id: "body_revolve_rect_1",
+        kind: "revolve",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [2, 0],
+          width: 1,
+          height: 2
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 270
+      },
+      {
+        id: "body_revolve_circle_1",
+        kind: "revolve",
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [4, 0],
+          radius: 0.5
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 180
+      }
+    ]);
+  });
+
+  it("updates revolve source cache keys across profile and axis edits", () => {
+    const engine = createRevolveEngine();
+    const initialSource = getDerivedSources(engine).find(
+      (source): source is DerivedRevolveGeometrySource =>
+        source.id === "body_revolve_rect_1" && source.kind === "revolve"
+    );
+
+    if (!initialSource) {
+      throw new Error("Expected a revolve derived source.");
+    }
+
+    const initialKey = createDerivedGeometryCacheKey(initialSource);
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [2, 0],
+        width: 3,
+        height: 2
+      }
+    });
+
+    const profileEditedSource = getDerivedSources(engine).find(
+      (source): source is DerivedRevolveGeometrySource =>
+        source.id === "body_revolve_rect_1" && source.kind === "revolve"
+    );
+
+    if (!profileEditedSource) {
+      throw new Error("Expected an edited revolve derived source.");
+    }
+
+    const profileEditedKey = createDerivedGeometryCacheKey(profileEditedSource);
+    expect(profileEditedSource.profile).toMatchObject({
+      kind: "rectangle",
+      width: 3,
+      height: 2
+    });
+    expect(profileEditedKey).not.toBe(initialKey);
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "axis_1",
+        kind: "line",
+        start: [0, -3],
+        end: [0, 3]
+      }
+    });
+
+    const axisEditedSource = getDerivedSources(engine).find(
+      (source): source is DerivedRevolveGeometrySource =>
+        source.id === "body_revolve_rect_1" && source.kind === "revolve"
+    );
+
+    if (!axisEditedSource) {
+      throw new Error("Expected an axis-edited revolve derived source.");
+    }
+
+    expect(axisEditedSource.axis).toEqual({
+      start: [0, -3],
+      end: [0, 3]
+    });
+    expect(createDerivedGeometryCacheKey(axisEditedSource)).not.toBe(
+      profileEditedKey
+    );
+    expect(
+      createDerivedGeometryCacheKey({
+        ...axisEditedSource,
+        angleDegrees: 90
+      })
+    ).not.toBe(createDerivedGeometryCacheKey(axisEditedSource));
   });
 
   it("updates extrude source cache keys across depth edits, undo, and redo", () => {
@@ -2365,6 +2488,60 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("ignores stale worker results after revolve source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "axis" in input && input.axis.end[1] === 2
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource = createRevolveSource("body_revolve_1");
+    const editedSource: DerivedRevolveGeometrySource = {
+      ...initialSource,
+      axis: { start: [0, -3], end: [0, 3] }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) => ("axis" in input ? input.axis.end : null))
+    ).toEqual([
+      [0, 2],
+      [0, 3]
+    ]);
+
+    first.resolve(createResult("body_revolve_1", createMesh("stale_revolve")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_revolve_1",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(
+      createResult("body_revolve_1", createMesh("body_revolve_1"))
+    );
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_revolve_1",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_revolve_1"
+    ]);
+  });
+
   it("ignores stale worker results after object deletion", async () => {
     const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -2566,6 +2743,23 @@ describe("derivedGeometry", () => {
     );
   });
 
+  it("labels revolve mesh errors without implying primitive fallback", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async () => {
+        throw new Error("revolve worker failed");
+      }),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([createRevolveSource("body_revolve_1")]);
+    await flushPromises();
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Revolve mesh error"
+    );
+  });
+
   it("disposes runtime and ignores pending work after disposal", async () => {
     const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
@@ -2703,6 +2897,25 @@ function createCircleExtrudeSource(id: string): DerivedExtrudeGeometrySource {
   };
 }
 
+function createRevolveSource(id: string): DerivedRevolveGeometrySource {
+  return {
+    id,
+    kind: "revolve",
+    sketchPlane: "XY",
+    profile: {
+      kind: "rectangle",
+      center: [2, 0],
+      width: 1,
+      height: 2
+    },
+    axis: {
+      start: [0, -2],
+      end: [0, 2]
+    },
+    angleDegrees: 270
+  };
+}
+
 function createExtrudedRectangleEngine(): CadEngine {
   const engine = new CadEngine();
 
@@ -2725,6 +2938,64 @@ function createExtrudedRectangleEngine(): CadEngine {
     entityId: "rect_1",
     depth: 3
   });
+
+  return engine;
+}
+
+function createRevolveEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [2, 0],
+      width: 1,
+      height: 2
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [4, 0],
+      radius: 0.5
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "axis_1",
+      start: [0, -2],
+      end: [0, 2]
+    },
+    {
+      op: "feature.revolve",
+      id: "feat_revolve_rect_1",
+      bodyId: "body_revolve_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 270
+    },
+    {
+      op: "feature.revolve",
+      id: "feat_revolve_circle_1",
+      bodyId: "body_revolve_circle_1",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 180
+    }
+  ]);
 
   return engine;
 }
@@ -2792,6 +3063,10 @@ function createRuntime(
       return handler(input);
     },
     tessellateExtrude(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    revolveProfile(input) {
       inputs.push(input);
       return handler(input);
     },

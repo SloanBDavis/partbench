@@ -5,6 +5,7 @@ import {
   createOcctConeMesh,
   createOcctCylinderMesh,
   createOcctExactBodyMetadata,
+  createOcctRevolveProfileMesh,
   createOcctSphereMesh,
   createOcctTorusMesh
 } from "./index";
@@ -128,6 +129,53 @@ describe("occt-wasm", () => {
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
       expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "creates and tessellates rectangle and circle revolve profiles through Open CASCADE WASM",
+    async () => {
+      const rectangle = await createOcctRevolveProfileMesh({
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [2, 0],
+          width: 1,
+          height: 2
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 360
+      });
+      const circle = await createOcctRevolveProfileMesh({
+        sketchPlane: "XZ",
+        profile: {
+          kind: "circle",
+          center: [2, 0],
+          radius: 0.5
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 180
+      });
+
+      expect(rectangle.primitive).toBe("revolve");
+      expect(rectangle.faceCount).toBeGreaterThan(0);
+      expect(rectangle.vertexCount).toBeGreaterThan(0);
+      expect(rectangle.triangleCount).toBeGreaterThan(0);
+      expect(rectangle.positions).toHaveLength(rectangle.vertexCount * 3);
+      expect(rectangle.indices).toHaveLength(rectangle.triangleCount * 3);
+      expect(circle.primitive).toBe("revolve");
+      expect(circle.faceCount).toBeGreaterThan(0);
+      expect(circle.vertexCount).toBeGreaterThan(0);
+      expect(circle.triangleCount).toBeGreaterThan(0);
+      expect(circle.positions).toHaveLength(circle.vertexCount * 3);
+      expect(circle.indices).toHaveLength(circle.triangleCount * 3);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

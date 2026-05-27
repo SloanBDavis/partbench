@@ -12,6 +12,7 @@ export type OcctPrimitiveKind =
   | "sphere"
   | "cone"
   | "torus"
+  | "revolve"
   | "boolean";
 
 export interface OcctMeshData {

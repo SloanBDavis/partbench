@@ -685,7 +685,9 @@ Initial implementation:
 - `newBody` only, with add/cut revolve modes rejected structurally;
 - semantic diffs, undo/redo, batch dry-run/commit, project structure/health,
   transaction history, V14 import/export, adapter/MCP pass-through, and tests;
-- no revolve rendering, generated references, measurements/extents, or UI yet.
+- app derived-geometry/rendering support for authored revolve bodies through
+  the `geometry.revolveProfile` mesh path;
+- no generated references, measurements/extents, or UI creation workflow yet.
 
 ### V6 Phase C: Revolve Geometry And UI Integration
 
@@ -693,7 +695,6 @@ Goal: make revolve visible and usable in the app.
 
 Planned deliverables:
 
-- geometry-kernel/worker/OCCT revolve mesh path;
 - compact feature creation UI that lets the user choose Extrude or Revolve;
 - valid axis filtering and clear validation messages;
 - selected-body topology/measurement health for revolve results.

@@ -6,6 +6,7 @@ export type GeometryKernelOp =
   | "geometry.tessellateCone"
   | "geometry.tessellateTorus"
   | "geometry.tessellateExtrude"
+  | "geometry.revolveProfile"
   | "geometry.booleanExtrudes"
   | "geometry.exactBodyMetadata";
 export type GeometryKernelPrimitive =
@@ -15,6 +16,7 @@ export type GeometryKernelPrimitive =
   | "cone"
   | "torus"
   | "extrude"
+  | "revolve"
   | "boolean";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
@@ -62,6 +64,13 @@ export interface CircleExtrudeProfile {
 export type ExtrudeGeometryProfile =
   | RectangleExtrudeProfile
   | CircleExtrudeProfile;
+
+export type RevolveGeometryProfile = ExtrudeGeometryProfile;
+
+export interface RevolveGeometryAxis {
+  readonly start: readonly [number, number];
+  readonly end: readonly [number, number];
+}
 
 export interface BooleanExtrudeSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
@@ -133,6 +142,17 @@ export interface TessellateExtrudeRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface RevolveProfileRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.revolveProfile";
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile: RevolveGeometryProfile;
+  readonly axis: RevolveGeometryAxis;
+  readonly angleDegrees: number;
+  readonly tessellation?: TessellationOptions;
+}
+
 export interface BooleanExtrudesRequest {
   readonly id: string;
   readonly version: GeometryKernelVersion;
@@ -172,6 +192,7 @@ export type GeometryKernelRequest =
   | TessellateConeRequest
   | TessellateTorusRequest
   | TessellateExtrudeRequest
+  | RevolveProfileRequest
   | BooleanExtrudesRequest
   | ExactBodyMetadataRequest;
 
@@ -301,6 +322,11 @@ export type GeometryKernelBooleanExtrudeMeshFactory = (
     TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelRevolveProfileMeshFactory = (
+  input: Omit<RevolveProfileRequest, "id" | "version" | "op"> &
+    TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export type GeometryKernelExactBodyMetadataFactory = (
   input: Omit<ExactBodyMetadataRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactBodyMetadata>;
@@ -312,6 +338,7 @@ export interface GeometryKernelMeshFactories {
   readonly createConeMesh: GeometryKernelConeMeshFactory;
   readonly createTorusMesh: GeometryKernelTorusMeshFactory;
   readonly createBooleanExtrudeMesh: GeometryKernelBooleanExtrudeMeshFactory;
+  readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
 }
 
@@ -457,6 +484,20 @@ function validateRequest(
           "Extrude requests require a supported sketch plane, side, rectangle or circle profile, and positive finite depth."
       };
     }
+  } else if (request.op === "geometry.revolveProfile") {
+    if (
+      !isSketchPlane(request.sketchPlane) ||
+      !isValidExtrudeProfile(request.profile) ||
+      !isValidRevolveAxis(request.axis) ||
+      !isPositiveFiniteNumber(request.angleDegrees) ||
+      request.angleDegrees > 360
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Revolve profile requests require a supported sketch plane, rectangle or circle profile, non-zero finite axis, and positive finite angle no greater than 360 degrees."
+      };
+    }
   } else if (request.op === "geometry.booleanExtrudes") {
     if (!isBooleanOperation(request.operation)) {
       return {
@@ -554,6 +595,8 @@ function createMesh(
       });
     case "geometry.tessellateExtrude":
       return createExtrudeMesh(factories, request);
+    case "geometry.revolveProfile":
+      return createRevolveProfileMesh(factories, request);
     case "geometry.booleanExtrudes":
       return factories.createBooleanExtrudeMesh({
         operation: request.operation,
@@ -563,6 +606,28 @@ function createMesh(
         angularDeflection: request.tessellation?.angularDeflection
       });
   }
+}
+
+function createRevolveProfileMesh(
+  factories: GeometryKernelMeshFactories,
+  request: RevolveProfileRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createRevolveProfileMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Revolve profile tessellation requires an OCCT revolve mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createRevolveProfileMesh({
+    sketchPlane: request.sketchPlane,
+    profile: request.profile,
+    axis: request.axis,
+    angleDegrees: request.angleDegrees,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createExactBodyMetadata(
@@ -720,6 +785,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Torus";
     case "geometry.tessellateExtrude":
       return "Extrude";
+    case "geometry.revolveProfile":
+      return "Revolve profile";
     case "geometry.booleanExtrudes":
       return "Boolean extrude";
     case "geometry.exactBodyMetadata":
@@ -825,6 +892,14 @@ function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
   }
 
   return false;
+}
+
+function isValidRevolveAxis(axis: RevolveGeometryAxis): boolean {
+  return (
+    isVec2(axis.start) &&
+    isVec2(axis.end) &&
+    Math.hypot(axis.end[0] - axis.start[0], axis.end[1] - axis.start[1]) > 0
+  );
 }
 
 function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {

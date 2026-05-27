@@ -40,6 +40,11 @@ import {
   type OcctExactBodyMetadata,
   type OcctExactBodyMetadataInput
 } from "./exactMetadata";
+import {
+  createOcctRevolveProfileMeshWithInstance,
+  createOcctRevolveProfileMeshWithLoader,
+  type OcctRevolveProfileInput
+} from "./revolveProfile";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -50,6 +55,7 @@ export type {
   OcctTorusInput,
   OcctExactBodyMetadata,
   OcctExactBodyMetadataInput,
+  OcctRevolveProfileInput,
   OcctMeshData
 };
 export {
@@ -65,6 +71,8 @@ export {
   createOcctTorusMeshWithLoader,
   createOcctBooleanExtrudeMeshWithInstance,
   createOcctBooleanExtrudeMeshWithLoader,
+  createOcctRevolveProfileMeshWithInstance,
+  createOcctRevolveProfileMeshWithLoader,
   createOcctExactBodyMetadataWithInstance,
   createOcctExactBodyMetadataWithLoader
 };
@@ -176,6 +184,12 @@ export async function createOcctBooleanExtrudeMesh(
   input: OcctBooleanExtrudeInput
 ): Promise<OcctMeshData> {
   return createOcctBooleanExtrudeMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctRevolveProfileMesh(
+  input: OcctRevolveProfileInput
+): Promise<OcctMeshData> {
+  return createOcctRevolveProfileMeshWithLoader(loadBrowserOcct, input);
 }
 
 export async function createOcctExactBodyMetadata(

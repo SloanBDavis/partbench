@@ -106,8 +106,8 @@ import {
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import {
-  createDerivedGeometrySourcesFromDocument,
-  createExtrudeDerivedGeometrySources
+  createAuthoredFeatureDerivedGeometrySources,
+  createDerivedGeometrySourcesFromDocument
 } from "./derivedGeometrySources";
 import {
   formatBodyMeasurementError,
@@ -596,9 +596,9 @@ export function App() {
     () => createSketchDisplayState(sketches, generatedFacesByKey),
     [generatedFacesByKey, sketches]
   );
-  const extrudeSources = useMemo(
+  const featureGeometrySources = useMemo(
     () =>
-      createExtrudeDerivedGeometrySources(
+      createAuthoredFeatureDerivedGeometrySources(
         projectStructure.features,
         sketches,
         generatedFacesByKey
@@ -724,13 +724,13 @@ export function App() {
       createRenderSceneInputs(
         sceneObjects,
         derivedGeometryBySourceId,
-        extrudeSources,
+        featureGeometrySources,
         sketches,
         sketchDisplayState.frames
       ),
     [
       derivedGeometryBySourceId,
-      extrudeSources,
+      featureGeometrySources,
       sceneObjects,
       sketchDisplayState.frames,
       sketches

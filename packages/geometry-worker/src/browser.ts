@@ -24,6 +24,7 @@ export {
   createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
+  createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
@@ -166,6 +167,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.tessellateCone" &&
     op !== "geometry.tessellateTorus" &&
     op !== "geometry.tessellateExtrude" &&
+    op !== "geometry.revolveProfile" &&
     op !== "geometry.booleanExtrudes" &&
     op !== "geometry.exactBodyMetadata"
   ) {

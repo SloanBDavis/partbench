@@ -5026,17 +5026,9 @@ function updateSketchEntityAndDependents(
     sketch.id,
     entity.id
   );
-  const profileKind =
-    dependentFeatures.length > 0
-      ? assertExtrudableProfile(entity, opIndex, sketch.id, entity.id)
-      : undefined;
-  const updatedFeatures =
-    dependentFeatures.length > 0 && profileKind
-      ? dependentFeatures.map((feature) => ({
-          ...feature,
-          profileKind
-        }))
-      : [];
+  const updatedFeatures = dependentFeatures.map((feature) =>
+    updateDependentFeatureForSketchEntity(feature, entity, opIndex, sketch.id)
+  );
   const nextFeatures = new Map(state.features);
   const updatedBodyIds = new Set<BodyId>();
   const updatedFeatureIds = new Set<FeatureId>();
@@ -5048,6 +5040,10 @@ function updateSketchEntityAndDependents(
   }
 
   for (const feature of updatedFeatures) {
+    if (feature.kind !== "extrude") {
+      continue;
+    }
+
     assertSupportedExtrudeOperation(
       { ...state, features: nextFeatures },
       feature.operationMode,
@@ -5100,6 +5096,35 @@ function updateSketchEntityAndDependents(
     opIndex,
     propagation
   );
+}
+
+function updateDependentFeatureForSketchEntity(
+  feature: Feature,
+  entity: SketchEntity,
+  opIndex: number,
+  sketchId: SketchId
+): Feature {
+  if (
+    feature.kind === "revolve" &&
+    feature.axis.sketchId === sketchId &&
+    feature.axis.entityId === entity.id
+  ) {
+    assertRevolveAxisLineEntity(entity, opIndex, sketchId, entity.id);
+
+    return feature;
+  }
+
+  if (feature.kind === "revolve") {
+    return {
+      ...feature,
+      profileKind: assertRevolvableProfile(entity, opIndex, sketchId, entity.id)
+    };
+  }
+
+  return {
+    ...feature,
+    profileKind: assertExtrudableProfile(entity, opIndex, sketchId, entity.id)
+  };
 }
 
 interface SketchConstraintPropagationContext {
@@ -5783,6 +5808,39 @@ function validateRevolveAxis(
     sketchId: value.sketchId,
     entityId: value.entityId
   };
+}
+
+function assertRevolveAxisLineEntity(
+  entity: SketchEntity,
+  opIndex: number | undefined,
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): asserts entity is Extract<SketchEntity, { readonly kind: "line" }> {
+  if (entity.kind !== "line") {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Revolve axis must reference a line sketch entity.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entityId,
+      path: operationPath(opIndex, "entity.kind"),
+      expected: "line sketch entity",
+      received: entity.kind
+    });
+  }
+
+  if (getLineLength(entity) <= 0) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "Revolve axis line must have non-zero length.",
+      opIndex,
+      sketchId,
+      sketchEntityId: entityId,
+      path: operationPath(opIndex, "entity"),
+      expected: "non-zero line entity",
+      received: "zero-length line"
+    });
+  }
 }
 
 function validateRevolveAngleDegrees(value: number, opIndex?: number): number {

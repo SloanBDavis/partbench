@@ -13,7 +13,8 @@ import type {
 import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
-  DerivedGeometryEntry
+  DerivedGeometryEntry,
+  DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
   createDefaultSketchDisplayFrame,
@@ -33,6 +34,7 @@ export function createRenderSceneInputs(
   extrudeSources: readonly (
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource
+    | DerivedRevolveGeometrySource
   )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
@@ -67,7 +69,7 @@ export function createRenderSceneInputs(
       continue;
     }
 
-    if (source.kind === "extrudeBoolean") {
+    if (source.kind === "extrudeBoolean" || source.kind === "revolve") {
       continue;
     }
 

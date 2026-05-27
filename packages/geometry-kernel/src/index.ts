@@ -5,6 +5,7 @@ import {
   createOcctConeMesh,
   createOcctTorusMesh,
   createOcctBooleanExtrudeMesh,
+  createOcctRevolveProfileMesh,
   createOcctExactBodyMetadata
 } from "@web-cad/occt-wasm";
 import {
@@ -34,6 +35,7 @@ import {
   type GeometryKernelMeshSuccessResponse,
   type GeometryKernelOp,
   type GeometryKernelPrimitive,
+  type GeometryKernelRevolveProfileMeshFactory,
   type GeometryKernelResponseForRequest,
   type GeometryKernelSketchPlane,
   type GeometryKernelRequest,
@@ -44,6 +46,9 @@ import {
   type GeometryKernelErrorResponse,
   type ExtrudeGeometryProfile,
   type RectangleExtrudeProfile,
+  type RevolveGeometryAxis,
+  type RevolveGeometryProfile,
+  type RevolveProfileRequest,
   type CircleExtrudeProfile,
   type SerializableMeshData,
   type SphereGeometryDimensions,
@@ -82,6 +87,7 @@ export type {
   GeometryKernelMeshSuccessResponse,
   GeometryKernelOp,
   GeometryKernelPrimitive,
+  GeometryKernelRevolveProfileMeshFactory,
   GeometryKernelResponseForRequest,
   GeometryKernelSketchPlane,
   GeometryKernelRequest,
@@ -92,6 +98,9 @@ export type {
   GeometryKernelErrorResponse,
   ExtrudeGeometryProfile,
   RectangleExtrudeProfile,
+  RevolveGeometryAxis,
+  RevolveGeometryProfile,
+  RevolveProfileRequest,
   CircleExtrudeProfile,
   SerializableMeshData,
   SphereGeometryDimensions,
@@ -117,6 +126,7 @@ export async function executeGeometryKernelRequest<
       createConeMesh: createOcctConeMesh,
       createTorusMesh: createOcctTorusMesh,
       createBooleanExtrudeMesh: createOcctBooleanExtrudeMesh,
+      createRevolveProfileMesh: createOcctRevolveProfileMesh,
       createExactBodyMetadata: createOcctExactBodyMetadata
     },
     request

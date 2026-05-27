@@ -216,6 +216,29 @@ If any required binding is missing at runtime, the geometry-kernel response uses
 structured `UNAVAILABLE_BINDING` diagnostics instead of falling back to mesh
 triangle measurements.
 
+## V6 Phase B Revolve Findings
+
+The installed full OpenCascade.js package exposes the bindings needed for the
+first geometry-only revolve feasibility path:
+
+- profile face construction through `BRepBuilderAPI_MakePolygon`,
+  `BRepBuilderAPI_MakeEdge`, `BRepBuilderAPI_MakeWire`, and
+  `BRepBuilderAPI_MakeFace`;
+- sketch-plane axis construction through `gp_Pnt`, `gp_Dir`, `gp_Ax1`, and
+  `gp_Ax2`;
+- solid revolution through `BRepPrimAPI_MakeRevol`;
+- mesh generation and extraction through the existing `BRepMesh_IncrementalMesh`
+  and triangulation reader path.
+
+`geometry.revolveProfile` now uses those APIs for rectangle and circle sketch
+profiles revolved around a non-zero same-sketch line axis. Results are
+serializable mesh data only. They are derived geometry, are not persisted, do
+not change project schema, and do not expose raw OCCT topology indexes as stable
+generated references. The geometry-kernel validation path rejects invalid
+profiles, zero-length axes, and angles that are not positive finite values less
+than or equal to 360 degrees before invoking OCCT. If a revolve factory is not
+available, the response uses structured `UNAVAILABLE_BINDING` diagnostics.
+
 ## Boolean Feasibility Risks
 
 The extrude boolean path does not change the binary-size recommendation, but it

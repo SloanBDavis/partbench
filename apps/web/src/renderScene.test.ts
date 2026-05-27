@@ -11,7 +11,8 @@ import { describe, expect, it } from "vitest";
 import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
-  DerivedGeometryEntry
+  DerivedGeometryEntry,
+  DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
   createMeshDisplayEdges,
@@ -426,6 +427,57 @@ describe("renderScene", () => {
     }
   });
 
+  it("renders ready revolve meshes without a primitive-style pending fallback", () => {
+    const source = createRevolveSource("body_revolve_1");
+    const readyMesh = createMesh(source.id);
+    const readyScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "revolve",
+            sourceId: source.id,
+            sourceKind: "revolve",
+            cacheKey: "revolve-ready",
+            status: "ready",
+            mesh: readyMesh,
+            metrics: {
+              objectId: source.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ]),
+      [source]
+    );
+    const pendingScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "revolve",
+            sourceId: source.id,
+            sourceKind: "revolve",
+            cacheKey: "revolve-pending",
+            status: "pending"
+          }
+        ]
+      ]),
+      [source]
+    );
+
+    expect(readyScene.primitives).toEqual([]);
+    expect(readyScene.meshes).toEqual([readyMesh]);
+    expect(pendingScene.primitives).toEqual([]);
+    expect(pendingScene.meshes).toEqual([]);
+  });
+
   it("adds sketch display edges so authored sketches are visible in the viewport", () => {
     const sketch: SketchSnapshot = {
       id: "sketch_1",
@@ -658,6 +710,25 @@ function createAddSource(): DerivedBooleanExtrudeGeometrySource {
     operation: "add",
     target: createExtrudeSource("body_target", "positive"),
     tool: createExtrudeSource("body_add", "positive")
+  };
+}
+
+function createRevolveSource(id: string): DerivedRevolveGeometrySource {
+  return {
+    id,
+    kind: "revolve",
+    sketchPlane: "XY",
+    profile: {
+      kind: "rectangle",
+      center: [2, 0],
+      width: 1,
+      height: 2
+    },
+    axis: {
+      start: [0, -2],
+      end: [0, 2]
+    },
+    angleDegrees: 270
   };
 }
 

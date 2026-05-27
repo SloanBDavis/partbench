@@ -9,6 +9,7 @@ import type {
   GeometryKernelBooleanOperation,
   GeometryKernelExtrudeSide,
   GeometryKernelSketchPlane,
+  RevolveProfileRequest,
   TessellateBoxRequest,
   TessellateConeRequest,
   TessellateCylinderRequest,
@@ -317,6 +318,49 @@ export function createExtrudeTessellationWorkerRequest(input: {
       profile: input.profile,
       depth: input.depth,
       side: input.side,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createRevolveProfileWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: readonly [number, number];
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: readonly [number, number];
+        readonly radius: number;
+      };
+  readonly axis: {
+    readonly start: readonly [number, number];
+    readonly end: readonly [number, number];
+  };
+  readonly angleDegrees: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<RevolveProfileRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.tessellateFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.revolveProfile",
+      sketchPlane: input.sketchPlane,
+      profile: input.profile,
+      axis: input.axis,
+      angleDegrees: input.angleDegrees,
       ...(tessellation ? { tessellation } : {})
     }
   };

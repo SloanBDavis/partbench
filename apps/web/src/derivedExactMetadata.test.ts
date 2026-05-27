@@ -465,6 +465,9 @@ function createRuntime(
     tessellateExtrude() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
+    revolveProfile() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
     booleanExtrudes() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },

@@ -71,6 +71,18 @@ export interface DerivedGeometryExtrudeInput {
   readonly transform: RenderTransform;
 }
 
+export interface DerivedGeometryRevolveInput {
+  readonly id: string;
+  readonly sketchPlane: "XY" | "XZ" | "YZ";
+  readonly profile: DerivedGeometryExtrudeInput["profile"];
+  readonly axis: {
+    readonly start: readonly [number, number];
+    readonly end: readonly [number, number];
+  };
+  readonly angleDegrees: number;
+  readonly transform: RenderTransform;
+}
+
 export interface DerivedGeometryExtrudePlacementFrame {
   readonly origin: readonly [number, number, number];
   readonly uAxis: readonly [number, number, number];
@@ -169,6 +181,9 @@ export interface DerivedGeometryRuntime {
   ): Promise<DerivedGeometryResult>;
   tessellateExtrude(
     input: DerivedGeometryExtrudeInput
+  ): Promise<DerivedGeometryResult>;
+  revolveProfile(
+    input: DerivedGeometryRevolveInput
   ): Promise<DerivedGeometryResult>;
   booleanExtrudes(
     input: DerivedGeometryBooleanExtrudeInput

@@ -7,6 +7,7 @@ import {
   createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
+  createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
   createWorkerErrorDiagnostics,
@@ -154,6 +155,49 @@ describe("geometry-worker", () => {
         },
         depth: 5,
         side: "negative"
+      }
+    });
+  });
+
+  it("creates a typed revolve profile worker request", () => {
+    expect(
+      createRevolveProfileWorkerRequest({
+        id: "worker_req_revolve",
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [2, 0],
+          radius: 1
+        },
+        axis: {
+          start: [0, -1],
+          end: [0, 1]
+        },
+        angleDegrees: 180,
+        angularDeflection: 0.25
+      })
+    ).toEqual({
+      id: "worker_req_revolve",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payload: {
+        id: "worker_req_revolve:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.revolveProfile",
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [2, 0],
+          radius: 1
+        },
+        axis: {
+          start: [0, -1],
+          end: [0, 1]
+        },
+        angleDegrees: 180,
+        tessellation: {
+          angularDeflection: 0.25
+        }
       }
     });
   });
@@ -498,6 +542,52 @@ describe("geometry-worker", () => {
     expect(response.response.mesh.primitive).toBe("extrude");
     expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
     expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+  });
+
+  it("tessellates a revolve profile asynchronously through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createRevolveProfileWorkerRequest({
+        id: "worker_req_revolve_execute",
+        payloadId: "geometry_req_revolve_execute",
+        sketchPlane: "XY",
+        profile: {
+          kind: "rectangle",
+          center: [2, 0],
+          width: 1,
+          height: 2
+        },
+        axis: {
+          start: [0, -2],
+          end: [0, 2]
+        },
+        angleDegrees: 360
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_revolve_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.tessellateFeature",
+      payloadId: "geometry_req_revolve_execute",
+      response: {
+        ok: true,
+        id: "geometry_req_revolve_execute",
+        op: "geometry.revolveProfile"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("revolve");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
   });
 
   it("runs a rectangle boolean feasibility request through the geometry kernel facade", async () => {
