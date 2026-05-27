@@ -687,7 +687,9 @@ Initial implementation:
   transaction history, V14 import/export, adapter/MCP pass-through, and tests;
 - app derived-geometry/rendering support for authored revolve bodies through
   the `geometry.revolveProfile` mesh path;
-- no generated references, measurements/extents, or UI creation workflow yet.
+- compact UI creation support for `newBody` revolve profiles with same-sketch
+  non-zero line axes;
+- no generated references or measurements/extents for revolve bodies yet.
 
 ### V6 Phase C: Revolve Geometry And UI Integration
 

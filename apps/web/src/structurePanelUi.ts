@@ -24,6 +24,24 @@ export interface StructureTreeSummary {
   readonly status: CadDependencyHealthStatus;
 }
 
+export type AuthoredStructureFeature = Extract<
+  CadFeatureSummary,
+  { readonly kind: "extrude" | "revolve" }
+>;
+
+export function isAuthoredStructureFeature(
+  feature: CadFeatureSummary
+): feature is AuthoredStructureFeature {
+  return feature.kind === "extrude" || feature.kind === "revolve";
+}
+
+export function isAuthoredStructureBody(body: CadBodySnapshot): boolean {
+  return (
+    body.source.type === "sketchExtrudeFeature" ||
+    body.source.type === "sketchRevolveFeature"
+  );
+}
+
 export function createStructureTreeSummary(input: {
   readonly parts: readonly CadPartSnapshot[];
   readonly sketches: readonly SketchSnapshot[];
@@ -35,12 +53,9 @@ export function createStructureTreeSummary(input: {
   return {
     partCount: input.parts.length,
     sketchCount: input.sketches.length,
-    authoredFeatureCount: input.features.filter(
-      (feature) => feature.kind === "extrude"
-    ).length,
-    generatedBodyCount: input.bodies.filter(
-      (body) => body.source.type === "sketchExtrudeFeature"
-    ).length,
+    authoredFeatureCount: input.features.filter(isAuthoredStructureFeature)
+      .length,
+    generatedBodyCount: input.bodies.filter(isAuthoredStructureBody).length,
     namedReferenceCount: input.namedReferences.length,
     issueCount: input.health.issueCount,
     status: input.health.status
@@ -77,6 +92,9 @@ export function getSketchHealthStatus(
   const dependentFeatureStatuses = health.authoredExtrudes
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
+  const dependentRevolveStatuses = health.authoredRevolves
+    .filter((entry) => entry.sketchId === sketchId)
+    .map((entry) => entry.status);
   const evaluationStatuses = health.sketchEvaluations
     .filter((entry) => entry.sketchId === sketchId)
     .map((entry) => entry.status);
@@ -90,6 +108,7 @@ export function getSketchHealthStatus(
   return combineHealthStatuses([
     ...(attachedSketch ? [attachedSketch.status] : []),
     ...dependentFeatureStatuses,
+    ...dependentRevolveStatuses,
     ...evaluationStatuses,
     ...dimensionStatuses,
     ...constraintStatuses
@@ -102,6 +121,9 @@ export function getFeatureHealthStatus(
 ): CadDependencyHealthStatus | undefined {
   return combineHealthStatuses([
     ...health.authoredExtrudes
+      .filter((entry) => entry.featureId === featureId)
+      .map((entry) => entry.status),
+    ...health.authoredRevolves
       .filter((entry) => entry.featureId === featureId)
       .map((entry) => entry.status),
     ...health.sketchEvaluations
@@ -122,6 +144,9 @@ export function getBodyHealthStatus(
 ): CadDependencyHealthStatus | undefined {
   return combineHealthStatuses([
     ...health.authoredExtrudes
+      .filter((entry) => entry.bodyId === bodyId)
+      .map((entry) => entry.status),
+    ...health.authoredRevolves
       .filter((entry) => entry.bodyId === bodyId)
       .map((entry) => entry.status),
     ...health.sketchEvaluations
@@ -156,6 +181,10 @@ export function getHealthIssues(
       health.authoredExtrudes
         .find((entry) => entry.featureId === target.id)
         ?.issues.map((issue) => issue.message) ?? [];
+    const revolveIssues =
+      health.authoredRevolves
+        .find((entry) => entry.featureId === target.id)
+        ?.issues.map((issue) => issue.message) ?? [];
     const dimensionIssues = health.sketchDimensions
       .filter((entry) => entry.affectedFeatureIds.includes(target.id))
       .flatMap((entry) => entry.issues.map((issue) => issue.message));
@@ -168,6 +197,7 @@ export function getHealthIssues(
 
     return [
       ...featureIssues,
+      ...revolveIssues,
       ...evaluationIssues,
       ...dimensionIssues,
       ...constraintIssues
@@ -177,6 +207,10 @@ export function getHealthIssues(
   if (target.kind === "body") {
     const bodyIssues =
       health.authoredExtrudes
+        .find((entry) => entry.bodyId === target.id)
+        ?.issues.map((issue) => issue.message) ?? [];
+    const revolveIssues =
+      health.authoredRevolves
         .find((entry) => entry.bodyId === target.id)
         ?.issues.map((issue) => issue.message) ?? [];
     const dimensionIssues = health.sketchDimensions
@@ -191,6 +225,7 @@ export function getHealthIssues(
 
     return [
       ...bodyIssues,
+      ...revolveIssues,
       ...evaluationIssues,
       ...dimensionIssues,
       ...constraintIssues
@@ -211,6 +246,9 @@ export function getHealthIssues(
   const featureIssues = health.authoredExtrudes
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
+  const revolveIssues = health.authoredRevolves
+    .filter((entry) => entry.sketchId === target.id)
+    .flatMap((entry) => entry.issues);
   const evaluationIssues = health.sketchEvaluations
     .filter((entry) => entry.sketchId === target.id)
     .flatMap((entry) => entry.issues);
@@ -224,6 +262,7 @@ export function getHealthIssues(
   return [
     ...attachedIssues,
     ...featureIssues,
+    ...revolveIssues,
     ...evaluationIssues,
     ...dimensionIssues,
     ...constraintIssues
@@ -231,9 +270,18 @@ export function getHealthIssues(
 }
 
 export function formatFeatureLine(
-  feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
+  feature: AuthoredStructureFeature,
   units: DocumentUnits
 ): string {
+  if (feature.kind === "revolve") {
+    const target =
+      feature.operationMode !== "newBody" && feature.targetBodyId
+        ? ` / target ${feature.targetBodyId}`
+        : "";
+
+    return `${formatRevolveOperationMode(feature.operationMode)} / ${feature.profileKind} / ${feature.angleDegrees} deg / axis ${feature.axis.entityId}${target}`;
+  }
+
   const target =
     (feature.operationMode === "add" || feature.operationMode === "cut") &&
     feature.targetBodyId
@@ -245,17 +293,17 @@ export function formatFeatureLine(
 
 export function formatBodyRole(
   body: CadBodySnapshot,
-  feature: Extract<CadFeatureSummary, { kind: "extrude" }> | undefined
+  feature: AuthoredStructureFeature | undefined
 ): string {
   if (body.consumedByFeatureId) {
     return "Consumed target";
   }
 
-  if (feature?.operationMode === "add") {
+  if (feature?.kind === "extrude" && feature.operationMode === "add") {
     return "Add result";
   }
 
-  if (feature?.operationMode === "cut") {
+  if (feature?.kind === "extrude" && feature.operationMode === "cut") {
     return "Cut result";
   }
 
@@ -264,13 +312,14 @@ export function formatBodyRole(
 
 export function formatBodyStatusLine(
   body: CadBodySnapshot,
-  feature: Extract<CadFeatureSummary, { kind: "extrude" }> | undefined
+  feature: AuthoredStructureFeature | undefined
 ): string {
   if (body.consumedByFeatureId) {
     return `Consumed by ${body.consumedByFeatureId}`;
   }
 
   if (
+    feature?.kind === "extrude" &&
     (feature?.operationMode === "add" || feature?.operationMode === "cut") &&
     feature.targetBodyId
   ) {
@@ -280,6 +329,12 @@ export function formatBodyStatusLine(
   }
 
   return `Feature ${body.featureId}`;
+}
+
+export function formatFeatureKindLabel(
+  feature: AuthoredStructureFeature
+): string {
+  return feature.kind === "extrude" ? "Extrude" : "Revolve";
 }
 
 export function formatExtrudeOperationMode(
@@ -298,6 +353,19 @@ export function formatExtrudeOperationMode(
 
   if (operationMode === "add") {
     return "add to body";
+  }
+
+  return operationMode;
+}
+
+export function formatRevolveOperationMode(
+  operationMode: Extract<
+    CadFeatureSummary,
+    { readonly kind: "revolve" }
+  >["operationMode"]
+): string {
+  if (operationMode === "newBody") {
+    return "new body";
   }
 
   return operationMode;

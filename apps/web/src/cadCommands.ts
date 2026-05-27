@@ -11,6 +11,7 @@ import type {
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
   FeatureExtrudeOp,
+  FeatureRevolveOp,
   FeatureUpdateExtrudeOp,
   ParameterCreateOp,
   ParameterDeleteOp,
@@ -189,6 +190,14 @@ export interface FeatureExtrudeForm {
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
+}
+
+export interface FeatureRevolveForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly name: string;
+  readonly axisEntityId: string;
+  readonly angleDegrees: number;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -759,6 +768,28 @@ export function buildFeatureExtrudeOp(
     depth: form.depth,
     side: form.side,
     operationMode: form.operationMode
+  };
+}
+
+export function buildFeatureRevolveOp(
+  sketchId: SketchId,
+  entityId: string,
+  form: FeatureRevolveForm
+): FeatureRevolveOp {
+  return {
+    op: "feature.revolve",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    name: form.name.trim() || undefined,
+    sketchId,
+    entityId,
+    axis: {
+      type: "sketchLine",
+      sketchId,
+      entityId: form.axisEntityId
+    },
+    angleDegrees: form.angleDegrees,
+    operationMode: "newBody"
   };
 }
 

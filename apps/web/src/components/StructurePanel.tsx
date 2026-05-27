@@ -24,13 +24,16 @@ import {
   formatBodyRole,
   formatBodyStatusLine,
   formatFeatureLine,
+  formatFeatureKindLabel,
   formatHealthStatus,
   formatPartLine,
   getBodyHealthStatus,
   getFeatureHealthStatus,
   getHealthIssues,
   getNamedReferenceHealthStatus,
-  getSketchHealthStatus
+  getSketchHealthStatus,
+  isAuthoredStructureBody,
+  isAuthoredStructureFeature
 } from "../structurePanelUi";
 
 export interface StructureGeometryStatus {
@@ -69,13 +72,8 @@ export function StructurePanel({
   onInspectNamedReference,
   onSelect
 }: StructurePanelProps) {
-  const authoredFeatures = features.filter(
-    (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
-      feature.kind === "extrude"
-  );
-  const authoredBodies = bodies.filter(
-    (body) => body.source.type === "sketchExtrudeFeature"
-  );
+  const authoredFeatures = features.filter(isAuthoredStructureFeature);
+  const authoredBodies = bodies.filter(isAuthoredStructureBody);
   const summary = createStructureTreeSummary({
     parts,
     sketches,
@@ -235,7 +233,7 @@ export function StructurePanel({
                       <span className="object-id">
                         {feature.name ?? feature.id}
                       </span>
-                      <strong>Extrude</strong>
+                      <strong>{formatFeatureKindLabel(feature)}</strong>
                       <small>{formatFeatureLine(feature, units)}</small>
                       <small>
                         Sketch {feature.sketchId} / entity {feature.entityId}

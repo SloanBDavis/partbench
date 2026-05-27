@@ -12,23 +12,31 @@ import {
   formatBodyRole,
   formatBodyStatusLine,
   formatExtrudeOperationMode,
+  formatFeatureKindLabel,
   formatFeatureLine,
   formatHealthStatus,
   formatPartLine,
+  formatRevolveOperationMode,
   getBodyHealthStatus,
   getFeatureHealthStatus,
   getHealthIssues,
   getNamedReferenceHealthStatus,
-  getSketchHealthStatus
+  getSketchHealthStatus,
+  isAuthoredStructureBody,
+  isAuthoredStructureFeature
 } from "./structurePanelUi";
 
 describe("structure panel UI helpers", () => {
-  it("groups the current V2 structure counts for the model browser", () => {
+  it("groups the current structure counts for the model browser", () => {
     const summary = createStructureTreeSummary({
       parts: [createPart()],
       sketches: [createSketch("sketch_1"), createSketch("sketch_face")],
-      features: [createPrimitiveFeature(), createExtrudeFeature()],
-      bodies: [createPrimitiveBody(), createExtrudeBody()],
+      features: [
+        createPrimitiveFeature(),
+        createExtrudeFeature(),
+        createRevolveFeature()
+      ],
+      bodies: [createPrimitiveBody(), createExtrudeBody(), createRevolveBody()],
       namedReferences: [createNamedReference()],
       health: createHealth({ issueCount: 2, status: "stale" })
     });
@@ -36,12 +44,18 @@ describe("structure panel UI helpers", () => {
     expect(summary).toEqual({
       partCount: 1,
       sketchCount: 2,
-      authoredFeatureCount: 1,
-      generatedBodyCount: 1,
+      authoredFeatureCount: 2,
+      generatedBodyCount: 2,
       namedReferenceCount: 1,
       issueCount: 2,
       status: "stale"
     });
+    expect(isAuthoredStructureFeature(createPrimitiveFeature())).toBe(false);
+    expect(isAuthoredStructureFeature(createExtrudeFeature())).toBe(true);
+    expect(isAuthoredStructureFeature(createRevolveFeature())).toBe(true);
+    expect(isAuthoredStructureBody(createPrimitiveBody())).toBe(false);
+    expect(isAuthoredStructureBody(createExtrudeBody())).toBe(true);
+    expect(isAuthoredStructureBody(createRevolveBody())).toBe(true);
   });
 
   it("formats dependency health without leaking raw status strings", () => {
@@ -122,12 +136,41 @@ describe("structure panel UI helpers", () => {
             }
           ]
         }
+      ],
+      authoredRevolves: [
+        {
+          featureId: "feature_revolve",
+          bodyId: "body_revolve",
+          sketchId: "sketch_1",
+          entityId: "circle_1",
+          profileKind: "circle",
+          axis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          },
+          angleDegrees: 360,
+          operationMode: "newBody",
+          status: "unsupported",
+          issues: [
+            {
+              code: "UNSUPPORTED_BODY_REFERENCES",
+              message: "Revolve topology is not available yet.",
+              featureId: "feature_revolve",
+              bodyId: "body_revolve"
+            }
+          ]
+        }
       ]
     });
 
     expect(getFeatureHealthStatus(health, "feature_1")).toBe("missing-source");
     expect(getBodyHealthStatus(health, "body_1")).toBe("missing-source");
     expect(getSketchHealthStatus(health, "sketch_1")).toBe("missing-source");
+    expect(getFeatureHealthStatus(health, "feature_revolve")).toBe(
+      "unsupported"
+    );
+    expect(getBodyHealthStatus(health, "body_revolve")).toBe("unsupported");
     expect(getSketchHealthStatus(health, "sketch_face")).toBe("healthy");
     expect(getNamedReferenceHealthStatus(health, "top")).toBe("stale");
     expect(
@@ -136,6 +179,12 @@ describe("structure panel UI helpers", () => {
     expect(
       getHealthIssues(health, { kind: "namedReference", name: "top" })
     ).toEqual(["Named reference target is stale."]);
+    expect(
+      getHealthIssues(health, { kind: "feature", id: "feature_revolve" })
+    ).toEqual(["Revolve topology is not available yet."]);
+    expect(
+      getHealthIssues(health, { kind: "body", id: "body_revolve" })
+    ).toEqual(["Revolve topology is not available yet."]);
   });
 
   it("includes sketch dimension health in affected sketches, features, and bodies", () => {
@@ -355,10 +404,12 @@ describe("structure panel UI helpers", () => {
     ]);
   });
 
-  it("formats part and authored extrude lines compactly", () => {
+  it("formats part and authored feature lines compactly", () => {
     expect(formatPartLine(createPart())).toBe(
       "1 sketches / 2 features / 2 bodies"
     );
+    expect(formatFeatureKindLabel(createExtrudeFeature())).toBe("Extrude");
+    expect(formatFeatureKindLabel(createRevolveFeature())).toBe("Revolve");
     expect(formatFeatureLine(createExtrudeFeature(), "mm")).toBe(
       "new body / rectangle / 4 mm / positive"
     );
@@ -370,6 +421,10 @@ describe("structure panel UI helpers", () => {
     expect(formatFeatureLine(createAddFeature(), "mm")).toBe(
       "add to body / rectangle / 2 mm / positive / target body_target"
     );
+    expect(formatRevolveOperationMode("newBody")).toBe("new body");
+    expect(formatFeatureLine(createRevolveFeature(), "mm")).toBe(
+      "new body / circle / 270 deg / axis axis_1"
+    );
   });
 
   it("formats generated body roles for standalone, boolean result, and consumed targets", () => {
@@ -379,6 +434,7 @@ describe("structure panel UI helpers", () => {
     });
     const cutResult = createExtrudeBody("body_cut", "feature_cut");
     const addResult = createExtrudeBody("body_add", "feature_add");
+    const revolveResult = createRevolveBody();
 
     expect(formatBodyRole(standalone, createExtrudeFeature())).toBe(
       "Generated body"
@@ -399,6 +455,12 @@ describe("structure panel UI helpers", () => {
     expect(formatBodyRole(addResult, createAddFeature())).toBe("Add result");
     expect(formatBodyStatusLine(addResult, createAddFeature())).toBe(
       "Adds to body_target"
+    );
+    expect(formatBodyRole(revolveResult, createRevolveFeature())).toBe(
+      "Generated body"
+    );
+    expect(formatBodyStatusLine(revolveResult, createRevolveFeature())).toBe(
+      "Feature feature_revolve"
     );
   });
 });
@@ -515,6 +577,30 @@ function createAddFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
   };
 }
 
+function createRevolveFeature(): Extract<
+  CadFeatureSummary,
+  { kind: "revolve" }
+> {
+  return {
+    id: "feature_revolve",
+    kind: "revolve",
+    partId: "part:default",
+    bodyId: "body_revolve",
+    sketchId: "sketch_1",
+    entityId: "circle_1",
+    profileKind: "circle",
+    axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
+    angleDegrees: 270,
+    operationMode: "newBody",
+    source: {
+      type: "sketchEntityWithAxis",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" }
+    }
+  };
+}
+
 function createPrimitiveBody(): CadBodySnapshot {
   return {
     id: "body:box_1",
@@ -549,6 +635,23 @@ function createExtrudeBody(
       profileKind: "rectangle"
     },
     ...overrides
+  };
+}
+
+function createRevolveBody(): CadBodySnapshot {
+  return {
+    id: "body_revolve",
+    kind: "solid",
+    partId: "part:default",
+    featureId: "feature_revolve",
+    source: {
+      type: "sketchRevolveFeature",
+      featureId: "feature_revolve",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      profileKind: "circle",
+      axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" }
+    }
   };
 }
 

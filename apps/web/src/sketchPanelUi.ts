@@ -31,6 +31,17 @@ export interface BooleanOperationStatus {
   readonly message: string;
 }
 
+export interface RevolveAxisOption {
+  readonly entityId: SketchEntityId;
+  readonly label: string;
+  readonly detail: string;
+}
+
+export interface RevolveOperationStatus {
+  readonly available: boolean;
+  readonly message: string;
+}
+
 export interface SketchDimensionTargetOption {
   readonly target: SketchDimensionTarget;
   readonly label: string;
@@ -129,6 +140,70 @@ export function isExtrudableSketchEntity(
   entity: SketchEntitySnapshot | undefined
 ): entity is SketchEntitySnapshot & { kind: "rectangle" | "circle" } {
   return entity?.kind === "rectangle" || entity?.kind === "circle";
+}
+
+export const isRevolvableSketchEntity = isExtrudableSketchEntity;
+
+export function createRevolveAxisOptions(
+  sketch: SketchSnapshot | undefined
+): readonly RevolveAxisOption[] {
+  return (sketch?.entities ?? [])
+    .filter(
+      (
+        entity
+      ): entity is Extract<SketchEntitySnapshot, { readonly kind: "line" }> =>
+        entity.kind === "line" && getLineLength(entity) > 0
+    )
+    .map((entity) => ({
+      entityId: entity.id,
+      label: entity.id,
+      detail: `${formatSketchPointCoordinate(
+        entity.start
+      )} to ${formatSketchPointCoordinate(entity.end)}`
+    }));
+}
+
+export function getRevolveOperationStatus(
+  entity: SketchEntitySnapshot | undefined,
+  axisOptions: readonly RevolveAxisOption[],
+  angleDegrees: number,
+  sketchLineCount = axisOptions.length
+): RevolveOperationStatus {
+  if (!isRevolvableSketchEntity(entity)) {
+    return {
+      available: false,
+      message: "Select a rectangle or circle profile to revolve."
+    };
+  }
+
+  if (
+    !Number.isFinite(angleDegrees) ||
+    angleDegrees <= 0 ||
+    angleDegrees > 360
+  ) {
+    return {
+      available: false,
+      message: "Revolve angle must be a positive finite value <= 360."
+    };
+  }
+
+  if (axisOptions.length === 0) {
+    return {
+      available: false,
+      message:
+        sketchLineCount > 0
+          ? "Edit the sketch line axis so it has non-zero length."
+          : "Add a non-zero line entity in this sketch to use as the revolve axis."
+    };
+  }
+
+  return {
+    available: true,
+    message:
+      axisOptions.length === 1
+        ? "1 eligible revolve axis."
+        : `${axisOptions.length} eligible revolve axes.`
+  };
 }
 
 export function createSketchDimensionTargetOptions(

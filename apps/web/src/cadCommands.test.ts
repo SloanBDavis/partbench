@@ -16,6 +16,7 @@ import {
   buildAddSketchRectangleOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
+  buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
   buildDeleteNamedReferenceOp,
   buildDeleteParameterOp,
@@ -778,6 +779,30 @@ describe("cad command builders", () => {
       depth: 1,
       side: "positive",
       operationMode: "add"
+    });
+
+    expect(
+      buildFeatureRevolveOp("sketch_1", "circle_1", {
+        id: "feat_revolve_1",
+        bodyId: "body_revolve_1",
+        name: " Revolved boss ",
+        axisEntityId: "axis_1",
+        angleDegrees: 270
+      })
+    ).toEqual({
+      op: "feature.revolve",
+      id: "feat_revolve_1",
+      bodyId: "body_revolve_1",
+      name: "Revolved boss",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 270,
+      operationMode: "newBody"
     });
   });
 

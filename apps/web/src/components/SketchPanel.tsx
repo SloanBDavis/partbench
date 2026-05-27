@@ -15,6 +15,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import type {
   FeatureExtrudeForm,
+  FeatureRevolveForm,
   ParameterCreateForm,
   ParameterEditForm,
   SketchConstraintForm,
@@ -37,12 +38,14 @@ import {
   createAvailableParallelLineTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
+  createRevolveAxisOptions,
   createSketchPointTargetOptionsForEntity,
   formatSketchDimensionEffectiveValue,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getDefaultSketchPointTargetRole,
+  getRevolveOperationStatus,
   createParameterBindingOptions,
   formatSketchEvaluationIssue,
   formatSketchEvaluationStatus,
@@ -59,6 +62,7 @@ import {
   getSketchEntityOptionLabel,
   isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity,
+  isRevolvableSketchEntity,
   sketchDimensionTargetsEqual,
   type BooleanTargetBodyOption,
   type SketchLineTargetOption
@@ -134,6 +138,11 @@ export interface SketchPanelProps {
     entityId: string,
     form: FeatureExtrudeForm
   ) => void;
+  readonly onRevolveEntity: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureRevolveForm
+  ) => void;
 }
 
 const defaultCreateForm: SketchCreateForm = {
@@ -178,6 +187,14 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
   operationMode: "newBody"
 };
 
+const defaultRevolveForm: FeatureRevolveForm = {
+  id: "",
+  bodyId: "",
+  name: "",
+  axisEntityId: "",
+  angleDegrees: 360
+};
+
 export function SketchPanel({
   disabled,
   sketches,
@@ -204,7 +221,8 @@ export function SketchPanel({
   onCreateConstraint,
   onApplyConstraintEdit,
   onDeleteConstraint,
-  onExtrudeEntity
+  onExtrudeEntity,
+  onRevolveEntity
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
     sketches[0]?.id
@@ -536,7 +554,15 @@ export function SketchPanel({
       : (selectedSketch?.name ?? "");
   const [extrudeForm, setExtrudeForm] =
     useState<FeatureExtrudeForm>(defaultExtrudeForm);
+  const [revolveForm, setRevolveForm] =
+    useState<FeatureRevolveForm>(defaultRevolveForm);
+  const [featureCreateMode, setFeatureCreateMode] = useState<
+    "extrude" | "revolve"
+  >("extrude");
   const selectedExtrudeEntity = isExtrudableSketchEntity(selectedEntity)
+    ? selectedEntity
+    : undefined;
+  const selectedRevolveEntity = isRevolvableSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
   const addStatus = getAddOperationStatus(
@@ -558,6 +584,28 @@ export function SketchPanel({
     extrudeForm.operationMode === "add" ? addStatus : cutStatus;
   const canCreateBoolean =
     extrudeForm.operationMode === "add" ? canCreateAdd : canCreateCut;
+  const revolveAxisOptions = useMemo(
+    () => createRevolveAxisOptions(selectedSketch),
+    [selectedSketch]
+  );
+  const selectedSketchLineCount =
+    selectedSketch?.entities.filter((entity) => entity.kind === "line")
+      .length ?? 0;
+  const selectedRevolveAxisOption =
+    revolveAxisOptions.find(
+      (option) => option.entityId === revolveForm.axisEntityId
+    ) ?? revolveAxisOptions[0];
+  const effectiveRevolveForm: FeatureRevolveForm = {
+    ...revolveForm,
+    axisEntityId:
+      selectedRevolveAxisOption?.entityId ?? revolveForm.axisEntityId
+  };
+  const revolveStatus = getRevolveOperationStatus(
+    selectedRevolveEntity,
+    revolveAxisOptions,
+    effectiveRevolveForm.angleDegrees,
+    selectedSketchLineCount
+  );
   const shouldShowEntityEditor =
     Boolean(editingEntityId) ||
     isAddingEntity ||
@@ -1089,9 +1137,12 @@ export function SketchPanel({
                 )}
 
               {selectedSketch.entities.length > 0 && (
-                <section className="entity-editor" aria-label="Extrude feature">
+                <section
+                  className="entity-editor"
+                  aria-label="Create authored feature"
+                >
                   <div className="command-card-heading">
-                    <h3>Extrude selected entity</h3>
+                    <h3>Create feature from selected entity</h3>
                   </div>
                   {selectedExtrudeEntity ? (
                     <>
@@ -1101,201 +1152,336 @@ export function SketchPanel({
                           {getSketchEntityOptionLabel(selectedExtrudeEntity)}
                         </strong>
                       </div>
-                      <div className="field-grid two">
-                        <NumberField
+                      <label>
+                        Feature type
+                        <select
+                          value={featureCreateMode}
                           disabled={disabled}
-                          label="Depth"
-                          value={extrudeForm.depth}
-                          onChange={(depth) =>
-                            setExtrudeForm({ ...extrudeForm, depth })
+                          onChange={(event) =>
+                            setFeatureCreateMode(
+                              event.currentTarget.value as "extrude" | "revolve"
+                            )
                           }
-                        />
-                        <label>
-                          Side
-                          <select
-                            value={extrudeForm.side}
-                            disabled={disabled}
-                            onChange={(event) =>
-                              setExtrudeForm({
-                                ...extrudeForm,
-                                side: event.currentTarget
-                                  .value as FeatureExtrudeForm["side"]
-                              })
+                        >
+                          <option value="extrude">Extrude</option>
+                          <option value="revolve">Revolve</option>
+                        </select>
+                      </label>
+                      {featureCreateMode === "revolve" ? (
+                        <>
+                          <div className="field-grid two">
+                            <label>
+                              Axis line
+                              <select
+                                value={effectiveRevolveForm.axisEntityId}
+                                disabled={
+                                  disabled || revolveAxisOptions.length === 0
+                                }
+                                onChange={(event) =>
+                                  setRevolveForm({
+                                    ...revolveForm,
+                                    axisEntityId: event.currentTarget.value
+                                  })
+                                }
+                              >
+                                {revolveAxisOptions.map((axis) => (
+                                  <option
+                                    key={axis.entityId}
+                                    value={axis.entityId}
+                                  >
+                                    {axis.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <NumberField
+                              disabled={disabled}
+                              label="Angle"
+                              value={revolveForm.angleDegrees}
+                              onChange={(angleDegrees) =>
+                                setRevolveForm({
+                                  ...revolveForm,
+                                  angleDegrees
+                                })
+                              }
+                            />
+                          </div>
+                          {selectedRevolveAxisOption ? (
+                            <div className="readonly-field">
+                              <span>Axis</span>
+                              <strong>
+                                {selectedRevolveAxisOption.detail}
+                              </strong>
+                            </div>
+                          ) : null}
+                          <p className="project-message compact">
+                            {revolveStatus.message}
+                          </p>
+                          <details className="advanced-options">
+                            <summary>Advanced revolve options</summary>
+                            <div className="field-grid two">
+                              <label>
+                                Optional feature ID
+                                <input
+                                  type="text"
+                                  value={revolveForm.id}
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    setRevolveForm({
+                                      ...revolveForm,
+                                      id: event.currentTarget.value
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Optional body ID
+                                <input
+                                  type="text"
+                                  value={revolveForm.bodyId}
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    setRevolveForm({
+                                      ...revolveForm,
+                                      bodyId: event.currentTarget.value
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <label>
+                              Optional name
+                              <input
+                                type="text"
+                                value={revolveForm.name}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setRevolveForm({
+                                    ...revolveForm,
+                                    name: event.currentTarget.value
+                                  })
+                                }
+                              />
+                            </label>
+                          </details>
+                          <button
+                            type="button"
+                            disabled={disabled || !revolveStatus.available}
+                            onClick={() =>
+                              onRevolveEntity(
+                                selectedSketch.id,
+                                selectedExtrudeEntity.id,
+                                effectiveRevolveForm
+                              )
                             }
                           >
-                            <option value="positive">Positive</option>
-                            <option value="negative">Negative</option>
-                            <option value="symmetric">Symmetric</option>
-                          </select>
-                        </label>
-                      </div>
-                      <div className="field-grid two">
-                        <label>
-                          Operation
-                          <select
-                            value={extrudeForm.operationMode}
-                            disabled={disabled}
-                            onChange={(event) => {
-                              const operationMode = event.currentTarget
-                                .value as FeatureExtrudeForm["operationMode"];
+                            Create revolve
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="field-grid two">
+                            <NumberField
+                              disabled={disabled}
+                              label="Depth"
+                              value={extrudeForm.depth}
+                              onChange={(depth) =>
+                                setExtrudeForm({ ...extrudeForm, depth })
+                              }
+                            />
+                            <label>
+                              Side
+                              <select
+                                value={extrudeForm.side}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setExtrudeForm({
+                                    ...extrudeForm,
+                                    side: event.currentTarget
+                                      .value as FeatureExtrudeForm["side"]
+                                  })
+                                }
+                              >
+                                <option value="positive">Positive</option>
+                                <option value="negative">Negative</option>
+                                <option value="symmetric">Symmetric</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div className="field-grid two">
+                            <label>
+                              Operation
+                              <select
+                                value={extrudeForm.operationMode}
+                                disabled={disabled}
+                                onChange={(event) => {
+                                  const operationMode = event.currentTarget
+                                    .value as FeatureExtrudeForm["operationMode"];
 
-                              setExtrudeForm({
-                                ...extrudeForm,
-                                operationMode,
-                                targetBodyId:
-                                  operationMode === "add"
-                                    ? addTargetBodies.some(
-                                        (body) =>
-                                          body.bodyId ===
-                                          extrudeForm.targetBodyId
-                                      )
-                                      ? extrudeForm.targetBodyId
-                                      : addTargetBodies[0]?.bodyId
-                                    : operationMode === "cut"
-                                      ? cutTargetBodies.some(
-                                          (body) =>
-                                            body.bodyId ===
-                                            extrudeForm.targetBodyId
-                                        )
-                                        ? extrudeForm.targetBodyId
-                                        : cutTargetBodies[0]?.bodyId
-                                      : undefined
-                              });
-                            }}
-                          >
-                            <option value="newBody">New body</option>
-                            <option value="add" disabled={!canCreateAdd}>
-                              Add to body
-                            </option>
-                            <option value="cut" disabled={!canCreateCut}>
-                              Cut body
-                            </option>
-                          </select>
-                        </label>
-                        {extrudeForm.operationMode === "add" ||
-                        extrudeForm.operationMode === "cut" ? (
-                          <label>
-                            Target body
-                            <select
-                              value={extrudeForm.targetBodyId ?? ""}
-                              disabled={disabled || !canCreateBoolean}
-                              onChange={(event) =>
-                                setExtrudeForm({
-                                  ...extrudeForm,
-                                  targetBodyId: event.currentTarget.value
-                                })
-                              }
-                            >
-                              {activeTargetBodies.map((body) => (
-                                <option key={body.bodyId} value={body.bodyId}>
-                                  {body.label}
+                                  setExtrudeForm({
+                                    ...extrudeForm,
+                                    operationMode,
+                                    targetBodyId:
+                                      operationMode === "add"
+                                        ? addTargetBodies.some(
+                                            (body) =>
+                                              body.bodyId ===
+                                              extrudeForm.targetBodyId
+                                          )
+                                          ? extrudeForm.targetBodyId
+                                          : addTargetBodies[0]?.bodyId
+                                        : operationMode === "cut"
+                                          ? cutTargetBodies.some(
+                                              (body) =>
+                                                body.bodyId ===
+                                                extrudeForm.targetBodyId
+                                            )
+                                            ? extrudeForm.targetBodyId
+                                            : cutTargetBodies[0]?.bodyId
+                                          : undefined
+                                  });
+                                }}
+                              >
+                                <option value="newBody">New body</option>
+                                <option value="add" disabled={!canCreateAdd}>
+                                  Add to body
                                 </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <div className="readonly-field">
-                            <span>Target</span>
-                            <strong>Creates standalone body</strong>
+                                <option value="cut" disabled={!canCreateCut}>
+                                  Cut body
+                                </option>
+                              </select>
+                            </label>
+                            {extrudeForm.operationMode === "add" ||
+                            extrudeForm.operationMode === "cut" ? (
+                              <label>
+                                Target body
+                                <select
+                                  value={extrudeForm.targetBodyId ?? ""}
+                                  disabled={disabled || !canCreateBoolean}
+                                  onChange={(event) =>
+                                    setExtrudeForm({
+                                      ...extrudeForm,
+                                      targetBodyId: event.currentTarget.value
+                                    })
+                                  }
+                                >
+                                  {activeTargetBodies.map((body) => (
+                                    <option
+                                      key={body.bodyId}
+                                      value={body.bodyId}
+                                    >
+                                      {body.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : (
+                              <div className="readonly-field">
+                                <span>Target</span>
+                                <strong>Creates standalone body</strong>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      {(extrudeForm.operationMode === "add" ||
-                        extrudeForm.operationMode === "cut") &&
-                        selectedBooleanTarget && (
-                          <div className="readonly-field">
-                            <span>
-                              {extrudeForm.operationMode === "add"
-                                ? "Add target"
-                                : "Cut target"}
-                            </span>
-                            <strong>{selectedBooleanTarget.detail}</strong>
-                          </div>
-                        )}
-                      {((extrudeForm.operationMode === "add" &&
-                        (!addStatus.available || selectedBooleanTarget)) ||
-                        (extrudeForm.operationMode === "cut" &&
-                          (!cutStatus.available || selectedBooleanTarget)) ||
-                        (!addStatus.available && !cutStatus.available)) && (
-                        <p className="project-message compact">
-                          {extrudeForm.operationMode === "add" &&
-                          selectedBooleanTarget
-                            ? "Creates an add/fuse result body. The target stays in structure as consumed."
-                            : extrudeForm.operationMode === "cut" &&
-                                selectedBooleanTarget
-                              ? "Creates a cut result body. The target stays in structure as consumed."
-                              : booleanStatus.message}
-                        </p>
-                      )}
-                      <details className="advanced-options">
-                        <summary>Advanced extrude options</summary>
-                        <div className="field-grid two">
-                          <label>
-                            Optional feature ID
-                            <input
-                              type="text"
-                              value={extrudeForm.id}
-                              disabled={disabled}
-                              onChange={(event) =>
-                                setExtrudeForm({
-                                  ...extrudeForm,
-                                  id: event.currentTarget.value
-                                })
-                              }
-                            />
-                          </label>
-                          <label>
-                            Optional body ID
-                            <input
-                              type="text"
-                              value={extrudeForm.bodyId}
-                              disabled={disabled}
-                              onChange={(event) =>
-                                setExtrudeForm({
-                                  ...extrudeForm,
-                                  bodyId: event.currentTarget.value
-                                })
-                              }
-                            />
-                          </label>
-                        </div>
-                        <label>
-                          Optional name
-                          <input
-                            type="text"
-                            value={extrudeForm.name}
-                            disabled={disabled}
-                            onChange={(event) =>
-                              setExtrudeForm({
-                                ...extrudeForm,
-                                name: event.currentTarget.value
-                              })
-                            }
-                          />
-                        </label>
-                      </details>
-                      <button
-                        type="button"
-                        disabled={
-                          disabled ||
-                          ((extrudeForm.operationMode === "add" ||
+                          {(extrudeForm.operationMode === "add" ||
                             extrudeForm.operationMode === "cut") &&
-                            !canCreateBoolean)
-                        }
-                        onClick={() =>
-                          onExtrudeEntity(
-                            selectedSketch.id,
-                            selectedExtrudeEntity.id,
-                            extrudeForm
-                          )
-                        }
-                      >
-                        Create extrude
-                      </button>
+                            selectedBooleanTarget && (
+                              <div className="readonly-field">
+                                <span>
+                                  {extrudeForm.operationMode === "add"
+                                    ? "Add target"
+                                    : "Cut target"}
+                                </span>
+                                <strong>{selectedBooleanTarget.detail}</strong>
+                              </div>
+                            )}
+                          {((extrudeForm.operationMode === "add" &&
+                            (!addStatus.available || selectedBooleanTarget)) ||
+                            (extrudeForm.operationMode === "cut" &&
+                              (!cutStatus.available ||
+                                selectedBooleanTarget)) ||
+                            (!addStatus.available && !cutStatus.available)) && (
+                            <p className="project-message compact">
+                              {extrudeForm.operationMode === "add" &&
+                              selectedBooleanTarget
+                                ? "Creates an add/fuse result body. The target stays in structure as consumed."
+                                : extrudeForm.operationMode === "cut" &&
+                                    selectedBooleanTarget
+                                  ? "Creates a cut result body. The target stays in structure as consumed."
+                                  : booleanStatus.message}
+                            </p>
+                          )}
+                          <details className="advanced-options">
+                            <summary>Advanced extrude options</summary>
+                            <div className="field-grid two">
+                              <label>
+                                Optional feature ID
+                                <input
+                                  type="text"
+                                  value={extrudeForm.id}
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    setExtrudeForm({
+                                      ...extrudeForm,
+                                      id: event.currentTarget.value
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Optional body ID
+                                <input
+                                  type="text"
+                                  value={extrudeForm.bodyId}
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    setExtrudeForm({
+                                      ...extrudeForm,
+                                      bodyId: event.currentTarget.value
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <label>
+                              Optional name
+                              <input
+                                type="text"
+                                value={extrudeForm.name}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setExtrudeForm({
+                                    ...extrudeForm,
+                                    name: event.currentTarget.value
+                                  })
+                                }
+                              />
+                            </label>
+                          </details>
+                          <button
+                            type="button"
+                            disabled={
+                              disabled ||
+                              ((extrudeForm.operationMode === "add" ||
+                                extrudeForm.operationMode === "cut") &&
+                                !canCreateBoolean)
+                            }
+                            onClick={() =>
+                              onExtrudeEntity(
+                                selectedSketch.id,
+                                selectedExtrudeEntity.id,
+                                extrudeForm
+                              )
+                            }
+                          >
+                            Create extrude
+                          </button>
+                        </>
+                      )}
                     </>
                   ) : (
                     <p className="empty-state compact">
-                      Select a rectangle or circle to extrude.
+                      Select a rectangle or circle to create an authored
+                      feature.
                     </p>
                   )}
                 </section>

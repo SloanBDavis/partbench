@@ -19,6 +19,7 @@ import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
   createParameterBindingOptions,
+  createRevolveAxisOptions,
   createSketchPointTargetOptionsForEntity,
   createSketchDimensionTargetOptions,
   formatSketchPointCoordinate,
@@ -32,6 +33,7 @@ import {
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
+  getRevolveOperationStatus,
   getParameterDimensionUsageCount,
   getSketchConstraintKindLabel,
   getSketchConstraintStatusDisplay,
@@ -41,7 +43,8 @@ import {
   getSketchEntityOptionLabel,
   getSketchEvaluationStatusDisplay,
   isSketchConstraintRelatedToEntity,
-  isExtrudableSketchEntity
+  isExtrudableSketchEntity,
+  isRevolvableSketchEntity
 } from "./sketchPanelUi";
 
 describe("sketch panel UI helpers", () => {
@@ -135,11 +138,21 @@ describe("sketch panel UI helpers", () => {
     );
     expect(isExtrudableSketchEntity(entities[0])).toBe(true);
     expect(isExtrudableSketchEntity(entities[1])).toBe(true);
+    expect(isRevolvableSketchEntity(entities[0])).toBe(true);
+    expect(isRevolvableSketchEntity(entities[1])).toBe(true);
     expect(
       isExtrudableSketchEntity({
         id: "point_1",
         kind: "point",
         point: [0, 0]
+      })
+    ).toBe(false);
+    expect(
+      isRevolvableSketchEntity({
+        id: "line_1",
+        kind: "line",
+        start: [0, 0],
+        end: [1, 0]
       })
     ).toBe(false);
   });
@@ -976,6 +989,90 @@ describe("sketch panel UI helpers", () => {
     expect(getAddOperationStatus(rectangle, targets)).toEqual({
       available: true,
       message: "1 eligible add target body."
+    });
+  });
+
+  it("filters revolve axes and explains revolve availability", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const point: SketchSnapshot["entities"][number] = {
+      id: "point_1",
+      kind: "point",
+      point: [0, 0]
+    };
+    const validLine: SketchSnapshot["entities"][number] = {
+      id: "axis_1",
+      kind: "line",
+      start: [0, -2],
+      end: [0, 2]
+    };
+    const zeroLine: SketchSnapshot["entities"][number] = {
+      id: "axis_zero",
+      kind: "line",
+      start: [1, 1],
+      end: [1, 1]
+    };
+
+    expect(
+      createRevolveAxisOptions(
+        createSketch("sketch_1", {
+          entities: [rectangle, validLine, zeroLine, circle]
+        })
+      )
+    ).toEqual([
+      {
+        entityId: "axis_1",
+        label: "axis_1",
+        detail: "0, -2 to 0, 2"
+      }
+    ]);
+    expect(getRevolveOperationStatus(point, [], 360)).toEqual({
+      available: false,
+      message: "Select a rectangle or circle profile to revolve."
+    });
+    expect(getRevolveOperationStatus(rectangle, [], 0)).toEqual({
+      available: false,
+      message: "Revolve angle must be a positive finite value <= 360."
+    });
+    expect(getRevolveOperationStatus(rectangle, [], 361)).toEqual({
+      available: false,
+      message: "Revolve angle must be a positive finite value <= 360."
+    });
+    expect(getRevolveOperationStatus(rectangle, [], Number.NaN)).toEqual({
+      available: false,
+      message: "Revolve angle must be a positive finite value <= 360."
+    });
+    expect(getRevolveOperationStatus(rectangle, [], 180, 0)).toEqual({
+      available: false,
+      message:
+        "Add a non-zero line entity in this sketch to use as the revolve axis."
+    });
+    expect(getRevolveOperationStatus(circle, [], 180, 1)).toEqual({
+      available: false,
+      message: "Edit the sketch line axis so it has non-zero length."
+    });
+    expect(
+      getRevolveOperationStatus(
+        circle,
+        createRevolveAxisOptions(
+          createSketch("sketch_1", { entities: [validLine] })
+        ),
+        180
+      )
+    ).toEqual({
+      available: true,
+      message: "1 eligible revolve axis."
     });
   });
 });

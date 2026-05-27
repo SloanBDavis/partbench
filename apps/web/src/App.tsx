@@ -58,6 +58,7 @@ import {
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
+  buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
   buildNameGeneratedReferenceOp,
   buildOperationFromBatchForm,
@@ -78,6 +79,7 @@ import {
   type BatchOperationForm,
   type DimensionCommandForm,
   type FeatureExtrudeForm,
+  type FeatureRevolveForm,
   type ParameterCreateForm,
   type ParameterEditForm,
   type SketchConstraintForm,
@@ -1141,6 +1143,17 @@ export function App() {
     );
   }
 
+  async function revolveSketchEntity(
+    sketchId: string,
+    entityId: string,
+    form: FeatureRevolveForm
+  ) {
+    await commitOps(
+      [buildFeatureRevolveOp(sketchId, entityId, form)],
+      (response) => response.createdBodyIds?.[0] ?? selectedId
+    );
+  }
+
   async function deleteAuthoredFeature(featureId: string) {
     const feature = projectStructure.features.find(
       (candidate) => candidate.id === featureId
@@ -1573,6 +1586,9 @@ export function App() {
                   }
                   onExtrudeEntity={(sketchId, entityId, form) =>
                     void extrudeSketchEntity(sketchId, entityId, form)
+                  }
+                  onRevolveEntity={(sketchId, entityId, form) =>
+                    void revolveSketchEntity(sketchId, entityId, form)
                   }
                 />
               </div>
