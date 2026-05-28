@@ -191,6 +191,44 @@ describe("renderer mesh bridge", () => {
     });
   });
 
+  it("adapts hole mesh responses from the geometry worker", () => {
+    const result = createRenderMeshFromGeometryWorkerResponse(
+      {
+        id: "mesh_bridge_req_hole",
+        version: "geometry-worker.v1",
+        kind: "geometry-worker.booleanFeature",
+        payloadId: "mesh_bridge_hole_payload",
+        response: {
+          ok: true,
+          id: "mesh_bridge_hole_payload",
+          op: "geometry.hole",
+          mesh: {
+            primitive: "hole",
+            positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            indices: new Uint32Array([0, 1, 2]),
+            vertexCount: 3,
+            triangleCount: 1,
+            faceCount: 1
+          },
+          warnings: []
+        },
+        transferables: []
+      },
+      { id: "mesh_hole_from_worker", alignment: "source" }
+    );
+
+    expect(result).toMatchObject({
+      vertexCount: 3,
+      triangleCount: 1,
+      mesh: {
+        id: "mesh_hole_from_worker",
+        kind: "mesh",
+        indices: [0, 1, 2],
+        source: "geometry-worker.booleanFeature"
+      }
+    });
+  });
+
   it("can center corner-origin box meshes for the current primitive renderer", async () => {
     const worker = new GeometryKernelWorker();
     const response = await worker.execute(

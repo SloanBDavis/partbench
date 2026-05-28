@@ -264,9 +264,10 @@ first geometry-only circular hole feasibility path:
 source-derived rectangle and circle extrude targets. The request supports blind
 depth and through-all depth when the target bounds can be projected along the
 hole direction. Results are serializable mesh data only. They are derived
-geometry, are not persisted, do not change project schema, do not wire hole
-result bodies into app rendering yet, and do not expose raw OCCT topology
-indexes as stable generated references.
+geometry, are not persisted, do not change project schema, and do not expose
+raw OCCT topology indexes as stable generated references. The app derived
+geometry layer can now request and render supported hole result meshes from
+this path while keeping the source document in cad-core authoritative.
 
 The geometry-kernel validation path rejects invalid target/tool dimensions,
 invalid depth modes, non-positive blind depths, and malformed placement frames

@@ -18,6 +18,7 @@ import {
   transformExtrudeMeshToPlacement,
   type DerivedBooleanExtrudeGeometrySource,
   type DerivedExtrudeGeometrySource,
+  type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource,
   type DerivedGeometrySource,
   type DerivedGeometrySnapshot
@@ -29,6 +30,7 @@ import type {
   DerivedGeometryCylinderInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
+  DerivedGeometryHoleInput,
   DerivedGeometryRevolveInput,
   DerivedGeometryResult,
   DerivedGeometryRuntime,
@@ -46,6 +48,7 @@ type RuntimeInput =
   | DerivedGeometryTorusInput
   | DerivedGeometryExtrudeInput
   | DerivedGeometryRevolveInput
+  | DerivedGeometryHoleInput
   | DerivedGeometryBooleanExtrudeInput;
 
 describe("derivedGeometry", () => {
@@ -1899,6 +1902,301 @@ describe("derivedGeometry", () => {
     });
   });
 
+  it("derives hole result sources from active rectangle targets and circle tools", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_tool",
+        center: [0.5, 0.25],
+        radius: 0.4
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        circleEntityId: "circle_tool",
+        depthMode: "blind",
+        depth: 1.5,
+        direction: "negative"
+      }
+    ]);
+
+    const sources = getDerivedSources(engine);
+    const holeSource = sources.find(
+      (source): source is DerivedHoleGeometrySource => source.kind === "hole"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_hole_1"]);
+    expect(holeSource).toMatchObject({
+      id: "body_hole_1",
+      kind: "hole",
+      target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+      tool: {
+        sketchPlane: "XY",
+        circle: {
+          kind: "circle",
+          center: [0.5, 0.25],
+          radius: 0.4
+        },
+        depthMode: "blind",
+        depth: 1.5,
+        direction: "negative"
+      }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_hole_1",
+        target: expect.objectContaining({
+          depth: 3,
+          profile: expect.objectContaining({ kind: "rectangle" })
+        }),
+        tool: expect.objectContaining({
+          depthMode: "blind",
+          depth: 1.5,
+          direction: "negative",
+          circle: expect.objectContaining({ radius: 0.4 })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_hole_1",
+        objectKind: "hole",
+        status: "ready"
+      }
+    ]);
+  });
+
+  it("derives attached-sketch hole tool placement from generated face references", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_hole_face",
+        name: "Hole sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole_face",
+        id: "circle_tool",
+        center: [0.25, -0.25],
+        radius: 0.35
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_hole_face",
+        circleEntityId: "circle_tool",
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_rect_1"])
+    );
+    const holeSource = sources.find(
+      (source): source is DerivedHoleGeometrySource => source.kind === "hole"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_hole_1"]);
+    expect(holeSource).toMatchObject({
+      id: "body_hole_1",
+      kind: "hole",
+      tool: {
+        circle: {
+          kind: "circle",
+          center: [0.25, -0.25],
+          radius: 0.35
+        },
+        depthMode: "throughAll",
+        direction: "positive",
+        placementFrame: {
+          origin: [0, 0, 3]
+        }
+      }
+    });
+  });
+
+  it("updates hole source cache keys across tool profile, depth, direction, and target edits", () => {
+    const source: DerivedHoleGeometrySource = {
+      id: "body_hole_1",
+      kind: "hole",
+      target: createExtrudeSource("body_rect_1"),
+      tool: {
+        sketchPlane: "XY",
+        circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+        depthMode: "blind",
+        depth: 1,
+        direction: "positive"
+      }
+    };
+
+    expect(createDerivedGeometryCacheKey(source)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
+        tool: {
+          ...source.tool,
+          circle: { kind: "circle", center: [0, 0], radius: 0.75 }
+        }
+      })
+    );
+    expect(createDerivedGeometryCacheKey(source)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
+        tool: { ...source.tool, depth: 2 }
+      })
+    );
+    expect(createDerivedGeometryCacheKey(source)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
+        tool: { ...source.tool, direction: "negative" }
+      })
+    );
+    expect(createDerivedGeometryCacheKey(source)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
+        target: {
+          ...source.target,
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 6,
+            height: 2
+          }
+        }
+      })
+    );
+  });
+
+  it("ignores stale worker results after hole tool source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "tool" in input &&
+      "circle" in input.tool &&
+      input.tool.circle.radius === 0.5
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource: DerivedHoleGeometrySource = {
+      id: "body_hole_1",
+      kind: "hole",
+      target: createExtrudeSource("body_rect_1"),
+      tool: {
+        sketchPlane: "XY",
+        circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+        depthMode: "blind",
+        depth: 1,
+        direction: "positive"
+      }
+    };
+    const editedSource: DerivedHoleGeometrySource = {
+      ...initialSource,
+      tool: {
+        ...initialSource.tool,
+        circle: { kind: "circle", center: [0, 0], radius: 0.75 }
+      }
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "tool" in input && "circle" in input.tool
+          ? input.tool.circle.radius
+          : null
+      )
+    ).toEqual([0.5, 0.75]);
+
+    first.resolve(createResult("body_hole_1", createMesh("stale_hole")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_hole_1",
+      objectKind: "hole",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(createResult("body_hole_1", createMesh("body_hole_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_hole_1",
+      objectKind: "hole",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_hole_1"
+    ]);
+  });
+
+  it("marks unsupported hole sources without using primitive fallback language", () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async (input) =>
+        createResult(input.id, createMesh(input.id))
+      ),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([
+      {
+        id: "body_hole_unsupported",
+        kind: "hole",
+        target: createExtrudeSource("body_rect_1"),
+        tool: {
+          sketchPlane: "XY",
+          circle: { kind: "circle", center: [0, 0], radius: 0.5 },
+          depthMode: "blind",
+          depth: 1,
+          direction: "positive"
+        },
+        placementError:
+          "Hole feature feat_hole_1 cannot be displayed because its target or circle tool source is unavailable."
+      }
+    ]);
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Hole feature feat_hole_1 cannot be displayed because its target or circle tool source is unavailable."
+    );
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+  });
+
   it("ignores stale worker results after cut target source invalidation", async () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
@@ -2046,7 +2344,9 @@ describe("derivedGeometry", () => {
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
     const runtime = createRuntime((input) =>
-      "tool" in input && input.tool.profile.kind === "rectangle"
+      "tool" in input &&
+      "profile" in input.tool &&
+      input.tool.profile.kind === "rectangle"
         ? input.tool.profile.width === 4
           ? first.promise
           : second.promise
@@ -2081,7 +2381,9 @@ describe("derivedGeometry", () => {
 
     expect(
       runtime.inputs.map((input) =>
-        "tool" in input && input.tool.profile.kind === "rectangle"
+        "tool" in input &&
+        "profile" in input.tool &&
+        input.tool.profile.kind === "rectangle"
           ? input.tool.profile.width
           : null
       )
@@ -3136,6 +3438,10 @@ function createRuntime(
       return handler(input);
     },
     booleanExtrudes(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    hole(input) {
       inputs.push(input);
       return handler(input);
     },

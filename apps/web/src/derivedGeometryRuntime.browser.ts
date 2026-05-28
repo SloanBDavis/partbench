@@ -11,6 +11,7 @@ import {
   type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
   type DerivedGeometryExtrudeInput,
+  type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
   type DerivedGeometrySphereInput,
   type DerivedGeometryTorusInput,
@@ -52,6 +53,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryTorusInput
       | DerivedGeometryExtrudeInput
       | DerivedGeometryRevolveInput
+      | DerivedGeometryHoleInput
       | DerivedGeometryBooleanExtrudeInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
@@ -71,7 +73,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       alignment:
         request.payload.op === "geometry.tessellateExtrude" ||
         request.payload.op === "geometry.revolveProfile" ||
-        request.payload.op === "geometry.booleanExtrudes"
+        request.payload.op === "geometry.booleanExtrudes" ||
+        request.payload.op === "geometry.hole"
           ? "source"
           : "boundsCenter",
       transform:
@@ -262,6 +265,23 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           id: requestId,
           payloadId: `${requestId}:kernel`,
           operation: input.operation,
+          target: input.target,
+          tool: input.tool,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async hole(input: DerivedGeometryHoleInput) {
+      const { createHoleWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createHoleWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
           target: input.target,
           tool: input.tool,
           linearDeflection: 0.25,

@@ -104,6 +104,23 @@ export interface DerivedGeometryBooleanExtrudeInput {
   readonly tool: DerivedGeometryBooleanExtrudeInputSource;
 }
 
+export interface DerivedGeometryHoleInput {
+  readonly id: string;
+  readonly target: DerivedGeometryBooleanExtrudeInputSource;
+  readonly tool: {
+    readonly sketchPlane: "XY" | "XZ" | "YZ";
+    readonly circle: {
+      readonly kind: "circle";
+      readonly center: readonly [number, number];
+      readonly radius: number;
+    };
+    readonly depthMode: "blind" | "throughAll";
+    readonly depth?: number;
+    readonly direction: "positive" | "negative";
+    readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+  };
+}
+
 export type DerivedExactBodyMetadata = GeometryKernelExactBodyMetadata;
 
 export interface DerivedExactMetadataInput {
@@ -196,6 +213,7 @@ export interface DerivedGeometryRuntime {
   booleanExtrudes(
     input: DerivedGeometryBooleanExtrudeInput
   ): Promise<DerivedGeometryResult>;
+  hole(input: DerivedGeometryHoleInput): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;

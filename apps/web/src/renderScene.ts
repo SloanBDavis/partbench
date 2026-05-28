@@ -14,6 +14,7 @@ import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
+  DerivedHoleGeometrySource,
   DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
@@ -35,6 +36,7 @@ export function createRenderSceneInputs(
     | DerivedExtrudeGeometrySource
     | DerivedBooleanExtrudeGeometrySource
     | DerivedRevolveGeometrySource
+    | DerivedHoleGeometrySource
   )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
@@ -69,7 +71,11 @@ export function createRenderSceneInputs(
       continue;
     }
 
-    if (source.kind === "extrudeBoolean" || source.kind === "revolve") {
+    if (
+      source.kind === "extrudeBoolean" ||
+      source.kind === "revolve" ||
+      source.kind === "hole"
+    ) {
       continue;
     }
 

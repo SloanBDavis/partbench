@@ -28,13 +28,15 @@ export type DerivedGeometrySourceKind =
   | SceneObject["kind"]
   | "extrude"
   | "extrudeBoolean"
-  | "revolve";
+  | "revolve"
+  | "hole";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
-  | DerivedRevolveGeometrySource;
+  | DerivedRevolveGeometrySource
+  | DerivedHoleGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -85,6 +87,26 @@ export interface DerivedRevolveGeometrySource {
   };
   readonly angleDegrees: number;
   readonly placementFrame?: SketchDisplayFrame;
+  readonly placementError?: string;
+}
+
+export interface DerivedHoleGeometrySource {
+  readonly id: string;
+  readonly kind: "hole";
+  readonly target: DerivedExtrudeGeometrySource;
+  readonly tool: {
+    readonly sketchPlane: "XY" | "XZ" | "YZ";
+    readonly circle: Extract<
+      DerivedExtrudeGeometrySource["profile"],
+      {
+        readonly kind: "circle";
+      }
+    >;
+    readonly depthMode: "blind" | "throughAll";
+    readonly depth?: number;
+    readonly direction: "positive" | "negative";
+    readonly placementFrame?: SketchDisplayFrame;
+  };
   readonly placementError?: string;
 }
 
@@ -147,7 +169,8 @@ type SupportedDerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
-  | DerivedRevolveGeometrySource;
+  | DerivedRevolveGeometrySource
+  | DerivedHoleGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -373,7 +396,8 @@ function toDerivedGeometrySource(
     "object" in input ||
     input.kind === "extrude" ||
     input.kind === "extrudeBoolean" ||
-    input.kind === "revolve"
+    input.kind === "revolve" ||
+    input.kind === "hole"
   ) {
     return input;
   }
@@ -394,6 +418,10 @@ function isSupportedDerivedGeometrySource(
 
   if (source.kind === "revolve") {
     return !source.placementError;
+  }
+
+  if (source.kind === "hole") {
+    return !source.placementError && isSupportedHoleSource(source);
   }
 
   return isSupportedDerivedGeometryObject(source.object);
@@ -487,6 +515,37 @@ function deriveSourceMesh(
         profile: source.tool.profile,
         depth: source.tool.depth,
         side: source.tool.side,
+        placementFrame: source.tool.placementFrame
+      }
+    });
+  }
+
+  if (source.kind === "hole") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    const unsupportedMessage = getUnsupportedHoleSourceMessage(source);
+
+    if (unsupportedMessage) {
+      throw new Error(unsupportedMessage);
+    }
+
+    return runtime.hole({
+      id: source.id,
+      target: {
+        sketchPlane: source.target.sketchPlane,
+        profile: source.target.profile,
+        depth: source.target.depth,
+        side: source.target.side,
+        placementFrame: source.target.placementFrame
+      },
+      tool: {
+        sketchPlane: source.tool.sketchPlane,
+        circle: source.tool.circle,
+        depthMode: source.tool.depthMode,
+        depth: source.tool.depth,
+        direction: source.tool.direction,
         placementFrame: source.tool.placementFrame
       }
     });
@@ -600,7 +659,15 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     return source.placementError;
   }
 
-  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, and authored revolves.";
+  if (source.kind === "hole") {
+    return (
+      source.placementError ??
+      getUnsupportedHoleSourceMessage(source) ??
+      "Hole display currently supports circular tools against rectangle or circle authored extrude targets only."
+    );
+  }
+
+  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, authored revolves, and authored holes.";
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -629,6 +696,27 @@ function getUnsupportedBooleanSourceMessage(
     source.target.profile.kind !== "circle"
   ) {
     return "Boolean cut display currently supports rectangle or circle target extrudes only.";
+  }
+
+  return undefined;
+}
+
+function isSupportedHoleSource(source: DerivedHoleGeometrySource): boolean {
+  return getUnsupportedHoleSourceMessage(source) === undefined;
+}
+
+function getUnsupportedHoleSourceMessage(
+  source: DerivedHoleGeometrySource
+): string | undefined {
+  if (
+    source.target.profile.kind !== "rectangle" &&
+    source.target.profile.kind !== "circle"
+  ) {
+    return "Hole display currently supports rectangle or circle target extrudes only.";
+  }
+
+  if (source.tool.circle.kind !== "circle") {
+    return "Hole display currently supports circular sketch tools only.";
   }
 
   return undefined;
@@ -678,11 +766,18 @@ export function createDerivedGeometryCacheKey(
               placementFrame: source.placementFrame,
               placementError: source.placementError
             }
-          : {
-              kind: source.kind,
-              dimensions: source.object.dimensions,
-              transform: source.object.transform
-            };
+          : source.kind === "hole"
+            ? {
+                kind: source.kind,
+                target: createDerivedGeometryCacheKey(source.target),
+                tool: source.tool,
+                placementError: source.placementError
+              }
+            : {
+                kind: source.kind,
+                dimensions: source.object.dimensions,
+                transform: source.object.transform
+              };
 
   return JSON.stringify(base);
 }
@@ -708,12 +803,17 @@ export function getDerivedGeometryStatusLabel(
         return "Revolve mesh error";
       }
 
+      if (entry.sourceKind === "hole") {
+        return "Hole mesh error";
+      }
+
       return "Primitive fallback";
     case "unsupported":
       if (
         entry.sourceKind === "extrude" ||
         entry.sourceKind === "extrudeBoolean" ||
-        entry.sourceKind === "revolve"
+        entry.sourceKind === "revolve" ||
+        entry.sourceKind === "hole"
       ) {
         return entry.message;
       }

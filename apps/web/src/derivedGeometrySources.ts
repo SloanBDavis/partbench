@@ -9,6 +9,7 @@ import {
   type DerivedBooleanExtrudeGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
+  type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
@@ -54,17 +55,28 @@ export function createAuthoredFeatureDerivedGeometrySources(
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
+  | DerivedHoleGeometrySource
 )[] {
+  const consumedBodyIds = createConsumedBodyIds(features);
+
   return [
     ...createExtrudeDerivedGeometrySources(
       features,
       sketches,
-      generatedFacesByKey
+      generatedFacesByKey,
+      consumedBodyIds
     ),
     ...createRevolveDerivedGeometrySources(
       features,
       sketches,
-      generatedFacesByKey
+      generatedFacesByKey,
+      consumedBodyIds
+    ),
+    ...createHoleDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      consumedBodyIds
     )
   ];
 }
@@ -75,7 +87,8 @@ export function createExtrudeDerivedGeometrySources(
   generatedFacesByKey: ReadonlyMap<
     string,
     CadGeneratedFaceReference
-  > = new Map()
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
@@ -86,15 +99,6 @@ export function createExtrudeDerivedGeometrySources(
   );
   const featuresByBodyId = new Map(
     extrudeFeatures.map((feature) => [feature.bodyId, feature])
-  );
-  const consumedBodyIds = new Set(
-    extrudeFeatures
-      .filter(
-        (feature) =>
-          feature.operationMode === "add" || feature.operationMode === "cut"
-      )
-      .map((feature) => feature.targetBodyId)
-      .filter((bodyId): bodyId is string => Boolean(bodyId))
   );
   const sources: (
     | DerivedExtrudeGeometrySource
@@ -158,19 +162,71 @@ export function createRevolveDerivedGeometrySources(
   generatedFacesByKey: ReadonlyMap<
     string,
     CadGeneratedFaceReference
-  > = new Map()
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
 ): readonly DerivedRevolveGeometrySource[] {
   return features
     .filter(
       (feature): feature is Extract<CadFeatureSummary, { kind: "revolve" }> =>
         feature.kind === "revolve"
     )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
     .map((feature) =>
       createRevolveSourceForFeature(feature, sketches, generatedFacesByKey)
     )
     .filter(
       (source): source is DerivedRevolveGeometrySource => source !== undefined
     );
+}
+
+export function createHoleDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedHoleGeometrySource[] {
+  const extrudeFeaturesByBodyId = new Map(
+    features
+      .filter(
+        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          feature.kind === "extrude"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+
+  return features
+    .filter(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "hole" }> =>
+        feature.kind === "hole"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
+      const target =
+        targetFeature?.operationMode === "newBody"
+          ? createExtrudeSourceForFeature(
+              targetFeature,
+              sketches,
+              generatedFacesByKey
+            )
+          : undefined;
+      const toolResult = createHoleToolSourceForFeature(
+        feature,
+        sketches,
+        generatedFacesByKey
+      );
+
+      return {
+        id: feature.bodyId,
+        kind: "hole",
+        target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+        tool: toolResult.tool ?? createUnavailableHoleToolSource(),
+        ...createHolePlacementError(feature, target, toolResult)
+      };
+    });
 }
 
 function createExtrudeSourceForFeature(
@@ -229,6 +285,51 @@ function createExtrudeSourceForFeature(
   }
 
   return undefined;
+}
+
+function createHoleToolSourceForFeature(
+  feature: Extract<CadFeatureSummary, { kind: "hole" }>,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>
+): {
+  readonly tool?: DerivedHoleGeometrySource["tool"];
+  readonly placementError?: string;
+} {
+  const sketch = sketches.find(
+    (candidate) => candidate.id === feature.sketchId
+  );
+  const entity = sketch?.entities.find(
+    (candidate) => candidate.id === feature.circleEntityId
+  );
+
+  if (!sketch || !entity || entity.kind !== "circle") {
+    return {};
+  }
+
+  const placement = createAttachedSketchFeaturePlacement(
+    sketch,
+    generatedFacesByKey,
+    "hole"
+  );
+
+  if (placement.placementError) {
+    return placement;
+  }
+
+  return {
+    tool: {
+      sketchPlane: sketch.plane,
+      circle: {
+        kind: entity.kind,
+        center: entity.center,
+        radius: entity.radius
+      },
+      depthMode: feature.depthMode,
+      depth: feature.depth,
+      direction: feature.direction,
+      placementFrame: placement.placementFrame
+    }
+  };
 }
 
 function createRevolveSourceForFeature(
@@ -299,6 +400,29 @@ function createRevolveSourceForFeature(
   return undefined;
 }
 
+function createConsumedBodyIds(
+  features: readonly CadFeatureSummary[]
+): ReadonlySet<string> {
+  return new Set(
+    features
+      .flatMap((feature) => {
+        if (
+          feature.kind === "extrude" &&
+          (feature.operationMode === "add" || feature.operationMode === "cut")
+        ) {
+          return feature.targetBodyId ? [feature.targetBodyId] : [];
+        }
+
+        if (feature.kind === "hole") {
+          return [feature.targetBodyId];
+        }
+
+        return [];
+      })
+      .filter((bodyId): bodyId is string => Boolean(bodyId))
+  );
+}
+
 function createBooleanPlacementError(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
   target: DerivedExtrudeGeometrySource | undefined,
@@ -323,6 +447,31 @@ function createBooleanPlacementError(
   return {};
 }
 
+function createHolePlacementError(
+  feature: Extract<CadFeatureSummary, { kind: "hole" }>,
+  target: DerivedExtrudeGeometrySource | undefined,
+  toolResult: {
+    readonly tool?: DerivedHoleGeometrySource["tool"];
+    readonly placementError?: string;
+  }
+): { readonly placementError?: string } {
+  if (toolResult.placementError) {
+    return { placementError: toolResult.placementError };
+  }
+
+  if (!target || !toolResult.tool) {
+    return {
+      placementError: `Hole feature ${feature.id} cannot be displayed because its target or circle tool source is unavailable.`
+    };
+  }
+
+  if (target.placementError) {
+    return { placementError: target.placementError };
+  }
+
+  return {};
+}
+
 function createUnavailableExtrudeSource(
   id: string
 ): DerivedExtrudeGeometrySource {
@@ -337,10 +486,20 @@ function createUnavailableExtrudeSource(
   };
 }
 
+function createUnavailableHoleToolSource(): DerivedHoleGeometrySource["tool"] {
+  return {
+    sketchPlane: "XY",
+    circle: { kind: "circle", center: [0, 0], radius: 1 },
+    depthMode: "blind",
+    depth: 1,
+    direction: "positive"
+  };
+}
+
 function createAttachedSketchFeaturePlacement(
   sketch: SketchSnapshot,
   generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
-  featureKind: "extrude" | "revolve"
+  featureKind: "extrude" | "revolve" | "hole"
 ): {
   readonly placementFrame?: SketchDisplayFrame;
   readonly placementError?: string;

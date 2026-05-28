@@ -12,6 +12,7 @@ import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
+  DerivedHoleGeometrySource,
   DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import {
@@ -478,11 +479,74 @@ describe("renderScene", () => {
     expect(pendingScene.meshes).toEqual([]);
   });
 
+  it("renders ready hole meshes without a primitive-style pending fallback", () => {
+    const source = createHoleSource("body_hole_1");
+    const readyMesh = createMesh(source.id);
+    const readyScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "hole",
+            sourceId: source.id,
+            sourceKind: "hole",
+            cacheKey: "hole-ready",
+            status: "ready",
+            mesh: readyMesh,
+            metrics: {
+              objectId: source.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ]),
+      [source]
+    );
+    const pendingScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "hole",
+            sourceId: source.id,
+            sourceKind: "hole",
+            cacheKey: "hole-pending",
+            status: "pending"
+          }
+        ]
+      ]),
+      [source]
+    );
+
+    expect(readyScene.primitives).toEqual([]);
+    expect(readyScene.meshes).toEqual([readyMesh]);
+    expect(pendingScene.primitives).toEqual([]);
+    expect(pendingScene.meshes).toEqual([]);
+  });
+
   it("does not render a primitive-style fallback for unsupported revolve sources", () => {
     const source: DerivedRevolveGeometrySource = {
       ...createRevolveSource("body_revolve_1"),
       placementError:
         "Revolve display currently supports newBody revolve features only."
+    };
+    const scene = createRenderSceneInputs([], new Map(), [source]);
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes).toEqual([]);
+  });
+
+  it("does not render a primitive-style fallback for unsupported hole sources", () => {
+    const source: DerivedHoleGeometrySource = {
+      ...createHoleSource("body_hole_1"),
+      placementError:
+        "Hole feature feat_hole_1 cannot be displayed because its target or circle tool source is unavailable."
     };
     const scene = createRenderSceneInputs([], new Map(), [source]);
 
@@ -741,6 +805,25 @@ function createRevolveSource(id: string): DerivedRevolveGeometrySource {
       end: [0, 2]
     },
     angleDegrees: 270
+  };
+}
+
+function createHoleSource(id: string): DerivedHoleGeometrySource {
+  return {
+    id,
+    kind: "hole",
+    target: createExtrudeSource("body_target", "positive"),
+    tool: {
+      sketchPlane: "XY",
+      circle: {
+        kind: "circle",
+        center: [0, 0],
+        radius: 0.5
+      },
+      depthMode: "blind",
+      depth: 1,
+      direction: "positive"
+    }
   };
 }
 
