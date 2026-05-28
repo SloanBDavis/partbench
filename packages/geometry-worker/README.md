@@ -56,9 +56,11 @@ primitive tessellation path.
 `createExtrudeTessellationWorkerRequest()` builds the current sketch-extrude
 mesh request. `createExtrudeBooleanWorkerRequest()` builds the derived geometry
 request used by the first narrow rectangle-extrude cut path and isolated
-boolean feasibility checks such as circle target cut by rectangle tool. That
-boolean request still does not mutate `cad-core`, does not update project JSON,
-and does not claim stable topology or generated-reference invalidation.
+boolean feasibility checks such as circle target cut by rectangle tool.
+`createHoleWorkerRequest()` builds the V6 geometry-only circular-hole
+feasibility request. These requests do not mutate `cad-core`, do not update
+project JSON, and do not claim stable topology or generated-reference
+invalidation.
 The worker path passes through the same structured success and error responses
 from `@web-cad/geometry-kernel`.
 

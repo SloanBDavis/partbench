@@ -8,6 +8,7 @@ export type GeometryKernelOp =
   | "geometry.tessellateExtrude"
   | "geometry.revolveProfile"
   | "geometry.booleanExtrudes"
+  | "geometry.hole"
   | "geometry.exactBodyMetadata";
 export type GeometryKernelPrimitive =
   | "box"
@@ -17,11 +18,14 @@ export type GeometryKernelPrimitive =
   | "torus"
   | "extrude"
   | "revolve"
-  | "boolean";
+  | "boolean"
+  | "hole";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
 export type GeometryKernelBooleanOperation = "add" | "cut";
+export type GeometryKernelHoleDepthMode = "blind" | "throughAll";
+export type GeometryKernelHoleDirection = "positive" | "negative";
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -163,6 +167,24 @@ export interface BooleanExtrudesRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export interface HoleToolSource {
+  readonly sketchPlane: GeometryKernelSketchPlane;
+  readonly circle: CircleExtrudeProfile;
+  readonly depthMode: GeometryKernelHoleDepthMode;
+  readonly depth?: number;
+  readonly direction?: GeometryKernelHoleDirection;
+  readonly placementFrame?: BooleanExtrudePlacementFrame;
+}
+
+export interface HoleRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.hole";
+  readonly target: BooleanExtrudeSource;
+  readonly tool: HoleToolSource;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
@@ -204,6 +226,7 @@ export type GeometryKernelRequest =
   | TessellateExtrudeRequest
   | RevolveProfileRequest
   | BooleanExtrudesRequest
+  | HoleRequest
   | ExactBodyMetadataRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
@@ -256,6 +279,7 @@ export type GeometryKernelErrorCode =
   | "INVALID_DIMENSIONS"
   | "INVALID_TESSELLATION_OPTIONS"
   | "UNSUPPORTED_PROFILE"
+  | "INVALID_PLACEMENT"
   | "KERNEL_FAILURE"
   | "EMPTY_RESULT"
   | "INVALID_RESULT"
@@ -332,6 +356,10 @@ export type GeometryKernelBooleanExtrudeMeshFactory = (
     TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelHoleMeshFactory = (
+  input: Omit<HoleRequest, "id" | "version" | "op"> & TessellationOptions
+) => Promise<GeometryKernelMeshResult>;
+
 export type GeometryKernelRevolveProfileMeshFactory = (
   input: Omit<RevolveProfileRequest, "id" | "version" | "op"> &
     TessellationOptions
@@ -348,6 +376,7 @@ export interface GeometryKernelMeshFactories {
   readonly createConeMesh: GeometryKernelConeMeshFactory;
   readonly createTorusMesh: GeometryKernelTorusMeshFactory;
   readonly createBooleanExtrudeMesh: GeometryKernelBooleanExtrudeMeshFactory;
+  readonly createHoleMesh?: GeometryKernelHoleMeshFactory;
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
 }
@@ -534,6 +563,17 @@ function validateRequest(
           "Boolean extrude feasibility currently supports rectangle add/cut and circle-target cut by rectangle tool."
       };
     }
+  } else if (request.op === "geometry.hole") {
+    if (
+      !isValidBooleanExtrudeSource(request.target) ||
+      !isValidHoleToolSource(request.tool)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Hole requests require a supported authored extrude target source, circular tool source, valid depth mode, direction, and finite positive blind depth when provided."
+      };
+    }
   } else if (request.op === "geometry.exactBodyMetadata") {
     if (!isValidExactBodyMetadataSource(request.source)) {
       return {
@@ -615,7 +655,28 @@ function createMesh(
         linearDeflection: request.tessellation?.linearDeflection,
         angularDeflection: request.tessellation?.angularDeflection
       });
+    case "geometry.hole":
+      return createHoleMesh(factories, request);
   }
+}
+
+function createHoleMesh(
+  factories: GeometryKernelMeshFactories,
+  request: HoleRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createHoleMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message: "Hole tessellation requires an OCCT hole mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createHoleMesh({
+    target: request.target,
+    tool: request.tool,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createRevolveProfileMesh(
@@ -799,6 +860,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Revolve profile";
     case "geometry.booleanExtrudes":
       return "Boolean extrude";
+    case "geometry.hole":
+      return "Hole";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
   }
@@ -859,6 +922,7 @@ function isGeometryKernelErrorCode(
     value === "INVALID_DIMENSIONS" ||
     value === "INVALID_TESSELLATION_OPTIONS" ||
     value === "UNSUPPORTED_PROFILE" ||
+    value === "INVALID_PLACEMENT" ||
     value === "KERNEL_FAILURE" ||
     value === "EMPTY_RESULT" ||
     value === "INVALID_RESULT" ||
@@ -886,6 +950,14 @@ function isBooleanOperation(
   value: unknown
 ): value is GeometryKernelBooleanOperation {
   return value === "add" || value === "cut";
+}
+
+function isHoleDepthMode(value: unknown): value is GeometryKernelHoleDepthMode {
+  return value === "blind" || value === "throughAll";
+}
+
+function isHoleDirection(value: unknown): value is GeometryKernelHoleDirection {
+  return value === "positive" || value === "negative";
 }
 
 function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
@@ -918,6 +990,21 @@ function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
     isPositiveFiniteNumber(source.depth) &&
     isExtrudeSide(source.side ?? "positive") &&
     isValidExtrudeProfile(source.profile) &&
+    (source.placementFrame === undefined ||
+      isValidBooleanExtrudePlacementFrame(source.placementFrame))
+  );
+}
+
+function isValidHoleToolSource(source: HoleToolSource): boolean {
+  return (
+    isSketchPlane(source.sketchPlane) &&
+    source.circle.kind === "circle" &&
+    isValidExtrudeProfile(source.circle) &&
+    isHoleDepthMode(source.depthMode) &&
+    isHoleDirection(source.direction ?? "positive") &&
+    (source.depthMode === "blind"
+      ? source.depth !== undefined && isPositiveFiniteNumber(source.depth)
+      : source.depth === undefined) &&
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
   );

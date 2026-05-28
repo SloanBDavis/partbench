@@ -20,6 +20,7 @@ export {
   createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
+  createHoleWorkerRequest,
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,

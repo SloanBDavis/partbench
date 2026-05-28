@@ -16,7 +16,7 @@ Input:
   `geometry.tessellateCylinder`, `geometry.tessellateSphere`,
   `geometry.tessellateCone`, `geometry.tessellateTorus`,
   `geometry.tessellateExtrude`, and the isolated feasibility request
-  `geometry.booleanExtrudes`
+  `geometry.booleanExtrudes`, plus the V6 feasibility request `geometry.hole`
 - Includes dimensions/source profiles and optional tessellation settings
 
 Output:
@@ -38,6 +38,12 @@ The circle-target cut feasibility path is covered for positive, negative, and
 symmetric sides; XY, XZ, and YZ sketch planes; placement-frame inputs;
 non-overlapping tools; fully removed targets; and unsupported profile
 combinations.
+
+`geometry.hole` is also intentionally geometry-only. It accepts a
+source-derived rectangle/circle extrude target plus a circular sketch tool with
+blind or through-all depth intent. It returns mesh data for feasibility tests,
+not document mutations, topology maps, stable generated references, or project
+source data.
 
 Typed arrays are structured-clone compatible, so this response shape can cross a
 browser Worker boundary. `getGeometryResponseTransferables()` exposes the mesh

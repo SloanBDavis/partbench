@@ -24,6 +24,7 @@ export {
   createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
+  createHoleWorkerRequest,
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
@@ -169,6 +170,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.tessellateExtrude" &&
     op !== "geometry.revolveProfile" &&
     op !== "geometry.booleanExtrudes" &&
+    op !== "geometry.hole" &&
     op !== "geometry.exactBodyMetadata"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;

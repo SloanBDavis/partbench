@@ -246,6 +246,34 @@ remains derived query/cache data only. If the revolve construction bindings are
 not available, the geometry response reports structured `UNAVAILABLE_BINDING`
 diagnostics rather than estimating metadata from tessellated mesh triangles.
 
+## V6 Phase D Hole Findings
+
+The installed full OpenCascade.js package exposes the bindings needed for the
+first geometry-only circular hole feasibility path:
+
+- target solid construction through the existing rectangle/circle extrude shape
+  builders;
+- circular tool construction through `BRepPrimAPI_MakeCylinder_3`;
+- through-all depth estimation from target bounds through `BRepBndLib.AddOptimal`
+  and `Bnd_Box`;
+- boolean execution through `BRepAlgoAPI_Cut_3`;
+- mesh generation and extraction through the existing
+  `BRepMesh_IncrementalMesh_2` and triangulation reader path.
+
+`geometry.hole` now uses those APIs for circular tools cutting current
+source-derived rectangle and circle extrude targets. The request supports blind
+depth and through-all depth when the target bounds can be projected along the
+hole direction. Results are serializable mesh data only. They are derived
+geometry, are not persisted, do not change project schema, do not wire hole
+result bodies into app rendering yet, and do not expose raw OCCT topology
+indexes as stable generated references.
+
+The geometry-kernel validation path rejects invalid target/tool dimensions,
+invalid depth modes, non-positive blind depths, and malformed placement frames
+before invoking OCCT. Runtime placement failures, empty/full-removal results,
+missing bindings, kernel failures, and invalid mesh results are returned as
+structured diagnostics.
+
 ## Boolean Feasibility Risks
 
 The extrude boolean path does not change the binary-size recommendation, but it

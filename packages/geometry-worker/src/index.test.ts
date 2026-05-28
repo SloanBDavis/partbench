@@ -7,6 +7,7 @@ import {
   createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
+  createHoleWorkerRequest,
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
@@ -295,6 +296,69 @@ describe("geometry-worker", () => {
         id: "worker_req_boolean_add:payload",
         op: "geometry.booleanExtrudes",
         operation: "add"
+      }
+    });
+  });
+
+  it("creates a typed hole worker request", () => {
+    expect(
+      createHoleWorkerRequest({
+        id: "worker_req_hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          depthMode: "blind",
+          depth: 2,
+          direction: "positive"
+        },
+        angularDeflection: 0.25
+      })
+    ).toEqual({
+      id: "worker_req_hole",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.booleanFeature",
+      payload: {
+        id: "worker_req_hole:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          depthMode: "blind",
+          depth: 2,
+          direction: "positive"
+        },
+        tessellation: {
+          angularDeflection: 0.25
+        }
       }
     });
   });
@@ -730,6 +794,60 @@ describe("geometry-worker", () => {
     }
 
     expect(response.response.mesh.primitive).toBe("boolean");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  });
+
+  it("runs a hole feasibility request through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createHoleWorkerRequest({
+        id: "worker_req_hole_execute",
+        payloadId: "geometry_req_hole_execute",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          depthMode: "blind",
+          depth: 2
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_hole_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.booleanFeature",
+      payloadId: "geometry_req_hole_execute",
+      response: {
+        ok: true,
+        id: "geometry_req_hole_execute",
+        op: "geometry.hole"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("hole");
     expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
     expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
     expect(response.transferables).toEqual([

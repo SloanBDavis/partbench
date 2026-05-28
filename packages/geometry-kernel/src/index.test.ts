@@ -610,6 +610,205 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "runs rectangle and circle target hole feasibility requests",
+    async () => {
+      const rectangleHole = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_rectangle_blind",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 6,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.75
+          },
+          depthMode: "blind",
+          depth: 3,
+          direction: "positive"
+        }
+      });
+      const circleHole = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_circle_through",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 3
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.75
+          },
+          depthMode: "throughAll",
+          direction: "positive"
+        }
+      });
+
+      expect(rectangleHole.ok).toBe(true);
+      expect(circleHole.ok).toBe(true);
+
+      if (!rectangleHole.ok || !circleHole.ok) {
+        throw new Error("Expected hole feasibility requests to succeed.");
+      }
+
+      expect(rectangleHole.mesh.primitive).toBe("hole");
+      expect(rectangleHole.mesh.vertexCount).toBeGreaterThan(0);
+      expect(rectangleHole.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getMeshBounds(rectangleHole.mesh.positions)).toEqual({
+        min: [-3, -2, 0],
+        max: [3, 2, 4]
+      });
+      expect(circleHole.mesh.primitive).toBe("hole");
+      expect(circleHole.mesh.vertexCount).toBeGreaterThan(0);
+      expect(circleHole.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getGeometryResponseTransferables(rectangleHole)).toEqual([
+        rectangleHole.mesh.positions.buffer,
+        rectangleHole.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "runs hole feasibility requests for side direction, planes, and placement frames",
+    async () => {
+      const negative = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_negative",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4,
+          side: "negative"
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          depthMode: "throughAll",
+          direction: "negative"
+        }
+      });
+      const xz = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_xz",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XZ",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XZ",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          depthMode: "blind",
+          depth: 3
+        }
+      });
+      const placed = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_placed",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          placementFrame: {
+            origin: [10, 20, 30],
+            uAxis: [0, 1, 0],
+            vAxis: [0, 0, 1]
+          },
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        tool: {
+          sketchPlane: "XY",
+          placementFrame: {
+            origin: [10, 20, 30],
+            uAxis: [0, 1, 0],
+            vAxis: [0, 0, 1]
+          },
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          depthMode: "blind",
+          depth: 3
+        }
+      });
+
+      expect(negative.ok).toBe(true);
+      expect(xz.ok).toBe(true);
+      expect(placed.ok).toBe(true);
+
+      if (!negative.ok || !xz.ok || !placed.ok) {
+        throw new Error(
+          "Expected negative, plane, and placement hole requests to succeed."
+        );
+      }
+
+      expect(getMeshBounds(negative.mesh.positions)).toEqual({
+        min: [-2, -2, -4],
+        max: [2, 2, 0]
+      });
+      expect(getMeshBounds(xz.mesh.positions)).toEqual({
+        min: [-2, 0, -6],
+        max: [2, 4, -2]
+      });
+      expectBooleanBounds(
+        getMeshBounds(placed.mesh.positions),
+        {
+          min: [10, 18, 28],
+          max: [14, 22, 32]
+        },
+        [0]
+      );
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "runs circle-target cut feasibility requests for sides and planes",
     async () => {
       const cases = [
@@ -955,6 +1154,126 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("returns structured hole feasibility errors", async () => {
+    const target = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 2,
+        height: 2
+      },
+      depth: 2
+    };
+    const blindWithoutDepth = await executeGeometryKernelRequest({
+      id: "geometry_req_hole_missing_depth",
+      version: "geometry-kernel.v1",
+      op: "geometry.hole",
+      target,
+      tool: {
+        sketchPlane: "XY",
+        circle: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 0.5
+        },
+        depthMode: "blind"
+      }
+    });
+    const throughAllWithDepth = await executeGeometryKernelRequest({
+      id: "geometry_req_hole_through_depth",
+      version: "geometry-kernel.v1",
+      op: "geometry.hole",
+      target,
+      tool: {
+        sketchPlane: "XY",
+        circle: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 0.5
+        },
+        depthMode: "throughAll",
+        depth: 2
+      }
+    });
+    const invalidPlacement = await executeGeometryKernelRequest({
+      id: "geometry_req_hole_invalid_placement",
+      version: "geometry-kernel.v1",
+      op: "geometry.hole",
+      target,
+      tool: {
+        sketchPlane: "XY",
+        circle: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 0.5
+        },
+        depthMode: "throughAll",
+        direction: "negative"
+      }
+    });
+    const fullRemoval = await executeGeometryKernelRequest({
+      id: "geometry_req_hole_empty_result",
+      version: "geometry-kernel.v1",
+      op: "geometry.hole",
+      target,
+      tool: {
+        sketchPlane: "XY",
+        circle: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 3
+        },
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    });
+
+    expect(blindWithoutDepth).toEqual({
+      ok: false,
+      id: "geometry_req_hole_missing_depth",
+      op: "geometry.hole",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Hole requests require a supported authored extrude target source, circular tool source, valid depth mode, direction, and finite positive blind depth when provided."
+      },
+      warnings: []
+    });
+    expect(throughAllWithDepth).toEqual({
+      ok: false,
+      id: "geometry_req_hole_through_depth",
+      op: "geometry.hole",
+      error: {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Hole requests require a supported authored extrude target source, circular tool source, valid depth mode, direction, and finite positive blind depth when provided."
+      },
+      warnings: []
+    });
+    expect(invalidPlacement).toEqual({
+      ok: false,
+      id: "geometry_req_hole_invalid_placement",
+      op: "geometry.hole",
+      error: {
+        code: "INVALID_PLACEMENT",
+        message:
+          "Hole through-all placement does not intersect the target bounds in the requested direction."
+      },
+      warnings: []
+    });
+    expect(fullRemoval).toEqual({
+      ok: false,
+      id: "geometry_req_hole_empty_result",
+      op: "geometry.hole",
+      error: {
+        code: "EMPTY_RESULT",
+        message: "The geometry kernel returned an empty or invalid mesh."
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured invalid mesh result errors", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1013,6 +1332,126 @@ describe("geometry-kernel facade", () => {
         code: "INVALID_RESULT",
         message:
           "The geometry kernel returned mesh data with inconsistent counts or invalid values."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns hole meshes from an injected factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createHoleMesh: async () => ({
+        primitive: "hole",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_hole",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 2
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.25
+          },
+          depthMode: "blind",
+          depth: 1
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_hole",
+      op: "geometry.hole",
+      mesh: {
+        primitive: "hole",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured unavailable-binding errors when hole factory is absent", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_unavailable_hole",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 2
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.25
+          },
+          depthMode: "blind",
+          depth: 1
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_unavailable_hole",
+      op: "geometry.hole",
+      error: {
+        code: "UNAVAILABLE_BINDING",
+        message: "Hole tessellation requires an OCCT hole mesh factory."
       },
       warnings: []
     });

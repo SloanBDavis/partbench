@@ -6,6 +6,7 @@ import {
   createOcctTorusMeshWithInstance,
   loadBrowserOcct,
   createOcctBooleanExtrudeMeshWithInstance,
+  createOcctHoleMeshWithInstance,
   createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance
 } from "@web-cad/occt-wasm/browser";
@@ -28,6 +29,9 @@ import {
   type GeometryKernelExactBodyMetadata,
   type GeometryKernelExactBodyMetadataSuccessResponse,
   type GeometryKernelExactMetadataDiagnostic,
+  type GeometryKernelHoleDepthMode,
+  type GeometryKernelHoleDirection,
+  type GeometryKernelHoleMeshFactory,
   type GeometryKernelOp,
   type GeometryKernelPrimitive,
   type GeometryKernelResponseForRequest,
@@ -43,6 +47,8 @@ import {
   type GeometryKernelMeshSuccessResponse,
   type GeometryKernelRevolveProfileMeshFactory,
   type GeometryKernelTopologyCounts,
+  type HoleRequest,
+  type HoleToolSource,
   type RevolveGeometryAxis,
   type RevolveGeometryProfile,
   type RevolveProfileRequest,
@@ -60,7 +66,7 @@ import {
 
 type BrowserOcctPrimitive = Exclude<
   GeometryKernelPrimitive,
-  "extrude" | "revolve" | "boolean"
+  "extrude" | "revolve" | "boolean" | "hole"
 >;
 
 export type {
@@ -81,6 +87,9 @@ export type {
   GeometryKernelExactBodyMetadataSuccessResponse,
   GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeProfileKind,
+  GeometryKernelHoleDepthMode,
+  GeometryKernelHoleDirection,
+  GeometryKernelHoleMeshFactory,
   GeometryKernelMeasurementConfidence,
   GeometryKernelMeasurementSource,
   GeometryKernelMeshRequest,
@@ -93,6 +102,8 @@ export type {
   GeometryKernelResponse,
   GeometryKernelSuccessResponse,
   GeometryKernelTopologyCounts,
+  HoleRequest,
+  HoleToolSource,
   RevolveGeometryAxis,
   RevolveGeometryProfile,
   RevolveProfileRequest,
@@ -152,6 +163,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
       createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus"),
       createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct,
+      createHoleMesh: createHoleMeshWithBrowserOcct,
       createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
       createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct
     },
@@ -249,6 +261,34 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctBooleanExtrudeMeshWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createHoleMeshWithBrowserOcct(
+    input: Omit<HoleRequest, "id" | "version" | "op"> & TessellationOptions
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctHoleMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

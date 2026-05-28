@@ -715,7 +715,11 @@ Planned deliverables:
 - project structure/health, semantic diffs, undo/redo, batch dry-run/commit,
   transaction history, V15 import/export, adapter/MCP pass-through, and tests
   for the command-first source model;
-- derived geometry, measurements/extents, and UI are follow-up Phase D slices.
+- geometry-only `geometry.hole` feasibility through OCCT cylinder construction
+  and `BRepAlgoAPI_Cut`, returning serializable mesh data for rectangle/circle
+  extrude targets without changing cad-core or app rendering;
+- app derived-geometry wiring, measurements/extents, and UI are follow-up Phase
+  D slices.
 
 ### V6 Phase E: Edge Finishing With Chamfer And Fillet
 

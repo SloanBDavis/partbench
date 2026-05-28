@@ -8,6 +8,8 @@ import type {
   GeometryKernelResponse,
   GeometryKernelBooleanOperation,
   GeometryKernelExtrudeSide,
+  HoleRequest,
+  HoleToolSource,
   GeometryKernelSketchPlane,
   RevolveProfileRequest,
   TessellateBoxRequest,
@@ -386,6 +388,31 @@ export function createExtrudeBooleanWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.booleanExtrudes",
       operation: input.operation,
+      target: input.target,
+      tool: input.tool,
+      ...(tessellation ? { tessellation } : {})
+    }
+  };
+}
+
+export function createHoleWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly target: BooleanExtrudeSource;
+  readonly tool: HoleToolSource;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<HoleRequest> {
+  const tessellation = createTessellationOptions(input);
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.booleanFeature",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.hole",
       target: input.target,
       tool: input.tool,
       ...(tessellation ? { tessellation } : {})

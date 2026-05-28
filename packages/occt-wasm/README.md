@@ -20,7 +20,8 @@ CAD DSL so the integration risk is visible at the kernel boundary.
 ## What The Adapter Does
 
 The adapter currently exposes mesh creation for boxes, cylinders, spheres,
-cones, tori, and an isolated rectangle-extrude boolean feasibility path:
+cones, tori, revolve profiles, narrow extrude booleans, exact metadata, and a
+V6 circular-hole feasibility path:
 
 1. Loads OpenCascade.js WASM.
 2. Creates a primitive with `BRepPrimAPI_MakeBox`,
@@ -46,6 +47,12 @@ topology maps, generated-reference updates, or authoritative document changes.
 The circle-target feasibility slice has smoke coverage for extrusion sides,
 base sketch planes, placement frames, non-overlap, full target removal, and
 unsupported source-profile combinations.
+
+The hole feasibility path builds a target rectangle/circle extrude solid,
+constructs a circular cylinder tool from sketch source data, cuts it with
+`BRepAlgoAPI_Cut`, tessellates the result, and returns serializable mesh data
+only. It intentionally does not wire hole result bodies into cad-core, app
+rendering, generated references, or project JSON.
 
 ## Setup
 

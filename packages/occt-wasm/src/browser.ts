@@ -35,6 +35,11 @@ import {
   type OcctBooleanExtrudeInput
 } from "./booleanExtrudes";
 import {
+  createOcctHoleMeshWithInstance,
+  createOcctHoleMeshWithLoader,
+  type OcctHoleInput
+} from "./hole";
+import {
   createOcctExactBodyMetadataWithInstance,
   createOcctExactBodyMetadataWithLoader,
   type OcctExactBodyMetadata,
@@ -48,6 +53,7 @@ import {
 
 export type {
   OcctBooleanExtrudeInput,
+  OcctHoleInput,
   OcctBoxInput,
   OcctCylinderInput,
   OcctSphereInput,
@@ -71,6 +77,8 @@ export {
   createOcctTorusMeshWithLoader,
   createOcctBooleanExtrudeMeshWithInstance,
   createOcctBooleanExtrudeMeshWithLoader,
+  createOcctHoleMeshWithInstance,
+  createOcctHoleMeshWithLoader,
   createOcctRevolveProfileMeshWithInstance,
   createOcctRevolveProfileMeshWithLoader,
   createOcctExactBodyMetadataWithInstance,
@@ -184,6 +192,12 @@ export async function createOcctBooleanExtrudeMesh(
   input: OcctBooleanExtrudeInput
 ): Promise<OcctMeshData> {
   return createOcctBooleanExtrudeMeshWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctHoleMesh(
+  input: OcctHoleInput
+): Promise<OcctMeshData> {
+  return createOcctHoleMeshWithLoader(loadBrowserOcct, input);
 }
 
 export async function createOcctRevolveProfileMesh(

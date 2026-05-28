@@ -13,7 +13,8 @@ export type OcctPrimitiveKind =
   | "cone"
   | "torus"
   | "revolve"
-  | "boolean";
+  | "boolean"
+  | "hole";
 
 export interface OcctMeshData {
   readonly primitive: OcctPrimitiveKind;
