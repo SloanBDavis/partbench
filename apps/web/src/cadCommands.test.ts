@@ -16,6 +16,7 @@ import {
   buildAddSketchRectangleOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
+  buildFeatureHoleOp,
   buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
   buildDeleteNamedReferenceOp,
@@ -803,6 +804,51 @@ describe("cad command builders", () => {
       },
       angleDegrees: 270,
       operationMode: "newBody"
+    });
+
+    expect(
+      buildFeatureHoleOp("sketch_1", "circle_1", {
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_rect_1",
+        name: " Mounting hole ",
+        depthMode: "blind",
+        depth: 0.75,
+        direction: "negative"
+      })
+    ).toEqual({
+      op: "feature.hole",
+      id: "feat_hole_1",
+      bodyId: "body_hole_1",
+      targetBodyId: "body_rect_1",
+      name: "Mounting hole",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      depthMode: "blind",
+      depth: 0.75,
+      direction: "negative"
+    });
+
+    expect(
+      buildFeatureHoleOp("sketch_1", "circle_1", {
+        id: "",
+        bodyId: "",
+        targetBodyId: "body_rect_1",
+        name: "",
+        depthMode: "throughAll",
+        depth: 12,
+        direction: "positive"
+      })
+    ).toEqual({
+      op: "feature.hole",
+      id: undefined,
+      bodyId: undefined,
+      targetBodyId: "body_rect_1",
+      name: undefined,
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      depthMode: "throughAll",
+      direction: "positive"
     });
   });
 

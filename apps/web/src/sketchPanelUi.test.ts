@@ -18,6 +18,7 @@ import {
   createAvailableSketchConstraintKindOptions,
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
+  createHoleTargetBodyOptions,
   createParameterBindingOptions,
   createRevolveAxisOptions,
   createSketchPointTargetOptionsForEntity,
@@ -33,6 +34,7 @@ import {
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
+  getHoleOperationStatus,
   getRevolveOperationStatus,
   getParameterDimensionUsageCount,
   getSketchConstraintKindLabel,
@@ -44,6 +46,7 @@ import {
   getSketchEvaluationStatusDisplay,
   isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity,
+  isHoleSketchEntity,
   isRevolvableSketchEntity
 } from "./sketchPanelUi";
 
@@ -905,6 +908,47 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
+  it("offers active rectangle and circle newBody authored bodies as hole targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
+      createExtrudeFeature(
+        "feat_consumed_target",
+        "body_consumed_target",
+        "rectangle",
+        "newBody"
+      ),
+      createExtrudeFeature("feat_add", "body_add", "rectangle", "add"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut")
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect"),
+      createBody("body_circle", "feat_circle"),
+      createBody("body_consumed_target", "feat_consumed_target", "feat_cut"),
+      createBody("body_add", "feat_add"),
+      createBody("body_cut", "feat_cut")
+    ];
+
+    expect(
+      createHoleTargetBodyOptions(bodies, features, "body_circle")
+    ).toEqual([
+      {
+        bodyId: "body_circle",
+        featureId: "feat_circle",
+        profileKind: "circle",
+        label: "body_circle / feat_circle",
+        detail: "Circle new body / 1 / positive"
+      },
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        profileKind: "rectangle",
+        label: "body_rect / feat_rect",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ]);
+  });
+
   it("explains cut availability without requiring React state", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
@@ -946,6 +990,91 @@ describe("sketch panel UI helpers", () => {
     expect(getCutOperationStatus(rectangle, targets)).toEqual({
       available: true,
       message: "1 eligible cut target body."
+    });
+  });
+
+  it("explains hole availability without requiring React state", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const circle: SketchSnapshot["entities"][number] = {
+      id: "circle_1",
+      kind: "circle",
+      center: [0, 0],
+      radius: 1
+    };
+    const targets = [
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        profileKind: "rectangle" as const,
+        label: "body_rect / feat_rect",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ];
+
+    expect(isHoleSketchEntity(circle)).toBe(true);
+    expect(isHoleSketchEntity(rectangle)).toBe(false);
+    expect(
+      getHoleOperationStatus(undefined, targets, {
+        depthMode: "blind",
+        depth: 1
+      })
+    ).toEqual({
+      available: false,
+      message: "Select a circle profile to create a hole."
+    });
+    expect(
+      getHoleOperationStatus(rectangle, targets, {
+        depthMode: "blind",
+        depth: 1
+      })
+    ).toEqual({
+      available: false,
+      message: "Hole currently supports circle profiles only."
+    });
+    expect(
+      getHoleOperationStatus(
+        circle,
+        targets,
+        { depthMode: "blind", depth: 1 },
+        { kind: "unresolved" }
+      )
+    ).toEqual({
+      available: false,
+      message: "Resolve the attached sketch face before creating a hole."
+    });
+    expect(
+      getHoleOperationStatus(circle, targets, {
+        depthMode: "blind",
+        depth: 0
+      })
+    ).toEqual({
+      available: false,
+      message: "Blind hole depth must be a positive finite value."
+    });
+    expect(
+      getHoleOperationStatus(circle, [], {
+        depthMode: "throughAll",
+        depth: Number.NaN
+      })
+    ).toEqual({
+      available: false,
+      message:
+        "Create an active rectangle or circle new body before creating a hole."
+    });
+    expect(
+      getHoleOperationStatus(circle, targets, {
+        depthMode: "throughAll",
+        depth: Number.NaN
+      })
+    ).toEqual({
+      available: true,
+      message: "1 eligible hole target body."
     });
   });
 

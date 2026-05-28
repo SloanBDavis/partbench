@@ -11,6 +11,9 @@ import type {
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
   FeatureExtrudeOp,
+  FeatureHoleDepthMode,
+  FeatureHoleDirection,
+  FeatureHoleOp,
   FeatureRevolveOp,
   FeatureUpdateExtrudeOp,
   ParameterCreateOp,
@@ -198,6 +201,16 @@ export interface FeatureRevolveForm {
   readonly name: string;
   readonly axisEntityId: string;
   readonly angleDegrees: number;
+}
+
+export interface FeatureHoleForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly targetBodyId: string;
+  readonly name: string;
+  readonly depthMode: FeatureHoleDepthMode;
+  readonly depth: number;
+  readonly direction: FeatureHoleDirection;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -790,6 +803,25 @@ export function buildFeatureRevolveOp(
     },
     angleDegrees: form.angleDegrees,
     operationMode: "newBody"
+  };
+}
+
+export function buildFeatureHoleOp(
+  sketchId: SketchId,
+  circleEntityId: string,
+  form: FeatureHoleForm
+): FeatureHoleOp {
+  return {
+    op: "feature.hole",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    targetBodyId: form.targetBodyId,
+    name: form.name.trim() || undefined,
+    sketchId,
+    circleEntityId,
+    depthMode: form.depthMode,
+    ...(form.depthMode === "blind" ? { depth: form.depth } : {}),
+    direction: form.direction
   };
 }
 

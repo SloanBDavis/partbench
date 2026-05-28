@@ -58,6 +58,7 @@ import {
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
   buildFeatureExtrudeOp,
+  buildFeatureHoleOp,
   buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
   buildNameGeneratedReferenceOp,
@@ -79,6 +80,7 @@ import {
   type BatchOperationForm,
   type DimensionCommandForm,
   type FeatureExtrudeForm,
+  type FeatureHoleForm,
   type FeatureRevolveForm,
   type ParameterCreateForm,
   type ParameterEditForm,
@@ -147,7 +149,8 @@ import {
 } from "./projectJson";
 import {
   createAddTargetBodyOptions,
-  createCutTargetBodyOptions
+  createCutTargetBodyOptions,
+  createHoleTargetBodyOptions
 } from "./sketchPanelUi";
 import "./styles.css";
 
@@ -704,6 +707,15 @@ export function App() {
       ),
     [projectStructure.bodies, projectStructure.features, selectedBody?.id]
   );
+  const holeTargetBodyOptions = useMemo(
+    () =>
+      createHoleTargetBodyOptions(
+        projectStructure.bodies,
+        projectStructure.features,
+        selectedBody?.id
+      ),
+    [projectStructure.bodies, projectStructure.features, selectedBody?.id]
+  );
   const selectedFeature = selectedBody
     ? projectStructure.features.find(
         (feature) => feature.id === selectedBody.featureId
@@ -1228,6 +1240,17 @@ export function App() {
     );
   }
 
+  async function holeSketchEntity(
+    sketchId: string,
+    circleEntityId: string,
+    form: FeatureHoleForm
+  ) {
+    await commitOps(
+      [buildFeatureHoleOp(sketchId, circleEntityId, form)],
+      (response) => response.createdBodyIds?.[0] ?? selectedId
+    );
+  }
+
   async function deleteAuthoredFeature(featureId: string) {
     const feature = projectStructure.features.find(
       (candidate) => candidate.id === featureId
@@ -1619,6 +1642,7 @@ export function App() {
                   sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
                   addTargetBodies={addTargetBodyOptions}
                   cutTargetBodies={cutTargetBodyOptions}
+                  holeTargetBodies={holeTargetBodyOptions}
                   displayStatuses={sketchDisplayState.statuses}
                   focusedSketchId={focusedSketchId}
                   features={projectStructure.features}
@@ -1666,6 +1690,9 @@ export function App() {
                   }
                   onRevolveEntity={(sketchId, entityId, form) =>
                     void revolveSketchEntity(sketchId, entityId, form)
+                  }
+                  onHoleEntity={(sketchId, entityId, form) =>
+                    void holeSketchEntity(sketchId, entityId, form)
                   }
                 />
               </div>

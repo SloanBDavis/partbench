@@ -15,6 +15,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import type {
   FeatureExtrudeForm,
+  FeatureHoleForm,
   FeatureRevolveForm,
   ParameterCreateForm,
   ParameterEditForm,
@@ -43,6 +44,7 @@ import {
   formatSketchDimensionEffectiveValue,
   getAddOperationStatus,
   getCutOperationStatus,
+  getHoleOperationStatus,
   getDefaultSketchEntityKind,
   getDefaultSketchPointTargetRole,
   getRevolveOperationStatus,
@@ -62,6 +64,7 @@ import {
   getSketchEntityOptionLabel,
   isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity,
+  isHoleSketchEntity,
   isRevolvableSketchEntity,
   sketchDimensionTargetsEqual,
   type BooleanTargetBodyOption,
@@ -91,6 +94,7 @@ export interface SketchPanelProps {
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
   readonly addTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly cutTargetBodies?: readonly BooleanTargetBodyOption[];
+  readonly holeTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly focusedSketchId?: string;
   readonly features: readonly CadFeatureSummary[];
   readonly onCreateSketch: (form: SketchCreateForm) => void;
@@ -142,6 +146,11 @@ export interface SketchPanelProps {
     sketchId: string,
     entityId: string,
     form: FeatureRevolveForm
+  ) => void;
+  readonly onHoleEntity: (
+    sketchId: string,
+    circleEntityId: string,
+    form: FeatureHoleForm
   ) => void;
 }
 
@@ -195,6 +204,16 @@ const defaultRevolveForm: FeatureRevolveForm = {
   angleDegrees: 360
 };
 
+const defaultHoleForm: FeatureHoleForm = {
+  id: "",
+  bodyId: "",
+  targetBodyId: "",
+  name: "",
+  depthMode: "blind",
+  depth: 1,
+  direction: "positive"
+};
+
 export function SketchPanel({
   disabled,
   sketches,
@@ -203,6 +222,7 @@ export function SketchPanel({
   sketchEvaluationsBySketchId,
   addTargetBodies = [],
   cutTargetBodies = [],
+  holeTargetBodies = [],
   displayStatuses,
   focusedSketchId,
   features,
@@ -222,7 +242,8 @@ export function SketchPanel({
   onApplyConstraintEdit,
   onDeleteConstraint,
   onExtrudeEntity,
-  onRevolveEntity
+  onRevolveEntity,
+  onHoleEntity
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
     sketches[0]?.id
@@ -556,13 +577,17 @@ export function SketchPanel({
     useState<FeatureExtrudeForm>(defaultExtrudeForm);
   const [revolveForm, setRevolveForm] =
     useState<FeatureRevolveForm>(defaultRevolveForm);
+  const [holeForm, setHoleForm] = useState<FeatureHoleForm>(defaultHoleForm);
   const [featureCreateMode, setFeatureCreateMode] = useState<
-    "extrude" | "revolve"
+    "extrude" | "revolve" | "hole"
   >("extrude");
   const selectedExtrudeEntity = isExtrudableSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
   const selectedRevolveEntity = isRevolvableSketchEntity(selectedEntity)
+    ? selectedEntity
+    : undefined;
+  const selectedHoleEntity = isHoleSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
   const addStatus = getAddOperationStatus(
@@ -605,6 +630,19 @@ export function SketchPanel({
     revolveAxisOptions,
     effectiveRevolveForm.angleDegrees,
     selectedSketchLineCount
+  );
+  const selectedHoleTarget =
+    holeTargetBodies.find((body) => body.bodyId === holeForm.targetBodyId) ??
+    holeTargetBodies[0];
+  const effectiveHoleForm: FeatureHoleForm = {
+    ...holeForm,
+    targetBodyId: selectedHoleTarget?.bodyId ?? holeForm.targetBodyId
+  };
+  const holeStatus = getHoleOperationStatus(
+    selectedEntity,
+    holeTargetBodies,
+    effectiveHoleForm,
+    selectedSketchDisplayStatus
   );
   const shouldShowEntityEditor =
     Boolean(editingEntityId) ||
@@ -1157,17 +1195,187 @@ export function SketchPanel({
                         <select
                           value={featureCreateMode}
                           disabled={disabled}
-                          onChange={(event) =>
-                            setFeatureCreateMode(
-                              event.currentTarget.value as "extrude" | "revolve"
-                            )
-                          }
+                          onChange={(event) => {
+                            const nextMode = event.currentTarget.value as
+                              | "extrude"
+                              | "revolve"
+                              | "hole";
+                            setFeatureCreateMode(nextMode);
+
+                            if (
+                              nextMode === "hole" &&
+                              !holeTargetBodies.some(
+                                (body) => body.bodyId === holeForm.targetBodyId
+                              )
+                            ) {
+                              setHoleForm({
+                                ...holeForm,
+                                targetBodyId: holeTargetBodies[0]?.bodyId ?? ""
+                              });
+                            }
+                          }}
                         >
                           <option value="extrude">Extrude</option>
                           <option value="revolve">Revolve</option>
+                          <option value="hole">Hole</option>
                         </select>
                       </label>
-                      {featureCreateMode === "revolve" ? (
+                      {featureCreateMode === "hole" ? (
+                        <>
+                          <div className="field-grid two">
+                            <label>
+                              Target body
+                              <select
+                                value={effectiveHoleForm.targetBodyId}
+                                disabled={
+                                  disabled || holeTargetBodies.length === 0
+                                }
+                                onChange={(event) =>
+                                  setHoleForm({
+                                    ...holeForm,
+                                    targetBodyId: event.currentTarget.value
+                                  })
+                                }
+                              >
+                                {holeTargetBodies.map((body) => (
+                                  <option key={body.bodyId} value={body.bodyId}>
+                                    {body.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              Depth mode
+                              <select
+                                value={holeForm.depthMode}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setHoleForm({
+                                    ...holeForm,
+                                    depthMode: event.currentTarget
+                                      .value as FeatureHoleForm["depthMode"]
+                                  })
+                                }
+                              >
+                                <option value="blind">Blind</option>
+                                <option value="throughAll">Through all</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div className="field-grid two">
+                            {effectiveHoleForm.depthMode === "blind" ? (
+                              <NumberField
+                                disabled={disabled}
+                                label="Depth"
+                                value={holeForm.depth}
+                                onChange={(depth) =>
+                                  setHoleForm({ ...holeForm, depth })
+                                }
+                              />
+                            ) : (
+                              <div className="readonly-field">
+                                <span>Depth</span>
+                                <strong>Through all</strong>
+                              </div>
+                            )}
+                            <label>
+                              Direction
+                              <select
+                                value={holeForm.direction}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setHoleForm({
+                                    ...holeForm,
+                                    direction: event.currentTarget
+                                      .value as FeatureHoleForm["direction"]
+                                  })
+                                }
+                              >
+                                <option value="positive">Positive</option>
+                                <option value="negative">Negative</option>
+                              </select>
+                            </label>
+                          </div>
+                          {selectedHoleTarget ? (
+                            <div className="readonly-field">
+                              <span>Hole target</span>
+                              <strong>{selectedHoleTarget.detail}</strong>
+                            </div>
+                          ) : null}
+                          <p
+                            className={
+                              holeStatus.available
+                                ? "project-message compact"
+                                : "error-text compact"
+                            }
+                          >
+                            {holeStatus.available && selectedHoleTarget
+                              ? "Creates a hole result body. The target stays in structure as consumed."
+                              : holeStatus.message}
+                          </p>
+                          <details className="advanced-options">
+                            <summary>Advanced hole options</summary>
+                            <div className="field-grid two">
+                              <label>
+                                Optional feature ID
+                                <input
+                                  type="text"
+                                  value={holeForm.id}
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    setHoleForm({
+                                      ...holeForm,
+                                      id: event.currentTarget.value
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                Optional body ID
+                                <input
+                                  type="text"
+                                  value={holeForm.bodyId}
+                                  disabled={disabled}
+                                  onChange={(event) =>
+                                    setHoleForm({
+                                      ...holeForm,
+                                      bodyId: event.currentTarget.value
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                            <label>
+                              Optional name
+                              <input
+                                type="text"
+                                value={holeForm.name}
+                                disabled={disabled}
+                                onChange={(event) =>
+                                  setHoleForm({
+                                    ...holeForm,
+                                    name: event.currentTarget.value
+                                  })
+                                }
+                              />
+                            </label>
+                          </details>
+                          <button
+                            type="button"
+                            disabled={disabled || !holeStatus.available}
+                            onClick={() =>
+                              selectedHoleEntity &&
+                              onHoleEntity(
+                                selectedSketch.id,
+                                selectedHoleEntity.id,
+                                effectiveHoleForm
+                              )
+                            }
+                          >
+                            Create hole
+                          </button>
+                        </>
+                      ) : featureCreateMode === "revolve" ? (
                         <>
                           <div className="field-grid two">
                             <label>

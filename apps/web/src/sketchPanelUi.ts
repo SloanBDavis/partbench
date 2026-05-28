@@ -42,6 +42,15 @@ export interface RevolveOperationStatus {
   readonly message: string;
 }
 
+export interface HoleOperationFormLike {
+  readonly depthMode: "blind" | "throughAll";
+  readonly depth: number;
+}
+
+export interface HoleSketchDisplayStatusLike {
+  readonly kind: "unattached" | "attached" | "unresolved";
+}
+
 export interface SketchDimensionTargetOption {
   readonly target: SketchDimensionTarget;
   readonly label: string;
@@ -143,6 +152,12 @@ export function isExtrudableSketchEntity(
 }
 
 export const isRevolvableSketchEntity = isExtrudableSketchEntity;
+
+export function isHoleSketchEntity(
+  entity: SketchEntitySnapshot | undefined
+): entity is SketchEntitySnapshot & { kind: "circle" } {
+  return entity?.kind === "circle";
+}
 
 export function createRevolveAxisOptions(
   sketch: SketchSnapshot | undefined
@@ -907,10 +922,23 @@ export function createCutTargetBodyOptions(
   );
 }
 
+export function createHoleTargetBodyOptions(
+  bodies: readonly CadBodySnapshot[],
+  features: readonly CadFeatureSummary[],
+  preferredBodyId?: string
+): readonly BooleanTargetBodyOption[] {
+  return createBooleanTargetBodyOptions(
+    bodies,
+    features,
+    "hole",
+    preferredBodyId
+  );
+}
+
 function createBooleanTargetBodyOptions(
   bodies: readonly CadBodySnapshot[],
   features: readonly CadFeatureSummary[],
-  operationMode: "add" | "cut",
+  operationMode: "add" | "cut" | "hole",
   preferredBodyId?: string
 ): readonly BooleanTargetBodyOption[] {
   const options = bodies
@@ -1034,6 +1062,60 @@ export function getCutOperationStatus(
   };
 }
 
+export function getHoleOperationStatus(
+  entity: SketchEntitySnapshot | undefined,
+  holeTargets: readonly BooleanTargetBodyOption[],
+  form: HoleOperationFormLike,
+  sketchDisplayStatus?: HoleSketchDisplayStatusLike
+): BooleanOperationStatus {
+  if (!entity) {
+    return {
+      available: false,
+      message: "Select a circle profile to create a hole."
+    };
+  }
+
+  if (entity.kind !== "circle") {
+    return {
+      available: false,
+      message: "Hole currently supports circle profiles only."
+    };
+  }
+
+  if (sketchDisplayStatus?.kind === "unresolved") {
+    return {
+      available: false,
+      message: "Resolve the attached sketch face before creating a hole."
+    };
+  }
+
+  if (
+    form.depthMode === "blind" &&
+    (!Number.isFinite(form.depth) || form.depth <= 0)
+  ) {
+    return {
+      available: false,
+      message: "Blind hole depth must be a positive finite value."
+    };
+  }
+
+  if (holeTargets.length === 0) {
+    return {
+      available: false,
+      message:
+        "Create an active rectangle or circle new body before creating a hole."
+    };
+  }
+
+  return {
+    available: true,
+    message:
+      holeTargets.length === 1
+        ? "1 eligible hole target body."
+        : `${holeTargets.length} eligible hole target bodies.`
+  };
+}
+
 function isSupportedCutTargetProfileKind(
   profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
 ): boolean {
@@ -1047,12 +1129,14 @@ function isSupportedAddTargetProfileKind(
 }
 
 function isSupportedTargetProfileKind(
-  operationMode: "add" | "cut",
+  operationMode: "add" | "cut" | "hole",
   profileKind: Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"]
 ): boolean {
-  return operationMode === "add"
-    ? isSupportedAddTargetProfileKind(profileKind)
-    : isSupportedCutTargetProfileKind(profileKind);
+  if (operationMode === "add") {
+    return isSupportedAddTargetProfileKind(profileKind);
+  }
+
+  return isSupportedCutTargetProfileKind(profileKind);
 }
 
 export function sketchDimensionTargetsEqual(
