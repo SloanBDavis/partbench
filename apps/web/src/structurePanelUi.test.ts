@@ -34,9 +34,15 @@ describe("structure panel UI helpers", () => {
       features: [
         createPrimitiveFeature(),
         createExtrudeFeature(),
-        createRevolveFeature()
+        createRevolveFeature(),
+        createHoleFeature()
       ],
-      bodies: [createPrimitiveBody(), createExtrudeBody(), createRevolveBody()],
+      bodies: [
+        createPrimitiveBody(),
+        createExtrudeBody(),
+        createRevolveBody(),
+        createHoleBody()
+      ],
       namedReferences: [createNamedReference()],
       health: createHealth({ issueCount: 2, status: "stale" })
     });
@@ -44,8 +50,8 @@ describe("structure panel UI helpers", () => {
     expect(summary).toEqual({
       partCount: 1,
       sketchCount: 2,
-      authoredFeatureCount: 2,
-      generatedBodyCount: 2,
+      authoredFeatureCount: 3,
+      generatedBodyCount: 3,
       namedReferenceCount: 1,
       issueCount: 2,
       status: "stale"
@@ -53,9 +59,11 @@ describe("structure panel UI helpers", () => {
     expect(isAuthoredStructureFeature(createPrimitiveFeature())).toBe(false);
     expect(isAuthoredStructureFeature(createExtrudeFeature())).toBe(true);
     expect(isAuthoredStructureFeature(createRevolveFeature())).toBe(true);
+    expect(isAuthoredStructureFeature(createHoleFeature())).toBe(true);
     expect(isAuthoredStructureBody(createPrimitiveBody())).toBe(false);
     expect(isAuthoredStructureBody(createExtrudeBody())).toBe(true);
     expect(isAuthoredStructureBody(createRevolveBody())).toBe(true);
+    expect(isAuthoredStructureBody(createHoleBody())).toBe(true);
   });
 
   it("formats dependency health without leaking raw status strings", () => {
@@ -161,6 +169,27 @@ describe("structure panel UI helpers", () => {
             }
           ]
         }
+      ],
+      authoredHoles: [
+        {
+          featureId: "feature_hole",
+          bodyId: "body_hole",
+          targetBodyId: "body_1",
+          sketchId: "sketch_1",
+          circleEntityId: "circle_1",
+          depthMode: "blind",
+          depth: 1,
+          direction: "positive",
+          status: "unsupported",
+          issues: [
+            {
+              code: "UNSUPPORTED_BODY_REFERENCES",
+              message: "Hole target is unsupported.",
+              featureId: "feature_hole",
+              bodyId: "body_hole"
+            }
+          ]
+        }
       ]
     });
 
@@ -171,6 +200,8 @@ describe("structure panel UI helpers", () => {
       "unsupported"
     );
     expect(getBodyHealthStatus(health, "body_revolve")).toBe("unsupported");
+    expect(getFeatureHealthStatus(health, "feature_hole")).toBe("unsupported");
+    expect(getBodyHealthStatus(health, "body_hole")).toBe("unsupported");
     expect(getSketchHealthStatus(health, "sketch_face")).toBe("healthy");
     expect(getNamedReferenceHealthStatus(health, "top")).toBe("stale");
     expect(
@@ -185,6 +216,12 @@ describe("structure panel UI helpers", () => {
     expect(
       getHealthIssues(health, { kind: "body", id: "body_revolve" })
     ).toEqual(["Revolve topology is not available yet."]);
+    expect(
+      getHealthIssues(health, { kind: "feature", id: "feature_hole" })
+    ).toEqual(["Hole target is unsupported."]);
+    expect(getHealthIssues(health, { kind: "body", id: "body_hole" })).toEqual([
+      "Hole target is unsupported."
+    ]);
   });
 
   it("includes sketch dimension health in affected sketches, features, and bodies", () => {
@@ -435,6 +472,7 @@ describe("structure panel UI helpers", () => {
     const cutResult = createExtrudeBody("body_cut", "feature_cut");
     const addResult = createExtrudeBody("body_add", "feature_add");
     const revolveResult = createRevolveBody();
+    const holeResult = createHoleBody();
 
     expect(formatBodyRole(standalone, createExtrudeFeature())).toBe(
       "Generated body"
@@ -461,6 +499,10 @@ describe("structure panel UI helpers", () => {
     );
     expect(formatBodyStatusLine(revolveResult, createRevolveFeature())).toBe(
       "Feature feature_revolve"
+    );
+    expect(formatBodyRole(holeResult, createHoleFeature())).toBe("Hole result");
+    expect(formatBodyStatusLine(holeResult, createHoleFeature())).toBe(
+      "Holes body_target"
     );
   });
 });
@@ -603,6 +645,27 @@ function createRevolveFeature(): Extract<
   };
 }
 
+function createHoleFeature(): Extract<CadFeatureSummary, { kind: "hole" }> {
+  return {
+    id: "feature_hole",
+    kind: "hole",
+    partId: "part:default",
+    bodyId: "body_hole",
+    targetBodyId: "body_target",
+    sketchId: "sketch_1",
+    circleEntityId: "circle_1",
+    depthMode: "blind",
+    depth: 1,
+    direction: "positive",
+    source: {
+      type: "sketchCircleHole",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      targetBodyId: "body_target"
+    }
+  };
+}
+
 function createPrimitiveBody(): CadBodySnapshot {
   return {
     id: "body:box_1",
@@ -653,6 +716,22 @@ function createRevolveBody(): CadBodySnapshot {
       entityId: "circle_1",
       profileKind: "circle",
       axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" }
+    }
+  };
+}
+
+function createHoleBody(): CadBodySnapshot {
+  return {
+    id: "body_hole",
+    kind: "solid",
+    partId: "part:default",
+    featureId: "feature_hole",
+    source: {
+      type: "sketchHoleFeature",
+      featureId: "feature_hole",
+      targetBodyId: "body_target",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1"
     }
   };
 }

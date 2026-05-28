@@ -2075,6 +2075,12 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(source)).not.toBe(
       createDerivedGeometryCacheKey({
         ...source,
+        tool: { ...source.tool, depthMode: "throughAll", depth: undefined }
+      })
+    );
+    expect(createDerivedGeometryCacheKey(source)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...source,
         tool: { ...source.tool, direction: "negative" }
       })
     );

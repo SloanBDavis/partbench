@@ -583,9 +583,10 @@ as source intent only: no B-rep, mesh result, OCCT topology ID, or renderer
 cache is persisted. `feature.hole` consumes one active authored target body and
 creates one authored result body, matching the add/cut result-body model. Blind
 holes require a positive finite `depth`; through-all holes must omit `depth`.
-The current command-first slice validates and round-trips the source model, but
-does not yet execute hole geometry through the worker, expose generated
-references for hole result bodies, or provide exact topology naming.
+The current V6 Phase D slices validate and round-trip the source model and can
+rebuild supported hole result meshes as derived geometry through the
+geometry-worker path. Generated references for hole result bodies and exact
+topology naming are not implemented yet.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived
@@ -1176,8 +1177,9 @@ entities, and angles that are not positive finite values less than or equal to
 360.
 Current imports also reject unsupported hole records, including missing or
 primitive-derived target bodies, already-consumed target bodies, non-circle
-source entities, non-positive blind depths, through-all depths, invalid
-directions, and stale attached sketch references.
+source entities, non-rectangle/circle newBody extrude targets, non-positive
+blind depths, through-all depths, invalid directions, and stale attached sketch
+references.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 

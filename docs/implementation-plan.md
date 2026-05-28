@@ -721,7 +721,9 @@ Planned deliverables:
 - app derived-geometry wiring for supported hole result meshes, with consumed
   targets omitted from render sources and no primitive fallback for pending or
   unsupported hole results;
-- measurements/extents and UI creation controls are follow-up Phase D slices.
+- compact UI creation controls for circular hole tools, eligible target bodies,
+  blind/through-all depth, and direction;
+- measurements/extents remain follow-up Phase D/F slices.
 
 ### V6 Phase E: Edge Finishing With Chamfer And Fillet
 

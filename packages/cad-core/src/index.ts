@@ -2418,6 +2418,7 @@ function applyOperation(
         op.targetBodyId,
         opIndex
       );
+      assertSupportedHoleTarget(state, targetBodyId, opIndex);
       const depthMode = validateHoleDepthMode(op.depthMode, opIndex);
       const depth = validateHoleDepth(depthMode, op.depth, opIndex);
       const direction = validateHoleDirection(op.direction, opIndex);
@@ -6119,6 +6120,44 @@ function validateHoleTargetBodyId(
   }
 
   return targetFeature.bodyId;
+}
+
+function assertSupportedHoleTarget(
+  state: MutableDocumentState,
+  targetBodyId: BodyId,
+  opIndex?: number
+): void {
+  const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+
+  if (
+    targetFeature?.kind === "extrude" &&
+    targetFeature.operationMode === "newBody" &&
+    isSupportedCutTargetProfileKind(targetFeature.profileKind)
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "UNSUPPORTED_FEATURE_OPERATION",
+    message:
+      "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body.",
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "targetBodyId"),
+    expected: "active rectangle/circle newBody extrude target body",
+    received: describeReceived({
+      targetBodyId,
+      targetFeatureKind: targetFeature?.kind,
+      targetProfileKind:
+        targetFeature?.kind === "extrude"
+          ? targetFeature.profileKind
+          : undefined,
+      targetOperationMode:
+        targetFeature?.kind === "extrude"
+          ? targetFeature.operationMode
+          : undefined
+    })
+  });
 }
 
 function validateHoleDepthMode(
@@ -12746,6 +12785,20 @@ function validateFeatureTargetBodyReferences(
         "INVALID_FEATURE",
         `${feature.path}.operationMode`,
         getUnsupportedBooleanExtrudeMessage(feature.operationMode ?? "newBody")
+      );
+    }
+
+    if (
+      feature.kind === "hole" &&
+      (!isExtrudeFeatureSnapshot(target) ||
+        target.operationMode !== "newBody" ||
+        !isSupportedCutTargetProfileKind(target.profileKind))
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.targetBodyId`,
+        "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body."
       );
     }
   }

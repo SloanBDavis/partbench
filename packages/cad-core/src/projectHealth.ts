@@ -534,6 +534,16 @@ function createAuthoredHoleHealth(
       featureId: feature.id,
       bodyId: feature.targetBodyId
     });
+  } else if (!isSupportedHoleTargetFeature(targetFeature)) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message:
+        "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body.",
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      expected: "active rectangle/circle newBody extrude target body",
+      received: describeFeatureForHealth(targetFeature)
+    });
   } else {
     const consumedBy = [...document.features.values()].find(
       (candidate) =>
@@ -1212,6 +1222,14 @@ function isSupportedBooleanTarget(
   }
 
   return isSupportedCutTargetProfileKind(targetFeature.profileKind);
+}
+
+function isSupportedHoleTargetFeature(feature: ProjectHealthFeature): boolean {
+  return (
+    feature.kind === "extrude" &&
+    feature.operationMode === "newBody" &&
+    isSupportedCutTargetProfileKind(feature.profileKind)
+  );
 }
 
 function describeFeatureForHealth(feature: ProjectHealthFeature): string {

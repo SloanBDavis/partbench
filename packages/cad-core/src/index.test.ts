@@ -5574,6 +5574,14 @@ describe("cad-core", () => {
         entityId: "rect_target",
         depth: 2
       },
+      {
+        op: "feature.extrude",
+        id: "feat_target_2",
+        bodyId: "body_target_2",
+        sketchId: "sketch_target",
+        entityId: "rect_target",
+        depth: 2
+      },
       { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
       {
         op: "sketch.addCircle",
@@ -5589,6 +5597,26 @@ describe("cad-core", () => {
         center: [0, 0],
         width: 1,
         height: 1
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_hole",
+        id: "axis_hole",
+        start: [0, -1],
+        end: [0, 1]
+      },
+      {
+        op: "feature.revolve",
+        id: "feat_revolve_target",
+        bodyId: "body_revolve_target",
+        sketchId: "sketch_hole",
+        entityId: "circle_hole",
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_hole",
+          entityId: "axis_hole"
+        },
+        angleDegrees: 360
       },
       {
         op: "feature.hole",
@@ -5628,7 +5656,54 @@ describe("cad-core", () => {
         ops: [
           {
             op: "feature.hole",
-            targetBodyId: "body_hole",
+            targetBodyId: "body_revolve_target",
+            sketchId: "sketch_hole",
+            circleEntityId: "circle_hole",
+            depthMode: "throughAll"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        path: "$.ops[0].targetBodyId"
+      }
+    });
+
+    const project = parseCadProjectJson(exportCadProjectJson(engine));
+    const projectWithUnsupportedHoleTarget: CadProject = {
+      ...project,
+      document: {
+        ...project.document,
+        features: [
+          ...project.document.features,
+          {
+            id: "feat_bad_hole_target",
+            kind: "hole",
+            targetBodyId: "body_revolve_target",
+            sketchId: "sketch_hole",
+            circleEntityId: "circle_hole",
+            depthMode: "throughAll",
+            direction: "positive",
+            bodyId: "body_bad_hole_target"
+          }
+        ]
+      }
+    };
+
+    expect(() => importCadProject(projectWithUnsupportedHoleTarget)).toThrow(
+      CadProjectImportError
+    );
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "feature.hole",
+            targetBodyId: "body_target_2",
             sketchId: "sketch_hole",
             circleEntityId: "circle_hole",
             depthMode: "blind"
@@ -5647,7 +5722,7 @@ describe("cad-core", () => {
         ops: [
           {
             op: "feature.hole",
-            targetBodyId: "body_hole",
+            targetBodyId: "body_target_2",
             sketchId: "sketch_hole",
             circleEntityId: "circle_hole",
             depthMode: "throughAll",
