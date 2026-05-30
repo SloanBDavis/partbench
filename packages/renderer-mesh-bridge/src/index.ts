@@ -85,6 +85,7 @@ function validateMesh(mesh: SerializableMeshData): void {
     mesh.primitive !== "cone" &&
     mesh.primitive !== "torus" &&
     mesh.primitive !== "extrude" &&
+    mesh.primitive !== "revolve" &&
     mesh.primitive !== "boolean" &&
     mesh.primitive !== "hole" &&
     mesh.primitive !== "edgeFinish"

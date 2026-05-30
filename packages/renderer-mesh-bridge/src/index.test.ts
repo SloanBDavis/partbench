@@ -229,6 +229,44 @@ describe("renderer mesh bridge", () => {
     });
   });
 
+  it("adapts revolve mesh responses from the geometry worker", () => {
+    const result = createRenderMeshFromGeometryWorkerResponse(
+      {
+        id: "mesh_bridge_req_revolve",
+        version: "geometry-worker.v1",
+        kind: "geometry-worker.tessellateFeature",
+        payloadId: "mesh_bridge_revolve_payload",
+        response: {
+          ok: true,
+          id: "mesh_bridge_revolve_payload",
+          op: "geometry.revolveProfile",
+          mesh: {
+            primitive: "revolve",
+            positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            indices: new Uint32Array([0, 1, 2]),
+            vertexCount: 3,
+            triangleCount: 1,
+            faceCount: 1
+          },
+          warnings: []
+        },
+        transferables: []
+      },
+      { id: "mesh_revolve_from_worker", alignment: "source" }
+    );
+
+    expect(result).toMatchObject({
+      vertexCount: 3,
+      triangleCount: 1,
+      mesh: {
+        id: "mesh_revolve_from_worker",
+        kind: "mesh",
+        indices: [0, 1, 2],
+        source: "geometry-worker.tessellateFeature"
+      }
+    });
+  });
+
   it("adapts edge-finish mesh responses from the geometry worker", () => {
     const result = createRenderMeshFromGeometryWorkerResponse(
       {
