@@ -978,6 +978,20 @@ while keeping generated references and semantic topology unavailable until
 stable hole topology roles are deliberately scoped. Derived metadata-only
 changes do not require a schema version.
 
+The `project.extents` query may also accept an optional
+`derivedExactMetadata` array containing the same read-only snapshot shape used
+by `body.topology`. Cad-core recomputes each active body's current source
+identity from saved project data and only uses ready snapshots whose cache key
+matches that source identity. Matching snapshots can contribute
+kernel-derived bounds, volume, surface area, centroid, and topology counts for
+authored revolve, hole, chamfer/fillet, and boolean result bodies when
+source-derived extents are unavailable. Missing, stale, unsupported,
+unavailable-binding, empty, invalid, and kernel-failed snapshots are reported
+as structured project-extents warnings. Primitive bodies and simple
+rectangle/circle newBody extrudes keep their existing source-derived extents.
+The snapshots are query inputs only; they are not written to project JSON and
+do not make mesh bounds or OCCT topology IDs authoritative.
+
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts either a body ID plus generated face stable ID, or a named reference
 that resolves to a generated reference. Both paths resolve through the same

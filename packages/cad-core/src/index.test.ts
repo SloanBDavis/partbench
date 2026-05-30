@@ -175,6 +175,36 @@ function createRectangleHoleEngine(): CadEngine {
   return engine;
 }
 
+function createRectangleChamferEngine(): CadEngine {
+  const engine = createRectangleExtrudeEngine();
+
+  engine.apply({
+    op: "feature.chamfer",
+    id: "feat_chamfer_1",
+    bodyId: "body_chamfer_1",
+    targetBodyId: "body_rect_1",
+    edgeStableId: "generated:edge:body_rect_1:start:uMin",
+    distance: 0.25
+  });
+
+  return engine;
+}
+
+function createRectangleFilletEngine(): CadEngine {
+  const engine = createRectangleExtrudeEngine();
+
+  engine.apply({
+    op: "feature.fillet",
+    id: "feat_fillet_1",
+    bodyId: "body_fillet_1",
+    targetBodyId: "body_rect_1",
+    edgeStableId: "generated:edge:body_rect_1:start:uMin",
+    radius: 0.25
+  });
+
+  return engine;
+}
+
 function readBodyTopologySourceCacheKey(
   engine: CadEngine,
   bodyId: string
@@ -9814,6 +9844,367 @@ describe("cad-core", () => {
     });
   });
 
+  it("uses derived exact metadata for authored V6 result body project extents", () => {
+    const scenarios = [
+      {
+        label: "revolve",
+        createEngine: createRectangleRevolveEngine,
+        bodyId: "body_revolve_1",
+        featureId: "feat_revolve_1",
+        sourceKind: "authoredRevolve",
+        volume: 64
+      },
+      {
+        label: "hole",
+        createEngine: createRectangleHoleEngine,
+        bodyId: "body_hole_1",
+        featureId: "feat_hole_1",
+        sourceKind: "authoredHole",
+        volume: 68
+      },
+      {
+        label: "chamfer",
+        createEngine: createRectangleChamferEngine,
+        bodyId: "body_chamfer_1",
+        featureId: "feat_chamfer_1",
+        sourceKind: "authoredChamfer",
+        volume: 22
+      },
+      {
+        label: "fillet",
+        createEngine: createRectangleFilletEngine,
+        bodyId: "body_fillet_1",
+        featureId: "feat_fillet_1",
+        sourceKind: "authoredFillet",
+        volume: 23
+      }
+    ] as const;
+
+    for (const scenario of scenarios) {
+      const engine = scenario.createEngine();
+      const beforeJson = exportCadProjectJson(engine);
+      const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+        engine,
+        scenario.bodyId
+      );
+      const response = engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.extents",
+          derivedExactMetadata: [
+            createExactMetadataSnapshot({
+              bodyId: scenario.bodyId,
+              sourceIdentityCacheKey,
+              volume: scenario.volume
+            })
+          ]
+        }
+      });
+
+      expect(response).toMatchObject({
+        ok: true,
+        query: "project.extents",
+        bodyCount: 1,
+        approximateVolume: scenario.volume,
+        bodies: [
+          {
+            bodyId: scenario.bodyId,
+            sourceFeatureId: scenario.featureId,
+            sourceKind: scenario.sourceKind,
+            extentSource: "kernel-derived",
+            measurementConfidence: "kernel-derived",
+            sourceIdentityCacheKey,
+            worldBounds: {
+              min: [0, 0, 0],
+              max: [4, 2, 3]
+            },
+            volume: scenario.volume,
+            surfaceArea: 52,
+            centroid: [2, 1, 1.5],
+            topologyCounts: {
+              solidCount: 1,
+              faceCount: 6,
+              edgeCount: 12,
+              vertexCount: 8
+            }
+          }
+        ],
+        warnings: []
+      });
+      expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    }
+  });
+
+  it("uses derived exact metadata for boolean result extents without double-counting consumed targets", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_cut",
+      bodyId: "body_cut",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      operationMode: "cut"
+    });
+
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body_cut"
+    );
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "project.extents",
+        derivedExactMetadata: [
+          createExactMetadataSnapshot({
+            bodyId: "body_cut",
+            sourceIdentityCacheKey,
+            volume: 18
+          })
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      approximateVolume: 18,
+      bodies: [
+        {
+          bodyId: "body_cut",
+          sourceFeatureId: "feat_cut",
+          sourceKind: "authoredExtrude",
+          extentSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          sourceIdentityCacheKey,
+          volume: 18
+        }
+      ],
+      warnings: []
+    });
+  });
+
+  it("reports structured project extent warnings for missing, stale, and failed exact metadata", () => {
+    const expectedWarnings = [
+      {
+        description: "missing",
+        metadata: undefined,
+        code: "DERIVED_EXACT_METADATA_MISSING",
+        status: undefined,
+        errorCode: undefined
+      },
+      {
+        description: "stale",
+        metadata: (bodyId: string): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey: "stale-cache-key",
+          status: "ready",
+          metadata: createExactMetadataSnapshot({
+            bodyId,
+            sourceIdentityCacheKey: "stale-cache-key"
+          }).metadata
+        }),
+        code: "DERIVED_EXACT_METADATA_STALE",
+        status: "stale",
+        errorCode: undefined
+      },
+      {
+        description: "unsupported",
+        metadata: (
+          bodyId: string,
+          sourceIdentityCacheKey: string
+        ): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey,
+          status: "unsupported",
+          error: {
+            code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
+            message: "Unsupported exact metadata source."
+          }
+        }),
+        code: "DERIVED_EXACT_METADATA_UNSUPPORTED",
+        status: "unsupported",
+        errorCode: "UNSUPPORTED_EXACT_METADATA_SOURCE"
+      },
+      {
+        description: "unavailable binding",
+        metadata: (
+          bodyId: string,
+          sourceIdentityCacheKey: string
+        ): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey,
+          status: "unavailable-binding",
+          error: {
+            code: "UNAVAILABLE_BINDING",
+            message: "OCCT metadata binding is unavailable."
+          }
+        }),
+        code: "DERIVED_EXACT_METADATA_BINDING_UNAVAILABLE",
+        status: "unavailable-binding",
+        errorCode: "UNAVAILABLE_BINDING"
+      },
+      {
+        description: "empty result",
+        metadata: (
+          bodyId: string,
+          sourceIdentityCacheKey: string
+        ): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey,
+          status: "kernel-failed",
+          error: {
+            code: "EMPTY_RESULT",
+            message: "Kernel returned an empty result."
+          }
+        }),
+        code: "DERIVED_EXACT_METADATA_EMPTY",
+        status: "kernel-failed",
+        errorCode: "EMPTY_RESULT"
+      },
+      {
+        description: "invalid result",
+        metadata: (
+          bodyId: string,
+          sourceIdentityCacheKey: string
+        ): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey,
+          status: "kernel-failed",
+          error: {
+            code: "INVALID_RESULT",
+            message: "Kernel returned an invalid result."
+          }
+        }),
+        code: "DERIVED_EXACT_METADATA_INVALID",
+        status: "kernel-failed",
+        errorCode: "INVALID_RESULT"
+      },
+      {
+        description: "kernel failure",
+        metadata: (
+          bodyId: string,
+          sourceIdentityCacheKey: string
+        ): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey,
+          status: "kernel-failed",
+          error: {
+            code: "KERNEL_FAILED",
+            message: "Kernel failed."
+          }
+        }),
+        code: "DERIVED_EXACT_METADATA_KERNEL_FAILED",
+        status: "kernel-failed",
+        errorCode: "KERNEL_FAILED"
+      },
+      {
+        description: "invalid ready metadata",
+        metadata: (
+          bodyId: string,
+          sourceIdentityCacheKey: string
+        ): CadBodyDerivedExactMetadataSnapshot => ({
+          bodyId,
+          sourceIdentityCacheKey,
+          status: "ready",
+          metadata: {
+            source: "kernel-derived",
+            confidence: "kernel-derived",
+            diagnostics: []
+          }
+        }),
+        code: "DERIVED_EXACT_METADATA_INVALID",
+        status: "ready",
+        errorCode: "INVALID_READY_METADATA"
+      }
+    ] as const;
+
+    for (const expected of expectedWarnings) {
+      const engine = createRectangleRevolveEngine();
+      const bodyId = "body_revolve_1";
+      const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+        engine,
+        bodyId
+      );
+      const metadata =
+        typeof expected.metadata === "function"
+          ? expected.metadata(bodyId, sourceIdentityCacheKey)
+          : expected.metadata;
+      const response = engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.extents",
+          ...(metadata ? { derivedExactMetadata: [metadata] } : {})
+        }
+      });
+
+      expect(response).toMatchObject({
+        ok: true,
+        query: "project.extents",
+        bodyCount: 0,
+        bodies: [],
+        warnings: [
+          {
+            code: expected.code,
+            bodyId,
+            featureId: "feat_revolve_1",
+            ...(expected.status ? { status: expected.status } : {}),
+            ...(expected.errorCode ? { errorCode: expected.errorCode } : {})
+          }
+        ]
+      });
+      expect(response).not.toHaveProperty("bounds");
+    }
+  });
+
+  it("keeps source-derived measurements unchanged while body topology carries exact measurement health", () => {
+    const engine = createRectangleChamferEngine();
+    const bodyId = "body_chamfer_1";
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      bodyId
+    );
+    const exactMetadata = createExactMetadataSnapshot({
+      bodyId,
+      sourceIdentityCacheKey,
+      volume: 22
+    });
+    const measurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.measurements", bodyId }
+    });
+    const topology = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId,
+        derivedExactMetadata: exactMetadata
+      }
+    });
+
+    expect(measurements).toMatchObject({
+      ok: false,
+      query: "body.measurements",
+      error: { code: "UNSUPPORTED_BODY_MEASUREMENTS", bodyId }
+    });
+    expect(topology).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 22
+        }
+      }
+    });
+  });
+
   it("round-trips edited source profiles for measurements and extents", () => {
     const engine = createRectangleExtrudeEngine();
 
@@ -11154,7 +11545,7 @@ describe("cad-core", () => {
       bodyCount: 0,
       warnings: [
         {
-          code: "BODY_EXTENTS_UNAVAILABLE",
+          code: "DERIVED_EXACT_METADATA_MISSING",
           bodyId: "body_add",
           featureId: "feat_add"
         }
@@ -11533,7 +11924,7 @@ describe("cad-core", () => {
       bodyCount: 0,
       warnings: [
         {
-          code: "BODY_EXTENTS_UNAVAILABLE",
+          code: "DERIVED_EXACT_METADATA_MISSING",
           bodyId: "body_circle_cut",
           featureId: "feat_circle_cut"
         }
@@ -11868,7 +12259,7 @@ describe("cad-core", () => {
       bodies: [],
       warnings: [
         {
-          code: "BODY_EXTENTS_UNAVAILABLE",
+          code: "DERIVED_EXACT_METADATA_MISSING",
           bodyId: "body_cut",
           featureId: "feat_cut"
         }
@@ -14940,7 +15331,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         bodyCount: 0,
         warnings: [
           {
-            code: "BODY_EXTENTS_UNAVAILABLE",
+            code: "DERIVED_EXACT_METADATA_MISSING",
             bodyId,
             featureId
           }

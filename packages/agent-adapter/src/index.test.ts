@@ -1800,6 +1800,127 @@ describe("agent-adapter", () => {
     expect(response.approximateVolume).toBeCloseTo(4 * Math.PI);
   });
 
+  it("passes derived exact metadata snapshots through project extents adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_req_revolve_extents_create",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "sketch_revolve",
+            name: "Revolve",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_revolve",
+            id: "rect_revolve",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          {
+            op: "sketch.addLine",
+            sketchId: "sketch_revolve",
+            id: "axis_revolve",
+            start: [0, -2],
+            end: [0, 2]
+          },
+          {
+            op: "feature.revolve",
+            id: "feat_revolve",
+            bodyId: "body_revolve",
+            sketchId: "sketch_revolve",
+            entityId: "rect_revolve",
+            axis: {
+              type: "sketchLine",
+              sketchId: "sketch_revolve",
+              entityId: "axis_revolve"
+            },
+            angleDegrees: 360
+          }
+        ]
+      }
+    });
+
+    const topology = adapter.query({
+      requestId: "agent_revolve_topology",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_revolve" }
+      }
+    });
+
+    if (!topology.ok || topology.query !== "body.topology") {
+      throw new Error("Expected body topology response.");
+    }
+
+    const request = parseCadOpsAgentQueryRequestJson(
+      JSON.stringify({
+        requestId: "agent_extents_exact_json",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "project.extents",
+            derivedExactMetadata: [
+              {
+                bodyId: "body_revolve",
+                sourceIdentityCacheKey:
+                  topology.topology.sourceIdentity.cacheKey,
+                status: "ready",
+                metadata: {
+                  source: "kernel-derived",
+                  confidence: "kernel-derived",
+                  bounds: {
+                    min: [0, 0, 0],
+                    max: [4, 2, 3],
+                    size: [4, 2, 3],
+                    center: [2, 1, 1.5]
+                  },
+                  volume: 24,
+                  diagnostics: []
+                }
+              }
+            ]
+          }
+        }
+      })
+    );
+    const response = JSON.parse(adapter.queryJson(JSON.stringify(request))) as {
+      readonly ok: boolean;
+      readonly query: string;
+      readonly bodyCount: number;
+      readonly bodies: readonly {
+        readonly bodyId: string;
+        readonly extentSource: string;
+        readonly volume: number;
+      }[];
+      readonly warnings: readonly unknown[];
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.extents",
+      bodyCount: 1,
+      bodies: [
+        {
+          bodyId: "body_revolve",
+          extentSource: "kernel-derived",
+          volume: 24
+        }
+      ],
+      warnings: []
+    });
+  });
+
   it("returns primitive feature summaries through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

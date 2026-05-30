@@ -1024,6 +1024,7 @@ export interface ObjectMeasurementsQuery {
 
 export interface ProjectExtentsQuery {
   readonly query: "project.extents";
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 }
 
 export interface SketchGetQuery {
@@ -1434,23 +1435,47 @@ export interface ObjectExtentSnapshot {
 
 export type CadBodyMeasurementModel = "sourceAnalytic";
 
+export type ProjectBodyExtentSource = "source-analytic" | "kernel-derived";
+
 export interface BodyExtentSnapshot {
   readonly bodyId: BodyId;
   readonly sourceFeatureId: FeatureId;
-  readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
-  readonly profileKind: FeatureExtrudeProfileKind;
+  readonly sourceKind: CadBodyTopologySourceKind;
+  readonly extentSource: ProjectBodyExtentSource;
+  readonly measurementConfidence: Exclude<
+    CadBodyTopologyMeasurementConfidence,
+    "none"
+  >;
+  readonly sourceIdentityCacheKey?: string;
+  readonly sourceSketchId?: SketchId;
+  readonly sourceSketchEntityId?: SketchEntityId;
+  readonly profileKind?: FeatureExtrudeProfileKind;
   readonly worldBounds: CadAxisAlignedBounds;
   readonly volume: number;
+  readonly surfaceArea?: number;
+  readonly centroid?: Vec3;
+  readonly topologyCounts?: CadBodyExactMetadataTopologyCounts;
 }
 
-export type ProjectExtentsWarningCode = "BODY_EXTENTS_UNAVAILABLE";
+export type ProjectExtentsWarningCode =
+  | "BODY_EXTENTS_UNAVAILABLE"
+  | "DERIVED_EXACT_METADATA_MISSING"
+  | "DERIVED_EXACT_METADATA_STALE"
+  | "DERIVED_EXACT_METADATA_UNSUPPORTED"
+  | "DERIVED_EXACT_METADATA_KERNEL_FAILED"
+  | "DERIVED_EXACT_METADATA_BINDING_UNAVAILABLE"
+  | "DERIVED_EXACT_METADATA_EMPTY"
+  | "DERIVED_EXACT_METADATA_INVALID";
 
 export interface ProjectExtentsWarning {
   readonly code: ProjectExtentsWarningCode;
   readonly message: string;
   readonly bodyId: BodyId;
   readonly featureId?: FeatureId;
+  readonly status?: CadBodyDerivedExactMetadataStatus;
+  readonly errorCode?: string;
+  readonly expected?: string;
+  readonly received?: string;
 }
 
 export interface BodyMeasurementsSnapshot {

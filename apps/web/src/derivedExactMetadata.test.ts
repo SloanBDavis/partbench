@@ -10,6 +10,7 @@ import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
   createExactMetadataRuntimeInput,
+  createProjectExtentsDerivedExactMetadataSnapshots,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
   getDerivedExactMetadataEntryForBody,
@@ -263,6 +264,63 @@ describe("derivedExactMetadata", () => {
         diagnostics: []
       }
     });
+  });
+
+  it("maps exact metadata entries into project.extents query snapshots by source identity", () => {
+    const ready = createReadyExactMetadataEntry(
+      "body_revolve_1",
+      "revolve",
+      64
+    );
+    const unsupported: DerivedExactMetadataEntry = {
+      bodyId: "body_hole_1",
+      sourceKind: "hole",
+      cacheKey: "exact:hole",
+      status: "unsupported",
+      message: "Exact metadata for this hole is unsupported."
+    };
+    const pending: DerivedExactMetadataEntry = {
+      bodyId: "body_chamfer_1",
+      sourceKind: "edgeFinish",
+      cacheKey: "exact:chamfer",
+      status: "pending"
+    };
+    const skipped = createReadyExactMetadataEntry(
+      "body_missing_cache",
+      "edgeFinish",
+      12
+    );
+    const snapshots = createProjectExtentsDerivedExactMetadataSnapshots(
+      {
+        entries: [ready, unsupported, pending, skipped],
+        supportedCount: 3,
+        pendingCount: 1,
+        readyCount: 2,
+        errorCount: 0
+      },
+      new Map([
+        ["body_revolve_1", "body-topology:v1:revolve"],
+        ["body_hole_1", "body-topology:v1:hole"],
+        ["body_chamfer_1", "body-topology:v1:chamfer"]
+      ])
+    );
+
+    expect(snapshots).toEqual([
+      expect.objectContaining({
+        bodyId: "body_revolve_1",
+        sourceIdentityCacheKey: "body-topology:v1:revolve",
+        status: "ready",
+        metadata: expect.objectContaining({ volume: 64 })
+      }),
+      expect.objectContaining({
+        bodyId: "body_hole_1",
+        sourceIdentityCacheKey: "body-topology:v1:hole",
+        status: "unsupported",
+        error: expect.objectContaining({
+          code: "UNSUPPORTED_EXACT_METADATA_SOURCE"
+        })
+      })
+    ]);
   });
 
   it("maps exact metadata terminal states and leaves pending query-only", () => {

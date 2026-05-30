@@ -9,6 +9,7 @@ import type {
   BodyExtentSnapshot,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
+  CadBodyTopologySnapshot,
   CadBodyRef,
   CadBodySnapshot,
   CadFeatureRef,
@@ -992,7 +993,8 @@ export class CadEngine {
         const bodyExtents = createBodyExtents(
           this.#document,
           this.#document.units,
-          this.#history.map((entry) => entry.transaction)
+          this.#history.map((entry) => entry.transaction),
+          request.query.derivedExactMetadata ?? []
         );
         const allBounds = [
           ...measurements.map((measurement) => measurement.worldBounds),
@@ -2862,10 +2864,18 @@ function isCadQuery(value: unknown): boolean {
     case "project.structure":
     case "project.health":
     case "project.sketches":
-    case "project.extents":
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.extents":
+      return (
+        Object.keys(value).length === 1 ||
+        (Object.keys(value).length === 2 &&
+          Array.isArray(value.derivedExactMetadata) &&
+          value.derivedExactMetadata.every((snapshot) =>
+            isCadBodyDerivedExactMetadataSnapshot(snapshot)
+          ))
+      );
     case "parameter.get":
     case "object.get":
     case "object.measurements":
@@ -9096,7 +9106,8 @@ function mergeBounds(
 function createBodyExtents(
   document: CadDocument,
   units: DocumentUnits,
-  transactions: readonly Transaction[]
+  transactions: readonly Transaction[],
+  derivedExactMetadata: readonly CadBodyDerivedExactMetadataSnapshot[] = []
 ): {
   readonly bodies: readonly BodyExtentSnapshot[];
   readonly warnings: readonly ProjectExtentsWarning[];
@@ -9104,55 +9115,322 @@ function createBodyExtents(
   const structure = createProjectStructure(document, transactions);
   const bodies: BodyExtentSnapshot[] = [];
   const warnings: ProjectExtentsWarning[] = [];
+  const derivedExactMetadataByBodyId = new Map(
+    derivedExactMetadata.map((snapshot) => [snapshot.bodyId, snapshot] as const)
+  );
+  const bodyExists = (candidateBodyId: BodyId) =>
+    structure.bodies.some((body) => body.id === candidateBodyId);
 
   for (const body of structure.bodies) {
-    if (body.source.type === "sketchRevolveFeature") {
-      warnings.push({
-        code: "BODY_EXTENTS_UNAVAILABLE",
-        message: `Body extents are unavailable because authored revolve bodies do not have source-derived extents yet: ${body.id}`,
-        bodyId: body.id,
-        featureId: body.featureId
-      });
-      continue;
-    }
-
-    if (body.source.type !== "sketchExtrudeFeature") {
-      continue;
-    }
-
     if (body.consumedByFeatureId) {
       continue;
     }
 
-    const measurements = createBodyMeasurements(
-      document,
-      body.id,
-      units,
-      body.partId
-    );
-
-    if (!measurements) {
-      warnings.push({
-        code: "BODY_EXTENTS_UNAVAILABLE",
-        message: `Body extents are unavailable because the authored body source or attached sketch reference could not be resolved: ${body.id}`,
-        bodyId: body.id,
-        featureId: body.featureId
-      });
+    if (body.source.type === "primitiveFeature") {
       continue;
     }
 
-    bodies.push({
-      bodyId: measurements.bodyId,
-      sourceFeatureId: measurements.sourceFeatureId,
-      sourceSketchId: measurements.sourceSketchId,
-      sourceSketchEntityId: measurements.sourceSketchEntityId,
-      profileKind: measurements.profileKind,
-      worldBounds: measurements.localBounds,
-      volume: measurements.volume
+    if (body.source.type === "sketchExtrudeFeature") {
+      const measurements = createBodyMeasurements(
+        document,
+        body.id,
+        units,
+        body.partId
+      );
+
+      if (measurements) {
+        bodies.push({
+          bodyId: measurements.bodyId,
+          sourceFeatureId: measurements.sourceFeatureId,
+          sourceKind: "authoredExtrude",
+          extentSource: "source-analytic",
+          measurementConfidence: "source-analytic",
+          sourceSketchId: measurements.sourceSketchId,
+          sourceSketchEntityId: measurements.sourceSketchEntityId,
+          profileKind: measurements.profileKind,
+          worldBounds: measurements.localBounds,
+          volume: measurements.volume,
+          surfaceArea: measurements.surfaceArea,
+          centroid: measurements.centroid
+        });
+        continue;
+      }
+    }
+
+    const topology = createBodyTopology({
+      document,
+      bodyId: body.id,
+      units,
+      ownerPartId: body.partId,
+      bodyExists
     });
+
+    if (!topology.ok) {
+      warnings.push(
+        createBodyExtentsUnavailableWarning(body.id, body.featureId)
+      );
+      continue;
+    }
+
+    if (!shouldUseDerivedExactMetadataForProjectExtents(topology.topology)) {
+      warnings.push(
+        createBodyExtentsUnavailableWarning(body.id, body.featureId)
+      );
+      continue;
+    }
+
+    const bodyExtent = createKernelDerivedBodyExtent(
+      topology.topology,
+      derivedExactMetadataByBodyId.get(body.id)
+    );
+
+    if (bodyExtent.ok) {
+      bodies.push(bodyExtent.body);
+      continue;
+    }
+
+    warnings.push(bodyExtent.warning);
   }
 
   return { bodies, warnings };
+}
+
+function createBodyExtentsUnavailableWarning(
+  bodyId: BodyId,
+  featureId: FeatureId
+): ProjectExtentsWarning {
+  return {
+    code: "BODY_EXTENTS_UNAVAILABLE",
+    message: `Body extents are unavailable because the authored body source or attached sketch reference could not be resolved: ${bodyId}`,
+    bodyId,
+    featureId
+  };
+}
+
+function shouldUseDerivedExactMetadataForProjectExtents(
+  topology: CadBodyTopologySnapshot
+): boolean {
+  if (
+    topology.sourceKind === "authoredRevolve" ||
+    topology.sourceKind === "authoredHole" ||
+    topology.sourceKind === "authoredChamfer" ||
+    topology.sourceKind === "authoredFillet"
+  ) {
+    return true;
+  }
+
+  return (
+    topology.sourceKind === "authoredExtrude" &&
+    topology.sourceIdentity.operationMode !== undefined &&
+    topology.sourceIdentity.operationMode !== "newBody"
+  );
+}
+
+function createKernelDerivedBodyExtent(
+  topology: CadBodyTopologySnapshot,
+  metadata: CadBodyDerivedExactMetadataSnapshot | undefined
+):
+  | {
+      readonly ok: true;
+      readonly body: BodyExtentSnapshot;
+    }
+  | {
+      readonly ok: false;
+      readonly warning: ProjectExtentsWarning;
+    } {
+  const featureId = topology.sourceIdentity.featureId;
+
+  if (!featureId) {
+    return {
+      ok: false,
+      warning: {
+        code: "BODY_EXTENTS_UNAVAILABLE",
+        message: `Body extents are unavailable because the authored body feature source could not be resolved: ${topology.bodyId}`,
+        bodyId: topology.bodyId
+      }
+    };
+  }
+
+  if (!metadata) {
+    return {
+      ok: false,
+      warning: {
+        code: "DERIVED_EXACT_METADATA_MISSING",
+        message: `Kernel-derived exact metadata is unavailable for body extents: ${topology.bodyId}`,
+        bodyId: topology.bodyId,
+        featureId,
+        expected: topology.sourceIdentity.cacheKey
+      }
+    };
+  }
+
+  if (
+    metadata.bodyId !== topology.bodyId ||
+    metadata.sourceIdentityCacheKey !== topology.sourceIdentity.cacheKey
+  ) {
+    return {
+      ok: false,
+      warning: {
+        code: "DERIVED_EXACT_METADATA_STALE",
+        message:
+          "Kernel-derived exact metadata is stale for the current body source identity.",
+        bodyId: topology.bodyId,
+        featureId,
+        status: "stale",
+        expected: topology.sourceIdentity.cacheKey,
+        received:
+          metadata.bodyId === topology.bodyId
+            ? metadata.sourceIdentityCacheKey
+            : metadata.bodyId
+      }
+    };
+  }
+
+  if (metadata.status !== "ready") {
+    return {
+      ok: false,
+      warning: createDerivedExactMetadataStatusWarning(topology, metadata)
+    };
+  }
+
+  const exactMetadata = metadata.metadata;
+
+  if (
+    !exactMetadata?.bounds ||
+    exactMetadata.volume === undefined ||
+    !isFiniteBounds(exactMetadata.bounds) ||
+    !Number.isFinite(exactMetadata.volume) ||
+    exactMetadata.volume < 0
+  ) {
+    return {
+      ok: false,
+      warning: {
+        code: "DERIVED_EXACT_METADATA_INVALID",
+        message:
+          "Kernel-derived exact metadata did not include valid body bounds and volume.",
+        bodyId: topology.bodyId,
+        featureId,
+        status: "ready",
+        errorCode: "INVALID_READY_METADATA"
+      }
+    };
+  }
+
+  return {
+    ok: true,
+    body: {
+      bodyId: topology.bodyId,
+      sourceFeatureId: featureId,
+      sourceKind: topology.sourceKind,
+      extentSource: "kernel-derived",
+      measurementConfidence: "kernel-derived",
+      sourceIdentityCacheKey: topology.sourceIdentity.cacheKey,
+      worldBounds: exactMetadata.bounds,
+      volume: exactMetadata.volume,
+      ...(topology.sourceIdentity.sourceSketchId
+        ? { sourceSketchId: topology.sourceIdentity.sourceSketchId }
+        : {}),
+      ...(topology.sourceIdentity.sourceSketchEntityId
+        ? {
+            sourceSketchEntityId: topology.sourceIdentity.sourceSketchEntityId
+          }
+        : {}),
+      ...(topology.sourceIdentity.profileKind
+        ? { profileKind: topology.sourceIdentity.profileKind }
+        : {}),
+      ...(exactMetadata.surfaceArea !== undefined
+        ? { surfaceArea: exactMetadata.surfaceArea }
+        : {}),
+      ...(exactMetadata.centroid ? { centroid: exactMetadata.centroid } : {}),
+      ...(exactMetadata.topologyCounts
+        ? { topologyCounts: exactMetadata.topologyCounts }
+        : {})
+    }
+  };
+}
+
+function createDerivedExactMetadataStatusWarning(
+  topology: CadBodyTopologySnapshot,
+  metadata: CadBodyDerivedExactMetadataSnapshot
+): ProjectExtentsWarning {
+  const errorCode = metadata.error?.code;
+  const featureId = topology.sourceIdentity.featureId;
+  const base = {
+    bodyId: topology.bodyId,
+    featureId,
+    status: metadata.status,
+    errorCode,
+    received: errorCode
+  };
+
+  if (metadata.status === "unsupported") {
+    return {
+      ...base,
+      code: "DERIVED_EXACT_METADATA_UNSUPPORTED",
+      message:
+        metadata.error?.message ??
+        `Kernel-derived exact metadata is unsupported for body extents: ${topology.bodyId}`
+    };
+  }
+
+  if (metadata.status === "stale") {
+    return {
+      ...base,
+      code: "DERIVED_EXACT_METADATA_STALE",
+      message:
+        metadata.error?.message ??
+        `Kernel-derived exact metadata is stale for body extents: ${topology.bodyId}`,
+      expected: topology.sourceIdentity.cacheKey,
+      received: errorCode ?? metadata.sourceIdentityCacheKey
+    };
+  }
+
+  if (metadata.status === "unavailable-binding") {
+    return {
+      ...base,
+      code: "DERIVED_EXACT_METADATA_BINDING_UNAVAILABLE",
+      message:
+        metadata.error?.message ??
+        `Kernel exact metadata bindings are unavailable for body extents: ${topology.bodyId}`
+    };
+  }
+
+  if (errorCode === "EMPTY_RESULT") {
+    return {
+      ...base,
+      code: "DERIVED_EXACT_METADATA_EMPTY",
+      message:
+        metadata.error?.message ??
+        `Kernel-derived exact metadata returned an empty result for body extents: ${topology.bodyId}`
+    };
+  }
+
+  if (errorCode === "INVALID_RESULT") {
+    return {
+      ...base,
+      code: "DERIVED_EXACT_METADATA_INVALID",
+      message:
+        metadata.error?.message ??
+        `Kernel-derived exact metadata returned an invalid result for body extents: ${topology.bodyId}`
+    };
+  }
+
+  return {
+    ...base,
+    code: "DERIVED_EXACT_METADATA_KERNEL_FAILED",
+    message:
+      metadata.error?.message ??
+      `Kernel-derived exact metadata failed for body extents: ${topology.bodyId}`
+  };
+}
+
+function isFiniteBounds(bounds: CadAxisAlignedBounds): boolean {
+  return (
+    bounds.min.every(Number.isFinite) &&
+    bounds.max.every(Number.isFinite) &&
+    bounds.size.every(Number.isFinite) &&
+    bounds.center.every(Number.isFinite)
+  );
 }
 
 function sumApproximateVolumes(

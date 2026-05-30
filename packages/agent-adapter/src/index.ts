@@ -1239,7 +1239,12 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "body.measurements" &&
         typeof value.query.bodyId === "string") ||
       (value.query.query === "project.extents" &&
-        Object.keys(value.query).length === 1) ||
+        (Object.keys(value.query).length === 1 ||
+          (Object.keys(value.query).length === 2 &&
+            Array.isArray(value.query.derivedExactMetadata) &&
+            value.query.derivedExactMetadata.every((snapshot) =>
+              isCadBodyDerivedExactMetadataSnapshot(snapshot)
+            )))) ||
       (value.query.query === "sketch.get" &&
         typeof value.query.id === "string") ||
       (value.query.query === "sketch.evaluation" &&

@@ -342,6 +342,29 @@ export function createBodyTopologyDerivedExactMetadataSnapshot(
   };
 }
 
+export function createProjectExtentsDerivedExactMetadataSnapshots(
+  snapshot: DerivedExactMetadataSnapshot,
+  sourceIdentityCacheKeysByBodyId: ReadonlyMap<string, string>
+): readonly CadBodyDerivedExactMetadataSnapshot[] {
+  return snapshot.entries
+    .map((entry) => {
+      const sourceIdentityCacheKey = sourceIdentityCacheKeysByBodyId.get(
+        entry.bodyId
+      );
+
+      return sourceIdentityCacheKey
+        ? createBodyTopologyDerivedExactMetadataSnapshot(
+            entry,
+            sourceIdentityCacheKey
+          )
+        : undefined;
+    })
+    .filter(
+      (entry): entry is CadBodyDerivedExactMetadataSnapshot =>
+        entry !== undefined
+    );
+}
+
 export function formatDerivedExactMetadataEntryStatus(
   entry: DerivedExactMetadataEntry | undefined
 ): string | undefined {

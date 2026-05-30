@@ -579,6 +579,31 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: {
+          query: "project.extents",
+          derivedExactMetadata: [
+            {
+              bodyId: "body_revolve_1",
+              sourceIdentityCacheKey: "body-topology:v1:revolve",
+              status: "ready",
+              metadata: {
+                source: "kernel-derived",
+                confidence: "kernel-derived",
+                bounds: {
+                  min: [0, 0, 0],
+                  max: [1, 2, 3],
+                  size: [1, 2, 3],
+                  center: [0.5, 1, 1.5]
+                },
+                volume: 6,
+                diagnostics: []
+              }
+            }
+          ]
+        }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "sketch.get", id: "sketch_1" }
       },
       {
@@ -643,6 +668,7 @@ describe("cad-protocol", () => {
       "project.sketches",
       "object.get",
       "object.measurements",
+      "project.extents",
       "project.extents",
       "sketch.get",
       "parameter.list",
@@ -1343,7 +1369,7 @@ describe("cad-protocol", () => {
       cadOpsVersion: "cadops.v1",
       units: "mm",
       objectCount: 0,
-      bodyCount: 1,
+      bodyCount: 2,
       bounds: {
         min: [-2, -1, 0],
         max: [2, 1, 3],
@@ -1356,6 +1382,9 @@ describe("cad-protocol", () => {
         {
           bodyId: "body_1",
           sourceFeatureId: "feat_1",
+          sourceKind: "authoredExtrude",
+          extentSource: "source-analytic",
+          measurementConfidence: "source-analytic",
           sourceSketchId: "sketch_1",
           sourceSketchEntityId: "rect_1",
           profileKind: "rectangle",
@@ -1366,6 +1395,29 @@ describe("cad-protocol", () => {
             center: [0, 0, 1.5]
           },
           volume: 24
+        },
+        {
+          bodyId: "body_revolve",
+          sourceFeatureId: "feat_revolve",
+          sourceKind: "authoredRevolve",
+          extentSource: "kernel-derived",
+          measurementConfidence: "kernel-derived",
+          sourceIdentityCacheKey: "body-topology:v1:revolve",
+          worldBounds: {
+            min: [-1, -1, 0],
+            max: [1, 1, 2],
+            size: [2, 2, 2],
+            center: [0, 0, 1]
+          },
+          volume: 8,
+          surfaceArea: 24,
+          centroid: [0, 0, 1],
+          topologyCounts: {
+            solidCount: 1,
+            faceCount: 3,
+            edgeCount: 6,
+            vertexCount: 4
+          }
         }
       ],
       warnings: [
@@ -1374,6 +1426,15 @@ describe("cad-protocol", () => {
           message: "Skipped stale body.",
           bodyId: "body_stale",
           featureId: "feat_stale"
+        },
+        {
+          code: "DERIVED_EXACT_METADATA_STALE",
+          message: "Skipped stale exact metadata.",
+          bodyId: "body_revolve",
+          featureId: "feat_revolve",
+          status: "stale",
+          expected: "body-topology:v1:new",
+          received: "body-topology:v1:old"
         }
       ]
     };
@@ -1381,10 +1442,21 @@ describe("cad-protocol", () => {
     expect(response).toMatchObject({
       ok: true,
       query: "project.extents",
-      bodyCount: 1,
-      bodies: [{ bodyId: "body_1", volume: 24 }],
-      warnings: [{ code: "BODY_EXTENTS_UNAVAILABLE" }]
+      bodyCount: 2
     });
+    if (response.ok && response.query === "project.extents") {
+      expect(response.bodies).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ bodyId: "body_1", volume: 24 })
+        ])
+      );
+      expect(response.warnings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "BODY_EXTENTS_UNAVAILABLE" }),
+          expect.objectContaining({ code: "DERIVED_EXACT_METADATA_STALE" })
+        ])
+      );
+    }
   });
 
   it("types generated reference measurements", () => {

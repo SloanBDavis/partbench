@@ -2408,6 +2408,113 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("accepts derived exact metadata snapshots in cad.project_extents", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_revolve_extents",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_revolve",
+              name: "Revolve",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_revolve",
+              id: "rect_revolve",
+              center: [2, 0],
+              width: 1,
+              height: 3
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "sketch_revolve",
+              id: "axis_revolve",
+              start: [0, -2],
+              end: [0, 2]
+            },
+            {
+              op: "feature.revolve",
+              id: "feat_revolve",
+              bodyId: "body_revolve",
+              sketchId: "sketch_revolve",
+              entityId: "rect_revolve",
+              axis: {
+                type: "sketchLine",
+                sketchId: "sketch_revolve",
+                entityId: "axis_revolve"
+              },
+              angleDegrees: 360
+            }
+          ]
+        }
+      }
+    });
+    const topology = server.callTool({
+      name: "cad.body_topology",
+      requestId: "mcp_req_revolve_topology",
+      arguments: { bodyId: "body_revolve" }
+    });
+    const topologyContent = topology.structuredContent as {
+      readonly topology: {
+        readonly sourceIdentity: { readonly cacheKey: string };
+      };
+    };
+    const result = server.callTool({
+      name: "cad.project_extents",
+      requestId: "mcp_req_revolve_extents",
+      arguments: {
+        derivedExactMetadata: [
+          {
+            bodyId: "body_revolve",
+            sourceIdentityCacheKey:
+              topologyContent.topology.sourceIdentity.cacheKey,
+            status: "ready",
+            metadata: {
+              source: "kernel-derived",
+              confidence: "kernel-derived",
+              bounds: {
+                min: [0, 0, 0],
+                max: [4, 2, 3],
+                size: [4, 2, 3],
+                center: [2, 1, 1.5]
+              },
+              volume: 24,
+              diagnostics: []
+            }
+          }
+        ]
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_extents",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_revolve_extents",
+        query: "project.extents",
+        bodyCount: 1,
+        bodies: [
+          {
+            bodyId: "body_revolve",
+            extentSource: "kernel-derived",
+            volume: 24
+          }
+        ],
+        warnings: []
+      }
+    });
+  });
+
   it("returns transaction history through cad.transaction_history", () => {
     const server = new CadMcpServer();
 

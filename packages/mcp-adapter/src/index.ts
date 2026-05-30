@@ -503,10 +503,12 @@ export class CadMcpServer {
   }
 
   #callProjectExtents(request: CadMcpToolCallRequest): CadMcpToolCallResult {
-    if (!isEmptyObjectOrUndefined(request.arguments)) {
+    const args = request.arguments;
+
+    if (!isProjectExtentsToolArguments(args)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_extents does not accept arguments."
+        "cad.project_extents expects optional arguments shaped as { derivedExactMetadata?: object[] }."
       );
     }
 
@@ -516,7 +518,14 @@ export class CadMcpServer {
         adapterVersion: ADAPTER_VERSION,
         query: {
           version: "cadops.v1",
-          query: { query: "project.extents" }
+          query: {
+            query: "project.extents",
+            ...(args?.derivedExactMetadata
+              ? {
+                  derivedExactMetadata: args.derivedExactMetadata
+                }
+              : {})
+          }
         }
       })
     );
@@ -964,7 +973,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      properties: {}
+      properties: {
+        derivedExactMetadata: {
+          type: "array",
+          description:
+            "Optional derived exact metadata snapshots used as read-only cache input for V6 result body extents.",
+          items: {
+            type: "object"
+          }
+        }
+      }
     }
   },
   {
@@ -1215,6 +1233,25 @@ function isBodyTopologyToolArguments(value: unknown): value is {
     value.bodyId !== "" &&
     (value.derivedExactMetadata === undefined ||
       isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+  );
+}
+
+type ProjectExtentsToolArguments = {
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+};
+
+function isProjectExtentsToolArguments(
+  value: unknown
+): value is ProjectExtentsToolArguments | undefined {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      Object.keys(value).every((key) => key === "derivedExactMetadata") &&
+      (value.derivedExactMetadata === undefined ||
+        (Array.isArray(value.derivedExactMetadata) &&
+          value.derivedExactMetadata.every((snapshot) =>
+            isCadBodyDerivedExactMetadataSnapshot(snapshot)
+          ))))
   );
 }
 
