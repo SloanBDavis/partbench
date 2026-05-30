@@ -237,7 +237,8 @@ export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
   | ExactRevolveMetadataSource
-  | ExactHoleMetadataSource;
+  | ExactHoleMetadataSource
+  | ExactEdgeFinishMetadataSource;
 
 export interface ExactExtrudeMetadataSource extends BooleanExtrudeSource {
   readonly kind: "extrude";
@@ -264,6 +265,24 @@ export interface ExactHoleMetadataSource {
   readonly target: BooleanExtrudeSource;
   readonly tool: HoleToolSource;
 }
+
+export type ExactEdgeFinishMetadataSource =
+  | {
+      readonly kind: "edgeFinish";
+      readonly operation: "chamfer";
+      readonly target: BooleanExtrudeSource;
+      readonly edgeStableId: string;
+      readonly distance: number;
+      readonly radius?: never;
+    }
+  | {
+      readonly kind: "edgeFinish";
+      readonly operation: "fillet";
+      readonly target: BooleanExtrudeSource;
+      readonly edgeStableId: string;
+      readonly radius: number;
+      readonly distance?: never;
+    };
 
 export interface ExactBodyMetadataRequest {
   readonly id: string;
@@ -645,58 +664,16 @@ function validateRequest(
       };
     }
   } else if (request.op === "geometry.edgeFinish") {
-    if (
-      !isValidBooleanExtrudeSource(request.target) ||
-      !isValidEdgeFinishOperation(request.operation) ||
-      !isValidEdgeFinishAmount(request)
-    ) {
-      return {
-        code: "INVALID_DIMENSIONS",
-        message:
-          "Edge finish requests require a supported authored extrude target source, operation chamfer or fillet, one generated edge stable ID, and a positive finite distance or radius."
-      };
-    }
+    const edgeFinishError = validateEdgeFinishRequest(request);
 
-    if (request.target.profile.kind !== "rectangle") {
-      return {
-        code: "UNSUPPORTED_PROFILE",
-        message:
-          "Edge finish feasibility currently supports rectangle extrude targets only."
-      };
-    }
-
-    const edgeRole = parseEdgeFinishEdgeRole(request.edgeStableId);
-
-    if (!edgeRole) {
-      return {
-        code: "INVALID_EDGE_ROLE",
-        message:
-          "Edge finish requests require a generated rectangle edge stable ID with a supported semantic edge role."
-      };
-    }
-
-    if (!isRectangleEdgeFinishRole(edgeRole)) {
-      return {
-        code: "UNSUPPORTED_EDGE",
-        message:
-          "Edge finish feasibility currently supports generated rectangle extrude edges only."
-      };
-    }
-
-    if (isEdgeFinishAmountTooLarge(request, edgeRole)) {
-      return {
-        code: "EDGE_FINISH_TOO_LARGE",
-        message:
-          "Edge finish distance or radius is too large for the selected rectangle edge in this feasibility path."
-      };
+    if (edgeFinishError) {
+      return edgeFinishError;
     }
   } else if (request.op === "geometry.exactBodyMetadata") {
-    if (!isValidExactBodyMetadataSource(request.source)) {
-      return {
-        code: "INVALID_DIMENSIONS",
-        message:
-          "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, or hole source data with finite positive dimensions."
-      };
+    const metadataSourceError = validateExactBodyMetadataSource(request.source);
+
+    if (metadataSourceError) {
+      return metadataSourceError;
     }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
@@ -1273,11 +1250,65 @@ function getRectangleEdgeFinishMaximumAmount(
     : Math.min(profileHeight, depth) / 2;
 }
 
-function isValidExactBodyMetadataSource(
+function validateEdgeFinishRequest(
+  request: EdgeFinishRequest
+): GeometryKernelError | undefined {
+  if (
+    !isValidBooleanExtrudeSource(request.target) ||
+    !isValidEdgeFinishOperation(request.operation) ||
+    !isValidEdgeFinishAmount(request)
+  ) {
+    return {
+      code: "INVALID_DIMENSIONS",
+      message:
+        "Edge finish requests require a supported authored extrude target source, operation chamfer or fillet, one generated edge stable ID, and a positive finite distance or radius."
+    };
+  }
+
+  if (request.target.profile.kind !== "rectangle") {
+    return {
+      code: "UNSUPPORTED_PROFILE",
+      message:
+        "Edge finish feasibility currently supports rectangle extrude targets only."
+    };
+  }
+
+  const edgeRole = parseEdgeFinishEdgeRole(request.edgeStableId);
+
+  if (!edgeRole) {
+    return {
+      code: "INVALID_EDGE_ROLE",
+      message:
+        "Edge finish requests require a generated rectangle edge stable ID with a supported semantic edge role."
+    };
+  }
+
+  if (!isRectangleEdgeFinishRole(edgeRole)) {
+    return {
+      code: "UNSUPPORTED_EDGE",
+      message:
+        "Edge finish feasibility currently supports generated rectangle extrude edges only."
+    };
+  }
+
+  if (isEdgeFinishAmountTooLarge(request, edgeRole)) {
+    return {
+      code: "EDGE_FINISH_TOO_LARGE",
+      message:
+        "Edge finish distance or radius is too large for the selected rectangle edge in this feasibility path."
+    };
+  }
+
+  return undefined;
+}
+
+function validateExactBodyMetadataSource(
   source: ExactBodyMetadataSource
-): boolean {
+): GeometryKernelError | undefined {
   if (source.kind === "extrude") {
-    return isValidBooleanExtrudeSource(source);
+    return isValidBooleanExtrudeSource(source)
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
   }
 
   if (source.kind === "booleanExtrudes") {
@@ -1290,34 +1321,67 @@ function isValidExactBodyMetadataSource(
       tool: source.tool
     };
 
-    return (
-      isBooleanOperation(source.operation) &&
+    return isBooleanOperation(source.operation) &&
       isValidBooleanExtrudeSource(source.target) &&
       isValidBooleanExtrudeSource(source.tool) &&
       isSupportedBooleanExtrudeProfilePair(request)
-    );
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
   }
 
   if (source.kind === "revolve") {
-    return (
-      isSketchPlane(source.sketchPlane) &&
+    return isSketchPlane(source.sketchPlane) &&
       isValidExtrudeProfile(source.profile) &&
       isValidRevolveAxis(source.axis) &&
       isPositiveFiniteNumber(source.angleDegrees) &&
       source.angleDegrees <= 360 &&
       (source.placementFrame === undefined ||
         isValidBooleanExtrudePlacementFrame(source.placementFrame))
-    );
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
   }
 
   if (source.kind === "hole") {
-    return (
-      isValidBooleanExtrudeSource(source.target) &&
+    return isValidBooleanExtrudeSource(source.target) &&
       isValidHoleToolSource(source.tool)
-    );
+      ? undefined
+      : createInvalidExactBodyMetadataSourceError();
   }
 
-  return false;
+  if (source.kind === "edgeFinish") {
+    const request: EdgeFinishRequest =
+      source.operation === "chamfer"
+        ? {
+            id: "exact-metadata-validation",
+            version: "geometry-kernel.v1",
+            op: "geometry.edgeFinish",
+            operation: source.operation,
+            target: source.target,
+            edgeStableId: source.edgeStableId,
+            distance: source.distance
+          }
+        : {
+            id: "exact-metadata-validation",
+            version: "geometry-kernel.v1",
+            op: "geometry.edgeFinish",
+            operation: source.operation,
+            target: source.target,
+            edgeStableId: source.edgeStableId,
+            radius: source.radius
+          };
+
+    return validateEdgeFinishRequest(request);
+  }
+
+  return createInvalidExactBodyMetadataSourceError();
+}
+
+function createInvalidExactBodyMetadataSourceError(): GeometryKernelError {
+  return {
+    code: "INVALID_DIMENSIONS",
+    message:
+      "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, or edgeFinish source data with finite positive dimensions."
+  };
 }
 
 function isEmptyMesh(mesh: GeometryKernelMeshResult): boolean {
@@ -1336,7 +1400,8 @@ function isInvalidExactBodyMetadata(
     (metadata.sourceKind !== "extrude" &&
       metadata.sourceKind !== "booleanExtrudes" &&
       metadata.sourceKind !== "revolve" &&
-      metadata.sourceKind !== "hole") ||
+      metadata.sourceKind !== "hole" &&
+      metadata.sourceKind !== "edgeFinish") ||
     !isVec3(metadata.bounds.min) ||
     !isVec3(metadata.bounds.max) ||
     !isVec3(metadata.centroid) ||

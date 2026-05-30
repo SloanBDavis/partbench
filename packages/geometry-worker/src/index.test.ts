@@ -556,6 +556,57 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("creates a typed exact body metadata worker request for edge-finish sources", () => {
+    expect(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_edge_finish_exact_metadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+          radius: 0.2
+        }
+      })
+    ).toEqual({
+      id: "worker_req_edge_finish_exact_metadata",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payload: {
+        id: "worker_req_edge_finish_exact_metadata:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+          radius: 0.2
+        }
+      }
+    });
+  });
+
   it("tessellates one box asynchronously through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });
     const responsePromise = worker.execute(
@@ -1160,6 +1211,57 @@ describe("geometry-worker", () => {
       72 - Math.PI * 0.5,
       5
     );
+    expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
+
+  it("returns edge-finish exact body metadata through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_edge_finish_exact_metadata_execute",
+        payloadId: "geometry_req_edge_finish_exact_metadata_execute",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 4
+          },
+          edgeStableId: "generated:edge:body:1:start:uMin",
+          distance: 0.25
+        }
+      })
+    );
+
+    expect(
+      response.response.ok ||
+        response.response.error.code === "UNAVAILABLE_BINDING"
+    ).toBe(true);
+    expect(response).toMatchObject({
+      id: "worker_req_edge_finish_exact_metadata_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payloadId: "geometry_req_edge_finish_exact_metadata_execute",
+      transferables: [],
+      response: {
+        id: "geometry_req_edge_finish_exact_metadata_execute",
+        op: "geometry.exactBodyMetadata",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      return;
+    }
+
+    expect(response.response.metadata.sourceKind).toBe("edgeFinish");
+    expect(response.response.metadata.volume).toBeGreaterThan(0);
     expect(response.response.metadata.measurementSource).toBe("kernel-derived");
   }, 120_000);
 

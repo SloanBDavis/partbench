@@ -49,6 +49,7 @@ import {
   createOcctExactBodyMetadataWithLoader,
   type OcctExactBodyMetadata,
   type OcctExactBodyMetadataInput,
+  type OcctExactEdgeFinishMetadataSource,
   type OcctExactHoleMetadataSource
 } from "./exactMetadata";
 import {
@@ -68,6 +69,7 @@ export type {
   OcctTorusInput,
   OcctExactBodyMetadata,
   OcctExactBodyMetadataInput,
+  OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
   OcctRevolveProfileInput,
   OcctMeshData

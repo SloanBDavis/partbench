@@ -13502,6 +13502,236 @@ describe("edge finishing feature source models", () => {
       })
     );
   });
+
+  it("accepts derived exact metadata snapshots for authored chamfer and fillet bodies without persisting them", () => {
+    const chamferEngine = createRectangleExtrudeEngine();
+    const filletEngine = createRectangleExtrudeEngine();
+
+    chamferEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    });
+    filletEngine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_1",
+      bodyId: "body_fillet_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:longitudinal:uMax:vMax",
+      radius: 0.2
+    });
+
+    const chamferJson = exportCadProjectJson(chamferEngine);
+    const filletJson = exportCadProjectJson(filletEngine);
+    const chamferCacheKey = readBodyTopologySourceCacheKey(
+      chamferEngine,
+      "body_chamfer_1"
+    );
+    const filletCacheKey = readBodyTopologySourceCacheKey(
+      filletEngine,
+      "body_fillet_1"
+    );
+
+    expect(
+      chamferEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_chamfer_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_chamfer_1",
+            sourceIdentityCacheKey: chamferCacheKey,
+            volume: 23.5,
+            faceCount: 7,
+            edgeCount: 15,
+            vertexCount: 10
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_chamfer_1",
+        sourceKind: "authoredChamfer",
+        status: "unsupported",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 23.5,
+          topologyCounts: { faceCount: 7, edgeCount: 15, vertexCount: 10 }
+        },
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_chamfer_1"
+          }
+        ]
+      }
+    });
+
+    expect(
+      filletEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_fillet_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_fillet_1",
+            sourceIdentityCacheKey: filletCacheKey,
+            volume: 23.8,
+            faceCount: 8,
+            edgeCount: 18,
+            vertexCount: 12
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_fillet_1",
+        sourceKind: "authoredFillet",
+        status: "unsupported",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 23.8,
+          topologyCounts: { faceCount: 8, edgeCount: 18, vertexCount: 12 }
+        },
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_fillet_1"
+          }
+        ]
+      }
+    });
+
+    expect(
+      chamferEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferences",
+          bodyId: "body_chamfer_1"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: { code: "UNSUPPORTED_BODY_REFERENCES" }
+    });
+    expect(
+      filletEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferences",
+          bodyId: "body_fillet_1"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: { code: "UNSUPPORTED_BODY_REFERENCES" }
+    });
+
+    expect(exportCadProjectJson(chamferEngine)).toBe(chamferJson);
+    expect(exportCadProjectJson(filletEngine)).toBe(filletJson);
+  });
+
+  it("reports stale and missing derived edge-finish exact metadata snapshots", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    });
+
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body_chamfer_1"
+    );
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_chamfer_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_chamfer_1",
+            sourceIdentityCacheKey: "old-edge-finish-cache-key"
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_chamfer_1",
+        status: "stale",
+        exactGeometryAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_chamfer_1"
+          },
+          {
+            code: "STALE_BODY_TOPOLOGY",
+            bodyId: "body_chamfer_1",
+            expected: sourceIdentityCacheKey,
+            received: "old-edge-finish-cache-key"
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_chamfer_1",
+          derivedExactMetadata: {
+            bodyId: "body_chamfer_1",
+            sourceIdentityCacheKey,
+            status: "ready"
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_chamfer_1",
+        status: "kernel-failed",
+        exactGeometryAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_chamfer_1"
+          },
+          {
+            code: "INVALID_EXACT_GEOMETRY_RESULT",
+            bodyId: "body_chamfer_1"
+          }
+        ]
+      }
+    });
+  });
 });
 
 function expectProjectImportError(

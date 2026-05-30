@@ -309,20 +309,23 @@ or persist raw OCCT edge indexes. Instead, it parses the semantic rectangle
 edge role and matches the expected source-derived edge endpoints against the
 transient OCCT target shape.
 
-Results are serializable mesh data only. They are derived geometry, are not
-persisted, do not change project schema, and do not expose generated references
-for chamfer/fillet result bodies. The geometry-kernel validation path rejects
-circle targets, circular/unsupported edges, malformed or stale generated edge
-roles, non-positive distance/radius values, malformed placement frames, and
-conservatively too-large distance/radius values before invoking OCCT. Runtime
-missing bindings, kernel failures, empty results, and invalid mesh results are
-returned as structured diagnostics.
+Results remain derived data. The mesh path returns serializable mesh data, and
+the same edge-finish result-shape construction now feeds
+`geometry.exactBodyMetadata` for kernel-derived bounds, mass properties,
+centroid, topology counts, and diagnostics in the same rectangle-edge subset.
+Neither path persists B-rep/topology data, changes project schema, or exposes
+generated references for chamfer/fillet result bodies. The geometry-kernel
+validation path rejects circle targets, circular/unsupported edges, malformed
+or stale generated edge roles, non-positive distance/radius values, malformed
+placement frames, and conservatively too-large distance/radius values before
+invoking OCCT. Runtime missing bindings, kernel failures, empty results, and
+invalid mesh or exact metadata results are returned as structured diagnostics.
 
 Circle target edge finishing remains unsupported in this slice because the
 semantic circular-edge-to-OCCT-edge mapping and stable result-topology behavior
 need a separate, explicit design. App derived-geometry wiring, UI controls,
-exact chamfer/fillet metadata, measurements/extents, and generated references
-for edge-finished result bodies remain future work.
+measurements/extents, exact topology naming, and generated references for
+edge-finished result bodies remain future work.
 
 ## Boolean Feasibility Risks
 

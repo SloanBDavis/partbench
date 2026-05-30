@@ -7,6 +7,7 @@ import type {
 
 import type {
   DerivedBooleanExtrudeGeometrySource,
+  DerivedEdgeFinishGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometrySource,
   DerivedHoleGeometrySource,
@@ -31,7 +32,8 @@ export type DerivedExactMetadataSource =
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
-  | DerivedHoleGeometrySource;
+  | DerivedHoleGeometrySource
+  | DerivedEdgeFinishGeometrySource;
 
 export type DerivedExactMetadataEntry =
   | DerivedExactMetadataUnsupportedEntry
@@ -424,6 +426,38 @@ export function createExactMetadataRuntimeInput(
     };
   }
 
+  if (source.kind === "edgeFinish") {
+    const target = {
+      sketchPlane: source.target.sketchPlane,
+      profile: source.target.profile,
+      depth: source.target.depth,
+      side: source.target.side,
+      ...(source.target.placementFrame
+        ? { placementFrame: source.target.placementFrame }
+        : {})
+    };
+
+    return {
+      id: source.id,
+      source:
+        source.operation === "chamfer"
+          ? {
+              kind: "edgeFinish",
+              operation: source.operation,
+              target,
+              edgeStableId: source.edgeStableId,
+              distance: source.distance
+            }
+          : {
+              kind: "edgeFinish",
+              operation: source.operation,
+              target,
+              edgeStableId: source.edgeStableId,
+              radius: source.radius
+            }
+    };
+  }
+
   return {
     id: source.id,
     source: {
@@ -515,7 +549,8 @@ function isExactMetadataSource(
     source.kind === "extrude" ||
     source.kind === "extrudeBoolean" ||
     source.kind === "revolve" ||
-    source.kind === "hole"
+    source.kind === "hole" ||
+    source.kind === "edgeFinish"
   );
 }
 
@@ -549,6 +584,38 @@ function getUnsupportedExactMetadataSourceMessage(
     return undefined;
   }
 
+  if (source.kind === "edgeFinish") {
+    if (source.placementError) {
+      return source.placementError;
+    }
+
+    if (source.target.profile.kind !== "rectangle") {
+      return "Exact metadata for edge finishing currently supports rectangle target extrudes only.";
+    }
+
+    const edgeReference = parseGeneratedRectangleEdgeStableId(
+      source.edgeStableId
+    );
+
+    if (!edgeReference) {
+      return "Exact metadata for edge finishing currently supports generated rectangle edge references only.";
+    }
+
+    if (edgeReference.bodyId !== source.target.id) {
+      return "Exact metadata for edge finishing requires the selected edge to belong to the target body.";
+    }
+
+    const scalar =
+      source.operation === "chamfer" ? source.distance : source.radius;
+    const scalarLabel = source.operation === "chamfer" ? "distance" : "radius";
+
+    if (!Number.isFinite(scalar) || scalar <= 0) {
+      return `Exact metadata edge-finish ${scalarLabel} must be a positive finite number.`;
+    }
+
+    return undefined;
+  }
+
   if (source.placementError) {
     return source.placementError;
   }
@@ -570,6 +637,28 @@ function getUnsupportedExactMetadataSourceMessage(
     source.target.profile.kind !== "circle"
   ) {
     return "Exact metadata for cut currently supports rectangle or circle target extrudes only.";
+  }
+
+  return undefined;
+}
+
+function parseGeneratedRectangleEdgeStableId(
+  stableId: string
+): { readonly bodyId: string } | undefined {
+  const capEdge = stableId.match(
+    /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
+  );
+
+  if (capEdge) {
+    return { bodyId: capEdge[1] };
+  }
+
+  const longitudinalEdge = stableId.match(
+    /^generated:edge:([^:]+):longitudinal:(uMin|uMax):(vMin|vMax)$/
+  );
+
+  if (longitudinalEdge) {
+    return { bodyId: longitudinalEdge[1] };
   }
 
   return undefined;

@@ -168,6 +168,22 @@ export interface DerivedExactMetadataInput {
         readonly kind: "hole";
         readonly target: DerivedGeometryBooleanExtrudeInputSource;
         readonly tool: DerivedGeometryHoleInput["tool"];
+      }
+    | {
+        readonly kind: "edgeFinish";
+        readonly operation: "chamfer";
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly edgeStableId: string;
+        readonly distance: number;
+        readonly radius?: never;
+      }
+    | {
+        readonly kind: "edgeFinish";
+        readonly operation: "fillet";
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly edgeStableId: string;
+        readonly radius: number;
+        readonly distance?: never;
       };
 }
 

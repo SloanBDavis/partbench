@@ -119,10 +119,40 @@ export function createOcctEdgeFinishMeshWithInstance(
   input: OcctEdgeFinishInput
 ): OcctMeshData {
   assertEdgeFinishMeshBindings(oc);
-  validateEdgeFinishInput(input);
 
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
+  return withOcctEdgeFinishResultShape(oc, input, (resultShape) => {
+    const mesh = new oc.BRepMesh_IncrementalMesh_2(
+      resultShape,
+      linearDeflection,
+      false,
+      angularDeflection,
+      false
+    );
+
+    try {
+      if (!mesh.IsDone()) {
+        throw new Error(
+          `Open CASCADE meshing failed with status ${mesh.GetStatusFlags()}.`
+        );
+      }
+
+      return readTriangulatedShape(oc, resultShape, "edgeFinish");
+    } finally {
+      mesh.delete();
+    }
+  });
+}
+
+export function withOcctEdgeFinishResultShape<T>(
+  oc: OpenCascadeInstance,
+  input: OcctEdgeFinishInput,
+  readResult: (shape: TopoDS_Shape) => T
+): T {
+  assertEdgeFinishShapeBindings(oc);
+  validateEdgeFinishInput(input);
+
   const targetShape = makeBooleanExtrudeShape(oc, input.target);
   const edge = findRectangleEdge(oc, targetShape.Shape(), input);
   const range = new oc.Message_ProgressRange_1();
@@ -154,25 +184,8 @@ export function createOcctEdgeFinishMeshWithInstance(
     }
 
     const resultShape = builder.Shape();
-    const mesh = new oc.BRepMesh_IncrementalMesh_2(
-      resultShape,
-      linearDeflection,
-      false,
-      angularDeflection,
-      false
-    );
 
-    try {
-      if (!mesh.IsDone()) {
-        throw new Error(
-          `Open CASCADE meshing failed with status ${mesh.GetStatusFlags()}.`
-        );
-      }
-
-      return readTriangulatedShape(oc, resultShape, "edgeFinish");
-    } finally {
-      mesh.delete();
-    }
+    return readResult(resultShape);
   } finally {
     builder?.delete();
     range.delete();
@@ -542,6 +555,24 @@ function pointsAreClose(
 }
 
 function assertEdgeFinishMeshBindings(oc: OpenCascadeInstance): void {
+  assertEdgeFinishShapeBindings(oc);
+
+  const bindings: readonly [string, unknown][] = [
+    ["BRepMesh_IncrementalMesh_2", oc.BRepMesh_IncrementalMesh_2]
+  ];
+  const missing = bindings
+    .filter(([, value]) => value === undefined || value === null)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw {
+      code: "UNAVAILABLE_BINDING",
+      message: `Open CASCADE edge finish mesh bindings are unavailable: ${missing.join(", ")}.`
+    } satisfies GeometryKernelLikeError;
+  }
+}
+
+function assertEdgeFinishShapeBindings(oc: OpenCascadeInstance): void {
   const bindings: readonly [string, unknown][] = [
     ["BRepPrimAPI_MakeBox_5", oc.BRepPrimAPI_MakeBox_5],
     ["BRepFilletAPI_MakeChamfer", oc.BRepFilletAPI_MakeChamfer],
@@ -551,7 +582,6 @@ function assertEdgeFinishMeshBindings(oc: OpenCascadeInstance): void {
       oc.ChFi3d_FilletShape?.ChFi3d_Rational
     ],
     ["Message_ProgressRange_1", oc.Message_ProgressRange_1],
-    ["BRepMesh_IncrementalMesh_2", oc.BRepMesh_IncrementalMesh_2],
     ["TopExp_Explorer_2", oc.TopExp_Explorer_2],
     ["TopAbs_ShapeEnum.TopAbs_EDGE", oc.TopAbs_ShapeEnum?.TopAbs_EDGE],
     ["TopoDS.Edge_1", oc.TopoDS?.Edge_1],
@@ -569,7 +599,7 @@ function assertEdgeFinishMeshBindings(oc: OpenCascadeInstance): void {
   if (missing.length > 0) {
     throw {
       code: "UNAVAILABLE_BINDING",
-      message: `Open CASCADE edge finish bindings are unavailable: ${missing.join(", ")}.`
+      message: `Open CASCADE edge finish shape bindings are unavailable: ${missing.join(", ")}.`
     } satisfies GeometryKernelLikeError;
   }
 }

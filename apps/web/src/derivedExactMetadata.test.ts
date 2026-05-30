@@ -20,7 +20,10 @@ import {
   createDerivedGeometryCacheKey,
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
+  type DerivedChamferGeometrySource,
+  type DerivedEdgeFinishGeometrySource,
   type DerivedExtrudeGeometrySource,
+  type DerivedFilletGeometrySource,
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource
@@ -171,6 +174,47 @@ describe("derivedExactMetadata", () => {
     );
     expect(createDerivedExactMetadataCacheKey(holeSource)).not.toBe(
       createDerivedExactMetadataCacheKey(negativeHoleSource)
+    );
+
+    const chamferSource = createChamferSource("body_chamfer_1");
+    const editedChamferTarget: DerivedEdgeFinishGeometrySource = {
+      ...chamferSource,
+      target: {
+        ...chamferSource.target,
+        depth: 5
+      }
+    };
+    const editedChamferEdge: DerivedEdgeFinishGeometrySource = {
+      ...chamferSource,
+      edgeStableId: "generated:edge:body_rect_1:end:uMax"
+    };
+    const editedChamferDistance: DerivedEdgeFinishGeometrySource = {
+      ...chamferSource,
+      distance: 0.5
+    };
+    const filletSource = createFilletSource("body_fillet_1");
+    const editedFilletRadius: DerivedEdgeFinishGeometrySource = {
+      ...filletSource,
+      radius: 0.4
+    };
+
+    expect(
+      JSON.parse(createDerivedExactMetadataCacheKey(chamferSource))
+    ).toEqual({
+      kind: "exactMetadata",
+      source: createDerivedGeometryCacheKey(chamferSource)
+    });
+    expect(createDerivedExactMetadataCacheKey(chamferSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedChamferTarget)
+    );
+    expect(createDerivedExactMetadataCacheKey(chamferSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedChamferEdge)
+    );
+    expect(createDerivedExactMetadataCacheKey(chamferSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedChamferDistance)
+    );
+    expect(createDerivedExactMetadataCacheKey(filletSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedFilletRadius)
     );
   });
 
@@ -663,6 +707,78 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("requests and caches exact metadata for authored edge-finish sources", async () => {
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+    const chamferSource = createChamferSource("body_chamfer_1");
+    const filletSource = createFilletSource("body_fillet_1");
+
+    service.reconcile([chamferSource, filletSource]);
+    await flushPromises();
+
+    expect(runtime.exactInputs).toEqual([
+      {
+        id: "body_chamfer_1",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          edgeStableId: "generated:edge:body_rect_1:start:uMin",
+          distance: 0.25
+        }
+      },
+      {
+        id: "body_fillet_1",
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          edgeStableId: "generated:edge:body_rect_1:longitudinal:uMax:vMax",
+          radius: 0.2
+        }
+      }
+    ]);
+    expect(service.getSnapshot().entries).toMatchObject([
+      {
+        bodyId: "body_chamfer_1",
+        sourceKind: "edgeFinish",
+        status: "ready",
+        metadata: { sourceKind: "edgeFinish", volume: 10 }
+      },
+      {
+        bodyId: "body_fillet_1",
+        sourceKind: "edgeFinish",
+        status: "ready",
+        metadata: { sourceKind: "edgeFinish", volume: 10 }
+      }
+    ]);
+  });
+
   it("marks unsupported sources without requesting exact metadata", () => {
     const snapshots: DerivedExactMetadataSnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -703,6 +819,18 @@ describe("derivedExactMetadata", () => {
         ...createHoleSource("body_stale_hole_attachment"),
         placementError: "Attachment unresolved for hole."
       },
+      {
+        ...createChamferSource("body_stale_edge_finish_attachment"),
+        placementError: "Attachment unresolved for edge finish."
+      },
+      {
+        ...createChamferSource("body_unsupported_circle_edge"),
+        edgeStableId: "generated:edge:body_rect_1:start:circular"
+      },
+      {
+        ...createChamferSource("body_unsupported_circle_target"),
+        target: createCircleExtrudeSource("body_rect_1")
+      },
       unsupportedBoolean
     ]);
 
@@ -724,6 +852,23 @@ describe("derivedExactMetadata", () => {
         bodyId: "body_stale_hole_attachment",
         status: "unsupported",
         message: "Attachment unresolved for hole."
+      },
+      {
+        bodyId: "body_stale_edge_finish_attachment",
+        status: "unsupported",
+        message: "Attachment unresolved for edge finish."
+      },
+      {
+        bodyId: "body_unsupported_circle_edge",
+        status: "unsupported",
+        message:
+          "Exact metadata for edge finishing currently supports generated rectangle edge references only."
+      },
+      {
+        bodyId: "body_unsupported_circle_target",
+        status: "unsupported",
+        message:
+          "Exact metadata for edge finishing currently supports rectangle target extrudes only."
       },
       {
         bodyId: "body_cut_unsupported",
@@ -960,6 +1105,60 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("ignores stale edge-finish exact metadata after target, edge, and scalar edits", async () => {
+    const initialSource = createChamferSource("body_chamfer_1");
+    const editedSource: DerivedEdgeFinishGeometrySource = {
+      ...initialSource,
+      target: {
+        ...initialSource.target,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 8,
+          height: 4
+        }
+      },
+      edgeStableId: "generated:edge:body_rect_1:end:uMax",
+      distance: 0.4
+    };
+    const first = createDeferred<DerivedExactMetadataResult>();
+    const second = createDeferred<DerivedExactMetadataResult>();
+    const snapshots: DerivedExactMetadataSnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      input.source.kind === "edgeFinish" &&
+      input.source.operation === "chamfer" &&
+      input.source.distance === 0.25
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    first.resolve(createMetadataResult("body_chamfer_1", "edgeFinish"));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      bodyId: "body_chamfer_1",
+      status: "pending",
+      cacheKey: createDerivedExactMetadataCacheKey(editedSource)
+    });
+
+    second.resolve(createMetadataResult("body_chamfer_1", "edgeFinish", 21));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      bodyId: "body_chamfer_1",
+      status: "ready",
+      cacheKey: createDerivedExactMetadataCacheKey(editedSource),
+      metadata: { sourceKind: "edgeFinish", volume: 21 }
+    });
+  });
+
   it("builds exact metadata runtime input with placement frames intact", () => {
     const source: DerivedExtrudeGeometrySource = {
       ...createExtrudeSource("body_attached_1"),
@@ -1036,6 +1235,36 @@ describe("derivedExactMetadata", () => {
     await flushPromises();
     expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
       "body_hole_1"
+    ]);
+  });
+
+  it("removes edge-finish exact metadata entries across feature delete and undo", async () => {
+    const engine = createChamferEngine();
+    const service = new DerivedExactMetadataService({
+      runtime: createRuntime(async (input) =>
+        createMetadataResult(input.id, input.source.kind)
+      ),
+      onChange: () => {}
+    });
+
+    service.reconcile(getDerivedSources(engine));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_chamfer_1"
+    ]);
+
+    engine.apply({ op: "feature.delete", id: "feat_chamfer_1" });
+    service.reconcile(getDerivedSources(engine));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_rect_1"
+    ]);
+
+    engine.undo();
+    service.reconcile(getDerivedSources(engine));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_chamfer_1"
     ]);
   });
 });
@@ -1118,9 +1347,45 @@ function createHoleSource(id: string): DerivedHoleGeometrySource {
   };
 }
 
+function createChamferSource(id: string): DerivedChamferGeometrySource {
+  return {
+    id,
+    kind: "edgeFinish",
+    operation: "chamfer",
+    target: {
+      id: "body_rect_1",
+      kind: "extrude",
+      sketchPlane: "XY",
+      profile: {
+        kind: "rectangle",
+        center: [0, 0],
+        width: 6,
+        height: 4
+      },
+      depth: 3,
+      side: "positive"
+    },
+    edgeStableId: "generated:edge:body_rect_1:start:uMin",
+    distance: 0.25
+  };
+}
+
+function createFilletSource(id: string): DerivedFilletGeometrySource {
+  const chamfer = createChamferSource(id);
+
+  return {
+    id,
+    kind: "edgeFinish",
+    operation: "fillet",
+    target: chamfer.target,
+    edgeStableId: "generated:edge:body_rect_1:longitudinal:uMax:vMax",
+    radius: 0.2
+  };
+}
+
 function createMetadataResult(
   objectId: string,
-  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole",
+  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole" | "edgeFinish",
   volume = 10
 ): DerivedExactMetadataResult {
   return {
@@ -1153,7 +1418,7 @@ function createMetadataResult(
 
 function createReadyExactMetadataEntry(
   bodyId: string,
-  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole",
+  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole" | "edgeFinish",
   volume = 10
 ): DerivedExactMetadataEntry {
   return {
@@ -1333,6 +1598,21 @@ function createHoleEngine(): CadEngine {
       direction: "positive"
     }
   ]);
+
+  return engine;
+}
+
+function createChamferEngine(): CadEngine {
+  const engine = createExtrudedRectangleEngine();
+
+  engine.apply({
+    op: "feature.chamfer",
+    id: "feat_chamfer_1",
+    bodyId: "body_chamfer_1",
+    targetBodyId: "body_rect_1",
+    edgeStableId: "generated:edge:body_rect_1:start:uMin",
+    distance: 0.25
+  });
 
   return engine;
 }

@@ -629,9 +629,11 @@ references, and non-positive or non-finite scalars are rejected. Geometry-worker
 execution can now rebuild supported rectangle-edge chamfer/fillet result meshes
 as derived geometry through `geometry.edgeFinish`, including named references
 when the app can resolve the name to a current generated edge snapshot on the
-target body. Circle target edge finishing, UI controls, exact metadata, and
-stable generated references for chamfer/fillet result bodies are not
-implemented in this V16 slice.
+target body. Supported rectangle-edge chamfer/fillet result bodies can also
+report kernel-derived exact metadata/topology status through read-only derived
+snapshots. Circle target edge finishing, exact topology naming, and stable
+generated references for chamfer/fillet result bodies are not implemented in
+this V16 slice.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived

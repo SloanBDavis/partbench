@@ -12,13 +12,19 @@ import {
   type OcctRevolveSketchPlane
 } from "./revolveProfile";
 import { withOcctHoleResultShape, type OcctHoleToolSource } from "./hole";
+import {
+  withOcctEdgeFinishResultShape,
+  type OcctChamferEdgeFinishInput,
+  type OcctFilletEdgeFinishInput
+} from "./edgeFinish";
 import type { OcctLoader } from "./tessellateBox";
 
 export type OcctExactBodyMetadataSource =
   | OcctExactExtrudeMetadataSource
   | OcctExactBooleanExtrudesMetadataSource
   | OcctExactRevolveMetadataSource
-  | OcctExactHoleMetadataSource;
+  | OcctExactHoleMetadataSource
+  | OcctExactEdgeFinishMetadataSource;
 
 export interface OcctExactExtrudeMetadataSource extends OcctBooleanExtrudeSource {
   readonly kind: "extrude";
@@ -45,6 +51,20 @@ export interface OcctExactHoleMetadataSource {
   readonly target: OcctBooleanExtrudeSource;
   readonly tool: OcctHoleToolSource;
 }
+
+export type OcctExactEdgeFinishMetadataSource =
+  | ({
+      readonly kind: "edgeFinish";
+    } & Omit<
+      OcctChamferEdgeFinishInput,
+      "linearDeflection" | "angularDeflection"
+    >)
+  | ({
+      readonly kind: "edgeFinish";
+    } & Omit<
+      OcctFilletEdgeFinishInput,
+      "linearDeflection" | "angularDeflection"
+    >);
 
 export interface OcctExactBodyMetadataInput {
   readonly source: OcctExactBodyMetadataSource;
@@ -120,6 +140,12 @@ export function createOcctExactBodyMetadataWithInstance(
 
   if (input.source.kind === "hole") {
     return withOcctHoleResultShape(oc, input.source, (shape) =>
+      readExactBodyMetadata(oc, shape, input.source.kind)
+    );
+  }
+
+  if (input.source.kind === "edgeFinish") {
+    return withOcctEdgeFinishResultShape(oc, input.source, (shape) =>
       readExactBodyMetadata(oc, shape, input.source.kind)
     );
   }

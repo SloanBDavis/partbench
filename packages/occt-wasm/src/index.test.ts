@@ -399,4 +399,61 @@ describe("occt-wasm", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it(
+    "returns exact edge-finish metadata through Open CASCADE WASM",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 6,
+          height: 4
+        },
+        depth: 4
+      };
+      const chamfer = await createOcctExactBodyMetadata({
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target,
+          edgeStableId: "generated:edge:body:1:start:uMin",
+          distance: 0.25
+        }
+      });
+      const fillet = await createOcctExactBodyMetadata({
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target,
+          edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+          radius: 0.2
+        }
+      });
+
+      expect(chamfer.sourceKind).toBe("edgeFinish");
+      expect(chamfer.bounds.min[0]).toBeCloseTo(-3, 6);
+      expect(chamfer.bounds.min[1]).toBeCloseTo(-2, 6);
+      expect(chamfer.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(chamfer.bounds.max[0]).toBeCloseTo(3, 6);
+      expect(chamfer.bounds.max[1]).toBeCloseTo(2, 6);
+      expect(chamfer.bounds.max[2]).toBeCloseTo(4, 6);
+      expect(chamfer.volume).toBeLessThan(96);
+      expect(chamfer.volume).toBeGreaterThan(0);
+      expect(chamfer.surfaceArea).toBeGreaterThan(0);
+      expect(chamfer.topologyCounts.solidCount).toBe(1);
+      expect(chamfer.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(chamfer.measurementSource).toBe("kernel-derived");
+      expect(chamfer.measurementConfidence).toBe("kernel-derived");
+      expect(chamfer.diagnostics).toEqual([]);
+      expect(fillet.sourceKind).toBe("edgeFinish");
+      expect(fillet.volume).toBeLessThan(96);
+      expect(fillet.volume).toBeGreaterThan(0);
+      expect(fillet.topologyCounts.solidCount).toBe(1);
+      expect(fillet.measurementSource).toBe("kernel-derived");
+      expect(fillet.measurementConfidence).toBe("kernel-derived");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 });

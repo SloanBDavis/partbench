@@ -498,6 +498,77 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "returns exact edge-finish metadata through the isolated OCCT WASM adapter",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 6,
+          height: 4
+        },
+        depth: 4
+      };
+      const chamfer = await executeGeometryKernelRequest({
+        id: "geometry_req_chamfer_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target,
+          edgeStableId: "generated:edge:body:1:start:uMin",
+          distance: 0.25
+        }
+      });
+      const fillet = await executeGeometryKernelRequest({
+        id: "geometry_req_fillet_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "fillet",
+          target,
+          edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+          radius: 0.2
+        }
+      });
+
+      expect(chamfer.ok || chamfer.error.code === "UNAVAILABLE_BINDING").toBe(
+        true
+      );
+      expect(fillet.ok || fillet.error.code === "UNAVAILABLE_BINDING").toBe(
+        true
+      );
+
+      if (!chamfer.ok || !fillet.ok) {
+        return;
+      }
+
+      expect(chamfer.metadata.sourceKind).toBe("edgeFinish");
+      expect(chamfer.metadata.bounds.min[0]).toBeCloseTo(-3, 6);
+      expect(chamfer.metadata.bounds.min[1]).toBeCloseTo(-2, 6);
+      expect(chamfer.metadata.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(chamfer.metadata.bounds.max[0]).toBeCloseTo(3, 6);
+      expect(chamfer.metadata.bounds.max[1]).toBeCloseTo(2, 6);
+      expect(chamfer.metadata.bounds.max[2]).toBeCloseTo(4, 6);
+      expect(chamfer.metadata.volume).toBeLessThan(96);
+      expect(chamfer.metadata.volume).toBeGreaterThan(0);
+      expect(chamfer.metadata.surfaceArea).toBeGreaterThan(0);
+      expect(chamfer.metadata.topologyCounts.solidCount).toBe(1);
+      expect(chamfer.metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(chamfer.metadata.measurementSource).toBe("kernel-derived");
+      expect(fillet.metadata.sourceKind).toBe("edgeFinish");
+      expect(fillet.metadata.volume).toBeLessThan(96);
+      expect(fillet.metadata.volume).toBeGreaterThan(0);
+      expect(fillet.metadata.topologyCounts.solidCount).toBe(1);
+      expect(getGeometryResponseTransferables(chamfer)).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "maps extrude mesh bounds for negative and symmetric sides",
     async () => {
       const negative = await executeGeometryKernelRequest({
@@ -2145,6 +2216,77 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("returns exact metadata for edge-finish sources from an injected metadata factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactBodyMetadata: async (input) => ({
+        sourceKind: input.source.kind,
+        bounds: {
+          min: [-3, -2, 0],
+          max: [3, 2, 4]
+        },
+        volume: 95.8,
+        surfaceArea: 88.4,
+        centroid: [0, 0, 2],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 7,
+          edgeCount: 15,
+          vertexCount: 10
+        },
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived",
+        diagnostics: []
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_edge_finish_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 4
+          },
+          edgeStableId: "generated:edge:body:1:start:uMin",
+          distance: 0.25
+        }
+      }
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      id: "geometry_req_injected_edge_finish_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      metadata: {
+        sourceKind: "edgeFinish",
+        volume: 95.8,
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived"
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured unavailable-binding errors when exact metadata factory is absent", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -2189,6 +2331,39 @@ describe("geometry-kernel facade", () => {
       },
       warnings: []
     });
+
+    const edgeFinishResponse =
+      await executeGeometryKernelRequestWithMeshFactory(factories, {
+        id: "geometry_req_unavailable_edge_finish_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 4,
+              height: 4
+            },
+            depth: 4
+          },
+          edgeStableId: "generated:edge:body:1:start:uMin",
+          distance: 0.25
+        }
+      });
+
+    expect(edgeFinishResponse).toMatchObject({
+      ok: false,
+      id: "geometry_req_unavailable_edge_finish_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      error: {
+        code: "UNAVAILABLE_BINDING"
+      },
+      warnings: []
+    });
   });
 
   it("returns structured validation errors for unsupported exact metadata sources", async () => {
@@ -2228,8 +2403,85 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, or hole source data with finite positive dimensions."
+          "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, hole, or edgeFinish source data with finite positive dimensions."
       },
+      warnings: []
+    });
+
+    const rectangleTarget = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 4,
+        height: 4
+      },
+      depth: 4
+    };
+    const circleTarget = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_exact_edge_finish_circle_target",
+      version: "geometry-kernel.v1",
+      op: "geometry.exactBodyMetadata",
+      source: {
+        kind: "edgeFinish",
+        operation: "chamfer",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 2
+          },
+          depth: 4
+        },
+        edgeStableId: "generated:edge:body:1:start:circular",
+        distance: 0.25
+      }
+    });
+    const circularEdge = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_exact_edge_finish_circular_edge",
+      version: "geometry-kernel.v1",
+      op: "geometry.exactBodyMetadata",
+      source: {
+        kind: "edgeFinish",
+        operation: "fillet",
+        target: rectangleTarget,
+        edgeStableId: "generated:edge:body:1:start:circular",
+        radius: 0.25
+      }
+    });
+    const tooLarge = await executeGeometryKernelRequest({
+      id: "geometry_req_bad_exact_edge_finish_too_large",
+      version: "geometry-kernel.v1",
+      op: "geometry.exactBodyMetadata",
+      source: {
+        kind: "edgeFinish",
+        operation: "fillet",
+        target: rectangleTarget,
+        edgeStableId: "generated:edge:body:1:start:uMin",
+        radius: 3
+      }
+    });
+
+    expect(circleTarget).toMatchObject({
+      ok: false,
+      id: "geometry_req_bad_exact_edge_finish_circle_target",
+      op: "geometry.exactBodyMetadata",
+      error: { code: "UNSUPPORTED_PROFILE" },
+      warnings: []
+    });
+    expect(circularEdge).toMatchObject({
+      ok: false,
+      id: "geometry_req_bad_exact_edge_finish_circular_edge",
+      op: "geometry.exactBodyMetadata",
+      error: { code: "UNSUPPORTED_EDGE" },
+      warnings: []
+    });
+    expect(tooLarge).toMatchObject({
+      ok: false,
+      id: "geometry_req_bad_exact_edge_finish_too_large",
+      op: "geometry.exactBodyMetadata",
+      error: { code: "EDGE_FINISH_TOO_LARGE" },
       warnings: []
     });
   });
