@@ -22,6 +22,7 @@ import {
   type DerivedBooleanExtrudeGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
+  type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySources";
@@ -99,6 +100,77 @@ describe("derivedExactMetadata", () => {
     );
     expect(createDerivedExactMetadataCacheKey(revolveSource)).not.toBe(
       createDerivedExactMetadataCacheKey(editedAngleSource)
+    );
+
+    const holeSource = createHoleSource("body_hole_1");
+    const editedTargetSource: DerivedHoleGeometrySource = {
+      ...holeSource,
+      target: {
+        ...holeSource.target,
+        profile: {
+          kind: "rectangle",
+          center: [1, 0],
+          width: 8,
+          height: 4
+        }
+      }
+    };
+    const editedCircleSource: DerivedHoleGeometrySource = {
+      ...holeSource,
+      tool: {
+        ...holeSource.tool,
+        circle: {
+          kind: "circle",
+          center: [1, 1],
+          radius: 0.75
+        }
+      }
+    };
+    const placedHoleSource: DerivedHoleGeometrySource = {
+      ...holeSource,
+      tool: {
+        ...holeSource.tool,
+        placementFrame: {
+          origin: [0, 0, 3],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        }
+      }
+    };
+    const throughAllHoleSource: DerivedHoleGeometrySource = {
+      ...holeSource,
+      tool: {
+        ...holeSource.tool,
+        depthMode: "throughAll",
+        depth: undefined
+      }
+    };
+    const negativeHoleSource: DerivedHoleGeometrySource = {
+      ...holeSource,
+      tool: {
+        ...holeSource.tool,
+        direction: "negative"
+      }
+    };
+
+    expect(JSON.parse(createDerivedExactMetadataCacheKey(holeSource))).toEqual({
+      kind: "exactMetadata",
+      source: createDerivedGeometryCacheKey(holeSource)
+    });
+    expect(createDerivedExactMetadataCacheKey(holeSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedTargetSource)
+    );
+    expect(createDerivedExactMetadataCacheKey(holeSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(editedCircleSource)
+    );
+    expect(createDerivedExactMetadataCacheKey(holeSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(placedHoleSource)
+    );
+    expect(createDerivedExactMetadataCacheKey(holeSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(throughAllHoleSource)
+    );
+    expect(createDerivedExactMetadataCacheKey(holeSource)).not.toBe(
+      createDerivedExactMetadataCacheKey(negativeHoleSource)
     );
   });
 
@@ -322,6 +394,57 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("enriches authored hole topology with derived exact metadata while generated references remain unsupported", () => {
+    const engine = createHoleEngine();
+    const bodyId = "body_hole_1";
+    const sourceIdentityCacheKey = readBodyTopologyCacheKey(engine, bodyId);
+    const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
+      createReadyExactMetadataEntry(bodyId, "hole", 68),
+      sourceIdentityCacheKey
+    );
+
+    if (!derivedExactMetadata) {
+      throw new Error("Expected exact metadata query snapshot.");
+    }
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId,
+        derivedExactMetadata
+      }
+    });
+    const generatedReferences = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId,
+        sourceKind: "authoredHole",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 68
+        }
+      }
+    });
+    expect(generatedReferences).toMatchObject({
+      ok: false,
+      query: "body.generatedReferences",
+      error: {
+        code: "UNSUPPORTED_BODY_REFERENCES"
+      }
+    });
+  });
+
   it("requests and caches exact metadata for authored extrude sources", async () => {
     const snapshots: DerivedExactMetadataSnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -471,6 +594,75 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("requests and caches exact metadata for authored hole sources", async () => {
+    const runtime = createRuntime(async (input) =>
+      createMetadataResult(input.id, input.source.kind)
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: () => {}
+    });
+    const source: DerivedHoleGeometrySource = {
+      ...createHoleSource("body_hole_1"),
+      tool: {
+        ...createHoleSource("body_hole_1").tool,
+        depthMode: "throughAll",
+        depth: undefined,
+        direction: "negative",
+        placementFrame: {
+          origin: [0, 0, 3],
+          uAxis: [1, 0, 0],
+          vAxis: [0, 1, 0]
+        }
+      }
+    };
+
+    service.reconcile([source]);
+    await flushPromises();
+
+    expect(runtime.exactInputs).toEqual([
+      {
+        id: "body_hole_1",
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "throughAll",
+            depth: undefined,
+            direction: "negative",
+            placementFrame: {
+              origin: [0, 0, 3],
+              uAxis: [1, 0, 0],
+              vAxis: [0, 1, 0]
+            }
+          }
+        }
+      }
+    ]);
+    expect(service.getSnapshot().entries[0]).toMatchObject({
+      bodyId: "body_hole_1",
+      sourceKind: "hole",
+      status: "ready",
+      metadata: { sourceKind: "hole", volume: 10 }
+    });
+  });
+
   it("marks unsupported sources without requesting exact metadata", () => {
     const snapshots: DerivedExactMetadataSnapshot[] = [];
     const runtime = createRuntime(async (input) =>
@@ -507,6 +699,10 @@ describe("derivedExactMetadata", () => {
         ...createRevolveSource("body_stale_revolve_attachment"),
         placementError: "Attachment unresolved for revolve."
       },
+      {
+        ...createHoleSource("body_stale_hole_attachment"),
+        placementError: "Attachment unresolved for hole."
+      },
       unsupportedBoolean
     ]);
 
@@ -523,6 +719,11 @@ describe("derivedExactMetadata", () => {
         bodyId: "body_stale_revolve_attachment",
         status: "unsupported",
         message: "Attachment unresolved for revolve."
+      },
+      {
+        bodyId: "body_stale_hole_attachment",
+        status: "unsupported",
+        message: "Attachment unresolved for hole."
       },
       {
         bodyId: "body_cut_unsupported",
@@ -700,6 +901,65 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("ignores stale hole exact metadata after target and circle tool edits", async () => {
+    const initialSource = createHoleSource("body_hole_1");
+    const editedSource: DerivedHoleGeometrySource = {
+      ...initialSource,
+      target: {
+        ...initialSource.target,
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 8,
+          height: 4
+        }
+      },
+      tool: {
+        ...initialSource.tool,
+        circle: {
+          kind: "circle",
+          center: [1, 0],
+          radius: 0.75
+        }
+      }
+    };
+    const first = createDeferred<DerivedExactMetadataResult>();
+    const second = createDeferred<DerivedExactMetadataResult>();
+    const snapshots: DerivedExactMetadataSnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      input.source.kind === "hole" &&
+      input.source.target.profile.kind === "rectangle" &&
+      input.source.target.profile.width === 6
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedExactMetadataService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    first.resolve(createMetadataResult("body_hole_1", "hole"));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      bodyId: "body_hole_1",
+      status: "pending",
+      cacheKey: createDerivedExactMetadataCacheKey(editedSource)
+    });
+
+    second.resolve(createMetadataResult("body_hole_1", "hole", 44));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      bodyId: "body_hole_1",
+      status: "ready",
+      metadata: { sourceKind: "hole", volume: 44 }
+    });
+  });
+
   it("builds exact metadata runtime input with placement frames intact", () => {
     const source: DerivedExtrudeGeometrySource = {
       ...createExtrudeSource("body_attached_1"),
@@ -747,6 +1007,35 @@ describe("derivedExactMetadata", () => {
     await flushPromises();
     expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
       "body_revolve_1"
+    ]);
+  });
+
+  it("removes hole exact metadata entries across feature delete and undo", async () => {
+    const engine = createHoleEngine();
+    const service = new DerivedExactMetadataService({
+      runtime: createRuntime(async (input) =>
+        createMetadataResult(input.id, input.source.kind)
+      ),
+      onChange: () => {}
+    });
+
+    service.reconcile(getDerivedSources(engine));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_hole_1"
+    ]);
+
+    engine.apply({ op: "feature.delete", id: "feat_hole_1" });
+    service.reconcile(getDerivedSources(engine));
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_rect_1"
+    ]);
+
+    engine.undo();
+    service.reconcile(getDerivedSources(engine));
+    await flushPromises();
+    expect(service.getSnapshot().entries.map((entry) => entry.bodyId)).toEqual([
+      "body_hole_1"
     ]);
   });
 });
@@ -798,9 +1087,40 @@ function createRevolveSource(id: string): DerivedRevolveGeometrySource {
   };
 }
 
+function createHoleSource(id: string): DerivedHoleGeometrySource {
+  return {
+    id,
+    kind: "hole",
+    target: {
+      id: "body_rect_1",
+      kind: "extrude",
+      sketchPlane: "XY",
+      profile: {
+        kind: "rectangle",
+        center: [0, 0],
+        width: 6,
+        height: 4
+      },
+      depth: 3,
+      side: "positive"
+    },
+    tool: {
+      sketchPlane: "XY",
+      circle: {
+        kind: "circle",
+        center: [0, 0],
+        radius: 0.5
+      },
+      depthMode: "blind",
+      depth: 2,
+      direction: "positive"
+    }
+  };
+}
+
 function createMetadataResult(
   objectId: string,
-  sourceKind: "extrude" | "booleanExtrudes" | "revolve",
+  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole",
   volume = 10
 ): DerivedExactMetadataResult {
   return {
@@ -833,7 +1153,7 @@ function createMetadataResult(
 
 function createReadyExactMetadataEntry(
   bodyId: string,
-  sourceKind: "extrude" | "booleanExtrudes" | "revolve",
+  sourceKind: "extrude" | "booleanExtrudes" | "revolve" | "hole",
   volume = 10
 ): DerivedExactMetadataEntry {
   return {
@@ -963,6 +1283,51 @@ function createRevolvedRectangleEngine(): CadEngine {
       entityId: "rect_1",
       axis: { type: "sketchLine", sketchId: "sketch_1", entityId: "axis_1" },
       angleDegrees: 360
+    }
+  ]);
+
+  return engine;
+}
+
+function createHoleEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Target", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [0, 0],
+      width: 6,
+      height: 4
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 3
+    },
+    { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_hole",
+      id: "circle_hole",
+      center: [0, 0],
+      radius: 0.5
+    },
+    {
+      op: "feature.hole",
+      id: "feat_hole_1",
+      bodyId: "body_hole_1",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_hole",
+      circleEntityId: "circle_hole",
+      depthMode: "blind",
+      depth: 2,
+      direction: "positive"
     }
   ]);
 

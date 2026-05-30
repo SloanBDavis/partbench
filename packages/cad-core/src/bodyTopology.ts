@@ -457,7 +457,10 @@ function applyDerivedExactMetadata(
   }
 
   return applyDerivedExactMetadataIssue(topology, {
-    code: getDerivedExactMetadataIssueCode(metadata.status),
+    code: getDerivedExactMetadataIssueCode(
+      metadata.status,
+      metadata.error?.code
+    ),
     status: metadata.status,
     message:
       metadata.error?.message ??
@@ -495,8 +498,17 @@ function applyDerivedExactMetadataIssue(
 }
 
 function getDerivedExactMetadataIssueCode(
-  status: CadBodyDerivedExactMetadataSnapshot["status"]
+  status: CadBodyDerivedExactMetadataSnapshot["status"],
+  errorCode?: string
 ): CadBodyTopologyIssueCode {
+  if (errorCode === "EMPTY_RESULT") {
+    return "EMPTY_EXACT_GEOMETRY_RESULT";
+  }
+
+  if (errorCode === "INVALID_RESULT") {
+    return "INVALID_EXACT_GEOMETRY_RESULT";
+  }
+
   switch (status) {
     case "ready":
       return "INVALID_EXACT_GEOMETRY_RESULT";

@@ -36,6 +36,11 @@ export interface OcctHoleInput {
   readonly angularDeflection?: number;
 }
 
+export interface OcctHoleResultShapeInput {
+  readonly target: OcctBooleanExtrudeSource;
+  readonly tool: OcctHoleToolSource;
+}
+
 interface SketchFrame {
   readonly origin: readonly [number, number, number];
   readonly uAxis: readonly [number, number, number];
@@ -73,27 +78,12 @@ export function createOcctHoleMeshWithInstance(
   oc: OpenCascadeInstance,
   input: OcctHoleInput
 ): OcctMeshData {
-  assertHoleBindings(oc);
+  assertHoleMeshBindings(oc);
 
   const linearDeflection = input.linearDeflection ?? 0.5;
   const angularDeflection = input.angularDeflection ?? 0.5;
-  const targetShape = makeBooleanExtrudeShape(oc, input.target);
-  const toolShape = makeHoleToolShape(oc, targetShape.Shape(), input.tool);
-  const range = new oc.Message_ProgressRange_1();
-  let cut: InstanceType<typeof oc.BRepAlgoAPI_Cut_3> | undefined;
 
-  try {
-    cut = new oc.BRepAlgoAPI_Cut_3(
-      targetShape.Shape(),
-      toolShape.shape.Shape(),
-      range
-    );
-
-    if (cut.HasErrors()) {
-      throw new Error("Open CASCADE hole cut failed.");
-    }
-
-    const resultShape = cut.Shape();
+  return withOcctHoleResultShape(oc, input, (resultShape) => {
     const mesh = new oc.BRepMesh_IncrementalMesh_2(
       resultShape,
       linearDeflection,
@@ -113,6 +103,33 @@ export function createOcctHoleMeshWithInstance(
     } finally {
       mesh.delete();
     }
+  });
+}
+
+export function withOcctHoleResultShape<T>(
+  oc: OpenCascadeInstance,
+  input: OcctHoleResultShapeInput,
+  readResult: (shape: TopoDS_Shape) => T
+): T {
+  assertHoleResultBindings(oc);
+
+  const targetShape = makeBooleanExtrudeShape(oc, input.target);
+  const toolShape = makeHoleToolShape(oc, targetShape.Shape(), input.tool);
+  const range = new oc.Message_ProgressRange_1();
+  let cut: InstanceType<typeof oc.BRepAlgoAPI_Cut_3> | undefined;
+
+  try {
+    cut = new oc.BRepAlgoAPI_Cut_3(
+      targetShape.Shape(),
+      toolShape.shape.Shape(),
+      range
+    );
+
+    if (cut.HasErrors()) {
+      throw new Error("Open CASCADE hole cut failed.");
+    }
+
+    return readResult(cut.Shape());
   } finally {
     cut?.delete();
     range.delete();
@@ -258,11 +275,10 @@ function getBoundsCorners(
   ];
 }
 
-function assertHoleBindings(oc: OpenCascadeInstance): void {
+function assertHoleResultBindings(oc: OpenCascadeInstance): void {
   const bindings: readonly [string, unknown][] = [
     ["BRepPrimAPI_MakeCylinder_3", oc.BRepPrimAPI_MakeCylinder_3],
     ["BRepAlgoAPI_Cut_3", oc.BRepAlgoAPI_Cut_3],
-    ["BRepMesh_IncrementalMesh_2", oc.BRepMesh_IncrementalMesh_2],
     ["Message_ProgressRange_1", oc.Message_ProgressRange_1],
     ["BRepBndLib.AddOptimal", oc.BRepBndLib?.AddOptimal],
     ["Bnd_Box_1", oc.Bnd_Box_1],
@@ -278,6 +294,18 @@ function assertHoleBindings(oc: OpenCascadeInstance): void {
     throw {
       code: "UNAVAILABLE_BINDING",
       message: `Open CASCADE hole bindings are unavailable: ${missing.join(", ")}.`
+    } satisfies GeometryKernelLikeError;
+  }
+}
+
+function assertHoleMeshBindings(oc: OpenCascadeInstance): void {
+  assertHoleResultBindings(oc);
+
+  if (!oc.BRepMesh_IncrementalMesh_2) {
+    throw {
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Open CASCADE hole mesh bindings are unavailable: BRepMesh_IncrementalMesh_2."
     } satisfies GeometryKernelLikeError;
   }
 }

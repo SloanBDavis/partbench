@@ -306,4 +306,54 @@ describe("occt-wasm", () => {
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
+
+  it(
+    "returns exact hole metadata through Open CASCADE WASM",
+    async () => {
+      const metadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "blind",
+            depth: 2,
+            direction: "positive"
+          }
+        }
+      });
+
+      expect(metadata.sourceKind).toBe("hole");
+      expect(metadata.bounds.min[0]).toBeCloseTo(-3, 6);
+      expect(metadata.bounds.max[0]).toBeCloseTo(3, 6);
+      expect(metadata.bounds.min[1]).toBeCloseTo(-2, 6);
+      expect(metadata.bounds.max[1]).toBeCloseTo(2, 6);
+      expect(metadata.bounds.min[2]).toBeCloseTo(0, 6);
+      expect(metadata.bounds.max[2]).toBeCloseTo(3, 6);
+      expect(metadata.volume).toBeCloseTo(72 - Math.PI * 0.5, 5);
+      expect(metadata.surfaceArea).toBeGreaterThan(0);
+      expect(metadata.centroid[2]).toBeGreaterThan(1.5);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(metadata.measurementSource).toBe("kernel-derived");
+      expect(metadata.measurementConfidence).toBe("kernel-derived");
+      expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 });

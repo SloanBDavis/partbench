@@ -188,7 +188,8 @@ export interface HoleRequest {
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
-  | ExactRevolveMetadataSource;
+  | ExactRevolveMetadataSource
+  | ExactHoleMetadataSource;
 
 export interface ExactExtrudeMetadataSource extends BooleanExtrudeSource {
   readonly kind: "extrude";
@@ -208,6 +209,12 @@ export interface ExactRevolveMetadataSource {
   readonly axis: RevolveGeometryAxis;
   readonly angleDegrees: number;
   readonly placementFrame?: BooleanExtrudePlacementFrame;
+}
+
+export interface ExactHoleMetadataSource {
+  readonly kind: "hole";
+  readonly target: BooleanExtrudeSource;
+  readonly tool: HoleToolSource;
 }
 
 export interface ExactBodyMetadataRequest {
@@ -579,7 +586,7 @@ function validateRequest(
       return {
         code: "INVALID_DIMENSIONS",
         message:
-          "Exact body metadata requests require supported extrude, booleanExtrudes, or revolve source data with finite positive dimensions."
+          "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, or hole source data with finite positive dimensions."
       };
     }
   } else if (
@@ -1047,6 +1054,13 @@ function isValidExactBodyMetadataSource(
     );
   }
 
+  if (source.kind === "hole") {
+    return (
+      isValidBooleanExtrudeSource(source.target) &&
+      isValidHoleToolSource(source.tool)
+    );
+  }
+
   return false;
 }
 
@@ -1065,7 +1079,8 @@ function isInvalidExactBodyMetadata(
   return (
     (metadata.sourceKind !== "extrude" &&
       metadata.sourceKind !== "booleanExtrudes" &&
-      metadata.sourceKind !== "revolve") ||
+      metadata.sourceKind !== "revolve" &&
+      metadata.sourceKind !== "hole") ||
     !isVec3(metadata.bounds.min) ||
     !isVec3(metadata.bounds.max) ||
     !isVec3(metadata.centroid) ||

@@ -269,6 +269,15 @@ raw OCCT topology indexes as stable generated references. The app derived
 geometry layer can now request and render supported hole result meshes from
 this path while keeping the source document in cad-core authoritative.
 
+The same hole cut construction now feeds `geometry.exactBodyMetadata` for
+supported authored hole result bodies. Exact hole metadata uses the existing
+OCCT bounds, mass-property, centroid, and topology-count bindings after the
+`BRepAlgoAPI_Cut` result is built. Results remain derived read-only cache/query
+data: no B-rep checkpoint, mesh measurement fallback, project schema field, raw
+OCCT topology ID, or generated reference for hole result bodies is introduced.
+If required hole or exact metadata bindings are unavailable, the response uses
+structured `UNAVAILABLE_BINDING` diagnostics.
+
 The geometry-kernel validation path rejects invalid target/tool dimensions,
 invalid depth modes, non-positive blind depths, and malformed placement frames
 before invoking OCCT. Runtime placement failures, empty/full-removal results,

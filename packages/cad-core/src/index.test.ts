@@ -130,6 +130,51 @@ function createRectangleRevolveEngine(): CadEngine {
   return engine;
 }
 
+function createRectangleHoleEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Target", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [0, 0],
+      width: 6,
+      height: 4
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 3
+    },
+    { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_hole",
+      id: "circle_hole",
+      center: [0, 0],
+      radius: 0.5
+    },
+    {
+      op: "feature.hole",
+      id: "feat_hole_1",
+      bodyId: "body_hole_1",
+      targetBodyId: "body_rect_1",
+      sketchId: "sketch_hole",
+      circleEntityId: "circle_hole",
+      depthMode: "blind",
+      depth: 2,
+      direction: "positive"
+    }
+  ]);
+
+  return engine;
+}
+
 function readBodyTopologySourceCacheKey(
   engine: CadEngine,
   bodyId: string
@@ -8431,6 +8476,248 @@ describe("cad-core", () => {
     });
   });
 
+  it("reports derived exact metadata for hole bodies without generated topology references", () => {
+    const engine = createRectangleHoleEngine();
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body_hole_1"
+    );
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_hole_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        status: "unsupported",
+        sourceKind: "authoredHole",
+        sourceIdentity: {
+          featureId: "feat_hole_1",
+          targetBodyId: "body_rect_1",
+          sourceSketchId: "sketch_hole",
+          holeCircleEntityId: "circle_hole",
+          profileKind: "circle",
+          profileSignature: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          holeDepthMode: "blind",
+          holeDepth: 2,
+          holeDirection: "positive"
+        },
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_hole_1",
+            featureId: "feat_hole_1"
+          }
+        ]
+      }
+    });
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId: "body_hole_1",
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_hole_1",
+          sourceIdentityCacheKey,
+          volume: 72 - Math.PI * 0.5,
+          faceCount: 8,
+          edgeCount: 18,
+          vertexCount: 10
+        })
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        status: "unsupported",
+        topologyModel: "none",
+        topologyAvailable: false,
+        exactGeometryAvailable: true,
+        exactMeasurementsAvailable: true,
+        measurementConfidence: "kernel-derived",
+        exactMetadata: {
+          status: "healthy",
+          volume: 72 - Math.PI * 0.5,
+          topologyCounts: { faceCount: 8, edgeCount: 18, vertexCount: 10 }
+        },
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_hole_1"
+          }
+        ]
+      }
+    });
+  });
+
+  it("reports stale, missing, and invalid derived hole exact metadata snapshots", () => {
+    const engine = createRectangleHoleEngine();
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      "body_hole_1"
+    );
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_hole_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_hole_1",
+            sourceIdentityCacheKey: "old-hole-cache-key"
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        status: "stale",
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        measurementConfidence: "none",
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_hole_1"
+          },
+          {
+            code: "STALE_BODY_TOPOLOGY",
+            bodyId: "body_hole_1",
+            expected: sourceIdentityCacheKey,
+            received: "old-hole-cache-key"
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_hole_1",
+          derivedExactMetadata: {
+            bodyId: "body_hole_1",
+            sourceIdentityCacheKey,
+            status: "ready"
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        status: "kernel-failed",
+        exactGeometryAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_hole_1"
+          },
+          {
+            code: "INVALID_EXACT_GEOMETRY_RESULT",
+            bodyId: "body_hole_1"
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_hole_1",
+          derivedExactMetadata: {
+            bodyId: "body_hole_1",
+            sourceIdentityCacheKey,
+            status: "kernel-failed",
+            error: {
+              code: "EMPTY_RESULT",
+              message: "Open CASCADE returned an empty hole result."
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        status: "kernel-failed",
+        exactGeometryAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_hole_1"
+          },
+          {
+            code: "EMPTY_EXACT_GEOMETRY_RESULT",
+            bodyId: "body_hole_1",
+            received: "EMPTY_RESULT"
+          }
+        ]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_hole_1",
+          derivedExactMetadata: {
+            bodyId: "body_hole_1",
+            sourceIdentityCacheKey,
+            status: "kernel-failed",
+            error: {
+              code: "INVALID_RESULT",
+              message: "Open CASCADE returned invalid hole metadata."
+            }
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        status: "kernel-failed",
+        exactGeometryAvailable: false,
+        issues: [
+          {
+            code: "UNSUPPORTED_BODY_TOPOLOGY",
+            bodyId: "body_hole_1"
+          },
+          {
+            code: "INVALID_EXACT_GEOMETRY_RESULT",
+            bodyId: "body_hole_1",
+            received: "INVALID_RESULT"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns primitive unsupported and missing body topology responses", () => {
     const engine = new CadEngine();
 
@@ -8594,6 +8881,56 @@ describe("cad-core", () => {
       topology: {
         bodyId: "body_revolve_1",
         sourceKind: "authoredRevolve",
+        exactGeometryAvailable: false
+      }
+    });
+  });
+
+  it("keeps project JSON unchanged when querying derived hole exact metadata", () => {
+    const engine = createRectangleHoleEngine();
+    const before = exportCadProjectJson(engine);
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.topology",
+          bodyId: "body_hole_1",
+          derivedExactMetadata: createExactMetadataSnapshot({
+            bodyId: "body_hole_1",
+            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+              engine,
+              "body_hole_1"
+            ),
+            volume: 72 - Math.PI * 0.5
+          })
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        sourceKind: "authoredHole",
+        exactGeometryAvailable: true,
+        measurementConfidence: "kernel-derived"
+      }
+    });
+
+    expect(exportCadProjectJson(engine)).toEqual(before);
+
+    const restored = importCadProjectJson(before);
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topology", bodyId: "body_hole_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_hole_1",
+        sourceKind: "authoredHole",
         exactGeometryAvailable: false
       }
     });

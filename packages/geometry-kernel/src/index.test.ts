@@ -444,6 +444,60 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "returns exact hole metadata through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "blind",
+            depth: 2,
+            direction: "positive"
+          }
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      expect(response.metadata.sourceKind).toBe("hole");
+      expect(response.metadata.volume).toBeCloseTo(72 - Math.PI * 0.5, 5);
+      expect(response.metadata.surfaceArea).toBeGreaterThan(0);
+      expect(response.metadata.centroid[2]).toBeGreaterThan(1.5);
+      expect(response.metadata.topologyCounts.solidCount).toBe(1);
+      expect(response.metadata.topologyCounts.faceCount).toBeGreaterThan(0);
+      expect(response.metadata.measurementSource).toBe("kernel-derived");
+      expect(response.metadata.measurementConfidence).toBe("kernel-derived");
+      expect(response.metadata.diagnostics).toEqual([]);
+      expect(getGeometryResponseTransferables(response)).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "maps extrude mesh bounds for negative and symmetric sides",
     async () => {
       const negative = await executeGeometryKernelRequest({
@@ -1731,6 +1785,84 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("returns exact metadata for hole sources from an injected metadata factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactBodyMetadata: async (input) => ({
+        sourceKind: input.source.kind,
+        bounds: {
+          min: [-3, -2, 0],
+          max: [3, 2, 3]
+        },
+        volume: 70.4,
+        surfaceArea: 80.2,
+        centroid: [0, 0, 1.55],
+        topologyCounts: {
+          solidCount: 1,
+          faceCount: 8,
+          edgeCount: 18,
+          vertexCount: 10
+        },
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived",
+        diagnostics: []
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_hole_exact_metadata",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      }
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      id: "geometry_req_injected_hole_exact_metadata",
+      op: "geometry.exactBodyMetadata",
+      metadata: {
+        sourceKind: "hole",
+        volume: 70.4,
+        measurementSource: "kernel-derived",
+        measurementConfidence: "kernel-derived"
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured unavailable-binding errors when exact metadata factory is absent", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1814,7 +1946,7 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "INVALID_DIMENSIONS",
         message:
-          "Exact body metadata requests require supported extrude, booleanExtrudes, or revolve source data with finite positive dimensions."
+          "Exact body metadata requests require supported extrude, booleanExtrudes, revolve, or hole source data with finite positive dimensions."
       },
       warnings: []
     });

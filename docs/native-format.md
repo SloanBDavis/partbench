@@ -585,8 +585,11 @@ creates one authored result body, matching the add/cut result-body model. Blind
 holes require a positive finite `depth`; through-all holes must omit `depth`.
 The current V6 Phase D slices validate and round-trip the source model and can
 rebuild supported hole result meshes as derived geometry through the
-geometry-worker path. Generated references for hole result bodies and exact
-topology naming are not implemented yet.
+geometry-worker path. Supported hole result bodies can also report
+kernel-derived exact metadata through read-only derived snapshots when the
+target rectangle/circle authored extrude source and circular tool placement are
+available. Generated references for hole result bodies and exact topology
+naming are not implemented yet.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived
@@ -920,8 +923,11 @@ is deliberately scoped. Authored revolve bodies may also report matching
 kernel-derived exact metadata while keeping generated references unsupported
 until stable revolve topology roles are deliberately scoped. This query is
 read-only derived data; it does not persist OCCT state, B-rep data, mesh data,
-topology indexes, kernel metadata, or a new source-of-truth project field, so it
-does not require a schema version.
+topology indexes, kernel metadata, or a new source-of-truth project field.
+Authored hole result bodies may report matching kernel-derived exact metadata
+while keeping generated references and semantic topology unavailable until
+stable hole topology roles are deliberately scoped. Derived metadata-only
+changes do not require a schema version.
 
 `sketch.createOnFace` is the first command that consumes generated references.
 It accepts either a body ID plus generated face stable ID, or a named reference

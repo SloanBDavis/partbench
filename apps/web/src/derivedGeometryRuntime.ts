@@ -147,6 +147,11 @@ export interface DerivedExactMetadataInput {
         readonly axis: DerivedGeometryRevolveInput["axis"];
         readonly angleDegrees: number;
         readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
+      }
+    | {
+        readonly kind: "hole";
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly tool: DerivedGeometryHoleInput["tool"];
       };
 }
 

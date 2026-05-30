@@ -9,6 +9,7 @@ import type {
   DerivedBooleanExtrudeGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometrySource,
+  DerivedHoleGeometrySource,
   DerivedRevolveGeometrySource
 } from "./derivedGeometry";
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
@@ -29,7 +30,8 @@ export type DerivedExactMetadataStatusKind =
 export type DerivedExactMetadataSource =
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
-  | DerivedRevolveGeometrySource;
+  | DerivedRevolveGeometrySource
+  | DerivedHoleGeometrySource;
 
 export type DerivedExactMetadataEntry =
   | DerivedExactMetadataUnsupportedEntry
@@ -394,6 +396,34 @@ export function createExactMetadataRuntimeInput(
     };
   }
 
+  if (source.kind === "hole") {
+    return {
+      id: source.id,
+      source: {
+        kind: "hole",
+        target: {
+          sketchPlane: source.target.sketchPlane,
+          profile: source.target.profile,
+          depth: source.target.depth,
+          side: source.target.side,
+          ...(source.target.placementFrame
+            ? { placementFrame: source.target.placementFrame }
+            : {})
+        },
+        tool: {
+          sketchPlane: source.tool.sketchPlane,
+          circle: source.tool.circle,
+          depthMode: source.tool.depthMode,
+          depth: source.tool.depth,
+          direction: source.tool.direction,
+          ...(source.tool.placementFrame
+            ? { placementFrame: source.tool.placementFrame }
+            : {})
+        }
+      }
+    };
+  }
+
   return {
     id: source.id,
     source: {
@@ -484,7 +514,8 @@ function isExactMetadataSource(
   return (
     source.kind === "extrude" ||
     source.kind === "extrudeBoolean" ||
-    source.kind === "revolve"
+    source.kind === "revolve" ||
+    source.kind === "hole"
   );
 }
 
@@ -497,6 +528,25 @@ function getUnsupportedExactMetadataSourceMessage(
 
   if (source.kind === "revolve") {
     return source.placementError;
+  }
+
+  if (source.kind === "hole") {
+    if (source.placementError) {
+      return source.placementError;
+    }
+
+    if (
+      source.target.profile.kind !== "rectangle" &&
+      source.target.profile.kind !== "circle"
+    ) {
+      return "Exact metadata for holes currently supports rectangle or circle target extrudes only.";
+    }
+
+    if (source.tool.circle.kind !== "circle") {
+      return "Exact metadata for holes currently supports circular sketch tools only.";
+    }
+
+    return undefined;
   }
 
   if (source.placementError) {

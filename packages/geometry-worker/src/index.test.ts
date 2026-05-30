@@ -443,6 +443,71 @@ describe("geometry-worker", () => {
     });
   });
 
+  it("creates a typed exact body metadata worker request for hole sources", () => {
+    expect(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_hole_exact_metadata",
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      })
+    ).toEqual({
+      id: "worker_req_hole_exact_metadata",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payload: {
+        id: "worker_req_hole_exact_metadata:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      }
+    });
+  });
+
   it("tessellates one box asynchronously through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });
     const responsePromise = worker.execute(
@@ -940,6 +1005,66 @@ describe("geometry-worker", () => {
 
     expect(response.response.metadata.sourceKind).toBe("revolve");
     expect(response.response.metadata.volume).toBeGreaterThan(0);
+    expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
+
+  it("returns hole exact body metadata through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactBodyMetadataWorkerRequest({
+        id: "worker_req_hole_exact_metadata_execute",
+        payloadId: "geometry_req_hole_exact_metadata_execute",
+        source: {
+          kind: "hole",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 3,
+            side: "positive"
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [0, 0],
+              radius: 0.5
+            },
+            depthMode: "blind",
+            depth: 2,
+            direction: "positive"
+          }
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_hole_exact_metadata_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactMetadata",
+      payloadId: "geometry_req_hole_exact_metadata_execute",
+      transferables: [],
+      response: {
+        ok: true,
+        id: "geometry_req_hole_exact_metadata_execute",
+        op: "geometry.exactBodyMetadata",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.metadata.sourceKind).toBe("hole");
+    expect(response.response.metadata.volume).toBeCloseTo(
+      72 - Math.PI * 0.5,
+      5
+    );
     expect(response.response.metadata.measurementSource).toBe("kernel-derived");
   }, 120_000);
 

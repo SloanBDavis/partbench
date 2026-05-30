@@ -11,12 +11,14 @@ import {
   type OcctRevolveProfile,
   type OcctRevolveSketchPlane
 } from "./revolveProfile";
+import { withOcctHoleResultShape, type OcctHoleToolSource } from "./hole";
 import type { OcctLoader } from "./tessellateBox";
 
 export type OcctExactBodyMetadataSource =
   | OcctExactExtrudeMetadataSource
   | OcctExactBooleanExtrudesMetadataSource
-  | OcctExactRevolveMetadataSource;
+  | OcctExactRevolveMetadataSource
+  | OcctExactHoleMetadataSource;
 
 export interface OcctExactExtrudeMetadataSource extends OcctBooleanExtrudeSource {
   readonly kind: "extrude";
@@ -36,6 +38,12 @@ export interface OcctExactRevolveMetadataSource {
   readonly axis: OcctRevolveAxis;
   readonly angleDegrees: number;
   readonly placementFrame?: OcctRevolvePlacementFrame;
+}
+
+export interface OcctExactHoleMetadataSource {
+  readonly kind: "hole";
+  readonly target: OcctBooleanExtrudeSource;
+  readonly tool: OcctHoleToolSource;
 }
 
 export interface OcctExactBodyMetadataInput {
@@ -108,6 +116,12 @@ export function createOcctExactBodyMetadataWithInstance(
     } finally {
       shapeHandle.delete();
     }
+  }
+
+  if (input.source.kind === "hole") {
+    return withOcctHoleResultShape(oc, input.source, (shape) =>
+      readExactBodyMetadata(oc, shape, input.source.kind)
+    );
   }
 
   return readBooleanExactBodyMetadata(oc, input.source);
