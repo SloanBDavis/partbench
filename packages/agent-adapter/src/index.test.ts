@@ -2425,6 +2425,120 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes derived exact metadata snapshots through project health adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const commit = adapter.execute({
+      requestId: "agent_req_seed_health_revolve",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "sketch_health_revolve",
+            name: "Revolve",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_health_revolve",
+            id: "rect_health_revolve",
+            center: [2, 0],
+            width: 1,
+            height: 2
+          },
+          {
+            op: "sketch.addLine",
+            sketchId: "sketch_health_revolve",
+            id: "axis_health_revolve",
+            start: [0, -2],
+            end: [0, 2]
+          },
+          {
+            op: "feature.revolve",
+            id: "feat_health_revolve",
+            bodyId: "body_health_revolve",
+            sketchId: "sketch_health_revolve",
+            entityId: "rect_health_revolve",
+            axis: {
+              type: "sketchLine",
+              sketchId: "sketch_health_revolve",
+              entityId: "axis_health_revolve"
+            },
+            angleDegrees: 180,
+            operationMode: "newBody"
+          }
+        ]
+      }
+    });
+    expect(commit.ok).toBe(true);
+
+    const topology = adapter.getEngine().executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId: "body_health_revolve"
+      }
+    });
+    if (!topology.ok || topology.query !== "body.topology") {
+      throw new Error("Expected body topology for project health snapshot.");
+    }
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_project_health_exact",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [
+            {
+              bodyId: "body_health_revolve",
+              sourceIdentityCacheKey: topology.topology.sourceIdentity.cacheKey,
+              status: "ready",
+              metadata: {
+                source: "kernel-derived",
+                confidence: "kernel-derived",
+                bounds: {
+                  min: [0, 0, 0],
+                  max: [4, 2, 3],
+                  size: [4, 2, 3],
+                  center: [2, 1, 1.5]
+                },
+                volume: 24,
+                surfaceArea: 52,
+                centroid: [2, 1, 1.5],
+                topologyCounts: {
+                  solidCount: 1,
+                  faceCount: 6,
+                  edgeCount: 12,
+                  vertexCount: 8
+                },
+                diagnostics: []
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_project_health_exact",
+      query: "project.health",
+      authoredRevolves: [
+        {
+          featureId: "feat_health_revolve",
+          bodyId: "body_health_revolve",
+          exactMeasurementsAvailable: true,
+          measurementConfidence: "kernel-derived"
+        }
+      ]
+    });
+  });
+
   it("resolves generated references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

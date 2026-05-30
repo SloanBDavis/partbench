@@ -10205,6 +10205,122 @@ describe("cad-core", () => {
     });
   });
 
+  it("uses derived exact metadata snapshots for V6 result body project health confidence", () => {
+    const scenarios = [
+      {
+        createEngine: createRectangleRevolveEngine,
+        bodyId: "body_revolve_1",
+        healthKey: "authoredRevolves",
+        volume: 64
+      },
+      {
+        createEngine: createRectangleHoleEngine,
+        bodyId: "body_hole_1",
+        healthKey: "authoredHoles",
+        volume: 68
+      },
+      {
+        createEngine: createRectangleChamferEngine,
+        bodyId: "body_chamfer_1",
+        healthKey: "authoredChamfers",
+        volume: 22
+      },
+      {
+        createEngine: createRectangleFilletEngine,
+        bodyId: "body_fillet_1",
+        healthKey: "authoredFillets",
+        volume: 23
+      }
+    ] as const;
+
+    for (const scenario of scenarios) {
+      const engine = scenario.createEngine();
+      const beforeJson = exportCadProjectJson(engine);
+      const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+        engine,
+        scenario.bodyId
+      );
+      const response = engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [
+            createExactMetadataSnapshot({
+              bodyId: scenario.bodyId,
+              sourceIdentityCacheKey,
+              volume: scenario.volume
+            })
+          ]
+        }
+      });
+
+      expect(response).toMatchObject({
+        ok: true,
+        query: "project.health",
+        [scenario.healthKey]: [
+          {
+            bodyId: scenario.bodyId,
+            topologyStatus: "unsupported",
+            topologyAvailable: false,
+            exactMeasurementsAvailable: true,
+            measurementConfidence: "kernel-derived",
+            topologyIssueCount: 1,
+            status: "healthy"
+          }
+        ]
+      });
+      expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    }
+  });
+
+  it("reports stale derived exact metadata through project health topology fields", () => {
+    const engine = createRectangleRevolveEngine();
+    const bodyId = "body_revolve_1";
+    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      engine,
+      bodyId
+    );
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "axis_1",
+        kind: "line",
+        start: [0, -3],
+        end: [0, 3]
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [
+            createExactMetadataSnapshot({
+              bodyId,
+              sourceIdentityCacheKey
+            })
+          ]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "project.health",
+      authoredRevolves: [
+        {
+          bodyId,
+          topologyStatus: "stale",
+          exactMeasurementsAvailable: false,
+          measurementConfidence: "none",
+          topologyIssueCount: 2,
+          status: "healthy"
+        }
+      ]
+    });
+  });
+
   it("round-trips edited source profiles for measurements and extents", () => {
     const engine = createRectangleExtrudeEngine();
 

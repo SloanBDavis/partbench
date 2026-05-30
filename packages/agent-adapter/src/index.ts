@@ -1223,7 +1223,12 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.health" &&
-        Object.keys(value.query).length === 1) ||
+        (Object.keys(value.query).length === 1 ||
+          (Object.keys(value.query).length === 2 &&
+            Array.isArray(value.query.derivedExactMetadata) &&
+            value.query.derivedExactMetadata.every((snapshot) =>
+              isCadBodyDerivedExactMetadataSnapshot(snapshot)
+            )))) ||
       (value.query.query === "project.sketches" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "object.get" &&

@@ -4,14 +4,14 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 next implementation roadmap.
 
-Last updated: 2026-05-25.
+Last updated: 2026-05-30.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v4.md` for the completed
 constrained sketch solving milestone, `docs/v5.md` for the completed exact
-geometry/topology foundation milestone, `docs/v6.md` for the active practical
-solid-modeling milestone, `docs/native-format.md` for project-format direction,
-and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
+geometry/topology foundation milestone, `docs/v6.md` for the completed
+practical solid-modeling milestone, `docs/native-format.md` for project-format
+direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
 
@@ -27,9 +27,9 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
    scoped milestones.
-9. V2, V3, V4, and V5 are complete. V6 is active and should expand practical
-   solid modeling without starting unrelated storage, renderer, or import/export
-   systems early.
+9. V2, V3, V4, V5, and V6 are complete. Future modeling work should stay scoped
+   and should not start unrelated storage, renderer, or import/export systems
+   early.
 
 ## Current Repo State
 
@@ -54,8 +54,9 @@ and focused packages:
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
   mesh data into renderer mesh data.
 - `packages/occt-wasm` - isolated OCCT/WASM loading and tessellation boundary.
-- `packages/geometry-kernel` - typed primitive, extrude, and narrow boolean
-  geometry facade around the isolated OCCT path.
+- `packages/geometry-kernel` - typed primitive, extrude, narrow boolean,
+  exact-metadata, revolve, hole, and edge-finish geometry facade around the
+  isolated OCCT path.
 - `packages/geometry-worker` - async geometry worker request/response boundary.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
@@ -178,24 +179,34 @@ Current Partbench can:
 - edit authored extrude depth and side;
 - edit source rectangle/circle profile values through `sketch.updateEntity`;
 - delete authored sketch-extrude features;
+- create supported authored `feature.revolve`, `feature.hole`,
+  `feature.chamfer`, and `feature.fillet` source records;
 - name generated references and resolve names later;
 - inspect parts, sketches, features, bodies, named references, dependency
-  health, history, measurements, extents, and generated-reference measurements;
+  health, history, measurements, extents, topology, exact-metadata health, and
+  generated-reference measurements;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
+- rebuild supported revolve, hole, and rectangle-edge chamfer/fillet result
+  bodies through derived geometry meshes while keeping cad-core authoritative;
 - query selected body topology status through `body.topology`;
 - inspect semantic-source topology counts and source-analytic measurement
   confidence for rectangle/circle newBody extrudes;
-- inspect structured ambiguous topology status for current boolean result bodies
-  where stable generated topology cannot be proven yet;
+- inspect structured ambiguous topology status for current boolean and V6 result
+  bodies where stable generated topology cannot be proven yet;
+- use matching ready derived exact metadata snapshots for body topology, project
+  extents, and project health measurement confidence for supported V6 result
+  bodies;
+- use compact UI workflows for supported Extrude, Revolve, Hole, Chamfer, and
+  Fillet operations without offering known-unsupported targets as valid;
 - save/load current `web-cad.project.v16` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
 
-The repo is a completed V4 constrained-sketch foundation, not yet a full CAD
-system.
+The repo is a completed V6 practical solid-modeling milestone, not yet a full
+CAD system.
 
 Current limitations:
 
@@ -205,19 +216,22 @@ Current limitations:
 - Sketch dimensions currently drive only rectangle width/height, circle radius,
   and line length through a direct evaluator path.
 - There is no parameter expression language.
-- There is no broad feature graph beyond current authored sketch extrudes and
-  narrow boolean add/cut result features.
+- There is no broad feature graph beyond current authored extrudes, scoped
+  booleans, revolve, hole, and rectangle-edge chamfer/fillet workflows.
 - Generated references and healthy semantic topology exist for simple authored
   rectangle/circle newBody extrude bodies, but boolean result bodies expose
   structured ambiguous topology instead of generated topology/reference sets.
+  V6 revolve, hole, chamfer, and fillet result bodies also keep generated
+  references unsupported unless a future stable topological naming design is
+  explicitly implemented.
 - There is no authoritative B-rep topology persisted in the document model.
-- Measurements are source-derived/source-analytic for current supported shapes
-  and references; they are not exact B-rep/kernel mass-property measurements.
-- Chamfer and fillet are command-first source records only; they do not have
-  geometry-worker execution, UI controls, generated references for result
-  bodies, exact topology naming, or derived measurements/extents yet.
-- There are no rendered revolve geometry, shell, sweep, loft, patterns, direct
-  edits, general booleans, STEP import/export, OPFS/File System Access,
+- `body.measurements` remains source-derived/source-analytic for simple
+  supported shapes and references. V6 exact mass-property health is surfaced
+  through derived exact metadata snapshots on `body.topology`, `project.extents`,
+  and `project.health`, not through persisted source data.
+- Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
+  patterns, direct edits, general booleans, STEP import/export, OPFS/File
+  System Access,
   WebGPU, assemblies, hosted collaboration, production MCP auth, or
   natural-language command entry.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
@@ -633,9 +647,9 @@ Completed:
 - docs updated to mark V5 complete and identify remaining exact B-rep and broad
   topological naming limitations.
 
-## Active Roadmap: V6 Practical Solid Modeling On Exact Geometry
+## Completed Roadmap: V6 Practical Solid Modeling On Exact Geometry
 
-V6 is the active milestone. Its detailed scope lives in `docs/v6.md`.
+V6 is complete. Its detailed scope and completion notes live in `docs/v6.md`.
 
 V6 should be substantially larger than V5. V5 established the exact/topology
 boundary and honest status model. V6 should use that foundation to add practical
@@ -649,8 +663,8 @@ The V6 product target is:
 > topology health, history, and unsupported states through the same CADOps
 > command/query layer.
 
-V6 remains iterative. Each phase should be implemented with focused prompts and
-unit/package coverage, but the milestone decisions are made up front:
+V6 was implemented iteratively with focused prompts and unit/package coverage.
+The durable milestone decisions are:
 
 - new persisted V6 feature records should introduce explicit schema versions
   (`web-cad.project.v14` for revolve, `web-cad.project.v15` for hole,
@@ -666,7 +680,7 @@ unit/package coverage, but the milestone decisions are made up front:
 Goal: upgrade the geometry boundary so current and future bodies can return
 kernel-derived metadata where practical.
 
-Planned deliverables:
+Implemented deliverables:
 
 - typed geometry-kernel/worker requests for exact metadata;
 - derived bounds, volume, surface area, centroid, and topology/entity counts
@@ -694,13 +708,15 @@ Initial implementation:
   the `geometry.revolveProfile` mesh path;
 - compact UI creation support for `newBody` revolve profiles with same-sketch
   non-zero line axes;
-- no generated references or measurements/extents for revolve bodies yet.
+- generated references and source-derived measurements remain unsupported for
+  revolve result bodies, while matching derived exact metadata snapshots can
+  supply topology measurement confidence and project extents.
 
 ### V6 Phase C: Revolve Geometry And UI Integration
 
 Goal: make revolve visible and usable in the app.
 
-Planned deliverables:
+Implemented deliverables:
 
 - compact feature creation UI that lets the user choose Extrude or Revolve;
 - valid axis filtering and clear validation messages;
@@ -727,13 +743,15 @@ Planned deliverables:
   unsupported hole results;
 - compact UI creation controls for circular hole tools, eligible target bodies,
   blind/through-all depth, and direction;
-- measurements/extents remain follow-up Phase D/F slices.
+- matching derived exact metadata snapshots provide hole topology measurement
+  confidence and project extents where available; generated references and
+  exact topology naming remain unsupported.
 
 ### V6 Phase E: Edge Finishing With Chamfer And Fillet
 
 Goal: add the first generated-edge-consuming modeling features.
 
-Initial command-first core progress:
+Implemented:
 
 - `feature.chamfer` and `feature.fillet` source records and commands;
 - generated or named edge reference input through the existing
@@ -747,28 +765,31 @@ Initial command-first core progress:
 - project structure/health, semantic diffs, undo/redo, batch dry-run/commit,
   transaction history, V16 import/export, adapter/MCP pass-through, and focused
   tests;
-- no geometry-worker execution, UI controls, generated references for
-  chamfer/fillet result bodies, exact topology naming, or derived
-  measurements/extents yet.
+- `geometry.edgeFinish`, app derived rendering, compact UI controls, and
+  derived exact metadata snapshots for the rectangle-edge subset;
+- no generated references for chamfer/fillet result bodies, exact topology
+  naming, circle edge finishing, or source-derived measurements.
 
 ### V6 Phase F: Topology, Measurement, And Reference Health
 
 Goal: keep V6 result bodies inspectable without overstating topological naming.
 
-Planned deliverables:
+Implemented deliverables:
 
 - topology/measurement health for revolve, hole, chamfer, and fillet bodies;
 - named-reference stale/ambiguous handling after V6 features;
 - project health entries for consumed target chains and exact metadata
   confidence;
-- project extents using kernel-derived bounds where available.
+- project extents using kernel-derived bounds where available;
+- project health entries that accept matching derived exact metadata snapshots
+  and report exact measurement confidence without persisting the metadata.
 
 ### V6 Phase G: Agent/MCP And UI Workflow Completion
 
 Goal: expose V6 workflows through the same command/query layer for humans and
 agents.
 
-Planned deliverables:
+Implemented deliverables:
 
 - agent-adapter and MCP pass-through for all V6 commands and queries;
 - compact UI workflows for Extrude, Revolve, Hole, Chamfer, and Fillet;
@@ -779,9 +800,9 @@ Planned deliverables:
 ### V6 Phase H: Stabilization And Completion
 
 Goal: declare V6 complete only after the practical solid-modeling workflow is
-coherent, tested, documented, and browser-verified.
+coherent, tested, documented, and ready for manual browser verification.
 
-Planned deliverables:
+Implemented deliverables:
 
 - coverage across protocol, cad-core, geometry-kernel, geometry-worker,
   adapter/MCP, UI helpers, serialization, undo/redo, measurements/extents,
@@ -792,9 +813,10 @@ Planned deliverables:
   - `pnpm build`
   - `pnpm lint`
   - `pnpm format:check`
-- manual browser verification of representative V6 workflows.
+- manual browser verification of representative V6 workflows remains an
+  external release checklist item rather than a repository E2E test.
 
-## Deferred Beyond V5 Unless Explicitly Scoped
+## Deferred Beyond V6 Unless Explicitly Scoped
 
 - Full general sketch solving beyond the current V4 constrained-sketch scope.
 - Complex constraints such as tangent, concentric, equal, symmetry, spline, and

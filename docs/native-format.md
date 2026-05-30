@@ -597,11 +597,11 @@ feature intent only: no B-rep, mesh, OCCT topology ID, or renderer cache is
 persisted. Current command support is `operationMode: "newBody"` only, with
 positive finite `angleDegrees` less than or equal to 360. Add/cut revolve modes
 are reserved in the typed shape but rejected until deliberately implemented.
-Revolve result bodies appear in project structure and health, but generated
-semantic references, source-analytic measurements, and extents for revolve
-bodies are not implemented yet. App rendering can rebuild revolve bodies as
-derived mesh/cache data through the geometry-worker path; those meshes are not
-persisted.
+Revolve result bodies appear in project structure and health. App rendering can
+rebuild revolve bodies as derived mesh/cache data through the geometry-worker
+path, and matching derived exact metadata snapshots can provide topology
+measurement confidence and project extents. Generated semantic references and
+source-analytic measurements for revolve result bodies are not implemented yet.
 Hole features reference a circle sketch entity on either a base-plane sketch or
 an attached sketch whose generated planar face still resolves. V15 stores this
 as source intent only: no B-rep, mesh result, OCCT topology ID, or renderer
@@ -788,8 +788,9 @@ sketch.createOnFace attachment    -> stored on the created sketch
 ```
 
 Primitive-derived IDs are query/API affordances and are not separately
-persisted as part/feature/body records. Authored extrude/revolve feature IDs and
-body IDs are persisted because they are user-visible rebuild inputs.
+persisted as part/feature/body records. Authored extrude, revolve, hole,
+chamfer, and fillet feature IDs and body IDs are persisted because they are
+user-visible rebuild inputs.
 
 This avoids duplicating source-of-truth state. Duplicated saved part/feature/body
 records would create unnecessary consistency rules while primitive bodies remain
@@ -829,9 +830,14 @@ The current source of truth is:
 - `document.nextSketchConstraintNumber`
 - authored feature IDs
 - authored feature names
-- authored feature kind, source sketch, source entity, profile kind, depth, and
-  side
+- authored feature kind and operation-specific source inputs for extrude,
+  revolve, hole, chamfer, or fillet records
 - authored extrude operation mode and optional target body ID
+- authored revolve same-sketch axis, angle, operation mode, and body ID
+- authored hole target body ID, source circle sketch/entity, depth mode/depth,
+  direction, and body ID
+- authored chamfer/fillet target body ID, generated or named edge reference,
+  distance/radius, and body ID
 - authored feature body IDs
 - named generated reference names and targets
 - `document.nextFeatureNumber`
@@ -854,38 +860,47 @@ summaries include the derived default part ID and derived body ID for each
 object. Extrude summaries include the source sketch/entity, profile kind, depth,
 side, operation mode, optional target body ID, and authored body ID. Revolve
 summaries include the source sketch/entity, profile kind, same-sketch axis line,
-angle, operation mode, and authored body ID.
+angle, operation mode, and authored body ID. Hole, chamfer, and fillet summaries
+include their target-consuming source inputs and authored result body IDs.
 
 The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
 - one derived solid body per scene object, `body:<objectId>`;
-- authored extrude/revolve features from `document.features`;
-- authored sketch feature bodies referenced by those features; and
+- authored extrude/revolve/hole/chamfer/fillet features from
+  `document.features`;
+- authored sketch and result feature bodies referenced by those features; and
 - object-to-part/feature/body source mappings.
 
-When a supported `add` or `cut` feature targets an authored body, the target
+When a supported target-consuming feature targets an authored body, the target
 body remains listed as source/intermediate structure and is marked with
-`consumedByFeatureId`. Current display treats the boolean result body as the
-active result and skips the consumed target body so the model is not
-double-rendered. Project extents skip the consumed target body and return a
-structured warning for the boolean result until analytic boolean result extents
-are implemented.
+`consumedByFeatureId`. Current display treats the result body as the active
+result and skips the consumed target body so the model is not double-rendered.
+Project extents skip consumed target bodies. Boolean and V6 result bodies can
+contribute extents when a matching ready derived exact metadata snapshot is
+passed to the query; otherwise the query returns structured warnings rather
+than mesh-derived or primitive fallback bounds.
 
 This structure is a migration bridge toward a fuller feature/body model. The
-primitive side remains derived; the authored extrude side is persisted because it
-is source-of-truth feature data.
+primitive side remains derived; authored feature records are persisted because
+they are source-of-truth feature data.
 
 The `project.health` query returns read-only dependency health derived from the
-same source-of-truth document. It reports authored extrude source sketch/entity
-status, attached sketch generated-face resolution and eligibility,
-parameter-bound sketch dimension status, sketch constraint status, derived
-sketch evaluation completeness status, affected authored features/bodies, and
-named generated reference target status. Health entries may be `healthy`,
-`under-defined`, `over-defined`, `stale`, `missing-source`, or `unsupported`,
-with concise structured issues. These results are diagnostic query data only;
-they are not persisted and do not form a separate parametric regeneration graph.
+same source-of-truth document. It reports authored feature source status,
+attached sketch generated-face resolution and eligibility, parameter-bound
+sketch dimension status, sketch constraint status, derived sketch evaluation
+completeness status, affected authored features/bodies, named generated
+reference target status, and topology/measurement confidence summaries. The
+query may accept an optional `derivedExactMetadata` array containing the same
+read-only snapshot shape used by `body.topology`. Matching snapshots can upgrade
+health entry exact measurement confidence for authored extrude, revolve, hole,
+chamfer, and fillet bodies; stale, unsupported, failed, unavailable, empty, or
+invalid snapshots remain structured topology issues. Health entries may be
+`healthy`, `under-defined`, `over-defined`, `stale`, `missing-source`, or
+`unsupported`, with concise structured issues. These results are diagnostic
+query data only; they are not persisted and do not form a separate parametric
+regeneration graph.
 
 The `body.generatedReferences` query returns the first read-only semantic
 reference layer for authored sketch-extrude bodies. It derives a generated body
@@ -977,6 +992,10 @@ Authored hole result bodies may report matching kernel-derived exact metadata
 while keeping generated references and semantic topology unavailable until
 stable hole topology roles are deliberately scoped. Derived metadata-only
 changes do not require a schema version.
+Authored chamfer and fillet result bodies may report matching kernel-derived
+exact metadata for the supported rectangle-edge subset while keeping generated
+references and semantic topology unavailable until stable edge-finish topology
+roles are deliberately scoped.
 
 The `project.extents` query may also accept an optional
 `derivedExactMetadata` array containing the same read-only snapshot shape used

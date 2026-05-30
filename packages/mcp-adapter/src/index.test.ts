@@ -2282,6 +2282,135 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes derived exact metadata snapshots through cad.project_health", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_seed_health_revolve",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "mcp_sketch_health_revolve",
+              name: "Revolve",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "mcp_sketch_health_revolve",
+              id: "mcp_rect_health_revolve",
+              center: [2, 0],
+              width: 1,
+              height: 2
+            },
+            {
+              op: "sketch.addLine",
+              sketchId: "mcp_sketch_health_revolve",
+              id: "mcp_axis_health_revolve",
+              start: [0, -2],
+              end: [0, 2]
+            },
+            {
+              op: "feature.revolve",
+              id: "mcp_feat_health_revolve",
+              bodyId: "mcp_body_health_revolve",
+              sketchId: "mcp_sketch_health_revolve",
+              entityId: "mcp_rect_health_revolve",
+              axis: {
+                type: "sketchLine",
+                sketchId: "mcp_sketch_health_revolve",
+                entityId: "mcp_axis_health_revolve"
+              },
+              angleDegrees: 180,
+              operationMode: "newBody"
+            }
+          ]
+        }
+      }
+    });
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: { ok: true }
+    });
+
+    const topology = server.callTool({
+      name: "cad.body_topology",
+      requestId: "mcp_req_health_revolve_topology",
+      arguments: { bodyId: "mcp_body_health_revolve" }
+    });
+    if (
+      topology.isError ||
+      topology.structuredContent.ok !== true ||
+      !("query" in topology.structuredContent) ||
+      topology.structuredContent.query !== "body.topology"
+    ) {
+      throw new Error("Expected body topology for project health snapshot.");
+    }
+    const topologyContent = topology.structuredContent as {
+      readonly topology: {
+        readonly sourceIdentity: { readonly cacheKey: string };
+      };
+    };
+
+    const healthResult = server.callTool({
+      name: "cad.project_health",
+      requestId: "mcp_req_project_health_exact",
+      arguments: {
+        derivedExactMetadata: [
+          {
+            bodyId: "mcp_body_health_revolve",
+            sourceIdentityCacheKey:
+              topologyContent.topology.sourceIdentity.cacheKey,
+            status: "ready",
+            metadata: {
+              source: "kernel-derived",
+              confidence: "kernel-derived",
+              bounds: {
+                min: [0, 0, 0],
+                max: [4, 2, 3],
+                size: [4, 2, 3],
+                center: [2, 1, 1.5]
+              },
+              volume: 24,
+              surfaceArea: 52,
+              centroid: [2, 1, 1.5],
+              topologyCounts: {
+                solidCount: 1,
+                faceCount: 6,
+                edgeCount: 12,
+                vertexCount: 8
+              },
+              diagnostics: []
+            }
+          }
+        ]
+      }
+    });
+
+    expect(healthResult).toMatchObject({
+      toolName: "cad.project_health",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_project_health_exact",
+        query: "project.health",
+        authoredRevolves: [
+          {
+            featureId: "mcp_feat_health_revolve",
+            bodyId: "mcp_body_health_revolve",
+            exactMeasurementsAvailable: true,
+            measurementConfidence: "kernel-derived"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns generated reference measurements through cad.generated_reference_measurements", () => {
     const server = new CadMcpServer();
 

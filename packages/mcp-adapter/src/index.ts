@@ -381,10 +381,12 @@ export class CadMcpServer {
   }
 
   #callProjectHealth(request: CadMcpToolCallRequest): CadMcpToolCallResult {
-    if (!isEmptyObjectOrUndefined(request.arguments)) {
+    const args = request.arguments;
+
+    if (!isProjectExactMetadataToolArguments(args)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_health does not accept arguments."
+        "cad.project_health expects optional arguments shaped as { derivedExactMetadata?: object[] }."
       );
     }
 
@@ -394,7 +396,14 @@ export class CadMcpServer {
         adapterVersion: ADAPTER_VERSION,
         query: {
           version: "cadops.v1",
-          query: { query: "project.health" }
+          query: {
+            query: "project.health",
+            ...(args?.derivedExactMetadata
+              ? {
+                  derivedExactMetadata: args.derivedExactMetadata
+                }
+              : {})
+          }
         }
       })
     );
@@ -846,7 +855,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      properties: {}
+      properties: {
+        derivedExactMetadata: {
+          type: "array",
+          description:
+            "Optional derived exact metadata snapshots used as read-only cache input for V6 result-body health.",
+          items: {
+            type: "object"
+          }
+        }
+      }
     }
   },
   {
@@ -1240,7 +1258,7 @@ type ProjectExtentsToolArguments = {
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 };
 
-function isProjectExtentsToolArguments(
+function isProjectExactMetadataToolArguments(
   value: unknown
 ): value is ProjectExtentsToolArguments | undefined {
   return (
@@ -1254,6 +1272,8 @@ function isProjectExtentsToolArguments(
           ))))
   );
 }
+
+const isProjectExtentsToolArguments = isProjectExactMetadataToolArguments;
 
 function isSketchGetToolArguments(
   value: unknown

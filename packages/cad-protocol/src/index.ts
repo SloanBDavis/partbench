@@ -1006,6 +1006,7 @@ export interface ProjectStructureQuery {
 
 export interface ProjectHealthQuery {
   readonly query: "project.health";
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 }
 
 export interface ProjectSketchesQuery {
@@ -2008,6 +2009,7 @@ export interface CadAuthoredExtrudeHealth {
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
   readonly exactMeasurementsAvailable?: boolean;
+  readonly measurementConfidence?: CadBodyTopologyMeasurementConfidence;
   readonly topologyIssueCount?: number;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];
@@ -2027,6 +2029,7 @@ export interface CadAuthoredRevolveHealth {
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
   readonly exactMeasurementsAvailable?: boolean;
+  readonly measurementConfidence?: CadBodyTopologyMeasurementConfidence;
   readonly topologyIssueCount?: number;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];
@@ -2045,6 +2048,7 @@ export interface CadAuthoredHoleHealth {
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
   readonly exactMeasurementsAvailable?: boolean;
+  readonly measurementConfidence?: CadBodyTopologyMeasurementConfidence;
   readonly topologyIssueCount?: number;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];
@@ -2061,6 +2065,7 @@ export interface CadAuthoredChamferHealth {
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
   readonly exactMeasurementsAvailable?: boolean;
+  readonly measurementConfidence?: CadBodyTopologyMeasurementConfidence;
   readonly topologyIssueCount?: number;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];
@@ -2077,6 +2082,7 @@ export interface CadAuthoredFilletHealth {
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
   readonly exactMeasurementsAvailable?: boolean;
+  readonly measurementConfidence?: CadBodyTopologyMeasurementConfidence;
   readonly topologyIssueCount?: number;
   readonly status: CadDependencyHealthStatus;
   readonly issues: readonly CadDependencyHealthIssue[];

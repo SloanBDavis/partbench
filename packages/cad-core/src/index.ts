@@ -919,6 +919,7 @@ export class CadEngine {
           cadOpsVersion: request.version,
           ownerPartId: DEFAULT_PART_ID,
           units: this.#document.units,
+          derivedExactMetadata: request.query.derivedExactMetadata ?? [],
           bodyExists: (bodyId) =>
             structure.bodies.some((body) => body.id === bodyId)
         });
@@ -2862,11 +2863,19 @@ function isCadQuery(value: unknown): boolean {
     case "project.summary":
     case "project.features":
     case "project.structure":
-    case "project.health":
     case "project.sketches":
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.health":
+      return (
+        Object.keys(value).length === 1 ||
+        (Object.keys(value).length === 2 &&
+          Array.isArray(value.derivedExactMetadata) &&
+          value.derivedExactMetadata.every((snapshot) =>
+            isCadBodyDerivedExactMetadataSnapshot(snapshot)
+          ))
+      );
     case "project.extents":
       return (
         Object.keys(value).length === 1 ||

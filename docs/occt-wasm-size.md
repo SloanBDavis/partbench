@@ -323,9 +323,11 @@ invalid mesh or exact metadata results are returned as structured diagnostics.
 
 Circle target edge finishing remains unsupported in this slice because the
 semantic circular-edge-to-OCCT-edge mapping and stable result-topology behavior
-need a separate, explicit design. App derived-geometry wiring, UI controls,
-measurements/extents, exact topology naming, and generated references for
-edge-finished result bodies remain future work.
+need a separate, explicit design. App derived-geometry wiring, compact UI
+controls, derived exact metadata, project extents, and project health now cover
+the supported rectangle-edge subset. Source-derived measurements, exact topology
+naming, and generated references for edge-finished result bodies remain future
+work.
 
 ## Boolean Feasibility Risks
 

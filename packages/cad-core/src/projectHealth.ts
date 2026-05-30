@@ -6,6 +6,7 @@ import type {
   CadAuthoredFilletHealth,
   CadAuthoredHoleHealth,
   CadAuthoredRevolveHealth,
+  CadBodyDerivedExactMetadataSnapshot,
   CadBodyTopologySnapshot,
   CadDependencyHealthIssue,
   CadDependencyHealthStatus,
@@ -65,6 +66,7 @@ export interface ProjectHealthOptions {
   readonly ownerPartId: PartId;
   readonly units: DocumentUnits;
   readonly bodyExists: (bodyId: BodyId) => boolean;
+  readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
 }
 
 export interface ProjectHealthDocument extends GeneratedReferencesDocument {
@@ -352,6 +354,10 @@ function createAuthoredExtrudeHealth(
     bodyId: feature.bodyId,
     units: options.units,
     ownerPartId: options.ownerPartId,
+    derivedExactMetadata: getDerivedExactMetadataForBody(
+      options,
+      feature.bodyId
+    ),
     bodyExists: options.bodyExists
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
@@ -371,6 +377,7 @@ function createAuthoredExtrudeHealth(
           topologyAvailable: topologySnapshot.topologyAvailable,
           exactMeasurementsAvailable:
             topologySnapshot.exactMeasurementsAvailable,
+          measurementConfidence: topologySnapshot.measurementConfidence,
           topologyIssueCount: topologySnapshot.issues.length
         }
       : {}),
@@ -461,6 +468,10 @@ function createAuthoredRevolveHealth(
     bodyId: feature.bodyId,
     units: options.units,
     ownerPartId: options.ownerPartId,
+    derivedExactMetadata: getDerivedExactMetadataForBody(
+      options,
+      feature.bodyId
+    ),
     bodyExists: options.bodyExists
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
@@ -482,6 +493,7 @@ function createAuthoredRevolveHealth(
           topologyAvailable: topologySnapshot.topologyAvailable,
           exactMeasurementsAvailable:
             topologySnapshot.exactMeasurementsAvailable,
+          measurementConfidence: topologySnapshot.measurementConfidence,
           topologyIssueCount: topologySnapshot.issues.length
         }
       : {}),
@@ -641,6 +653,10 @@ function createAuthoredHoleHealth(
     bodyId: feature.bodyId,
     units: options.units,
     ownerPartId: options.ownerPartId,
+    derivedExactMetadata: getDerivedExactMetadataForBody(
+      options,
+      feature.bodyId
+    ),
     bodyExists: options.bodyExists
   });
   const topologySnapshot = topology.ok ? topology.topology : undefined;
@@ -661,6 +677,7 @@ function createAuthoredHoleHealth(
           topologyAvailable: topologySnapshot.topologyAvailable,
           exactMeasurementsAvailable:
             topologySnapshot.exactMeasurementsAvailable,
+          measurementConfidence: topologySnapshot.measurementConfidence,
           topologyIssueCount: topologySnapshot.issues.length
         }
       : {}),
@@ -697,6 +714,7 @@ function createAuthoredChamferHealth(
           topologyAvailable: topologySnapshot.topologyAvailable,
           exactMeasurementsAvailable:
             topologySnapshot.exactMeasurementsAvailable,
+          measurementConfidence: topologySnapshot.measurementConfidence,
           topologyIssueCount: topologySnapshot.issues.length
         }
       : {}),
@@ -733,6 +751,7 @@ function createAuthoredFilletHealth(
           topologyAvailable: topologySnapshot.topologyAvailable,
           exactMeasurementsAvailable:
             topologySnapshot.exactMeasurementsAvailable,
+          measurementConfidence: topologySnapshot.measurementConfidence,
           topologyIssueCount: topologySnapshot.issues.length
         }
       : {}),
@@ -840,6 +859,10 @@ function createEdgeFinishHealth(
     bodyId: feature.bodyId,
     units: options.units,
     ownerPartId: options.ownerPartId,
+    derivedExactMetadata: getDerivedExactMetadataForBody(
+      options,
+      feature.bodyId
+    ),
     bodyExists: options.bodyExists
   });
 
@@ -847,6 +870,15 @@ function createEdgeFinishHealth(
     issues,
     ...(topology.ok ? { topologySnapshot: topology.topology } : {})
   };
+}
+
+function getDerivedExactMetadataForBody(
+  options: ProjectHealthOptions,
+  bodyId: BodyId
+): CadBodyDerivedExactMetadataSnapshot | undefined {
+  return options.derivedExactMetadata?.find(
+    (snapshot) => snapshot.bodyId === bodyId
+  );
 }
 
 function resolveEdgeFinishStableId(

@@ -563,6 +563,23 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: {
+          query: "project.health",
+          derivedExactMetadata: [
+            {
+              bodyId: "body_hole_1",
+              sourceIdentityCacheKey: "body-topology:v1:hole",
+              status: "unsupported",
+              error: {
+                code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
+                message: "Unsupported exact metadata source."
+              }
+            }
+          ]
+        }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "project.sketches" }
       },
       {
@@ -665,6 +682,7 @@ describe("cad-protocol", () => {
       "project.features",
       "project.structure",
       "project.health",
+      "project.health",
       "project.sketches",
       "object.get",
       "object.measurements",
@@ -717,7 +735,7 @@ describe("cad-protocol", () => {
       status: "under-defined",
       issueCount: 1,
       authoredExtrudeCount: 0,
-      authoredRevolveCount: 0,
+      authoredRevolveCount: 1,
       authoredHoleCount: 0,
       authoredChamferCount: 0,
       authoredFilletCount: 0,
@@ -727,7 +745,30 @@ describe("cad-protocol", () => {
       sketchConstraintCount: 0,
       namedReferenceCount: 0,
       authoredExtrudes: [],
-      authoredRevolves: [],
+      authoredRevolves: [
+        {
+          featureId: "feat_revolve_1",
+          bodyId: "body_revolve_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle",
+          axis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          },
+          angleDegrees: 360,
+          operationMode: "newBody",
+          topologyStatus: "unsupported",
+          topologyModel: "none",
+          topologyAvailable: false,
+          exactMeasurementsAvailable: true,
+          measurementConfidence: "kernel-derived",
+          topologyIssueCount: 1,
+          status: "healthy",
+          issues: []
+        }
+      ],
       authoredHoles: [],
       authoredChamfers: [],
       authoredFillets: [],

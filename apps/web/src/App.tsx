@@ -116,6 +116,7 @@ import {
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
+  createProjectQueryDerivedExactMetadataSnapshots,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
   getDerivedExactMetadataEntryForBody,
@@ -290,10 +291,17 @@ function readProjectStructure(): {
     : { parts: [], features: [], bodies: [] };
 }
 
-function readProjectHealth(): ProjectHealthQueryResponse {
+function readProjectHealth(
+  exactMetadata: DerivedExactMetadataSnapshot
+): ProjectHealthQueryResponse {
+  const derivedExactMetadata =
+    createDerivedExactMetadataSnapshotsForProjectQuery(exactMetadata);
   const response = engine.executeQuery({
     version: "cadops.v1",
-    query: { query: "project.health" }
+    query: {
+      query: "project.health",
+      ...(derivedExactMetadata.length > 0 ? { derivedExactMetadata } : {})
+    }
   });
 
   return response.ok && response.query === "project.health"
@@ -325,6 +333,35 @@ function readProjectHealth(): ProjectHealthQueryResponse {
         sketchConstraints: [],
         namedReferences: []
       };
+}
+
+function createDerivedExactMetadataSnapshotsForProjectQuery(
+  exactMetadata: DerivedExactMetadataSnapshot
+) {
+  if (exactMetadata.entries.length === 0) {
+    return [];
+  }
+
+  const sourceIdentityCacheKeysByBodyId = new Map<string, string>();
+
+  for (const entry of exactMetadata.entries) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: entry.bodyId }
+    });
+
+    if (response.ok && response.query === "body.topology") {
+      sourceIdentityCacheKeysByBodyId.set(
+        entry.bodyId,
+        response.topology.sourceIdentity.cacheKey
+      );
+    }
+  }
+
+  return createProjectQueryDerivedExactMetadataSnapshots(
+    exactMetadata,
+    sourceIdentityCacheKeysByBodyId
+  );
 }
 
 function readBodyGeneratedReferences(bodyId: string | undefined): {
@@ -657,7 +694,7 @@ export function App() {
     [document]
   );
   const projectStructure = readProjectStructure();
-  const projectHealth = readProjectHealth();
+  const projectHealth = readProjectHealth(derivedExactMetadata);
   const sketchExtrudeBodies = useMemo(
     () =>
       projectStructure.bodies.filter(

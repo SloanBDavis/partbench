@@ -346,6 +346,16 @@ export function createProjectExtentsDerivedExactMetadataSnapshots(
   snapshot: DerivedExactMetadataSnapshot,
   sourceIdentityCacheKeysByBodyId: ReadonlyMap<string, string>
 ): readonly CadBodyDerivedExactMetadataSnapshot[] {
+  return createProjectQueryDerivedExactMetadataSnapshots(
+    snapshot,
+    sourceIdentityCacheKeysByBodyId
+  );
+}
+
+export function createProjectQueryDerivedExactMetadataSnapshots(
+  snapshot: DerivedExactMetadataSnapshot,
+  sourceIdentityCacheKeysByBodyId: ReadonlyMap<string, string>
+): readonly CadBodyDerivedExactMetadataSnapshot[] {
   return snapshot.entries
     .map((entry) => {
       const sourceIdentityCacheKey = sourceIdentityCacheKeysByBodyId.get(

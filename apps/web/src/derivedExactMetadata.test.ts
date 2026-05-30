@@ -11,6 +11,7 @@ import {
   createEmptyDerivedExactMetadataSnapshot,
   createExactMetadataRuntimeInput,
   createProjectExtentsDerivedExactMetadataSnapshots,
+  createProjectQueryDerivedExactMetadataSnapshots,
   DerivedExactMetadataService,
   formatDerivedExactMetadataEntryStatus,
   getDerivedExactMetadataEntryForBody,
@@ -266,7 +267,7 @@ describe("derivedExactMetadata", () => {
     });
   });
 
-  it("maps exact metadata entries into project.extents query snapshots by source identity", () => {
+  it("maps exact metadata entries into project query snapshots by source identity", () => {
     const ready = createReadyExactMetadataEntry(
       "body_revolve_1",
       "revolve",
@@ -321,6 +322,22 @@ describe("derivedExactMetadata", () => {
         })
       })
     ]);
+    expect(
+      createProjectQueryDerivedExactMetadataSnapshots(
+        {
+          entries: [ready, unsupported, pending, skipped],
+          supportedCount: 3,
+          pendingCount: 1,
+          readyCount: 2,
+          errorCount: 0
+        },
+        new Map([
+          ["body_revolve_1", "body-topology:v1:revolve"],
+          ["body_hole_1", "body-topology:v1:hole"],
+          ["body_chamfer_1", "body-topology:v1:chamfer"]
+        ])
+      )
+    ).toEqual(snapshots);
   });
 
   it("maps exact metadata terminal states and leaves pending query-only", () => {
