@@ -4,6 +4,7 @@ import {
   createOcctBoxMesh,
   createOcctConeMesh,
   createOcctCylinderMesh,
+  createOcctEdgeFinishMesh,
   createOcctExactBodyMetadata,
   createOcctRevolveProfileMesh,
   createOcctSphereMesh,
@@ -129,6 +130,48 @@ describe("occt-wasm", () => {
       expect(mesh.triangleCount).toBeGreaterThan(0);
       expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
       expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "creates rectangle chamfer and fillet meshes through Open CASCADE WASM",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 6,
+          height: 4
+        },
+        depth: 4
+      };
+      const chamfer = await createOcctEdgeFinishMesh({
+        operation: "chamfer",
+        target,
+        edgeStableId: "generated:edge:body:1:start:uMin",
+        distance: 0.25
+      });
+      const fillet = await createOcctEdgeFinishMesh({
+        operation: "fillet",
+        target,
+        edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+        radius: 0.2
+      });
+
+      expect(chamfer.primitive).toBe("edgeFinish");
+      expect(chamfer.faceCount).toBeGreaterThan(0);
+      expect(chamfer.vertexCount).toBeGreaterThan(0);
+      expect(chamfer.triangleCount).toBeGreaterThan(0);
+      expect(chamfer.positions).toHaveLength(chamfer.vertexCount * 3);
+      expect(chamfer.indices).toHaveLength(chamfer.triangleCount * 3);
+      expect(fillet.primitive).toBe("edgeFinish");
+      expect(fillet.faceCount).toBeGreaterThan(0);
+      expect(fillet.vertexCount).toBeGreaterThan(0);
+      expect(fillet.triangleCount).toBeGreaterThan(0);
+      expect(fillet.positions).toHaveLength(fillet.vertexCount * 3);
+      expect(fillet.indices).toHaveLength(fillet.triangleCount * 3);
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

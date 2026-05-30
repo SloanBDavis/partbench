@@ -6,6 +6,7 @@ import {
   createOcctTorusMeshWithInstance,
   loadBrowserOcct,
   createOcctBooleanExtrudeMeshWithInstance,
+  createOcctEdgeFinishMeshWithInstance,
   createOcctHoleMeshWithInstance,
   createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance
@@ -16,6 +17,7 @@ import {
   type BooleanExtrudesRequest,
   type BooleanExtrudeSource,
   type BoxGeometryDimensions,
+  type ChamferEdgeFinishRequest,
   type ConeGeometryDimensions,
   type CylinderGeometryDimensions,
   type ExactBodyMetadataRequest,
@@ -27,6 +29,10 @@ import {
   type GeometryKernelBooleanOperation,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
+  type GeometryKernelEdgeFinishEdgeRole,
+  type GeometryKernelEdgeFinishMeshFactory,
+  type GeometryKernelEdgeFinishMeshFactoryInput,
+  type GeometryKernelEdgeFinishOperation,
   type GeometryKernelExactBodyMetadata,
   type GeometryKernelExactBodyMetadataSuccessResponse,
   type GeometryKernelExactMetadataDiagnostic,
@@ -48,11 +54,13 @@ import {
   type GeometryKernelMeshSuccessResponse,
   type GeometryKernelRevolveProfileMeshFactory,
   type GeometryKernelTopologyCounts,
+  type EdgeFinishRequest,
   type HoleRequest,
   type HoleToolSource,
   type RevolveGeometryAxis,
   type RevolveGeometryProfile,
   type RevolveProfileRequest,
+  type FilletEdgeFinishRequest,
   type SerializableMeshData,
   type SphereGeometryDimensions,
   type TessellateExtrudeRequest,
@@ -67,13 +75,14 @@ import {
 
 type BrowserOcctPrimitive = Exclude<
   GeometryKernelPrimitive,
-  "extrude" | "revolve" | "boolean" | "hole"
+  "extrude" | "revolve" | "boolean" | "hole" | "edgeFinish"
 >;
 
 export type {
   BooleanExtrudesRequest,
   BooleanExtrudeSource,
   BoxGeometryDimensions,
+  ChamferEdgeFinishRequest,
   ConeGeometryDimensions,
   CylinderGeometryDimensions,
   ExactBodyMetadataRequest,
@@ -85,6 +94,10 @@ export type {
   GeometryKernelBooleanOperation,
   GeometryKernelError,
   GeometryKernelErrorCode,
+  GeometryKernelEdgeFinishEdgeRole,
+  GeometryKernelEdgeFinishMeshFactory,
+  GeometryKernelEdgeFinishMeshFactoryInput,
+  GeometryKernelEdgeFinishOperation,
   GeometryKernelExactBodyMetadata,
   GeometryKernelExactBodyMetadataSuccessResponse,
   GeometryKernelExactMetadataDiagnostic,
@@ -104,11 +117,13 @@ export type {
   GeometryKernelResponse,
   GeometryKernelSuccessResponse,
   GeometryKernelTopologyCounts,
+  EdgeFinishRequest,
   HoleRequest,
   HoleToolSource,
   RevolveGeometryAxis,
   RevolveGeometryProfile,
   RevolveProfileRequest,
+  FilletEdgeFinishRequest,
   GeometryKernelVersion,
   GeometryKernelErrorResponse,
   SerializableMeshData,
@@ -165,6 +180,7 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createConeMesh: (input) => createMeshWithBrowserOcct(input, "cone"),
       createTorusMesh: (input) => createMeshWithBrowserOcct(input, "torus"),
       createBooleanExtrudeMesh: createBooleanExtrudeMeshWithBrowserOcct,
+      createEdgeFinishMesh: createEdgeFinishMeshWithBrowserOcct,
       createHoleMesh: createHoleMeshWithBrowserOcct,
       createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
       createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct
@@ -291,6 +307,34 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctHoleMeshWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createEdgeFinishMeshWithBrowserOcct(
+    input: GeometryKernelEdgeFinishMeshFactoryInput
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctEdgeFinishMeshWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

@@ -14,7 +14,8 @@ export type OcctPrimitiveKind =
   | "torus"
   | "revolve"
   | "boolean"
-  | "hole";
+  | "hole"
+  | "edgeFinish";
 
 export interface OcctMeshData {
   readonly primitive: OcctPrimitiveKind;

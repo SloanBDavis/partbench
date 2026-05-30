@@ -743,6 +743,67 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "runs rectangle edge-finish chamfer and fillet feasibility requests",
+    async () => {
+      const target = {
+        sketchPlane: "XY" as const,
+        profile: {
+          kind: "rectangle" as const,
+          center: [0, 0] as const,
+          width: 6,
+          height: 4
+        },
+        depth: 4
+      };
+      const chamfer = await executeGeometryKernelRequest({
+        id: "geometry_req_edge_finish_chamfer",
+        version: "geometry-kernel.v1",
+        op: "geometry.edgeFinish",
+        operation: "chamfer",
+        target,
+        edgeStableId: "generated:edge:body:1:start:uMin",
+        distance: 0.25
+      });
+      const fillet = await executeGeometryKernelRequest({
+        id: "geometry_req_edge_finish_fillet",
+        version: "geometry-kernel.v1",
+        op: "geometry.edgeFinish",
+        operation: "fillet",
+        target,
+        edgeStableId: "generated:edge:body:1:longitudinal:uMax:vMax",
+        radius: 0.2
+      });
+
+      expect(chamfer.ok || chamfer.error.code === "UNAVAILABLE_BINDING").toBe(
+        true
+      );
+      expect(fillet.ok || fillet.error.code === "UNAVAILABLE_BINDING").toBe(
+        true
+      );
+
+      if (!chamfer.ok || !fillet.ok) {
+        return;
+      }
+
+      expect(chamfer.mesh.primitive).toBe("edgeFinish");
+      expect(chamfer.mesh.vertexCount).toBeGreaterThan(0);
+      expect(chamfer.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getMeshBounds(chamfer.mesh.positions)).toEqual({
+        min: [-3, -2, 0],
+        max: [3, 2, 4]
+      });
+      expect(fillet.mesh.primitive).toBe("edgeFinish");
+      expect(fillet.mesh.vertexCount).toBeGreaterThan(0);
+      expect(fillet.mesh.triangleCount).toBeGreaterThan(0);
+      expect(getGeometryResponseTransferables(chamfer)).toEqual([
+        chamfer.mesh.positions.buffer,
+        chamfer.mesh.indices.buffer
+      ]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "runs hole feasibility requests for side direction, planes, and placement frames",
     async () => {
       const negative = await executeGeometryKernelRequest({
@@ -1328,6 +1389,108 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("returns structured edge-finish feasibility errors", async () => {
+    const rectangleTarget = {
+      sketchPlane: "XY" as const,
+      profile: {
+        kind: "rectangle" as const,
+        center: [0, 0] as const,
+        width: 4,
+        height: 4
+      },
+      depth: 4
+    };
+    const unsupportedCircleTarget = await executeGeometryKernelRequest({
+      id: "geometry_req_edge_finish_circle_target",
+      version: "geometry-kernel.v1",
+      op: "geometry.edgeFinish",
+      operation: "chamfer",
+      target: {
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 2
+        },
+        depth: 4
+      },
+      edgeStableId: "generated:edge:body:1:start:circular",
+      distance: 0.25
+    });
+    const unsupportedCircularEdge = await executeGeometryKernelRequest({
+      id: "geometry_req_edge_finish_circular_edge",
+      version: "geometry-kernel.v1",
+      op: "geometry.edgeFinish",
+      operation: "fillet",
+      target: rectangleTarget,
+      edgeStableId: "generated:edge:body:1:start:circular",
+      radius: 0.25
+    });
+    const staleEdgeRole = await executeGeometryKernelRequest({
+      id: "geometry_req_edge_finish_stale_edge",
+      version: "geometry-kernel.v1",
+      op: "geometry.edgeFinish",
+      operation: "chamfer",
+      target: rectangleTarget,
+      edgeStableId: "generated:edge:body:1:deleted:uMin",
+      distance: 0.25
+    });
+    const tooLarge = await executeGeometryKernelRequest({
+      id: "geometry_req_edge_finish_too_large",
+      version: "geometry-kernel.v1",
+      op: "geometry.edgeFinish",
+      operation: "fillet",
+      target: rectangleTarget,
+      edgeStableId: "generated:edge:body:1:start:uMin",
+      radius: 3
+    });
+
+    expect(unsupportedCircleTarget).toEqual({
+      ok: false,
+      id: "geometry_req_edge_finish_circle_target",
+      op: "geometry.edgeFinish",
+      error: {
+        code: "UNSUPPORTED_PROFILE",
+        message:
+          "Edge finish feasibility currently supports rectangle extrude targets only."
+      },
+      warnings: []
+    });
+    expect(unsupportedCircularEdge).toEqual({
+      ok: false,
+      id: "geometry_req_edge_finish_circular_edge",
+      op: "geometry.edgeFinish",
+      error: {
+        code: "UNSUPPORTED_EDGE",
+        message:
+          "Edge finish feasibility currently supports generated rectangle extrude edges only."
+      },
+      warnings: []
+    });
+    expect(staleEdgeRole).toEqual({
+      ok: false,
+      id: "geometry_req_edge_finish_stale_edge",
+      op: "geometry.edgeFinish",
+      error: {
+        code: "INVALID_EDGE_ROLE",
+        message:
+          "Edge finish requests require a generated rectangle edge stable ID with a supported semantic edge role."
+      },
+      warnings: []
+    });
+    expect(tooLarge).toEqual({
+      ok: false,
+      id: "geometry_req_edge_finish_too_large",
+      op: "geometry.edgeFinish",
+      error: {
+        code: "EDGE_FINISH_TOO_LARGE",
+        message:
+          "Edge finish distance or radius is too large for the selected rectangle edge in this feasibility path."
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured invalid mesh result errors", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1457,6 +1620,77 @@ describe("geometry-kernel facade", () => {
     });
   });
 
+  it("returns edge-finish meshes from an injected factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createEdgeFinishMesh: async (input) => {
+        expect(input).toMatchObject({
+          operation: "chamfer",
+          edgeStableId: "generated:edge:body:1:start:uMin",
+          distance: 0.2,
+          linearDeflection: 0.1
+        });
+
+        return {
+          primitive: "edgeFinish",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_edge_finish",
+        version: "geometry-kernel.v1",
+        op: "geometry.edgeFinish",
+        operation: "chamfer",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 2
+        },
+        edgeStableId: "generated:edge:body:1:start:uMin",
+        distance: 0.2,
+        tessellation: {
+          linearDeflection: 0.1
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_edge_finish",
+      op: "geometry.edgeFinish",
+      mesh: {
+        primitive: "edgeFinish",
+        positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]),
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      },
+      warnings: []
+    });
+  });
+
   it("returns structured unavailable-binding errors when hole factory is absent", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");
@@ -1506,6 +1740,54 @@ describe("geometry-kernel facade", () => {
       error: {
         code: "UNAVAILABLE_BINDING",
         message: "Hole tessellation requires an OCCT hole mesh factory."
+      },
+      warnings: []
+    });
+  });
+
+  it("returns structured unavailable-binding errors when edge-finish factory is absent", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_unavailable_edge_finish",
+        version: "geometry-kernel.v1",
+        op: "geometry.edgeFinish",
+        operation: "fillet",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 2
+          },
+          depth: 2
+        },
+        edgeStableId: "generated:edge:body:1:end:vMax",
+        radius: 0.2
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_unavailable_edge_finish",
+      op: "geometry.edgeFinish",
+      error: {
+        code: "UNAVAILABLE_BINDING",
+        message:
+          "Edge finish tessellation requires an OCCT edge-finish mesh factory."
       },
       warnings: []
     });

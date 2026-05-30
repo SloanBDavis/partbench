@@ -284,6 +284,46 @@ before invoking OCCT. Runtime placement failures, empty/full-removal results,
 missing bindings, kernel failures, and invalid mesh results are returned as
 structured diagnostics.
 
+## V6 Phase E Edge-Finish Findings
+
+The installed full OpenCascade.js package exposes the bindings needed for the
+first geometry-only chamfer/fillet feasibility path:
+
+- target rectangle solid construction through the existing
+  `BRepPrimAPI_MakeBox_5` source-derived extrude builder;
+- transient semantic edge selection through `TopExp_Explorer_2`,
+  `TopoDS.Edge_1`, `TopExp.FirstVertex`, `TopExp.LastVertex`, and
+  `BRep_Tool.Pnt`;
+- chamfer execution through `BRepFilletAPI_MakeChamfer.Add_2(distance, edge)`
+  and `Build(Message_ProgressRange)`;
+- fillet execution through `BRepFilletAPI_MakeFillet.Add_2(radius, edge)`,
+  `ChFi3d_FilletShape.ChFi3d_Rational`, and
+  `Build(Message_ProgressRange)`;
+- mesh generation and extraction through the existing
+  `BRepMesh_IncrementalMesh_2` and triangulation reader path.
+
+`geometry.edgeFinish` now uses those APIs for one semantic generated rectangle
+edge on a source-derived rectangle extrude target. The request accepts the
+existing generated edge stable ID string, but the geometry layer does not expose
+or persist raw OCCT edge indexes. Instead, it parses the semantic rectangle
+edge role and matches the expected source-derived edge endpoints against the
+transient OCCT target shape.
+
+Results are serializable mesh data only. They are derived geometry, are not
+persisted, do not change project schema, and do not expose generated references
+for chamfer/fillet result bodies. The geometry-kernel validation path rejects
+circle targets, circular/unsupported edges, malformed or stale generated edge
+roles, non-positive distance/radius values, malformed placement frames, and
+conservatively too-large distance/radius values before invoking OCCT. Runtime
+missing bindings, kernel failures, empty results, and invalid mesh results are
+returned as structured diagnostics.
+
+Circle target edge finishing remains unsupported in this slice because the
+semantic circular-edge-to-OCCT-edge mapping and stable result-topology behavior
+need a separate, explicit design. App derived-geometry wiring, UI controls,
+exact chamfer/fillet metadata, measurements/extents, and generated references
+for edge-finished result bodies remain future work.
+
 ## Boolean Feasibility Risks
 
 The extrude boolean path does not change the binary-size recommendation, but it

@@ -9,6 +9,7 @@ export type GeometryKernelOp =
   | "geometry.revolveProfile"
   | "geometry.booleanExtrudes"
   | "geometry.hole"
+  | "geometry.edgeFinish"
   | "geometry.exactBodyMetadata";
 export type GeometryKernelPrimitive =
   | "box"
@@ -19,13 +20,32 @@ export type GeometryKernelPrimitive =
   | "extrude"
   | "revolve"
   | "boolean"
-  | "hole";
+  | "hole"
+  | "edgeFinish";
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
 export type GeometryKernelBooleanOperation = "add" | "cut";
 export type GeometryKernelHoleDepthMode = "blind" | "throughAll";
 export type GeometryKernelHoleDirection = "positive" | "negative";
+export type GeometryKernelEdgeFinishOperation = "chamfer" | "fillet";
+export type GeometryKernelRectangleEdgeRole =
+  | "start:uMin"
+  | "start:uMax"
+  | "start:vMin"
+  | "start:vMax"
+  | "end:uMin"
+  | "end:uMax"
+  | "end:vMin"
+  | "end:vMax"
+  | "longitudinal:uMin:vMin"
+  | "longitudinal:uMin:vMax"
+  | "longitudinal:uMax:vMin"
+  | "longitudinal:uMax:vMax";
+export type GeometryKernelCircularEdgeRole = "start:circular" | "end:circular";
+export type GeometryKernelEdgeFinishEdgeRole =
+  | GeometryKernelRectangleEdgeRole
+  | GeometryKernelCircularEdgeRole;
 
 export interface BoxGeometryDimensions {
   readonly width: number;
@@ -185,6 +205,34 @@ export interface HoleRequest {
   readonly tessellation?: TessellationOptions;
 }
 
+export type EdgeFinishRequest =
+  | ChamferEdgeFinishRequest
+  | FilletEdgeFinishRequest;
+
+export interface ChamferEdgeFinishRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.edgeFinish";
+  readonly operation: "chamfer";
+  readonly target: BooleanExtrudeSource;
+  readonly edgeStableId: string;
+  readonly distance: number;
+  readonly radius?: never;
+  readonly tessellation?: TessellationOptions;
+}
+
+export interface FilletEdgeFinishRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.edgeFinish";
+  readonly operation: "fillet";
+  readonly target: BooleanExtrudeSource;
+  readonly edgeStableId: string;
+  readonly radius: number;
+  readonly distance?: never;
+  readonly tessellation?: TessellationOptions;
+}
+
 export type ExactBodyMetadataSource =
   | ExactExtrudeMetadataSource
   | ExactBooleanExtrudesMetadataSource
@@ -234,6 +282,7 @@ export type GeometryKernelRequest =
   | RevolveProfileRequest
   | BooleanExtrudesRequest
   | HoleRequest
+  | EdgeFinishRequest
   | ExactBodyMetadataRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
@@ -286,6 +335,9 @@ export type GeometryKernelErrorCode =
   | "INVALID_DIMENSIONS"
   | "INVALID_TESSELLATION_OPTIONS"
   | "UNSUPPORTED_PROFILE"
+  | "UNSUPPORTED_EDGE"
+  | "INVALID_EDGE_ROLE"
+  | "EDGE_FINISH_TOO_LARGE"
   | "INVALID_PLACEMENT"
   | "KERNEL_FAILURE"
   | "EMPTY_RESULT"
@@ -367,6 +419,16 @@ export type GeometryKernelHoleMeshFactory = (
   input: Omit<HoleRequest, "id" | "version" | "op"> & TessellationOptions
 ) => Promise<GeometryKernelMeshResult>;
 
+export type GeometryKernelEdgeFinishMeshFactoryInput =
+  | (Omit<ChamferEdgeFinishRequest, "id" | "version" | "op"> &
+      TessellationOptions)
+  | (Omit<FilletEdgeFinishRequest, "id" | "version" | "op"> &
+      TessellationOptions);
+
+export type GeometryKernelEdgeFinishMeshFactory = (
+  input: GeometryKernelEdgeFinishMeshFactoryInput
+) => Promise<GeometryKernelMeshResult>;
+
 export type GeometryKernelRevolveProfileMeshFactory = (
   input: Omit<RevolveProfileRequest, "id" | "version" | "op"> &
     TessellationOptions
@@ -384,6 +446,7 @@ export interface GeometryKernelMeshFactories {
   readonly createTorusMesh: GeometryKernelTorusMeshFactory;
   readonly createBooleanExtrudeMesh: GeometryKernelBooleanExtrudeMeshFactory;
   readonly createHoleMesh?: GeometryKernelHoleMeshFactory;
+  readonly createEdgeFinishMesh?: GeometryKernelEdgeFinishMeshFactory;
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
 }
@@ -581,6 +644,52 @@ function validateRequest(
           "Hole requests require a supported authored extrude target source, circular tool source, valid depth mode, direction, and finite positive blind depth when provided."
       };
     }
+  } else if (request.op === "geometry.edgeFinish") {
+    if (
+      !isValidBooleanExtrudeSource(request.target) ||
+      !isValidEdgeFinishOperation(request.operation) ||
+      !isValidEdgeFinishAmount(request)
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Edge finish requests require a supported authored extrude target source, operation chamfer or fillet, one generated edge stable ID, and a positive finite distance or radius."
+      };
+    }
+
+    if (request.target.profile.kind !== "rectangle") {
+      return {
+        code: "UNSUPPORTED_PROFILE",
+        message:
+          "Edge finish feasibility currently supports rectangle extrude targets only."
+      };
+    }
+
+    const edgeRole = parseEdgeFinishEdgeRole(request.edgeStableId);
+
+    if (!edgeRole) {
+      return {
+        code: "INVALID_EDGE_ROLE",
+        message:
+          "Edge finish requests require a generated rectangle edge stable ID with a supported semantic edge role."
+      };
+    }
+
+    if (!isRectangleEdgeFinishRole(edgeRole)) {
+      return {
+        code: "UNSUPPORTED_EDGE",
+        message:
+          "Edge finish feasibility currently supports generated rectangle extrude edges only."
+      };
+    }
+
+    if (isEdgeFinishAmountTooLarge(request, edgeRole)) {
+      return {
+        code: "EDGE_FINISH_TOO_LARGE",
+        message:
+          "Edge finish distance or radius is too large for the selected rectangle edge in this feasibility path."
+      };
+    }
   } else if (request.op === "geometry.exactBodyMetadata") {
     if (!isValidExactBodyMetadataSource(request.source)) {
       return {
@@ -664,7 +773,42 @@ function createMesh(
       });
     case "geometry.hole":
       return createHoleMesh(factories, request);
+    case "geometry.edgeFinish":
+      return createEdgeFinishMesh(factories, request);
   }
+}
+
+function createEdgeFinishMesh(
+  factories: GeometryKernelMeshFactories,
+  request: EdgeFinishRequest
+): Promise<GeometryKernelMeshResult> {
+  if (!factories.createEdgeFinishMesh) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Edge finish tessellation requires an OCCT edge-finish mesh factory."
+    } satisfies GeometryKernelError);
+  }
+
+  if (request.operation === "chamfer") {
+    return factories.createEdgeFinishMesh({
+      operation: request.operation,
+      target: request.target,
+      edgeStableId: request.edgeStableId,
+      distance: request.distance,
+      linearDeflection: request.tessellation?.linearDeflection,
+      angularDeflection: request.tessellation?.angularDeflection
+    });
+  }
+
+  return factories.createEdgeFinishMesh({
+    operation: request.operation,
+    target: request.target,
+    edgeStableId: request.edgeStableId,
+    radius: request.radius,
+    linearDeflection: request.tessellation?.linearDeflection,
+    angularDeflection: request.tessellation?.angularDeflection
+  });
 }
 
 function createHoleMesh(
@@ -869,6 +1013,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Boolean extrude";
     case "geometry.hole":
       return "Hole";
+    case "geometry.edgeFinish":
+      return "Edge finish";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
   }
@@ -929,6 +1075,9 @@ function isGeometryKernelErrorCode(
     value === "INVALID_DIMENSIONS" ||
     value === "INVALID_TESSELLATION_OPTIONS" ||
     value === "UNSUPPORTED_PROFILE" ||
+    value === "UNSUPPORTED_EDGE" ||
+    value === "INVALID_EDGE_ROLE" ||
+    value === "EDGE_FINISH_TOO_LARGE" ||
     value === "INVALID_PLACEMENT" ||
     value === "KERNEL_FAILURE" ||
     value === "EMPTY_RESULT" ||
@@ -965,6 +1114,12 @@ function isHoleDepthMode(value: unknown): value is GeometryKernelHoleDepthMode {
 
 function isHoleDirection(value: unknown): value is GeometryKernelHoleDirection {
   return value === "positive" || value === "negative";
+}
+
+function isValidEdgeFinishOperation(
+  value: unknown
+): value is GeometryKernelEdgeFinishOperation {
+  return value === "chamfer" || value === "fillet";
 }
 
 function isValidExtrudeProfile(profile: ExtrudeGeometryProfile): boolean {
@@ -1015,6 +1170,107 @@ function isValidHoleToolSource(source: HoleToolSource): boolean {
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
   );
+}
+
+function isValidEdgeFinishAmount(request: EdgeFinishRequest): boolean {
+  if (
+    typeof request.edgeStableId !== "string" ||
+    request.edgeStableId.trim().length === 0
+  ) {
+    return false;
+  }
+
+  if (request.operation === "chamfer") {
+    return (
+      isPositiveFiniteNumber(request.distance) &&
+      !("radius" in request && request.radius !== undefined)
+    );
+  }
+
+  if (request.operation === "fillet") {
+    return (
+      isPositiveFiniteNumber(request.radius) &&
+      !("distance" in request && request.distance !== undefined)
+    );
+  }
+
+  return false;
+}
+
+const RECTANGLE_EDGE_FINISH_ROLES = [
+  "start:uMin",
+  "start:uMax",
+  "start:vMin",
+  "start:vMax",
+  "end:uMin",
+  "end:uMax",
+  "end:vMin",
+  "end:vMax",
+  "longitudinal:uMin:vMin",
+  "longitudinal:uMin:vMax",
+  "longitudinal:uMax:vMin",
+  "longitudinal:uMax:vMax"
+] satisfies readonly GeometryKernelRectangleEdgeRole[];
+
+const CIRCULAR_EDGE_FINISH_ROLES = [
+  "start:circular",
+  "end:circular"
+] satisfies readonly GeometryKernelCircularEdgeRole[];
+
+function parseEdgeFinishEdgeRole(
+  stableId: string
+): GeometryKernelEdgeFinishEdgeRole | undefined {
+  if (!stableId.startsWith("generated:edge:")) {
+    return undefined;
+  }
+
+  return [...RECTANGLE_EDGE_FINISH_ROLES, ...CIRCULAR_EDGE_FINISH_ROLES].find(
+    (role) => stableId.endsWith(`:${role}`)
+  );
+}
+
+function isRectangleEdgeFinishRole(
+  role: GeometryKernelEdgeFinishEdgeRole
+): role is GeometryKernelRectangleEdgeRole {
+  return (RECTANGLE_EDGE_FINISH_ROLES as readonly string[]).includes(role);
+}
+
+function isEdgeFinishAmountTooLarge(
+  request: EdgeFinishRequest,
+  role: GeometryKernelRectangleEdgeRole
+): boolean {
+  const maxAmount = getRectangleEdgeFinishMaximumAmount(request.target, role);
+  const amount =
+    request.operation === "chamfer" ? request.distance : request.radius;
+
+  return amount >= maxAmount;
+}
+
+function getRectangleEdgeFinishMaximumAmount(
+  target: BooleanExtrudeSource,
+  role: GeometryKernelRectangleEdgeRole
+): number {
+  if (target.profile.kind !== "rectangle") {
+    return 0;
+  }
+
+  const profile = target.profile;
+  const profileWidth = profile.width;
+  const profileHeight = profile.height;
+  const depth = target.depth;
+
+  if (role.startsWith("longitudinal:")) {
+    return Math.min(profileWidth, profileHeight) / 2;
+  }
+
+  const [, profileEdgeRole] = role.split(":") as [
+    "start" | "end",
+    "uMin" | "uMax" | "vMin" | "vMax"
+  ];
+
+  return profileEdgeRole === "uMin" || profileEdgeRole === "uMax"
+    ? Math.min(profileWidth, depth) / 2
+    : Math.min(profileHeight, depth) / 2;
 }
 
 function isValidExactBodyMetadataSource(

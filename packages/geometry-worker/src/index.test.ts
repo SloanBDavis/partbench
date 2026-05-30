@@ -4,6 +4,7 @@ import {
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
+  createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
@@ -358,6 +359,53 @@ describe("geometry-worker", () => {
         },
         tessellation: {
           angularDeflection: 0.25
+        }
+      }
+    });
+  });
+
+  it("creates a typed edge-finish worker request", () => {
+    expect(
+      createEdgeFinishWorkerRequest({
+        id: "worker_req_edge_finish",
+        operation: "chamfer",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        edgeStableId: "generated:edge:body:1:start:uMin",
+        distance: 0.25,
+        linearDeflection: 0.2
+      })
+    ).toEqual({
+      id: "worker_req_edge_finish",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.edgeFinishFeature",
+      payload: {
+        id: "worker_req_edge_finish:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.edgeFinish",
+        operation: "chamfer",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        edgeStableId: "generated:edge:body:1:start:uMin",
+        distance: 0.25,
+        tessellation: {
+          linearDeflection: 0.2
         }
       }
     });
@@ -920,6 +968,53 @@ describe("geometry-worker", () => {
       response.response.mesh.indices.buffer
     ]);
   });
+
+  it("runs an edge-finish feasibility request through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createEdgeFinishWorkerRequest({
+        id: "worker_req_edge_finish_execute",
+        payloadId: "geometry_req_edge_finish_execute",
+        operation: "fillet",
+        target: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 4
+          },
+          depth: 4
+        },
+        edgeStableId: "generated:edge:body:1:end:vMax",
+        radius: 0.2
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_edge_finish_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.edgeFinishFeature",
+      payloadId: "geometry_req_edge_finish_execute",
+      response: {
+        ok: true,
+        id: "geometry_req_edge_finish_execute",
+        op: "geometry.edgeFinish"
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.mesh.primitive).toBe("edgeFinish");
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
+    expect(response.transferables).toEqual([
+      response.response.mesh.positions.buffer,
+      response.response.mesh.indices.buffer
+    ]);
+  }, 120_000);
 
   it("returns exact body metadata through the geometry kernel facade", async () => {
     const worker = createGeometryKernelWorker({ delayMs: 1 });

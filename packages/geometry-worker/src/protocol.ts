@@ -1,6 +1,7 @@
 import type {
   BooleanExtrudeSource,
   BooleanExtrudesRequest,
+  EdgeFinishRequest,
   ExactBodyMetadataRequest,
   GeometryKernelErrorResponse,
   GeometryKernelRequest,
@@ -27,6 +28,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.tessellatePrimitive"
   | "geometry-worker.tessellateFeature"
   | "geometry-worker.booleanFeature"
+  | "geometry-worker.edgeFinishFeature"
   | "geometry-worker.exactMetadata";
 
 export interface GeometryWorkerRequest<
@@ -417,6 +419,46 @@ export function createHoleWorkerRequest(input: {
       tool: input.tool,
       ...(tessellation ? { tessellation } : {})
     }
+  };
+}
+
+export function createEdgeFinishWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly target: EdgeFinishRequest["target"];
+  readonly edgeStableId: string;
+  readonly operation: EdgeFinishRequest["operation"];
+  readonly distance?: number;
+  readonly radius?: number;
+  readonly linearDeflection?: number;
+  readonly angularDeflection?: number;
+}): GeometryWorkerRequest<EdgeFinishRequest> {
+  const tessellation = createTessellationOptions(input);
+  const payloadBase = {
+    id: input.payloadId ?? `${input.id}:payload`,
+    version: "geometry-kernel.v1" as const,
+    op: "geometry.edgeFinish" as const,
+    target: input.target,
+    edgeStableId: input.edgeStableId,
+    ...(tessellation ? { tessellation } : {})
+  };
+
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.edgeFinishFeature",
+    payload:
+      input.operation === "chamfer"
+        ? {
+            ...payloadBase,
+            operation: input.operation,
+            distance: input.distance ?? Number.NaN
+          }
+        : {
+            ...payloadBase,
+            operation: input.operation,
+            radius: input.radius ?? Number.NaN
+          }
   };
 }
 
