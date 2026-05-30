@@ -536,7 +536,8 @@ code {
 }
 
 .object-tree ul button.selected,
-.compact-list button.selected {
+.compact-list button.selected,
+.edge-finish-editor .button-row button.selected {
   border-color: rgba(15, 107, 109, 0.56);
   background: linear-gradient(90deg, var(--accent-soft), #ffffff 74%);
   box-shadow:

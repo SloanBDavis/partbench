@@ -15,7 +15,9 @@ import {
   buildAddSketchPointOp,
   buildAddSketchRectangleOp,
   buildFeatureDeleteOp,
+  buildFeatureChamferOp,
   buildFeatureExtrudeOp,
+  buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
@@ -849,6 +851,46 @@ describe("cad command builders", () => {
       circleEntityId: "circle_1",
       depthMode: "throughAll",
       direction: "positive"
+    });
+
+    expect(
+      buildFeatureChamferOp({
+        id: "",
+        bodyId: "",
+        targetBodyId: "body_rect_1",
+        name: " Edge break ",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        distance: 0.25,
+        radius: 0.1
+      })
+    ).toEqual({
+      op: "feature.chamfer",
+      id: undefined,
+      bodyId: undefined,
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25,
+      name: "Edge break"
+    });
+
+    expect(
+      buildFeatureFilletOp({
+        id: "feat_fillet_1",
+        bodyId: "body_fillet_1",
+        targetBodyId: "body_rect_1",
+        name: "Round",
+        namedReference: "Top edge",
+        distance: 0.25,
+        radius: 0.125
+      })
+    ).toEqual({
+      op: "feature.fillet",
+      id: "feat_fillet_1",
+      bodyId: "body_fillet_1",
+      targetBodyId: "body_rect_1",
+      namedReference: "Top edge",
+      radius: 0.125,
+      name: "Round"
     });
   });
 

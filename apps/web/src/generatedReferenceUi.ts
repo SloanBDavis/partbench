@@ -286,6 +286,10 @@ function formatOperationLabel(operation: string): string {
   switch (operation) {
     case "feature.attachSketchPlane":
       return "Sketch plane";
+    case "feature.chamfer":
+      return "Chamfer";
+    case "feature.fillet":
+      return "Fillet";
     case "feature.measureReference":
       return "Measure";
     case "feature.selectReference":

@@ -11,6 +11,8 @@ import type {
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
   FeatureExtrudeOp,
+  FeatureChamferOp,
+  FeatureFilletOp,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
   FeatureHoleOp,
@@ -211,6 +213,17 @@ export interface FeatureHoleForm {
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth: number;
   readonly direction: FeatureHoleDirection;
+}
+
+export interface FeatureEdgeFinishForm {
+  readonly id: string;
+  readonly bodyId: string;
+  readonly targetBodyId: string;
+  readonly name: string;
+  readonly edgeStableId?: string;
+  readonly namedReference?: string;
+  readonly distance: number;
+  readonly radius: number;
 }
 
 export function buildCreateBoxOp(form: PrimitiveCommandForm): SceneCreateBoxOp {
@@ -822,6 +835,42 @@ export function buildFeatureHoleOp(
     depthMode: form.depthMode,
     ...(form.depthMode === "blind" ? { depth: form.depth } : {}),
     direction: form.direction
+  };
+}
+
+export function buildFeatureChamferOp(
+  form: FeatureEdgeFinishForm
+): FeatureChamferOp {
+  const edgeStableId = normalizeOptionalId(form.edgeStableId ?? "");
+  const namedReference = normalizeOptionalText(form.namedReference ?? "");
+
+  return {
+    op: "feature.chamfer",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    targetBodyId: form.targetBodyId,
+    ...(edgeStableId ? { edgeStableId } : {}),
+    ...(namedReference ? { namedReference } : {}),
+    distance: form.distance,
+    name: form.name.trim() || undefined
+  };
+}
+
+export function buildFeatureFilletOp(
+  form: FeatureEdgeFinishForm
+): FeatureFilletOp {
+  const edgeStableId = normalizeOptionalId(form.edgeStableId ?? "");
+  const namedReference = normalizeOptionalText(form.namedReference ?? "");
+
+  return {
+    op: "feature.fillet",
+    id: normalizeOptionalId(form.id),
+    bodyId: normalizeOptionalId(form.bodyId),
+    targetBodyId: form.targetBodyId,
+    ...(edgeStableId ? { edgeStableId } : {}),
+    ...(namedReference ? { namedReference } : {}),
+    radius: form.radius,
+    name: form.name.trim() || undefined
   };
 }
 

@@ -57,7 +57,9 @@ import {
   buildDeleteSketchEntityOp,
   buildDeleteSketchOp,
   buildFeatureDeleteOp,
+  buildFeatureChamferOp,
   buildFeatureExtrudeOp,
+  buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
@@ -79,6 +81,7 @@ import {
   WEB_UI_ACTOR,
   type BatchOperationForm,
   type DimensionCommandForm,
+  type FeatureEdgeFinishForm,
   type FeatureExtrudeForm,
   type FeatureHoleForm,
   type FeatureRevolveForm,
@@ -92,6 +95,7 @@ import {
   type SketchEntityForm,
   type TransformCommandForm
 } from "./cadCommands";
+import type { EdgeFinishOperation } from "./edgeFinishUi";
 import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
 import { BatchPanel } from "./components/BatchPanel";
 import { GeometryPanel } from "./components/GeometryPanel";
@@ -1118,6 +1122,21 @@ export function App() {
     });
   }
 
+  async function createEdgeFinish(
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) {
+    const op =
+      operation === "chamfer"
+        ? buildFeatureChamferOp(form)
+        : buildFeatureFilletOp(form);
+
+    await commitOps(
+      [op],
+      (response) => response.createdBodyIds?.[0] ?? (form.bodyId || selectedId)
+    );
+  }
+
   function focusSketch(sketchId: string) {
     setActiveUtilityPanel("sketches");
     setFocusedSketchId(sketchId);
@@ -1603,6 +1622,9 @@ export function App() {
               void deleteAuthoredFeature(featureId)
             }
             onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+            onCreateEdgeFinish={(operation, form) =>
+              void createEdgeFinish(operation, form)
+            }
             onDeleteNamedReference={(name) => void deleteNamedReference(name)}
             onNameGeneratedReference={(name, target) =>
               void nameGeneratedReference(name, target)

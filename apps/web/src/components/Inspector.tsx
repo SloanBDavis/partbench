@@ -32,9 +32,21 @@ import {
   torusDimensionsToForm,
   transformToForm,
   type DimensionCommandForm,
+  type FeatureEdgeFinishForm,
   type SketchCreateOnFaceForm,
   type TransformCommandForm
 } from "../cadCommands";
+import {
+  buildEdgeFinishForm,
+  createEdgeFinishReferenceOptions,
+  formatEdgeFinishOperationLabel,
+  formatEdgeFinishScalarName,
+  getEdgeFinishOperationStatus,
+  SELECTED_EDGE_FINISH_REFERENCE_VALUE,
+  selectEdgeFinishReferenceOption,
+  type EdgeFinishDraft,
+  type EdgeFinishOperation
+} from "../edgeFinishUi";
 import {
   buildSketchOnFaceForm,
   canCreateSketchOnFace,
@@ -95,6 +107,7 @@ export function Inspector({
   onApplyName,
   onApplyTransform,
   onCreateSketchOnFace,
+  onCreateEdgeFinish,
   onDeleteNamedReference,
   onNameGeneratedReference,
   onInspectNamedReference,
@@ -126,6 +139,10 @@ export function Inspector({
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onCreateEdgeFinish: (
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
@@ -166,6 +183,7 @@ export function Inspector({
         onApplyName,
         onApplyTransform,
         onCreateSketchOnFace,
+        onCreateEdgeFinish,
         onDeleteNamedReference,
         onNameGeneratedReference,
         onInspectNamedReference,
@@ -210,6 +228,10 @@ function renderInspectorSelection(input: {
   readonly onApplyName: (name: string) => void;
   readonly onApplyTransform: (form: TransformCommandForm) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onCreateEdgeFinish: (
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
@@ -242,6 +264,7 @@ function renderInspectorSelection(input: {
         generatedReferencesError={input.generatedReferencesError}
         generatedReferenceMeasurements={input.generatedReferenceMeasurements}
         onCreateSketchOnFace={input.onCreateSketchOnFace}
+        onCreateEdgeFinish={input.onCreateEdgeFinish}
         onDeleteNamedReference={input.onDeleteNamedReference}
         onNameGeneratedReference={input.onNameGeneratedReference}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
@@ -328,6 +351,7 @@ function BodyInspector({
   measurementsError,
   namedReferences,
   onCreateSketchOnFace,
+  onCreateEdgeFinish,
   onDeleteNamedReference,
   onNameGeneratedReference,
   onSelectGeneratedReference,
@@ -355,6 +379,10 @@ function BodyInspector({
   readonly topologyError?: string;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
+  readonly onCreateEdgeFinish: (
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
@@ -465,11 +493,14 @@ function BodyInspector({
       {feature?.kind === "extrude" && (
         <GeneratedReferencesPanel
           key={`${body.id}-${generatedReferences?.faceCount ?? 0}-${generatedReferences?.edgeCount ?? 0}-${generatedReferences?.vertexCount ?? 0}`}
+          body={body}
           bodyId={body.id}
           disabled={disabled}
           error={generatedReferencesError}
+          feature={feature}
           measurementByStableId={generatedReferenceMeasurements}
           namedReferences={namedReferences}
+          onCreateEdgeFinish={onCreateEdgeFinish}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteNamedReference={onDeleteNamedReference}
           onNameGeneratedReference={onNameGeneratedReference}
@@ -607,11 +638,14 @@ function BodyTopologyPanel({
 }
 
 function GeneratedReferencesPanel({
+  body,
   bodyId,
   disabled,
   error,
+  feature,
   measurementByStableId,
   namedReferences,
+  onCreateEdgeFinish,
   onCreateSketchOnFace,
   onDeleteNamedReference,
   onNameGeneratedReference,
@@ -620,14 +654,20 @@ function GeneratedReferencesPanel({
   selectedGeneratedReference,
   units
 }: {
+  readonly body: CadBodySnapshot;
   readonly bodyId: string;
   readonly disabled: boolean;
   readonly error?: string;
+  readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
   readonly measurementByStableId?: ReadonlyMap<
     string,
     GeneratedReferenceMeasurementDisplay
   >;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly onCreateEdgeFinish: (
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) => void;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
@@ -792,6 +832,19 @@ function GeneratedReferencesPanel({
             onNameGeneratedReference={onNameGeneratedReference}
             state={selectedReferenceState}
             units={units}
+          />
+          <EdgeFinishEditor
+            key={`edge-finish-${
+              selectedReferenceState.status === "selected"
+                ? selectedReferenceState.reference.stableId
+                : selectedReferenceState.status
+            }`}
+            body={body}
+            disabled={disabled}
+            feature={feature}
+            namedReferences={selectedNamedReferences}
+            onCreateEdgeFinish={onCreateEdgeFinish}
+            state={selectedReferenceState}
           />
           <label>
             Inspect reference
@@ -982,6 +1035,186 @@ function SelectedGeneratedReferencePanel({
             </div>
           )}
         </>
+      )}
+    </section>
+  );
+}
+
+function EdgeFinishEditor({
+  body,
+  disabled,
+  feature,
+  namedReferences,
+  onCreateEdgeFinish,
+  state
+}: {
+  readonly body: CadBodySnapshot;
+  readonly disabled: boolean;
+  readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly onCreateEdgeFinish: (
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) => void;
+  readonly state: GeneratedReferenceSelectionState;
+}) {
+  const [operation, setOperation] = useState<EdgeFinishOperation>("chamfer");
+  const [referenceValue, setReferenceValue] = useState(
+    SELECTED_EDGE_FINISH_REFERENCE_VALUE
+  );
+  const [draft, setDraft] = useState<EdgeFinishDraft>({
+    id: "",
+    bodyId: "",
+    name: "",
+    distance: 0.2,
+    radius: 0.2
+  });
+  const referenceOptions = createEdgeFinishReferenceOptions(
+    state,
+    namedReferences
+  );
+  const referenceOption = selectEdgeFinishReferenceOption(
+    referenceOptions,
+    referenceValue
+  );
+  const scalar = operation === "chamfer" ? draft.distance : draft.radius;
+  const status = getEdgeFinishOperationStatus({
+    body,
+    feature,
+    operation,
+    referenceOption,
+    scalar,
+    selectionState: state
+  });
+  const form = buildEdgeFinishForm({
+    draft,
+    operation,
+    referenceOption,
+    targetBodyId: body.id
+  });
+  const operationLabel = formatEdgeFinishOperationLabel(operation);
+  const scalarName = formatEdgeFinishScalarName(operation);
+
+  return (
+    <section className="sketch-attachment edge-finish-editor">
+      <div className="command-card-heading">
+        <h3>Edge finish</h3>
+        <span>{operationLabel}</span>
+      </div>
+      <div className="button-row compact">
+        <button
+          type="button"
+          className={operation === "chamfer" ? "selected" : undefined}
+          aria-pressed={operation === "chamfer"}
+          disabled={disabled}
+          onClick={() => setOperation("chamfer")}
+        >
+          Chamfer
+        </button>
+        <button
+          type="button"
+          className={operation === "fillet" ? "selected" : undefined}
+          aria-pressed={operation === "fillet"}
+          disabled={disabled}
+          onClick={() => setOperation("fillet")}
+        >
+          Fillet
+        </button>
+      </div>
+      {referenceOptions.length > 1 && (
+        <label>
+          Reference
+          <select
+            value={referenceOption?.value ?? referenceValue}
+            disabled={disabled}
+            onChange={(event) => setReferenceValue(event.currentTarget.value)}
+          >
+            {referenceOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.kind === "generated"
+                  ? option.label
+                  : `${option.label}${
+                      option.status === "stale" ? " (stale)" : ""
+                    }`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="field-grid two">
+        <label>
+          {scalarName}
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            value={Number.isFinite(scalar) ? scalar : ""}
+            disabled={disabled}
+            onChange={(event) => {
+              const value = Number(event.currentTarget.value);
+              setDraft(
+                operation === "chamfer"
+                  ? { ...draft, distance: value }
+                  : { ...draft, radius: value }
+              );
+            }}
+          />
+        </label>
+        <label>
+          Feature name
+          <input
+            type="text"
+            value={draft.name}
+            disabled={disabled}
+            placeholder="Optional"
+            onChange={(event) =>
+              setDraft({ ...draft, name: event.currentTarget.value })
+            }
+          />
+        </label>
+      </div>
+      <details className="advanced-options compact">
+        <summary>Advanced feature options</summary>
+        <div className="field-grid two">
+          <label>
+            Optional feature ID
+            <input
+              type="text"
+              value={draft.id}
+              disabled={disabled}
+              onChange={(event) =>
+                setDraft({ ...draft, id: event.currentTarget.value })
+              }
+            />
+          </label>
+          <label>
+            Optional body ID
+            <input
+              type="text"
+              value={draft.bodyId}
+              disabled={disabled}
+              onChange={(event) =>
+                setDraft({ ...draft, bodyId: event.currentTarget.value })
+              }
+            />
+          </label>
+        </div>
+      </details>
+      <button
+        type="button"
+        disabled={disabled || !status.available || !form}
+        onClick={() => {
+          if (form) {
+            onCreateEdgeFinish(operation, form);
+          }
+        }}
+      >
+        Create {operation}
+      </button>
+      {status.available ? (
+        <small>{status.message}</small>
+      ) : (
+        <p className="error-text">{status.message}</p>
       )}
     </section>
   );
