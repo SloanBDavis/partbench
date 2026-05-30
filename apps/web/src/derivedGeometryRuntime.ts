@@ -121,6 +121,22 @@ export interface DerivedGeometryHoleInput {
   };
 }
 
+export type DerivedGeometryEdgeFinishInput =
+  | {
+      readonly id: string;
+      readonly operation: "chamfer";
+      readonly target: DerivedGeometryBooleanExtrudeInputSource;
+      readonly edgeStableId: string;
+      readonly distance: number;
+    }
+  | {
+      readonly id: string;
+      readonly operation: "fillet";
+      readonly target: DerivedGeometryBooleanExtrudeInputSource;
+      readonly edgeStableId: string;
+      readonly radius: number;
+    };
+
 export type DerivedExactBodyMetadata = GeometryKernelExactBodyMetadata;
 
 export interface DerivedExactMetadataInput {
@@ -219,6 +235,9 @@ export interface DerivedGeometryRuntime {
     input: DerivedGeometryBooleanExtrudeInput
   ): Promise<DerivedGeometryResult>;
   hole(input: DerivedGeometryHoleInput): Promise<DerivedGeometryResult>;
+  edgeFinish(
+    input: DerivedGeometryEdgeFinishInput
+  ): Promise<DerivedGeometryResult>;
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;

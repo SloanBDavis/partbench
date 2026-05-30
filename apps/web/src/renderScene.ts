@@ -12,6 +12,7 @@ import type {
 } from "@web-cad/renderer";
 import type {
   DerivedBooleanExtrudeGeometrySource,
+  DerivedEdgeFinishGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
   DerivedHoleGeometrySource,
@@ -37,6 +38,7 @@ export function createRenderSceneInputs(
     | DerivedBooleanExtrudeGeometrySource
     | DerivedRevolveGeometrySource
     | DerivedHoleGeometrySource
+    | DerivedEdgeFinishGeometrySource
   )[] = [],
   sketches: readonly SketchSnapshot[] = [],
   sketchDisplayFrames: ReadonlyMap<string, SketchDisplayFrame> = new Map()
@@ -74,7 +76,8 @@ export function createRenderSceneInputs(
     if (
       source.kind === "extrudeBoolean" ||
       source.kind === "revolve" ||
-      source.kind === "hole"
+      source.kind === "hole" ||
+      source.kind === "edgeFinish"
     ) {
       continue;
     }

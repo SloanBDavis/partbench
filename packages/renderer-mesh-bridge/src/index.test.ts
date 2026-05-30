@@ -229,6 +229,44 @@ describe("renderer mesh bridge", () => {
     });
   });
 
+  it("adapts edge-finish mesh responses from the geometry worker", () => {
+    const result = createRenderMeshFromGeometryWorkerResponse(
+      {
+        id: "mesh_bridge_req_edge_finish",
+        version: "geometry-worker.v1",
+        kind: "geometry-worker.edgeFinishFeature",
+        payloadId: "mesh_bridge_edge_finish_payload",
+        response: {
+          ok: true,
+          id: "mesh_bridge_edge_finish_payload",
+          op: "geometry.edgeFinish",
+          mesh: {
+            primitive: "edgeFinish",
+            positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+            indices: new Uint32Array([0, 1, 2]),
+            vertexCount: 3,
+            triangleCount: 1,
+            faceCount: 1
+          },
+          warnings: []
+        },
+        transferables: []
+      },
+      { id: "mesh_edge_finish_from_worker", alignment: "source" }
+    );
+
+    expect(result).toMatchObject({
+      vertexCount: 3,
+      triangleCount: 1,
+      mesh: {
+        id: "mesh_edge_finish_from_worker",
+        kind: "mesh",
+        indices: [0, 1, 2],
+        source: "geometry-worker.edgeFinishFeature"
+      }
+    });
+  });
+
   it("can center corner-origin box meshes for the current primitive renderer", async () => {
     const worker = new GeometryKernelWorker();
     const response = await worker.execute(

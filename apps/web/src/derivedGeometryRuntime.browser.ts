@@ -10,6 +10,7 @@ import {
   type DerivedGeometryBooleanExtrudeInput,
   type DerivedGeometryConeInput,
   type DerivedGeometryCylinderInput,
+  type DerivedGeometryEdgeFinishInput,
   type DerivedGeometryExtrudeInput,
   type DerivedGeometryHoleInput,
   type DerivedGeometryRevolveInput,
@@ -54,6 +55,7 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
       | DerivedGeometryExtrudeInput
       | DerivedGeometryRevolveInput
       | DerivedGeometryHoleInput
+      | DerivedGeometryEdgeFinishInput
       | DerivedGeometryBooleanExtrudeInput,
     request: GeometryWorkerRequest
   ): Promise<DerivedGeometryResult> {
@@ -74,7 +76,8 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         request.payload.op === "geometry.tessellateExtrude" ||
         request.payload.op === "geometry.revolveProfile" ||
         request.payload.op === "geometry.booleanExtrudes" ||
-        request.payload.op === "geometry.hole"
+        request.payload.op === "geometry.hole" ||
+        request.payload.op === "geometry.edgeFinish"
           ? "source"
           : "boundsCenter",
       transform:
@@ -284,6 +287,27 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
           payloadId: `${requestId}:kernel`,
           target: input.target,
           tool: input.tool,
+          linearDeflection: 0.25,
+          angularDeflection: 0.5
+        })
+      );
+    },
+    async edgeFinish(input: DerivedGeometryEdgeFinishInput) {
+      const { createEdgeFinishWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeTessellationRequest(
+        input,
+        createEdgeFinishWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          target: input.target,
+          edgeStableId: input.edgeStableId,
+          operation: input.operation,
+          ...(input.operation === "chamfer"
+            ? { distance: input.distance }
+            : { radius: input.radius }),
           linearDeflection: 0.25,
           angularDeflection: 0.5
         })

@@ -10,6 +10,7 @@ import type { RenderEdgeSegment, RenderTriangleMesh } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import type {
   DerivedBooleanExtrudeGeometrySource,
+  DerivedEdgeFinishGeometrySource,
   DerivedExtrudeGeometrySource,
   DerivedGeometryEntry,
   DerivedHoleGeometrySource,
@@ -530,6 +531,57 @@ describe("renderScene", () => {
     expect(pendingScene.meshes).toEqual([]);
   });
 
+  it("renders ready edge-finish meshes without a primitive-style pending fallback", () => {
+    const source = createEdgeFinishSource("body_chamfer_1");
+    const readyMesh = createMesh(source.id);
+    const readyScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "edgeFinish",
+            sourceId: source.id,
+            sourceKind: "edgeFinish",
+            cacheKey: "edge-finish-ready",
+            status: "ready",
+            mesh: readyMesh,
+            metrics: {
+              objectId: source.id,
+              roundTripMs: 1,
+              vertexCount: 4,
+              triangleCount: 2
+            }
+          }
+        ]
+      ]),
+      [source]
+    );
+    const pendingScene = createRenderSceneInputs(
+      [],
+      new Map([
+        [
+          source.id,
+          {
+            objectId: source.id,
+            objectKind: "edgeFinish",
+            sourceId: source.id,
+            sourceKind: "edgeFinish",
+            cacheKey: "edge-finish-pending",
+            status: "pending"
+          }
+        ]
+      ]),
+      [source]
+    );
+
+    expect(readyScene.primitives).toEqual([]);
+    expect(readyScene.meshes).toEqual([readyMesh]);
+    expect(pendingScene.primitives).toEqual([]);
+    expect(pendingScene.meshes).toEqual([]);
+  });
+
   it("does not render a primitive-style fallback for unsupported revolve sources", () => {
     const source: DerivedRevolveGeometrySource = {
       ...createRevolveSource("body_revolve_1"),
@@ -547,6 +599,18 @@ describe("renderScene", () => {
       ...createHoleSource("body_hole_1"),
       placementError:
         "Hole feature feat_hole_1 cannot be displayed because its target or circle tool source is unavailable."
+    };
+    const scene = createRenderSceneInputs([], new Map(), [source]);
+
+    expect(scene.primitives).toEqual([]);
+    expect(scene.meshes).toEqual([]);
+  });
+
+  it("does not render a primitive-style fallback for unsupported edge-finish sources", () => {
+    const source: DerivedEdgeFinishGeometrySource = {
+      ...createEdgeFinishSource("body_chamfer_1"),
+      placementError:
+        "Chamfer feature feat_chamfer_1 cannot be displayed because its edge reference is unavailable."
     };
     const scene = createRenderSceneInputs([], new Map(), [source]);
 
@@ -824,6 +888,17 @@ function createHoleSource(id: string): DerivedHoleGeometrySource {
       depth: 1,
       direction: "positive"
     }
+  };
+}
+
+function createEdgeFinishSource(id: string): DerivedEdgeFinishGeometrySource {
+  return {
+    id,
+    kind: "edgeFinish",
+    operation: "chamfer",
+    target: createExtrudeSource("body_target", "positive"),
+    edgeStableId: "generated:edge:body_target:start:uMin",
+    distance: 0.25
   };
 }
 

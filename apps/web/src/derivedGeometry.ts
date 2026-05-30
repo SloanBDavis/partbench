@@ -29,14 +29,16 @@ export type DerivedGeometrySourceKind =
   | "extrude"
   | "extrudeBoolean"
   | "revolve"
-  | "hole";
+  | "hole"
+  | "edgeFinish";
 
 export type DerivedGeometrySource =
   | DerivedPrimitiveGeometrySource
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
-  | DerivedHoleGeometrySource;
+  | DerivedHoleGeometrySource
+  | DerivedEdgeFinishGeometrySource;
 export type DerivedGeometryInput = DerivedGeometrySource | SceneObject;
 
 export interface DerivedPrimitiveGeometrySource {
@@ -110,6 +112,30 @@ export interface DerivedHoleGeometrySource {
   readonly placementError?: string;
 }
 
+export type DerivedEdgeFinishGeometrySource =
+  | DerivedChamferGeometrySource
+  | DerivedFilletGeometrySource;
+
+export interface DerivedChamferGeometrySource {
+  readonly id: string;
+  readonly kind: "edgeFinish";
+  readonly operation: "chamfer";
+  readonly target: DerivedExtrudeGeometrySource;
+  readonly edgeStableId: string;
+  readonly distance: number;
+  readonly placementError?: string;
+}
+
+export interface DerivedFilletGeometrySource {
+  readonly id: string;
+  readonly kind: "edgeFinish";
+  readonly operation: "fillet";
+  readonly target: DerivedExtrudeGeometrySource;
+  readonly edgeStableId: string;
+  readonly radius: number;
+  readonly placementError?: string;
+}
+
 export type DerivedGeometryEntry =
   | DerivedGeometryUnsupportedEntry
   | DerivedGeometryPendingEntry
@@ -170,7 +196,8 @@ type SupportedDerivedGeometrySource =
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
-  | DerivedHoleGeometrySource;
+  | DerivedHoleGeometrySource
+  | DerivedEdgeFinishGeometrySource;
 
 interface ActiveDerivedGeometryRequest {
   readonly sourceId: string;
@@ -397,7 +424,8 @@ function toDerivedGeometrySource(
     input.kind === "extrude" ||
     input.kind === "extrudeBoolean" ||
     input.kind === "revolve" ||
-    input.kind === "hole"
+    input.kind === "hole" ||
+    input.kind === "edgeFinish"
   ) {
     return input;
   }
@@ -422,6 +450,10 @@ function isSupportedDerivedGeometrySource(
 
   if (source.kind === "hole") {
     return !source.placementError && isSupportedHoleSource(source);
+  }
+
+  if (source.kind === "edgeFinish") {
+    return !source.placementError && isSupportedEdgeFinishSource(source);
   }
 
   return isSupportedDerivedGeometryObject(source.object);
@@ -551,6 +583,48 @@ function deriveSourceMesh(
     });
   }
 
+  if (source.kind === "edgeFinish") {
+    if (source.placementError) {
+      throw new Error(source.placementError);
+    }
+
+    const unsupportedMessage = getUnsupportedEdgeFinishSourceMessage(source);
+
+    if (unsupportedMessage) {
+      throw new Error(unsupportedMessage);
+    }
+
+    return runtime.edgeFinish(
+      source.operation === "chamfer"
+        ? {
+            id: source.id,
+            operation: source.operation,
+            target: {
+              sketchPlane: source.target.sketchPlane,
+              profile: source.target.profile,
+              depth: source.target.depth,
+              side: source.target.side,
+              placementFrame: source.target.placementFrame
+            },
+            edgeStableId: source.edgeStableId,
+            distance: source.distance
+          }
+        : {
+            id: source.id,
+            operation: source.operation,
+            target: {
+              sketchPlane: source.target.sketchPlane,
+              profile: source.target.profile,
+              depth: source.target.depth,
+              side: source.target.side,
+              placementFrame: source.target.placementFrame
+            },
+            edgeStableId: source.edgeStableId,
+            radius: source.radius
+          }
+    );
+  }
+
   const object = source.object as SupportedDerivedGeometryObject;
 
   switch (object.kind) {
@@ -667,7 +741,15 @@ function getUnsupportedSourceMessage(source: DerivedGeometrySource): string {
     );
   }
 
-  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, authored revolves, and authored holes.";
+  if (source.kind === "edgeFinish") {
+    return (
+      source.placementError ??
+      getUnsupportedEdgeFinishSourceMessage(source) ??
+      "Edge finish display currently supports one generated rectangle edge on a rectangle authored extrude target only."
+    );
+  }
+
+  return "Derived OCCT mesh generation supports scene primitives, sketch extrudes, rectangle-tool boolean results, authored revolves, authored holes, and rectangle edge finishing.";
 }
 
 function isSupportedBooleanExtrudeSource(
@@ -717,6 +799,64 @@ function getUnsupportedHoleSourceMessage(
 
   if (source.tool.circle.kind !== "circle") {
     return "Hole display currently supports circular sketch tools only.";
+  }
+
+  return undefined;
+}
+
+function isSupportedEdgeFinishSource(
+  source: DerivedEdgeFinishGeometrySource
+): boolean {
+  return getUnsupportedEdgeFinishSourceMessage(source) === undefined;
+}
+
+function getUnsupportedEdgeFinishSourceMessage(
+  source: DerivedEdgeFinishGeometrySource
+): string | undefined {
+  if (source.target.profile.kind !== "rectangle") {
+    return "Edge finish display currently supports rectangle target extrudes only.";
+  }
+
+  const edgeReference = parseGeneratedRectangleEdgeStableId(
+    source.edgeStableId
+  );
+
+  if (!edgeReference) {
+    return "Edge finish display currently supports generated rectangle edge references only.";
+  }
+
+  if (edgeReference.bodyId !== source.target.id) {
+    return "Edge finish display requires the selected edge to belong to the target body.";
+  }
+
+  const scalar =
+    source.operation === "chamfer" ? source.distance : source.radius;
+  const scalarLabel = source.operation === "chamfer" ? "distance" : "radius";
+
+  if (!Number.isFinite(scalar) || scalar <= 0) {
+    return `Edge finish ${scalarLabel} must be a positive finite number.`;
+  }
+
+  return undefined;
+}
+
+function parseGeneratedRectangleEdgeStableId(
+  stableId: string
+): { readonly bodyId: string } | undefined {
+  const capEdge = stableId.match(
+    /^generated:edge:([^:]+):(start|end):(uMin|uMax|vMin|vMax)$/
+  );
+
+  if (capEdge) {
+    return { bodyId: capEdge[1] };
+  }
+
+  const longitudinalEdge = stableId.match(
+    /^generated:edge:([^:]+):longitudinal:(uMin|uMax):(vMin|vMax)$/
+  );
+
+  if (longitudinalEdge) {
+    return { bodyId: longitudinalEdge[1] };
   }
 
   return undefined;
@@ -773,11 +913,29 @@ export function createDerivedGeometryCacheKey(
                 tool: source.tool,
                 placementError: source.placementError
               }
-            : {
-                kind: source.kind,
-                dimensions: source.object.dimensions,
-                transform: source.object.transform
-              };
+            : source.kind === "edgeFinish"
+              ? source.operation === "chamfer"
+                ? {
+                    kind: source.kind,
+                    operation: source.operation,
+                    target: createDerivedGeometryCacheKey(source.target),
+                    edgeStableId: source.edgeStableId,
+                    distance: source.distance,
+                    placementError: source.placementError
+                  }
+                : {
+                    kind: source.kind,
+                    operation: source.operation,
+                    target: createDerivedGeometryCacheKey(source.target),
+                    edgeStableId: source.edgeStableId,
+                    radius: source.radius,
+                    placementError: source.placementError
+                  }
+              : {
+                  kind: source.kind,
+                  dimensions: source.object.dimensions,
+                  transform: source.object.transform
+                };
 
   return JSON.stringify(base);
 }
@@ -807,13 +965,18 @@ export function getDerivedGeometryStatusLabel(
         return "Hole mesh error";
       }
 
+      if (entry.sourceKind === "edgeFinish") {
+        return "Edge finish mesh error";
+      }
+
       return "Primitive fallback";
     case "unsupported":
       if (
         entry.sourceKind === "extrude" ||
         entry.sourceKind === "extrudeBoolean" ||
         entry.sourceKind === "revolve" ||
-        entry.sourceKind === "hole"
+        entry.sourceKind === "hole" ||
+        entry.sourceKind === "edgeFinish"
       ) {
         return entry.message;
       }

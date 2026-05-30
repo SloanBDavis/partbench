@@ -674,9 +674,15 @@ export function App() {
       createAuthoredFeatureDerivedGeometrySources(
         projectStructure.features,
         sketches,
-        generatedFacesByKey
+        generatedFacesByKey,
+        document.namedReferences
       ),
-    [generatedFacesByKey, projectStructure.features, sketches]
+    [
+      document.namedReferences,
+      generatedFacesByKey,
+      projectStructure.features,
+      sketches
+    ]
   );
   const derivedGeometrySources = useMemo<readonly DerivedGeometrySource[]>(
     () =>

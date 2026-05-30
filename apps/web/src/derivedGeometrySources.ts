@@ -7,6 +7,7 @@ import type { CadGeneratedFaceReference } from "@web-cad/cad-protocol";
 import {
   createPrimitiveDerivedGeometrySource,
   type DerivedBooleanExtrudeGeometrySource,
+  type DerivedEdgeFinishGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedGeometrySource,
   type DerivedHoleGeometrySource,
@@ -39,7 +40,8 @@ export function createDerivedGeometrySourcesFromDocument(
     ...createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,
-      generatedFacesByKey
+      generatedFacesByKey,
+      document.namedReferences
     )
   ];
 }
@@ -50,12 +52,14 @@ export function createAuthoredFeatureDerivedGeometrySources(
   generatedFacesByKey: ReadonlyMap<
     string,
     CadGeneratedFaceReference
-  > = new Map()
+  > = new Map(),
+  namedReferences: CadDocument["namedReferences"] = new Map()
 ): readonly (
   | DerivedExtrudeGeometrySource
   | DerivedBooleanExtrudeGeometrySource
   | DerivedRevolveGeometrySource
   | DerivedHoleGeometrySource
+  | DerivedEdgeFinishGeometrySource
 )[] {
   const consumedBodyIds = createConsumedBodyIds(features);
 
@@ -76,6 +80,13 @@ export function createAuthoredFeatureDerivedGeometrySources(
       features,
       sketches,
       generatedFacesByKey,
+      consumedBodyIds
+    ),
+    ...createEdgeFinishDerivedGeometrySources(
+      features,
+      sketches,
+      generatedFacesByKey,
+      namedReferences,
       consumedBodyIds
     )
   ];
@@ -225,6 +236,76 @@ export function createHoleDerivedGeometrySources(
         target: target ?? createUnavailableExtrudeSource(feature.bodyId),
         tool: toolResult.tool ?? createUnavailableHoleToolSource(),
         ...createHolePlacementError(feature, target, toolResult)
+      };
+    });
+}
+
+export function createEdgeFinishDerivedGeometrySources(
+  features: readonly CadFeatureSummary[],
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<
+    string,
+    CadGeneratedFaceReference
+  > = new Map(),
+  namedReferences: CadDocument["namedReferences"] = new Map(),
+  consumedBodyIds: ReadonlySet<string> = createConsumedBodyIds(features)
+): readonly DerivedEdgeFinishGeometrySource[] {
+  const extrudeFeaturesByBodyId = new Map(
+    features
+      .filter(
+        (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+          feature.kind === "extrude"
+      )
+      .map((feature) => [feature.bodyId, feature])
+  );
+
+  return features
+    .filter(
+      (
+        feature
+      ): feature is Extract<
+        CadFeatureSummary,
+        { kind: "chamfer" | "fillet" }
+      > => feature.kind === "chamfer" || feature.kind === "fillet"
+    )
+    .filter((feature) => !consumedBodyIds.has(feature.bodyId))
+    .map((feature) => {
+      const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
+      const target =
+        targetFeature?.operationMode === "newBody"
+          ? createExtrudeSourceForFeature(
+              targetFeature,
+              sketches,
+              generatedFacesByKey
+            )
+          : undefined;
+      const edgeReference = resolveEdgeFinishStableId(feature, namedReferences);
+      const placement = createEdgeFinishPlacementError(
+        feature,
+        target,
+        edgeReference
+      );
+
+      if (feature.kind === "chamfer") {
+        return {
+          id: feature.bodyId,
+          kind: "edgeFinish",
+          operation: "chamfer",
+          target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+          edgeStableId: edgeReference.edgeStableId ?? "",
+          distance: feature.distance,
+          ...placement
+        };
+      }
+
+      return {
+        id: feature.bodyId,
+        kind: "edgeFinish",
+        operation: "fillet",
+        target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+        edgeStableId: edgeReference.edgeStableId ?? "",
+        radius: feature.radius,
+        ...placement
       };
     });
 }
@@ -417,6 +498,10 @@ function createConsumedBodyIds(
           return [feature.targetBodyId];
         }
 
+        if (feature.kind === "chamfer" || feature.kind === "fillet") {
+          return [feature.targetBodyId];
+        }
+
         return [];
       })
       .filter((bodyId): bodyId is string => Boolean(bodyId))
@@ -470,6 +555,83 @@ function createHolePlacementError(
   }
 
   return {};
+}
+
+function createEdgeFinishPlacementError(
+  feature: Extract<CadFeatureSummary, { kind: "chamfer" | "fillet" }>,
+  target: DerivedExtrudeGeometrySource | undefined,
+  edgeReference: {
+    readonly edgeStableId?: string;
+    readonly placementError?: string;
+  }
+): { readonly placementError?: string } {
+  if (edgeReference.placementError) {
+    return { placementError: edgeReference.placementError };
+  }
+
+  if (!target) {
+    return {
+      placementError: `${formatEdgeFinishLabel(feature)} feature ${feature.id} cannot be displayed because its target source is unavailable.`
+    };
+  }
+
+  if (target.placementError) {
+    return { placementError: target.placementError };
+  }
+
+  if (!edgeReference.edgeStableId) {
+    return {
+      placementError: `${formatEdgeFinishLabel(feature)} feature ${feature.id} cannot be displayed because its edge reference is unavailable.`
+    };
+  }
+
+  return {};
+}
+
+function resolveEdgeFinishStableId(
+  feature: Extract<CadFeatureSummary, { kind: "chamfer" | "fillet" }>,
+  namedReferences: CadDocument["namedReferences"]
+): {
+  readonly edgeStableId?: string;
+  readonly placementError?: string;
+} {
+  if (feature.edgeStableId) {
+    return { edgeStableId: feature.edgeStableId };
+  }
+
+  if (!feature.namedReference) {
+    return {
+      placementError: `${formatEdgeFinishLabel(feature)} feature ${feature.id} cannot be displayed because it is missing an edge reference.`
+    };
+  }
+
+  const reference = namedReferences.get(feature.namedReference);
+
+  if (!reference) {
+    return {
+      placementError: `${formatEdgeFinishLabel(feature)} feature ${feature.id} cannot be displayed because named reference ${feature.namedReference} is unavailable.`
+    };
+  }
+
+  if (reference.bodyId !== feature.targetBodyId) {
+    return {
+      placementError: `${formatEdgeFinishLabel(feature)} feature ${feature.id} cannot be displayed because named reference ${feature.namedReference} resolves to body ${reference.bodyId}.`
+    };
+  }
+
+  if (reference.kind !== "edge") {
+    return {
+      placementError: `${formatEdgeFinishLabel(feature)} feature ${feature.id} cannot be displayed because named reference ${feature.namedReference} is not an edge.`
+    };
+  }
+
+  return { edgeStableId: reference.stableId };
+}
+
+function formatEdgeFinishLabel(
+  feature: Extract<CadFeatureSummary, { kind: "chamfer" | "fillet" }>
+): "Chamfer" | "Fillet" {
+  return feature.kind === "chamfer" ? "Chamfer" : "Fillet";
 }
 
 function createUnavailableExtrudeSource(

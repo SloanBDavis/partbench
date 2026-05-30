@@ -1221,6 +1221,9 @@ function createRuntime(
     hole() {
       throw new Error("Mesh requests are not used by exact metadata tests.");
     },
+    edgeFinish() {
+      throw new Error("Mesh requests are not used by exact metadata tests.");
+    },
     exactBodyMetadata(input) {
       exactInputs.push(input);
       return handler(input);

@@ -29,6 +29,9 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
     async hole() {
       throw new Error("Derived geometry runtime is disabled.");
     },
+    async edgeFinish() {
+      throw new Error("Derived geometry runtime is disabled.");
+    },
     async exactBodyMetadata() {
       throw new Error("Derived geometry runtime is disabled.");
     },

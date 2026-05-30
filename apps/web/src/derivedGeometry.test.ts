@@ -17,6 +17,7 @@ import {
   getDerivedGeometryStatusLabel,
   transformExtrudeMeshToPlacement,
   type DerivedBooleanExtrudeGeometrySource,
+  type DerivedEdgeFinishGeometrySource,
   type DerivedExtrudeGeometrySource,
   type DerivedHoleGeometrySource,
   type DerivedRevolveGeometrySource,
@@ -28,6 +29,7 @@ import type {
   DerivedGeometryBooleanExtrudeInput,
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
+  DerivedGeometryEdgeFinishInput,
   DerivedExactMetadataResult,
   DerivedGeometryExtrudeInput,
   DerivedGeometryHoleInput,
@@ -49,6 +51,7 @@ type RuntimeInput =
   | DerivedGeometryExtrudeInput
   | DerivedGeometryRevolveInput
   | DerivedGeometryHoleInput
+  | DerivedGeometryEdgeFinishInput
   | DerivedGeometryBooleanExtrudeInput;
 
 describe("derivedGeometry", () => {
@@ -2203,6 +2206,380 @@ describe("derivedGeometry", () => {
     expect(snapshots.at(-1)?.meshes).toEqual([]);
   });
 
+  it("derives chamfer result sources from rectangle target extrudes and generated edges", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    });
+
+    const sources = getDerivedSources(engine);
+    const source = sources.find(
+      (candidate): candidate is DerivedEdgeFinishGeometrySource =>
+        candidate.kind === "edgeFinish"
+    );
+
+    expect(sources.map((candidate) => candidate.id)).toEqual([
+      "body_chamfer_1"
+    ]);
+    expect(source).toMatchObject({
+      id: "body_chamfer_1",
+      kind: "edgeFinish",
+      operation: "chamfer",
+      target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_chamfer_1",
+        operation: "chamfer",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        distance: 0.25,
+        target: expect.objectContaining({
+          depth: 3,
+          profile: expect.objectContaining({ kind: "rectangle" })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_chamfer_1",
+        objectKind: "edgeFinish",
+        status: "ready"
+      }
+    ]);
+  });
+
+  it("derives fillet result sources from rectangle target extrudes and generated edges", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_1",
+      bodyId: "body_fillet_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:end:vMax",
+      radius: 0.2
+    });
+
+    const sources = getDerivedSources(engine);
+    const source = sources.find(
+      (candidate): candidate is DerivedEdgeFinishGeometrySource =>
+        candidate.kind === "edgeFinish"
+    );
+
+    expect(sources.map((candidate) => candidate.id)).toEqual(["body_fillet_1"]);
+    expect(source).toMatchObject({
+      id: "body_fillet_1",
+      kind: "edgeFinish",
+      operation: "fillet",
+      target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+      edgeStableId: "generated:edge:body_rect_1:end:vMax",
+      radius: 0.2
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_fillet_1",
+        operation: "fillet",
+        edgeStableId: "generated:edge:body_rect_1:end:vMax",
+        radius: 0.2,
+        target: expect.objectContaining({
+          depth: 3,
+          profile: expect.objectContaining({ kind: "rectangle" })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_fillet_1",
+        objectKind: "edgeFinish",
+        status: "ready"
+      }
+    ]);
+  });
+
+  it("resolves named edge references for edge-finish derived sources when the name is still available", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top edge",
+      bodyId: "body_rect_1",
+      stableId: "generated:edge:body_rect_1:end:uMax"
+    });
+    engine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_named",
+      bodyId: "body_fillet_named",
+      targetBodyId: "body_rect_1",
+      namedReference: "Top edge",
+      radius: 0.2
+    });
+
+    const source = getDerivedSources(engine).find(
+      (candidate): candidate is DerivedEdgeFinishGeometrySource =>
+        candidate.kind === "edgeFinish"
+    );
+
+    expect(source).toMatchObject({
+      id: "body_fillet_named",
+      kind: "edgeFinish",
+      operation: "fillet",
+      edgeStableId: "generated:edge:body_rect_1:end:uMax",
+      radius: 0.2
+    });
+  });
+
+  it("updates edge-finish source keys after target, edge, distance, and radius edits", () => {
+    const chamferSource: Extract<
+      DerivedEdgeFinishGeometrySource,
+      { readonly operation: "chamfer" }
+    > = {
+      id: "body_chamfer_1",
+      kind: "edgeFinish",
+      operation: "chamfer",
+      target: createExtrudeSource("body_rect_1"),
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    };
+    const filletSource: Extract<
+      DerivedEdgeFinishGeometrySource,
+      { readonly operation: "fillet" }
+    > = {
+      id: "body_fillet_1",
+      kind: "edgeFinish",
+      operation: "fillet",
+      target: createExtrudeSource("body_rect_1"),
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      radius: 0.25
+    };
+
+    expect(createDerivedGeometryCacheKey(chamferSource)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...chamferSource,
+        target: {
+          ...chamferSource.target,
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 6,
+            height: 2
+          }
+        }
+      })
+    );
+    expect(createDerivedGeometryCacheKey(chamferSource)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...chamferSource,
+        edgeStableId: "generated:edge:body_rect_1:end:uMin"
+      })
+    );
+    expect(createDerivedGeometryCacheKey(chamferSource)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...chamferSource,
+        distance: 0.4
+      })
+    );
+    expect(createDerivedGeometryCacheKey(filletSource)).not.toBe(
+      createDerivedGeometryCacheKey({
+        ...filletSource,
+        radius: 0.35
+      })
+    );
+  });
+
+  it("updates edge-finish sources across undo and redo without double-listing the consumed target", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_rect_1"]);
+
+    engine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    });
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_chamfer_1"]);
+
+    engine.undo();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_rect_1"]);
+
+    engine.redo();
+
+    expect(getDerivedSourceIds(engine)).toEqual(["body_chamfer_1"]);
+  });
+
+  it("ignores stale worker results after edge-finish source invalidation", async () => {
+    const first = createDeferred<DerivedGeometryResult>();
+    const second = createDeferred<DerivedGeometryResult>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime((input) =>
+      "edgeStableId" in input &&
+      input.edgeStableId === "generated:edge:body_rect_1:start:uMin"
+        ? first.promise
+        : second.promise
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+    const initialSource = createEdgeFinishSource("body_chamfer_1", "chamfer");
+    const editedSource: DerivedEdgeFinishGeometrySource = {
+      ...initialSource,
+      edgeStableId: "generated:edge:body_rect_1:end:uMin"
+    };
+
+    service.reconcile([initialSource]);
+    service.reconcile([editedSource]);
+
+    expect(
+      runtime.inputs.map((input) =>
+        "edgeStableId" in input ? input.edgeStableId : null
+      )
+    ).toEqual([
+      "generated:edge:body_rect_1:start:uMin",
+      "generated:edge:body_rect_1:end:uMin"
+    ]);
+
+    first.resolve(createResult("body_chamfer_1", createMesh("stale_chamfer")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_chamfer_1",
+      objectKind: "edgeFinish",
+      status: "pending",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+
+    second.resolve(
+      createResult("body_chamfer_1", createMesh("body_chamfer_1"))
+    );
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "body_chamfer_1",
+      objectKind: "edgeFinish",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(editedSource)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "body_chamfer_1"
+    ]);
+  });
+
+  it("marks unsupported edge-finish sources without using primitive fallback language", () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile([
+      {
+        id: "body_chamfer_circle",
+        kind: "edgeFinish",
+        operation: "chamfer",
+        target: createCircleExtrudeSource("body_circle_1"),
+        edgeStableId: "generated:edge:body_circle_1:start:circular",
+        distance: 0.2
+      }
+    ]);
+
+    expect(runtime.inputs).toEqual([]);
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Edge finish display currently supports rectangle target extrudes only."
+    );
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+  });
+
+  it("keeps stale named-reference edge finishes unsupported when the name is unavailable", () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top edge",
+      bodyId: "body_rect_1",
+      stableId: "generated:edge:body_rect_1:end:uMax"
+    });
+    engine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_named",
+      bodyId: "body_fillet_named",
+      targetBodyId: "body_rect_1",
+      namedReference: "Top edge",
+      radius: 0.2
+    });
+    engine.apply({ op: "reference.deleteName", name: "Top edge" });
+
+    const sources = getDerivedSources(engine);
+    const source = sources.find(
+      (candidate): candidate is DerivedEdgeFinishGeometrySource =>
+        candidate.kind === "edgeFinish"
+    );
+
+    expect(source).toMatchObject({
+      id: "body_fillet_named",
+      kind: "edgeFinish",
+      placementError:
+        "Fillet feature feat_fillet_named cannot be displayed because named reference Top edge is unavailable."
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const service = new DerivedGeometryService({
+      runtime: createRuntime(async (input) =>
+        createResult(input.id, createMesh(input.id))
+      ),
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+
+    expect(getDerivedGeometryStatusLabel(snapshots.at(-1)?.entries[0])).toBe(
+      "Fillet feature feat_fillet_named cannot be displayed because named reference Top edge is unavailable."
+    );
+    expect(snapshots.at(-1)?.meshes).toEqual([]);
+  });
+
   it("ignores stale worker results after cut target source invalidation", async () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
@@ -3289,6 +3666,29 @@ function createRevolveSource(id: string): DerivedRevolveGeometrySource {
   };
 }
 
+function createEdgeFinishSource(
+  id: string,
+  operation: "chamfer" | "fillet"
+): DerivedEdgeFinishGeometrySource {
+  return operation === "chamfer"
+    ? {
+        id,
+        kind: "edgeFinish",
+        operation,
+        target: createExtrudeSource("body_rect_1"),
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        distance: 0.25
+      }
+    : {
+        id,
+        kind: "edgeFinish",
+        operation,
+        target: createExtrudeSource("body_rect_1"),
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        radius: 0.25
+      };
+}
+
 function createExtrudedRectangleEngine(): CadEngine {
   const engine = new CadEngine();
 
@@ -3448,6 +3848,10 @@ function createRuntime(
       return handler(input);
     },
     hole(input) {
+      inputs.push(input);
+      return handler(input);
+    },
+    edgeFinish(input) {
       inputs.push(input);
       return handler(input);
     },
