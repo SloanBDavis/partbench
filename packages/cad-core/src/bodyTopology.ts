@@ -198,18 +198,26 @@ function createUnsupportedAuthoredFeatureTopology(
       ? "authoredRevolve"
       : feature.kind === "hole"
         ? "authoredHole"
-        : "authoredExtrude";
+        : feature.kind === "chamfer"
+          ? "authoredChamfer"
+          : feature.kind === "fillet"
+            ? "authoredFillet"
+            : "authoredExtrude";
   const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "cacheKey"> =
     feature.kind === "revolve"
       ? createRevolveSourceIdentityInput(document, bodyId, units, feature)
       : feature.kind === "hole"
         ? createHoleSourceIdentityInput(document, bodyId, units, feature)
-        : {
-            bodyId,
-            sourceKind,
-            units,
-            featureId: feature.id
-          };
+        : feature.kind === "chamfer"
+          ? createChamferSourceIdentityInput(bodyId, units, feature)
+          : feature.kind === "fillet"
+            ? createFilletSourceIdentityInput(bodyId, units, feature)
+            : {
+                bodyId,
+                sourceKind,
+                units,
+                featureId: feature.id
+              };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     ...sourceIdentityInput,
     cacheKey: createTopologyCacheKey(sourceIdentityInput)
@@ -225,12 +233,52 @@ function createUnsupportedAuthoredFeatureTopology(
         message:
           feature.kind === "hole"
             ? "Semantic topology references are not derived for authored hole result bodies yet."
-            : "Semantic topology references are not derived for authored revolve bodies yet.",
+            : feature.kind === "chamfer" || feature.kind === "fillet"
+              ? "Semantic topology references are not derived for authored edge-finishing result bodies yet."
+              : "Semantic topology references are not derived for authored revolve bodies yet.",
         bodyId,
         featureId: feature.id
       }
     ]
   });
+}
+
+function createChamferSourceIdentityInput(
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: Extract<GeneratedReferencesFeature, { kind: "chamfer" }>
+): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+  return {
+    bodyId,
+    sourceKind: "authoredChamfer",
+    units,
+    featureId: feature.id,
+    targetBodyId: feature.targetBodyId,
+    ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+    ...(feature.namedReference
+      ? { namedReference: feature.namedReference }
+      : {}),
+    chamferDistance: feature.distance
+  };
+}
+
+function createFilletSourceIdentityInput(
+  bodyId: BodyId,
+  units: DocumentUnits,
+  feature: Extract<GeneratedReferencesFeature, { kind: "fillet" }>
+): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+  return {
+    bodyId,
+    sourceKind: "authoredFillet",
+    units,
+    featureId: feature.id,
+    targetBodyId: feature.targetBodyId,
+    ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+    ...(feature.namedReference
+      ? { namedReference: feature.namedReference }
+      : {}),
+    filletRadius: feature.radius
+  };
 }
 
 function createHoleSourceIdentityInput(
@@ -403,7 +451,9 @@ function applyDerivedExactMetadata(
   if (
     topology.sourceKind !== "authoredExtrude" &&
     topology.sourceKind !== "authoredRevolve" &&
-    topology.sourceKind !== "authoredHole"
+    topology.sourceKind !== "authoredHole" &&
+    topology.sourceKind !== "authoredChamfer" &&
+    topology.sourceKind !== "authoredFillet"
   ) {
     return applyDerivedExactMetadataIssue(topology, {
       code: "UNSUPPORTED_BODY_TOPOLOGY",

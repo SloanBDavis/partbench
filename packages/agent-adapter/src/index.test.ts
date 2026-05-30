@@ -591,6 +591,127 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes feature.chamfer and feature.fillet through JSON batch commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_edge_finish",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "sketch_target",
+                name: "Target",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "sketch_target",
+                id: "rect_target",
+                center: [0, 0],
+                width: 4,
+                height: 3
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_target",
+                bodyId: "body_target",
+                sketchId: "sketch_target",
+                entityId: "rect_target",
+                depth: 2
+              },
+              {
+                op: "feature.chamfer",
+                id: "feat_chamfer",
+                bodyId: "body_chamfer",
+                targetBodyId: "body_target",
+                edgeStableId: "generated:edge:body_target:start:uMin",
+                distance: 0.2
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_target", "feat_chamfer"],
+      createdBodyIds: ["body_target", "body_chamfer"]
+    });
+
+    const secondAdapter = new CadOpsAgentAdapter();
+    const filletResponse = JSON.parse(
+      secondAdapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_fillet",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "sketch_circle",
+                name: "Circle",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addCircle",
+                sketchId: "sketch_circle",
+                id: "circle_target",
+                center: [0, 0],
+                radius: 2
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_circle",
+                bodyId: "body_circle",
+                sketchId: "sketch_circle",
+                entityId: "circle_target",
+                depth: 3
+              },
+              {
+                op: "reference.nameGenerated",
+                name: "Roundable edge",
+                bodyId: "body_circle",
+                stableId: "generated:edge:body_circle:end:circular"
+              },
+              {
+                op: "feature.fillet",
+                id: "feat_fillet",
+                bodyId: "body_fillet",
+                targetBodyId: "body_circle",
+                namedReference: "Roundable edge",
+                radius: 0.25
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+    };
+
+    expect(filletResponse).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle", "feat_fillet"],
+      createdBodyIds: ["body_circle", "body_fillet"]
+    });
+  });
+
   it("passes rectangle add extrudes through JSON batch dry-run and commit", () => {
     const adapter = new CadOpsAgentAdapter();
 
@@ -2067,6 +2188,8 @@ describe("agent-adapter", () => {
           role: "longitudinal:uMin:vMin",
           label: "uMin/vMin longitudinal edge",
           eligibleOperations: [
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ],

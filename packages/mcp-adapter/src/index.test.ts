@@ -995,6 +995,123 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes feature.chamfer and feature.fillet through cad.batch", () => {
+    const server = new CadMcpServer();
+    const chamferResult = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_chamfer",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_target",
+              name: "Target",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_target",
+              id: "rect_target",
+              center: [0, 0],
+              width: 4,
+              height: 3
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_target",
+              bodyId: "body_target",
+              sketchId: "sketch_target",
+              entityId: "rect_target",
+              depth: 2
+            },
+            {
+              op: "feature.chamfer",
+              id: "feat_chamfer",
+              bodyId: "body_chamfer",
+              targetBodyId: "body_target",
+              edgeStableId: "generated:edge:body_target:start:uMin",
+              distance: 0.2
+            }
+          ]
+        }
+      }
+    });
+
+    expect(chamferResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_target", "feat_chamfer"],
+        createdBodyIds: ["body_target", "body_chamfer"]
+      }
+    });
+
+    const filletServer = new CadMcpServer();
+    const filletResult = filletServer.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_fillet",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_circle",
+              name: "Circle",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_circle",
+              id: "circle_target",
+              center: [0, 0],
+              radius: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_circle",
+              bodyId: "body_circle",
+              sketchId: "sketch_circle",
+              entityId: "circle_target",
+              depth: 3
+            },
+            {
+              op: "reference.nameGenerated",
+              name: "Roundable edge",
+              bodyId: "body_circle",
+              stableId: "generated:edge:body_circle:end:circular"
+            },
+            {
+              op: "feature.fillet",
+              id: "feat_fillet",
+              bodyId: "body_fillet",
+              targetBodyId: "body_circle",
+              namedReference: "Roundable edge",
+              radius: 0.25
+            }
+          ]
+        }
+      }
+    });
+
+    expect(filletResult).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        createdFeatureIds: ["feat_circle", "feat_fillet"],
+        createdBodyIds: ["body_circle", "body_fillet"]
+      }
+    });
+  });
+
   it("passes unsupported extrude operation mode errors through cad.batch", () => {
     const server = new CadMcpServer();
     seedMcpExtrudeFeature(server, {
@@ -1943,6 +2060,8 @@ describe("mcp-adapter", () => {
             role: "start:circular",
             label: "Start circular edge",
             eligibleOperations: [
+              "feature.chamfer",
+              "feature.fillet",
               "feature.measureReference",
               "feature.selectReference"
             ],
@@ -1992,6 +2111,8 @@ describe("mcp-adapter", () => {
           kind: "edge",
           label: "Start circular edge",
           eligibleOperations: [
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ],

@@ -108,7 +108,9 @@ function createOperationSummaries(
     const createdFeatureRef =
       op.op === "feature.extrude" ||
       op.op === "feature.revolve" ||
-      op.op === "feature.hole"
+      op.op === "feature.hole" ||
+      op.op === "feature.chamfer" ||
+      op.op === "feature.fillet"
         ? transaction.diff.features?.created?.[createdFeatureIndex++]
         : undefined;
     const deletedFeatureRef =
@@ -373,7 +375,7 @@ function createOperationSummaries(
       case "sketch.updateEntity": {
         const modifiedFeatureRef = transaction.diff.features?.modified?.find(
           (feature) =>
-            feature.sketchId === op.sketchId &&
+            getFeatureRefSketchId(feature) === op.sketchId &&
             getFeatureRefSketchEntityId(feature) === op.entity.id
         );
 
@@ -544,6 +546,46 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.chamfer": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const edgeLabel = op.namedReference
+          ? `named reference ${op.namedReference}`
+          : op.edgeStableId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create chamfer feature ${featureId ?? "with generated ID"} on ${edgeLabel} of ${op.targetBodyId}${
+            bodyId ? ` -> body ${bodyId}` : ""
+          }`,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId,
+          stableId: op.edgeStableId,
+          referenceName: op.namedReference
+        });
+      }
+
+      case "feature.fillet": {
+        const featureId = op.id ?? createdFeatureRef?.id;
+        const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
+        const edgeLabel = op.namedReference
+          ? `named reference ${op.namedReference}`
+          : op.edgeStableId;
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Create fillet feature ${featureId ?? "with generated ID"} on ${edgeLabel} of ${op.targetBodyId}${
+            bodyId ? ` -> body ${bodyId}` : ""
+          }`,
+          featureId,
+          bodyId,
+          targetBodyId: op.targetBodyId,
+          stableId: op.edgeStableId,
+          referenceName: op.namedReference
+        });
+      }
+
       case "feature.delete": {
         const bodyLabel = deletedFeatureRef?.bodyId
           ? ` and body ${deletedFeatureRef.bodyId}`
@@ -554,7 +596,9 @@ function createOperationSummaries(
           label: `Delete feature ${op.id}${bodyLabel}`,
           featureId: op.id,
           bodyId: deletedFeatureRef?.bodyId,
-          sketchId: deletedFeatureRef?.sketchId,
+          sketchId: deletedFeatureRef
+            ? getFeatureRefSketchId(deletedFeatureRef)
+            : undefined,
           sketchEntityId: deletedFeatureRef
             ? getFeatureRefSketchEntityId(deletedFeatureRef)
             : undefined
@@ -571,7 +615,9 @@ function createOperationSummaries(
           label: `Update extrude feature ${op.id} ${formatExtrudeUpdateLabel(op)}`,
           featureId: op.id,
           bodyId: modifiedFeatureRef?.bodyId,
-          sketchId: modifiedFeatureRef?.sketchId,
+          sketchId: modifiedFeatureRef
+            ? getFeatureRefSketchId(modifiedFeatureRef)
+            : undefined,
           sketchEntityId: modifiedFeatureRef
             ? getFeatureRefSketchEntityId(modifiedFeatureRef)
             : undefined
@@ -614,7 +660,23 @@ function createOperationSummaries(
 function getFeatureRefSketchEntityId(
   feature: CadFeatureRef
 ): SketchEntityId | undefined {
-  return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
+  if (feature.kind === "hole") {
+    return feature.circleEntityId;
+  }
+
+  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+    return undefined;
+  }
+
+  return feature.entityId;
+}
+
+function getFeatureRefSketchId(feature: CadFeatureRef): SketchId | undefined {
+  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+    return undefined;
+  }
+
+  return feature.sketchId;
 }
 
 function formatUnitUpdateModeLabel(

@@ -9,7 +9,9 @@ import type {
   BodyMeasurementsSnapshot,
   BodyExtentSnapshot,
   CadAttachedSketchHealth,
+  CadAuthoredChamferHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredFilletHealth,
   CadAuthoredHoleHealth,
   CadAuthoredRevolveHealth,
   CadBodyDerivedExactMetadataSnapshot,
@@ -274,6 +276,8 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly authoredExtrudeCount: number;
   readonly authoredRevolveCount: number;
   readonly authoredHoleCount: number;
+  readonly authoredChamferCount: number;
+  readonly authoredFilletCount: number;
   readonly attachedSketchCount: number;
   readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
@@ -282,6 +286,8 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly authoredRevolves: readonly CadAuthoredRevolveHealth[];
   readonly authoredHoles: readonly CadAuthoredHoleHealth[];
+  readonly authoredChamfers: readonly CadAuthoredChamferHealth[];
+  readonly authoredFillets: readonly CadAuthoredFilletHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
@@ -887,6 +893,8 @@ function toAgentQueryResponse(
       authoredExtrudeCount: response.authoredExtrudeCount,
       authoredRevolveCount: response.authoredRevolveCount,
       authoredHoleCount: response.authoredHoleCount,
+      authoredChamferCount: response.authoredChamferCount,
+      authoredFilletCount: response.authoredFilletCount,
       attachedSketchCount: response.attachedSketchCount,
       sketchEvaluationCount: response.sketchEvaluationCount,
       sketchDimensionCount: response.sketchDimensionCount,
@@ -895,6 +903,8 @@ function toAgentQueryResponse(
       authoredExtrudes: response.authoredExtrudes,
       authoredRevolves: response.authoredRevolves,
       authoredHoles: response.authoredHoles,
+      authoredChamfers: response.authoredChamfers,
+      authoredFillets: response.authoredFillets,
       attachedSketches: response.attachedSketches,
       sketchEvaluations: response.sketchEvaluations,
       sketchDimensions: response.sketchDimensions,
@@ -1664,6 +1674,28 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.chamfer") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      hasExactlyOneEdgeReferenceInput(value) &&
+      typeof value.distance === "number"
+    );
+  }
+
+  if (value.op === "feature.fillet") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      hasExactlyOneEdgeReferenceInput(value) &&
+      typeof value.radius === "number"
+    );
+  }
+
   if (value.op === "feature.updateExtrude") {
     return (
       typeof value.id === "string" &&
@@ -1860,6 +1892,19 @@ function isHoleDepthMode(value: unknown): value is FeatureHoleDepthMode {
 
 function isHoleDirection(value: unknown): value is FeatureHoleDirection {
   return value === "positive" || value === "negative";
+}
+
+function hasExactlyOneEdgeReferenceInput(
+  value: Record<string, unknown>
+): boolean {
+  const hasStableId =
+    typeof value.edgeStableId === "string" &&
+    value.namedReference === undefined;
+  const hasNamedReference =
+    typeof value.namedReference === "string" &&
+    value.edgeStableId === undefined;
+
+  return hasStableId !== hasNamedReference;
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

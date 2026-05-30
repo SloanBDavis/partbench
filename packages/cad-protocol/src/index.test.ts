@@ -205,6 +205,24 @@ describe("cad-protocol", () => {
         direction: "negative"
       },
       {
+        op: "feature.chamfer",
+        id: "feat_chamfer_1",
+        bodyId: "body_chamfer_1",
+        targetBodyId: "body_target",
+        edgeStableId: "generated:edge:body_target:start:uMin",
+        distance: 0.5,
+        name: "Break edge"
+      },
+      {
+        op: "feature.fillet",
+        id: "feat_fillet_1",
+        bodyId: "body_fillet_1",
+        targetBodyId: "body_chamfer_1",
+        namedReference: "Round edge",
+        radius: 1,
+        name: "Round edge"
+      },
+      {
         op: "feature.updateExtrude",
         id: "feat_1",
         depth: 7,
@@ -254,6 +272,8 @@ describe("cad-protocol", () => {
       "feature.extrude",
       "feature.revolve",
       "feature.hole",
+      "feature.chamfer",
+      "feature.fillet",
       "feature.updateExtrude",
       "feature.delete",
       "reference.nameGenerated",
@@ -673,6 +693,8 @@ describe("cad-protocol", () => {
       authoredExtrudeCount: 0,
       authoredRevolveCount: 0,
       authoredHoleCount: 0,
+      authoredChamferCount: 0,
+      authoredFilletCount: 0,
       attachedSketchCount: 0,
       sketchEvaluationCount: 1,
       sketchDimensionCount: 0,
@@ -681,6 +703,8 @@ describe("cad-protocol", () => {
       authoredExtrudes: [],
       authoredRevolves: [],
       authoredHoles: [],
+      authoredChamfers: [],
+      authoredFillets: [],
       attachedSketches: [],
       sketchEvaluations: [
         {

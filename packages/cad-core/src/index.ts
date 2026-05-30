@@ -126,6 +126,7 @@ export type {
   CadBatchValidationError,
   CadBatchValidationResult,
   CadAxisAlignedBounds,
+  CadAuthoredChamferHealth,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyDerivedExactMetadataStatus,
   CadBodyExactMetadataDiagnostic,
@@ -144,6 +145,8 @@ export type {
   CadBodyTopologyStatus,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredFilletHealth,
+  CadAuthoredHoleHealth,
   CadAuthoredRevolveHealth,
   CadDependencyHealthIssue,
   CadDependencyHealthIssueCode,
@@ -206,7 +209,9 @@ export type {
   SketchDimensionTarget,
   SketchDimensionValueSource,
   SketchDimensionSemanticDiff,
+  ChamferFeatureSnapshot,
   ExtrudeFeatureSnapshot,
+  FilletFeatureSnapshot,
   FeatureSnapshot,
   FeatureId,
   FeatureExtrudeOperationMode,
@@ -225,6 +230,7 @@ export type {
   ObjectId,
   PartId,
   SemanticDiff,
+  HoleFeatureSnapshot,
   RevolveFeatureSnapshot,
   SketchEntityId,
   SketchEntityKind,
@@ -315,7 +321,12 @@ export type SketchDimension = SketchDimensionSnapshot;
 
 export type SketchConstraint = SketchConstraintSnapshot;
 
-export type Feature = ExtrudeFeature | RevolveFeature | HoleFeature;
+export type Feature =
+  | ExtrudeFeature
+  | RevolveFeature
+  | HoleFeature
+  | ChamferFeature
+  | FilletFeature;
 
 export interface ExtrudeFeature {
   readonly id: FeatureId;
@@ -355,6 +366,28 @@ export interface HoleFeature {
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth?: number;
   readonly direction: FeatureHoleDirection;
+  readonly bodyId: BodyId;
+}
+
+export interface ChamferFeature {
+  readonly id: FeatureId;
+  readonly kind: "chamfer";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+  readonly bodyId: BodyId;
+}
+
+export interface FilletFeature {
+  readonly id: FeatureId;
+  readonly kind: "fillet";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
   readonly bodyId: BodyId;
 }
 
@@ -456,7 +489,8 @@ export const CAD_PROJECT_FORMAT_VERSION_V11 = "web-cad.project.v11";
 export const CAD_PROJECT_FORMAT_VERSION_V12 = "web-cad.project.v12";
 export const CAD_PROJECT_FORMAT_VERSION_V13 = "web-cad.project.v13";
 export const CAD_PROJECT_FORMAT_VERSION_V14 = "web-cad.project.v14";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v15";
+export const CAD_PROJECT_FORMAT_VERSION_V15 = "web-cad.project.v15";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v16";
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -473,6 +507,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V12
   | typeof CAD_PROJECT_FORMAT_VERSION_V13
   | typeof CAD_PROJECT_FORMAT_VERSION_V14
+  | typeof CAD_PROJECT_FORMAT_VERSION_V15
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 export type CadProjectImportErrorCode =
@@ -2439,6 +2474,50 @@ function applyOperation(
       return;
     }
 
+    case "feature.chamfer": {
+      const feature = createEdgeFinishFeature(
+        state,
+        {
+          id: op.id,
+          bodyId: op.bodyId,
+          name: op.name,
+          targetBodyId: op.targetBodyId,
+          edgeStableId: op.edgeStableId,
+          namedReference: op.namedReference,
+          scalar: op.distance
+        },
+        "feature.chamfer",
+        createFeatureId,
+        createBodyId,
+        opIndex
+      );
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
+    case "feature.fillet": {
+      const feature = createEdgeFinishFeature(
+        state,
+        {
+          id: op.id,
+          bodyId: op.bodyId,
+          name: op.name,
+          targetBodyId: op.targetBodyId,
+          edgeStableId: op.edgeStableId,
+          namedReference: op.namedReference,
+          scalar: op.radius
+        },
+        "feature.fillet",
+        createFeatureId,
+        createBodyId,
+        opIndex
+      );
+
+      addFeature(state, feature, diff, opIndex);
+      return;
+    }
+
     case "feature.delete": {
       deleteFeature(state, op.id, diff, opIndex);
       return;
@@ -2601,6 +2680,7 @@ function validateBatchEnvelope(batch: CadBatch): void {
       expected: "supported CADOps operation",
       received: describeReceived(op)
     });
+    return;
   }
 }
 
@@ -2654,6 +2734,8 @@ function isCadOperationKind(value: string): boolean {
     case "feature.extrude":
     case "feature.revolve":
     case "feature.hole":
+    case "feature.chamfer":
+    case "feature.fillet":
     case "feature.delete":
     case "feature.updateExtrude":
     case "reference.nameGenerated":
@@ -5135,6 +5217,22 @@ function updateSketchEntityAndDependents(
       );
     }
 
+    if (feature.kind === "chamfer" || feature.kind === "fillet") {
+      validateEdgeFinishTargetBodyId(
+        { ...state, features: nextFeatures },
+        feature.kind === "chamfer" ? "feature.chamfer" : "feature.fillet",
+        feature.targetBodyId,
+        opIndex
+      );
+      validateEdgeFinishReference(
+        { ...state, features: nextFeatures },
+        feature.kind === "chamfer" ? "feature.chamfer" : "feature.fillet",
+        feature.targetBodyId,
+        feature,
+        opIndex
+      );
+    }
+
     downstreamFeatures.push(feature);
   }
 
@@ -5187,10 +5285,14 @@ function updateDependentFeatureForSketchEntity(
     };
   }
 
-  return {
-    ...feature,
-    profileKind: assertExtrudableProfile(entity, opIndex, sketchId, entity.id)
-  };
+  if (feature.kind === "extrude") {
+    return {
+      ...feature,
+      profileKind: assertExtrudableProfile(entity, opIndex, sketchId, entity.id)
+    };
+  }
+
+  return feature;
 }
 
 interface SketchConstraintPropagationContext {
@@ -5560,6 +5662,24 @@ function updateExtrudeFeature(
     });
   }
 
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.bodyId
+  );
+
+  if (consumingFeature) {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature ${featureId} cannot be edited because its body is consumed by feature ${consumingFeature.id}.`,
+      opIndex,
+      featureId,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "id"),
+      expected: "feature body not consumed by a downstream feature",
+      received: consumingFeature.id
+    });
+  }
+
   if (op.depth === undefined && op.side === undefined) {
     throwValidationError({
       code: "INVALID_FEATURE",
@@ -5666,7 +5786,9 @@ function isTargetConsumingFeature(
     (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode) &&
       feature.targetBodyId !== undefined) ||
-    feature.kind === "hole"
+    feature.kind === "hole" ||
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet"
   );
 }
 
@@ -5703,8 +5825,8 @@ function assertSketchNotInUse(
   sketchId: SketchId,
   opIndex?: number
 ): void {
-  const feature = [...features.values()].find(
-    (candidate) => candidate.sketchId === sketchId
+  const feature = [...features.values()].find((candidate) =>
+    featureUsesSketch(candidate, sketchId)
   );
 
   if (!feature) {
@@ -5721,6 +5843,14 @@ function assertSketchNotInUse(
     expected: "sketch with no dependent features",
     received: sketchId
   });
+}
+
+function featureUsesSketch(feature: Feature, sketchId: SketchId): boolean {
+  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+    return false;
+  }
+
+  return feature.sketchId === sketchId;
 }
 
 function assertSketchEntityNotInUse(
@@ -5763,7 +5893,7 @@ function findFeaturesBySketchEntity(
     }
 
     if (
-      feature.kind !== "hole" &&
+      (feature.kind === "extrude" || feature.kind === "revolve") &&
       feature.sketchId === sketchId &&
       feature.entityId === entityId
     ) {
@@ -6157,6 +6287,298 @@ function assertSupportedHoleTarget(
           ? targetFeature.operationMode
           : undefined
     })
+  });
+}
+
+type EdgeFinishOperation = "feature.chamfer" | "feature.fillet";
+
+interface EdgeFinishReferenceSource {
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+}
+
+function createEdgeFinishFeature(
+  state: MutableDocumentState,
+  input: EdgeFinishReferenceSource & {
+    readonly id?: FeatureId;
+    readonly bodyId?: BodyId;
+    readonly name?: string;
+    readonly targetBodyId: BodyId;
+    readonly scalar: number;
+  },
+  operation: EdgeFinishOperation,
+  createFeatureId: () => FeatureId,
+  createBodyId: () => BodyId,
+  opIndex?: number
+): ChamferFeature | FilletFeature {
+  const targetBodyId = validateEdgeFinishTargetBodyId(
+    state,
+    operation,
+    input.targetBodyId,
+    opIndex
+  );
+  const reference = validateEdgeFinishReference(
+    state,
+    operation,
+    targetBodyId,
+    input,
+    opIndex
+  );
+  const scalar = validateEdgeFinishScalar(input.scalar, operation, opIndex);
+  const common = {
+    id: input.id ?? createFeatureId(),
+    name: normalizeOptionalFeatureName(input.name, opIndex, input.id),
+    targetBodyId,
+    ...reference,
+    bodyId: input.bodyId ?? createBodyId()
+  };
+
+  return operation === "feature.chamfer"
+    ? {
+        ...common,
+        kind: "chamfer",
+        distance: scalar
+      }
+    : {
+        ...common,
+        kind: "fillet",
+        radius: scalar
+      };
+}
+
+function validateEdgeFinishTargetBodyId(
+  state: MutableDocumentState,
+  operation: EdgeFinishOperation,
+  targetBodyId: BodyId,
+  opIndex?: number
+): BodyId {
+  if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
+    throwValidationError({
+      code: "TARGET_BODY_REQUIRED",
+      message: `${operation} requires targetBodyId.`,
+      opIndex,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active authored target body id",
+      received: describeReceived(targetBodyId)
+    });
+  }
+
+  const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+
+  if (!targetFeature) {
+    if (isPrimitiveBodyId(state, targetBodyId)) {
+      throwValidationError({
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        message: `Primitive-derived body cannot be targeted by ${operation}: ${targetBodyId}`,
+        opIndex,
+        bodyId: targetBodyId,
+        path: operationPath(opIndex, "targetBodyId"),
+        expected: "active rectangle/circle newBody extrude target body",
+        received: targetBodyId
+      });
+    }
+
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Target body does not exist: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing active authored target body id",
+      received: targetBodyId
+    });
+  }
+
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    targetBodyId
+  );
+
+  if (consumingFeature) {
+    throwValidationError({
+      code: "UNSUPPORTED_FEATURE_OPERATION",
+      message: `${operation} target body is already consumed by feature ${consumingFeature.id}: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      featureId: consumingFeature.id,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "active authored target body",
+      received: targetBodyId
+    });
+  }
+
+  if (
+    targetFeature.kind === "extrude" &&
+    targetFeature.operationMode === "newBody" &&
+    isSupportedCutTargetProfileKind(targetFeature.profileKind)
+  ) {
+    return targetFeature.bodyId;
+  }
+
+  throwValidationError({
+    code: "UNSUPPORTED_FEATURE_OPERATION",
+    message: `${operation} currently supports one stable generated edge on an active rectangle or circle newBody extrude target body.`,
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "targetBodyId"),
+    expected: "active rectangle/circle newBody extrude target body",
+    received: describeReceived({
+      targetBodyId,
+      targetFeatureKind: targetFeature.kind,
+      targetProfileKind:
+        targetFeature.kind === "extrude"
+          ? targetFeature.profileKind
+          : undefined,
+      targetOperationMode:
+        targetFeature.kind === "extrude"
+          ? targetFeature.operationMode
+          : undefined
+    })
+  });
+}
+
+function validateEdgeFinishReference(
+  state: MutableDocumentState,
+  operation: EdgeFinishOperation,
+  targetBodyId: BodyId,
+  source: EdgeFinishReferenceSource,
+  opIndex?: number
+): EdgeFinishReferenceSource {
+  const hasStableId =
+    typeof source.edgeStableId === "string" &&
+    source.edgeStableId.trim().length > 0;
+  const hasNamedReference =
+    typeof source.namedReference === "string" &&
+    source.namedReference.trim().length > 0;
+
+  if (hasStableId === hasNamedReference) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: `${operation} requires exactly one edgeStableId or namedReference.`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(
+        opIndex,
+        hasStableId ? "namedReference" : "edgeStableId"
+      ),
+      expected: "exactly one edgeStableId or namedReference",
+      received: describeReceived({
+        edgeStableId: source.edgeStableId,
+        namedReference: source.namedReference
+      })
+    });
+  }
+
+  if (hasNamedReference) {
+    const name = normalizeNamedReferenceName(
+      source.namedReference as string,
+      opIndex,
+      "namedReference"
+    );
+    const reference = state.namedReferences.get(name);
+
+    if (!reference) {
+      throwValidationError({
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        message: `Named reference does not exist: ${name}`,
+        opIndex,
+        bodyId: targetBodyId,
+        referenceName: name,
+        path: operationPath(opIndex, "namedReference"),
+        expected: "existing named generated edge reference",
+        received: name
+      });
+    }
+
+    if (reference.bodyId !== targetBodyId) {
+      throwValidationError({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: `Named reference ${name} resolves to body ${reference.bodyId}, not target body ${targetBodyId}.`,
+        opIndex,
+        bodyId: targetBodyId,
+        stableId: reference.stableId,
+        referenceName: name,
+        path: operationPath(opIndex, "namedReference"),
+        expected: "named edge reference resolving to targetBodyId",
+        received: reference.bodyId
+      });
+    }
+
+    validateEdgeGeneratedReference(
+      state,
+      operation,
+      targetBodyId,
+      reference.stableId,
+      opIndex,
+      "referenceName",
+      name
+    );
+
+    return { namedReference: name };
+  }
+
+  const edgeStableId = source.edgeStableId as string;
+  validateEdgeGeneratedReference(
+    state,
+    operation,
+    targetBodyId,
+    edgeStableId,
+    opIndex,
+    "edgeStableId"
+  );
+
+  return { edgeStableId };
+}
+
+function validateEdgeGeneratedReference(
+  state: MutableDocumentState,
+  operation: EdgeFinishOperation,
+  targetBodyId: BodyId,
+  stableId: string,
+  opIndex: number | undefined,
+  stableIdPath: "edgeStableId" | "referenceName",
+  referenceName?: NamedReferenceName
+): void {
+  const result = validateGeneratedReference({
+    document: state,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: targetBodyId,
+    stableId,
+    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+    expectedKind: "edge",
+    requiredOperation: operation
+  });
+
+  if (!result.ok) {
+    throwGeneratedReferenceValidationError(
+      result.error,
+      opIndex,
+      stableIdPath,
+      referenceName
+    );
+  }
+}
+
+function validateEdgeFinishScalar(
+  value: number,
+  operation: EdgeFinishOperation,
+  opIndex?: number
+): number {
+  const field = operation === "feature.chamfer" ? "distance" : "radius";
+  const label =
+    operation === "feature.chamfer" ? "Chamfer distance" : "Fillet radius";
+
+  if (isPositiveFiniteNumber(value)) {
+    return value;
+  }
+
+  throwValidationError({
+    code: "INVALID_FEATURE",
+    message: `${label} must be a positive finite number.`,
+    opIndex,
+    path: operationPath(opIndex, field),
+    expected: "positive finite number",
+    received: describeReceived(value)
   });
 }
 
@@ -6676,7 +7098,8 @@ function normalizeFeatureName(
 
 function normalizeNamedReferenceName(
   name: string,
-  opIndex?: number
+  opIndex?: number,
+  fieldName: "name" | "referenceName" | "namedReference" = "name"
 ): NamedReferenceName {
   const normalized = name.trim();
 
@@ -6688,7 +7111,7 @@ function normalizeNamedReferenceName(
     code: "INVALID_REFERENCE_NAME",
     message: "Named reference name must be non-empty.",
     opIndex,
-    path: operationPath(opIndex, "name"),
+    path: operationPath(opIndex, fieldName),
     expected: "non-empty string",
     received: describeReceived(name)
   });
@@ -6861,7 +7284,11 @@ function createQueryErrorFromGeneratedReferenceError(
 function throwGeneratedReferenceValidationError(
   error: GeneratedReferenceValidationError,
   opIndex?: number,
-  stableIdPath: "faceStableId" | "stableId" | "referenceName" = "faceStableId",
+  stableIdPath:
+    | "edgeStableId"
+    | "faceStableId"
+    | "stableId"
+    | "referenceName" = "faceStableId",
   referenceName?: NamedReferenceName
 ): never {
   throwValidationError({
@@ -7139,6 +7566,34 @@ function sketchEntityRef(
 }
 
 function featureRef(feature: Feature): CadFeatureRef {
+  if (feature.kind === "chamfer") {
+    return {
+      id: feature.id,
+      kind: "chamfer",
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+      ...(feature.namedReference
+        ? { namedReference: feature.namedReference }
+        : {}),
+      distance: feature.distance
+    };
+  }
+
+  if (feature.kind === "fillet") {
+    return {
+      id: feature.id,
+      kind: "fillet",
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+      ...(feature.namedReference
+        ? { namedReference: feature.namedReference }
+        : {}),
+      radius: feature.radius
+    };
+  }
+
   if (feature.kind === "hole") {
     return {
       id: feature.id,
@@ -7935,6 +8390,36 @@ function cloneSketchAttachment(
 }
 
 function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
+  if (feature.kind === "chamfer") {
+    return {
+      id: feature.id,
+      kind: "chamfer",
+      name: feature.name,
+      targetBodyId: feature.targetBodyId,
+      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+      ...(feature.namedReference
+        ? { namedReference: feature.namedReference }
+        : {}),
+      distance: feature.distance,
+      bodyId: feature.bodyId
+    };
+  }
+
+  if (feature.kind === "fillet") {
+    return {
+      id: feature.id,
+      kind: "fillet",
+      name: feature.name,
+      targetBodyId: feature.targetBodyId,
+      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+      ...(feature.namedReference
+        ? { namedReference: feature.namedReference }
+        : {}),
+      radius: feature.radius,
+      bodyId: feature.bodyId
+    };
+  }
+
   if (feature.kind === "hole") {
     return {
       id: feature.id,
@@ -7982,6 +8467,32 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
 }
 
 function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
+  if (snapshot.kind === "chamfer") {
+    return {
+      id: snapshot.id,
+      kind: "chamfer",
+      name: snapshot.name,
+      targetBodyId: snapshot.targetBodyId,
+      edgeStableId: snapshot.edgeStableId,
+      namedReference: snapshot.namedReference,
+      distance: snapshot.distance,
+      bodyId: snapshot.bodyId
+    };
+  }
+
+  if (snapshot.kind === "fillet") {
+    return {
+      id: snapshot.id,
+      kind: "fillet",
+      name: snapshot.name,
+      targetBodyId: snapshot.targetBodyId,
+      edgeStableId: snapshot.edgeStableId,
+      namedReference: snapshot.namedReference,
+      radius: snapshot.radius,
+      bodyId: snapshot.bodyId
+    };
+  }
+
   if (snapshot.kind === "hole") {
     return {
       id: snapshot.id,
@@ -8176,6 +8687,54 @@ function createPrimitiveBodySnapshot(object: SceneObject): CadBodySnapshot {
 }
 
 function createFeatureSummary(feature: Feature): CadFeatureSummary {
+  if (feature.kind === "chamfer") {
+    return {
+      id: feature.id,
+      kind: "chamfer",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+      ...(feature.namedReference
+        ? { namedReference: feature.namedReference }
+        : {}),
+      distance: feature.distance,
+      name: feature.name,
+      source: {
+        type: "generatedEdgeChamfer",
+        targetBodyId: feature.targetBodyId,
+        ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+        ...(feature.namedReference
+          ? { namedReference: feature.namedReference }
+          : {})
+      }
+    };
+  }
+
+  if (feature.kind === "fillet") {
+    return {
+      id: feature.id,
+      kind: "fillet",
+      partId: DEFAULT_PART_ID,
+      bodyId: feature.bodyId,
+      targetBodyId: feature.targetBodyId,
+      ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+      ...(feature.namedReference
+        ? { namedReference: feature.namedReference }
+        : {}),
+      radius: feature.radius,
+      name: feature.name,
+      source: {
+        type: "generatedEdgeFillet",
+        targetBodyId: feature.targetBodyId,
+        ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+        ...(feature.namedReference
+          ? { namedReference: feature.namedReference }
+          : {})
+      }
+    };
+  }
+
   if (feature.kind === "hole") {
     return {
       id: feature.id,
@@ -8246,6 +8805,46 @@ function createFeatureBodySnapshot(
   feature: Feature,
   consumedByFeatureId?: FeatureId
 ): CadBodySnapshot {
+  if (feature.kind === "chamfer") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "edgeChamferFeature",
+        featureId: feature.id,
+        targetBodyId: feature.targetBodyId,
+        ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+        ...(feature.namedReference
+          ? { namedReference: feature.namedReference }
+          : {})
+      }
+    };
+  }
+
+  if (feature.kind === "fillet") {
+    return {
+      id: feature.bodyId,
+      kind: "solid",
+      partId: DEFAULT_PART_ID,
+      featureId: feature.id,
+      ...(consumedByFeatureId ? { consumedByFeatureId } : {}),
+      name: feature.name,
+      source: {
+        type: "edgeFilletFeature",
+        featureId: feature.id,
+        targetBodyId: feature.targetBodyId,
+        ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+        ...(feature.namedReference
+          ? { namedReference: feature.namedReference }
+          : {})
+      }
+    };
+  }
+
   if (feature.kind === "hole") {
     return {
       id: feature.bodyId,
@@ -9948,6 +10547,30 @@ function featuresEqual(left: Feature, right: Feature): boolean {
     );
   }
 
+  if (left.kind === "chamfer" && right.kind === "chamfer") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.targetBodyId === right.targetBodyId &&
+      left.edgeStableId === right.edgeStableId &&
+      left.namedReference === right.namedReference &&
+      left.distance === right.distance &&
+      left.bodyId === right.bodyId
+    );
+  }
+
+  if (left.kind === "fillet" && right.kind === "fillet") {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.targetBodyId === right.targetBodyId &&
+      left.edgeStableId === right.edgeStableId &&
+      left.namedReference === right.namedReference &&
+      left.radius === right.radius &&
+      left.bodyId === right.bodyId
+    );
+  }
+
   if (left.kind === "extrude" && right.kind === "extrude") {
     return (
       left.id === right.id &&
@@ -9982,6 +10605,7 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 function normalizeCadProject(value: CadProject): CadProject {
   if (
     value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
@@ -10245,6 +10869,10 @@ function normalizeFeatureSnapshot(feature: FeatureSnapshot): FeatureSnapshot {
     };
   }
 
+  if (feature.kind === "chamfer" || feature.kind === "fillet") {
+    return { ...feature };
+  }
+
   return {
     ...feature,
     side: feature.side ?? "positive",
@@ -10329,6 +10957,10 @@ function normalizeFeatureRefSnapshot(ref: CadFeatureRef): CadFeatureRef {
     };
   }
 
+  if (ref.kind === "chamfer" || ref.kind === "fillet") {
+    return { ...ref };
+  }
+
   return {
     ...ref,
     side: ref.side ?? "positive",
@@ -10389,6 +11021,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V10 &&
+    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V15 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V14 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V13 &&
     value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V12 &&
@@ -10532,6 +11165,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -10546,6 +11180,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -10559,6 +11194,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -10571,6 +11207,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
@@ -10581,6 +11218,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
@@ -10590,6 +11228,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
@@ -10598,6 +11237,7 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
@@ -10605,26 +11245,34 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsMidpointSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsParallelSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsPerpendicularSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsRevolveFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const allowsHoleFeatures =
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+  const allowsEdgeFinishFeatures =
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const isKnownProjectVersion =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
@@ -10641,12 +11289,17 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
   const authoredFeatureByBodyId = new Map<
     BodyId,
     FeatureSnapshot & { readonly path: string }
+  >();
+  let namedReferencesByName = new Map<
+    NamedReferenceName,
+    NamedGeneratedReferenceSnapshot
   >();
   const sketchEntityRefs = new Map<SketchEntityId, SketchEntityImportRef>();
   const sketchAttachments: {
@@ -10933,7 +11586,8 @@ function validateCadDocumentSnapshot(
           seenSketchIds,
           sketchEntityRefs,
           allowsRevolveFeatures,
-          allowsHoleFeatures
+          allowsHoleFeatures,
+          allowsEdgeFinishFeatures
         );
         maxGeneratedFeatureNumber = Math.max(
           maxGeneratedFeatureNumber,
@@ -10986,13 +11640,19 @@ function validateCadDocumentSnapshot(
         "Document namedReferences must be an array."
       );
     } else {
-      validateNamedReferenceSnapshots(
+      namedReferencesByName = validateNamedReferenceSnapshots(
         value.namedReferences,
         `${path}.namedReferences`,
         issues
       );
     }
   }
+
+  validateEdgeFinishNamedReferenceSnapshots(
+    authoredFeatureByBodyId,
+    namedReferencesByName,
+    issues
+  );
 }
 
 function validateSceneObject(
@@ -12719,6 +13379,68 @@ function collectValidAuthoredFeatureByBodyId(
       bodyId: value.bodyId,
       path
     });
+    return;
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "chamfer" &&
+    typeof value.id === "string" &&
+    typeof value.targetBodyId === "string" &&
+    ((typeof value.edgeStableId === "string" &&
+      value.namedReference === undefined) ||
+      (typeof value.namedReference === "string" &&
+        value.edgeStableId === undefined)) &&
+    typeof value.distance === "number" &&
+    isPositiveFiniteNumber(value.distance) &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "chamfer",
+      name: typeof value.name === "string" ? value.name : undefined,
+      targetBodyId: value.targetBodyId,
+      ...(typeof value.edgeStableId === "string"
+        ? { edgeStableId: value.edgeStableId }
+        : {}),
+      ...(typeof value.namedReference === "string"
+        ? { namedReference: value.namedReference }
+        : {}),
+      distance: value.distance,
+      bodyId: value.bodyId,
+      path
+    });
+    return;
+  }
+
+  if (
+    isRecord(value) &&
+    value.kind === "fillet" &&
+    typeof value.id === "string" &&
+    typeof value.targetBodyId === "string" &&
+    ((typeof value.edgeStableId === "string" &&
+      value.namedReference === undefined) ||
+      (typeof value.namedReference === "string" &&
+        value.edgeStableId === undefined)) &&
+    typeof value.radius === "number" &&
+    isPositiveFiniteNumber(value.radius) &&
+    typeof value.bodyId === "string"
+  ) {
+    featuresByBodyId.set(value.bodyId, {
+      id: value.id,
+      kind: "fillet",
+      name: typeof value.name === "string" ? value.name : undefined,
+      targetBodyId: value.targetBodyId,
+      ...(typeof value.edgeStableId === "string"
+        ? { edgeStableId: value.edgeStableId }
+        : {}),
+      ...(typeof value.namedReference === "string"
+        ? { namedReference: value.namedReference }
+        : {}),
+      radius: value.radius,
+      bodyId: value.bodyId,
+      path
+    });
   }
 }
 
@@ -12801,6 +13523,20 @@ function validateFeatureTargetBodyReferences(
         "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body."
       );
     }
+
+    if (
+      (feature.kind === "chamfer" || feature.kind === "fillet") &&
+      (!isExtrudeFeatureSnapshot(target) ||
+        target.operationMode !== "newBody" ||
+        !isSupportedCutTargetProfileKind(target.profileKind))
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.targetBodyId`,
+        `${formatTargetConsumingFeatureForIssue(feature)} currently supports one stable generated edge on an active rectangle or circle newBody extrude target body.`
+      );
+    }
   }
 }
 
@@ -12810,7 +13546,9 @@ function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
       isConsumingExtrudeOperationMode(feature.operationMode ?? "newBody") &&
       typeof feature.targetBodyId === "string" &&
       feature.targetBodyId.length > 0) ||
-    feature.kind === "hole"
+    feature.kind === "hole" ||
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet"
   );
 }
 
@@ -12869,6 +13607,14 @@ function formatTargetConsumingFeatureForIssue(
 ): string {
   if (feature.kind === "hole") {
     return "Hole feature";
+  }
+
+  if (feature.kind === "chamfer") {
+    return "Chamfer feature";
+  }
+
+  if (feature.kind === "fillet") {
+    return "Fillet feature";
   }
 
   if (
@@ -13050,8 +13796,12 @@ function validateNamedReferenceSnapshots(
   values: readonly unknown[],
   path: string,
   issues: CadProjectImportIssue[]
-): void {
+): Map<NamedReferenceName, NamedGeneratedReferenceSnapshot> {
   const seenNames = new Set<NamedReferenceName>();
+  const references = new Map<
+    NamedReferenceName,
+    NamedGeneratedReferenceSnapshot
+  >();
 
   for (const [index, value] of values.entries()) {
     const referencePath = `${path}[${index}]`;
@@ -13125,7 +13875,7 @@ function validateNamedReferenceSnapshots(
       );
     }
 
-    if (!bodyId || !stableId || !kind) {
+    if (!name || !bodyId || !stableId || !kind) {
       continue;
     }
 
@@ -13135,6 +13885,68 @@ function validateNamedReferenceSnapshots(
         "INVALID_NAMED_REFERENCE",
         `${referencePath}.stableId`,
         "Named reference stableId must match the stored generated reference kind and bodyId."
+      );
+      continue;
+    }
+
+    references.set(name, {
+      name,
+      bodyId,
+      stableId,
+      kind
+    });
+  }
+
+  return references;
+}
+
+function validateEdgeFinishNamedReferenceSnapshots(
+  featuresByBodyId: ReadonlyMap<
+    BodyId,
+    FeatureSnapshot & { readonly path: string }
+  >,
+  namedReferencesByName: ReadonlyMap<
+    NamedReferenceName,
+    NamedGeneratedReferenceSnapshot
+  >,
+  issues: CadProjectImportIssue[]
+): void {
+  for (const feature of featuresByBodyId.values()) {
+    if (feature.kind !== "chamfer" && feature.kind !== "fillet") {
+      continue;
+    }
+
+    if (!feature.namedReference) {
+      continue;
+    }
+
+    const reference = namedReferencesByName.get(feature.namedReference);
+
+    if (!reference) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.namedReference`,
+        `${formatTargetConsumingFeatureForIssue(feature)} namedReference must reference an existing named generated edge.`
+      );
+      continue;
+    }
+
+    if (reference.kind !== "edge") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.namedReference`,
+        `${formatTargetConsumingFeatureForIssue(feature)} namedReference must resolve to an edge.`
+      );
+    }
+
+    if (reference.bodyId !== feature.targetBodyId) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${feature.path}.namedReference`,
+        `${formatTargetConsumingFeatureForIssue(feature)} namedReference must resolve to the target body.`
       );
     }
   }
@@ -13149,7 +13961,8 @@ function validateFeatureSnapshot(
   seenSketchIds: ReadonlySet<string>,
   sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>,
   allowsRevolveFeatures: boolean,
-  allowsHoleFeatures: boolean
+  allowsHoleFeatures: boolean,
+  allowsEdgeFinishFeatures: boolean
 ): {
   readonly maxGeneratedFeatureNumber: number;
   readonly maxGeneratedBodyNumber: number;
@@ -13189,17 +14002,21 @@ function validateFeatureSnapshot(
   if (
     value.kind !== "extrude" &&
     (value.kind !== "revolve" || !allowsRevolveFeatures) &&
-    (value.kind !== "hole" || !allowsHoleFeatures)
+    (value.kind !== "hole" || !allowsHoleFeatures) &&
+    ((value.kind !== "chamfer" && value.kind !== "fillet") ||
+      !allowsEdgeFinishFeatures)
   ) {
     addProjectIssue(
       issues,
       "INVALID_FEATURE",
       `${path}.kind`,
-      allowsHoleFeatures
-        ? "Feature kind must be extrude, revolve, or hole."
-        : allowsRevolveFeatures
-          ? "Feature kind must be extrude or revolve."
-          : "Feature kind must be extrude."
+      allowsEdgeFinishFeatures
+        ? "Feature kind must be extrude, revolve, hole, chamfer, or fillet."
+        : allowsHoleFeatures
+          ? "Feature kind must be extrude, revolve, or hole."
+          : allowsRevolveFeatures
+            ? "Feature kind must be extrude or revolve."
+            : "Feature kind must be extrude."
     );
   }
 
@@ -13249,6 +14066,25 @@ function validateFeatureSnapshot(
       seenSketchIds,
       sketchEntityRefs
     );
+
+    if (typeof value.bodyId === "string") {
+      maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
+    }
+
+    return { maxGeneratedFeatureNumber, maxGeneratedBodyNumber };
+  }
+
+  if (value.kind === "chamfer" || value.kind === "fillet") {
+    if (!allowsEdgeFinishFeatures) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.kind`,
+        "Chamfer and fillet features require web-cad.project.v16."
+      );
+    }
+
+    validateEdgeFinishFeatureSnapshotFields(value, path, issues, seenBodyIds);
 
     if (typeof value.bodyId === "string") {
       maxGeneratedBodyNumber = parseBodyNumber(value.bodyId);
@@ -13680,6 +14516,104 @@ function validateHoleFeatureSnapshotFields(
       "INVALID_FEATURE",
       `${path}.bodyId`,
       "Hole feature bodyId must be a non-empty string."
+    );
+  } else if (seenBodyIds.has(value.bodyId)) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `Duplicate body id: ${value.bodyId}.`
+    );
+  } else {
+    seenBodyIds.add(value.bodyId);
+  }
+}
+
+function validateEdgeFinishFeatureSnapshotFields(
+  value: Record<string, unknown>,
+  path: string,
+  issues: CadProjectImportIssue[],
+  seenBodyIds: Set<string>
+): void {
+  const label = value.kind === "chamfer" ? "Chamfer" : "Fillet";
+  const scalarField = value.kind === "chamfer" ? "distance" : "radius";
+  const scalarLabel =
+    value.kind === "chamfer" ? "Chamfer distance" : "Fillet radius";
+
+  if (
+    typeof value.targetBodyId !== "string" ||
+    value.targetBodyId.length === 0
+  ) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.targetBodyId`,
+      `${label} feature targetBodyId must be a non-empty string.`
+    );
+  }
+
+  const edgeStableId =
+    typeof value.edgeStableId === "string" ? value.edgeStableId : undefined;
+  const namedReference =
+    typeof value.namedReference === "string" ? value.namedReference : undefined;
+  const hasEdgeStableId = edgeStableId !== undefined;
+  const hasNamedReference = namedReference !== undefined;
+
+  if (hasEdgeStableId === hasNamedReference) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.edgeStableId`,
+      `${label} feature requires exactly one edgeStableId or namedReference.`
+    );
+  }
+
+  if (hasEdgeStableId) {
+    if (edgeStableId === "") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.edgeStableId`,
+        `${label} feature edgeStableId must be a non-empty string.`
+      );
+    } else if (
+      typeof value.targetBodyId === "string" &&
+      value.targetBodyId.length > 0 &&
+      !isGeneratedStableIdShapeForKind(value.targetBodyId, edgeStableId, "edge")
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.edgeStableId`,
+        `${label} feature edgeStableId must be an edge generated by targetBodyId.`
+      );
+    }
+  }
+
+  if (hasNamedReference) {
+    if (namedReference.trim() === "") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.namedReference`,
+        `${label} feature namedReference must be a non-empty string.`
+      );
+    }
+  }
+
+  validatePositiveFiniteField(
+    value[scalarField],
+    `${path}.${scalarField}`,
+    scalarLabel,
+    issues
+  );
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_FEATURE",
+      `${path}.bodyId`,
+      `${label} feature bodyId must be a non-empty string.`
     );
   } else if (seenBodyIds.has(value.bodyId)) {
     addProjectIssue(
@@ -14472,7 +15406,13 @@ function materializeGeneratedObjectIds(
       return createdRef ? { ...op, id: createdRef.id } : op;
     }
 
-    if (op.op === "feature.extrude" || op.op === "feature.revolve") {
+    if (
+      op.op === "feature.extrude" ||
+      op.op === "feature.revolve" ||
+      op.op === "feature.hole" ||
+      op.op === "feature.chamfer" ||
+      op.op === "feature.fillet"
+    ) {
       const createdRef =
         transaction.diff.features?.created?.[createdFeatureIndex];
       createdFeatureIndex += 1;
@@ -14853,6 +15793,30 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.chamfer") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      hasExactlyOneEdgeReferenceInput(value) &&
+      typeof value.distance === "number" &&
+      isPositiveFiniteNumber(value.distance)
+    );
+  }
+
+  if (value.op === "feature.fillet") {
+    return (
+      isOptionalString(value.id) &&
+      isOptionalString(value.bodyId) &&
+      isOptionalString(value.name) &&
+      typeof value.targetBodyId === "string" &&
+      hasExactlyOneEdgeReferenceInput(value) &&
+      typeof value.radius === "number" &&
+      isPositiveFiniteNumber(value.radius)
+    );
+  }
+
   if (value.op === "feature.delete") {
     return typeof value.id === "string";
   }
@@ -15074,6 +16038,24 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
         (typeof value.depth === "number" &&
           isPositiveFiniteNumber(value.depth))) &&
       isHoleDirection(value.direction)
+    );
+  }
+
+  if (value.kind === "chamfer") {
+    return (
+      typeof value.targetBodyId === "string" &&
+      hasExactlyOneEdgeReferenceInput(value) &&
+      typeof value.distance === "number" &&
+      isPositiveFiniteNumber(value.distance)
+    );
+  }
+
+  if (value.kind === "fillet") {
+    return (
+      typeof value.targetBodyId === "string" &&
+      hasExactlyOneEdgeReferenceInput(value) &&
+      typeof value.radius === "number" &&
+      isPositiveFiniteNumber(value.radius)
     );
   }
 
@@ -15369,6 +16351,19 @@ function isHoleDepthMode(value: unknown): value is FeatureHoleDepthMode {
 
 function isHoleDirection(value: unknown): value is FeatureHoleDirection {
   return value === "positive" || value === "negative";
+}
+
+function hasExactlyOneEdgeReferenceInput(
+  value: Record<string, unknown>
+): boolean {
+  const hasStableId =
+    typeof value.edgeStableId === "string" &&
+    value.namedReference === undefined;
+  const hasNamedReference =
+    typeof value.namedReference === "string" &&
+    value.edgeStableId === undefined;
+
+  return hasStableId !== hasNamedReference;
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

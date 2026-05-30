@@ -18,8 +18,10 @@ midpoint. Schema V12 added source-of-truth parallel line constraints. Schema
 V13 added source-of-truth perpendicular line constraints. Schema V14 added the
 first authored non-extrude feature source records for `feature.revolve`.
 Schema V15 added source-of-truth circular hole feature records for
-`feature.hole`. Current exports use `web-cad.project.v15` while the loader
-still accepts V1 through V14 projects through explicit migration. The
+`feature.hole`. Schema V16 added command-first source-of-truth edge-finishing
+feature records for `feature.chamfer` and `feature.fillet`. Current exports use
+`web-cad.project.v16` while the loader still accepts V1 through V15 projects
+through explicit migration. The
 `web-cad.project.*` names are retained as compatibility schema
 identifiers after the Partbench product rename; changing them would require a
 deliberate project-format migration. Future storage work should use this
@@ -47,6 +49,7 @@ schemaVersion: web-cad.project.v12
 schemaVersion: web-cad.project.v13
 schemaVersion: web-cad.project.v14
 schemaVersion: web-cad.project.v15
+schemaVersion: web-cad.project.v16
 ```
 
 It is produced by:
@@ -73,8 +76,8 @@ and does not use OPFS or the File System Access API.
 The current exported JSON shape is:
 
 ```ts
-ProjectV15 {
-  schemaVersion: "web-cad.project.v15"
+ProjectV16 {
+  schemaVersion: "web-cad.project.v16"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -538,6 +541,28 @@ HoleFeature {
   direction: "positive" | "negative"
   bodyId: string
 }
+
+ChamferFeature {
+  id: string
+  kind: "chamfer"
+  name?: string
+  targetBodyId: string
+  edgeStableId?: string
+  namedReference?: string
+  distance: number
+  bodyId: string
+}
+
+FilletFeature {
+  id: string
+  kind: "fillet"
+  name?: string
+  targetBodyId: string
+  edgeStableId?: string
+  namedReference?: string
+  radius: number
+  bodyId: string
+}
 ```
 
 Extrude features reference an existing rectangle or circle sketch entity. The
@@ -546,7 +571,7 @@ derived cache data and is not saved in the project JSON. Feature IDs and body
 IDs must be unique within their respective authored/derived ID spaces. Extrude
 depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
-defaults to `newBody` when omitted, and current V15 exports include an explicit
+defaults to `newBody` when omitted, and current exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
 `targetBodyId`. Boolean operation modes are supported only for narrow
 source-modeled slices. `cut` supports a rectangle sketch-extrude tool cutting
@@ -590,13 +615,26 @@ kernel-derived exact metadata through read-only derived snapshots when the
 target rectangle/circle authored extrude source and circular tool placement are
 available. Generated references for hole result bodies and exact topology
 naming are not implemented yet.
+Chamfer and fillet features reference one generated edge on an active authored
+rectangle or circle `newBody` extrude target body. V16 stores these records as
+source intent only: no B-rep, mesh result, OCCT topology ID, renderer cache, or
+generated references for the chamfer/fillet result body are persisted.
+`feature.chamfer` stores `distance`; `feature.fillet` stores `radius`. Both
+commands require exactly one reference path, either `edgeStableId` or
+`namedReference`, and the reference must resolve to an operation-eligible
+generated edge on `targetBodyId`. Both consume the target body and create a new
+authored result body. Primitive-derived targets, boolean result bodies, revolve
+bodies, hole bodies, already-consumed targets, non-edge references, stale named
+references, and non-positive or non-finite scalars are rejected. Geometry-worker
+execution, UI controls, and stable generated references for chamfer/fillet
+result bodies are not implemented in this command-first V16 slice.
 Rectangle and circle source profile values can be edited through
 `sketch.updateEntity`; the feature keeps referencing the same sketch entity and
 the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15 Storage Decision
+## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -657,7 +695,11 @@ represented by the V13 extrude-only feature shape, so it introduced
 source sketch/circle IDs, depth mode/depth, direction, and result body ID. That
 target-consuming source intent cannot be represented by the V14
 extrude/revolve feature shape, so it introduced `web-cad.project.v15`. Current
-exports therefore use `web-cad.project.v15`.
+command-first chamfer/fillet feature records carry target body ID, one
+generated or named edge reference, distance/radius, and result body ID. That
+edge-finishing source intent cannot be represented by the V15
+extrude/revolve/hole feature shape, so it introduced `web-cad.project.v16`.
+Current exports therefore use `web-cad.project.v16`.
 
 The loader accepts:
 
@@ -677,6 +719,7 @@ web-cad.project.v12
 web-cad.project.v13
 web-cad.project.v14
 web-cad.project.v15
+web-cad.project.v16
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -807,7 +850,7 @@ side, operation mode, optional target body ID, and authored body ID. Revolve
 summaries include the source sketch/entity, profile kind, same-sketch axis line,
 angle, operation mode, and authored body ID.
 
-The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -945,15 +988,17 @@ named-reference lookup results, or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v15`
+that cannot be faithfully represented by the current `web-cad.project.v16`
 document shape.
 
 V6 introduced `web-cad.project.v14` when `feature.revolve` added the first
 authored non-extrude feature source record. V6 introduced
 `web-cad.project.v15` when `feature.hole` added the first circular
-target-consuming feature source record. Exact-kernel metadata, topology
-snapshots, measurement outputs, mesh results, and UI selection state remain
-derived and do not justify a schema version by themselves.
+target-consuming feature source record. V6 introduced `web-cad.project.v16`
+when command-first `feature.chamfer` and `feature.fillet` records added
+edge-finishing source intent. Exact-kernel metadata, topology snapshots,
+measurement outputs, mesh results, and UI selection state remain derived and do
+not justify a schema version by themselves.
 
 Likely triggers:
 
@@ -971,7 +1016,7 @@ Likely triggers:
   generated references, such as exact topology-backed faces, edges, vertices,
   sketches, and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level materials/named views that are not represented by V15;
+- project-level materials/named views that are not represented by V16;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -980,14 +1025,14 @@ When any future source records become real source data, the next format should
 be explicit:
 
 ```text
-schemaVersion: web-cad.project.v16
+schemaVersion: web-cad.project.v17
 ```
 
 That format should include a migration from older accepted versions, not silent
-shape guessing. Current `web-cad.project.v15` preserves V1-V14 import
-compatibility and adds only the currently implemented revolve and hole source
-records. It does not persist B-rep checkpoints, OCCT topology IDs, exact
-metadata query results, or tessellated mesh caches.
+shape guessing. Current `web-cad.project.v16` preserves V1-V15 import
+compatibility and adds only the currently implemented revolve, hole, chamfer,
+and fillet source records. It does not persist B-rep checkpoints, OCCT topology
+IDs, exact metadata query results, or tessellated mesh caches.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
@@ -1002,14 +1047,16 @@ source-of-truth data and `web-cad.project.v13` when perpendicular line
 constraints became persisted source-of-truth data. V6 Phase B introduced
 `web-cad.project.v14` when authored revolve feature intent became persisted
 source-of-truth data. V6 Phase D introduced `web-cad.project.v15` when authored
-hole feature intent became persisted source-of-truth data. Query-only
+hole feature intent became persisted source-of-truth data. V6 Phase E core
+introduced `web-cad.project.v16` when authored chamfer/fillet feature intent
+became persisted source-of-truth data. Query-only
 solver/evaluator summaries
 such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
 Future V6 slices should introduce another project format only if they add
-persisted source-of-truth data that cannot be represented by the current V15
+persisted source-of-truth data that cannot be represented by the current V16
 feature and constraint records. Solver/evaluator status and exact-kernel query
 results should remain derived query/cache data.
 
@@ -1139,39 +1186,42 @@ web-cad.project.v12
 web-cad.project.v13
 web-cad.project.v14
 web-cad.project.v15
+web-cad.project.v16
 ```
 
-Schema V1 is migrated to V15 on parse/load by adding empty sketches, empty
+Schema V1 is migrated to V16 on parse/load by adding empty sketches, empty
 authored features, empty named references, empty parameters, empty sketch
 dimensions, empty sketch constraints, and fresh
 sketch/feature/body/parameter/dimension/constraint counters. Schema V2 is
-migrated to V15 by preserving sketches and adding empty authored features, empty
+migrated to V16 by preserving sketches and adding empty authored features, empty
 named references, empty parameters, empty sketch dimensions, empty sketch
 constraints, and fresh feature/body/parameter/dimension/constraint counters.
-Schema V3 is migrated to V15 by preserving sketches/features, treating all
+Schema V3 is migrated to V16 by preserving sketches/features, treating all
 sketches as unattached, adding empty named references, empty parameters, empty
 sketch dimensions, empty sketch constraints, and defaulting authored extrude
 operation mode to `newBody`.
-Schema V4 is migrated to V15 by preserving sketches, authored features, and
+Schema V4 is migrated to V16 by preserving sketches, authored features, and
 attached sketch metadata, plus empty named-reference, parameter,
 sketch-dimension, and sketch-constraint tables and `newBody` operation mode.
-Schema V5 is migrated to V15 by preserving sketches, authored features, attached
+Schema V5 is migrated to V16 by preserving sketches, authored features, attached
 sketch metadata, and named references while defaulting missing operation mode to
 `newBody` and adding empty parameters, sketch dimensions, and sketch
-constraints. Schema V6 is migrated to V15 by preserving all V6 source data and
+constraints. Schema V6 is migrated to V16 by preserving all V6 source data and
 adding empty parameters, sketch dimensions, and sketch constraints. Schema V7 is
-migrated to V15 by preserving parameters and sketch dimensions and adding empty
-sketch constraints. Schema V8 is migrated to V15 by preserving horizontal and
-vertical sketch constraints. Schema V9 is migrated to V15 by preserving fixed
-point constraints. Schema V10 is migrated to V15 by preserving coincident point
-constraints. Schema V11 is migrated to V15 by preserving midpoint constraints
+migrated to V16 by preserving parameters and sketch dimensions and adding empty
+sketch constraints. Schema V8 is migrated to V16 by preserving horizontal and
+vertical sketch constraints. Schema V9 is migrated to V16 by preserving fixed
+point constraints. Schema V10 is migrated to V16 by preserving coincident point
+constraints. Schema V11 is migrated to V16 by preserving midpoint constraints
 and rejecting parallel constraints because they are a V12 source shape. Schema
-V12 is migrated to V15 by preserving parallel constraints and rejecting
+V12 is migrated to V16 by preserving parallel constraints and rejecting
 perpendicular constraints because they are a V13 source shape. Schema V13 is
-migrated to V15 by preserving perpendicular constraints and rejecting revolve
-features because they are a V14 source shape. Schema V14 is migrated to V15 by
+migrated to V16 by preserving perpendicular constraints and rejecting revolve
+features because they are a V14 source shape. Schema V14 is migrated to V16 by
 preserving authored revolve features and rejecting hole features because they
-are a V15 source shape. Current imports reject
+are a V15 source shape. Schema V15 is migrated to V16 by preserving authored
+hole features and rejecting chamfer/fillet features because they are a V16
+source shape. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,
@@ -1186,6 +1236,12 @@ primitive-derived target bodies, already-consumed target bodies, non-circle
 source entities, non-rectangle/circle newBody extrude targets, non-positive
 blind depths, through-all depths, invalid directions, and stale attached sketch
 references.
+Current imports also reject unsupported chamfer/fillet records, including
+missing or primitive-derived targets, already-consumed targets,
+non-rectangle/circle newBody extrude targets, missing or mixed edge reference
+paths, non-edge generated stable IDs, missing named references, named
+references that point at the wrong body or kind, and non-positive
+distance/radius values.
 Unsupported versions fail with a structured
 `UNSUPPORTED_PROJECT_VERSION` issue.
 

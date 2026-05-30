@@ -3647,6 +3647,8 @@ describe("cad-core", () => {
       description:
         "Start cap edge generated from the rectangle uMin profile edge.",
       eligibleOperations: [
+        "feature.chamfer",
+        "feature.fillet",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -3662,6 +3664,8 @@ describe("cad-core", () => {
       label: "uMin/vMin longitudinal edge",
       description: "Longitudinal edge joining the uMin/vMin rectangle corners.",
       eligibleOperations: [
+        "feature.chamfer",
+        "feature.fillet",
         "feature.measureReference",
         "feature.selectReference"
       ],
@@ -3789,6 +3793,8 @@ describe("cad-core", () => {
         kind: "edge",
         label: "uMin/vMin longitudinal edge",
         eligibleOperations: [
+          "feature.chamfer",
+          "feature.fillet",
           "feature.measureReference",
           "feature.selectReference"
         ],
@@ -4011,6 +4017,8 @@ describe("cad-core", () => {
           label: "Start circular edge",
           description: "Circular profile edge on the start cap.",
           eligibleOperations: [
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -4025,6 +4033,8 @@ describe("cad-core", () => {
           role: "end:circular",
           label: "End circular edge",
           eligibleOperations: [
+            "feature.chamfer",
+            "feature.fillet",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -4365,6 +4375,8 @@ describe("cad-core", () => {
         role: "start:uMin",
         label: "Start uMin edge",
         eligibleOperations: [
+          "feature.chamfer",
+          "feature.fillet",
           "feature.measureReference",
           "feature.selectReference"
         ]
@@ -4409,6 +4421,8 @@ describe("cad-core", () => {
         role: "start:uMin",
         label: "Start uMin edge",
         eligibleOperations: [
+          "feature.chamfer",
+          "feature.fillet",
           "feature.measureReference",
           "feature.selectReference"
         ]
@@ -13291,6 +13305,202 @@ describe("cad-core", () => {
         centroid: [-3, 0, 1.5]
       }
     });
+  });
+});
+
+describe("edge finishing feature source models", () => {
+  it("creates an authored chamfer result body from a stable generated edge and consumes the target", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const result = engine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25,
+      name: "Break front edge"
+    });
+
+    expect(result.transaction.diff.features?.created).toEqual([
+      {
+        id: "feat_chamfer_1",
+        kind: "chamfer",
+        bodyId: "body_chamfer_1",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        distance: 0.25
+      }
+    ]);
+    expect(result.document.features.get("feat_chamfer_1")).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25,
+      bodyId: "body_chamfer_1"
+    });
+
+    const structure = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.structure" }
+    });
+
+    expect(structure.ok && structure.query === "project.structure").toBe(true);
+    if (structure.ok && structure.query === "project.structure") {
+      expect(
+        structure.bodies.find((body) => body.id === "body_rect_1")
+          ?.consumedByFeatureId
+      ).toBe("feat_chamfer_1");
+      expect(
+        structure.bodies.find((body) => body.id === "body_chamfer_1")?.source
+      ).toMatchObject({
+        type: "edgeChamferFeature",
+        featureId: "feat_chamfer_1",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin"
+      });
+    }
+  });
+
+  it("creates an authored fillet result body from a named generated edge", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top circle edge",
+      bodyId: "body_circle_1",
+      stableId: "generated:edge:body_circle_1:end:circular"
+    });
+    const result = engine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_1",
+      bodyId: "body_fillet_1",
+      targetBodyId: "body_circle_1",
+      namedReference: "Top circle edge",
+      radius: 0.4
+    });
+
+    expect(result.document.features.get("feat_fillet_1")).toMatchObject({
+      kind: "fillet",
+      targetBodyId: "body_circle_1",
+      namedReference: "Top circle edge",
+      radius: 0.4,
+      bodyId: "body_fillet_1"
+    });
+
+    const health = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "project.health" }
+    });
+
+    expect(health.ok && health.query === "project.health").toBe(true);
+    if (health.ok && health.query === "project.health") {
+      expect(health.authoredFilletCount).toBe(1);
+      expect(health.authoredFillets[0]).toMatchObject({
+        featureId: "feat_fillet_1",
+        status: "healthy",
+        namedReference: "Top circle edge"
+      });
+    }
+  });
+
+  it("rejects invalid edge finishing targets and references clearly", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    expect(() =>
+      engine.apply({
+        op: "feature.chamfer",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        namedReference: "also-edge",
+        distance: 0.25
+      })
+    ).toThrow(/exactly one edgeStableId or namedReference/);
+
+    expect(() =>
+      engine.apply({
+        op: "feature.fillet",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:face:body_rect_1:startCap",
+        radius: 0.25
+      })
+    ).toThrow(/Expected generated reference/);
+
+    expect(() =>
+      engine.apply({
+        op: "feature.fillet",
+        targetBodyId: "body_rect_1",
+        namedReference: "missing-edge",
+        radius: 0.25
+      })
+    ).toThrow(/Named reference does not exist/);
+
+    expect(() =>
+      engine.apply({
+        op: "feature.chamfer",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        distance: 0
+      })
+    ).toThrow(/Chamfer distance must be a positive finite number/);
+  });
+
+  it("supports dry-run, undo, redo, and project import/export without geometry execution", () => {
+    const engine = createRectangleExtrudeEngine();
+    const batch: CadBatch = {
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.chamfer",
+          id: "feat_chamfer_1",
+          bodyId: "body_chamfer_1",
+          targetBodyId: "body_rect_1",
+          edgeStableId: "generated:edge:body_rect_1:end:uMax",
+          distance: 0.2
+        }
+      ]
+    };
+
+    const dryRun = engine.executeBatch(batch);
+    expect(dryRun.ok).toBe(true);
+    expect(dryRun.createdFeatureIds).toEqual(["feat_chamfer_1"]);
+    expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(false);
+
+    engine.apply(batch.ops[0]);
+    expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(true);
+    engine.undo();
+    expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(false);
+    engine.redo();
+    expect(engine.getDocument().features.has("feat_chamfer_1")).toBe(true);
+
+    const project = engine.exportProject();
+    expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(project.document.features).toContainEqual(
+      expect.objectContaining({
+        id: "feat_chamfer_1",
+        kind: "chamfer",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:edge:body_rect_1:end:uMax",
+        distance: 0.2,
+        bodyId: "body_chamfer_1"
+      })
+    );
+
+    const restoredProject = importCadProject(project).exportProject();
+    expect(restoredProject.schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expect(restoredProject.document.features).toContainEqual(
+      expect.objectContaining({
+        id: "feat_chamfer_1",
+        kind: "chamfer",
+        targetBodyId: "body_rect_1",
+        edgeStableId: "generated:edge:body_rect_1:end:uMax",
+        distance: 0.2,
+        bodyId: "body_chamfer_1"
+      })
+    );
   });
 });
 

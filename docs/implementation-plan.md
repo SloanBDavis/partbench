@@ -46,9 +46,9 @@ and focused packages:
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
   line constraints, fixed/coincident/midpoint point constraints, parallel and
   perpendicular line constraints,
-  authored rectangle/circle extrude features, narrow
-  rectangle-tool add/cut boolean source data, authored revolve source intent,
-  named references, and versioned project JSON import/export.
+  authored rectangle/circle extrude features, narrow rectangle-tool add/cut
+  boolean source data, authored revolve, hole, chamfer, and fillet source
+  intent, named references, and versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -67,7 +67,7 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v15` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v16` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
@@ -188,7 +188,7 @@ Current Partbench can:
   confidence for rectangle/circle newBody extrudes;
 - inspect structured ambiguous topology status for current boolean result bodies
   where stable generated topology cannot be proven yet;
-- save/load current `web-cad.project.v15` JSON with migrations from older accepted
+- save/load current `web-cad.project.v16` JSON with migrations from older accepted
   schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
@@ -213,7 +213,10 @@ Current limitations:
 - There is no authoritative B-rep topology persisted in the document model.
 - Measurements are source-derived/source-analytic for current supported shapes
   and references; they are not exact B-rep/kernel mass-property measurements.
-- There are no fillets, chamfers, rendered revolve geometry, shell, sweep, loft, patterns, direct
+- Chamfer and fillet are command-first source records only; they do not have
+  geometry-worker execution, UI controls, generated references for result
+  bodies, exact topology naming, or derived measurements/extents yet.
+- There are no rendered revolve geometry, shell, sweep, loft, patterns, direct
   edits, general booleans, STEP import/export, OPFS/File System Access,
   WebGPU, assemblies, hosted collaboration, production MCP auth, or
   natural-language command entry.
@@ -650,7 +653,8 @@ V6 remains iterative. Each phase should be implemented with focused prompts and
 unit/package coverage, but the milestone decisions are made up front:
 
 - new persisted V6 feature records should introduce explicit schema versions
-  (`web-cad.project.v14` for revolve, `web-cad.project.v15` for hole);
+  (`web-cad.project.v14` for revolve, `web-cad.project.v15` for hole,
+  `web-cad.project.v16` for command-first chamfer/fillet);
 - exact-kernel metadata remains derived and should not be persisted as source;
 - target-consuming features such as hole, chamfer, and fillet create result
   bodies rather than mutating body identity in place;
@@ -729,15 +733,23 @@ Planned deliverables:
 
 Goal: add the first generated-edge-consuming modeling features.
 
-Planned deliverables:
+Initial command-first core progress:
 
 - `feature.chamfer` and `feature.fillet` source records and commands;
-- generated or named edge reference input;
-- initial support for one stable semantic rectangle-extrude edge per feature;
+- generated or named edge reference input through the existing
+  named-reference resolver path;
+- initial support for one stable semantic rectangle/circle newBody extrude edge
+  per feature;
 - target body consumption and authored result body creation;
-- structured failures for ambiguous topology, stale references, too-large
-  radius/distance, and kernel failures;
-- derived geometry, health, measurements/extents, adapter/MCP, UI, and tests.
+- structured validation failures for unsupported target bodies, stale/missing
+  references, non-edge references, ineligible generated references, and
+  non-positive distance/radius values;
+- project structure/health, semantic diffs, undo/redo, batch dry-run/commit,
+  transaction history, V16 import/export, adapter/MCP pass-through, and focused
+  tests;
+- no geometry-worker execution, UI controls, generated references for
+  chamfer/fillet result bodies, exact topology naming, or derived
+  measurements/extents yet.
 
 ### V6 Phase F: Topology, Measurement, And Reference Health
 

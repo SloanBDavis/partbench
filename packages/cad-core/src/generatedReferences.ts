@@ -39,6 +39,12 @@ const MEASURE_AND_SELECT_OPERATIONS = [
   "feature.measureReference",
   "feature.selectReference"
 ] satisfies readonly CadGeneratedReferenceEligibleOperation[];
+const EDGE_FINISH_OPERATIONS = [
+  "feature.chamfer",
+  "feature.fillet",
+  "feature.measureReference",
+  "feature.selectReference"
+] satisfies readonly CadGeneratedReferenceEligibleOperation[];
 const PLANAR_FACE_OPERATIONS = [
   "feature.attachSketchPlane",
   "feature.measureReference",
@@ -70,6 +76,8 @@ export type GeneratedReferencesSketchEntity =
 export type GeneratedReferencesFeature =
   | GeneratedReferencesExtrudeFeature
   | GeneratedReferencesHoleFeature
+  | GeneratedReferencesChamferFeature
+  | GeneratedReferencesFilletFeature
   | GeneratedReferencesUnsupportedFeature;
 
 export interface GeneratedReferencesExtrudeFeature {
@@ -95,6 +103,26 @@ export interface GeneratedReferencesUnsupportedFeature {
   readonly angleDegrees: number;
   readonly operationMode: FeatureRevolveOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesChamferFeature {
+  readonly id: FeatureId;
+  readonly kind: "chamfer";
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: string;
+  readonly distance: number;
+  readonly bodyId: BodyId;
+}
+
+export interface GeneratedReferencesFilletFeature {
+  readonly id: FeatureId;
+  readonly kind: "fillet";
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: string;
+  readonly radius: number;
   readonly bodyId: BodyId;
 }
 
@@ -943,7 +971,7 @@ function createEdgeReferenceDescription(
 }
 
 function createEdgeEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
-  return MEASURE_AND_SELECT_OPERATIONS;
+  return EDGE_FINISH_OPERATIONS;
 }
 
 function createEdgeEligibilityNotes(): readonly string[] {

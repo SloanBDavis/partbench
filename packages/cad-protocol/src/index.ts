@@ -202,6 +202,8 @@ export type CadOp =
   | FeatureExtrudeOp
   | FeatureRevolveOp
   | FeatureHoleOp
+  | FeatureChamferOp
+  | FeatureFilletOp
   | FeatureUpdateExtrudeOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
@@ -543,6 +545,28 @@ export interface FeatureHoleOp {
   readonly direction?: FeatureHoleDirection;
 }
 
+export interface FeatureChamferOp {
+  readonly op: "feature.chamfer";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+  readonly name?: string;
+}
+
+export interface FeatureFilletOp {
+  readonly op: "feature.fillet";
+  readonly id?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
+  readonly name?: string;
+}
+
 export interface FeatureDeleteOp {
   readonly op: "feature.delete";
   readonly id: FeatureId;
@@ -585,7 +609,9 @@ export interface CadSketchEntityRef {
 export type CadFeatureRef =
   | CadExtrudeFeatureRef
   | CadRevolveFeatureRef
-  | CadHoleFeatureRef;
+  | CadHoleFeatureRef
+  | CadChamferFeatureRef
+  | CadFilletFeatureRef;
 
 export interface CadExtrudeFeatureRef {
   readonly id: FeatureId;
@@ -623,6 +649,26 @@ export interface CadHoleFeatureRef {
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth?: number;
   readonly direction: FeatureHoleDirection;
+}
+
+export interface CadChamferFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "chamfer";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+}
+
+export interface CadFilletFeatureRef {
+  readonly id: FeatureId;
+  readonly kind: "fillet";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
 }
 
 export interface CadBodyRef {
@@ -1325,10 +1371,34 @@ export interface HoleFeatureSnapshot {
   readonly bodyId: BodyId;
 }
 
+export interface ChamferFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "chamfer";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+  readonly bodyId: BodyId;
+}
+
+export interface FilletFeatureSnapshot {
+  readonly id: FeatureId;
+  readonly kind: "fillet";
+  readonly name?: string;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
+  readonly bodyId: BodyId;
+}
+
 export type FeatureSnapshot =
   | ExtrudeFeatureSnapshot
   | RevolveFeatureSnapshot
-  | HoleFeatureSnapshot;
+  | HoleFeatureSnapshot
+  | ChamferFeatureSnapshot
+  | FilletFeatureSnapshot;
 
 export interface CadAxisAlignedBounds {
   readonly min: Vec3;
@@ -1558,11 +1628,53 @@ export interface CadHoleFeatureSummary {
   readonly source: CadHoleFeatureSource;
 }
 
+export interface CadChamferFeatureSource {
+  readonly type: "generatedEdgeChamfer";
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+}
+
+export interface CadChamferFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "chamfer";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+  readonly name?: string;
+  readonly source: CadChamferFeatureSource;
+}
+
+export interface CadFilletFeatureSource {
+  readonly type: "generatedEdgeFillet";
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+}
+
+export interface CadFilletFeatureSummary {
+  readonly id: FeatureId;
+  readonly kind: "fillet";
+  readonly partId: PartId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
+  readonly name?: string;
+  readonly source: CadFilletFeatureSource;
+}
+
 export type CadFeatureSummary =
   | CadPrimitiveFeatureSummary
   | CadExtrudeFeatureSummary
   | CadRevolveFeatureSummary
-  | CadHoleFeatureSummary;
+  | CadHoleFeatureSummary
+  | CadChamferFeatureSummary
+  | CadFilletFeatureSummary;
 
 export interface CadPartSource {
   readonly type: "defaultScenePart";
@@ -1610,11 +1722,29 @@ export interface CadSketchHoleBodySource {
   readonly circleEntityId: SketchEntityId;
 }
 
+export interface CadChamferBodySource {
+  readonly type: "edgeChamferFeature";
+  readonly featureId: FeatureId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+}
+
+export interface CadFilletBodySource {
+  readonly type: "edgeFilletFeature";
+  readonly featureId: FeatureId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+}
+
 export type CadBodySource =
   | CadPrimitiveBodySource
   | CadSketchExtrudeBodySource
   | CadSketchRevolveBodySource
-  | CadSketchHoleBodySource;
+  | CadSketchHoleBodySource
+  | CadChamferBodySource
+  | CadFilletBodySource;
 
 export interface CadBodySnapshot {
   readonly id: BodyId;
@@ -1670,6 +1800,8 @@ export type CadGeneratedCurveType = "line" | "circle";
 
 export type CadGeneratedReferenceEligibleOperation =
   | "feature.attachSketchPlane"
+  | "feature.chamfer"
+  | "feature.fillet"
   | "feature.measureReference"
   | "feature.selectReference";
 
@@ -1817,7 +1949,8 @@ export type CadDependencyHealthIssueCode =
   | "GENERATED_REFERENCE_KIND_MISMATCH"
   | "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE"
   | "ATTACHMENT_SOURCE_MISMATCH"
-  | "NAMED_REFERENCE_KIND_CHANGED";
+  | "NAMED_REFERENCE_KIND_CHANGED"
+  | "NAMED_REFERENCE_NOT_FOUND";
 
 export interface CadDependencyHealthIssue {
   readonly code: CadDependencyHealthIssueCode;
@@ -1883,6 +2016,38 @@ export interface CadAuthoredHoleHealth {
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth?: number;
   readonly direction: FeatureHoleDirection;
+  readonly topologyStatus?: CadBodyTopologyStatus;
+  readonly topologyModel?: CadBodyTopologyModel;
+  readonly topologyAvailable?: boolean;
+  readonly exactMeasurementsAvailable?: boolean;
+  readonly topologyIssueCount?: number;
+  readonly status: CadDependencyHealthStatus;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadAuthoredChamferHealth {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+  readonly topologyStatus?: CadBodyTopologyStatus;
+  readonly topologyModel?: CadBodyTopologyModel;
+  readonly topologyAvailable?: boolean;
+  readonly exactMeasurementsAvailable?: boolean;
+  readonly topologyIssueCount?: number;
+  readonly status: CadDependencyHealthStatus;
+  readonly issues: readonly CadDependencyHealthIssue[];
+}
+
+export interface CadAuthoredFilletHealth {
+  readonly featureId: FeatureId;
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
   readonly topologyStatus?: CadBodyTopologyStatus;
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
@@ -2069,6 +2234,8 @@ export type CadBodyTopologySourceKind =
   | "authoredExtrude"
   | "authoredRevolve"
   | "authoredHole"
+  | "authoredChamfer"
+  | "authoredFillet"
   | "primitiveCompatibility";
 
 export type CadBodyTopologyModel = "none" | "semantic-source";
@@ -2154,6 +2321,10 @@ export interface CadBodyTopologySourceIdentity {
   readonly holeDepthMode?: FeatureHoleDepthMode;
   readonly holeDepth?: number;
   readonly holeDirection?: FeatureHoleDirection;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly chamferDistance?: number;
+  readonly filletRadius?: number;
   readonly profileSignature?: CadGeneratedReferenceProfileSignature;
   readonly side?: FeatureExtrudeSide;
   readonly depth?: number;
@@ -2265,6 +2436,8 @@ export interface ProjectHealthQueryResponse {
   readonly authoredExtrudeCount: number;
   readonly authoredRevolveCount: number;
   readonly authoredHoleCount: number;
+  readonly authoredChamferCount: number;
+  readonly authoredFilletCount: number;
   readonly attachedSketchCount: number;
   readonly sketchEvaluationCount: number;
   readonly sketchDimensionCount: number;
@@ -2273,6 +2446,8 @@ export interface ProjectHealthQueryResponse {
   readonly authoredExtrudes: readonly CadAuthoredExtrudeHealth[];
   readonly authoredRevolves: readonly CadAuthoredRevolveHealth[];
   readonly authoredHoles: readonly CadAuthoredHoleHealth[];
+  readonly authoredChamfers: readonly CadAuthoredChamferHealth[];
+  readonly authoredFillets: readonly CadAuthoredFilletHealth[];
   readonly attachedSketches: readonly CadAttachedSketchHealth[];
   readonly sketchEvaluations: readonly CadSketchEvaluationHealth[];
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];

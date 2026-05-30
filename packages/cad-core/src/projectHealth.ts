@@ -1,9 +1,12 @@
 import type {
   BodyId,
   CadAttachedSketchHealth,
+  CadAuthoredChamferHealth,
   CadAuthoredExtrudeHealth,
+  CadAuthoredFilletHealth,
   CadAuthoredHoleHealth,
   CadAuthoredRevolveHealth,
+  CadBodyTopologySnapshot,
   CadDependencyHealthIssue,
   CadDependencyHealthStatus,
   CadGeneratedEntityKind,
@@ -93,7 +96,9 @@ export interface ProjectHealthSketch extends GeneratedReferencesSketch {
 export type ProjectHealthFeature =
   | GeneratedReferencesExtrudeFeature
   | ProjectHealthRevolveFeature
-  | ProjectHealthHoleFeature;
+  | ProjectHealthHoleFeature
+  | ProjectHealthChamferFeature
+  | ProjectHealthFilletFeature;
 
 export interface ProjectHealthRevolveFeature {
   readonly id: FeatureId;
@@ -118,6 +123,26 @@ export interface ProjectHealthHoleFeature {
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth?: number;
   readonly direction: FeatureHoleDirection;
+}
+
+export interface ProjectHealthChamferFeature {
+  readonly id: FeatureId;
+  readonly kind: "chamfer";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly distance: number;
+}
+
+export interface ProjectHealthFilletFeature {
+  readonly id: FeatureId;
+  readonly kind: "fillet";
+  readonly bodyId: BodyId;
+  readonly targetBodyId: BodyId;
+  readonly edgeStableId?: string;
+  readonly namedReference?: NamedReferenceName;
+  readonly radius: number;
 }
 
 export function createProjectHealth(
@@ -147,6 +172,22 @@ export function createProjectHealth(
     .map((feature) =>
       createAuthoredHoleHealth(options.document, feature, options)
     );
+  const authoredChamfers = authoredFeatures
+    .filter(
+      (feature): feature is ProjectHealthChamferFeature =>
+        feature.kind === "chamfer"
+    )
+    .map((feature) =>
+      createAuthoredChamferHealth(options.document, feature, options)
+    );
+  const authoredFillets = authoredFeatures
+    .filter(
+      (feature): feature is ProjectHealthFilletFeature =>
+        feature.kind === "fillet"
+    )
+    .map((feature) =>
+      createAuthoredFilletHealth(options.document, feature, options)
+    );
   const attachedSketches = [...options.document.sketches.values()]
     .filter((sketch) => sketch.attachment !== undefined)
     .map((sketch) =>
@@ -175,6 +216,8 @@ export function createProjectHealth(
     ...authoredExtrudes,
     ...authoredRevolves,
     ...authoredHoles,
+    ...authoredChamfers,
+    ...authoredFillets,
     ...attachedSketches,
     ...sketchEvaluations,
     ...sketchDimensions,
@@ -190,6 +233,8 @@ export function createProjectHealth(
       ...authoredExtrudes.map((entry) => entry.status),
       ...authoredRevolves.map((entry) => entry.status),
       ...authoredHoles.map((entry) => entry.status),
+      ...authoredChamfers.map((entry) => entry.status),
+      ...authoredFillets.map((entry) => entry.status),
       ...attachedSketches.map((entry) => entry.status),
       ...sketchEvaluations.map((entry) => entry.status),
       ...sketchDimensions.map((entry) => entry.status),
@@ -200,6 +245,8 @@ export function createProjectHealth(
     authoredExtrudeCount: authoredExtrudes.length,
     authoredRevolveCount: authoredRevolves.length,
     authoredHoleCount: authoredHoles.length,
+    authoredChamferCount: authoredChamfers.length,
+    authoredFilletCount: authoredFillets.length,
     attachedSketchCount: attachedSketches.length,
     sketchEvaluationCount: sketchEvaluations.length,
     sketchDimensionCount: sketchDimensions.length,
@@ -208,6 +255,8 @@ export function createProjectHealth(
     authoredExtrudes,
     authoredRevolves,
     authoredHoles,
+    authoredChamfers,
+    authoredFillets,
     attachedSketches,
     sketchEvaluations,
     sketchDimensions,
@@ -620,6 +669,243 @@ function createAuthoredHoleHealth(
   };
 }
 
+function createAuthoredChamferHealth(
+  document: ProjectHealthDocument,
+  feature: ProjectHealthChamferFeature,
+  options: ProjectHealthOptions
+): CadAuthoredChamferHealth {
+  const { issues, topologySnapshot } = createEdgeFinishHealth(
+    document,
+    feature,
+    "feature.chamfer",
+    options
+  );
+
+  return {
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    targetBodyId: feature.targetBodyId,
+    ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+    ...(feature.namedReference
+      ? { namedReference: feature.namedReference }
+      : {}),
+    distance: feature.distance,
+    ...(topologySnapshot
+      ? {
+          topologyStatus: topologySnapshot.status,
+          topologyModel: topologySnapshot.topologyModel,
+          topologyAvailable: topologySnapshot.topologyAvailable,
+          exactMeasurementsAvailable:
+            topologySnapshot.exactMeasurementsAvailable,
+          topologyIssueCount: topologySnapshot.issues.length
+        }
+      : {}),
+    status: statusFromIssues(issues),
+    issues
+  };
+}
+
+function createAuthoredFilletHealth(
+  document: ProjectHealthDocument,
+  feature: ProjectHealthFilletFeature,
+  options: ProjectHealthOptions
+): CadAuthoredFilletHealth {
+  const { issues, topologySnapshot } = createEdgeFinishHealth(
+    document,
+    feature,
+    "feature.fillet",
+    options
+  );
+
+  return {
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    targetBodyId: feature.targetBodyId,
+    ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
+    ...(feature.namedReference
+      ? { namedReference: feature.namedReference }
+      : {}),
+    radius: feature.radius,
+    ...(topologySnapshot
+      ? {
+          topologyStatus: topologySnapshot.status,
+          topologyModel: topologySnapshot.topologyModel,
+          topologyAvailable: topologySnapshot.topologyAvailable,
+          exactMeasurementsAvailable:
+            topologySnapshot.exactMeasurementsAvailable,
+          topologyIssueCount: topologySnapshot.issues.length
+        }
+      : {}),
+    status: statusFromIssues(issues),
+    issues
+  };
+}
+
+function createEdgeFinishHealth(
+  document: ProjectHealthDocument,
+  feature: ProjectHealthChamferFeature | ProjectHealthFilletFeature,
+  operation: "feature.chamfer" | "feature.fillet",
+  options: ProjectHealthOptions
+): {
+  readonly issues: readonly CadDependencyHealthIssue[];
+  readonly topologySnapshot?: CadBodyTopologySnapshot;
+} {
+  const issues: CadDependencyHealthIssue[] = [];
+  const targetFeature = [...document.features.values()].find(
+    (candidate) => candidate.bodyId === feature.targetBodyId
+  );
+
+  if (!targetFeature) {
+    issues.push({
+      code: "BODY_NOT_FOUND",
+      message: `${formatEdgeFinishFeatureLabel(feature)} ${feature.id} targets a missing body: ${feature.targetBodyId}`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId
+    });
+  } else if (targetFeature.id === feature.id) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `${formatEdgeFinishFeatureLabel(feature)} ${feature.id} cannot target its own result body.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId
+    });
+  } else if (!isSupportedEdgeFinishTargetFeature(targetFeature)) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `${formatEdgeFinishFeatureLabel(feature)} features currently support one stable generated edge on an active rectangle or circle newBody extrude target body.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      expected: "active rectangle/circle newBody extrude target body",
+      received: describeFeatureForHealth(targetFeature)
+    });
+  } else {
+    const consumedBy = [...document.features.values()].find(
+      (candidate) =>
+        candidate.id !== feature.id &&
+        isTargetConsumingProjectHealthFeature(candidate) &&
+        candidate.targetBodyId === feature.targetBodyId
+    );
+
+    if (consumedBy) {
+      issues.push({
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        message: `${formatEdgeFinishFeatureLabel(feature)} ${feature.id} targets body ${feature.targetBodyId}, but that body is already consumed by feature ${consumedBy.id}.`,
+        featureId: feature.id,
+        bodyId: feature.targetBodyId,
+        expected: "active authored target body",
+        received: consumedBy.id
+      });
+    }
+  }
+
+  const stableId = resolveEdgeFinishStableId(document, feature, issues);
+
+  if (stableId) {
+    const validation = validateGeneratedReference({
+      document,
+      ownerPartId: options.ownerPartId,
+      bodyId: feature.targetBodyId,
+      stableId,
+      bodyExists: options.bodyExists,
+      expectedKind: "edge",
+      requiredOperation: operation
+    });
+
+    if (!validation.ok) {
+      issues.push(
+        createIssueFromGeneratedReferenceError(validation.error, {
+          bodyId: feature.targetBodyId,
+          stableId,
+          referenceName: feature.namedReference
+        })
+      );
+    }
+  }
+
+  const scalar = feature.kind === "chamfer" ? feature.distance : feature.radius;
+
+  if (!Number.isFinite(scalar) || scalar <= 0) {
+    issues.push({
+      code: "UNSUPPORTED_BODY_REFERENCES",
+      message: `${formatEdgeFinishFeatureLabel(feature)} ${feature.id} requires a positive finite ${feature.kind === "chamfer" ? "distance" : "radius"}.`,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      expected: "positive finite number",
+      received: String(scalar)
+    });
+  }
+
+  const topology = createBodyTopology({
+    document,
+    bodyId: feature.bodyId,
+    units: options.units,
+    ownerPartId: options.ownerPartId,
+    bodyExists: options.bodyExists
+  });
+
+  return {
+    issues,
+    ...(topology.ok ? { topologySnapshot: topology.topology } : {})
+  };
+}
+
+function resolveEdgeFinishStableId(
+  document: ProjectHealthDocument,
+  feature: ProjectHealthChamferFeature | ProjectHealthFilletFeature,
+  issues: CadDependencyHealthIssue[]
+): string | undefined {
+  if (feature.edgeStableId) {
+    return feature.edgeStableId;
+  }
+
+  if (!feature.namedReference) {
+    issues.push({
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message: `${formatEdgeFinishFeatureLabel(feature)} ${feature.id} is missing edgeStableId or namedReference.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      expected: "edgeStableId or namedReference",
+      received: "missing"
+    });
+    return undefined;
+  }
+
+  const reference = document.namedReferences.get(feature.namedReference);
+
+  if (!reference) {
+    issues.push({
+      code: "NAMED_REFERENCE_NOT_FOUND",
+      message: `Named reference does not exist: ${feature.namedReference}`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      referenceName: feature.namedReference
+    });
+    return undefined;
+  }
+
+  if (reference.bodyId !== feature.targetBodyId) {
+    issues.push({
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message: `Named reference ${feature.namedReference} resolves to body ${reference.bodyId}, not target body ${feature.targetBodyId}.`,
+      featureId: feature.id,
+      bodyId: feature.targetBodyId,
+      stableId: reference.stableId,
+      referenceName: feature.namedReference,
+      expected: feature.targetBodyId,
+      received: reference.bodyId
+    });
+    return undefined;
+  }
+
+  return reference.stableId;
+}
+
+function formatEdgeFinishFeatureLabel(
+  feature: ProjectHealthChamferFeature | ProjectHealthFilletFeature
+): "Chamfer" | "Fillet" {
+  return feature.kind === "chamfer" ? "Chamfer" : "Fillet";
+}
+
 function createAttachedSketchHealth(
   document: ProjectHealthDocument,
   sketch: ProjectHealthSketch,
@@ -924,6 +1210,7 @@ function collectSketchEntityAffectedFeatures(
 
   for (const feature of document.features.values()) {
     if (
+      hasSketchEntitySource(feature) &&
       targets.some(
         (target) =>
           feature.sketchId === target.sketchId &&
@@ -962,9 +1249,21 @@ function collectSketchEntityAffectedFeatures(
 }
 
 function getProjectHealthFeaturePrimaryEntityId(
-  feature: ProjectHealthFeature
+  feature: Exclude<
+    ProjectHealthFeature,
+    ProjectHealthChamferFeature | ProjectHealthFilletFeature
+  >
 ): SketchEntityId {
   return feature.kind === "hole" ? feature.circleEntityId : feature.entityId;
+}
+
+function hasSketchEntitySource(
+  feature: ProjectHealthFeature
+): feature is Exclude<
+  ProjectHealthFeature,
+  ProjectHealthChamferFeature | ProjectHealthFilletFeature
+> {
+  return feature.kind !== "chamfer" && feature.kind !== "fillet";
 }
 
 function isTargetConsumingProjectHealthFeature(
@@ -974,7 +1273,9 @@ function isTargetConsumingProjectHealthFeature(
     (feature.kind === "extrude" &&
       (feature.operationMode === "add" || feature.operationMode === "cut") &&
       feature.targetBodyId !== undefined) ||
-    feature.kind === "hole"
+    feature.kind === "hole" ||
+    feature.kind === "chamfer" ||
+    feature.kind === "fillet"
   );
 }
 
@@ -1225,6 +1526,12 @@ function isSupportedBooleanTarget(
 }
 
 function isSupportedHoleTargetFeature(feature: ProjectHealthFeature): boolean {
+  return isSupportedEdgeFinishTargetFeature(feature);
+}
+
+function isSupportedEdgeFinishTargetFeature(
+  feature: ProjectHealthFeature
+): boolean {
   return (
     feature.kind === "extrude" &&
     feature.operationMode === "newBody" &&
@@ -1235,6 +1542,18 @@ function isSupportedHoleTargetFeature(feature: ProjectHealthFeature): boolean {
 function describeFeatureForHealth(feature: ProjectHealthFeature): string {
   if (feature.kind === "hole") {
     return "hole result";
+  }
+
+  if (feature.kind === "chamfer") {
+    return "chamfer result";
+  }
+
+  if (feature.kind === "fillet") {
+    return "fillet result";
+  }
+
+  if (feature.kind === "revolve") {
+    return `${feature.profileKind} revolve`;
   }
 
   return `${feature.profileKind} ${feature.operationMode}`;
@@ -1328,6 +1647,7 @@ function statusFromIssue(
     case "GENERATED_REFERENCE_NOT_FOUND":
     case "ATTACHMENT_SOURCE_MISMATCH":
     case "NAMED_REFERENCE_KIND_CHANGED":
+    case "NAMED_REFERENCE_NOT_FOUND":
       return "stale";
   }
 }
