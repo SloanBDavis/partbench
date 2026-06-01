@@ -8,6 +8,7 @@ import type {
 } from "@web-cad/cad-protocol";
 import type { CadBodySnapshot } from "@web-cad/cad-core";
 import {
+  createStructureLineage,
   createStructureTreeSummary,
   formatBodyRole,
   formatBodyStatusLine,
@@ -15,6 +16,8 @@ import {
   formatFeatureKindLabel,
   formatFeatureLine,
   formatHealthStatus,
+  formatLineageTargetLine,
+  formatLineageTargetRole,
   formatPartLine,
   formatRevolveOperationMode,
   getBodyHealthStatus,
@@ -35,13 +38,17 @@ describe("structure panel UI helpers", () => {
         createPrimitiveFeature(),
         createExtrudeFeature(),
         createRevolveFeature(),
-        createHoleFeature()
+        createHoleFeature(),
+        createChamferFeature(),
+        createFilletFeature()
       ],
       bodies: [
         createPrimitiveBody(),
         createExtrudeBody(),
         createRevolveBody(),
-        createHoleBody()
+        createHoleBody(),
+        createChamferBody(),
+        createFilletBody()
       ],
       namedReferences: [createNamedReference()],
       health: createHealth({ issueCount: 2, status: "stale" })
@@ -50,8 +57,8 @@ describe("structure panel UI helpers", () => {
     expect(summary).toEqual({
       partCount: 1,
       sketchCount: 2,
-      authoredFeatureCount: 3,
-      generatedBodyCount: 3,
+      authoredFeatureCount: 5,
+      generatedBodyCount: 5,
       namedReferenceCount: 1,
       issueCount: 2,
       status: "stale"
@@ -60,10 +67,172 @@ describe("structure panel UI helpers", () => {
     expect(isAuthoredStructureFeature(createExtrudeFeature())).toBe(true);
     expect(isAuthoredStructureFeature(createRevolveFeature())).toBe(true);
     expect(isAuthoredStructureFeature(createHoleFeature())).toBe(true);
+    expect(isAuthoredStructureFeature(createChamferFeature())).toBe(true);
+    expect(isAuthoredStructureFeature(createFilletFeature())).toBe(true);
     expect(isAuthoredStructureBody(createPrimitiveBody())).toBe(false);
     expect(isAuthoredStructureBody(createExtrudeBody())).toBe(true);
     expect(isAuthoredStructureBody(createRevolveBody())).toBe(true);
     expect(isAuthoredStructureBody(createHoleBody())).toBe(true);
+    expect(isAuthoredStructureBody(createChamferBody())).toBe(true);
+    expect(isAuthoredStructureBody(createFilletBody())).toBe(true);
+  });
+
+  it("groups lineage under sketch entities with consumed targets and result bodies", () => {
+    const sketch = createSketch("sketch_1", [
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        id: "circle_1",
+        kind: "circle",
+        center: [1, 1],
+        radius: 0.5
+      }
+    ]);
+    const cutFeature = createCutFeature();
+    const holeFeature = createHoleFeature({ targetBodyId: "body_hole_target" });
+    const chamferFeature = createChamferFeature({
+      targetBodyId: "body_chamfer_target"
+    });
+    const lineage = createStructureLineage({
+      parts: [
+        createPart({
+          featureIds: [
+            "feature_1",
+            cutFeature.id,
+            holeFeature.id,
+            chamferFeature.id
+          ],
+          bodyIds: [
+            "body_1",
+            "body_cut",
+            "body_target",
+            "body_hole",
+            "body_hole_target",
+            "body_chamfer",
+            "body_chamfer_target"
+          ],
+          sketchIds: ["sketch_1"]
+        })
+      ],
+      sketches: [sketch],
+      features: [
+        createExtrudeFeature(),
+        cutFeature,
+        holeFeature,
+        chamferFeature
+      ],
+      bodies: [
+        createExtrudeBody(),
+        createExtrudeBody("body_cut", cutFeature.id),
+        createExtrudeBody("body_target", "feature_seed", {
+          consumedByFeatureId: cutFeature.id
+        }),
+        createHoleBody({ targetBodyId: "body_hole_target" }),
+        createExtrudeBody("body_hole_target", "feature_hole_seed", {
+          consumedByFeatureId: holeFeature.id
+        }),
+        createChamferBody({ targetBodyId: "body_chamfer_target" }),
+        createExtrudeBody("body_chamfer_target", "feature_chamfer_seed", {
+          consumedByFeatureId: chamferFeature.id
+        })
+      ]
+    });
+
+    expect(lineage.featureNodeCount).toBe(4);
+    expect(lineage.targetNodeCount).toBe(3);
+
+    const partNode = lineage.parts[0];
+    const sketchNode = partNode?.sketchNodes[0];
+    const rectNode = sketchNode?.entityNodes.find(
+      (entity) => entity.entityId === "rect_1"
+    );
+    const circleNode = sketchNode?.entityNodes.find(
+      (entity) => entity.entityId === "circle_1"
+    );
+
+    expect(rectNode?.featureNodes.map((node) => node.feature.id)).toEqual([
+      "feature_1",
+      "feature_cut"
+    ]);
+    expect(circleNode?.featureNodes.map((node) => node.feature.id)).toEqual([
+      "feature_hole"
+    ]);
+
+    const cutNode = rectNode?.featureNodes.find(
+      (node) => node.feature.id === "feature_cut"
+    );
+    expect(cutNode?.resultBody?.id).toBe("body_cut");
+    expect(cutNode?.target?.bodyId).toBe("body_target");
+    expect(cutNode?.target?.consumedByThisFeature).toBe(true);
+    expect(formatLineageTargetRole(cutNode?.target!)).toBe("Consumed target");
+    expect(formatLineageTargetLine(cutNode?.target!)).toBe(
+      "Consumed by this feature"
+    );
+
+    const holeNode = circleNode?.featureNodes[0];
+    expect(holeNode?.target?.bodyId).toBe("body_hole_target");
+    expect(formatLineageTargetRole(holeNode?.target!)).toBe("Consumed target");
+
+    expect(partNode?.directFeatureNodes.map((node) => node.feature.id)).toEqual(
+      ["feature_chamfer"]
+    );
+    expect(partNode?.directFeatureNodes[0]?.target?.bodyId).toBe(
+      "body_chamfer_target"
+    );
+  });
+
+  it("formats missing and externally consumed lineage targets", () => {
+    const missingLineage = createStructureLineage({
+      parts: [
+        createPart({
+          featureIds: ["feature_cut"],
+          bodyIds: ["body_cut"],
+          sketchIds: ["sketch_1"]
+        })
+      ],
+      sketches: [createSketch("sketch_1")],
+      features: [createCutFeature()],
+      bodies: [createExtrudeBody("body_cut", "feature_cut")]
+    });
+    const missingTarget =
+      missingLineage.parts[0]?.directFeatureNodes[0]?.target ??
+      missingLineage.parts[0]?.sketchNodes[0]?.entityNodes[0]?.featureNodes[0]
+        ?.target;
+
+    expect(formatLineageTargetRole(missingTarget!)).toBe("Missing target");
+    expect(formatLineageTargetLine(missingTarget!)).toBe("Missing body_target");
+
+    const consumedByOther = createStructureLineage({
+      parts: [
+        createPart({
+          featureIds: ["feature_cut"],
+          bodyIds: ["body_cut", "body_target"],
+          sketchIds: ["sketch_1"]
+        })
+      ],
+      sketches: [createSketch("sketch_1")],
+      features: [createCutFeature()],
+      bodies: [
+        createExtrudeBody("body_cut", "feature_cut"),
+        createExtrudeBody("body_target", "feature_seed", {
+          consumedByFeatureId: "feature_later"
+        })
+      ]
+    });
+    const externalTarget =
+      consumedByOther.parts[0]?.directFeatureNodes[0]?.target ??
+      consumedByOther.parts[0]?.sketchNodes[0]?.entityNodes[0]?.featureNodes[0]
+        ?.target;
+
+    expect(formatLineageTargetRole(externalTarget!)).toBe("Target body");
+    expect(formatLineageTargetLine(externalTarget!)).toBe(
+      "Consumed by feature_later"
+    );
   });
 
   it("formats dependency health without leaking raw status strings", () => {
@@ -462,6 +631,14 @@ describe("structure panel UI helpers", () => {
     expect(formatFeatureLine(createRevolveFeature(), "mm")).toBe(
       "new body / circle / 270 deg / axis axis_1"
     );
+    expect(formatFeatureKindLabel(createChamferFeature())).toBe("Chamfer");
+    expect(formatFeatureLine(createChamferFeature(), "mm")).toBe(
+      "chamfer / 0.25 mm / target body_target / edge generated:edge:body_target:side:uMin"
+    );
+    expect(formatFeatureKindLabel(createFilletFeature())).toBe("Fillet");
+    expect(formatFeatureLine(createFilletFeature(), "mm")).toBe(
+      "fillet / 0.5 mm / target body_target / ref target_edge"
+    );
   });
 
   it("formats generated body roles for standalone, boolean result, and consumed targets", () => {
@@ -473,6 +650,8 @@ describe("structure panel UI helpers", () => {
     const addResult = createExtrudeBody("body_add", "feature_add");
     const revolveResult = createRevolveBody();
     const holeResult = createHoleBody();
+    const chamferResult = createChamferBody();
+    const filletResult = createFilletBody();
 
     expect(formatBodyRole(standalone, createExtrudeFeature())).toBe(
       "Generated body"
@@ -503,6 +682,18 @@ describe("structure panel UI helpers", () => {
     expect(formatBodyRole(holeResult, createHoleFeature())).toBe("Hole result");
     expect(formatBodyStatusLine(holeResult, createHoleFeature())).toBe(
       "Holes body_target"
+    );
+    expect(formatBodyRole(chamferResult, createChamferFeature())).toBe(
+      "Chamfer result"
+    );
+    expect(formatBodyStatusLine(chamferResult, createChamferFeature())).toBe(
+      "Chamfers body_target"
+    );
+    expect(formatBodyRole(filletResult, createFilletFeature())).toBe(
+      "Fillet result"
+    );
+    expect(formatBodyStatusLine(filletResult, createFilletFeature())).toBe(
+      "Fillets body_target"
     );
   });
 });
@@ -540,7 +731,11 @@ function createHealth(
   };
 }
 
-function createPart(): CadPartSnapshot {
+function createPart(
+  overrides: Partial<
+    Pick<CadPartSnapshot, "featureIds" | "bodyIds" | "sketchIds">
+  > = {}
+): CadPartSnapshot {
   return {
     id: "part:default",
     kind: "part",
@@ -549,16 +744,20 @@ function createPart(): CadPartSnapshot {
     objectIds: ["box_1"],
     featureIds: ["feature:box_1", "feature_1"],
     bodyIds: ["body:box_1", "body_1"],
-    sketchIds: ["sketch_1"]
+    sketchIds: ["sketch_1"],
+    ...overrides
   };
 }
 
-function createSketch(id: string): SketchSnapshot {
+function createSketch(
+  id: string,
+  entities: SketchSnapshot["entities"] = []
+): SketchSnapshot {
   return {
     id,
     name: id,
     plane: "XY",
-    entities: []
+    entities
   };
 }
 
@@ -649,13 +848,17 @@ function createRevolveFeature(): Extract<
   };
 }
 
-function createHoleFeature(): Extract<CadFeatureSummary, { kind: "hole" }> {
+function createHoleFeature(
+  overrides: Partial<Extract<CadFeatureSummary, { kind: "hole" }>> = {}
+): Extract<CadFeatureSummary, { kind: "hole" }> {
+  const targetBodyId = overrides.targetBodyId ?? "body_target";
+
   return {
     id: "feature_hole",
     kind: "hole",
     partId: "part:default",
     bodyId: "body_hole",
-    targetBodyId: "body_target",
+    targetBodyId,
     sketchId: "sketch_1",
     circleEntityId: "circle_1",
     depthMode: "blind",
@@ -665,8 +868,53 @@ function createHoleFeature(): Extract<CadFeatureSummary, { kind: "hole" }> {
       type: "sketchCircleHole",
       sketchId: "sketch_1",
       circleEntityId: "circle_1",
-      targetBodyId: "body_target"
-    }
+      targetBodyId
+    },
+    ...overrides
+  };
+}
+
+function createChamferFeature(
+  overrides: Partial<Extract<CadFeatureSummary, { kind: "chamfer" }>> = {}
+): Extract<CadFeatureSummary, { kind: "chamfer" }> {
+  const targetBodyId = overrides.targetBodyId ?? "body_target";
+
+  return {
+    id: "feature_chamfer",
+    kind: "chamfer",
+    partId: "part:default",
+    bodyId: "body_chamfer",
+    targetBodyId,
+    edgeStableId: "generated:edge:body_target:side:uMin",
+    distance: 0.25,
+    source: {
+      type: "generatedEdgeChamfer",
+      targetBodyId,
+      edgeStableId: "generated:edge:body_target:side:uMin"
+    },
+    ...overrides
+  };
+}
+
+function createFilletFeature(
+  overrides: Partial<Extract<CadFeatureSummary, { kind: "fillet" }>> = {}
+): Extract<CadFeatureSummary, { kind: "fillet" }> {
+  const targetBodyId = overrides.targetBodyId ?? "body_target";
+
+  return {
+    id: "feature_fillet",
+    kind: "fillet",
+    partId: "part:default",
+    bodyId: "body_fillet",
+    targetBodyId,
+    namedReference: "target_edge",
+    radius: 0.5,
+    source: {
+      type: "generatedEdgeFillet",
+      targetBodyId,
+      namedReference: "target_edge"
+    },
+    ...overrides
   };
 }
 
@@ -724,7 +972,16 @@ function createRevolveBody(): CadBodySnapshot {
   };
 }
 
-function createHoleBody(): CadBodySnapshot {
+function createHoleBody(
+  options: Partial<CadBodySnapshot> & { readonly targetBodyId?: string } = {}
+): CadBodySnapshot {
+  const { targetBodyId: targetBodyOverride, ...overrides } = options;
+  const targetBodyId =
+    targetBodyOverride ??
+    (overrides.source?.type === "sketchHoleFeature"
+      ? overrides.source.targetBodyId
+      : "body_target");
+
   return {
     id: "body_hole",
     kind: "solid",
@@ -733,10 +990,61 @@ function createHoleBody(): CadBodySnapshot {
     source: {
       type: "sketchHoleFeature",
       featureId: "feature_hole",
-      targetBodyId: "body_target",
+      targetBodyId,
       sketchId: "sketch_1",
       circleEntityId: "circle_1"
-    }
+    },
+    ...overrides
+  };
+}
+
+function createChamferBody(
+  options: Partial<CadBodySnapshot> & { readonly targetBodyId?: string } = {}
+): CadBodySnapshot {
+  const { targetBodyId: targetBodyOverride, ...overrides } = options;
+  const targetBodyId =
+    targetBodyOverride ??
+    (overrides.source?.type === "edgeChamferFeature"
+      ? overrides.source.targetBodyId
+      : "body_target");
+
+  return {
+    id: "body_chamfer",
+    kind: "solid",
+    partId: "part:default",
+    featureId: "feature_chamfer",
+    source: {
+      type: "edgeChamferFeature",
+      featureId: "feature_chamfer",
+      targetBodyId,
+      edgeStableId: "generated:edge:body_target:side:uMin"
+    },
+    ...overrides
+  };
+}
+
+function createFilletBody(
+  options: Partial<CadBodySnapshot> & { readonly targetBodyId?: string } = {}
+): CadBodySnapshot {
+  const { targetBodyId: targetBodyOverride, ...overrides } = options;
+  const targetBodyId =
+    targetBodyOverride ??
+    (overrides.source?.type === "edgeFilletFeature"
+      ? overrides.source.targetBodyId
+      : "body_target");
+
+  return {
+    id: "body_fillet",
+    kind: "solid",
+    partId: "part:default",
+    featureId: "feature_fillet",
+    source: {
+      type: "edgeFilletFeature",
+      featureId: "feature_fillet",
+      targetBodyId,
+      namedReference: "target_edge"
+    },
+    ...overrides
   };
 }
 

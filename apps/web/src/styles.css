@@ -513,6 +513,94 @@ code {
   overscroll-behavior: contain;
 }
 
+.object-tree .structure-group.lineage-group > .structure-lineage-tree {
+  max-height: min(430px, 54dvh);
+  padding: 0 8px 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.object-tree .structure-lineage-tree,
+.object-tree .structure-lineage-tree ul {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  list-style: none;
+}
+
+.structure-lineage-tree .lineage-children {
+  position: relative;
+  margin-left: 12px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+.structure-lineage-tree .result-chain {
+  gap: 5px;
+}
+
+.lineage-item {
+  min-width: 0;
+}
+
+.object-tree ul button.lineage-node,
+.structure-row.lineage-node {
+  padding: 8px 9px;
+}
+
+.structure-row.lineage-node,
+.object-tree ul button.lineage-node {
+  border-radius: 7px;
+}
+
+.lineage-node.part {
+  background: var(--panel-soft);
+}
+
+.object-tree ul button.lineage-node.sketch {
+  background: #ffffff;
+}
+
+.lineage-node.entity {
+  background: #f8faf6;
+}
+
+.object-tree ul button.lineage-node.feature {
+  background: linear-gradient(90deg, #ffffff, var(--panel-soft));
+}
+
+.object-tree ul button.lineage-node.target,
+.structure-row.lineage-node.target {
+  background: var(--panel-warm);
+}
+
+.object-tree ul button.lineage-node.body,
+.structure-row.lineage-node.body {
+  background: #ffffff;
+}
+
+.lineage-node.missing {
+  border-color: #e4b6b2;
+  background: var(--danger-soft);
+}
+
+.object-tree ul button.lineage-node.selected {
+  border-color: rgba(15, 107, 109, 0.56);
+  background: linear-gradient(90deg, var(--accent-soft), #ffffff 74%);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    0 0 0 1px rgba(15, 107, 109, 0.08);
+}
+
+.lineage-empty {
+  margin-left: 22px;
+  padding: 7px 0 2px;
+}
+
 .structure-group > .empty-state.compact {
   padding: 10px 12px 12px;
 }
