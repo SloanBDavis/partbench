@@ -1559,6 +1559,105 @@ button.dimension-status-row {
   padding: 0 10px;
 }
 
+.generated-reference-groups {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.generated-reference-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.generated-reference-group summary {
+  display: flex;
+  min-width: 0;
+  cursor: pointer;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.generated-reference-group summary small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.generated-reference-group[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.generated-reference-group .generated-reference-list {
+  padding: 8px;
+}
+
+.generated-reference-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.generated-reference-action {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  align-content: start;
+}
+
+.generated-reference-action button {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+}
+
+.generated-reference-action small {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.reference-detail-list {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+}
+
+.reference-detail-list div {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.reference-detail-list dt {
+  color: var(--quiet);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.reference-detail-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
 .reference-heading strong {
   min-width: 0;
   color: var(--ink);

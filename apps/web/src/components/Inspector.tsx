@@ -49,18 +49,21 @@ import {
 } from "../edgeFinishUi";
 import {
   buildSketchOnFaceForm,
-  canCreateSketchOnFace,
+  createGeneratedReferenceActionStatuses,
+  createGeneratedReferenceDetailRows,
   createGeneratedReferenceMeasurementRows,
   createSketchOnFaceDefaultName,
-  formatGeneratedFaceEligibility,
+  formatGeneratedReferenceActionStatus,
   formatGeneratedReferenceKind,
   formatGeneratedReferenceOperationLabels,
   formatNamedReferenceStatus,
   formatNamedReferenceTarget,
   formatSketchOnFaceAvailability,
+  getGeneratedReferenceGroups,
   getNamedReferencesForGeneratedReference,
   getGeneratedReferenceItems,
   getSketchAttachableFaces,
+  type GeneratedReferenceGroup,
   type GeneratedReferenceMeasurementDisplay
 } from "../generatedReferenceUi";
 import {
@@ -687,6 +690,9 @@ function GeneratedReferencesPanel({
   const referenceItems = references
     ? getGeneratedReferenceItems(references)
     : [];
+  const referenceGroups = references
+    ? getGeneratedReferenceGroups(references)
+    : [];
   const selectedReferenceState = getGeneratedReferenceSelectionState(
     selectedGeneratedReference,
     references,
@@ -706,6 +712,8 @@ function GeneratedReferencesPanel({
       ? createSketchOnFaceDefaultName(firstEligibleFace)
       : "Face sketch"
   });
+  const [edgeFinishOperation, setEdgeFinishOperation] =
+    useState<EdgeFinishOperation>("chamfer");
   const sketchOnFaceForm = selectedFace
     ? buildSketchOnFaceForm(bodyId, selectedFace, draft)
     : undefined;
@@ -728,6 +736,27 @@ function GeneratedReferencesPanel({
     }
 
     onCreateSketchOnFace(sketchOnFaceForm);
+  }
+
+  function selectReference(reference: CadGeneratedReference) {
+    onSelectGeneratedReference(createSelectedGeneratedReference(reference));
+  }
+
+  function useFaceForSketch(face: CadGeneratedFaceReference) {
+    setSelectedFaceStableId(face.stableId);
+    setDraft((currentDraft) => ({
+      ...currentDraft,
+      name: createSketchOnFaceDefaultName(face)
+    }));
+    selectReference(face);
+  }
+
+  function useEdgeForFinish(
+    edge: Extract<CadGeneratedReference, { readonly kind: "edge" }>,
+    operation: EdgeFinishOperation
+  ) {
+    setEdgeFinishOperation(operation);
+    selectReference(edge);
   }
 
   return (
@@ -838,12 +867,13 @@ function GeneratedReferencesPanel({
               selectedReferenceState.status === "selected"
                 ? selectedReferenceState.reference.stableId
                 : selectedReferenceState.status
-            }`}
+            }-${edgeFinishOperation}`}
             body={body}
             disabled={disabled}
             feature={feature}
             namedReferences={selectedNamedReferences}
             onCreateEdgeFinish={onCreateEdgeFinish}
+            preferredOperation={edgeFinishOperation}
             state={selectedReferenceState}
           />
           <label>
@@ -864,66 +894,215 @@ function GeneratedReferencesPanel({
               }}
             >
               <option value="">Choose reference</option>
-              {referenceItems.map((reference) => (
-                <option key={reference.stableId} value={reference.stableId}>
-                  {formatGeneratedReferenceKind(reference.kind)} /{" "}
-                  {reference.label}
-                </option>
+              {referenceGroups.map((group) => (
+                <optgroup key={group.kind} label={group.label}>
+                  {group.references.map((reference) => (
+                    <option key={reference.stableId} value={reference.stableId}>
+                      {reference.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </label>
-          <details className="advanced-options">
-            <summary>Reference index</summary>
-            <ul className="reference-list compact">
-              {referenceItems.map((reference) => {
-                const face = asGeneratedFaceReference(reference);
-                const isSelected = isSelectedGeneratedReference(
-                  selectedGeneratedReference,
-                  reference
-                );
-
-                return (
-                  <li
-                    key={reference.stableId}
-                    className={isSelected ? "reference-selected" : ""}
-                  >
-                    <div className="reference-heading">
-                      <strong>{reference.label}</strong>
-                      <span>
-                        {formatGeneratedReferenceKind(reference.kind)}
-                      </span>
-                    </div>
-                    <small>
-                      Eligible:{" "}
-                      {formatGeneratedReferenceOperationLabels(reference)}
-                    </small>
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() =>
-                        onSelectGeneratedReference(
-                          createSelectedGeneratedReference(reference)
-                        )
-                      }
-                    >
-                      {isSelected ? "Selected" : "Select"}
-                    </button>
-                    {face && (
-                      <small>
-                        Sketch attachment:{" "}
-                        {canCreateSketchOnFace(face)
-                          ? formatGeneratedFaceEligibility(face)
-                          : "Unavailable"}
-                      </small>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </details>
+          <GeneratedReferenceGroupsList
+            disabled={disabled}
+            groups={referenceGroups}
+            selectedGeneratedReference={selectedGeneratedReference}
+            onSelectReference={selectReference}
+            onUseEdgeForFinish={useEdgeForFinish}
+            onUseFaceForSketch={useFaceForSketch}
+          />
         </>
       )}
     </section>
+  );
+}
+
+function GeneratedReferenceGroupsList({
+  disabled,
+  groups,
+  selectedGeneratedReference,
+  onSelectReference,
+  onUseEdgeForFinish,
+  onUseFaceForSketch
+}: {
+  readonly disabled: boolean;
+  readonly groups: readonly GeneratedReferenceGroup[];
+  readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly onSelectReference: (reference: CadGeneratedReference) => void;
+  readonly onUseEdgeForFinish: (
+    edge: Extract<CadGeneratedReference, { readonly kind: "edge" }>,
+    operation: EdgeFinishOperation
+  ) => void;
+  readonly onUseFaceForSketch: (face: CadGeneratedFaceReference) => void;
+}) {
+  if (groups.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="generated-reference-groups">
+      {groups.map((group) => (
+        <details
+          key={group.kind}
+          className="generated-reference-group"
+          open
+        >
+          <summary>
+            <span>{group.label}</span>
+            <small>{group.countLabel}</small>
+          </summary>
+          <ul className="reference-list compact generated-reference-list">
+            {group.references.map((reference) => {
+              const isSelected = isSelectedGeneratedReference(
+                selectedGeneratedReference,
+                reference
+              );
+
+              return (
+                <li
+                  key={reference.stableId}
+                  className={isSelected ? "reference-selected" : ""}
+                >
+                  <div className="reference-heading">
+                    <strong>{reference.label}</strong>
+                    <span>{formatGeneratedReferenceKind(reference.kind)}</span>
+                  </div>
+                  {reference.description && <small>{reference.description}</small>}
+                  <GeneratedReferenceActionRow
+                    disabled={disabled}
+                    reference={reference}
+                    selected={isSelected}
+                    onSelectReference={onSelectReference}
+                    onUseEdgeForFinish={onUseEdgeForFinish}
+                    onUseFaceForSketch={onUseFaceForSketch}
+                  />
+                  <GeneratedReferenceIdentityDetails reference={reference} />
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      ))}
+    </section>
+  );
+}
+
+function GeneratedReferenceActionRow({
+  disabled,
+  reference,
+  selected,
+  onSelectReference,
+  onUseEdgeForFinish,
+  onUseFaceForSketch
+}: {
+  readonly disabled: boolean;
+  readonly reference: CadGeneratedReference;
+  readonly selected: boolean;
+  readonly onSelectReference: (reference: CadGeneratedReference) => void;
+  readonly onUseEdgeForFinish: (
+    edge: Extract<CadGeneratedReference, { readonly kind: "edge" }>,
+    operation: EdgeFinishOperation
+  ) => void;
+  readonly onUseFaceForSketch: (face: CadGeneratedFaceReference) => void;
+}) {
+  return (
+    <div className="generated-reference-actions">
+      <div className="generated-reference-action">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onSelectReference(reference)}
+        >
+          {selected ? "Selected" : "Inspect"}
+        </button>
+        <small>Show details</small>
+      </div>
+      {createGeneratedReferenceActionStatuses(reference).map((action) => {
+        if (action.id === "reference.name") {
+          return (
+            <div key={action.id} className="generated-reference-action">
+              <button
+                type="button"
+                disabled={disabled || !action.available}
+                onClick={() => onSelectReference(reference)}
+              >
+                Name
+              </button>
+              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+            </div>
+          );
+        }
+
+        if (action.id === "sketch.createOnFace" && reference.kind === "face") {
+          return (
+            <div key={action.id} className="generated-reference-action">
+              <button
+                type="button"
+                disabled={disabled || !action.available}
+                onClick={() => onUseFaceForSketch(reference)}
+              >
+                Sketch
+              </button>
+              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+            </div>
+          );
+        }
+
+        if (action.id === "feature.chamfer" && reference.kind === "edge") {
+          return (
+            <div key={action.id} className="generated-reference-action">
+              <button
+                type="button"
+                disabled={disabled || !action.available}
+                onClick={() => onUseEdgeForFinish(reference, "chamfer")}
+              >
+                Chamfer
+              </button>
+              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+            </div>
+          );
+        }
+
+        if (action.id === "feature.fillet" && reference.kind === "edge") {
+          return (
+            <div key={action.id} className="generated-reference-action">
+              <button
+                type="button"
+                disabled={disabled || !action.available}
+                onClick={() => onUseEdgeForFinish(reference, "fillet")}
+              >
+                Fillet
+              </button>
+              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+            </div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
+function GeneratedReferenceIdentityDetails({
+  reference
+}: {
+  readonly reference: CadGeneratedReference;
+}) {
+  return (
+    <details className="advanced-options compact reference-id-details">
+      <summary>Stable ID and source</summary>
+      <dl className="reference-detail-list">
+        {createGeneratedReferenceDetailRows(reference).map((row) => (
+          <div key={row.label}>
+            <dt>{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -969,7 +1148,10 @@ function SelectedGeneratedReferencePanel({
       {state.status === "stale" ? (
         <>
           <p className="error-text">{state.message}</p>
-          <code>{state.selection.stableId}</code>
+          <details className="advanced-options compact reference-id-details">
+            <summary>Stable ID</summary>
+            <code>{state.selection.stableId}</code>
+          </details>
         </>
       ) : (
         <>
@@ -981,7 +1163,7 @@ function SelectedGeneratedReferencePanel({
           <small>
             Eligible: {formatGeneratedReferenceOperationLabels(state.reference)}
           </small>
-          <code>{state.reference.stableId}</code>
+          <GeneratedReferenceIdentityDetails reference={state.reference} />
           {state.reference.eligibilityNotes &&
             state.reference.eligibilityNotes.length > 0 && (
               <small>{state.reference.eligibilityNotes.join(" ")}</small>
@@ -1046,6 +1228,7 @@ function EdgeFinishEditor({
   feature,
   namedReferences,
   onCreateEdgeFinish,
+  preferredOperation,
   state
 }: {
   readonly body: CadBodySnapshot;
@@ -1056,9 +1239,11 @@ function EdgeFinishEditor({
     operation: EdgeFinishOperation,
     form: FeatureEdgeFinishForm
   ) => void;
+  readonly preferredOperation: EdgeFinishOperation;
   readonly state: GeneratedReferenceSelectionState;
 }) {
-  const [operation, setOperation] = useState<EdgeFinishOperation>("chamfer");
+  const [operation, setOperation] =
+    useState<EdgeFinishOperation>(preferredOperation);
   const [referenceValue, setReferenceValue] = useState(
     SELECTED_EDGE_FINISH_REFERENCE_VALUE
   );
@@ -1296,12 +1481,6 @@ function NamedReferencesPanel({
       </ul>
     </section>
   );
-}
-
-function asGeneratedFaceReference(
-  reference: CadGeneratedReference
-): CadGeneratedFaceReference | undefined {
-  return reference.kind === "face" ? reference : undefined;
 }
 
 function GeneratedReferenceMeasurementRows({

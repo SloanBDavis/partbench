@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
+  CadGeneratedVertexReference,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry
 } from "@web-cad/cad-protocol";
 import {
   buildSketchOnFaceForm,
   canCreateSketchOnFace,
+  createGeneratedReferenceActionStatuses,
+  createGeneratedReferenceDetailRows,
   createGeneratedReferenceMeasurementRows,
   createSketchOnFaceDefaultName,
+  formatGeneratedReferenceActionStatus,
+  formatGeneratedReferenceCount,
   formatGeneratedFaceEligibility,
   formatGeneratedReferenceKind,
   formatGeneratedReferenceMeasurementError,
@@ -19,6 +26,7 @@ import {
   formatNamedReferenceTarget,
   formatSketchOnFaceAvailability,
   formatSketchAttachmentLabel,
+  getGeneratedReferenceGroups,
   getGeneratedReferenceItems,
   getNamedReferencesForGeneratedReference,
   getSketchAttachableFaces
@@ -109,38 +117,7 @@ describe("generated reference UI helpers", () => {
   });
 
   it("collects and labels generated reference items", () => {
-    const references: BodyGeneratedReferencesQueryResponse = {
-      ok: true,
-      query: "body.generatedReferences",
-      cadOpsVersion: "cadops.v1",
-      body: {
-        kind: "body",
-        stableId: "generated:body:body_1",
-        label: "Generated body",
-        eligibleOperations: [
-          "feature.measureReference",
-          "feature.selectReference"
-        ],
-        bodyId: "body_1",
-        ownerPartId: "part:default",
-        sourceFeatureId: "feat_1",
-        sourceSketchId: "sketch_1",
-        sourceSketchEntityId: "rect_1",
-        profileKind: "rectangle",
-        geometricSignature: {
-          profileKind: "rectangle",
-          sketchPlane: "XY",
-          extrudeSide: "positive",
-          depth: 2
-        }
-      },
-      faceCount: 1,
-      faces: [startCap],
-      edgeCount: 0,
-      edges: [],
-      vertexCount: 0,
-      vertices: []
-    };
+    const references = createReferences({ faces: [startCap] });
 
     expect(
       getGeneratedReferenceItems(references).map((item) => item.kind)
@@ -149,6 +126,98 @@ describe("generated reference UI helpers", () => {
     expect(formatGeneratedReferenceOperationLabels(startCap)).toBe(
       "Sketch plane, Measure, Select"
     );
+  });
+
+  it("groups generated references by kind and omits empty groups", () => {
+    const edge = createEdge();
+    const references = createReferences({
+      faces: [startCap, circularSide],
+      edges: [edge],
+      vertices: []
+    });
+
+    const groups = getGeneratedReferenceGroups(references);
+
+    expect(groups.map((group) => group.label)).toEqual([
+      "Body",
+      "Faces",
+      "Edges"
+    ]);
+    expect(groups.map((group) => group.countLabel)).toEqual([
+      "1 body",
+      "2 faces",
+      "1 edge"
+    ]);
+    expect(groups.flatMap((group) => group.references)).toEqual([
+      references.body,
+      startCap,
+      circularSide,
+      edge
+    ]);
+    expect(formatGeneratedReferenceCount("vertex", 2)).toBe("2 vertices");
+  });
+
+  it("formats generated-reference action availability", () => {
+    const edge = createEdge({
+      eligibleOperations: ["feature.chamfer", "feature.selectReference"]
+    });
+
+    expect(createGeneratedReferenceActionStatuses(startCap)).toEqual([
+      {
+        id: "reference.name",
+        label: "Name reference",
+        available: true,
+        status: "Available"
+      },
+      {
+        id: "sketch.createOnFace",
+        label: "Create sketch",
+        available: true,
+        status: "Planar face"
+      }
+    ]);
+    expect(
+      formatGeneratedReferenceActionStatus(
+        createGeneratedReferenceActionStatuses(circularSide)[1]!
+      )
+    ).toBe(
+      "Unavailable: Circular side faces are not planar and are not eligible for sketch-plane attachment."
+    );
+    expect(createGeneratedReferenceActionStatuses(edge)).toEqual([
+      {
+        id: "reference.name",
+        label: "Name reference",
+        available: true,
+        status: "Available"
+      },
+      {
+        id: "feature.chamfer",
+        label: "Chamfer",
+        available: true,
+        status: "Eligible edge"
+      },
+      {
+        id: "feature.fillet",
+        label: "Fillet",
+        available: false,
+        status: "Reference is not eligible for fillet."
+      }
+    ]);
+  });
+
+  it("creates compact stable-ID detail rows", () => {
+    const edge = createEdge();
+
+    expect(createGeneratedReferenceDetailRows(edge)).toEqual([
+      { label: "Stable ID", value: "generated:edge:body_1:start:uMin" },
+      { label: "Body", value: "body_1" },
+      { label: "Source feature", value: "feat_1" },
+      { label: "Source sketch", value: "sketch_1" },
+      { label: "Source entity", value: "rect_1" },
+      { label: "Profile", value: "rectangle" },
+      { label: "Role", value: "start:uMin" },
+      { label: "Adjacent faces", value: "startCap, side:uMin" }
+    ]);
   });
 
   it("formats generated reference measurement rows", () => {
@@ -330,5 +399,78 @@ function createFace(
       depth: 1
     },
     ...overrides
+  };
+}
+
+function createReferences({
+  faces = [],
+  edges = [],
+  vertices = []
+}: {
+  readonly faces?: readonly CadGeneratedFaceReference[];
+  readonly edges?: readonly CadGeneratedEdgeReference[];
+  readonly vertices?: readonly CadGeneratedVertexReference[];
+}): BodyGeneratedReferencesQueryResponse {
+  return {
+    ok: true,
+    query: "body.generatedReferences",
+    cadOpsVersion: "cadops.v1",
+    body: {
+      kind: "body",
+      stableId: "generated:body:body_1",
+      label: "Generated body",
+      eligibleOperations: ["feature.measureReference", "feature.selectReference"],
+      bodyId: "body_1",
+      ownerPartId: "part:default",
+      sourceFeatureId: "feat_1",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "rect_1",
+      profileKind: "rectangle",
+      geometricSignature: createSignature()
+    },
+    faceCount: faces.length,
+    faces,
+    edgeCount: edges.length,
+    edges,
+    vertexCount: vertices.length,
+    vertices
+  };
+}
+
+function createEdge(
+  overrides: Partial<CadGeneratedEdgeReference> = {}
+): CadGeneratedEdgeReference {
+  return {
+    kind: "edge",
+    bodyId: "body_1",
+    ownerPartId: "part:default",
+    sourceFeatureId: "feat_1",
+    sourceSketchId: "sketch_1",
+    sourceSketchEntityId: "rect_1",
+    stableId: "generated:edge:body_1:start:uMin",
+    label: "Start uMin edge",
+    description: "Start cap uMin edge",
+    eligibleOperations: [
+      "feature.chamfer",
+      "feature.fillet",
+      "feature.measureReference",
+      "feature.selectReference"
+    ],
+    role: "start:uMin",
+    adjacentFaceRoles: ["startCap", "side:uMin"],
+    geometricSignature: {
+      ...createSignature(),
+      curveType: "line"
+    },
+    ...overrides
+  };
+}
+
+function createSignature(): CadGeneratedReference["geometricSignature"] {
+  return {
+    profileKind: "rectangle",
+    sketchPlane: "XY",
+    extrudeSide: "positive",
+    depth: 1
   };
 }

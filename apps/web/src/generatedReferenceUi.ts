@@ -1,6 +1,7 @@
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedEntityKind,
+  CadGeneratedReferenceEligibleOperation,
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadQueryError,
@@ -32,6 +33,31 @@ export interface GeneratedReferenceMeasurementRow {
 export interface NamedReferenceStatusDisplay {
   readonly tone: "resolved" | "stale";
   readonly text: string;
+}
+
+export type GeneratedReferenceActionId =
+  | "reference.name"
+  | "sketch.createOnFace"
+  | "feature.chamfer"
+  | "feature.fillet";
+
+export interface GeneratedReferenceActionStatus {
+  readonly id: GeneratedReferenceActionId;
+  readonly label: string;
+  readonly available: boolean;
+  readonly status: string;
+}
+
+export interface GeneratedReferenceDetailRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+export interface GeneratedReferenceGroup {
+  readonly kind: CadGeneratedEntityKind;
+  readonly label: string;
+  readonly countLabel: string;
+  readonly references: readonly CadGeneratedReference[];
 }
 
 export interface SketchOnFaceDraft {
@@ -127,6 +153,17 @@ export function getGeneratedReferenceItems(
   ];
 }
 
+export function getGeneratedReferenceGroups(
+  references: BodyGeneratedReferencesQueryResponse
+): readonly GeneratedReferenceGroup[] {
+  return [
+    createGeneratedReferenceGroup("body", [references.body]),
+    createGeneratedReferenceGroup("face", references.faces),
+    createGeneratedReferenceGroup("edge", references.edges),
+    createGeneratedReferenceGroup("vertex", references.vertices)
+  ].filter((group) => group.references.length > 0);
+}
+
 export function formatGeneratedReferenceKind(
   kind: CadGeneratedEntityKind
 ): string {
@@ -140,6 +177,86 @@ export function formatGeneratedReferenceKind(
     case "vertex":
       return "Vertex";
   }
+}
+
+export function formatGeneratedReferenceKindPlural(
+  kind: CadGeneratedEntityKind
+): string {
+  switch (kind) {
+    case "body":
+      return "Body";
+    case "face":
+      return "Faces";
+    case "edge":
+      return "Edges";
+    case "vertex":
+      return "Vertices";
+  }
+}
+
+export function formatGeneratedReferenceCount(
+  kind: CadGeneratedEntityKind,
+  count: number
+): string {
+  const singular = formatGeneratedReferenceKind(kind).toLowerCase();
+  const plural =
+    kind === "body" ? "bodies" : kind === "vertex" ? "vertices" : `${singular}s`;
+
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+export function createGeneratedReferenceActionStatuses(
+  reference: CadGeneratedReference
+): readonly GeneratedReferenceActionStatus[] {
+  const actions: GeneratedReferenceActionStatus[] = [
+    {
+      id: "reference.name",
+      label: "Name reference",
+      available: true,
+      status: "Available"
+    }
+  ];
+
+  if (reference.kind === "face") {
+    const available = canCreateSketchOnFace(reference);
+    actions.push({
+      id: "sketch.createOnFace",
+      label: "Create sketch",
+      available,
+      status: available
+        ? "Planar face"
+        : formatGeneratedFaceEligibility(reference)
+    });
+  }
+
+  if (reference.kind === "edge") {
+    actions.push(
+      createOperationActionStatus(reference, "feature.chamfer"),
+      createOperationActionStatus(reference, "feature.fillet")
+    );
+  }
+
+  return actions;
+}
+
+export function formatGeneratedReferenceActionStatus(
+  action: GeneratedReferenceActionStatus
+): string {
+  return action.available ? action.status : `Unavailable: ${action.status}`;
+}
+
+export function createGeneratedReferenceDetailRows(
+  reference: CadGeneratedReference
+): readonly GeneratedReferenceDetailRow[] {
+  return [
+    { label: "Stable ID", value: reference.stableId },
+    { label: "Body", value: reference.bodyId },
+    { label: "Source feature", value: reference.sourceFeatureId },
+    { label: "Source sketch", value: reference.sourceSketchId },
+    { label: "Source entity", value: reference.sourceSketchEntityId },
+    { label: "Profile", value: reference.geometricSignature.profileKind },
+    ...generatedReferenceRoleRows(reference)
+  ];
 }
 
 export function formatGeneratedReferenceOperationLabels(
@@ -280,6 +397,66 @@ export function formatNamedReferenceError(
   }
 
   return error.message;
+}
+
+function createGeneratedReferenceGroup(
+  kind: CadGeneratedEntityKind,
+  references: readonly CadGeneratedReference[]
+): GeneratedReferenceGroup {
+  return {
+    kind,
+    label: formatGeneratedReferenceKindPlural(kind),
+    countLabel: formatGeneratedReferenceCount(kind, references.length),
+    references
+  };
+}
+
+function createOperationActionStatus(
+  reference: CadGeneratedReference,
+  operation: Extract<
+    CadGeneratedReferenceEligibleOperation,
+    "feature.chamfer" | "feature.fillet"
+  >
+): GeneratedReferenceActionStatus {
+  const available = reference.eligibleOperations.includes(operation);
+
+  return {
+    id: operation,
+    label: formatOperationLabel(operation),
+    available,
+    status: available
+      ? "Eligible edge"
+      : reference.eligibilityNotes?.[0] ??
+        `Reference is not eligible for ${formatOperationLabel(operation).toLowerCase()}.`
+  };
+}
+
+function generatedReferenceRoleRows(
+  reference: CadGeneratedReference
+): readonly GeneratedReferenceDetailRow[] {
+  if (reference.kind === "body") {
+    return [];
+  }
+
+  const rows: GeneratedReferenceDetailRow[] = [
+    { label: "Role", value: reference.role }
+  ];
+
+  if (reference.kind === "edge" || reference.kind === "vertex") {
+    rows.push({
+      label: "Adjacent faces",
+      value: reference.adjacentFaceRoles.join(", ")
+    });
+  }
+
+  if (reference.kind === "vertex") {
+    rows.push({
+      label: "Adjacent edges",
+      value: reference.adjacentEdgeRoles.join(", ")
+    });
+  }
+
+  return rows;
 }
 
 function formatOperationLabel(operation: string): string {
