@@ -74,11 +74,7 @@ export type ModelingActionId =
   | "feature.chamfer"
   | "feature.fillet";
 
-export type ModelingActionKind =
-  | "command"
-  | "editor"
-  | "query"
-  | "selection";
+export type ModelingActionKind = "command" | "editor" | "query" | "selection";
 
 export type ModelingActionCategory =
   | "sketch"
@@ -453,10 +449,7 @@ function createRevolveAction(
 }
 
 function createBodyActions(
-  context: Extract<
-    ModelingSelectionContext,
-    { readonly selectionKind: "body" }
-  >
+  context: Extract<ModelingSelectionContext, { readonly selectionKind: "body" }>
 ): readonly ModelingActionDescriptor[] {
   const selection: ModelingActionSelectionMetadata = {
     context: "body",

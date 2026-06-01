@@ -166,17 +166,25 @@ describe("structure panel UI helpers", () => {
     const cutNode = rectNode?.featureNodes.find(
       (node) => node.feature.id === "feature_cut"
     );
+    const cutTarget = cutNode?.target;
     expect(cutNode?.resultBody?.id).toBe("body_cut");
-    expect(cutNode?.target?.bodyId).toBe("body_target");
-    expect(cutNode?.target?.consumedByThisFeature).toBe(true);
-    expect(formatLineageTargetRole(cutNode?.target!)).toBe("Consumed target");
-    expect(formatLineageTargetLine(cutNode?.target!)).toBe(
-      "Consumed by this feature"
-    );
+    expect(cutTarget?.bodyId).toBe("body_target");
+    expect(cutTarget?.consumedByThisFeature).toBe(true);
+    expect(cutTarget).toBeDefined();
+    if (!cutTarget) {
+      throw new Error("Expected cut target lineage");
+    }
+    expect(formatLineageTargetRole(cutTarget)).toBe("Consumed target");
+    expect(formatLineageTargetLine(cutTarget)).toBe("Consumed by this feature");
 
     const holeNode = circleNode?.featureNodes[0];
+    const holeTarget = holeNode?.target;
     expect(holeNode?.target?.bodyId).toBe("body_hole_target");
-    expect(formatLineageTargetRole(holeNode?.target!)).toBe("Consumed target");
+    expect(holeTarget).toBeDefined();
+    if (!holeTarget) {
+      throw new Error("Expected hole target lineage");
+    }
+    expect(formatLineageTargetRole(holeTarget)).toBe("Consumed target");
 
     expect(partNode?.directFeatureNodes.map((node) => node.feature.id)).toEqual(
       ["feature_chamfer"]

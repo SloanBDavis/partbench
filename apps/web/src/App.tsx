@@ -728,7 +728,9 @@ function createSketchModelingSelectionContext({
   if (selectedId) {
     for (const sketch of sketches) {
       for (const entity of sketch.entities) {
-        if (selectedId === createSketchEntitySelectionId(sketch.id, entity.id)) {
+        if (
+          selectedId === createSketchEntitySelectionId(sketch.id, entity.id)
+        ) {
           const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
 
           return {

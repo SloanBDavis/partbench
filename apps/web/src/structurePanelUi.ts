@@ -188,17 +188,13 @@ function getOrderedPartFeatureNodes(
   const orderedIds = new Set(part.featureIds);
   const orderedNodes = part.featureIds
     .map((featureId) => featureNodesById.get(featureId))
-    .filter(
-      (node): node is StructureLineageFeatureNode => node !== undefined
-    );
+    .filter((node): node is StructureLineageFeatureNode => node !== undefined);
   const omittedNodes = authoredFeatures
     .filter(
       (feature) => feature.partId === part.id && !orderedIds.has(feature.id)
     )
     .map((feature) => featureNodesById.get(feature.id))
-    .filter(
-      (node): node is StructureLineageFeatureNode => node !== undefined
-    );
+    .filter((node): node is StructureLineageFeatureNode => node !== undefined);
 
   return [...orderedNodes, ...omittedNodes];
 }

@@ -200,7 +200,11 @@ export function formatGeneratedReferenceCount(
 ): string {
   const singular = formatGeneratedReferenceKind(kind).toLowerCase();
   const plural =
-    kind === "body" ? "bodies" : kind === "vertex" ? "vertices" : `${singular}s`;
+    kind === "body"
+      ? "bodies"
+      : kind === "vertex"
+        ? "vertices"
+        : `${singular}s`;
 
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -426,8 +430,8 @@ function createOperationActionStatus(
     available,
     status: available
       ? "Eligible edge"
-      : reference.eligibilityNotes?.[0] ??
-        `Reference is not eligible for ${formatOperationLabel(operation).toLowerCase()}.`
+      : (reference.eligibilityNotes?.[0] ??
+        `Reference is not eligible for ${formatOperationLabel(operation).toLowerCase()}.`)
   };
 }
 

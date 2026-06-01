@@ -50,7 +50,7 @@ describe("Inspector", () => {
     expect(markup).toContain("Name");
     expect(markup).toContain("Stable ID and source");
     expect(markup).toContain("Selected reference");
-    expect(markup).toContain("<optgroup label=\"Faces\">");
+    expect(markup).toContain('<optgroup label="Faces">');
   });
 });
 
@@ -70,7 +70,10 @@ function createBody(): CadBodySnapshot {
   };
 }
 
-function createFeature(): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
+function createFeature(): Extract<
+  CadFeatureSummary,
+  { readonly kind: "extrude" }
+> {
   return {
     id: "feat_rect",
     kind: "extrude",
@@ -102,7 +105,10 @@ function createGeneratedReferences(
       kind: "body",
       stableId: "generated:body:body_rect",
       label: "Generated body",
-      eligibleOperations: ["feature.measureReference", "feature.selectReference"],
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
       bodyId: "body_rect",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_rect",

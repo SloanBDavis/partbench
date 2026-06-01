@@ -449,7 +449,7 @@ function LineagePartNode({
                           <strong>
                             {entityNode.missing
                               ? "Missing entity"
-                              : entityNode.entityKind ?? "Entity"}
+                              : (entityNode.entityKind ?? "Entity")}
                           </strong>
                           <small>
                             {entityNode.featureNodes.length} features

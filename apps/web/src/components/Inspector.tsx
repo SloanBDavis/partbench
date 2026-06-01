@@ -944,11 +944,7 @@ function GeneratedReferenceGroupsList({
   return (
     <section className="generated-reference-groups">
       {groups.map((group) => (
-        <details
-          key={group.kind}
-          className="generated-reference-group"
-          open
-        >
+        <details key={group.kind} className="generated-reference-group" open>
           <summary>
             <span>{group.label}</span>
             <small>{group.countLabel}</small>

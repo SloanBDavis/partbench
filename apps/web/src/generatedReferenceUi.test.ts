@@ -419,7 +419,10 @@ function createReferences({
       kind: "body",
       stableId: "generated:body:body_1",
       label: "Generated body",
-      eligibleOperations: ["feature.measureReference", "feature.selectReference"],
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
       bodyId: "body_1",
       ownerPartId: "part:default",
       sourceFeatureId: "feat_1",
