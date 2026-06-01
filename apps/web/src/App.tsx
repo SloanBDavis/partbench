@@ -29,7 +29,8 @@ import type {
   SketchConstraintEntry,
   SketchEvaluationQueryResponse,
   SketchEntityKind,
-  SketchEntitySnapshot
+  SketchEntitySnapshot,
+  SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -101,6 +102,7 @@ import { BatchPanel } from "./components/BatchPanel";
 import { GeometryPanel } from "./components/GeometryPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
+import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
 import { StructurePanel } from "./components/StructurePanel";
@@ -144,9 +146,16 @@ import {
 } from "./generatedReferenceUi";
 import {
   createSelectedGeneratedReference,
+  getGeneratedReferenceSelectionState,
   reconcileSelectedGeneratedReferenceBody,
+  type GeneratedReferenceSelectionState,
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
+import {
+  deriveModelingActions,
+  type ModelingActionDescriptor,
+  type ModelingSelectionContext
+} from "./modelingActions";
 import {
   createProjectJsonPreview,
   formatProjectJsonSummary,
@@ -604,6 +613,128 @@ function readGeneratedFaceReferencesByKey(
   return facesByKey;
 }
 
+function createModelingSelectionContext({
+  focusedSketchId,
+  namedReferences,
+  selectedBody,
+  selectedBodyGeneratedReferences,
+  selectedFeature,
+  selectedGeneratedReferenceState,
+  selectedId,
+  sketchDimensionsBySketchId,
+  sketchEvaluationsBySketchId,
+  sketches
+}: {
+  readonly focusedSketchId?: string;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly selectedBody?: CadBodySnapshot;
+  readonly selectedBodyGeneratedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly selectedFeature?: CadFeatureSummary;
+  readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
+  readonly selectedId?: string;
+  readonly sketchDimensionsBySketchId: ReadonlyMap<
+    string,
+    readonly SketchDimensionEntry[]
+  >;
+  readonly sketchEvaluationsBySketchId: ReadonlyMap<
+    string,
+    SketchEvaluationQueryResponse
+  >;
+  readonly sketches: readonly SketchSnapshot[];
+}): ModelingSelectionContext {
+  if (selectedGeneratedReferenceState.status === "selected") {
+    return {
+      selectionKind: "generatedReference",
+      reference: selectedGeneratedReferenceState.reference,
+      body: selectedBody,
+      feature: selectedFeature,
+      namedReferences
+    };
+  }
+
+  if (selectedBody) {
+    return {
+      selectionKind: "body",
+      body: selectedBody,
+      feature: selectedFeature,
+      generatedReferences: selectedBodyGeneratedReferences
+    };
+  }
+
+  return (
+    createSketchModelingSelectionContext({
+      focusedSketchId,
+      selectedId,
+      sketchDimensionsBySketchId,
+      sketchEvaluationsBySketchId,
+      sketches
+    }) ?? { selectionKind: "none" }
+  );
+}
+
+function createSketchModelingSelectionContext({
+  focusedSketchId,
+  selectedId,
+  sketchDimensionsBySketchId,
+  sketchEvaluationsBySketchId,
+  sketches
+}: {
+  readonly focusedSketchId?: string;
+  readonly selectedId?: string;
+  readonly sketchDimensionsBySketchId: ReadonlyMap<
+    string,
+    readonly SketchDimensionEntry[]
+  >;
+  readonly sketchEvaluationsBySketchId: ReadonlyMap<
+    string,
+    SketchEvaluationQueryResponse
+  >;
+  readonly sketches: readonly SketchSnapshot[];
+}): ModelingSelectionContext | undefined {
+  if (selectedId) {
+    for (const sketch of sketches) {
+      for (const entity of sketch.entities) {
+        if (selectedId === createSketchEntitySelectionId(sketch.id, entity.id)) {
+          const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
+
+          return {
+            selectionKind: "sketchEntity",
+            sketch,
+            entity,
+            dimensions:
+              evaluation?.dimensions ??
+              sketchDimensionsBySketchId.get(sketch.id),
+            constraints: evaluation?.constraints
+          };
+        }
+      }
+
+      if (selectedId === createSketchSelectionId(sketch.id)) {
+        return { selectionKind: "sketch", sketch };
+      }
+    }
+  }
+
+  const focusedSketch = focusedSketchId
+    ? sketches.find((sketch) => sketch.id === focusedSketchId)
+    : undefined;
+
+  return focusedSketch
+    ? { selectionKind: "sketch", sketch: focusedSketch }
+    : undefined;
+}
+
+function createSketchSelectionId(sketchId: string): string {
+  return `sketch:${sketchId}`;
+}
+
+function createSketchEntitySelectionId(
+  sketchId: string,
+  entityId: string
+): string {
+  return `${createSketchSelectionId(sketchId)}:entity:${entityId}`;
+}
+
 export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
@@ -795,6 +926,30 @@ export function App() {
   const parameters = readParameters();
   const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
   const sketchEvaluationsBySketchId = readSketchEvaluationsBySketchId(sketches);
+  const selectedGeneratedReferenceState = getGeneratedReferenceSelectionState(
+    selectedGeneratedReference,
+    selectedBodyGeneratedReferences.references,
+    selectedGeneratedReferenceMeasurements,
+    document.units
+  );
+  const modelingSelectionContext = createModelingSelectionContext({
+    focusedSketchId,
+    namedReferences,
+    selectedBody,
+    selectedBodyGeneratedReferences: selectedBodyGeneratedReferences.references,
+    selectedFeature,
+    selectedGeneratedReferenceState,
+    selectedId,
+    sketchDimensionsBySketchId,
+    sketchEvaluationsBySketchId,
+    sketches
+  });
+  const modelingActions = deriveModelingActions({
+    context: modelingSelectionContext,
+    bodies: projectStructure.bodies,
+    features: projectStructure.features,
+    preferredBodyId: selectedBody?.id
+  });
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
   >(() => {
@@ -1177,6 +1332,110 @@ export function App() {
   function focusSketch(sketchId: string) {
     setActiveUtilityPanel("sketches");
     setFocusedSketchId(sketchId);
+  }
+
+  function handleModelingAction(action: ModelingActionDescriptor) {
+    if (!action.available) {
+      return;
+    }
+
+    switch (action.id) {
+      case "sketch.create":
+        setActiveUtilityPanel("sketches");
+        return;
+      case "sketch.entity.add.point":
+      case "sketch.entity.add.line":
+      case "sketch.entity.add.rectangle":
+      case "sketch.entity.add.circle":
+      case "sketch.entity.edit":
+      case "sketch.dimension.add":
+      case "sketch.constraint.add":
+      case "sketch.revolveAxis.use":
+      case "feature.extrude":
+      case "feature.hole":
+      case "feature.revolve": {
+        const sketchId = action.target?.sketchId ?? getContextSketchId();
+
+        if (sketchId) {
+          focusSketch(sketchId);
+        } else {
+          setActiveUtilityPanel("sketches");
+        }
+        return;
+      }
+      case "body.references.inspect":
+      case "body.measureTopology":
+        if (action.target?.bodyId) {
+          setSelectedId(action.target.bodyId);
+        }
+        setSelectedGeneratedReference(undefined);
+        return;
+      case "sketch.createOnFace":
+        selectModelingActionFace(action);
+        return;
+      case "reference.name":
+      case "feature.chamfer":
+      case "feature.fillet":
+        selectModelingActionGeneratedReference(action);
+        return;
+    }
+  }
+
+  function getContextSketchId(): string | undefined {
+    if (modelingSelectionContext.selectionKind === "sketch") {
+      return modelingSelectionContext.sketch.id;
+    }
+
+    if (modelingSelectionContext.selectionKind === "sketchEntity") {
+      return modelingSelectionContext.sketch.id;
+    }
+
+    return undefined;
+  }
+
+  function selectModelingActionFace(action: ModelingActionDescriptor) {
+    const bodyId = action.target?.bodyId;
+    const stableId =
+      action.target?.eligibleFaceStableIds?.[0] ??
+      action.target?.generatedReferenceStableId;
+
+    if (bodyId) {
+      setSelectedId(bodyId);
+    }
+
+    if (!bodyId || !stableId) {
+      return;
+    }
+
+    const face = selectedBodyGeneratedReferences.references?.faces.find(
+      (candidate) =>
+        candidate.bodyId === bodyId && candidate.stableId === stableId
+    );
+
+    setSelectedGeneratedReference(
+      face
+        ? createSelectedGeneratedReference(face)
+        : {
+            bodyId,
+            stableId,
+            kind: "face"
+          }
+    );
+  }
+
+  function selectModelingActionGeneratedReference(
+    action: ModelingActionDescriptor
+  ) {
+    if (action.selection?.context !== "generatedReference") {
+      return;
+    }
+
+    setSelectedId(action.selection.bodyId);
+    setSelectedGeneratedReference({
+      bodyId: action.selection.bodyId,
+      stableId: action.selection.stableId,
+      kind: action.selection.referenceKind
+    });
   }
 
   async function renameSketch(sketchId: string, name: string) {
@@ -1671,6 +1930,13 @@ export function App() {
             onUpdateExtrude={(featureId, depth, side) =>
               void updateAuthoredExtrude(featureId, depth, side)
             }
+          />
+
+          <ModelingActionsPanel
+            actions={modelingActions}
+            context={modelingSelectionContext}
+            disabled={commandPending}
+            onAction={handleModelingAction}
           />
 
           <section className="utility-dock" aria-label="Workspace tools">
