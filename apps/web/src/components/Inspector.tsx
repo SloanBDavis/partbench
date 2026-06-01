@@ -944,7 +944,14 @@ function GeneratedReferenceGroupsList({
   return (
     <section className="generated-reference-groups">
       {groups.map((group) => (
-        <details key={group.kind} className="generated-reference-group" open>
+        <details
+          key={group.kind}
+          className="generated-reference-group"
+          open={shouldOpenGeneratedReferenceGroup(
+            group.kind,
+            selectedGeneratedReference?.kind
+          )}
+        >
           <summary>
             <span>{group.label}</span>
             <small>{group.countLabel}</small>
@@ -985,6 +992,13 @@ function GeneratedReferenceGroupsList({
       ))}
     </section>
   );
+}
+
+function shouldOpenGeneratedReferenceGroup(
+  groupKind: CadGeneratedReference["kind"],
+  selectedKind: CadGeneratedReference["kind"] | undefined
+): boolean {
+  return selectedKind ? groupKind === selectedKind : groupKind === "face";
 }
 
 function GeneratedReferenceActionRow({
