@@ -21,8 +21,11 @@ import {
   createHoleTargetBodyOptions,
   createParameterBindingOptions,
   createRevolveAxisOptions,
+  createSketchEntityListItems,
+  createSketchEntitySelectionId,
   createSketchPointTargetOptionsForEntity,
   createSketchDimensionTargetOptions,
+  createSketchSelectionId,
   formatSketchPointCoordinate,
   formatSketchPointTarget,
   formatSketchDimensionEffectiveValue,
@@ -138,6 +141,26 @@ describe("sketch panel UI helpers", () => {
     );
     expect(getSketchEntityOptionLabel(entities[1])).toBe(
       "circle_1 / circle r 2"
+    );
+    expect(createSketchEntityListItems(entities, "circle_1")).toEqual([
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        kindLabel: "Rectangle",
+        detail: "Center 0, 0 / 4 x 2",
+        selected: false
+      },
+      {
+        id: "circle_1",
+        kind: "circle",
+        kindLabel: "Circle",
+        detail: "Center 1, 1 / radius 2",
+        selected: true
+      }
+    ]);
+    expect(createSketchSelectionId("sketch_1")).toBe("sketch:sketch_1");
+    expect(createSketchEntitySelectionId("sketch_1", "circle_1")).toBe(
+      "sketch:sketch_1:entity:circle_1"
     );
     expect(isExtrudableSketchEntity(entities[0])).toBe(true);
     expect(isExtrudableSketchEntity(entities[1])).toBe(true);

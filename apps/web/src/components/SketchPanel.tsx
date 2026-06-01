@@ -39,6 +39,7 @@ import {
   createAvailableParallelLineTargetOptions,
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
+  createSketchEntityListItems,
   createRevolveAxisOptions,
   createSketchPointTargetOptionsForEntity,
   formatSketchDimensionEffectiveValue,
@@ -68,7 +69,8 @@ import {
   isRevolvableSketchEntity,
   sketchDimensionTargetsEqual,
   type BooleanTargetBodyOption,
-  type SketchLineTargetOption
+  type SketchLineTargetOption,
+  type SketchPanelSelectionContext
 } from "../sketchPanelUi";
 import {
   defaultSketchEntityForm,
@@ -151,6 +153,9 @@ export interface SketchPanelProps {
     sketchId: string,
     circleEntityId: string,
     form: FeatureHoleForm
+  ) => void;
+  readonly onSelectionContextChange?: (
+    context: SketchPanelSelectionContext | undefined
   ) => void;
 }
 
@@ -243,7 +248,8 @@ export function SketchPanel({
   onDeleteConstraint,
   onExtrudeEntity,
   onRevolveEntity,
-  onHoleEntity
+  onHoleEntity,
+  onSelectionContextChange
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
     sketches[0]?.id
@@ -313,6 +319,31 @@ export function SketchPanel({
   );
   const selectedEntity = selectedSketch?.entities.find(
     (entity) => entity.id === effectiveSelectedEntityId
+  );
+  const entityListItems = useMemo(
+    () =>
+      createSketchEntityListItems(
+        selectedSketch?.entities ?? [],
+        effectiveSelectedEntityId
+      ),
+    [effectiveSelectedEntityId, selectedSketch]
+  );
+  const entityUsageLabels = useMemo(
+    () =>
+      new Map(
+        (selectedSketch?.entities ?? []).flatMap((entity) => {
+          if (!selectedSketch) {
+            return [];
+          }
+
+          const usageLabel = formatSketchEntityUsageLabel(
+            getSketchEntityExtrudeUsages(features, selectedSketch.id, entity.id)
+          );
+
+          return usageLabel ? [[entity.id, usageLabel] as const] : [];
+        })
+      ),
+    [features, selectedSketch]
   );
   const selectedEntityDimensions = useMemo(
     () =>
@@ -648,10 +679,6 @@ export function SketchPanel({
     Boolean(editingEntityId) ||
     isAddingEntity ||
     selectedSketch?.entities.length === 0;
-  const shouldShowInlineAddEntityEditor =
-    isAddingEntity && !editingEntityId && selectedSketch?.entities.length !== 0;
-  const shouldShowStandaloneEntityEditor =
-    Boolean(editingEntityId) || selectedSketch?.entities.length === 0;
 
   useEffect(() => {
     const pending = pendingEntitySelection.current;
@@ -668,6 +695,29 @@ export function SketchPanel({
     }
   }, [selectedSketch]);
 
+  useEffect(() => {
+    onSelectionContextChange?.(
+      selectedSketch
+        ? {
+            sketchId: selectedSketch.id,
+            ...(effectiveSelectedEntityId
+              ? { entityId: effectiveSelectedEntityId }
+              : {})
+          }
+        : undefined
+    );
+  }, [
+    effectiveSelectedEntityId,
+    onSelectionContextChange,
+    selectedSketch?.id
+  ]);
+
+  useEffect(() => {
+    if (featureCreateMode === "hole" && !selectedHoleEntity) {
+      setFeatureCreateMode("extrude");
+    }
+  }, [featureCreateMode, selectedHoleEntity]);
+
   function editEntity(entity: SketchEntitySnapshot) {
     setSelectedEntityId(entity.id);
     setEditingEntityId(entity.id);
@@ -676,11 +726,17 @@ export function SketchPanel({
     setEntityForm(entityToSketchEntityForm(entity));
   }
 
-  function addEntity() {
+  function addEntity(kind?: SketchEntityKind) {
     setEditingEntityId(undefined);
     setIsAddingEntity(true);
-    setEntityKind(getDefaultSketchEntityKind(selectedSketch));
+    setEntityKind(kind ?? getDefaultSketchEntityKind(selectedSketch));
     setEntityForm(defaultSketchEntityForm);
+  }
+
+  function selectEntity(entityId: SketchEntityId) {
+    setSelectedEntityId(entityId);
+    setEditingEntityId(undefined);
+    setIsAddingEntity(false);
   }
 
   function saveEntity() {
@@ -991,196 +1047,229 @@ export function SketchPanel({
 
               <SketchEvaluationSummary evaluation={selectedSketchEvaluation} />
 
-              {selectedSketch.entities.length > 0 && (
-                <section className="entity-picker" aria-label="Sketch entities">
-                  <div className="command-card-heading">
-                    <h3>Selected entity</h3>
-                    <span>{selectedSketch.entities.length}</span>
-                  </div>
-                  <div className="entity-picker-row">
-                    <label>
-                      Entity
-                      <select
-                        value={effectiveSelectedEntityId ?? ""}
-                        disabled={disabled}
-                        onChange={(event) => {
-                          setSelectedEntityId(event.currentTarget.value);
-                          setEditingEntityId(undefined);
-                          setIsAddingEntity(false);
-                        }}
-                      >
-                        {selectedSketch.entities.map((entity) => (
-                          <option key={entity.id} value={entity.id}>
-                            {getSketchEntityOptionLabel(entity)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={addEntity}
-                    >
-                      Add
-                    </button>
-                  </div>
-                  {shouldShowInlineAddEntityEditor && (
-                    <EntityEditor
-                      disabled={disabled}
-                      canCancel
-                      editingEntityId={editingEntityId}
-                      entityForm={entityForm}
-                      entityKind={entityKind}
-                      usageLabel={formatSketchEntityUsageLabel(
-                        editingEntityUsages
-                      )}
-                      validation={entityFormValidation}
-                      onCancelEdit={() => {
-                        setEditingEntityId(undefined);
-                        setIsAddingEntity(false);
-                      }}
-                      onEntityFormChange={setEntityForm}
-                      onEntityKindChange={setEntityKind}
-                      onSave={saveEntity}
-                    />
-                  )}
-                  {selectedEntity && (
-                    <div className="entity-summary">
-                      <code>{selectedEntity.id}</code>
-                      <span>{formatSketchEntity(selectedEntity)}</span>
-                      {selectedEntityUsageLabel && (
-                        <small className="entity-usage">
-                          {selectedEntityUsageLabel}
-                        </small>
-                      )}
-                      <div className="button-row compact">
+              <section className="entity-picker" aria-label="Sketch entities">
+                <div className="command-card-heading">
+                  <h3>Entities</h3>
+                  <span>{selectedSketch.entities.length}</span>
+                </div>
+
+                <div className="entity-picker-toolbar">
+                  <div
+                    className="segmented-control entity-add-control"
+                    aria-label="Add sketch entity"
+                  >
+                    {(["point", "line", "rectangle", "circle"] as const).map(
+                      (kind) => (
                         <button
+                          key={kind}
                           type="button"
                           disabled={disabled}
-                          onClick={() => editEntity(selectedEntity)}
+                          onClick={() => addEntity(kind)}
                         >
-                          {selectedEntityUsageLabel ? "Edit source" : "Edit"}
+                          {kind === "point"
+                            ? "Point"
+                            : kind === "line"
+                              ? "Line"
+                              : kind === "rectangle"
+                                ? "Rectangle"
+                                : "Circle"}
                         </button>
-                        <button
-                          type="button"
-                          className="danger"
+                      )
+                    )}
+                  </div>
+
+                  {selectedSketch.entities.length > 0 && (
+                    <details className="advanced-options compact entity-select-fallback">
+                      <summary>Compact selector</summary>
+                      <label>
+                        Entity
+                        <select
+                          value={effectiveSelectedEntityId ?? ""}
                           disabled={disabled}
-                          onClick={() =>
-                            onDeleteEntity(selectedSketch.id, selectedEntity.id)
+                          onChange={(event) =>
+                            selectEntity(event.currentTarget.value)
                           }
                         >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
+                          {selectedSketch.entities.map((entity) => (
+                            <option key={entity.id} value={entity.id}>
+                              {getSketchEntityOptionLabel(entity)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </details>
                   )}
-                  {selectedEntity && (
-                    <SketchDimensionControls
-                      disabled={disabled}
-                      dimensions={selectedEntityDimensions}
-                      availableTargets={availableDimensionTargets}
-                      createTarget={effectiveDimensionCreateTarget}
-                      createForm={effectiveDimensionCreateForm}
-                      selectedDimension={selectedDimension}
-                      selectedDimensionId={selectedDimension?.id}
-                      editForm={dimensionEditForm}
-                      parameterBindingOptions={parameterBindingOptions}
-                      parameters={parameters}
-                      onCreateTargetChange={setDimensionCreateTarget}
-                      onCreateFormChange={(form) => {
-                        if (
-                          effectiveDimensionCreateTarget &&
-                          !dimensionCreateTarget
-                        ) {
-                          setDimensionCreateTarget(
-                            effectiveDimensionCreateTarget
-                          );
-                        }
+                </div>
 
-                        setDimensionCreateForm(form);
-                      }}
-                      onSelectDimension={(dimensionId) => {
-                        setSelectedDimensionId(dimensionId);
-                        setDimensionEditDraft(undefined);
+                {entityListItems.length === 0 ? (
+                  <p className="empty-state compact">No sketch entities</p>
+                ) : (
+                  <ul
+                    className="entity-list entity-selection-list"
+                    aria-label="Select sketch entity"
+                  >
+                    {entityListItems.map((item) => {
+                      const usageLabel = entityUsageLabels.get(item.id);
+
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            className={item.selected ? "selected" : undefined}
+                            disabled={disabled}
+                            onClick={() => selectEntity(item.id)}
+                          >
+                            <span className="entity-row-title">
+                              <strong>{item.kindLabel}</strong>
+                              <code>{item.id}</code>
+                            </span>
+                            <small>{item.detail}</small>
+                            {usageLabel && (
+                              <small className="entity-usage">
+                                {usageLabel}
+                              </small>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {shouldShowEntityEditor && (
+                  <EntityEditor
+                    disabled={disabled}
+                    canCancel={selectedSketch.entities.length > 0}
+                    editingEntityId={editingEntityId}
+                    entityForm={entityForm}
+                    entityKind={entityKind}
+                    usageLabel={formatSketchEntityUsageLabel(
+                      editingEntityUsages
+                    )}
+                    validation={entityFormValidation}
+                    onCancelEdit={() => {
+                      setEditingEntityId(undefined);
+                      setIsAddingEntity(false);
+                    }}
+                    onEntityFormChange={setEntityForm}
+                    onEntityKindChange={setEntityKind}
+                    onSave={saveEntity}
+                  />
+                )}
+
+                {selectedEntity && !shouldShowEntityEditor && (
+                  <div className="entity-summary">
+                    <code>{selectedEntity.id}</code>
+                    <span>{formatSketchEntity(selectedEntity)}</span>
+                    {selectedEntityUsageLabel && (
+                      <small className="entity-usage">
+                        {selectedEntityUsageLabel}
+                      </small>
+                    )}
+                    <div className="button-row compact">
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => editEntity(selectedEntity)}
+                      >
+                        {selectedEntityUsageLabel ? "Edit source" : "Edit"}
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        disabled={disabled}
+                        onClick={() =>
+                          onDeleteEntity(selectedSketch.id, selectedEntity.id)
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {selectedEntity && !shouldShowEntityEditor && (
+                  <SketchDimensionControls
+                    key={`${selectedEntity.id}:dimensions`}
+                    disabled={disabled}
+                    dimensions={selectedEntityDimensions}
+                    availableTargets={availableDimensionTargets}
+                    createTarget={effectiveDimensionCreateTarget}
+                    createForm={effectiveDimensionCreateForm}
+                    selectedDimension={selectedDimension}
+                    selectedDimensionId={selectedDimension?.id}
+                    editForm={dimensionEditForm}
+                    parameterBindingOptions={parameterBindingOptions}
+                    parameters={parameters}
+                    onCreateTargetChange={setDimensionCreateTarget}
+                    onCreateFormChange={(form) => {
+                      if (
+                        effectiveDimensionCreateTarget &&
+                        !dimensionCreateTarget
+                      ) {
+                        setDimensionCreateTarget(effectiveDimensionCreateTarget);
+                      }
+
+                      setDimensionCreateForm(form);
+                    }}
+                    onSelectDimension={(dimensionId) => {
+                      setSelectedDimensionId(dimensionId);
+                      setDimensionEditDraft(undefined);
+                    }}
+                    onEditFormChange={(form) =>
+                      selectedDimension &&
+                      setDimensionEditDraft({
+                        dimensionId: selectedDimension.id,
+                        form
+                      })
+                    }
+                    onCreateDimension={createDimension}
+                    onApplyDimensionEdit={applyDimensionEdit}
+                    onDeleteDimension={onDeleteDimension}
+                  />
+                )}
+                {selectedEntity &&
+                  !shouldShowEntityEditor &&
+                  (availableConstraintKinds.length > 0 ||
+                    selectedEntityConstraints.length > 0) && (
+                    <SketchConstraintControls
+                      key={`${selectedEntity.id}:constraints`}
+                      disabled={disabled}
+                      constraints={selectedEntityConstraints}
+                      availableKinds={availableConstraintKinds}
+                      primaryTargetOptions={selectedPrimaryTargetOptions}
+                      coincidentTargetOptions={coincidentTargetOptions}
+                      midpointTargetOptions={midpointTargetOptions}
+                      parallelTargetOptions={parallelTargetOptions}
+                      createForm={effectiveConstraintCreateForm}
+                      selectedConstraint={selectedConstraint}
+                      selectedConstraintId={selectedConstraint?.id}
+                      editForm={constraintEditForm}
+                      onCreateFormChange={setConstraintCreateForm}
+                      onSelectConstraint={(constraintId) => {
+                        setSelectedConstraintId(constraintId);
+                        setConstraintEditDraft(undefined);
                       }}
                       onEditFormChange={(form) =>
-                        selectedDimension &&
-                        setDimensionEditDraft({
-                          dimensionId: selectedDimension.id,
+                        selectedConstraint &&
+                        setConstraintEditDraft({
+                          constraintId: selectedConstraint.id,
                           form
                         })
                       }
-                      onCreateDimension={createDimension}
-                      onApplyDimensionEdit={applyDimensionEdit}
-                      onDeleteDimension={onDeleteDimension}
+                      onCreateConstraint={createConstraint}
+                      onApplyConstraintEdit={applyConstraintEdit}
+                      onDeleteConstraint={onDeleteConstraint}
                     />
                   )}
-                  {selectedEntity &&
-                    (availableConstraintKinds.length > 0 ||
-                      selectedEntityConstraints.length > 0) && (
-                      <SketchConstraintControls
-                        disabled={disabled}
-                        constraints={selectedEntityConstraints}
-                        availableKinds={availableConstraintKinds}
-                        primaryTargetOptions={selectedPrimaryTargetOptions}
-                        coincidentTargetOptions={coincidentTargetOptions}
-                        midpointTargetOptions={midpointTargetOptions}
-                        parallelTargetOptions={parallelTargetOptions}
-                        createForm={effectiveConstraintCreateForm}
-                        selectedConstraint={selectedConstraint}
-                        selectedConstraintId={selectedConstraint?.id}
-                        editForm={constraintEditForm}
-                        onCreateFormChange={setConstraintCreateForm}
-                        onSelectConstraint={(constraintId) => {
-                          setSelectedConstraintId(constraintId);
-                          setConstraintEditDraft(undefined);
-                        }}
-                        onEditFormChange={(form) =>
-                          selectedConstraint &&
-                          setConstraintEditDraft({
-                            constraintId: selectedConstraint.id,
-                            form
-                          })
-                        }
-                        onCreateConstraint={createConstraint}
-                        onApplyConstraintEdit={applyConstraintEdit}
-                        onDeleteConstraint={onDeleteConstraint}
-                      />
-                    )}
-                </section>
-              )}
+              </section>
 
-              {shouldShowEntityEditor && shouldShowStandaloneEntityEditor && (
-                <EntityEditor
-                  disabled={disabled}
-                  canCancel={selectedSketch.entities.length > 0}
-                  editingEntityId={editingEntityId}
-                  entityForm={entityForm}
-                  entityKind={entityKind}
-                  usageLabel={formatSketchEntityUsageLabel(editingEntityUsages)}
-                  validation={entityFormValidation}
-                  onCancelEdit={() => {
-                    setEditingEntityId(undefined);
-                    setIsAddingEntity(false);
-                  }}
-                  onEntityFormChange={setEntityForm}
-                  onEntityKindChange={setEntityKind}
-                  onSave={saveEntity}
-                />
-              )}
-
-              {!shouldShowEntityEditor &&
-                selectedSketch.entities.length === 0 && (
-                  <p className="empty-state compact">No sketch entities</p>
-                )}
-
-              {selectedSketch.entities.length > 0 && (
+              {selectedSketch.entities.length > 0 && !shouldShowEntityEditor && (
                 <section
                   className="entity-editor"
                   aria-label="Create authored feature"
                 >
                   <div className="command-card-heading">
-                    <h3>Create feature from selected entity</h3>
+                    <h3>Actions for selected entity</h3>
                   </div>
                   {selectedExtrudeEntity ? (
                     <>
@@ -1190,20 +1279,46 @@ export function SketchPanel({
                           {getSketchEntityOptionLabel(selectedExtrudeEntity)}
                         </strong>
                       </div>
-                      <label>
-                        Feature type
-                        <select
-                          value={featureCreateMode}
+                      <div
+                        className="segmented-control feature-mode-tabs"
+                        aria-label="Feature action"
+                      >
+                        <button
+                          type="button"
+                          className={
+                            featureCreateMode === "extrude"
+                              ? "selected"
+                              : undefined
+                          }
                           disabled={disabled}
-                          onChange={(event) => {
-                            const nextMode = event.currentTarget.value as
-                              | "extrude"
-                              | "revolve"
-                              | "hole";
-                            setFeatureCreateMode(nextMode);
+                          onClick={() => setFeatureCreateMode("extrude")}
+                        >
+                          Extrude
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            featureCreateMode === "revolve"
+                              ? "selected"
+                              : undefined
+                          }
+                          disabled={disabled}
+                          onClick={() => setFeatureCreateMode("revolve")}
+                        >
+                          Revolve
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            featureCreateMode === "hole"
+                              ? "selected"
+                              : undefined
+                          }
+                          disabled={disabled || !selectedHoleEntity}
+                          onClick={() => {
+                            setFeatureCreateMode("hole");
 
                             if (
-                              nextMode === "hole" &&
                               !holeTargetBodies.some(
                                 (body) => body.bodyId === holeForm.targetBodyId
                               )
@@ -1215,11 +1330,9 @@ export function SketchPanel({
                             }
                           }}
                         >
-                          <option value="extrude">Extrude</option>
-                          <option value="revolve">Revolve</option>
-                          <option value="hole">Hole</option>
-                        </select>
-                      </label>
+                          Hole
+                        </button>
+                      </div>
                       {featureCreateMode === "hole" ? (
                         <>
                           <div className="field-grid two">
@@ -1987,6 +2100,7 @@ function SketchDimensionControls({
 }) {
   const supportsDimensions =
     availableTargets.length > 0 || dimensions.length > 0;
+  const [mode, setMode] = useState<"idle" | "create" | "edit">("idle");
 
   if (!supportsDimensions) {
     return (
@@ -2012,9 +2126,18 @@ function SketchDimensionControls({
         <div className="dimension-status-list" aria-label="Dimension status">
           {dimensions.map((dimension) => {
             const statusDisplay = getSketchDimensionStatusDisplay(dimension);
+            const isSelected = dimension.id === selectedDimensionId;
 
             return (
-              <div key={dimension.id} className="dimension-status-row">
+              <button
+                key={dimension.id}
+                type="button"
+                className={`dimension-status-row ${
+                  isSelected ? "selected" : ""
+                }`}
+                disabled={disabled}
+                onClick={() => onSelectDimension(dimension.id)}
+              >
                 <div>
                   <strong>
                     {dimension.name} ·{" "}
@@ -2031,13 +2154,42 @@ function SketchDimensionControls({
                 >
                   {statusDisplay.label}
                 </span>
-              </div>
+              </button>
             );
           })}
         </div>
       )}
 
-      {availableTargets.length > 0 ? (
+      <div className="button-row compact contextual-action-row">
+        {availableTargets.length > 0 && (
+          <button
+            type="button"
+            className={mode === "create" ? "selected" : undefined}
+            disabled={disabled}
+            onClick={() => setMode(mode === "create" ? "idle" : "create")}
+          >
+            Add dimension
+          </button>
+        )}
+        {selectedDimension && (
+          <button
+            type="button"
+            className={mode === "edit" ? "selected" : undefined}
+            disabled={disabled}
+            onClick={() => setMode(mode === "edit" ? "idle" : "edit")}
+          >
+            Edit selected
+          </button>
+        )}
+      </div>
+
+      {availableTargets.length === 0 && (
+        <p className="project-message compact">
+          Supported targets for this entity already have driving dimensions.
+        </p>
+      )}
+
+      {mode === "create" && availableTargets.length > 0 && (
         <div className="dimension-create-row">
           <div className="field-grid two">
             <label>
@@ -2126,101 +2278,75 @@ function SketchDimensionControls({
             </button>
           </div>
         </div>
-      ) : (
-        <p className="project-message compact">
-          Supported targets for this entity already have driving dimensions.
-        </p>
       )}
 
-      {dimensions.length > 0 && (
+      {mode === "edit" && selectedDimension && (
         <div className="dimension-editor">
-          <label>
-            Edit dimension
-            <select
-              value={selectedDimensionId ?? ""}
-              disabled={disabled}
-              onChange={(event) => onSelectDimension(event.currentTarget.value)}
-            >
-              {dimensions.map((dimension) => (
-                <option key={dimension.id} value={dimension.id}>
-                  {dimension.name} /{" "}
-                  {getSketchDimensionTargetLabel(dimension.target)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {selectedDimension && (
-            <>
-              <div className="readonly-field">
-                <span>Current</span>
-                <strong>
-                  {getSketchDimensionTargetLabel(selectedDimension.target)} /{" "}
-                  {formatSketchDimensionValueSource(
-                    selectedDimension,
-                    parameters
-                  )}
-                </strong>
-              </div>
-              <div className="readonly-field">
-                <span>Evaluated</span>
-                <strong>
-                  {formatSketchDimensionEffectiveValue(selectedDimension)}
-                </strong>
-              </div>
-              <p
-                className={
-                  selectedDimension.status === "healthy"
-                    ? "project-message compact"
-                    : "error-text"
+          <div className="readonly-field">
+            <span>Current</span>
+            <strong>
+              {getSketchDimensionTargetLabel(selectedDimension.target)} /{" "}
+              {formatSketchDimensionValueSource(selectedDimension, parameters)}
+            </strong>
+          </div>
+          <div className="readonly-field">
+            <span>Evaluated</span>
+            <strong>
+              {formatSketchDimensionEffectiveValue(selectedDimension)}
+            </strong>
+          </div>
+          <p
+            className={
+              selectedDimension.status === "healthy"
+                ? "project-message compact"
+                : "error-text"
+            }
+          >
+            {formatSketchDimensionStatus(selectedDimension)}
+          </p>
+          <div className="field-grid two">
+            <label>
+              Name
+              <input
+                type="text"
+                value={editForm.name}
+                disabled={disabled}
+                onChange={(event) =>
+                  onEditFormChange({
+                    ...editForm,
+                    name: event.currentTarget.value
+                  })
                 }
-              >
-                {formatSketchDimensionStatus(selectedDimension)}
-              </p>
-              <div className="field-grid two">
-                <label>
-                  Name
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      onEditFormChange({
-                        ...editForm,
-                        name: event.currentTarget.value
-                      })
-                    }
-                  />
-                </label>
-                <DimensionValueSourceFields
-                  disabled={disabled}
-                  form={editForm}
-                  parameterBindingOptions={parameterBindingOptions}
-                  onChange={onEditFormChange}
-                />
-              </div>
-              <div className="button-row compact">
-                <button
-                  type="button"
-                  disabled={
-                    disabled ||
-                    (editForm.valueSourceType === "parameter" &&
-                      parameterBindingOptions.length === 0)
-                  }
-                  onClick={onApplyDimensionEdit}
-                >
-                  Apply dimension
-                </button>
-                <button
-                  type="button"
-                  className="danger"
-                  disabled={disabled}
-                  onClick={() => onDeleteDimension(selectedDimension.id)}
-                >
-                  Delete dimension
-                </button>
-              </div>
-            </>
-          )}
+              />
+            </label>
+            <DimensionValueSourceFields
+              disabled={disabled}
+              form={editForm}
+              parameterBindingOptions={parameterBindingOptions}
+              onChange={onEditFormChange}
+            />
+          </div>
+          <div className="button-row compact">
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                (editForm.valueSourceType === "parameter" &&
+                  parameterBindingOptions.length === 0)
+              }
+              onClick={onApplyDimensionEdit}
+            >
+              Apply dimension
+            </button>
+            <button
+              type="button"
+              className="danger"
+              disabled={disabled}
+              onClick={() => onDeleteDimension(selectedDimension.id)}
+            >
+              Delete dimension
+            </button>
+          </div>
         </div>
       )}
     </section>
@@ -2288,6 +2414,7 @@ function SketchConstraintControls({
 }) {
   const supportsConstraints =
     availableKinds.length > 0 || constraints.length > 0;
+  const [mode, setMode] = useState<"idle" | "create" | "edit">("idle");
 
   if (!supportsConstraints) {
     return (
@@ -2313,9 +2440,18 @@ function SketchConstraintControls({
         <div className="dimension-status-list" aria-label="Constraint status">
           {constraints.map((constraint) => {
             const statusDisplay = getSketchConstraintStatusDisplay(constraint);
+            const isSelected = constraint.id === selectedConstraintId;
 
             return (
-              <div key={constraint.id} className="dimension-status-row">
+              <button
+                key={constraint.id}
+                type="button"
+                className={`dimension-status-row ${
+                  isSelected ? "selected" : ""
+                }`}
+                disabled={disabled}
+                onClick={() => onSelectConstraint(constraint.id)}
+              >
                 <div>
                   <strong>
                     {constraint.name} ·{" "}
@@ -2329,13 +2465,42 @@ function SketchConstraintControls({
                 >
                   {statusDisplay.label}
                 </span>
-              </div>
+              </button>
             );
           })}
         </div>
       )}
 
-      {availableKinds.length > 0 ? (
+      <div className="button-row compact contextual-action-row">
+        {availableKinds.length > 0 && (
+          <button
+            type="button"
+            className={mode === "create" ? "selected" : undefined}
+            disabled={disabled}
+            onClick={() => setMode(mode === "create" ? "idle" : "create")}
+          >
+            Add constraint
+          </button>
+        )}
+        {selectedConstraint && (
+          <button
+            type="button"
+            className={mode === "edit" ? "selected" : undefined}
+            disabled={disabled}
+            onClick={() => setMode(mode === "edit" ? "idle" : "edit")}
+          >
+            Edit selected
+          </button>
+        )}
+      </div>
+
+      {availableKinds.length === 0 && (
+        <p className="project-message compact">
+          Supported constraint targets for this entity are already constrained.
+        </p>
+      )}
+
+      {mode === "create" && availableKinds.length > 0 && (
         <div className="dimension-create-row">
           <div className="field-grid two">
             <label>
@@ -2426,81 +2591,56 @@ function SketchConstraintControls({
             </button>
           </div>
         </div>
-      ) : (
-        <p className="project-message compact">
-          Supported constraint targets for this entity are already constrained.
-        </p>
       )}
 
-      {constraints.length > 0 && (
+      {mode === "edit" && selectedConstraint && (
         <div className="dimension-editor">
+          <div className="readonly-field">
+            <span>Kind</span>
+            <strong>
+              {getSketchConstraintKindLabel(selectedConstraint.kind)}
+            </strong>
+          </div>
+          <p
+            className={
+              selectedConstraint.status === "healthy"
+                ? "project-message compact"
+                : "error-text"
+            }
+          >
+            {formatSketchConstraintStatus(selectedConstraint)}
+          </p>
           <label>
-            Edit constraint
-            <select
-              value={selectedConstraintId ?? ""}
+            Name
+            <input
+              type="text"
+              value={editForm.name}
               disabled={disabled}
               onChange={(event) =>
-                onSelectConstraint(event.currentTarget.value)
+                onEditFormChange({
+                  ...editForm,
+                  name: event.currentTarget.value
+                })
               }
-            >
-              {constraints.map((constraint) => (
-                <option key={constraint.id} value={constraint.id}>
-                  {constraint.name} /{" "}
-                  {getSketchConstraintKindLabel(constraint.kind)}
-                </option>
-              ))}
-            </select>
+            />
           </label>
-          {selectedConstraint && (
-            <>
-              <div className="readonly-field">
-                <span>Kind</span>
-                <strong>
-                  {getSketchConstraintKindLabel(selectedConstraint.kind)}
-                </strong>
-              </div>
-              <p
-                className={
-                  selectedConstraint.status === "healthy"
-                    ? "project-message compact"
-                    : "error-text"
-                }
-              >
-                {formatSketchConstraintStatus(selectedConstraint)}
-              </p>
-              <label>
-                Name
-                <input
-                  type="text"
-                  value={editForm.name}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    onEditFormChange({
-                      ...editForm,
-                      name: event.currentTarget.value
-                    })
-                  }
-                />
-              </label>
-              <div className="button-row compact">
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={onApplyConstraintEdit}
-                >
-                  Apply constraint
-                </button>
-                <button
-                  type="button"
-                  className="danger"
-                  disabled={disabled}
-                  onClick={() => onDeleteConstraint(selectedConstraint.id)}
-                >
-                  Delete constraint
-                </button>
-              </div>
-            </>
-          )}
+          <div className="button-row compact">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onApplyConstraintEdit}
+            >
+              Apply constraint
+            </button>
+            <button
+              type="button"
+              className="danger"
+              disabled={disabled}
+              onClick={() => onDeleteConstraint(selectedConstraint.id)}
+            >
+              Delete constraint
+            </button>
+          </div>
         </div>
       )}
     </section>

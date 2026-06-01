@@ -164,7 +164,10 @@ import {
 import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
-  createHoleTargetBodyOptions
+  createHoleTargetBodyOptions,
+  createSketchEntitySelectionId,
+  createSketchSelectionId,
+  type SketchPanelSelectionContext
 } from "./sketchPanelUi";
 import "./styles.css";
 
@@ -621,6 +624,7 @@ function createModelingSelectionContext({
   selectedFeature,
   selectedGeneratedReferenceState,
   selectedId,
+  selectedSketchContext,
   sketchDimensionsBySketchId,
   sketchEvaluationsBySketchId,
   sketches
@@ -632,6 +636,7 @@ function createModelingSelectionContext({
   readonly selectedFeature?: CadFeatureSummary;
   readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
   readonly selectedId?: string;
+  readonly selectedSketchContext?: SketchPanelSelectionContext;
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
     readonly SketchDimensionEntry[]
@@ -665,6 +670,7 @@ function createModelingSelectionContext({
     createSketchModelingSelectionContext({
       focusedSketchId,
       selectedId,
+      selectedSketchContext,
       sketchDimensionsBySketchId,
       sketchEvaluationsBySketchId,
       sketches
@@ -675,12 +681,14 @@ function createModelingSelectionContext({
 function createSketchModelingSelectionContext({
   focusedSketchId,
   selectedId,
+  selectedSketchContext,
   sketchDimensionsBySketchId,
   sketchEvaluationsBySketchId,
   sketches
 }: {
   readonly focusedSketchId?: string;
   readonly selectedId?: string;
+  readonly selectedSketchContext?: SketchPanelSelectionContext;
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
     readonly SketchDimensionEntry[]
@@ -691,6 +699,32 @@ function createSketchModelingSelectionContext({
   >;
   readonly sketches: readonly SketchSnapshot[];
 }): ModelingSelectionContext | undefined {
+  if (selectedSketchContext) {
+    const sketch = sketches.find(
+      (candidate) => candidate.id === selectedSketchContext.sketchId
+    );
+    const entity = sketch?.entities.find(
+      (candidate) => candidate.id === selectedSketchContext.entityId
+    );
+
+    if (sketch && entity) {
+      const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
+
+      return {
+        selectionKind: "sketchEntity",
+        sketch,
+        entity,
+        dimensions:
+          evaluation?.dimensions ?? sketchDimensionsBySketchId.get(sketch.id),
+        constraints: evaluation?.constraints
+      };
+    }
+
+    if (sketch) {
+      return { selectionKind: "sketch", sketch };
+    }
+  }
+
   if (selectedId) {
     for (const sketch of sketches) {
       for (const entity of sketch.entities) {
@@ -724,17 +758,6 @@ function createSketchModelingSelectionContext({
     : undefined;
 }
 
-function createSketchSelectionId(sketchId: string): string {
-  return `sketch:${sketchId}`;
-}
-
-function createSketchEntitySelectionId(
-  sketchId: string,
-  entityId: string
-): string {
-  return `${createSketchSelectionId(sketchId)}:entity:${entityId}`;
-}
-
 export function App() {
   const derivedGeometryRuntimeRef = useRef<DerivedGeometryRuntime | undefined>(
     undefined
@@ -764,6 +787,9 @@ export function App() {
   const [activeUtilityPanel, setActiveUtilityPanel] =
     useState<UtilityPanelId>("sketches");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
+  const [selectedSketchContext, setSelectedSketchContext] = useState<
+    SketchPanelSelectionContext | undefined
+  >();
   const [unitUpdateMode, setUnitUpdateMode] =
     useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
@@ -940,6 +966,7 @@ export function App() {
     selectedFeature,
     selectedGeneratedReferenceState,
     selectedId,
+    selectedSketchContext,
     sketchDimensionsBySketchId,
     sketchEvaluationsBySketchId,
     sketches
@@ -1332,6 +1359,7 @@ export function App() {
   function focusSketch(sketchId: string) {
     setActiveUtilityPanel("sketches");
     setFocusedSketchId(sketchId);
+    setSelectedSketchContext({ sketchId });
   }
 
   function handleModelingAction(action: ModelingActionDescriptor) {
@@ -1358,6 +1386,12 @@ export function App() {
 
         if (sketchId) {
           focusSketch(sketchId);
+          setSelectedSketchContext({
+            sketchId,
+            ...(action.target?.sketchEntityId
+              ? { entityId: action.target.sketchEntityId }
+              : {})
+          });
         } else {
           setActiveUtilityPanel("sketches");
         }
@@ -2029,6 +2063,7 @@ export function App() {
                   onHoleEntity={(sketchId, entityId, form) =>
                     void holeSketchEntity(sketchId, entityId, form)
                   }
+                  onSelectionContextChange={setSelectedSketchContext}
                 />
               </div>
 

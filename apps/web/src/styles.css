@@ -537,6 +537,10 @@ code {
 
 .object-tree ul button.selected,
 .compact-list button.selected,
+.entity-selection-list button.selected,
+.dimension-status-row.selected,
+.button-row button.selected,
+.feature-mode-tabs button.selected,
 .edge-finish-editor .button-row button.selected {
   border-color: rgba(15, 107, 109, 0.56);
   background: linear-gradient(90deg, var(--accent-soft), #ffffff 74%);
@@ -1102,6 +1106,35 @@ canvas:active {
   padding: 0 12px;
 }
 
+.entity-picker-toolbar {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.segmented-control button {
+  min-height: 31px;
+  min-width: 0;
+  flex: 1 1 72px;
+  padding: 0 9px;
+}
+
+.feature-mode-tabs button {
+  flex-basis: 88px;
+}
+
+.entity-select-fallback label {
+  display: grid;
+  gap: 5px;
+}
+
 .readonly-field {
   display: grid;
   gap: 4px;
@@ -1163,6 +1196,15 @@ canvas:active {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: start;
+}
+
+button.dimension-status-row {
+  width: 100%;
+  min-height: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
 }
 
 .dimension-status-row div {
@@ -1259,6 +1301,10 @@ canvas:active {
   gap: 6px;
 }
 
+.contextual-action-row button {
+  min-height: 30px;
+}
+
 .button-row button {
   padding: 0 10px;
 }
@@ -1281,6 +1327,48 @@ canvas:active {
   padding: 9px 10px;
   text-align: left;
   white-space: normal;
+}
+
+.entity-selection-list {
+  gap: 6px;
+}
+
+.entity-list.entity-selection-list li {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.entity-selection-list button {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.78);
+  text-align: left;
+  white-space: normal;
+}
+
+.entity-row-title {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.entity-row-title strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+
+.entity-row-title code {
+  min-width: 0;
+  color: var(--quiet);
+  text-align: right;
 }
 
 .compact-list span,

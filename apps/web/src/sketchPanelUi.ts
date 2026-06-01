@@ -86,6 +86,19 @@ export interface SketchLineTargetOption {
   readonly detail: string;
 }
 
+export interface SketchPanelSelectionContext {
+  readonly sketchId: SketchId;
+  readonly entityId?: SketchEntityId;
+}
+
+export interface SketchEntityListItem {
+  readonly id: SketchEntityId;
+  readonly kind: SketchEntityKind;
+  readonly kindLabel: string;
+  readonly detail: string;
+  readonly selected: boolean;
+}
+
 export function chooseSketchPanelSelection(
   sketches: readonly SketchSnapshot[],
   currentSketchId: SketchId | undefined,
@@ -130,6 +143,30 @@ export function chooseSketchEntitySelection(
   return entities[0]?.id;
 }
 
+export function createSketchSelectionId(sketchId: SketchId): string {
+  return `sketch:${sketchId}`;
+}
+
+export function createSketchEntitySelectionId(
+  sketchId: SketchId,
+  entityId: SketchEntityId
+): string {
+  return `${createSketchSelectionId(sketchId)}:entity:${entityId}`;
+}
+
+export function createSketchEntityListItems(
+  entities: readonly SketchEntitySnapshot[],
+  selectedEntityId: SketchEntityId | undefined
+): readonly SketchEntityListItem[] {
+  return entities.map((entity) => ({
+    id: entity.id,
+    kind: entity.kind,
+    kindLabel: getSketchEntityKindLabel(entity.kind),
+    detail: getSketchEntityListDetail(entity),
+    selected: entity.id === selectedEntityId
+  }));
+}
+
 export function getSketchEntityOptionLabel(
   entity: SketchEntitySnapshot
 ): string {
@@ -142,6 +179,38 @@ export function getSketchEntityOptionLabel(
       return `${entity.id} / rectangle ${entity.width} x ${entity.height}`;
     case "circle":
       return `${entity.id} / circle r ${entity.radius}`;
+  }
+}
+
+export function getSketchEntityKindLabel(kind: SketchEntityKind): string {
+  switch (kind) {
+    case "point":
+      return "Point";
+    case "line":
+      return "Line";
+    case "rectangle":
+      return "Rectangle";
+    case "circle":
+      return "Circle";
+  }
+}
+
+function getSketchEntityListDetail(entity: SketchEntitySnapshot): string {
+  switch (entity.kind) {
+    case "point":
+      return `Position ${formatSketchPointCoordinate(entity.point)}`;
+    case "line":
+      return `${formatSketchPointCoordinate(
+        entity.start
+      )} to ${formatSketchPointCoordinate(entity.end)}`;
+    case "rectangle":
+      return `Center ${formatSketchPointCoordinate(entity.center)} / ${
+        entity.width
+      } x ${entity.height}`;
+    case "circle":
+      return `Center ${formatSketchPointCoordinate(entity.center)} / radius ${
+        entity.radius
+      }`;
   }
 }
 
