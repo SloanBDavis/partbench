@@ -969,7 +969,9 @@ function GeneratedReferenceGroupsList({
                     <strong>{reference.label}</strong>
                     <span>{formatGeneratedReferenceKind(reference.kind)}</span>
                   </div>
-                  {reference.description && <small>{reference.description}</small>}
+                  {reference.description && (
+                    <small>{reference.description}</small>
+                  )}
                   <GeneratedReferenceActionRow
                     disabled={disabled}
                     reference={reference}
@@ -1017,7 +1019,6 @@ function GeneratedReferenceActionRow({
         >
           {selected ? "Selected" : "Inspect"}
         </button>
-        <small>Show details</small>
       </div>
       {createGeneratedReferenceActionStatuses(reference).map((action) => {
         if (action.id === "reference.name") {
@@ -1030,7 +1031,9 @@ function GeneratedReferenceActionRow({
               >
                 Name
               </button>
-              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!action.available && (
+                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              )}
             </div>
           );
         }
@@ -1045,7 +1048,9 @@ function GeneratedReferenceActionRow({
               >
                 Sketch
               </button>
-              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!action.available && (
+                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              )}
             </div>
           );
         }
@@ -1060,7 +1065,9 @@ function GeneratedReferenceActionRow({
               >
                 Chamfer
               </button>
-              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!action.available && (
+                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              )}
             </div>
           );
         }
@@ -1075,7 +1082,9 @@ function GeneratedReferenceActionRow({
               >
                 Fillet
               </button>
-              <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!action.available && (
+                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              )}
             </div>
           );
         }
@@ -1157,7 +1166,6 @@ function SelectedGeneratedReferencePanel({
         <>
           <div className="reference-heading">
             <strong>{state.reference.label}</strong>
-            <span>{formatGeneratedReferenceKind(state.reference.kind)}</span>
           </div>
           {state.reference.description && <p>{state.reference.description}</p>}
           <small>
