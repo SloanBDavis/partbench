@@ -887,8 +887,8 @@ describe("sketch panel UI helpers", () => {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
-        label: "body_rect / feat_rect",
-        detail: "Rectangle new body / 1 / positive"
+        label: "Rectangle body / 1 mm",
+        detail: "Rectangle new body / 1 mm / positive"
       }
     ]);
   });
@@ -918,15 +918,15 @@ describe("sketch panel UI helpers", () => {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
-        label: "body_rect / feat_rect",
-        detail: "Rectangle new body / 1 / positive"
+        label: "Rectangle body / 1 mm",
+        detail: "Rectangle new body / 1 mm / positive"
       },
       {
         bodyId: "body_circle",
         featureId: "feat_circle",
         profileKind: "circle",
-        label: "body_circle / feat_circle",
-        detail: "Circle new body / 1 / positive"
+        label: "Circle body / 1 mm",
+        detail: "Circle new body / 1 mm / positive"
       }
     ]);
   });
@@ -959,15 +959,15 @@ describe("sketch panel UI helpers", () => {
         bodyId: "body_circle",
         featureId: "feat_circle",
         profileKind: "circle",
-        label: "body_circle / feat_circle",
-        detail: "Circle new body / 1 / positive"
+        label: "Circle body / 1 mm",
+        detail: "Circle new body / 1 mm / positive"
       },
       {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
-        label: "body_rect / feat_rect",
-        detail: "Rectangle new body / 1 / positive"
+        label: "Rectangle body / 1 mm",
+        detail: "Rectangle new body / 1 mm / positive"
       }
     ]);
   });
@@ -1185,7 +1185,7 @@ describe("sketch panel UI helpers", () => {
     ).toEqual([
       {
         entityId: "axis_1",
-        label: "axis_1",
+        label: "Line / 4 mm",
         detail: "0, -2 to 0, 2"
       }
     ]);

@@ -1173,7 +1173,7 @@ export function App() {
   async function commitOps(
     ops: readonly CadOp[],
     getNextSelectedId: (response: CadBatchResponse) => string | null | undefined
-  ) {
+  ): Promise<CadBatchResponse | undefined> {
     setCommandPending(true);
     setCommandError(undefined);
 
@@ -1184,10 +1184,11 @@ export function App() {
 
       if (!response.ok) {
         setCommandError(response.error.message);
-        return;
+        return response;
       }
 
       syncDocument(getNextSelectedId(response));
+      return response;
     } finally {
       setCommandPending(false);
     }
@@ -1316,17 +1317,16 @@ export function App() {
   }
 
   async function createSketch(form: SketchCreateForm) {
-    await commitOps([buildCreateSketchOp(form)], (response) => {
-      const sketchId = response.createdSketchIds?.[0];
+    const response = await commitOps([buildCreateSketchOp(form)], () => null);
+    const sketchId = response?.ok
+      ? (response.createdSketchIds?.[0] ?? form.id.trim())
+      : undefined;
 
-      if (sketchId) {
-        setSelectedGeneratedReference(undefined);
-        setFocusedSketchId(sketchId);
-        setSelectedSketchContext({ sketchId });
-      }
-
-      return null;
-    });
+    if (sketchId) {
+      setSelectedGeneratedReference(undefined);
+      setFocusedSketchId(sketchId);
+      setSelectedSketchContext({ sketchId });
+    }
   }
 
   async function createParameter(form: ParameterCreateForm) {
@@ -1351,17 +1351,19 @@ export function App() {
   }
 
   async function createSketchOnFace(form: SketchCreateOnFaceForm) {
-    await commitOps([buildCreateSketchOnFaceOp(form)], (response) => {
-      const sketchId = response.createdSketchIds?.[0];
+    const response = await commitOps(
+      [buildCreateSketchOnFaceOp(form)],
+      () => null
+    );
+    const sketchId = response?.ok
+      ? (response.createdSketchIds?.[0] ?? form.id.trim())
+      : undefined;
 
-      if (sketchId) {
-        setSelectedGeneratedReference(undefined);
-        setFocusedSketchId(sketchId);
-        setSelectedSketchContext({ sketchId });
-      }
-
-      return null;
-    });
+    if (sketchId) {
+      setSelectedGeneratedReference(undefined);
+      setFocusedSketchId(sketchId);
+      setSelectedSketchContext({ sketchId });
+    }
   }
 
   async function createEdgeFinish(
@@ -1443,7 +1445,13 @@ export function App() {
   async function deleteSketchEntity(sketchId: string, entityId: string) {
     await commitOps(
       [buildDeleteSketchEntityOp(sketchId, entityId)],
-      () => selectedId
+      () => null
+    );
+    setFocusedSketchId(sketchId);
+    setSelectedSketchContext((current) =>
+      current?.sketchId === sketchId && current.entityId === entityId
+        ? { sketchId }
+        : current
     );
   }
 
@@ -1898,6 +1906,9 @@ export function App() {
             }
             onDeleteFeature={(featureId) =>
               void deleteAuthoredFeature(featureId)
+            }
+            onDeleteEntity={(sketchId, entityId) =>
+              void deleteSketchEntity(sketchId, entityId)
             }
             onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
             onRenameSketch={(sketchId, name) =>

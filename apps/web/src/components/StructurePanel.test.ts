@@ -41,7 +41,7 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Rectangle");
     expect(markup).toContain("Extrude");
     expect(markup).toContain("Cut");
-    expect(markup).toContain("Used here");
+    expect(markup).toContain("Hidden input / replaced by result");
     expect(markup).toContain("Cut result");
     expect(markup).not.toContain("feature_cut");
     expect(markup).not.toContain("body_base");

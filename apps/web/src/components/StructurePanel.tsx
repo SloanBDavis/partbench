@@ -941,11 +941,11 @@ function formatTargetStoryDetail(target: StructureLineageTargetNode): string {
   }
 
   if (target.consumedByThisFeature) {
-    return "Used here";
+    return "Hidden input / replaced by result";
   }
 
   if (target.consumedByFeatureId) {
-    return "Used by another feature";
+    return "Hidden input / used by another feature";
   }
 
   return "Target";

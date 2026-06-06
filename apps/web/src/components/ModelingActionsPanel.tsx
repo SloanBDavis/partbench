@@ -54,6 +54,8 @@ import {
   createSketchPointTargetOptionsForEntity,
   formatSketchConstraintStatus,
   formatSketchDimensionStatus,
+  getAddOperationStatus,
+  getCutOperationStatus,
   getHoleOperationStatus,
   getExtrudeSideForOperationMode,
   getRevolveOperationStatus,
@@ -108,6 +110,7 @@ export interface ModelingActionsPanelProps {
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
+  readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
   readonly onRevolveEntity?: (
     sketchId: string,
     entityId: string,
@@ -208,6 +211,7 @@ export function ModelingActionsPanel({
   onHoleEntity,
   onNameGeneratedReference,
   onDeleteFeature,
+  onDeleteEntity,
   onDeleteSketch,
   onRenameSketch,
   onRevolveEntity,
@@ -220,8 +224,10 @@ export function ModelingActionsPanel({
   );
   const activeSketch = getActiveSketchFromContext(context);
   const nextSketchName = createNextSketchName(sketches);
+  const nextSketchId = createNextSketchId(sketches);
   const quickSketchSubmitForm: SketchCreateForm = {
     ...quickSketchForm,
+    id: quickSketchForm.id || nextSketchId,
     name: nextSketchName
   };
 
@@ -308,6 +314,7 @@ export function ModelingActionsPanel({
           holeTargetBodies={holeTargetBodies}
           onCreateConstraint={onCreateConstraint}
           onCreateDimension={onCreateDimension}
+          onDeleteEntity={onDeleteEntity}
           onExtrudeEntity={onExtrudeEntity}
           onHoleEntity={onHoleEntity}
           onRevolveEntity={onRevolveEntity}
@@ -321,6 +328,7 @@ export function ModelingActionsPanel({
           actions={actions}
           disabled={disabled}
           context={context}
+          sketches={sketches}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteFeature={onDeleteFeature}
           onSelectSketch={onSelectSketch}
@@ -352,6 +360,17 @@ function createNextSketchName(sketches: readonly SketchSnapshot[]): string {
   }
 
   return `Sketch ${next}`;
+}
+
+function createNextSketchId(sketches: readonly SketchSnapshot[]): string {
+  const usedIds = new Set(sketches.map((sketch) => sketch.id.trim()));
+  let next = sketches.length + 1;
+
+  while (usedIds.has(`sketch_${next}`)) {
+    next += 1;
+  }
+
+  return `sketch_${next}`;
 }
 
 function getActiveSketchFromContext(
@@ -537,6 +556,7 @@ function SketchEntityWorkbench({
   holeTargetBodies,
   onCreateConstraint,
   onCreateDimension,
+  onDeleteEntity,
   onExtrudeEntity,
   onHoleEntity,
   onRevolveEntity,
@@ -562,6 +582,7 @@ function SketchEntityWorkbench({
     target: SketchDimensionTarget,
     form: SketchDimensionForm
   ) => void;
+  readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
   readonly onExtrudeEntity?: (
     sketchId: string,
     entityId: string,
@@ -595,21 +616,36 @@ function SketchEntityWorkbench({
     (action) => action.id === "feature.revolve"
   );
   const holeAction = actions.find((action) => action.id === "feature.hole");
+  const axisAction = actions.find(
+    (action) => action.id === "sketch.revolveAxis.use"
+  );
+  const effectiveHoleTargetBodies =
+    holeAction?.target?.holeTargets && holeAction.target.holeTargets.length > 0
+      ? holeAction.target.holeTargets
+      : holeTargetBodies;
 
   return (
     <div className="workbench-surface">
+      {context.entity.kind === "line" && (
+        <AxisCandidateCard action={axisAction} context={context} />
+      )}
       <FeatureCreateCard
         addTargetBodies={addTargetBodies}
         cutTargetBodies={cutTargetBodies}
         disabled={disabled}
         extrudeAction={extrudeAction}
         holeAction={holeAction}
-        holeTargetBodies={holeAction?.target?.holeTargets ?? holeTargetBodies}
+        holeTargetBodies={effectiveHoleTargetBodies}
         revolveAction={revolveAction}
         context={context}
         onExtrudeEntity={onExtrudeEntity}
         onHoleEntity={onHoleEntity}
         onRevolveEntity={onRevolveEntity}
+      />
+      <SelectedEntityActions
+        context={context}
+        disabled={disabled}
+        onDeleteEntity={onDeleteEntity}
       />
       <EntityEditCard
         context={context}
@@ -629,6 +665,71 @@ function SketchEntityWorkbench({
         onCreateConstraint={onCreateConstraint}
       />
     </div>
+  );
+}
+
+function SelectedEntityActions({
+  context,
+  disabled,
+  onDeleteEntity
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
+}) {
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const role = formatSketchEntityRole(context.entity.kind);
+
+  return (
+    <section className="workbench-card compact selected-entity-actions">
+      <div className="workbench-card-heading">
+        <h3>Selected {role}</h3>
+        <small>{formatSketchEntity(context.entity)}</small>
+      </div>
+      <button
+        type="button"
+        className={deleteArmed ? "danger armed" : "danger"}
+        disabled={disabled || !onDeleteEntity}
+        onClick={() => {
+          if (!deleteArmed) {
+            setDeleteArmed(true);
+            return;
+          }
+
+          onDeleteEntity?.(context.sketch.id, context.entity.id);
+        }}
+      >
+        {deleteArmed ? "Confirm delete" : `Delete ${role}`}
+      </button>
+    </section>
+  );
+}
+
+function AxisCandidateCard({
+  action,
+  context
+}: {
+  readonly action?: ModelingActionDescriptor;
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+}) {
+  return (
+    <section className="workbench-card compact">
+      <div className="workbench-card-heading">
+        <h3>Axis candidate</h3>
+        <small>{formatSketchEntity(context.entity)}</small>
+      </div>
+      <small>
+        {action?.available
+          ? "Use this line as a revolve axis by selecting a rectangle or circle profile."
+          : (action?.reason ?? "Line axes need non-zero length.")}
+      </small>
+    </section>
   );
 }
 
@@ -724,7 +825,9 @@ function EntityEditCard({
       <button
         type="button"
         disabled={disabled || !validation.ok}
-        onClick={() => onUpdateEntity?.(context.sketch.id, nextEntity)}
+        onClick={() => {
+          onUpdateEntity?.(context.sketch.id, nextEntity);
+        }}
       >
         Apply entity
       </button>
@@ -1213,7 +1316,13 @@ function FeatureCreateCard({
     form: FeatureRevolveForm
   ) => void;
 }) {
-  const [mode, setMode] = useState<"extrude" | "revolve" | "hole">("extrude");
+  const [mode, setMode] = useState<"extrude" | "revolve" | "hole">(() =>
+    getInitialFeatureMode(context, holeTargetBodies)
+  );
+  const initialExtrudeOperationMode = getInitialExtrudeOperationMode(
+    context,
+    cutTargetBodies
+  );
 
   return (
     <section className="workbench-card primary">
@@ -1225,7 +1334,7 @@ function FeatureCreateCard({
         <button
           type="button"
           className={mode === "extrude" ? "selected" : undefined}
-          disabled={disabled || !extrudeAction?.available}
+          disabled={disabled}
           onClick={() => setMode("extrude")}
         >
           Extrude
@@ -1233,7 +1342,7 @@ function FeatureCreateCard({
         <button
           type="button"
           className={mode === "revolve" ? "selected" : undefined}
-          disabled={disabled || !revolveAction?.available}
+          disabled={disabled}
           onClick={() => setMode("revolve")}
         >
           Revolve
@@ -1241,7 +1350,7 @@ function FeatureCreateCard({
         <button
           type="button"
           className={mode === "hole" ? "selected" : undefined}
-          disabled={disabled || !holeAction?.available}
+          disabled={disabled}
           onClick={() => setMode("hole")}
         >
           Hole
@@ -1269,6 +1378,7 @@ function FeatureCreateCard({
           context={context}
           cutTargetBodies={cutTargetBodies}
           disabled={disabled}
+          initialOperationMode={initialExtrudeOperationMode}
           onExtrudeEntity={onExtrudeEntity}
         />
       )}
@@ -1282,6 +1392,7 @@ function ExtrudeFeatureForm({
   context,
   cutTargetBodies,
   disabled,
+  initialOperationMode,
   onExtrudeEntity
 }: {
   readonly action?: ModelingActionDescriptor;
@@ -1292,13 +1403,30 @@ function ExtrudeFeatureForm({
   >;
   readonly cutTargetBodies: readonly BooleanTargetBodyOption[];
   readonly disabled: boolean;
+  readonly initialOperationMode: FeatureExtrudeForm["operationMode"];
   readonly onExtrudeEntity?: (
     sketchId: string,
     entityId: string,
     form: FeatureExtrudeForm
   ) => void;
 }) {
-  const [form, setForm] = useState(defaultExtrudeForm);
+  const [form, setForm] = useState<FeatureExtrudeForm>(() => ({
+    ...defaultExtrudeForm,
+    operationMode: initialOperationMode,
+    side: getExtrudeSideForOperationMode(
+      context.sketch,
+      initialOperationMode,
+      defaultExtrudeForm.side
+    ),
+    targetBodyId:
+      initialOperationMode === "add"
+        ? addTargetBodies[0]?.bodyId
+        : initialOperationMode === "cut"
+          ? cutTargetBodies[0]?.bodyId
+          : undefined
+  }));
+  const addStatus = getAddOperationStatus(context.entity, addTargetBodies);
+  const cutStatus = getCutOperationStatus(context.entity, cutTargetBodies);
   const targetBodies =
     form.operationMode === "add" ? addTargetBodies : cutTargetBodies;
   const targetBodyId =
@@ -1309,10 +1437,17 @@ function ExtrudeFeatureForm({
     ...form,
     ...(targetBodyId ? { targetBodyId } : {})
   };
+  const operationStatus =
+    form.operationMode === "add"
+      ? addStatus
+      : form.operationMode === "cut"
+        ? cutStatus
+        : undefined;
   const available =
     Boolean(action?.available) &&
     Number.isFinite(form.depth) &&
     form.depth > 0 &&
+    (!operationStatus || operationStatus.available) &&
     (form.operationMode === "newBody" || Boolean(targetBodyId));
 
   return (
@@ -1367,12 +1502,8 @@ function ExtrudeFeatureForm({
             }
           >
             <option value="newBody">New body</option>
-            <option value="add" disabled={addTargetBodies.length === 0}>
-              Add to body
-            </option>
-            <option value="cut" disabled={cutTargetBodies.length === 0}>
-              Cut body
-            </option>
+            <option value="add">Add to body ({addTargetBodies.length})</option>
+            <option value="cut">Cut body ({cutTargetBodies.length})</option>
           </select>
         </label>
         {form.operationMode !== "newBody" && (
@@ -1394,6 +1525,17 @@ function ExtrudeFeatureForm({
           </label>
         )}
       </div>
+      {operationStatus && (
+        <p
+          className={
+            operationStatus.available
+              ? "form-hint compact"
+              : "error-text compact"
+          }
+        >
+          {operationStatus.message}
+        </p>
+      )}
       {context.sketch.attachment && form.operationMode === "cut" && (
         <small className="form-hint">
           {form.side === "negative"
@@ -1412,6 +1554,38 @@ function ExtrudeFeatureForm({
       </button>
     </>
   );
+}
+
+function getInitialFeatureMode(
+  context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >,
+  holeTargetBodies: readonly BooleanTargetBodyOption[]
+): "extrude" | "revolve" | "hole" {
+  if (context.entity.kind === "circle" && holeTargetBodies.length > 0) {
+    return "hole";
+  }
+
+  return "extrude";
+}
+
+function getInitialExtrudeOperationMode(
+  context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >,
+  cutTargetBodies: readonly BooleanTargetBodyOption[]
+): FeatureExtrudeForm["operationMode"] {
+  if (
+    context.sketch.attachment &&
+    context.entity.kind === "rectangle" &&
+    cutTargetBodies.length > 0
+  ) {
+    return "cut";
+  }
+
+  return "newBody";
 }
 
 function RevolveFeatureForm({
@@ -1608,6 +1782,7 @@ function BodyWorkbench({
   actions,
   context,
   disabled,
+  sketches,
   onCreateSketchOnFace,
   onDeleteFeature,
   onSelectSketch
@@ -1618,6 +1793,7 @@ function BodyWorkbench({
     { readonly selectionKind: "body" }
   >;
   readonly disabled: boolean;
+  readonly sketches: readonly SketchSnapshot[];
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
@@ -1631,7 +1807,7 @@ function BodyWorkbench({
   const [faceIndex, setFaceIndex] = useState(0);
   const selectedFace = attachableFaces[faceIndex] ?? attachableFaces[0];
   const [sketchDraft, setSketchDraft] = useState(() => ({
-    id: "",
+    id: createNextSketchId(sketches),
     name: selectedFace ? createSketchOnFaceDefaultName(selectedFace) : ""
   }));
   const sketchForm = selectedFace
@@ -1689,7 +1865,16 @@ function BodyWorkbench({
           <button
             type="button"
             disabled={disabled || !sketchAction?.available || !selectedFace}
-            onClick={() => sketchForm && onCreateSketchOnFace?.(sketchForm)}
+            onClick={() => {
+              if (!sketchForm) {
+                return;
+              }
+
+              onCreateSketchOnFace?.(sketchForm);
+              if (sketchForm.id) {
+                onSelectSketch?.(sketchForm.id);
+              }
+            }}
           >
             Sketch on face
           </button>
@@ -1710,7 +1895,7 @@ function BodyWorkbench({
                     setFaceIndex(nextIndex);
                     if (nextFace) {
                       setSketchDraft({
-                        id: "",
+                        id: createNextSketchId(sketches),
                         name: createSketchOnFaceDefaultName(nextFace)
                       });
                     }
@@ -2189,6 +2374,18 @@ function formatSketchEntityKind(kind: SketchEntityKind): string {
       return "Rectangle";
     case "circle":
       return "Circle";
+  }
+}
+
+function formatSketchEntityRole(kind: SketchEntityKind): string {
+  switch (kind) {
+    case "line":
+      return "axis";
+    case "rectangle":
+    case "circle":
+      return "profile";
+    case "point":
+      return "point";
   }
 }
 

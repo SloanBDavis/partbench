@@ -258,7 +258,7 @@ export function createRevolveAxisOptions(
     )
     .map((entity) => ({
       entityId: entity.id,
-      label: entity.id,
+      label: `Line / ${getLineLength(entity)} mm`,
       detail: `${formatSketchPointCoordinate(
         entity.start
       )} to ${formatSketchPointCoordinate(entity.end)}`
@@ -1055,8 +1055,10 @@ function createBooleanTargetBodyOptions(
           bodyId: body.id,
           featureId: feature.id,
           profileKind: feature.profileKind,
-          label: `${body.name ?? body.id} / ${feature.id}`,
-          detail: `${formatProfileKind(feature.profileKind)} new body / ${feature.depth} / ${feature.side}`
+          label:
+            body.name ??
+            `${formatProfileKind(feature.profileKind)} body / ${feature.depth} mm`,
+          detail: `${formatProfileKind(feature.profileKind)} new body / ${feature.depth} mm / ${feature.side}`
         }
       ];
     });

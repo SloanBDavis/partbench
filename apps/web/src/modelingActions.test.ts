@@ -132,7 +132,7 @@ describe("modeling action helpers", () => {
         revolveAxes: [
           {
             entityId: "axis_1",
-            label: "axis_1",
+            label: "Line / 4 mm",
             detail: "0, -2 to 0, 2"
           }
         ]
@@ -181,7 +181,7 @@ describe("modeling action helpers", () => {
         revolveAxes: [
           {
             entityId: "axis_1",
-            label: "axis_1",
+            label: "Line / 2 mm",
             detail: "0, -1 to 0, 1"
           }
         ]
