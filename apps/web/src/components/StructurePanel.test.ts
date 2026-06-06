@@ -1,7 +1,9 @@
 import type {
+  BodyGeneratedReferencesQueryResponse,
   CadBodySnapshot,
   CadFeatureSummary,
   CadPartSnapshot,
+  CadGeneratedFaceReference,
   ProjectHealthQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
@@ -11,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { StructurePanel } from "./StructurePanel";
 
 describe("StructurePanel", () => {
-  it("renders lineage before legacy category groups with target and result bodies", () => {
+  it("renders a primary model tree without legacy category groups", () => {
     const markup = renderToStaticMarkup(
       createElement(StructurePanel, {
         bodies: [
@@ -34,12 +36,49 @@ describe("StructurePanel", () => {
       })
     );
 
-    expect(markup.indexOf("Lineage")).toBeLessThan(markup.indexOf("Objects"));
     expect(markup).toContain("Default part");
     expect(markup).toContain("rect_1");
     expect(markup).toContain("feature_cut");
     expect(markup).toContain("Consumed target");
     expect(markup).toContain("Cut result");
+    expect(markup).toContain("Selected");
+    expect(markup).not.toContain("Lineage");
+    expect(markup).not.toContain("Advanced browser");
+    expect(markup).not.toContain("Objects");
+  });
+
+  it("renders selected generated references inside the primary body lineage", () => {
+    const references = createGeneratedReferences();
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [createExtrudeBody("body_base", "feature_base")],
+        features: [createBaseFeature()],
+        generatedReferences: references,
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [createPart()],
+        selectedGeneratedReference: {
+          bodyId: "body_base",
+          stableId: "generated:face:body_base:startCap"
+        },
+        selectedId: "body_base",
+        sketches: [createSketch()],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined,
+        onSelectGeneratedReference: () => undefined
+      })
+    );
+
+    expect(markup.indexOf("References")).toBeGreaterThan(
+      markup.indexOf("body_base")
+    );
+    expect(markup).toContain("Start cap");
+    expect(markup).toContain("Sketch plane");
+    expect(markup).toContain("Start uMin edge");
+    expect(markup).toContain("Chamfer");
     expect(markup).toContain("Selected");
   });
 });
@@ -153,5 +192,113 @@ function createExtrudeBody(
       profileKind: "rectangle"
     },
     ...overrides
+  };
+}
+
+function createGeneratedReferences(): BodyGeneratedReferencesQueryResponse {
+  const face = createFaceReference();
+
+  return {
+    ok: true,
+    query: "body.generatedReferences",
+    cadOpsVersion: "cadops.v1",
+    body: {
+      kind: "body",
+      stableId: "generated:body:body_base",
+      label: "Rectangle extrude body",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      bodyId: "body_base",
+      ownerPartId: "part:default",
+      sourceFeatureId: "feature_base",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "rect_1",
+      profileKind: "rectangle",
+      geometricSignature: {
+        profileKind: "rectangle",
+        profile: {
+          kind: "rectangle",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        extrudeSide: "positive",
+        depth: 4,
+        sketchPlane: "XY",
+        surfaceType: "plane"
+      }
+    },
+    faceCount: 1,
+    faces: [face],
+    edgeCount: 1,
+    edges: [
+      {
+        kind: "edge",
+        stableId: "generated:edge:body_base:start:uMin",
+        label: "Start uMin edge",
+        eligibleOperations: [
+          "feature.chamfer",
+          "feature.fillet",
+          "feature.measureReference",
+          "feature.selectReference"
+        ],
+        bodyId: "body_base",
+        ownerPartId: "part:default",
+        sourceFeatureId: "feature_base",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        role: "start:uMin",
+        adjacentFaceRoles: ["startCap", "side:uMin"],
+        geometricSignature: {
+          profileKind: "rectangle",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 2
+          },
+          extrudeSide: "positive",
+          depth: 4,
+          sketchPlane: "XY",
+          curveType: "line"
+        }
+      }
+    ],
+    vertexCount: 0,
+    vertices: []
+  };
+}
+
+function createFaceReference(): CadGeneratedFaceReference {
+  return {
+    kind: "face",
+    stableId: "generated:face:body_base:startCap",
+    label: "Start cap",
+    eligibleOperations: [
+      "feature.attachSketchPlane",
+      "feature.measureReference",
+      "feature.selectReference"
+    ],
+    bodyId: "body_base",
+    ownerPartId: "part:default",
+    sourceFeatureId: "feature_base",
+    sourceSketchId: "sketch_1",
+    sourceSketchEntityId: "rect_1",
+    role: "startCap",
+    geometricSignature: {
+      profileKind: "rectangle",
+      profile: {
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      extrudeSide: "positive",
+      depth: 4,
+      sketchPlane: "XY",
+      surfaceType: "plane"
+    }
   };
 }

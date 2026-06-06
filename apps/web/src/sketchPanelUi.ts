@@ -2,6 +2,8 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
+  FeatureExtrudeOperationMode,
+  FeatureExtrudeSide,
   SketchConstraintEntry,
   SketchConstraintKind,
   SketchDimensionEntry,
@@ -29,6 +31,22 @@ export interface BooleanTargetBodyOption {
 export interface BooleanOperationStatus {
   readonly available: boolean;
   readonly message: string;
+}
+
+export function getExtrudeSideForOperationMode(
+  sketch: SketchSnapshot,
+  operationMode: FeatureExtrudeOperationMode,
+  currentSide: FeatureExtrudeSide
+): FeatureExtrudeSide {
+  if (!sketch.attachment) {
+    return currentSide;
+  }
+
+  if (operationMode === "cut") {
+    return "negative";
+  }
+
+  return currentSide === "negative" ? "positive" : currentSide;
 }
 
 export interface RevolveAxisOption {

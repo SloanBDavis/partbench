@@ -1,6 +1,8 @@
 import type {
+  BodyGeneratedReferencesQueryResponse,
   CadBodySnapshot,
   CadFeatureSummary,
+  CadGeneratedReference,
   CadPartSnapshot,
   NamedGeneratedReferenceEntry,
   ProjectHealthQueryResponse,
@@ -36,8 +38,6 @@ import {
   getHealthIssues,
   getNamedReferenceHealthStatus,
   getSketchHealthStatus,
-  isAuthoredStructureBody,
-  isAuthoredStructureFeature,
   type StructureLineageFeatureNode,
   type StructureLineagePartNode,
   type StructureLineageTargetNode
@@ -53,34 +53,43 @@ export interface StructurePanelProps {
   readonly features: readonly CadFeatureSummary[];
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly objects: readonly SceneObject[];
   readonly parts: readonly CadPartSnapshot[];
   readonly selectedId?: string;
+  readonly selectedGeneratedReference?: {
+    readonly bodyId: string;
+    readonly stableId: string;
+  };
   readonly sketches: readonly SketchSnapshot[];
   readonly units: DocumentUnits;
-  readonly onFocusSketch: (sketchId: string) => void;
+  readonly onFocusSketch: (sketchId: string, entityId?: string) => void;
   readonly onInspectNamedReference: (name: string) => void;
   readonly onSelect: (id: string | undefined) => void;
+  readonly onSelectGeneratedReference?: (
+    reference: CadGeneratedReference
+  ) => void;
 }
 
 export function StructurePanel({
   bodies,
   features,
+  generatedReferences,
   geometryStatuses,
   health,
   namedReferences,
   objects,
   parts,
   selectedId,
+  selectedGeneratedReference,
   sketches,
   units,
   onFocusSketch,
   onInspectNamedReference,
-  onSelect
+  onSelect,
+  onSelectGeneratedReference
 }: StructurePanelProps) {
-  const authoredFeatures = features.filter(isAuthoredStructureFeature);
-  const authoredBodies = bodies.filter(isAuthoredStructureBody);
   const lineage = createStructureLineage({
     parts,
     sketches,
@@ -97,13 +106,13 @@ export function StructurePanel({
   });
   const summaryHealth = formatHealthStatus(summary.status);
   const shouldShowSummaryHealth =
-    summary.status !== "healthy" || summary.issueCount > 0;
+    summary.status !== "healthy" && summary.status !== "under-defined";
 
   return (
     <aside className="object-tree model-browser" aria-label="Model structure">
       <div className="model-browser-header">
         <div>
-          <h2>Structure</h2>
+          <h2>Model</h2>
           <small>
             {summary.partCount} part / {summary.sketchCount} sketches /{" "}
             {summary.generatedBodyCount} bodies
@@ -124,58 +133,33 @@ export function StructurePanel({
         )}
       </div>
 
-      <div className="structure-browser-sections">
-        <StructureGroup
-          title="Lineage"
-          count={lineage.featureNodeCount}
-          open
-          className="lineage-group"
-        >
-          {lineage.parts.length === 0 ? (
-            <p className="empty-state compact">
-              Create a sketch or primitive to start model lineage.
-            </p>
-          ) : (
-            <ul className="structure-lineage-tree">
-              {lineage.parts.map((partNode) => (
-                <LineagePartNode
-                  key={partNode.part.id}
-                  geometryStatuses={geometryStatuses}
-                  health={health}
-                  node={partNode}
-                  selectedId={selectedId}
-                  units={units}
-                  onFocusSketch={onFocusSketch}
-                  onSelect={onSelect}
-                />
-              ))}
-            </ul>
-          )}
-        </StructureGroup>
+      <div className="structure-browser-sections model-tree-scroll">
+        {lineage.parts.length === 0 ? (
+          <p className="empty-state compact model-tree-empty">
+            Start with a sketch or a primitive.
+          </p>
+        ) : (
+          <ul className="structure-lineage-tree model-tree-root">
+            {lineage.parts.map((partNode) => (
+              <LineagePartNode
+                key={partNode.part.id}
+                geometryStatuses={geometryStatuses}
+                health={health}
+                node={partNode}
+                selectedId={selectedId}
+                selectedGeneratedReference={selectedGeneratedReference}
+                units={units}
+                generatedReferences={generatedReferences}
+                onFocusSketch={onFocusSketch}
+                onSelect={onSelect}
+                onSelectGeneratedReference={onSelectGeneratedReference}
+              />
+            ))}
+          </ul>
+        )}
 
-        <StructureGroup title="Part" count={parts.length}>
-          {parts.length === 0 ? (
-            <p className="empty-state compact">No parts yet</p>
-          ) : (
-            <ul>
-              {parts.map((part) => (
-                <li key={part.id}>
-                  <div className="structure-row readonly">
-                    <span className="object-id">{part.name}</span>
-                    <strong>Part</strong>
-                    <small>{formatPartLine(part)}</small>
-                    <small>{part.id}</small>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </StructureGroup>
-
-        <StructureGroup title="Objects" count={objects.length}>
-          {objects.length === 0 ? (
-            <p className="empty-state compact">No primitive objects</p>
-          ) : (
+        {objects.length > 0 && (
+          <StructureGroup title="Primitives" count={objects.length} open>
             <ul>
               {objects.map((object) => (
                 <li key={object.id}>
@@ -188,9 +172,6 @@ export function StructurePanel({
                       {getObjectDisplayName(object)}
                     </span>
                     <strong>{formatObjectKind(object.kind)}</strong>
-                    {object.name && (
-                      <small className="object-meta">ID {object.id}</small>
-                    )}
                     <small className="object-meta">
                       {formatDimensions(object, units)}
                     </small>
@@ -208,136 +189,14 @@ export function StructurePanel({
                 </li>
               ))}
             </ul>
-          )}
-        </StructureGroup>
+          </StructureGroup>
+        )}
 
-        <StructureGroup title="Sketches" count={sketches.length}>
-          {sketches.length === 0 ? (
-            <p className="empty-state compact">No sketches yet</p>
-          ) : (
-            <ul>
-              {sketches.map((sketch) => {
-                const status = getSketchHealthStatus(health, sketch.id);
-                const issues = getHealthIssues(health, {
-                  kind: "sketch",
-                  id: sketch.id
-                });
-
-                return (
-                  <li key={sketch.id}>
-                    <button
-                      type="button"
-                      onClick={() => onFocusSketch(sketch.id)}
-                    >
-                      <span className="object-id">{sketch.name}</span>
-                      <strong>
-                        {sketch.attachment ? "Attached" : sketch.plane}
-                      </strong>
-                      <small>
-                        {sketch.entities.length} entities
-                        {sketch.attachment
-                          ? ` / ${sketch.attachment.faceRole}`
-                          : ""}
-                      </small>
-                      <small>{sketch.id}</small>
-                      <HealthStatus status={status} />
-                      <HealthIssues issues={issues} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </StructureGroup>
-
-        <StructureGroup title="Features" count={authoredFeatures.length}>
-          {authoredFeatures.length === 0 ? (
-            <p className="empty-state compact">No authored features yet</p>
-          ) : (
-            <ul>
-              {authoredFeatures.map((feature) => {
-                const status = getFeatureHealthStatus(health, feature.id);
-                const issues = getHealthIssues(health, {
-                  kind: "feature",
-                  id: feature.id
-                });
-
-                return (
-                  <li key={feature.id}>
-                    <button
-                      type="button"
-                      className={
-                        feature.bodyId === selectedId ? "selected" : ""
-                      }
-                      onClick={() => onSelect(feature.bodyId)}
-                    >
-                      <span className="object-id">
-                        {feature.name ?? feature.id}
-                      </span>
-                      <strong>{formatFeatureKindLabel(feature)}</strong>
-                      <small>{formatFeatureLine(feature, units)}</small>
-                      <small>{formatFeatureSourceLine(feature)}</small>
-                      <small>Body {feature.bodyId}</small>
-                      <HealthStatus status={status} />
-                      <HealthIssues issues={issues} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </StructureGroup>
-
-        <StructureGroup title="Bodies" count={authoredBodies.length}>
-          {authoredBodies.length === 0 ? (
-            <p className="empty-state compact">No generated bodies yet</p>
-          ) : (
-            <ul>
-              {authoredBodies.map((body) => {
-                const feature = authoredFeatures.find(
-                  (candidate) => candidate.id === body.featureId
-                );
-                const status = getBodyHealthStatus(health, body.id);
-                const issues = getHealthIssues(health, {
-                  kind: "body",
-                  id: body.id
-                });
-
-                return (
-                  <li key={body.id}>
-                    <button
-                      type="button"
-                      className={body.id === selectedId ? "selected" : ""}
-                      onClick={() => onSelect(body.id)}
-                    >
-                      <span className="object-id">{body.name ?? body.id}</span>
-                      <strong>{formatBodyRole(body, feature)}</strong>
-                      <small>{formatBodyStatusLine(body, feature)}</small>
-                      {feature && (
-                        <small>{formatFeatureLine(feature, units)}</small>
-                      )}
-                      <GeometryStatus status={geometryStatuses?.get(body.id)} />
-                      <HealthStatus status={status} />
-                      <HealthIssues issues={issues} />
-                      {body.id === selectedId && (
-                        <small className="selected-status">Selected</small>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </StructureGroup>
-
-        <StructureGroup
-          title="Named refs"
-          count={namedReferences.length}
-          open={namedReferences.length > 0}
-        >
-          {namedReferences.length === 0 ? (
-            <p className="empty-state compact">No named references yet</p>
-          ) : (
+        {namedReferences.length > 0 && (
+          <StructureGroup
+            title="Named references"
+            count={namedReferences.length}
+          >
             <ul>
               {namedReferences.map((reference) => {
                 const status = getNamedReferenceHealthStatus(
@@ -368,8 +227,8 @@ export function StructurePanel({
                 );
               })}
             </ul>
-          )}
-        </StructureGroup>
+          </StructureGroup>
+        )}
       </div>
     </aside>
   );
@@ -377,20 +236,31 @@ export function StructurePanel({
 
 function LineagePartNode({
   geometryStatuses,
+  generatedReferences,
   health,
   node,
   selectedId,
+  selectedGeneratedReference,
   units,
   onFocusSketch,
-  onSelect
+  onSelect,
+  onSelectGeneratedReference
 }: {
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly health: ProjectHealthQueryResponse;
   readonly node: StructureLineagePartNode;
   readonly selectedId?: string;
+  readonly selectedGeneratedReference?: {
+    readonly bodyId: string;
+    readonly stableId: string;
+  };
   readonly units: DocumentUnits;
-  readonly onFocusSketch: (sketchId: string) => void;
+  readonly onFocusSketch: (sketchId: string, entityId?: string) => void;
   readonly onSelect: (id: string | undefined) => void;
+  readonly onSelectGeneratedReference?: (
+    reference: CadGeneratedReference
+  ) => void;
 }) {
   const hasChildren =
     node.sketchNodes.length > 0 || node.directFeatureNodes.length > 0;
@@ -401,7 +271,6 @@ function LineagePartNode({
         <span className="object-id">{node.part.name}</span>
         <strong>Part</strong>
         <small>{formatPartLine(node.part)}</small>
-        <small>{node.part.id}</small>
       </div>
       {hasChildren ? (
         <ul className="lineage-children">
@@ -427,7 +296,6 @@ function LineagePartNode({
                   <small>
                     {sketch.entities.length} entities / {sketch.plane}
                   </small>
-                  <small>{sketch.id}</small>
                   <HealthStatus status={status} />
                   <HealthIssues issues={issues} />
                 </button>
@@ -438,34 +306,52 @@ function LineagePartNode({
                         key={entityNode.entityId}
                         className="lineage-item lineage-entity"
                       >
-                        <div
-                          className={`structure-row readonly lineage-node entity${
-                            entityNode.missing ? " missing" : ""
-                          }`}
-                        >
-                          <span className="object-id">
-                            {entityNode.entityId}
-                          </span>
-                          <strong>
-                            {entityNode.missing
-                              ? "Missing entity"
-                              : (entityNode.entityKind ?? "Entity")}
-                          </strong>
-                          <small>
-                            {entityNode.featureNodes.length} features
-                          </small>
-                        </div>
+                        {entityNode.missing ? (
+                          <div className="structure-row readonly lineage-node entity missing">
+                            <span className="object-id">
+                              {entityNode.entityId}
+                            </span>
+                            <strong>Missing entity</strong>
+                            <small>
+                              {entityNode.featureNodes.length} features
+                            </small>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="lineage-node entity"
+                            onClick={() =>
+                              onFocusSketch(sketch.id, entityNode.entityId)
+                            }
+                          >
+                            <span className="object-id">
+                              {formatEntityNodeTitle(entityNode)}
+                            </span>
+                            <strong>Entity</strong>
+                            <small>
+                              {entityNode.featureNodes.length} features /{" "}
+                              {entityNode.entityId}
+                            </small>
+                          </button>
+                        )}
                         {entityNode.featureNodes.length > 0 && (
                           <ul className="lineage-children">
                             {entityNode.featureNodes.map((featureNode) => (
                               <LineageFeatureNode
                                 key={featureNode.feature.id}
+                                generatedReferences={generatedReferences}
                                 geometryStatuses={geometryStatuses}
                                 health={health}
                                 node={featureNode}
                                 selectedId={selectedId}
+                                selectedGeneratedReference={
+                                  selectedGeneratedReference
+                                }
                                 units={units}
                                 onSelect={onSelect}
+                                onSelectGeneratedReference={
+                                  onSelectGeneratedReference
+                                }
                               />
                             ))}
                           </ul>
@@ -484,12 +370,15 @@ function LineagePartNode({
           {node.directFeatureNodes.map((featureNode) => (
             <LineageFeatureNode
               key={featureNode.feature.id}
+              generatedReferences={generatedReferences}
               geometryStatuses={geometryStatuses}
               health={health}
               node={featureNode}
               selectedId={selectedId}
+              selectedGeneratedReference={selectedGeneratedReference}
               units={units}
               onSelect={onSelect}
+              onSelectGeneratedReference={onSelectGeneratedReference}
             />
           ))}
         </ul>
@@ -503,19 +392,30 @@ function LineagePartNode({
 }
 
 function LineageFeatureNode({
+  generatedReferences,
   geometryStatuses,
   health,
   node,
   selectedId,
+  selectedGeneratedReference,
   units,
-  onSelect
+  onSelect,
+  onSelectGeneratedReference
 }: {
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly node: StructureLineageFeatureNode;
   readonly selectedId?: string;
+  readonly selectedGeneratedReference?: {
+    readonly bodyId: string;
+    readonly stableId: string;
+  };
   readonly units: DocumentUnits;
   readonly onSelect: (id: string | undefined) => void;
+  readonly onSelectGeneratedReference?: (
+    reference: CadGeneratedReference
+  ) => void;
 }) {
   const { feature } = node;
   const status = getFeatureHealthStatus(health, feature.id);
@@ -552,12 +452,15 @@ function LineageFeatureNode({
         )}
         <LineageResultBodyRow
           feature={feature}
+          generatedReferences={generatedReferences}
           geometryStatuses={geometryStatuses}
           health={health}
           resultBody={node.resultBody}
           selectedId={selectedId}
+          selectedGeneratedReference={selectedGeneratedReference}
           units={units}
           onSelect={onSelect}
+          onSelectGeneratedReference={onSelectGeneratedReference}
         />
       </ul>
     </li>
@@ -619,20 +522,31 @@ function LineageTargetRow({
 
 function LineageResultBodyRow({
   feature,
+  generatedReferences,
   geometryStatuses,
   health,
   resultBody,
   selectedId,
+  selectedGeneratedReference,
   units,
-  onSelect
+  onSelect,
+  onSelectGeneratedReference
 }: {
   readonly feature: StructureLineageFeatureNode["feature"];
+  readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly resultBody?: CadBodySnapshot;
   readonly selectedId?: string;
+  readonly selectedGeneratedReference?: {
+    readonly bodyId: string;
+    readonly stableId: string;
+  };
   readonly units: DocumentUnits;
   readonly onSelect: (id: string | undefined) => void;
+  readonly onSelectGeneratedReference?: (
+    reference: CadGeneratedReference
+  ) => void;
 }) {
   if (!resultBody) {
     return (
@@ -651,6 +565,10 @@ function LineageResultBodyRow({
     kind: "body",
     id: resultBody.id
   });
+  const referencesForBody =
+    generatedReferences?.body.bodyId === resultBody.id
+      ? generatedReferences
+      : undefined;
 
   return (
     <li className="lineage-item lineage-result">
@@ -672,8 +590,137 @@ function LineageResultBodyRow({
           <small className="selected-status">Selected</small>
         )}
       </button>
+      {referencesForBody && (
+        <LineageReferencesNode
+          references={referencesForBody}
+          selectedGeneratedReference={selectedGeneratedReference}
+          onSelectGeneratedReference={onSelectGeneratedReference}
+        />
+      )}
     </li>
   );
+}
+
+function LineageReferencesNode({
+  references,
+  selectedGeneratedReference,
+  onSelectGeneratedReference
+}: {
+  readonly references: BodyGeneratedReferencesQueryResponse;
+  readonly selectedGeneratedReference?: {
+    readonly bodyId: string;
+    readonly stableId: string;
+  };
+  readonly onSelectGeneratedReference?: (
+    reference: CadGeneratedReference
+  ) => void;
+}) {
+  const items = flattenGeneratedReferences(references);
+
+  return (
+    <details
+      className="lineage-references"
+      open={selectedGeneratedReference?.bodyId === references.body.bodyId}
+    >
+      <summary>
+        <span>References</span>
+        <strong>{items.length}</strong>
+      </summary>
+      <ul className="lineage-children references-list">
+        {items.map((reference) => {
+          const isSelected =
+            selectedGeneratedReference?.bodyId === reference.bodyId &&
+            selectedGeneratedReference.stableId === reference.stableId;
+
+          return (
+            <li key={reference.stableId} className="lineage-item">
+              <button
+                type="button"
+                className={`lineage-node reference ${reference.kind}${
+                  isSelected ? " selected" : ""
+                }`}
+                onClick={() => onSelectGeneratedReference?.(reference)}
+              >
+                <span className="object-id">{reference.label}</span>
+                <strong>{formatGeneratedReferenceKindLabel(reference)}</strong>
+                <small>
+                  {formatGeneratedReferenceOperationLine(reference)}
+                </small>
+                {isSelected && (
+                  <small className="selected-status">Selected</small>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
+
+function flattenGeneratedReferences(
+  references: BodyGeneratedReferencesQueryResponse
+): readonly CadGeneratedReference[] {
+  return [
+    references.body,
+    ...references.faces,
+    ...references.edges,
+    ...references.vertices
+  ];
+}
+
+function formatGeneratedReferenceKindLabel(
+  reference: CadGeneratedReference
+): string {
+  switch (reference.kind) {
+    case "body":
+      return "Body reference";
+    case "face":
+      return "Face";
+    case "edge":
+      return "Edge";
+    case "vertex":
+      return "Vertex";
+  }
+}
+
+function formatEntityNodeTitle(node: {
+  readonly entityKind?: string;
+  readonly entityId: string;
+}): string {
+  if (!node.entityKind) {
+    return node.entityId;
+  }
+
+  return node.entityKind.charAt(0).toUpperCase() + node.entityKind.slice(1);
+}
+
+function formatGeneratedReferenceOperationLine(
+  reference: CadGeneratedReference
+): string {
+  const labels: string[] = [];
+
+  if (reference.eligibleOperations.includes("feature.attachSketchPlane")) {
+    labels.push("Sketch plane");
+  }
+
+  if (reference.eligibleOperations.includes("feature.chamfer")) {
+    labels.push("Chamfer");
+  }
+
+  if (reference.eligibleOperations.includes("feature.fillet")) {
+    labels.push("Fillet");
+  }
+
+  if (reference.eligibleOperations.includes("feature.measureReference")) {
+    labels.push("Measure");
+  }
+
+  if (reference.eligibleOperations.includes("feature.selectReference")) {
+    labels.push("Inspect");
+  }
+
+  return labels.length > 0 ? labels.join(" / ") : "Reference";
 }
 
 function StructureGroup({
@@ -724,7 +771,7 @@ function HealthStatus({
 }: {
   readonly status: ReturnType<typeof getFeatureHealthStatus>;
 }) {
-  if (!status || status === "healthy") {
+  if (!status || status === "healthy" || status === "under-defined") {
     return null;
   }
 
@@ -738,9 +785,15 @@ function HealthStatus({
 }
 
 function HealthIssues({ issues }: { readonly issues: readonly string[] }) {
-  if (issues.length === 0) {
+  const visibleIssues = issues.filter(
+    (issue) =>
+      !issue.toLowerCase().includes("under-defined") &&
+      !issue.toLowerCase().includes("degrees are constrained")
+  );
+
+  if (visibleIssues.length === 0) {
     return null;
   }
 
-  return <small className="error-text inline">{issues[0]}</small>;
+  return <small className="error-text inline">{visibleIssues[0]}</small>;
 }

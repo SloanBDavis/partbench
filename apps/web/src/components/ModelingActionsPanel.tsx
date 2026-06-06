@@ -1,50 +1,222 @@
 import type {
+  CadBodySnapshot,
   CadFeatureSummary,
-  SketchEntityKind
+  CadGeneratedFaceReference,
+  CadGeneratedReference,
+  NamedGeneratedReferenceEntry,
+  SketchConstraintKind,
+  SketchDimensionTarget,
+  SketchEntityKind,
+  SketchEntitySnapshot,
+  SketchPointTargetRole,
+  SketchSnapshot
 } from "@web-cad/cad-protocol";
+import { useState } from "react";
+import type {
+  FeatureEdgeFinishForm,
+  FeatureExtrudeForm,
+  FeatureHoleForm,
+  FeatureRevolveForm,
+  SketchConstraintForm,
+  SketchCreateForm,
+  SketchCreateOnFaceForm,
+  SketchDimensionForm,
+  SketchEntityForm
+} from "../cadCommands";
+import { buildEdgeFinishForm } from "../edgeFinishUi";
+import {
+  buildSketchOnFaceForm,
+  createSketchOnFaceDefaultName,
+  formatGeneratedReferenceKind,
+  formatGeneratedReferenceOperationLabels,
+  formatSketchOnFaceAvailability,
+  getSketchAttachableFaces
+} from "../generatedReferenceUi";
+import { createSelectedGeneratedReference } from "../generatedReferenceSelection";
 import type {
   ModelingActionDescriptor,
   ModelingSelectionContext
 } from "../modelingActions";
-import { formatGeneratedReferenceKind } from "../generatedReferenceUi";
-import { formatSketchEntity } from "../sketchEntityForms";
+import {
+  defaultSketchEntityForm,
+  entityToSketchEntityForm,
+  formatSketchEntity,
+  getSketchEntityFormLabels,
+  sketchEntityFormToEntity,
+  validateSketchEntityForm
+} from "../sketchEntityForms";
+import {
+  createAvailableCoincidentPointTargetOptions,
+  createAvailableFixedPointTargetOptions,
+  createAvailableMidpointTargetOptions,
+  createAvailableParallelLineTargetOptions,
+  createRevolveAxisOptions,
+  createSketchPointTargetOptionsForEntity,
+  formatSketchConstraintStatus,
+  formatSketchDimensionStatus,
+  getHoleOperationStatus,
+  getExtrudeSideForOperationMode,
+  getRevolveOperationStatus,
+  getSketchConstraintKindLabel,
+  getSketchDimensionTargetLabel,
+  type BooleanTargetBodyOption
+} from "../sketchPanelUi";
 
 export interface ModelingActionsPanelProps {
   readonly actions: readonly ModelingActionDescriptor[];
+  readonly addTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly context: ModelingSelectionContext;
+  readonly cutTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly disabled?: boolean;
-  readonly onAction?: (action: ModelingActionDescriptor) => void;
+  readonly holeTargetBodies?: readonly BooleanTargetBodyOption[];
+  readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly sketches?: readonly SketchSnapshot[];
+  readonly onAddEntity?: (
+    sketchId: string,
+    kind: SketchEntityKind,
+    form: SketchEntityForm
+  ) => void;
+  readonly onCreateConstraint?: (
+    sketchId: string,
+    entityId: string,
+    form: SketchConstraintForm
+  ) => void;
+  readonly onCreateDimension?: (
+    sketchId: string,
+    entityId: string,
+    target: SketchDimensionTarget,
+    form: SketchDimensionForm
+  ) => void;
+  readonly onCreateEdgeFinish?: (
+    operation: "chamfer" | "fillet",
+    form: FeatureEdgeFinishForm
+  ) => void;
+  readonly onCreateSketch?: (form: SketchCreateForm) => void;
+  readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onExtrudeEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureExtrudeForm
+  ) => void;
+  readonly onHoleEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureHoleForm
+  ) => void;
+  readonly onNameGeneratedReference?: (
+    name: string,
+    target: ReturnType<typeof createSelectedGeneratedReference>
+  ) => void;
+  readonly onRevolveEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureRevolveForm
+  ) => void;
+  readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
+  readonly onUpdateEntity?: (
+    sketchId: string,
+    entity: SketchEntitySnapshot
+  ) => void;
 }
 
-export interface ModelingSelectionSummary {
+interface ModelingSelectionSummary {
   readonly eyebrow: string;
   readonly title: string;
   readonly detail?: string;
 }
 
-export interface ModelingActionDisplay {
-  readonly category: string;
-  readonly controlLabel: string;
-  readonly detail: string;
-  readonly status: "available" | "unavailable";
-}
+const defaultCreateSketchForm: SketchCreateForm = {
+  id: "",
+  name: "Sketch 1",
+  plane: "XY"
+};
+
+const defaultDimensionForm: SketchDimensionForm = {
+  id: "",
+  name: "",
+  valueSourceType: "literal",
+  value: 1,
+  parameterId: ""
+};
+
+const defaultConstraintForm: SketchConstraintForm = {
+  id: "",
+  name: "",
+  kind: "horizontal",
+  targetRole: "start",
+  coordinateMode: "current",
+  coordinateX: 0,
+  coordinateY: 0,
+  secondaryEntityId: "",
+  secondaryTargetRole: "position"
+};
+
+const defaultExtrudeForm: FeatureExtrudeForm = {
+  id: "",
+  bodyId: "",
+  name: "",
+  depth: 1,
+  side: "positive",
+  operationMode: "newBody"
+};
+
+const defaultRevolveForm: FeatureRevolveForm = {
+  id: "",
+  bodyId: "",
+  name: "",
+  axisEntityId: "",
+  angleDegrees: 360
+};
+
+const defaultHoleForm: FeatureHoleForm = {
+  id: "",
+  bodyId: "",
+  targetBodyId: "",
+  name: "",
+  depthMode: "throughAll",
+  depth: 1,
+  direction: "positive"
+};
+
+const defaultEdgeFinishForm = {
+  id: "",
+  bodyId: "",
+  name: "",
+  distance: 0.2,
+  radius: 0.2
+};
 
 export function ModelingActionsPanel({
   actions,
+  addTargetBodies = [],
   context,
+  cutTargetBodies = [],
   disabled = false,
-  onAction
+  holeTargetBodies = [],
+  namedReferences = [],
+  sketches = [],
+  onAddEntity,
+  onCreateConstraint,
+  onCreateDimension,
+  onCreateEdgeFinish,
+  onCreateSketch,
+  onCreateSketchOnFace,
+  onExtrudeEntity,
+  onHoleEntity,
+  onNameGeneratedReference,
+  onRevolveEntity,
+  onSelectSketch,
+  onUpdateEntity
 }: ModelingActionsPanelProps) {
-  const summary = formatModelingSelectionSummary(context);
+  const summary = formatModelingSelectionSummary(context, sketches.length);
 
   return (
-    <section className="modeling-actions-panel" aria-label="Modeling actions">
+    <section className="modeling-actions-panel" aria-label="Modeling context">
       <div className="modeling-actions-heading">
         <div>
-          <h2>Actions</h2>
+          <h2>Context</h2>
           <small>{summary.eyebrow}</small>
         </div>
-        <span>{actions.length}</span>
       </div>
 
       <div className="modeling-selection-summary">
@@ -52,73 +224,1785 @@ export function ModelingActionsPanel({
         {summary.detail && <small>{summary.detail}</small>}
       </div>
 
-      {actions.length === 0 ? (
-        <p className="empty-state compact">No actions for this selection.</p>
-      ) : (
-        <ul className="modeling-action-list">
-          {actions.map((action) => {
-            const display = createModelingActionDisplay(action);
-            const isDisabled = disabled || !action.available;
+      {context.selectionKind === "none" && (
+        <NoSelectionWorkbench
+          disabled={disabled}
+          sketches={sketches}
+          onCreateSketch={onCreateSketch}
+          onSelectSketch={onSelectSketch}
+        />
+      )}
 
-            return (
-              <li
-                key={action.id}
-                className={`modeling-action-card ${display.status}`}
-              >
-                <div className="modeling-action-copy">
-                  <div className="modeling-action-title">
-                    <strong>{action.label}</strong>
-                    <span>{display.category}</span>
-                  </div>
-                  <small>{display.detail}</small>
-                </div>
-                <button
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={() => onAction?.(action)}
-                >
-                  {display.controlLabel}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+      {context.selectionKind === "sketch" && (
+        <SketchWorkbench
+          disabled={disabled}
+          sketch={context.sketch}
+          onAddEntity={onAddEntity}
+          onSelectSketch={onSelectSketch}
+        />
+      )}
+
+      {context.selectionKind === "sketchEntity" && (
+        <SketchEntityWorkbench
+          key={`${context.sketch.id}:${context.entity.id}`}
+          actions={actions}
+          addTargetBodies={addTargetBodies}
+          context={context}
+          cutTargetBodies={cutTargetBodies}
+          disabled={disabled}
+          holeTargetBodies={holeTargetBodies}
+          onCreateConstraint={onCreateConstraint}
+          onCreateDimension={onCreateDimension}
+          onExtrudeEntity={onExtrudeEntity}
+          onHoleEntity={onHoleEntity}
+          onRevolveEntity={onRevolveEntity}
+          onUpdateEntity={onUpdateEntity}
+        />
+      )}
+
+      {context.selectionKind === "body" && (
+        <BodyWorkbench
+          key={context.body.id}
+          actions={actions}
+          disabled={disabled}
+          context={context}
+          onCreateSketchOnFace={onCreateSketchOnFace}
+          onSelectSketch={onSelectSketch}
+        />
+      )}
+
+      {context.selectionKind === "generatedReference" && (
+        <GeneratedReferenceWorkbench
+          key={context.reference.stableId}
+          actions={actions}
+          context={context}
+          disabled={disabled}
+          namedReferences={namedReferences}
+          onCreateEdgeFinish={onCreateEdgeFinish}
+          onCreateSketchOnFace={onCreateSketchOnFace}
+          onNameGeneratedReference={onNameGeneratedReference}
+        />
       )}
     </section>
   );
 }
 
+function NoSelectionWorkbench({
+  disabled,
+  sketches,
+  onCreateSketch,
+  onSelectSketch
+}: {
+  readonly disabled: boolean;
+  readonly sketches: readonly SketchSnapshot[];
+  readonly onCreateSketch?: (form: SketchCreateForm) => void;
+  readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
+}) {
+  const [form, setForm] = useState(defaultCreateSketchForm);
+  const canCreate = form.name.trim().length > 0;
+
+  return (
+    <div className="workbench-surface">
+      <section className="workbench-card primary">
+        <div className="workbench-card-heading">
+          <h3>{sketches.length === 0 ? "Start modeling" : "New sketch"}</h3>
+          <small>{form.plane}</small>
+        </div>
+        <div className="plane-palette" aria-label="Sketch plane">
+          {(["XY", "XZ", "YZ"] as const).map((plane) => (
+            <button
+              key={plane}
+              type="button"
+              className={form.plane === plane ? "selected" : undefined}
+              disabled={disabled}
+              onClick={() => setForm({ ...form, plane })}
+            >
+              {plane}
+            </button>
+          ))}
+        </div>
+        <details className="advanced-options compact">
+          <summary>Name and ID</summary>
+          <TextInput
+            disabled={disabled}
+            label="Name"
+            value={form.name}
+            onChange={(name) => setForm({ ...form, name })}
+          />
+          <TextInput
+            disabled={disabled}
+            label="Sketch ID"
+            value={form.id}
+            onChange={(id) => setForm({ ...form, id })}
+          />
+        </details>
+        <button
+          type="button"
+          disabled={disabled || !canCreate}
+          onClick={() => onCreateSketch?.(form)}
+        >
+          New sketch
+        </button>
+      </section>
+
+      {sketches.length > 0 && (
+        <section className="workbench-card">
+          <div className="workbench-card-heading">
+            <h3>Continue sketch</h3>
+            <small>{sketches.length}</small>
+          </div>
+          <ul className="workbench-compact-list">
+            {sketches.map((sketch) => (
+              <li key={sketch.id}>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelectSketch?.(sketch.id)}
+                >
+                  <strong>{sketch.name}</strong>
+                  <small>
+                    {sketch.plane} / {sketch.entities.length} entities
+                  </small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function SketchWorkbench({
+  disabled,
+  sketch,
+  onAddEntity,
+  onSelectSketch
+}: {
+  readonly disabled: boolean;
+  readonly sketch: SketchSnapshot;
+  readonly onAddEntity?: (
+    sketchId: string,
+    kind: SketchEntityKind,
+    form: SketchEntityForm
+  ) => void;
+  readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
+}) {
+  return (
+    <div className="workbench-surface">
+      <section className="workbench-card primary">
+        <div className="workbench-card-heading">
+          <h3>Sketch tools</h3>
+          <small>{sketch.entities.length} existing</small>
+        </div>
+        <div className="workbench-command-grid">
+          {(["point", "line", "rectangle", "circle"] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              disabled={disabled}
+              onClick={() =>
+                onAddEntity?.(sketch.id, kind, defaultSketchEntityForm)
+              }
+            >
+              {formatSketchEntityKind(kind)}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {sketch.entities.length > 0 && (
+        <section className="workbench-card">
+          <div className="workbench-card-heading">
+            <h3>Entities</h3>
+            <small>Select to edit or feature</small>
+          </div>
+          <ul className="workbench-compact-list">
+            {sketch.entities.map((entity) => (
+              <li key={entity.id}>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelectSketch?.(sketch.id, entity.id)}
+                >
+                  <strong>{formatSketchEntityKind(entity.kind)}</strong>
+                  <small>{formatSketchEntity(entity)}</small>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function SketchEntityWorkbench({
+  actions,
+  addTargetBodies,
+  context,
+  cutTargetBodies,
+  disabled,
+  holeTargetBodies,
+  onCreateConstraint,
+  onCreateDimension,
+  onExtrudeEntity,
+  onHoleEntity,
+  onRevolveEntity,
+  onUpdateEntity
+}: {
+  readonly actions: readonly ModelingActionDescriptor[];
+  readonly addTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly cutTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly disabled: boolean;
+  readonly holeTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly onCreateConstraint?: (
+    sketchId: string,
+    entityId: string,
+    form: SketchConstraintForm
+  ) => void;
+  readonly onCreateDimension?: (
+    sketchId: string,
+    entityId: string,
+    target: SketchDimensionTarget,
+    form: SketchDimensionForm
+  ) => void;
+  readonly onExtrudeEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureExtrudeForm
+  ) => void;
+  readonly onHoleEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureHoleForm
+  ) => void;
+  readonly onRevolveEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureRevolveForm
+  ) => void;
+  readonly onUpdateEntity?: (
+    sketchId: string,
+    entity: SketchEntitySnapshot
+  ) => void;
+}) {
+  const dimensionAction = actions.find(
+    (action) => action.id === "sketch.dimension.add"
+  );
+  const constraintAction = actions.find(
+    (action) => action.id === "sketch.constraint.add"
+  );
+  const extrudeAction = actions.find(
+    (action) => action.id === "feature.extrude"
+  );
+  const revolveAction = actions.find(
+    (action) => action.id === "feature.revolve"
+  );
+  const holeAction = actions.find((action) => action.id === "feature.hole");
+
+  return (
+    <div className="workbench-surface">
+      <FeatureCreateCard
+        addTargetBodies={addTargetBodies}
+        cutTargetBodies={cutTargetBodies}
+        disabled={disabled}
+        extrudeAction={extrudeAction}
+        holeAction={holeAction}
+        holeTargetBodies={holeAction?.target?.holeTargets ?? holeTargetBodies}
+        revolveAction={revolveAction}
+        context={context}
+        onExtrudeEntity={onExtrudeEntity}
+        onHoleEntity={onHoleEntity}
+        onRevolveEntity={onRevolveEntity}
+      />
+      <EntityEditCard
+        context={context}
+        disabled={disabled}
+        onUpdateEntity={onUpdateEntity}
+      />
+      <DimensionCreateCard
+        action={dimensionAction}
+        context={context}
+        disabled={disabled}
+        onCreateDimension={onCreateDimension}
+      />
+      <ConstraintCreateCard
+        action={constraintAction}
+        context={context}
+        disabled={disabled}
+        onCreateConstraint={onCreateConstraint}
+      />
+    </div>
+  );
+}
+
+function EntityEditCard({
+  context,
+  disabled,
+  onUpdateEntity
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly onUpdateEntity?: (
+    sketchId: string,
+    entity: SketchEntitySnapshot
+  ) => void;
+}) {
+  const [form, setForm] = useState(() =>
+    entityToSketchEntityForm(context.entity)
+  );
+  const validation = validateSketchEntityForm(context.entity.kind, form);
+  const labels = getSketchEntityFormLabels(context.entity.kind);
+  const nextEntity = sketchEntityFormToEntity(
+    context.entity.id,
+    context.entity.kind,
+    form
+  );
+
+  return (
+    <details className="workbench-card collapsible">
+      <summary>
+        <span>Edit {formatSketchEntityKind(context.entity.kind)}</span>
+        <small>Shape values</small>
+      </summary>
+      <div className="field-grid two">
+        <NumberInput
+          disabled={disabled}
+          label={labels.x}
+          value={form.x}
+          onChange={(x) => setForm({ ...form, x })}
+        />
+        <NumberInput
+          disabled={disabled}
+          label={labels.y}
+          value={form.y}
+          onChange={(y) => setForm({ ...form, y })}
+        />
+        {labels.x2 && (
+          <NumberInput
+            disabled={disabled}
+            label={labels.x2}
+            value={form.x2}
+            onChange={(x2) => setForm({ ...form, x2 })}
+          />
+        )}
+        {labels.y2 && (
+          <NumberInput
+            disabled={disabled}
+            label={labels.y2}
+            value={form.y2}
+            onChange={(y2) => setForm({ ...form, y2 })}
+          />
+        )}
+        {labels.width && (
+          <NumberInput
+            disabled={disabled}
+            label={labels.width}
+            value={form.width}
+            onChange={(width) => setForm({ ...form, width })}
+          />
+        )}
+        {labels.height && (
+          <NumberInput
+            disabled={disabled}
+            label={labels.height}
+            value={form.height}
+            onChange={(height) => setForm({ ...form, height })}
+          />
+        )}
+        {labels.radius && (
+          <NumberInput
+            disabled={disabled}
+            label={labels.radius}
+            value={form.radius}
+            onChange={(radius) => setForm({ ...form, radius })}
+          />
+        )}
+      </div>
+      {!validation.ok && (
+        <p className="error-text compact">{validation.message}</p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !validation.ok}
+        onClick={() => onUpdateEntity?.(context.sketch.id, nextEntity)}
+      >
+        Apply entity
+      </button>
+    </details>
+  );
+}
+
+function DimensionCreateCard({
+  action,
+  context,
+  disabled,
+  onCreateDimension
+}: {
+  readonly action?: ModelingActionDescriptor;
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly onCreateDimension?: (
+    sketchId: string,
+    entityId: string,
+    target: SketchDimensionTarget,
+    form: SketchDimensionForm
+  ) => void;
+}) {
+  const targets = action?.target?.dimensionTargets ?? [];
+  const [targetIndex, setTargetIndex] = useState(0);
+  const selectedTarget = targets[targetIndex] ?? targets[0];
+  const [form, setForm] = useState<SketchDimensionForm>(() => ({
+    ...defaultDimensionForm,
+    value: targets[0]?.currentValue ?? 1,
+    name: targets[0] ? targets[0].label : ""
+  }));
+  const effectiveForm = selectedTarget
+    ? {
+        ...form,
+        name: form.name.trim() || selectedTarget.label
+      }
+    : form;
+
+  return (
+    <details className="workbench-card collapsible">
+      <summary>
+        <span>Driving dimensions</span>
+        <small>{targets.length}</small>
+      </summary>
+      {targets.length === 0 ? (
+        <p className="empty-state compact">
+          {action?.reason ?? "No dimension targets for this entity."}
+        </p>
+      ) : (
+        <>
+          <div className="field-grid two">
+            <label>
+              Target
+              <select
+                value={targetIndex}
+                disabled={disabled}
+                onChange={(event) => {
+                  const nextIndex = Number(event.currentTarget.value);
+                  const nextTarget = targets[nextIndex] ?? targets[0];
+
+                  setTargetIndex(nextIndex);
+                  if (nextTarget) {
+                    setForm({
+                      ...form,
+                      name: nextTarget.label,
+                      value: nextTarget.currentValue
+                    });
+                  }
+                }}
+              >
+                {targets.map((target, index) => (
+                  <option key={target.label} value={index}>
+                    {target.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <NumberInput
+              disabled={disabled}
+              label="Value"
+              value={form.value}
+              onChange={(value) => setForm({ ...form, value })}
+            />
+          </div>
+          <TextInput
+            disabled={disabled}
+            label="Name"
+            value={form.name}
+            onChange={(name) => setForm({ ...form, name })}
+          />
+          <button
+            type="button"
+            disabled={
+              disabled || !selectedTarget || !Number.isFinite(form.value)
+            }
+            onClick={() =>
+              selectedTarget &&
+              onCreateDimension?.(
+                context.sketch.id,
+                context.entity.id,
+                selectedTarget.target,
+                effectiveForm
+              )
+            }
+          >
+            Add{" "}
+            {selectedTarget
+              ? getSketchDimensionTargetLabel(selectedTarget.target)
+              : "dimension"}
+          </button>
+        </>
+      )}
+      {context.dimensions && context.dimensions.length > 0 && (
+        <ul className="workbench-compact-list">
+          {context.dimensions.map((dimension) => (
+            <li key={dimension.id}>
+              <div>
+                <strong>{dimension.name}</strong>
+                <small>{formatSketchDimensionStatus(dimension)}</small>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
+
+function ConstraintCreateCard({
+  action,
+  context,
+  disabled,
+  onCreateConstraint
+}: {
+  readonly action?: ModelingActionDescriptor;
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly onCreateConstraint?: (
+    sketchId: string,
+    entityId: string,
+    form: SketchConstraintForm
+  ) => void;
+}) {
+  const availableKinds = action?.target?.constraintKinds ?? [];
+  const [kind, setKind] = useState<SketchConstraintKind>(
+    availableKinds[0]?.kind ?? "horizontal"
+  );
+  const [form, setForm] = useState<SketchConstraintForm>(() => ({
+    ...defaultConstraintForm,
+    kind,
+    name: getSketchConstraintKindLabel(kind)
+  }));
+  const effectiveForm = createEffectiveConstraintForm({
+    context,
+    form: { ...form, kind },
+    kind
+  });
+  const availability = getConstraintAvailability(context, kind, effectiveForm);
+
+  return (
+    <details className="workbench-card collapsible">
+      <summary>
+        <span>Constraints</span>
+        <small>{availableKinds.length}</small>
+      </summary>
+      {availableKinds.length === 0 ? (
+        <p className="empty-state compact">
+          {action?.reason ?? "No constraints available for this entity."}
+        </p>
+      ) : (
+        <>
+          <div className="field-grid two">
+            <label>
+              Type
+              <select
+                value={kind}
+                disabled={disabled}
+                onChange={(event) => {
+                  const nextKind = event.currentTarget
+                    .value as SketchConstraintKind;
+                  setKind(nextKind);
+                  setForm({
+                    ...form,
+                    kind: nextKind,
+                    name: getSketchConstraintKindLabel(nextKind)
+                  });
+                }}
+              >
+                {availableKinds.map((option) => (
+                  <option key={option.kind} value={option.kind}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <TextInput
+              disabled={disabled}
+              label="Name"
+              value={form.name}
+              onChange={(name) => setForm({ ...form, name })}
+            />
+          </div>
+          <ConstraintTargetFields
+            context={context}
+            disabled={disabled}
+            form={form}
+            kind={kind}
+            onChange={setForm}
+          />
+          {!availability.available && (
+            <p className="error-text compact">{availability.message}</p>
+          )}
+          <button
+            type="button"
+            disabled={disabled || !availability.available}
+            onClick={() =>
+              onCreateConstraint?.(
+                context.sketch.id,
+                context.entity.id,
+                effectiveForm
+              )
+            }
+          >
+            Add constraint
+          </button>
+        </>
+      )}
+      {context.constraints && context.constraints.length > 0 && (
+        <ul className="workbench-compact-list">
+          {context.constraints.map((constraint) => (
+            <li key={constraint.id}>
+              <div>
+                <strong>{getSketchConstraintKindLabel(constraint.kind)}</strong>
+                <small>{formatSketchConstraintStatus(constraint)}</small>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
+  );
+}
+
+function ConstraintTargetFields({
+  context,
+  disabled,
+  form,
+  kind,
+  onChange
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly form: SketchConstraintForm;
+  readonly kind: SketchConstraintKind;
+  readonly onChange: (form: SketchConstraintForm) => void;
+}) {
+  if (kind === "horizontal" || kind === "vertical") {
+    return null;
+  }
+
+  const constraints = context.constraints ?? [];
+
+  if (kind === "fixed") {
+    const targetOptions = createAvailableFixedPointTargetOptions(
+      context.entity,
+      constraints
+    );
+
+    return (
+      <div className="field-grid two">
+        <label>
+          Point
+          <select
+            value={form.targetRole}
+            disabled={disabled || targetOptions.length === 0}
+            onChange={(event) =>
+              onChange({
+                ...form,
+                targetRole: event.currentTarget.value as SketchPointTargetRole
+              })
+            }
+          >
+            {targetOptions.map((option) => (
+              <option
+                key={`${option.target.entityId}:${option.target.role}`}
+                value={option.target.role}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Coordinate
+          <select
+            value={form.coordinateMode}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange({
+                ...form,
+                coordinateMode: event.currentTarget
+                  .value as SketchConstraintForm["coordinateMode"]
+              })
+            }
+          >
+            <option value="current">Current</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  const primaryTargets = createSketchPointTargetOptionsForEntity(
+    context.entity
+  );
+  const primaryTarget =
+    primaryTargets.find((option) => option.target.role === form.targetRole) ??
+    primaryTargets[0];
+
+  if (kind === "coincident") {
+    const secondaryTargets = createAvailableCoincidentPointTargetOptions(
+      primaryTarget?.target,
+      context.sketch.entities,
+      constraints
+    );
+
+    return (
+      <ConstraintSecondarySelect
+        disabled={disabled}
+        form={form}
+        label="Make coincident with"
+        options={secondaryTargets.map((option) => ({
+          entityId: option.target.entityId,
+          role: option.target.role,
+          label: option.label
+        }))}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (kind === "midpoint") {
+    const midpointTargets = createAvailableMidpointTargetOptions(
+      context.entity,
+      context.sketch.entities,
+      constraints
+    );
+
+    return (
+      <ConstraintSecondarySelect
+        disabled={disabled}
+        form={form}
+        label="Point at midpoint"
+        options={midpointTargets.map((option) => ({
+          entityId: option.target.entityId,
+          role: option.target.role,
+          label: option.label
+        }))}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (kind === "parallel" || kind === "perpendicular") {
+    const lineTargets = createAvailableParallelLineTargetOptions(
+      context.entity,
+      context.sketch.entities,
+      constraints
+    );
+
+    return (
+      <ConstraintSecondarySelect
+        disabled={disabled}
+        form={form}
+        label="Line"
+        options={lineTargets.map((option) => ({
+          entityId: option.entityId,
+          role: "position",
+          label: option.label
+        }))}
+        onChange={onChange}
+      />
+    );
+  }
+
+  return null;
+}
+
+function ConstraintSecondarySelect({
+  disabled,
+  form,
+  label,
+  options,
+  onChange
+}: {
+  readonly disabled: boolean;
+  readonly form: SketchConstraintForm;
+  readonly label: string;
+  readonly options: readonly {
+    readonly entityId: string;
+    readonly role: SketchPointTargetRole;
+    readonly label: string;
+  }[];
+  readonly onChange: (form: SketchConstraintForm) => void;
+}) {
+  const value = `${form.secondaryEntityId}:${form.secondaryTargetRole}`;
+
+  return (
+    <label>
+      {label}
+      <select
+        value={value}
+        disabled={disabled || options.length === 0}
+        onChange={(event) => {
+          const [secondaryEntityId, secondaryTargetRole] =
+            event.currentTarget.value.split(":");
+          onChange({
+            ...form,
+            secondaryEntityId,
+            secondaryTargetRole:
+              (secondaryTargetRole as SketchPointTargetRole | undefined) ??
+              "position"
+          });
+        }}
+      >
+        {options.map((option) => (
+          <option
+            key={`${option.entityId}:${option.role}`}
+            value={`${option.entityId}:${option.role}`}
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function FeatureCreateCard({
+  addTargetBodies,
+  context,
+  cutTargetBodies,
+  disabled,
+  extrudeAction,
+  holeAction,
+  holeTargetBodies,
+  revolveAction,
+  onExtrudeEntity,
+  onHoleEntity,
+  onRevolveEntity
+}: {
+  readonly addTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly cutTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly disabled: boolean;
+  readonly extrudeAction?: ModelingActionDescriptor;
+  readonly holeAction?: ModelingActionDescriptor;
+  readonly holeTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly revolveAction?: ModelingActionDescriptor;
+  readonly onExtrudeEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureExtrudeForm
+  ) => void;
+  readonly onHoleEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureHoleForm
+  ) => void;
+  readonly onRevolveEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureRevolveForm
+  ) => void;
+}) {
+  const [mode, setMode] = useState<"extrude" | "revolve" | "hole">("extrude");
+
+  return (
+    <section className="workbench-card primary">
+      <div className="workbench-card-heading">
+        <h3>Create feature</h3>
+        <small>{formatSketchEntityKind(context.entity.kind)}</small>
+      </div>
+      <div className="segmented-control feature-mode-tabs">
+        <button
+          type="button"
+          className={mode === "extrude" ? "selected" : undefined}
+          disabled={disabled || !extrudeAction?.available}
+          onClick={() => setMode("extrude")}
+        >
+          Extrude
+        </button>
+        <button
+          type="button"
+          className={mode === "revolve" ? "selected" : undefined}
+          disabled={disabled || !revolveAction?.available}
+          onClick={() => setMode("revolve")}
+        >
+          Revolve
+        </button>
+        <button
+          type="button"
+          className={mode === "hole" ? "selected" : undefined}
+          disabled={disabled || !holeAction?.available}
+          onClick={() => setMode("hole")}
+        >
+          Hole
+        </button>
+      </div>
+      {mode === "revolve" ? (
+        <RevolveFeatureForm
+          action={revolveAction}
+          context={context}
+          disabled={disabled}
+          onRevolveEntity={onRevolveEntity}
+        />
+      ) : mode === "hole" ? (
+        <HoleFeatureForm
+          action={holeAction}
+          context={context}
+          disabled={disabled}
+          holeTargetBodies={holeTargetBodies}
+          onHoleEntity={onHoleEntity}
+        />
+      ) : (
+        <ExtrudeFeatureForm
+          action={extrudeAction}
+          addTargetBodies={addTargetBodies}
+          context={context}
+          cutTargetBodies={cutTargetBodies}
+          disabled={disabled}
+          onExtrudeEntity={onExtrudeEntity}
+        />
+      )}
+    </section>
+  );
+}
+
+function ExtrudeFeatureForm({
+  action,
+  addTargetBodies,
+  context,
+  cutTargetBodies,
+  disabled,
+  onExtrudeEntity
+}: {
+  readonly action?: ModelingActionDescriptor;
+  readonly addTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly cutTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly disabled: boolean;
+  readonly onExtrudeEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureExtrudeForm
+  ) => void;
+}) {
+  const [form, setForm] = useState(defaultExtrudeForm);
+  const targetBodies =
+    form.operationMode === "add" ? addTargetBodies : cutTargetBodies;
+  const targetBodyId =
+    form.operationMode === "newBody"
+      ? undefined
+      : form.targetBodyId || targetBodies[0]?.bodyId;
+  const effectiveForm: FeatureExtrudeForm = {
+    ...form,
+    ...(targetBodyId ? { targetBodyId } : {})
+  };
+  const available =
+    Boolean(action?.available) &&
+    Number.isFinite(form.depth) &&
+    form.depth > 0 &&
+    (form.operationMode === "newBody" || Boolean(targetBodyId));
+
+  return (
+    <>
+      {!action?.available && (
+        <p className="error-text compact">
+          {action?.reason ?? "This entity cannot be extruded."}
+        </p>
+      )}
+      <div className="field-grid two">
+        <NumberInput
+          disabled={disabled}
+          label="Depth"
+          value={form.depth}
+          onChange={(depth) => setForm({ ...form, depth })}
+        />
+        <label>
+          Side
+          <select
+            value={form.side}
+            disabled={disabled}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                side: event.currentTarget.value as FeatureExtrudeForm["side"]
+              })
+            }
+          >
+            <option value="positive">Positive</option>
+            <option value="negative">Negative</option>
+            <option value="symmetric">Symmetric</option>
+          </select>
+        </label>
+        <label>
+          Operation
+          <select
+            value={form.operationMode}
+            disabled={disabled}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                operationMode: event.currentTarget
+                  .value as FeatureExtrudeForm["operationMode"],
+                side: getExtrudeSideForOperationMode(
+                  context.sketch,
+                  event.currentTarget
+                    .value as FeatureExtrudeForm["operationMode"],
+                  form.side
+                ),
+                targetBodyId: undefined
+              })
+            }
+          >
+            <option value="newBody">New body</option>
+            <option value="add" disabled={addTargetBodies.length === 0}>
+              Add to body
+            </option>
+            <option value="cut" disabled={cutTargetBodies.length === 0}>
+              Cut body
+            </option>
+          </select>
+        </label>
+        {form.operationMode !== "newBody" && (
+          <label>
+            Target
+            <select
+              value={targetBodyId ?? ""}
+              disabled={disabled || targetBodies.length === 0}
+              onChange={(event) =>
+                setForm({ ...form, targetBodyId: event.currentTarget.value })
+              }
+            >
+              {targetBodies.map((body) => (
+                <option key={body.bodyId} value={body.bodyId}>
+                  {body.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+      {context.sketch.attachment && form.operationMode === "cut" && (
+        <small className="form-hint">
+          {form.side === "negative"
+            ? "Negative cuts inward from the attached face."
+            : "Positive points away from this face; use Negative to cut into the body."}
+        </small>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !available}
+        onClick={() =>
+          onExtrudeEntity?.(context.sketch.id, context.entity.id, effectiveForm)
+        }
+      >
+        Create extrude
+      </button>
+    </>
+  );
+}
+
+function RevolveFeatureForm({
+  action,
+  context,
+  disabled,
+  onRevolveEntity
+}: {
+  readonly action?: ModelingActionDescriptor;
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly onRevolveEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureRevolveForm
+  ) => void;
+}) {
+  const axisOptions =
+    action?.target?.revolveAxes ?? createRevolveAxisOptions(context.sketch);
+  const [form, setForm] = useState<FeatureRevolveForm>(() => ({
+    ...defaultRevolveForm,
+    axisEntityId: axisOptions[0]?.entityId ?? ""
+  }));
+  const effectiveForm = {
+    ...form,
+    axisEntityId: form.axisEntityId || axisOptions[0]?.entityId || ""
+  };
+  const status = getRevolveOperationStatus(
+    context.entity,
+    axisOptions,
+    effectiveForm.angleDegrees,
+    context.sketch.entities.filter((entity) => entity.kind === "line").length
+  );
+
+  return (
+    <>
+      <div className="field-grid two">
+        <label>
+          Axis
+          <select
+            value={effectiveForm.axisEntityId}
+            disabled={disabled || axisOptions.length === 0}
+            onChange={(event) =>
+              setForm({ ...form, axisEntityId: event.currentTarget.value })
+            }
+          >
+            {axisOptions.map((axis) => (
+              <option key={axis.entityId} value={axis.entityId}>
+                {axis.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <NumberInput
+          disabled={disabled}
+          label="Angle"
+          value={form.angleDegrees}
+          onChange={(angleDegrees) => setForm({ ...form, angleDegrees })}
+        />
+      </div>
+      {!status.available && (
+        <p className="error-text compact">{status.message}</p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !status.available}
+        onClick={() =>
+          onRevolveEntity?.(context.sketch.id, context.entity.id, effectiveForm)
+        }
+      >
+        Create revolve
+      </button>
+    </>
+  );
+}
+
+function HoleFeatureForm({
+  action,
+  context,
+  disabled,
+  holeTargetBodies,
+  onHoleEntity
+}: {
+  readonly action?: ModelingActionDescriptor;
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly disabled: boolean;
+  readonly holeTargetBodies: readonly BooleanTargetBodyOption[];
+  readonly onHoleEntity?: (
+    sketchId: string,
+    entityId: string,
+    form: FeatureHoleForm
+  ) => void;
+}) {
+  const [form, setForm] = useState<FeatureHoleForm>(() => ({
+    ...defaultHoleForm,
+    targetBodyId: holeTargetBodies[0]?.bodyId ?? ""
+  }));
+  const effectiveForm = {
+    ...form,
+    targetBodyId: form.targetBodyId || holeTargetBodies[0]?.bodyId || ""
+  };
+  const status = getHoleOperationStatus(
+    context.entity,
+    holeTargetBodies,
+    effectiveForm
+  );
+  const available = Boolean(action?.available) && status.available;
+
+  return (
+    <>
+      <div className="field-grid two">
+        <label>
+          Target
+          <select
+            value={effectiveForm.targetBodyId}
+            disabled={disabled || holeTargetBodies.length === 0}
+            onChange={(event) =>
+              setForm({ ...form, targetBodyId: event.currentTarget.value })
+            }
+          >
+            {holeTargetBodies.map((body) => (
+              <option key={body.bodyId} value={body.bodyId}>
+                {body.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Depth
+          <select
+            value={form.depthMode}
+            disabled={disabled}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                depthMode: event.currentTarget
+                  .value as FeatureHoleForm["depthMode"]
+              })
+            }
+          >
+            <option value="throughAll">Through all</option>
+            <option value="blind">Blind</option>
+          </select>
+        </label>
+        {form.depthMode === "blind" && (
+          <NumberInput
+            disabled={disabled}
+            label="Blind depth"
+            value={form.depth}
+            onChange={(depth) => setForm({ ...form, depth })}
+          />
+        )}
+        <label>
+          Direction
+          <select
+            value={form.direction}
+            disabled={disabled}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                direction: event.currentTarget
+                  .value as FeatureHoleForm["direction"]
+              })
+            }
+          >
+            <option value="positive">Positive</option>
+            <option value="negative">Negative</option>
+          </select>
+        </label>
+      </div>
+      {!available && (
+        <p className="error-text compact">{action?.reason ?? status.message}</p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !available}
+        onClick={() =>
+          onHoleEntity?.(context.sketch.id, context.entity.id, effectiveForm)
+        }
+      >
+        Create hole
+      </button>
+    </>
+  );
+}
+
+function BodyWorkbench({
+  actions,
+  context,
+  disabled,
+  onCreateSketchOnFace,
+  onSelectSketch
+}: {
+  readonly actions: readonly ModelingActionDescriptor[];
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "body" }
+  >;
+  readonly disabled: boolean;
+  readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
+}) {
+  const sketchAction = actions.find(
+    (action) => action.id === "sketch.createOnFace"
+  );
+  const attachableFaces = getSketchAttachableFaces(
+    context.generatedReferences?.faces ?? []
+  );
+  const [faceIndex, setFaceIndex] = useState(0);
+  const selectedFace = attachableFaces[faceIndex] ?? attachableFaces[0];
+  const [sketchDraft, setSketchDraft] = useState(() => ({
+    id: "",
+    name: selectedFace ? createSketchOnFaceDefaultName(selectedFace) : ""
+  }));
+  const sketchForm = selectedFace
+    ? buildSketchOnFaceForm(context.body.id, selectedFace, sketchDraft)
+    : undefined;
+
+  return (
+    <div className="workbench-surface">
+      <section className="workbench-card primary">
+        <div className="workbench-card-heading">
+          <h3>Body actions</h3>
+          <small>
+            {context.feature ? formatFeatureKind(context.feature) : "Body"}
+          </small>
+        </div>
+        <div className="workbench-command-grid">
+          <button
+            type="button"
+            disabled={!getSourceSketchId(context.feature)}
+            onClick={() => {
+              const sketchId = getSourceSketchId(context.feature);
+              if (sketchId) {
+                onSelectSketch?.(sketchId);
+              }
+            }}
+          >
+            Source sketch
+          </button>
+          <button
+            type="button"
+            disabled={disabled || !sketchAction?.available || !selectedFace}
+            onClick={() => sketchForm && onCreateSketchOnFace?.(sketchForm)}
+          >
+            Sketch on face
+          </button>
+        </div>
+        {attachableFaces.length > 0 && selectedFace ? (
+          <>
+            <div className="field-grid two">
+              <label>
+                Face
+                <select
+                  value={faceIndex}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const nextIndex = Number(event.currentTarget.value);
+                    const nextFace =
+                      attachableFaces[nextIndex] ?? attachableFaces[0];
+
+                    setFaceIndex(nextIndex);
+                    if (nextFace) {
+                      setSketchDraft({
+                        id: "",
+                        name: createSketchOnFaceDefaultName(nextFace)
+                      });
+                    }
+                  }}
+                >
+                  {attachableFaces.map((face, index) => (
+                    <option key={face.stableId} value={index}>
+                      {face.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <TextInput
+                disabled={disabled}
+                label="Sketch name"
+                value={sketchDraft.name}
+                onChange={(name) => setSketchDraft({ ...sketchDraft, name })}
+              />
+            </div>
+            <small>{formatSketchOnFaceAvailability(selectedFace)}</small>
+          </>
+        ) : (
+          <p className="empty-state compact">
+            {sketchAction?.reason ?? "No eligible planar faces on this body."}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function GeneratedReferenceWorkbench({
+  actions,
+  context,
+  disabled,
+  namedReferences,
+  onCreateEdgeFinish,
+  onCreateSketchOnFace,
+  onNameGeneratedReference
+}: {
+  readonly actions: readonly ModelingActionDescriptor[];
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "generatedReference" }
+  >;
+  readonly disabled: boolean;
+  readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly onCreateEdgeFinish?: (
+    operation: "chamfer" | "fillet",
+    form: FeatureEdgeFinishForm
+  ) => void;
+  readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onNameGeneratedReference?: (
+    name: string,
+    target: ReturnType<typeof createSelectedGeneratedReference>
+  ) => void;
+}) {
+  const [name, setName] = useState(context.reference.label);
+  const selectedReference = createSelectedGeneratedReference(context.reference);
+
+  return (
+    <div className="workbench-surface">
+      <section className="workbench-card primary">
+        <div className="workbench-card-heading">
+          <h3>Name reference</h3>
+          <small>{context.reference.label}</small>
+        </div>
+        <small>
+          {formatGeneratedReferenceOperationLabels(context.reference)}
+        </small>
+        <div className="field-grid two">
+          <TextInput
+            disabled={disabled}
+            label="Reference name"
+            value={name}
+            onChange={setName}
+          />
+          <button
+            type="button"
+            disabled={disabled || name.trim().length === 0}
+            onClick={() =>
+              onNameGeneratedReference?.(name.trim(), selectedReference)
+            }
+          >
+            Save name
+          </button>
+        </div>
+        {namedReferences.length > 0 && (
+          <small>
+            Existing:{" "}
+            {namedReferences
+              .filter(
+                (reference) =>
+                  reference.bodyId === context.reference.bodyId &&
+                  reference.stableId === context.reference.stableId
+              )
+              .map((reference) => reference.name)
+              .join(", ") || "none"}
+          </small>
+        )}
+      </section>
+      {context.reference.kind === "face" && (
+        <FaceReferenceWorkbench
+          actions={actions}
+          disabled={disabled}
+          face={context.reference}
+          onCreateSketchOnFace={onCreateSketchOnFace}
+        />
+      )}
+      {context.reference.kind === "edge" && (
+        <EdgeReferenceWorkbench
+          actions={actions}
+          body={context.body}
+          disabled={disabled}
+          edge={context.reference}
+          onCreateEdgeFinish={onCreateEdgeFinish}
+        />
+      )}
+    </div>
+  );
+}
+
+function FaceReferenceWorkbench({
+  actions,
+  disabled,
+  face,
+  onCreateSketchOnFace
+}: {
+  readonly actions: readonly ModelingActionDescriptor[];
+  readonly disabled: boolean;
+  readonly face: CadGeneratedFaceReference;
+  readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+}) {
+  const action = actions.find(
+    (candidate) => candidate.id === "sketch.createOnFace"
+  );
+  const [form, setForm] = useState(() => ({
+    id: "",
+    name: createSketchOnFaceDefaultName(face)
+  }));
+  const sketchForm = buildSketchOnFaceForm(face.bodyId, face, form);
+
+  return (
+    <section className="workbench-card">
+      <div className="workbench-card-heading">
+        <h3>Attached sketch</h3>
+        <small>Face plane</small>
+      </div>
+      <TextInput
+        disabled={disabled}
+        label="Sketch name"
+        value={form.name}
+        onChange={(name) => setForm({ ...form, name })}
+      />
+      {!action?.available && (
+        <p className="error-text compact">
+          {action?.reason ?? "This face cannot host a sketch."}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !action?.available || !sketchForm}
+        onClick={() => sketchForm && onCreateSketchOnFace?.(sketchForm)}
+      >
+        Create sketch on face
+      </button>
+    </section>
+  );
+}
+
+function EdgeReferenceWorkbench({
+  actions,
+  body,
+  disabled,
+  edge,
+  onCreateEdgeFinish
+}: {
+  readonly actions: readonly ModelingActionDescriptor[];
+  readonly body?: CadBodySnapshot;
+  readonly disabled: boolean;
+  readonly edge: Extract<CadGeneratedReference, { readonly kind: "edge" }>;
+  readonly onCreateEdgeFinish?: (
+    operation: "chamfer" | "fillet",
+    form: FeatureEdgeFinishForm
+  ) => void;
+}) {
+  const [operation, setOperation] = useState<"chamfer" | "fillet">("chamfer");
+  const [form, setForm] = useState(defaultEdgeFinishForm);
+  const action = actions.find((candidate) =>
+    operation === "chamfer"
+      ? candidate.id === "feature.chamfer"
+      : candidate.id === "feature.fillet"
+  );
+  const edgeFinishForm = buildEdgeFinishForm({
+    draft: {
+      ...form,
+      bodyId: form.bodyId,
+      radius: form.radius,
+      distance: form.distance
+    },
+    operation,
+    referenceOption: {
+      value: "selected",
+      kind: "generated",
+      label: edge.label,
+      edgeStableId: edge.stableId,
+      reference: edge,
+      status: "resolved"
+    },
+    targetBodyId: body?.id ?? edge.bodyId
+  });
+
+  return (
+    <section className="workbench-card">
+      <div className="workbench-card-heading">
+        <h3>Edge finish</h3>
+        <small>{edge.label}</small>
+      </div>
+      <div className="segmented-control feature-mode-tabs">
+        <button
+          type="button"
+          className={operation === "chamfer" ? "selected" : undefined}
+          disabled={disabled}
+          onClick={() => setOperation("chamfer")}
+        >
+          Chamfer
+        </button>
+        <button
+          type="button"
+          className={operation === "fillet" ? "selected" : undefined}
+          disabled={disabled}
+          onClick={() => setOperation("fillet")}
+        >
+          Fillet
+        </button>
+      </div>
+      <div className="field-grid two">
+        <NumberInput
+          disabled={disabled}
+          label={operation === "chamfer" ? "Distance" : "Radius"}
+          value={operation === "chamfer" ? form.distance : form.radius}
+          onChange={(value) =>
+            setForm(
+              operation === "chamfer"
+                ? { ...form, distance: value }
+                : { ...form, radius: value }
+            )
+          }
+        />
+        <TextInput
+          disabled={disabled}
+          label="Name"
+          value={form.name}
+          onChange={(name) => setForm({ ...form, name })}
+        />
+      </div>
+      {!action?.available && (
+        <p className="error-text compact">
+          {action?.reason ?? "This edge finish is unavailable."}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={disabled || !action?.available || !edgeFinishForm}
+        onClick={() =>
+          edgeFinishForm && onCreateEdgeFinish?.(operation, edgeFinishForm)
+        }
+      >
+        Create {operation}
+      </button>
+    </section>
+  );
+}
+
+function createEffectiveConstraintForm({
+  context,
+  form,
+  kind
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >;
+  readonly form: SketchConstraintForm;
+  readonly kind: SketchConstraintKind;
+}): SketchConstraintForm {
+  const primaryTarget =
+    createSketchPointTargetOptionsForEntity(context.entity).find(
+      (option) => option.target.role === form.targetRole
+    ) ?? createSketchPointTargetOptionsForEntity(context.entity)[0];
+  const constraints = context.constraints ?? [];
+
+  if (kind === "horizontal" || kind === "vertical") {
+    return {
+      ...form,
+      kind,
+      name: form.name.trim() || getSketchConstraintKindLabel(kind)
+    };
+  }
+
+  if (kind === "fixed") {
+    return {
+      ...form,
+      kind,
+      targetRole: primaryTarget?.target.role ?? form.targetRole,
+      name: form.name.trim() || getSketchConstraintKindLabel(kind)
+    };
+  }
+
+  const secondaryPointTarget =
+    kind === "coincident"
+      ? createAvailableCoincidentPointTargetOptions(
+          primaryTarget?.target,
+          context.sketch.entities,
+          constraints
+        )[0]?.target
+      : kind === "midpoint"
+        ? createAvailableMidpointTargetOptions(
+            context.entity,
+            context.sketch.entities,
+            constraints
+          )[0]?.target
+        : undefined;
+  const secondaryLineTarget =
+    kind === "parallel" || kind === "perpendicular"
+      ? createAvailableParallelLineTargetOptions(
+          context.entity,
+          context.sketch.entities,
+          constraints
+        )[0]
+      : undefined;
+
+  return {
+    ...form,
+    kind,
+    targetRole: primaryTarget?.target.role ?? form.targetRole,
+    secondaryEntityId:
+      form.secondaryEntityId ||
+      secondaryPointTarget?.entityId ||
+      secondaryLineTarget?.entityId ||
+      "",
+    secondaryTargetRole:
+      form.secondaryTargetRole || secondaryPointTarget?.role || "position",
+    name: form.name.trim() || getSketchConstraintKindLabel(kind)
+  };
+}
+
+function getConstraintAvailability(
+  context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketchEntity" }
+  >,
+  kind: SketchConstraintKind,
+  form: SketchConstraintForm
+): { readonly available: boolean; readonly message?: string } {
+  if (kind === "horizontal" || kind === "vertical") {
+    return { available: true };
+  }
+
+  if (kind === "fixed") {
+    return createAvailableFixedPointTargetOptions(
+      context.entity,
+      context.constraints ?? []
+    ).length > 0
+      ? { available: true }
+      : { available: false, message: "No available fixed point targets." };
+  }
+
+  if (!form.secondaryEntityId) {
+    return { available: false, message: "Choose a second target." };
+  }
+
+  return { available: true };
+}
+
 function formatModelingSelectionSummary(
-  context: ModelingSelectionContext
+  context: ModelingSelectionContext,
+  sketchCount: number
 ): ModelingSelectionSummary {
   switch (context.selectionKind) {
     case "none":
       return {
-        eyebrow: "No selection",
-        title: "No modeling context selected",
-        detail: "Start from a sketch, body, or generated reference."
+        eyebrow: sketchCount === 0 ? "Start model" : "No selection",
+        title:
+          sketchCount === 0
+            ? "Create a source sketch"
+            : "Pick from the model tree",
+        detail:
+          sketchCount === 0
+            ? "Create the first sketch directly here."
+            : "Select a sketch, entity, body, face, or edge."
       };
     case "sketch":
       return {
         eyebrow: "Sketch",
         title: context.sketch.name,
-        detail: `${formatSketchPlane(context.sketch.plane)} plane / ${
-          context.sketch.entities.length
-        } entities`
+        detail: `${context.sketch.plane} plane / ${context.sketch.entities.length} entities`
       };
     case "sketchEntity":
       return {
         eyebrow: "Sketch entity",
-        title: `${formatSketchEntityKind(context.entity.kind)} in ${
-          context.sketch.name
-        }`,
+        title: `${formatSketchEntityKind(context.entity.kind)} in ${context.sketch.name}`,
         detail: formatSketchEntity(context.entity)
       };
     case "body":
       return {
         eyebrow: "Body",
-        title: context.body.name ?? "Generated body",
-        detail: formatBodySelectionDetail(context.feature)
+        title: context.body.name ?? context.body.id,
+        detail: context.feature
+          ? `${formatFeatureKind(context.feature)} feature`
+          : "Generated body"
       };
     case "generatedReference":
       return {
@@ -131,106 +2015,39 @@ function formatModelingSelectionSummary(
   }
 }
 
-function createModelingActionDisplay(
-  action: ModelingActionDescriptor
-): ModelingActionDisplay {
-  return {
-    category: formatModelingActionCategory(action.category),
-    controlLabel: formatModelingActionControlLabel(action),
-    detail: action.available
-      ? formatModelingActionHint(action)
-      : (action.reason ?? "Not available for the current selection."),
-    status: action.available ? "available" : "unavailable"
-  };
-}
-
-function formatModelingActionHint(action: ModelingActionDescriptor): string {
-  switch (action.id) {
-    case "sketch.create":
-      return "Open the Sketch panel to create or edit sketches.";
-    case "sketch.entity.add.point":
-    case "sketch.entity.add.line":
-    case "sketch.entity.add.rectangle":
-    case "sketch.entity.add.circle":
-      return "Open the selected sketch controls and add this entity type.";
-    case "sketch.entity.edit":
-      return "Open the Sketch panel entity editor.";
-    case "sketch.dimension.add":
-      return "Use the Sketch panel dimension controls.";
-    case "sketch.constraint.add":
-      return "Use the Sketch panel constraint controls.";
-    case "sketch.revolveAxis.use":
-      return "Use this line from the revolve controls in the Sketch panel.";
-    case "feature.extrude":
-      return "Create the feature from the Sketch panel feature controls.";
-    case "feature.hole":
-      return "Create the hole from the Sketch panel feature controls.";
-    case "feature.revolve":
-      return "Create the revolve from the Sketch panel feature controls.";
-    case "body.references.inspect":
-      return "Inspect generated faces, edges, and vertices.";
-    case "body.measureTopology":
-      return "Review body measurements and topology in the Inspector.";
-    case "sketch.createOnFace":
-      return "Select an eligible face and use the Inspector sketch-on-face form.";
-    case "reference.name":
-      return "Use the Inspector selected-reference naming control.";
-    case "feature.chamfer":
-      return "Use the Inspector edge finish controls.";
-    case "feature.fillet":
-      return "Use the Inspector edge finish controls.";
+function formatFeatureKind(feature: CadFeatureSummary): string {
+  switch (feature.kind) {
+    case "extrude":
+      return "Extrude";
+    case "revolve":
+      return "Revolve";
+    case "hole":
+      return "Hole";
+    case "chamfer":
+      return "Chamfer";
+    case "fillet":
+      return "Fillet";
+    default:
+      return feature.kind;
   }
 }
 
-function formatModelingActionControlLabel(
-  action: ModelingActionDescriptor
-): string {
-  if (!action.available) {
-    return "Unavailable";
+function getSourceSketchId(
+  feature: CadFeatureSummary | undefined
+): string | undefined {
+  if (!feature) {
+    return undefined;
   }
 
-  switch (action.id) {
-    case "sketch.create":
-    case "sketch.entity.add.point":
-    case "sketch.entity.add.line":
-    case "sketch.entity.add.rectangle":
-    case "sketch.entity.add.circle":
-    case "sketch.entity.edit":
-    case "sketch.dimension.add":
-    case "sketch.constraint.add":
-    case "sketch.revolveAxis.use":
-    case "feature.extrude":
-    case "feature.hole":
-    case "feature.revolve":
-      return "Open Sketch";
-    case "body.references.inspect":
-    case "body.measureTopology":
-      return "Inspect";
-    case "sketch.createOnFace":
-      return "Select face";
-    case "reference.name":
-      return "Name";
-    case "feature.chamfer":
-    case "feature.fillet":
-      return "Open finish";
+  if (
+    feature.kind === "extrude" ||
+    feature.kind === "revolve" ||
+    feature.kind === "hole"
+  ) {
+    return feature.sketchId;
   }
-}
 
-function formatModelingActionCategory(
-  category: ModelingActionDescriptor["category"]
-): string {
-  switch (category) {
-    case "sketch":
-      return "Sketch";
-    case "sketchEntity":
-      return "Entity";
-    case "feature":
-      return "Feature";
-    case "body":
-      return "Body";
-    case "generatedReference":
-      return "Reference";
-  }
+  return undefined;
 }
 
 function formatSketchEntityKind(kind: SketchEntityKind): string {
@@ -246,46 +2063,51 @@ function formatSketchEntityKind(kind: SketchEntityKind): string {
   }
 }
 
-function formatSketchPlane(plane: string): string {
-  return plane;
+function NumberInput({
+  disabled = false,
+  label,
+  onChange,
+  value
+}: {
+  readonly disabled?: boolean;
+  readonly label: string;
+  readonly onChange: (value: number) => void;
+  readonly value: number;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type="number"
+        value={Number.isFinite(value) ? value : ""}
+        disabled={disabled}
+        step="0.1"
+        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+      />
+    </label>
+  );
 }
 
-function formatBodySelectionDetail(feature: CadFeatureSummary | undefined) {
-  if (!feature) {
-    return "Body details are available in the Inspector.";
-  }
-
-  const featureName = feature.name ? `${feature.name} ` : "";
-
-  switch (feature.kind) {
-    case "primitive":
-      return `${featureName}${formatPrimitiveKind(feature.primitive)} feature`;
-    case "extrude":
-      return `${featureName}Extrude feature`;
-    case "revolve":
-      return `${featureName}Revolve feature`;
-    case "hole":
-      return `${featureName}Hole feature`;
-    case "chamfer":
-      return `${featureName}Chamfer feature`;
-    case "fillet":
-      return `${featureName}Fillet feature`;
-  }
-}
-
-function formatPrimitiveKind(kind: string): string {
-  switch (kind) {
-    case "box":
-      return "Box";
-    case "cylinder":
-      return "Cylinder";
-    case "sphere":
-      return "Sphere";
-    case "cone":
-      return "Cone";
-    case "torus":
-      return "Torus";
-    default:
-      return "Primitive";
-  }
+function TextInput({
+  disabled = false,
+  label,
+  onChange,
+  value
+}: {
+  readonly disabled?: boolean;
+  readonly label: string;
+  readonly onChange: (value: string) => void;
+  readonly value: string;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type="text"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      />
+    </label>
+  );
 }

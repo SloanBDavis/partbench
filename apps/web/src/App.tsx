@@ -17,6 +17,7 @@ import type {
   CadBatchMode,
   CadBatchResponse,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
   CadParameterSnapshot,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
@@ -153,7 +154,6 @@ import {
 } from "./generatedReferenceSelection";
 import {
   deriveModelingActions,
-  type ModelingActionDescriptor,
   type ModelingSelectionContext
 } from "./modelingActions";
 import {
@@ -267,7 +267,13 @@ const initialBatchForm: BatchOperationForm = {
   unitUpdateMode: "metadataOnly"
 };
 
-type UtilityPanelId = "sketches" | "history" | "batch" | "project" | "geometry";
+type UtilityPanelId =
+  | "details"
+  | "sketches"
+  | "history"
+  | "batch"
+  | "project"
+  | "geometry";
 
 function formatSchemaBadge(schemaVersion: string): string {
   return schemaVersion.replace("web-cad.project.", "").toUpperCase();
@@ -787,7 +793,7 @@ export function App() {
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
   const [activeUtilityPanel, setActiveUtilityPanel] =
-    useState<UtilityPanelId>("sketches");
+    useState<UtilityPanelId>("details");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [selectedSketchContext, setSelectedSketchContext] = useState<
     SketchPanelSelectionContext | undefined
@@ -1061,7 +1067,8 @@ export function App() {
     readonly label: string;
     readonly count?: number | string;
   }[] = [
-    { id: "sketches", label: "Sketch", count: sketches.length },
+    { id: "details", label: "Details" },
+    { id: "sketches", label: "Sketches", count: sketches.length },
     { id: "history", label: "Log", count: transactionHistory.length },
     { id: "batch", label: "Batch", count: queuedOps.length },
     {
@@ -1103,13 +1110,16 @@ export function App() {
     getDerivedGeometryService
   ]);
 
-  function syncDocument(nextSelectedId = selectedId) {
+  function syncDocument(
+    nextSelectedId: string | null | undefined = selectedId
+  ) {
     const nextDocument = engine.getDocument();
     const nextStructure = readProjectStructure();
     reconcileDerivedGeometry(nextDocument, nextStructure);
     setDocument(nextDocument);
     setSelectedId(
-      nextSelectedId &&
+      nextSelectedId !== null &&
+        nextSelectedId &&
         (nextDocument.objects.has(nextSelectedId) ||
           nextStructure.bodies.some((body) => body.id === nextSelectedId))
         ? nextSelectedId
@@ -1162,7 +1172,7 @@ export function App() {
 
   async function commitOps(
     ops: readonly CadOp[],
-    getNextSelectedId: (response: CadBatchResponse) => string | undefined
+    getNextSelectedId: (response: CadBatchResponse) => string | null | undefined
   ) {
     setCommandPending(true);
     setCommandError(undefined);
@@ -1306,7 +1316,17 @@ export function App() {
   }
 
   async function createSketch(form: SketchCreateForm) {
-    await commitOps([buildCreateSketchOp(form)], () => selectedId);
+    await commitOps([buildCreateSketchOp(form)], (response) => {
+      const sketchId = response.createdSketchIds?.[0];
+
+      if (sketchId) {
+        setSelectedGeneratedReference(undefined);
+        setFocusedSketchId(sketchId);
+        setSelectedSketchContext({ sketchId });
+      }
+
+      return null;
+    });
   }
 
   async function createParameter(form: ParameterCreateForm) {
@@ -1335,11 +1355,12 @@ export function App() {
       const sketchId = response.createdSketchIds?.[0];
 
       if (sketchId) {
-        setActiveUtilityPanel("sketches");
+        setSelectedGeneratedReference(undefined);
         setFocusedSketchId(sketchId);
+        setSelectedSketchContext({ sketchId });
       }
 
-      return selectedId;
+      return null;
     });
   }
 
@@ -1358,119 +1379,13 @@ export function App() {
     );
   }
 
-  function focusSketch(sketchId: string) {
-    setActiveUtilityPanel("sketches");
+  function focusSketch(sketchId: string, entityId?: string) {
+    setSelectedId(undefined);
+    setSelectedGeneratedReference(undefined);
     setFocusedSketchId(sketchId);
-    setSelectedSketchContext({ sketchId });
-  }
-
-  function handleModelingAction(action: ModelingActionDescriptor) {
-    if (!action.available) {
-      return;
-    }
-
-    switch (action.id) {
-      case "sketch.create":
-        setActiveUtilityPanel("sketches");
-        return;
-      case "sketch.entity.add.point":
-      case "sketch.entity.add.line":
-      case "sketch.entity.add.rectangle":
-      case "sketch.entity.add.circle":
-      case "sketch.entity.edit":
-      case "sketch.dimension.add":
-      case "sketch.constraint.add":
-      case "sketch.revolveAxis.use":
-      case "feature.extrude":
-      case "feature.hole":
-      case "feature.revolve": {
-        const sketchId = action.target?.sketchId ?? getContextSketchId();
-
-        if (sketchId) {
-          focusSketch(sketchId);
-          setSelectedSketchContext({
-            sketchId,
-            ...(action.target?.sketchEntityId
-              ? { entityId: action.target.sketchEntityId }
-              : {})
-          });
-        } else {
-          setActiveUtilityPanel("sketches");
-        }
-        return;
-      }
-      case "body.references.inspect":
-      case "body.measureTopology":
-        if (action.target?.bodyId) {
-          setSelectedId(action.target.bodyId);
-        }
-        setSelectedGeneratedReference(undefined);
-        return;
-      case "sketch.createOnFace":
-        selectModelingActionFace(action);
-        return;
-      case "reference.name":
-      case "feature.chamfer":
-      case "feature.fillet":
-        selectModelingActionGeneratedReference(action);
-        return;
-    }
-  }
-
-  function getContextSketchId(): string | undefined {
-    if (modelingSelectionContext.selectionKind === "sketch") {
-      return modelingSelectionContext.sketch.id;
-    }
-
-    if (modelingSelectionContext.selectionKind === "sketchEntity") {
-      return modelingSelectionContext.sketch.id;
-    }
-
-    return undefined;
-  }
-
-  function selectModelingActionFace(action: ModelingActionDescriptor) {
-    const bodyId = action.target?.bodyId;
-    const stableId =
-      action.target?.eligibleFaceStableIds?.[0] ??
-      action.target?.generatedReferenceStableId;
-
-    if (bodyId) {
-      setSelectedId(bodyId);
-    }
-
-    if (!bodyId || !stableId) {
-      return;
-    }
-
-    const face = selectedBodyGeneratedReferences.references?.faces.find(
-      (candidate) =>
-        candidate.bodyId === bodyId && candidate.stableId === stableId
-    );
-
-    setSelectedGeneratedReference(
-      face
-        ? createSelectedGeneratedReference(face)
-        : {
-            bodyId,
-            stableId,
-            kind: "face"
-          }
-    );
-  }
-
-  function selectModelingActionGeneratedReference(
-    action: ModelingActionDescriptor
-  ) {
-    if (action.selection?.context !== "generatedReference") {
-      return;
-    }
-
-    setSelectedId(action.selection.bodyId);
-    setSelectedGeneratedReference({
-      bodyId: action.selection.bodyId,
-      stableId: action.selection.stableId,
-      kind: action.selection.referenceKind
+    setSelectedSketchContext({
+      sketchId,
+      ...(entityId ? { entityId } : {})
     });
   }
 
@@ -1496,7 +1411,17 @@ export function App() {
             ? buildAddSketchRectangleOp(sketchId, form)
             : buildAddSketchCircleOp(sketchId, form);
 
-    await commitOps([op], () => selectedId);
+    await commitOps([op], (response) => {
+      const entityId = response.createdSketchEntityIds?.[0];
+
+      if (entityId) {
+        setSelectedGeneratedReference(undefined);
+        setFocusedSketchId(sketchId);
+        setSelectedSketchContext({ sketchId, entityId });
+      }
+
+      return null;
+    });
   }
 
   async function updateSketchEntity(
@@ -1675,6 +1600,11 @@ export function App() {
     setSelectedGeneratedReference(
       createSelectedGeneratedReference(response.reference)
     );
+  }
+
+  function selectGeneratedReference(reference: CadGeneratedReference) {
+    setSelectedId(reference.bodyId);
+    setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
   }
 
   function undo() {
@@ -1900,6 +1830,7 @@ export function App() {
         <StructurePanel
           bodies={projectStructure.bodies}
           features={projectStructure.features}
+          generatedReferences={selectedBodyGeneratedReferences.references}
           geometryStatuses={
             derivedGeometryEnabled ? geometryStatusBySourceId : undefined
           }
@@ -1908,11 +1839,13 @@ export function App() {
           objects={sceneObjects}
           parts={projectStructure.parts}
           selectedId={selectedId}
+          selectedGeneratedReference={selectedGeneratedReference}
           sketches={sketches}
           units={document.units}
           onFocusSketch={focusSketch}
           onInspectNamedReference={inspectNamedReference}
           onSelect={selectObject}
+          onSelectGeneratedReference={selectGeneratedReference}
         />
 
         <ViewportCanvas
@@ -1924,229 +1857,297 @@ export function App() {
           onSelect={selectObject}
         />
 
-        <div className="right-rail" aria-label="Inspector and tools">
-          <Inspector
+        <div className="right-rail" aria-label="Context and advanced tools">
+          <ModelingActionsPanel
+            actions={modelingActions}
+            addTargetBodies={addTargetBodyOptions}
+            context={modelingSelectionContext}
+            cutTargetBodies={cutTargetBodyOptions}
             disabled={commandPending}
-            measurements={selectedMeasurements}
-            bodyMeasurements={selectedBodyMeasurements.measurements}
-            bodyMeasurementsError={selectedBodyMeasurements.error}
-            bodyTopology={selectedBodyTopology.topology}
-            bodyTopologyError={selectedBodyTopology.error}
-            bodyTopologyExactMetadataStatus={
-              selectedBodyTopology.exactMetadataStatus
-            }
-            body={selectedBody}
-            feature={selectedFeature}
-            generatedReferences={selectedBodyGeneratedReferences.references}
-            generatedReferencesError={selectedBodyGeneratedReferences.error}
-            generatedReferenceMeasurements={
-              selectedGeneratedReferenceMeasurements
-            }
+            holeTargetBodies={holeTargetBodyOptions}
             namedReferences={namedReferences}
-            object={selectedObject}
-            selectedGeneratedReference={selectedGeneratedReference}
-            units={document.units}
-            onApplyDimensions={(form) => void updateSelectedDimensions(form)}
-            onApplyName={(name) => void renameSelectedObject(name)}
-            onApplyTransform={(form) => void updateSelectedTransform(form)}
-            onDelete={() => void deleteSelectedObject()}
-            onDeleteFeature={(featureId) =>
-              void deleteAuthoredFeature(featureId)
+            sketches={sketches}
+            onAddEntity={(sketchId, kind, form) =>
+              void addSketchEntity(sketchId, kind, form)
             }
-            onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+            onCreateConstraint={(sketchId, entityId, form) =>
+              void createSketchConstraint(sketchId, entityId, form)
+            }
+            onCreateDimension={(sketchId, entityId, target, form) =>
+              void createSketchDimension(sketchId, entityId, target, form)
+            }
             onCreateEdgeFinish={(operation, form) =>
               void createEdgeFinish(operation, form)
             }
-            onDeleteNamedReference={(name) => void deleteNamedReference(name)}
+            onCreateSketch={(form) => void createSketch(form)}
+            onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+            onExtrudeEntity={(sketchId, entityId, form) =>
+              void extrudeSketchEntity(sketchId, entityId, form)
+            }
+            onHoleEntity={(sketchId, entityId, form) =>
+              void holeSketchEntity(sketchId, entityId, form)
+            }
             onNameGeneratedReference={(name, target) =>
               void nameGeneratedReference(name, target)
             }
-            onInspectNamedReference={inspectNamedReference}
-            onSelectGeneratedReference={setSelectedGeneratedReference}
-            onUpdateExtrude={(featureId, depth, side) =>
-              void updateAuthoredExtrude(featureId, depth, side)
+            onRevolveEntity={(sketchId, entityId, form) =>
+              void revolveSketchEntity(sketchId, entityId, form)
+            }
+            onSelectSketch={focusSketch}
+            onUpdateEntity={(sketchId, entity) =>
+              void updateSketchEntity(sketchId, entity)
             }
           />
 
-          <ModelingActionsPanel
-            actions={modelingActions}
-            context={modelingSelectionContext}
-            disabled={commandPending}
-            onAction={handleModelingAction}
-          />
+          <details className="advanced-tools-drawer">
+            <summary>
+              <span>Advanced tools</span>
+              <small>Details, file, batch, log</small>
+            </summary>
 
-          <section className="utility-dock" aria-label="Workspace tools">
-            <div className="utility-tabs" role="tablist" aria-label="Tool tabs">
-              {utilityPanels.map((panel) => (
-                <button
-                  key={panel.id}
-                  id={`utility-tab-${panel.id}`}
-                  type="button"
-                  role="tab"
-                  aria-controls={`utility-panel-${panel.id}`}
-                  aria-selected={activeUtilityPanel === panel.id}
-                  className={activeUtilityPanel === panel.id ? "active" : ""}
-                  onClick={() => setActiveUtilityPanel(panel.id)}
-                >
-                  <span>{panel.label}</span>
-                  {typeof panel.count === "string" && (
-                    <small>{panel.count}</small>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="utility-panels">
+            <section className="utility-dock" aria-label="Workspace tools">
               <div
-                id="utility-panel-sketches"
-                role="tabpanel"
-                aria-labelledby="utility-tab-sketches"
-                className="utility-panel"
-                hidden={activeUtilityPanel !== "sketches"}
+                className="utility-tabs"
+                role="tablist"
+                aria-label="Tool tabs"
               >
-                <SketchPanel
-                  key={focusedSketchId ?? "sketch-panel"}
-                  disabled={commandPending}
-                  sketches={sketches}
-                  parameters={parameters}
-                  sketchDimensionsBySketchId={sketchDimensionsBySketchId}
-                  sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
-                  addTargetBodies={addTargetBodyOptions}
-                  cutTargetBodies={cutTargetBodyOptions}
-                  holeTargetBodies={holeTargetBodyOptions}
-                  displayStatuses={sketchDisplayState.statuses}
-                  focusedSketchId={focusedSketchId}
-                  features={projectStructure.features}
-                  onCreateSketch={(form) => void createSketch(form)}
-                  onCreateParameter={(form) => void createParameter(form)}
-                  onApplyParameterEdit={(parameter, form) =>
-                    void applyParameterEdit(parameter, form)
-                  }
-                  onDeleteParameter={(parameterId) =>
-                    void deleteParameter(parameterId)
-                  }
-                  onRenameSketch={(sketchId, name) =>
-                    void renameSketch(sketchId, name)
-                  }
-                  onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
-                  onAddEntity={(sketchId, kind, form) =>
-                    void addSketchEntity(sketchId, kind, form)
-                  }
-                  onUpdateEntity={(sketchId, entity) =>
-                    void updateSketchEntity(sketchId, entity)
-                  }
-                  onDeleteEntity={(sketchId, entityId) =>
-                    void deleteSketchEntity(sketchId, entityId)
-                  }
-                  onCreateDimension={(sketchId, entityId, target, form) =>
-                    void createSketchDimension(sketchId, entityId, target, form)
-                  }
-                  onApplyDimensionEdit={(dimension, form) =>
-                    void applySketchDimensionEdit(dimension, form)
-                  }
-                  onDeleteDimension={(dimensionId) =>
-                    void deleteSketchDimension(dimensionId)
-                  }
-                  onCreateConstraint={(sketchId, entityId, form) =>
-                    void createSketchConstraint(sketchId, entityId, form)
-                  }
-                  onApplyConstraintEdit={(constraint, form) =>
-                    void applySketchConstraintEdit(constraint, form)
-                  }
-                  onDeleteConstraint={(constraintId) =>
-                    void deleteSketchConstraint(constraintId)
-                  }
-                  onExtrudeEntity={(sketchId, entityId, form) =>
-                    void extrudeSketchEntity(sketchId, entityId, form)
-                  }
-                  onRevolveEntity={(sketchId, entityId, form) =>
-                    void revolveSketchEntity(sketchId, entityId, form)
-                  }
-                  onHoleEntity={(sketchId, entityId, form) =>
-                    void holeSketchEntity(sketchId, entityId, form)
-                  }
-                  onSelectionContextChange={setSelectedSketchContext}
-                />
+                {utilityPanels.map((panel) => (
+                  <button
+                    key={panel.id}
+                    id={`utility-tab-${panel.id}`}
+                    type="button"
+                    role="tab"
+                    aria-controls={`utility-panel-${panel.id}`}
+                    aria-selected={activeUtilityPanel === panel.id}
+                    className={activeUtilityPanel === panel.id ? "active" : ""}
+                    onClick={() => setActiveUtilityPanel(panel.id)}
+                  >
+                    <span>{panel.label}</span>
+                    {panel.count !== undefined && <small>{panel.count}</small>}
+                  </button>
+                ))}
               </div>
 
-              <div
-                id="utility-panel-history"
-                role="tabpanel"
-                aria-labelledby="utility-tab-history"
-                className="utility-panel"
-                hidden={activeUtilityPanel !== "history"}
-              >
-                <HistoryPanel transactions={transactionHistory} />
-              </div>
-
-              <div
-                id="utility-panel-batch"
-                role="tabpanel"
-                aria-labelledby="utility-tab-batch"
-                className="utility-panel"
-                hidden={activeUtilityPanel !== "batch"}
-              >
-                <BatchPanel
-                  disabled={commandPending}
-                  form={batchForm}
-                  onChange={setBatchForm}
-                  units={document.units}
-                  queuedOps={queuedOps}
-                  response={batchResponse}
-                  error={batchError}
-                  onAddOperation={addBatchOperation}
-                  onDryRun={() => void runBatch("dryRun")}
-                  onCommit={() => void runBatch("commit")}
-                  onClear={clearBatch}
-                />
-              </div>
-
-              <div
-                id="utility-panel-project"
-                role="tabpanel"
-                aria-labelledby="utility-tab-project"
-                className="utility-panel"
-                hidden={activeUtilityPanel !== "project"}
-              >
-                <ProjectJsonPanel
-                  disabled={commandPending}
-                  projectJson={projectJson}
-                  currentSummary={currentProjectSummary}
-                  message={projectMessage}
-                  messageTone={projectMessageTone}
-                  preview={projectJsonPreview}
-                  onProjectJsonChange={(value) => {
-                    setProjectJson(value);
-                    setProjectMessage(undefined);
-                  }}
-                  onProjectFileLoaded={loadProjectFile}
-                  onProjectFileError={(message) => {
-                    setProjectMessage(message);
-                    setProjectMessageTone("error");
-                  }}
-                  onExport={exportProjectJson}
-                  onDownload={downloadProjectJson}
-                  onImport={importProjectJson}
-                />
-              </div>
-
-              {derivedGeometryEnabled && (
+              <div className="utility-panels">
                 <div
-                  id="utility-panel-geometry"
+                  id="utility-panel-details"
                   role="tabpanel"
-                  aria-labelledby="utility-tab-geometry"
+                  aria-labelledby="utility-tab-details"
                   className="utility-panel"
-                  hidden={activeUtilityPanel !== "geometry"}
+                  hidden={activeUtilityPanel !== "details"}
                 >
-                  <GeometryPanel
+                  <Inspector
                     disabled={commandPending}
-                    snapshot={derivedGeometry}
-                    onRefresh={refreshDerivedGeometry}
+                    measurements={selectedMeasurements}
+                    bodyMeasurements={selectedBodyMeasurements.measurements}
+                    bodyMeasurementsError={selectedBodyMeasurements.error}
+                    bodyTopology={selectedBodyTopology.topology}
+                    bodyTopologyError={selectedBodyTopology.error}
+                    bodyTopologyExactMetadataStatus={
+                      selectedBodyTopology.exactMetadataStatus
+                    }
+                    body={selectedBody}
+                    feature={selectedFeature}
+                    generatedReferences={
+                      selectedBodyGeneratedReferences.references
+                    }
+                    generatedReferencesError={
+                      selectedBodyGeneratedReferences.error
+                    }
+                    generatedReferenceMeasurements={
+                      selectedGeneratedReferenceMeasurements
+                    }
+                    namedReferences={namedReferences}
+                    object={selectedObject}
+                    selectedGeneratedReference={selectedGeneratedReference}
+                    units={document.units}
+                    onApplyDimensions={(form) =>
+                      void updateSelectedDimensions(form)
+                    }
+                    onApplyName={(name) => void renameSelectedObject(name)}
+                    onApplyTransform={(form) =>
+                      void updateSelectedTransform(form)
+                    }
+                    onDelete={() => void deleteSelectedObject()}
+                    onDeleteFeature={(featureId) =>
+                      void deleteAuthoredFeature(featureId)
+                    }
+                    onCreateSketchOnFace={(form) =>
+                      void createSketchOnFace(form)
+                    }
+                    onCreateEdgeFinish={(operation, form) =>
+                      void createEdgeFinish(operation, form)
+                    }
+                    onDeleteNamedReference={(name) =>
+                      void deleteNamedReference(name)
+                    }
+                    onNameGeneratedReference={(name, target) =>
+                      void nameGeneratedReference(name, target)
+                    }
+                    onInspectNamedReference={inspectNamedReference}
+                    onSelectGeneratedReference={setSelectedGeneratedReference}
+                    onUpdateExtrude={(featureId, depth, side) =>
+                      void updateAuthoredExtrude(featureId, depth, side)
+                    }
                   />
                 </div>
-              )}
-            </div>
-          </section>
+
+                <div
+                  id="utility-panel-sketches"
+                  role="tabpanel"
+                  aria-labelledby="utility-tab-sketches"
+                  className="utility-panel"
+                  hidden={activeUtilityPanel !== "sketches"}
+                >
+                  <SketchPanel
+                    key={focusedSketchId ?? "sketch-panel"}
+                    disabled={commandPending}
+                    sketches={sketches}
+                    parameters={parameters}
+                    sketchDimensionsBySketchId={sketchDimensionsBySketchId}
+                    sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
+                    addTargetBodies={addTargetBodyOptions}
+                    cutTargetBodies={cutTargetBodyOptions}
+                    holeTargetBodies={holeTargetBodyOptions}
+                    displayStatuses={sketchDisplayState.statuses}
+                    focusedSketchId={focusedSketchId}
+                    features={projectStructure.features}
+                    onCreateSketch={(form) => void createSketch(form)}
+                    onCreateParameter={(form) => void createParameter(form)}
+                    onApplyParameterEdit={(parameter, form) =>
+                      void applyParameterEdit(parameter, form)
+                    }
+                    onDeleteParameter={(parameterId) =>
+                      void deleteParameter(parameterId)
+                    }
+                    onRenameSketch={(sketchId, name) =>
+                      void renameSketch(sketchId, name)
+                    }
+                    onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
+                    onAddEntity={(sketchId, kind, form) =>
+                      void addSketchEntity(sketchId, kind, form)
+                    }
+                    onUpdateEntity={(sketchId, entity) =>
+                      void updateSketchEntity(sketchId, entity)
+                    }
+                    onDeleteEntity={(sketchId, entityId) =>
+                      void deleteSketchEntity(sketchId, entityId)
+                    }
+                    onCreateDimension={(sketchId, entityId, target, form) =>
+                      void createSketchDimension(
+                        sketchId,
+                        entityId,
+                        target,
+                        form
+                      )
+                    }
+                    onApplyDimensionEdit={(dimension, form) =>
+                      void applySketchDimensionEdit(dimension, form)
+                    }
+                    onDeleteDimension={(dimensionId) =>
+                      void deleteSketchDimension(dimensionId)
+                    }
+                    onCreateConstraint={(sketchId, entityId, form) =>
+                      void createSketchConstraint(sketchId, entityId, form)
+                    }
+                    onApplyConstraintEdit={(constraint, form) =>
+                      void applySketchConstraintEdit(constraint, form)
+                    }
+                    onDeleteConstraint={(constraintId) =>
+                      void deleteSketchConstraint(constraintId)
+                    }
+                    onExtrudeEntity={(sketchId, entityId, form) =>
+                      void extrudeSketchEntity(sketchId, entityId, form)
+                    }
+                    onRevolveEntity={(sketchId, entityId, form) =>
+                      void revolveSketchEntity(sketchId, entityId, form)
+                    }
+                    onHoleEntity={(sketchId, entityId, form) =>
+                      void holeSketchEntity(sketchId, entityId, form)
+                    }
+                    onSelectionContextChange={setSelectedSketchContext}
+                  />
+                </div>
+
+                <div
+                  id="utility-panel-history"
+                  role="tabpanel"
+                  aria-labelledby="utility-tab-history"
+                  className="utility-panel"
+                  hidden={activeUtilityPanel !== "history"}
+                >
+                  <HistoryPanel transactions={transactionHistory} />
+                </div>
+
+                <div
+                  id="utility-panel-batch"
+                  role="tabpanel"
+                  aria-labelledby="utility-tab-batch"
+                  className="utility-panel"
+                  hidden={activeUtilityPanel !== "batch"}
+                >
+                  <BatchPanel
+                    disabled={commandPending}
+                    form={batchForm}
+                    onChange={setBatchForm}
+                    units={document.units}
+                    queuedOps={queuedOps}
+                    response={batchResponse}
+                    error={batchError}
+                    onAddOperation={addBatchOperation}
+                    onDryRun={() => void runBatch("dryRun")}
+                    onCommit={() => void runBatch("commit")}
+                    onClear={clearBatch}
+                  />
+                </div>
+
+                <div
+                  id="utility-panel-project"
+                  role="tabpanel"
+                  aria-labelledby="utility-tab-project"
+                  className="utility-panel"
+                  hidden={activeUtilityPanel !== "project"}
+                >
+                  <ProjectJsonPanel
+                    disabled={commandPending}
+                    projectJson={projectJson}
+                    currentSummary={currentProjectSummary}
+                    message={projectMessage}
+                    messageTone={projectMessageTone}
+                    preview={projectJsonPreview}
+                    onProjectJsonChange={(value) => {
+                      setProjectJson(value);
+                      setProjectMessage(undefined);
+                    }}
+                    onProjectFileLoaded={loadProjectFile}
+                    onProjectFileError={(message) => {
+                      setProjectMessage(message);
+                      setProjectMessageTone("error");
+                    }}
+                    onExport={exportProjectJson}
+                    onDownload={downloadProjectJson}
+                    onImport={importProjectJson}
+                  />
+                </div>
+
+                {derivedGeometryEnabled && (
+                  <div
+                    id="utility-panel-geometry"
+                    role="tabpanel"
+                    aria-labelledby="utility-tab-geometry"
+                    className="utility-panel"
+                    hidden={activeUtilityPanel !== "geometry"}
+                  >
+                    <GeometryPanel
+                      disabled={commandPending}
+                      snapshot={derivedGeometry}
+                      onRefresh={refreshDerivedGeometry}
+                    />
+                  </div>
+                )}
+              </div>
+            </section>
+          </details>
         </div>
       </section>
     </main>

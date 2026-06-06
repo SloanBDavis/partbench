@@ -912,6 +912,97 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives attached-face rectangle cuts with inward tool direction", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_cut_face",
+        name: "Cut sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_face",
+        id: "rect_cut_tool",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_face",
+        bodyId: "body_cut_face",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_cut_face",
+        entityId: "rect_cut_tool",
+        depth: 1,
+        side: "negative",
+        operationMode: "cut"
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_rect_1"])
+    );
+    const cutSource = sources.find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_cut_face"]);
+    expect(cutSource).toMatchObject({
+      id: "body_cut_face",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+      tool: {
+        id: "body_cut_face",
+        profile: { kind: "rectangle" },
+        side: "negative",
+        placementFrame: {
+          origin: [0, 0, 3]
+        }
+      }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_cut_face",
+        operation: "cut",
+        tool: expect.objectContaining({
+          side: "negative",
+          placementFrame: expect.objectContaining({
+            origin: [0, 0, 3]
+          })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_cut_face",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("derives add result sources from active rectangle target and tool extrudes", async () => {
     const engine = createExtrudedRectangleEngine();
 
