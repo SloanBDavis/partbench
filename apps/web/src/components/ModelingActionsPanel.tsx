@@ -109,6 +109,7 @@ export interface ModelingActionsPanelProps {
     name: string,
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
+  readonly onSelectBody?: (bodyId: string) => void;
   readonly onDeleteFeature?: (featureId: string) => void;
   readonly onDeleteEntity?: (sketchId: string, entityId: string) => void;
   readonly onRevolveEntity?: (
@@ -210,6 +211,7 @@ export function ModelingActionsPanel({
   onExtrudeEntity,
   onHoleEntity,
   onNameGeneratedReference,
+  onSelectBody,
   onDeleteFeature,
   onDeleteEntity,
   onDeleteSketch,
@@ -290,6 +292,7 @@ export function ModelingActionsPanel({
         <NoSelectionWorkbench
           disabled={disabled}
           sketches={sketches}
+          onDeleteSketch={onDeleteSketch}
           onSelectSketch={onSelectSketch}
         />
       )}
@@ -345,6 +348,7 @@ export function ModelingActionsPanel({
           onCreateEdgeFinish={onCreateEdgeFinish}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onNameGeneratedReference={onNameGeneratedReference}
+          onSelectBody={onSelectBody}
         />
       )}
     </section>
@@ -445,12 +449,18 @@ function ActiveSketchControls({
 function NoSelectionWorkbench({
   disabled,
   sketches,
+  onDeleteSketch,
   onSelectSketch
 }: {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
+  readonly onDeleteSketch?: (sketchId: string) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
 }) {
+  const [deleteArmedSketchId, setDeleteArmedSketchId] = useState<
+    string | undefined
+  >();
+
   if (sketches.length === 0) {
     return null;
   }
@@ -465,16 +475,37 @@ function NoSelectionWorkbench({
         <ul className="workbench-compact-list">
           {sketches.map((sketch) => (
             <li key={sketch.id}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onSelectSketch?.(sketch.id)}
-              >
-                <strong>{sketch.name}</strong>
-                <small>
-                  {sketch.plane} / {sketch.entities.length} entities
-                </small>
-              </button>
+              <div className="workbench-list-row">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelectSketch?.(sketch.id)}
+                >
+                  <strong>{sketch.name}</strong>
+                  <small>
+                    {sketch.plane} / {sketch.entities.length} entities
+                  </small>
+                </button>
+                <button
+                  type="button"
+                  className={
+                    deleteArmedSketchId === sketch.id
+                      ? "danger armed"
+                      : "danger"
+                  }
+                  disabled={disabled || !onDeleteSketch}
+                  onClick={() => {
+                    if (deleteArmedSketchId !== sketch.id) {
+                      setDeleteArmedSketchId(sketch.id);
+                      return;
+                    }
+
+                    onDeleteSketch?.(sketch.id);
+                  }}
+                >
+                  {deleteArmedSketchId === sketch.id ? "Confirm" : "Delete"}
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -1862,60 +1893,103 @@ function BodyWorkbench({
           >
             {deleteArmed ? "Confirm delete" : "Delete feature"}
           </button>
-          <button
-            type="button"
-            disabled={disabled || !sketchAction?.available || !selectedFace}
-            onClick={() => {
-              if (!sketchForm) {
-                return;
-              }
-
-              onCreateSketchOnFace?.(sketchForm);
-              if (sketchForm.id) {
-                onSelectSketch?.(sketchForm.id);
-              }
-            }}
-          >
-            Sketch on face
-          </button>
+        </div>
+        <div className="workbench-subheading">
+          <strong>Sketch on face</strong>
+          {attachableFaces.length > 0 && (
+            <small>{attachableFaces.length} faces</small>
+          )}
         </div>
         {attachableFaces.length > 0 && selectedFace ? (
           <>
-            <div className="field-grid two">
-              <label>
-                Face
-                <select
-                  value={faceIndex}
-                  disabled={disabled}
-                  onChange={(event) => {
-                    const nextIndex = Number(event.currentTarget.value);
-                    const nextFace =
-                      attachableFaces[nextIndex] ?? attachableFaces[0];
+            <div className="face-action-grid" aria-label="Sketch on face">
+              {attachableFaces.map((face) => {
+                const directForm = buildSketchOnFaceForm(
+                  context.body.id,
+                  face,
+                  {
+                    id: createNextSketchId(sketches),
+                    name: createSketchOnFaceDefaultName(face)
+                  }
+                );
 
-                    setFaceIndex(nextIndex);
-                    if (nextFace) {
-                      setSketchDraft({
-                        id: createNextSketchId(sketches),
-                        name: createSketchOnFaceDefaultName(nextFace)
-                      });
+                return (
+                  <button
+                    key={face.stableId}
+                    type="button"
+                    disabled={
+                      disabled || !sketchAction?.available || !directForm
                     }
-                  }}
-                >
-                  {attachableFaces.map((face, index) => (
-                    <option key={face.stableId} value={index}>
-                      {face.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <TextInput
-                disabled={disabled}
-                label="Sketch name"
-                value={sketchDraft.name}
-                onChange={(name) => setSketchDraft({ ...sketchDraft, name })}
-              />
+                    title={formatSketchOnFaceAvailability(face)}
+                    onClick={() => {
+                      if (!directForm) {
+                        return;
+                      }
+
+                      onCreateSketchOnFace?.(directForm);
+                      if (directForm.id) {
+                        onSelectSketch?.(directForm.id);
+                      }
+                    }}
+                  >
+                    {formatSketchOnFaceActionLabel(face)}
+                  </button>
+                );
+              })}
             </div>
-            <small>{formatSketchOnFaceAvailability(selectedFace)}</small>
+            <details className="advanced-options compact">
+              <summary>Custom face/name</summary>
+              <div className="field-grid two">
+                <label>
+                  Face
+                  <select
+                    value={faceIndex}
+                    disabled={disabled}
+                    onChange={(event) => {
+                      const nextIndex = Number(event.currentTarget.value);
+                      const nextFace =
+                        attachableFaces[nextIndex] ?? attachableFaces[0];
+
+                      setFaceIndex(nextIndex);
+                      if (nextFace) {
+                        setSketchDraft({
+                          id: createNextSketchId(sketches),
+                          name: createSketchOnFaceDefaultName(nextFace)
+                        });
+                      }
+                    }}
+                  >
+                    {attachableFaces.map((face, index) => (
+                      <option key={face.stableId} value={index}>
+                        {face.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TextInput
+                  disabled={disabled}
+                  label="Sketch name"
+                  value={sketchDraft.name}
+                  onChange={(name) => setSketchDraft({ ...sketchDraft, name })}
+                />
+              </div>
+              <button
+                type="button"
+                disabled={disabled || !sketchAction?.available || !sketchForm}
+                onClick={() => {
+                  if (!sketchForm) {
+                    return;
+                  }
+
+                  onCreateSketchOnFace?.(sketchForm);
+                  if (sketchForm.id) {
+                    onSelectSketch?.(sketchForm.id);
+                  }
+                }}
+              >
+                Create named sketch
+              </button>
+            </details>
           </>
         ) : (
           <p className="empty-state compact">
@@ -1927,6 +2001,31 @@ function BodyWorkbench({
   );
 }
 
+function formatSketchOnFaceActionLabel(
+  face: CadGeneratedFaceReference
+): string {
+  return `Sketch ${formatGeneratedFaceShortLabel(face)}`;
+}
+
+function formatGeneratedFaceShortLabel(
+  face: CadGeneratedFaceReference
+): string {
+  const label = face.label.trim();
+
+  if (label.length > 0) {
+    return label;
+  }
+
+  switch (face.role) {
+    case "startCap":
+      return "start cap";
+    case "endCap":
+      return "end cap";
+    default:
+      return face.role.replace(/([A-Z])/g, " $1").toLowerCase();
+  }
+}
+
 function GeneratedReferenceWorkbench({
   actions,
   context,
@@ -1934,7 +2033,8 @@ function GeneratedReferenceWorkbench({
   namedReferences,
   onCreateEdgeFinish,
   onCreateSketchOnFace,
-  onNameGeneratedReference
+  onNameGeneratedReference,
+  onSelectBody
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly context: Extract<
@@ -1952,6 +2052,7 @@ function GeneratedReferenceWorkbench({
     name: string,
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
+  readonly onSelectBody?: (bodyId: string) => void;
 }) {
   const [name, setName] = useState(context.reference.label);
   const selectedReference = createSelectedGeneratedReference(context.reference);
@@ -1963,6 +2064,14 @@ function GeneratedReferenceWorkbench({
           <h3>Name reference</h3>
           <small>{context.reference.label}</small>
         </div>
+        <button
+          type="button"
+          className="secondary-action"
+          disabled={disabled || !onSelectBody}
+          onClick={() => onSelectBody?.(context.reference.bodyId)}
+        >
+          Back to body
+        </button>
         <small>
           {formatGeneratedReferenceOperationLabels(context.reference)}
         </small>

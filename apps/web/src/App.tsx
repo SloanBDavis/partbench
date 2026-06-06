@@ -791,6 +791,7 @@ export function App() {
   >();
   const [batchError, setBatchError] = useState<string | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
+  const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
   const [activeUtilityPanel, setActiveUtilityPanel] =
     useState<UtilityPanelId>("details");
@@ -1132,9 +1133,7 @@ export function App() {
 
   function selectObject(objectId: string | undefined) {
     setSelectedId(objectId);
-    setSelectedGeneratedReference((current) =>
-      current?.bodyId === objectId ? current : undefined
-    );
+    setSelectedGeneratedReference(undefined);
   }
 
   function reconcileDerivedGeometry(
@@ -1176,6 +1175,7 @@ export function App() {
   ): Promise<CadBatchResponse | undefined> {
     setCommandPending(true);
     setCommandError(undefined);
+    setCommandNotice(undefined);
 
     try {
       const response = await commandExecutor.executeBatch(
@@ -1560,7 +1560,23 @@ export function App() {
       return;
     }
 
-    await commitOps([buildFeatureDeleteOp(feature.id)], () => undefined);
+    const targetBodyId = getFeatureTargetBodyId(feature);
+    const sourceSketchId = getFeatureSourceSketchId(feature);
+    const response = await commitOps(
+      [buildFeatureDeleteOp(feature.id)],
+      () => targetBodyId ?? undefined
+    );
+
+    if (!response?.ok) {
+      return;
+    }
+
+    if (!targetBodyId && sourceSketchId) {
+      setFocusedSketchId(sourceSketchId);
+      setSelectedSketchContext({ sketchId: sourceSketchId });
+    }
+
+    setCommandNotice(formatFeatureDeleteNotice(feature));
   }
 
   async function updateAuthoredExtrude(
@@ -1621,14 +1637,79 @@ export function App() {
     setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
   }
 
+  function getFeatureTargetBodyId(
+    feature: CadFeatureSummary
+  ): string | undefined {
+    if (
+      feature.kind === "extrude" ||
+      feature.kind === "revolve" ||
+      feature.kind === "hole" ||
+      feature.kind === "chamfer" ||
+      feature.kind === "fillet"
+    ) {
+      return feature.targetBodyId;
+    }
+
+    return undefined;
+  }
+
+  function getFeatureSourceSketchId(
+    feature: CadFeatureSummary
+  ): string | undefined {
+    if (
+      feature.kind === "extrude" ||
+      feature.kind === "revolve" ||
+      feature.kind === "hole"
+    ) {
+      return feature.sketchId;
+    }
+
+    return undefined;
+  }
+
+  function formatFeatureDeleteNotice(feature: CadFeatureSummary): string {
+    const label = formatFeatureNoticeLabel(feature);
+
+    if (getFeatureTargetBodyId(feature)) {
+      return `Deleted ${label}; target body restored.`;
+    }
+
+    return `Deleted ${label}; result body removed.`;
+  }
+
+  function formatFeatureNoticeLabel(feature: CadFeatureSummary): string {
+    switch (feature.kind) {
+      case "extrude":
+        return feature.operationMode === "newBody"
+          ? "extrude"
+          : `${feature.operationMode} extrude`;
+      case "revolve":
+        return "revolve";
+      case "hole":
+        return "hole";
+      case "chamfer":
+        return "chamfer";
+      case "fillet":
+        return "fillet";
+      case "primitive":
+        return feature.primitive;
+    }
+  }
+
   function undo() {
-    engine.undo();
+    const result = engine.undo();
     syncDocument();
+    if (result) {
+      setCommandNotice("Undo applied.");
+    }
   }
 
   function redo() {
     const result = engine.redo();
     syncDocument(result?.transaction.diff.created[0]?.id ?? selectedId);
+    if (result) {
+      setCommandNotice("Redo applied.");
+    }
   }
 
   function addBatchOperation() {
@@ -1838,6 +1919,9 @@ export function App() {
           </div>
         </div>
         {commandError && <p className="toolbar-error">{commandError}</p>}
+        {commandNotice && !commandError && (
+          <p className="toolbar-notice">{commandNotice}</p>
+        )}
       </header>
 
       <section className="workspace" aria-label="CAD workspace">
@@ -1904,6 +1988,7 @@ export function App() {
             onNameGeneratedReference={(name, target) =>
               void nameGeneratedReference(name, target)
             }
+            onSelectBody={selectObject}
             onDeleteFeature={(featureId) =>
               void deleteAuthoredFeature(featureId)
             }

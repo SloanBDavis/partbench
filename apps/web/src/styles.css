@@ -352,6 +352,15 @@ code {
   text-align: right;
 }
 
+.toolbar-notice {
+  grid-area: error;
+  color: var(--accent-strong);
+  font-size: 0.84rem;
+  font-weight: 750;
+  line-height: 1.4;
+  text-align: right;
+}
+
 .workspace {
   display: grid;
   min-height: 0;
@@ -1585,10 +1594,45 @@ canvas:active {
   white-space: nowrap;
 }
 
+.workbench-subheading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+}
+
+.workbench-subheading strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.workbench-subheading small {
+  color: var(--quiet);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .workbench-command-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
+}
+
+.face-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.face-action-grid button,
+.secondary-action {
+  min-width: 0;
 }
 
 .workbench-command-grid button,
@@ -1610,8 +1654,22 @@ canvas:active {
   min-width: 0;
 }
 
+.workbench-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.workbench-list-row > button:last-child {
+  width: auto;
+  min-width: 72px;
+  padding-inline: 9px;
+}
+
 .workbench-compact-list button,
-.workbench-compact-list li > div {
+.workbench-compact-list li > div:not(.workbench-list-row) {
   display: grid;
   width: 100%;
   min-width: 0;

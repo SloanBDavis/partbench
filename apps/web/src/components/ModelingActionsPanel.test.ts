@@ -1,6 +1,7 @@
 import type {
   CadBodySnapshot,
   CadFeatureSummary,
+  BodyGeneratedReferencesQueryResponse,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   SketchSnapshot
@@ -97,6 +98,25 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Open sketch");
   });
 
+  it("exposes sketch deletion from the open sketch list", () => {
+    const context = { selectionKind: "none" as const };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        sketches: [createSketch("sketch_1", "Sketch 1")],
+        onCreateSketch: () => undefined,
+        onDeleteSketch: () => undefined,
+        onSelectSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Open sketch");
+    expect(markup).toContain("Sketch 1");
+    expect(markup).toContain("Delete");
+  });
+
   it("renders no-selection controls as direct sketch creation", () => {
     const context = { selectionKind: "none" as const };
     const actions = deriveModelingActions({ context });
@@ -186,6 +206,97 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Delete feature");
     expect(markup).toContain("Sketch on face");
     expect(markup).not.toContain("feat_rect");
+  });
+
+  it("renders direct face sketch actions for selected bodies", () => {
+    const body: CadBodySnapshot = {
+      id: "body_rect",
+      kind: "solid",
+      partId: "part_default",
+      featureId: "feat_rect",
+      name: "Rectangle body",
+      source: {
+        type: "sketchExtrudeFeature",
+        featureId: "feat_rect",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        profileKind: "rectangle"
+      }
+    };
+    const feature: CadFeatureSummary = {
+      id: "feat_rect",
+      kind: "extrude",
+      partId: "part_default",
+      bodyId: "body_rect",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle",
+      depth: 1,
+      side: "positive",
+      operationMode: "newBody",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_1",
+        entityId: "rect_1"
+      }
+    };
+    const generatedReferences: BodyGeneratedReferencesQueryResponse = {
+      ok: true,
+      query: "body.generatedReferences",
+      cadOpsVersion: "cadops.v1",
+      body: {
+        kind: "body",
+        stableId: "generated:body:body_rect",
+        label: "Rectangle body",
+        eligibleOperations: ["feature.measureReference"],
+        bodyId: "body_rect",
+        ownerPartId: "part_default",
+        sourceFeatureId: "feat_rect",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        profileKind: "rectangle",
+        geometricSignature: {
+          profileKind: "rectangle",
+          sketchPlane: "XY",
+          extrudeSide: "positive",
+          depth: 1
+        }
+      },
+      faceCount: 2,
+      faces: [
+        createFace({ label: "Start cap", role: "startCap" }),
+        createFace({
+          stableId: "generated:face:body_rect:endCap",
+          label: "End cap",
+          role: "endCap"
+        })
+      ],
+      edgeCount: 0,
+      edges: [],
+      vertexCount: 0,
+      vertices: []
+    };
+    const context = {
+      selectionKind: "body" as const,
+      body,
+      feature,
+      generatedReferences
+    };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        sketches: [createSketch("sketch_1", "Sketch 1")],
+        onCreateSketchOnFace: () => undefined,
+        onSelectSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Sketch on face");
+    expect(markup).toContain("Sketch Start cap");
+    expect(markup).toContain("Sketch End cap");
+    expect(markup).toContain("Custom face/name");
   });
 
   it("defaults attached rectangle profiles to cut inward when targets exist", () => {
@@ -313,6 +424,7 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Face");
     expect(markup).toContain("Start cap");
     expect(markup).toContain("Name reference");
+    expect(markup).toContain("Back to body");
     expect(markup).toContain("Create sketch on face");
     expect(markup).not.toContain("generated:face:body_rect:startCap");
   });
