@@ -107,11 +107,14 @@ export interface ModelingActionsPanelProps {
     name: string,
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
+  readonly onDeleteFeature?: (featureId: string) => void;
   readonly onRevolveEntity?: (
     sketchId: string,
     entityId: string,
     form: FeatureRevolveForm
   ) => void;
+  readonly onDeleteSketch?: (sketchId: string) => void;
+  readonly onRenameSketch?: (sketchId: string, name: string) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
   readonly onUpdateEntity?: (
     sketchId: string,
@@ -204,11 +207,23 @@ export function ModelingActionsPanel({
   onExtrudeEntity,
   onHoleEntity,
   onNameGeneratedReference,
+  onDeleteFeature,
+  onDeleteSketch,
+  onRenameSketch,
   onRevolveEntity,
   onSelectSketch,
   onUpdateEntity
 }: ModelingActionsPanelProps) {
   const summary = formatModelingSelectionSummary(context, sketches.length);
+  const [quickSketchForm, setQuickSketchForm] = useState(
+    defaultCreateSketchForm
+  );
+  const activeSketch = getActiveSketchFromContext(context);
+  const nextSketchName = createNextSketchName(sketches);
+  const quickSketchSubmitForm: SketchCreateForm = {
+    ...quickSketchForm,
+    name: nextSketchName
+  };
 
   return (
     <section className="modeling-actions-panel" aria-label="Modeling context">
@@ -224,11 +239,51 @@ export function ModelingActionsPanel({
         {summary.detail && <small>{summary.detail}</small>}
       </div>
 
+      {onCreateSketch && (
+        <div className="quick-sketch-create" aria-label="Create sketch">
+          <div className="quick-sketch-planes" aria-label="Sketch plane">
+            {(["XY", "XZ", "YZ"] as const).map((plane) => (
+              <button
+                key={plane}
+                type="button"
+                className={
+                  quickSketchForm.plane === plane ? "selected" : undefined
+                }
+                disabled={disabled}
+                onClick={() =>
+                  setQuickSketchForm({ ...quickSketchForm, plane })
+                }
+              >
+                {plane}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="quick-sketch-create-button"
+            title={`Create ${nextSketchName}`}
+            disabled={disabled}
+            onClick={() => onCreateSketch(quickSketchSubmitForm)}
+          >
+            + Sketch
+          </button>
+        </div>
+      )}
+
+      {activeSketch && (onRenameSketch || onDeleteSketch) && (
+        <ActiveSketchControls
+          key={activeSketch.id}
+          disabled={disabled}
+          sketch={activeSketch}
+          onDeleteSketch={onDeleteSketch}
+          onRenameSketch={onRenameSketch}
+        />
+      )}
+
       {context.selectionKind === "none" && (
         <NoSelectionWorkbench
           disabled={disabled}
           sketches={sketches}
-          onCreateSketch={onCreateSketch}
           onSelectSketch={onSelectSketch}
         />
       )}
@@ -267,6 +322,7 @@ export function ModelingActionsPanel({
           disabled={disabled}
           context={context}
           onCreateSketchOnFace={onCreateSketchOnFace}
+          onDeleteFeature={onDeleteFeature}
           onSelectSketch={onSelectSketch}
         />
       )}
@@ -287,88 +343,123 @@ export function ModelingActionsPanel({
   );
 }
 
+function createNextSketchName(sketches: readonly SketchSnapshot[]): string {
+  const usedNames = new Set(sketches.map((sketch) => sketch.name.trim()));
+  let next = sketches.length + 1;
+
+  while (usedNames.has(`Sketch ${next}`)) {
+    next += 1;
+  }
+
+  return `Sketch ${next}`;
+}
+
+function getActiveSketchFromContext(
+  context: ModelingSelectionContext
+): SketchSnapshot | undefined {
+  if (context.selectionKind === "sketch") {
+    return context.sketch;
+  }
+
+  if (context.selectionKind === "sketchEntity") {
+    return context.sketch;
+  }
+
+  return undefined;
+}
+
+function ActiveSketchControls({
+  disabled,
+  sketch,
+  onDeleteSketch,
+  onRenameSketch
+}: {
+  readonly disabled: boolean;
+  readonly sketch: SketchSnapshot;
+  readonly onDeleteSketch?: (sketchId: string) => void;
+  readonly onRenameSketch?: (sketchId: string, name: string) => void;
+}) {
+  const [name, setName] = useState(sketch.name);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const canRename = name.trim().length > 0 && name.trim() !== sketch.name;
+
+  return (
+    <section className="active-sketch-controls" aria-label="Active sketch">
+      <label>
+        <span>Active sketch</span>
+        <input
+          type="text"
+          value={name}
+          disabled={disabled || !onRenameSketch}
+          onChange={(event) => setName(event.currentTarget.value)}
+        />
+      </label>
+      <button
+        type="button"
+        disabled={disabled || !canRename || !onRenameSketch}
+        onClick={() => {
+          onRenameSketch?.(sketch.id, name);
+          setDeleteArmed(false);
+        }}
+      >
+        Rename
+      </button>
+      <button
+        type="button"
+        className={deleteArmed ? "danger armed" : "danger"}
+        disabled={disabled || !onDeleteSketch}
+        onClick={() => {
+          if (!deleteArmed) {
+            setDeleteArmed(true);
+            return;
+          }
+
+          onDeleteSketch?.(sketch.id);
+        }}
+      >
+        {deleteArmed ? "Confirm" : "Delete"}
+      </button>
+    </section>
+  );
+}
+
 function NoSelectionWorkbench({
   disabled,
   sketches,
-  onCreateSketch,
   onSelectSketch
 }: {
   readonly disabled: boolean;
   readonly sketches: readonly SketchSnapshot[];
-  readonly onCreateSketch?: (form: SketchCreateForm) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
 }) {
-  const [form, setForm] = useState(defaultCreateSketchForm);
-  const canCreate = form.name.trim().length > 0;
+  if (sketches.length === 0) {
+    return null;
+  }
 
   return (
     <div className="workbench-surface">
-      <section className="workbench-card primary">
+      <section className="workbench-card">
         <div className="workbench-card-heading">
-          <h3>{sketches.length === 0 ? "Start modeling" : "New sketch"}</h3>
-          <small>{form.plane}</small>
+          <h3>Open sketch</h3>
+          <small>{sketches.length}</small>
         </div>
-        <div className="plane-palette" aria-label="Sketch plane">
-          {(["XY", "XZ", "YZ"] as const).map((plane) => (
-            <button
-              key={plane}
-              type="button"
-              className={form.plane === plane ? "selected" : undefined}
-              disabled={disabled}
-              onClick={() => setForm({ ...form, plane })}
-            >
-              {plane}
-            </button>
+        <ul className="workbench-compact-list">
+          {sketches.map((sketch) => (
+            <li key={sketch.id}>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onSelectSketch?.(sketch.id)}
+              >
+                <strong>{sketch.name}</strong>
+                <small>
+                  {sketch.plane} / {sketch.entities.length} entities
+                </small>
+              </button>
+            </li>
           ))}
-        </div>
-        <details className="advanced-options compact">
-          <summary>Name and ID</summary>
-          <TextInput
-            disabled={disabled}
-            label="Name"
-            value={form.name}
-            onChange={(name) => setForm({ ...form, name })}
-          />
-          <TextInput
-            disabled={disabled}
-            label="Sketch ID"
-            value={form.id}
-            onChange={(id) => setForm({ ...form, id })}
-          />
-        </details>
-        <button
-          type="button"
-          disabled={disabled || !canCreate}
-          onClick={() => onCreateSketch?.(form)}
-        >
-          New sketch
-        </button>
+        </ul>
       </section>
-
-      {sketches.length > 0 && (
-        <section className="workbench-card">
-          <div className="workbench-card-heading">
-            <h3>Continue sketch</h3>
-            <small>{sketches.length}</small>
-          </div>
-          <ul className="workbench-compact-list">
-            {sketches.map((sketch) => (
-              <li key={sketch.id}>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onSelectSketch?.(sketch.id)}
-                >
-                  <strong>{sketch.name}</strong>
-                  <small>
-                    {sketch.plane} / {sketch.entities.length} entities
-                  </small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }
@@ -1518,6 +1609,7 @@ function BodyWorkbench({
   context,
   disabled,
   onCreateSketchOnFace,
+  onDeleteFeature,
   onSelectSketch
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
@@ -1527,6 +1619,7 @@ function BodyWorkbench({
   >;
   readonly disabled: boolean;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onDeleteFeature?: (featureId: string) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
 }) {
   const sketchAction = actions.find(
@@ -1544,6 +1637,8 @@ function BodyWorkbench({
   const sketchForm = selectedFace
     ? buildSketchOnFaceForm(context.body.id, selectedFace, sketchDraft)
     : undefined;
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const canDeleteFeature = canDeleteAuthoredFeature(context.feature);
 
   return (
     <div className="workbench-surface">
@@ -1566,6 +1661,30 @@ function BodyWorkbench({
             }}
           >
             Source sketch
+          </button>
+          <button
+            type="button"
+            className={deleteArmed ? "danger armed" : "danger"}
+            disabled={disabled || !canDeleteFeature || !onDeleteFeature}
+            title={
+              canDeleteFeature
+                ? "Delete this authored feature and its result body"
+                : "Primitive bodies cannot be removed through feature delete"
+            }
+            onClick={() => {
+              if (!context.feature || !canDeleteFeature) {
+                return;
+              }
+
+              if (!deleteArmed) {
+                setDeleteArmed(true);
+                return;
+              }
+
+              onDeleteFeature?.(context.feature.id);
+            }}
+          >
+            {deleteArmed ? "Confirm delete" : "Delete feature"}
           </button>
           <button
             type="button"
@@ -1999,7 +2118,11 @@ function formatModelingSelectionSummary(
     case "body":
       return {
         eyebrow: "Body",
-        title: context.body.name ?? context.body.id,
+        title:
+          context.body.name ??
+          (context.feature && context.feature.kind !== "primitive"
+            ? "Result body"
+            : context.body.id),
         detail: context.feature
           ? `${formatFeatureKind(context.feature)} feature`
           : "Generated body"
@@ -2048,6 +2171,12 @@ function getSourceSketchId(
   }
 
   return undefined;
+}
+
+function canDeleteAuthoredFeature(
+  feature: CadFeatureSummary | undefined
+): boolean {
+  return Boolean(feature && feature.kind !== "primitive");
 }
 
 function formatSketchEntityKind(kind: SketchEntityKind): string {

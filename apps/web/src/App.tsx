@@ -1394,7 +1394,13 @@ export function App() {
   }
 
   async function deleteSketch(sketchId: string) {
-    await commitOps([buildDeleteSketchOp(sketchId)], () => selectedId);
+    await commitOps([buildDeleteSketchOp(sketchId)], () => null);
+    setFocusedSketchId((current) =>
+      current === sketchId ? undefined : current
+    );
+    setSelectedSketchContext((current) =>
+      current?.sketchId === sketchId ? undefined : current
+    );
   }
 
   async function addSketchEntity(
@@ -1542,7 +1548,7 @@ export function App() {
       (candidate) => candidate.id === featureId
     );
 
-    if (feature?.kind !== "extrude") {
+    if (!feature || feature.kind === "primitive") {
       return;
     }
 
@@ -1889,6 +1895,13 @@ export function App() {
             }
             onNameGeneratedReference={(name, target) =>
               void nameGeneratedReference(name, target)
+            }
+            onDeleteFeature={(featureId) =>
+              void deleteAuthoredFeature(featureId)
+            }
+            onDeleteSketch={(sketchId) => void deleteSketch(sketchId)}
+            onRenameSketch={(sketchId, name) =>
+              void renameSketch(sketchId, name)
             }
             onRevolveEntity={(sketchId, entityId, form) =>
               void revolveSketchEntity(sketchId, entityId, form)

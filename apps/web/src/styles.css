@@ -104,6 +104,12 @@ button.danger,
   color: var(--danger);
 }
 
+button.danger.armed,
+.button-row button.danger.armed {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
 input,
 select,
 textarea {
@@ -451,6 +457,325 @@ code {
 
 .model-tree-empty {
   padding: 16px 14px;
+}
+
+.model-story-scroll {
+  gap: 10px;
+}
+
+.model-story {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.model-story-part {
+  display: grid;
+  gap: 4px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.model-story-part-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.model-story-part-main span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 900;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-story-part-main small {
+  color: var(--quiet);
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.model-story-flow,
+.model-story-sketch-block,
+.model-story-entity-block,
+.model-story-feature,
+.model-story-body-block,
+.model-story-direct-features {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.model-story-flow {
+  position: relative;
+  padding-left: 6px;
+}
+
+.model-story-flow::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 18px;
+  width: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.model-story-row {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 9px;
+  padding: 7px 8px 7px 0;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  white-space: normal;
+}
+
+button.model-story-row {
+  cursor: pointer;
+}
+
+button.model-story-row:hover,
+.model-story-reference-row:hover,
+.model-story-utility-row:hover {
+  border-color: rgba(15, 107, 109, 0.22);
+  background: rgba(15, 107, 109, 0.055);
+}
+
+.model-story-row.selected,
+.model-story-reference-row.selected,
+.model-story-utility-row.selected {
+  border-color: rgba(15, 107, 109, 0.48);
+  background: linear-gradient(90deg, var(--accent-soft), #ffffff 82%);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.model-story-row.missing {
+  color: var(--danger);
+}
+
+.model-story-index,
+.model-story-spacer {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  width: 25px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel);
+  color: var(--quiet);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.model-story-spacer::before {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #ffffff;
+  content: "";
+}
+
+.model-story-kind {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.model-story-title {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 850;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-story-row > strong,
+.model-story-reference-row > strong,
+.model-story-utility-row > strong {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.model-story-row > small,
+.model-story-reference-row > small,
+.model-story-utility-row > small {
+  grid-column: 2 / -1;
+  grid-row: auto;
+  min-width: 0;
+  color: var(--quiet);
+  font-size: 0.7rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.model-story-entities,
+.model-story-feature-chain,
+.model-story-result-chain {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 22px;
+}
+
+.model-story-feature-chain {
+  padding-left: 18px;
+}
+
+.model-story-result-chain {
+  margin-top: -2px;
+  padding-left: 18px;
+}
+
+.model-story-row.entity,
+.model-story-row.target,
+.model-story-row.body {
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.model-story-row.feature {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.model-story-row.target {
+  background: rgba(249, 242, 232, 0.68);
+}
+
+.model-story-row.body {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.model-story-empty {
+  margin: 0 0 0 42px;
+  padding: 4px 0 8px;
+}
+
+.model-story-references {
+  display: grid;
+  gap: 5px;
+  margin: 2px 0 2px 43px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--line);
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.model-story-references-header,
+.model-story-reference-group > summary,
+.model-story-utility > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.model-story-references-header strong,
+.model-story-reference-group > summary strong,
+.model-story-utility > summary strong {
+  color: var(--quiet);
+  font-size: 0.66rem;
+}
+
+.model-story-reference-group {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.model-story-reference-group ul,
+.model-story-utility-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.object-tree .model-story-reference-group ul,
+.object-tree .model-story-utility-list {
+  overflow: visible;
+}
+
+.object-tree .model-story-reference-row,
+.object-tree .model-story-utility-row {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 8px;
+  padding: 6px 7px;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.model-story-reference-row .model-story-title,
+.model-story-utility-row .model-story-title {
+  grid-column: 1;
+}
+
+.model-story-reference-row > strong,
+.model-story-utility-row > strong {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.model-story-reference-row > small,
+.model-story-utility-row > small {
+  grid-column: 1 / -1;
+}
+
+.model-story-utility {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line);
 }
 
 .structure-group {
@@ -1025,6 +1350,95 @@ canvas:active {
   font-size: 0.74rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.quick-sketch-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.quick-sketch-planes {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.quick-sketch-planes button,
+.quick-sketch-create-button {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.quick-sketch-planes button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.quick-sketch-planes button.selected {
+  border-color: rgba(15, 107, 109, 0.3);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.quick-sketch-create-button {
+  min-width: 82px;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.active-sketch-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.active-sketch-controls label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.active-sketch-controls span {
+  color: var(--quiet);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.active-sketch-controls input {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+}
+
+.active-sketch-controls button {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .modeling-action-list {

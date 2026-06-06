@@ -37,11 +37,14 @@ describe("StructurePanel", () => {
     );
 
     expect(markup).toContain("Default part");
-    expect(markup).toContain("rect_1");
-    expect(markup).toContain("feature_cut");
-    expect(markup).toContain("Consumed target");
+    expect(markup).toContain("Profile");
+    expect(markup).toContain("Rectangle");
+    expect(markup).toContain("Extrude");
+    expect(markup).toContain("Cut");
+    expect(markup).toContain("Used here");
     expect(markup).toContain("Cut result");
-    expect(markup).toContain("Selected");
+    expect(markup).not.toContain("feature_cut");
+    expect(markup).not.toContain("body_base");
     expect(markup).not.toContain("Lineage");
     expect(markup).not.toContain("Advanced browser");
     expect(markup).not.toContain("Objects");
@@ -73,13 +76,16 @@ describe("StructurePanel", () => {
     );
 
     expect(markup.indexOf("References")).toBeGreaterThan(
-      markup.indexOf("body_base")
+      markup.indexOf("Result body")
     );
+    expect(markup).toContain("Body");
+    expect(markup).toContain("Faces");
+    expect(markup).toContain("Edges");
     expect(markup).toContain("Start cap");
     expect(markup).toContain("Sketch plane");
     expect(markup).toContain("Start uMin edge");
     expect(markup).toContain("Chamfer");
-    expect(markup).toContain("Selected");
+    expect(markup).not.toContain("generated:face:body_base:startCap");
   });
 });
 

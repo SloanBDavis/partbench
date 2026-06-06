@@ -1,4 +1,6 @@
 import type {
+  CadBodySnapshot,
+  CadFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   SketchSnapshot
@@ -41,20 +43,72 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("Open Sketch");
   });
 
+  it("keeps sketch creation visible while editing a selected entity", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    };
+    const sketch = createSketch("sketch_1", "Sketch 1", [rectangle]);
+    const context = {
+      selectionKind: "sketchEntity" as const,
+      sketch,
+      entity: rectangle
+    };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        onCreateSketch: () => undefined,
+        onDeleteSketch: () => undefined,
+        onRenameSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("+ Sketch");
+    expect(markup).toContain("XY");
+    expect(markup).toContain("Active sketch");
+    expect(markup).toContain("Rename");
+    expect(markup).toContain("Delete");
+    expect(markup).toContain("Rectangle in Sketch 1");
+  });
+
+  it("uses the next available sketch name for quick sketch creation", () => {
+    const context = { selectionKind: "none" as const };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        sketches: [
+          createSketch("sketch_1", "Sketch 1"),
+          createSketch("sketch_2", "Sketch 2")
+        ],
+        onCreateSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("+ Sketch");
+    expect(markup).toContain("Create Sketch 3");
+    expect(markup).toContain("Open sketch");
+  });
+
   it("renders no-selection controls as direct sketch creation", () => {
     const context = { selectionKind: "none" as const };
     const actions = deriveModelingActions({ context });
     const markup = renderToStaticMarkup(
       createElement(ModelingActionsPanel, {
         actions,
-        context
+        context,
+        onCreateSketch: () => undefined
       })
     );
 
     expect(markup).toContain("Create a source sketch");
-    expect(markup).toContain("Start modeling");
-    expect(markup).toContain("New sketch");
-    expect(markup).toContain("Name and ID");
+    expect(markup).toContain("+ Sketch");
     expect(markup).not.toContain("Open Sketch");
   });
 
@@ -76,6 +130,61 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Sketch tools");
     expect(markup).toContain("Rectangle");
     expect(markup).not.toContain("Open Sketch");
+  });
+
+  it("renders selected body lifecycle actions directly", () => {
+    const body: CadBodySnapshot = {
+      id: "body_rect",
+      kind: "solid",
+      partId: "part_default",
+      featureId: "feat_rect",
+      name: "Rectangle body",
+      source: {
+        type: "sketchExtrudeFeature",
+        featureId: "feat_rect",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        profileKind: "rectangle"
+      }
+    };
+    const feature: CadFeatureSummary = {
+      id: "feat_rect",
+      kind: "extrude",
+      partId: "part_default",
+      bodyId: "body_rect",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle",
+      depth: 1,
+      side: "positive",
+      operationMode: "newBody",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_1",
+        entityId: "rect_1"
+      }
+    };
+    const context = {
+      selectionKind: "body" as const,
+      body,
+      feature
+    };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        onCreateSketchOnFace: () => undefined,
+        onDeleteFeature: () => undefined,
+        onSelectSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Body actions");
+    expect(markup).toContain("Source sketch");
+    expect(markup).toContain("Delete feature");
+    expect(markup).toContain("Sketch on face");
+    expect(markup).not.toContain("feat_rect");
   });
 
   it("renders generated reference summaries without using raw IDs as labels", () => {
