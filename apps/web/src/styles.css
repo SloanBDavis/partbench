@@ -534,6 +534,30 @@ code {
   content: "";
 }
 
+.model-story-sketch-block > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.model-story-sketch-block > summary::-webkit-details-marker {
+  display: none;
+}
+
+.model-story-sketch-block > summary .model-story-index::before {
+  position: absolute;
+  top: 50%;
+  left: -1px;
+  color: var(--muted);
+  font-family: system-ui, sans-serif;
+  font-size: 0.62rem;
+  content: "▸";
+  transform: translateY(-50%);
+}
+
+.model-story-sketch-block[open] > summary .model-story-index::before {
+  content: "▾";
+}
+
 .model-story-row {
   position: relative;
   display: grid;
@@ -610,6 +634,17 @@ button.model-story-row:hover,
   line-height: 1.2;
   text-align: right;
   text-transform: uppercase;
+}
+
+.model-story-inline-action {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: start;
+  justify-self: end;
+  min-width: 52px;
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 0.68rem;
 }
 
 .model-story-title {

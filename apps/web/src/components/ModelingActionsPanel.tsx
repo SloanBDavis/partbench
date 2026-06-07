@@ -349,6 +349,7 @@ export function ModelingActionsPanel({
           onCreateSketchOnFace={onCreateSketchOnFace}
           onNameGeneratedReference={onNameGeneratedReference}
           onSelectBody={onSelectBody}
+          onSelectSketch={onSelectSketch}
         />
       )}
     </section>
@@ -1464,6 +1465,9 @@ function ExtrudeFeatureForm({
     form.operationMode === "newBody"
       ? undefined
       : form.targetBodyId || targetBodies[0]?.bodyId;
+  const selectedTargetBody = targetBodies.find(
+    (body) => body.bodyId === targetBodyId
+  );
   const effectiveForm: FeatureExtrudeForm = {
     ...form,
     ...(targetBodyId ? { targetBodyId } : {})
@@ -1567,6 +1571,14 @@ function ExtrudeFeatureForm({
           {operationStatus.message}
         </p>
       )}
+      {selectedTargetBody && form.operationMode !== "newBody" && (
+        <small className="form-hint">
+          Target: {selectedTargetBody.label}.{" "}
+          {form.operationMode === "add"
+            ? "Add hides that target and creates a fused result body."
+            : "Cut hides that target and creates a cut result body."}
+        </small>
+      )}
       {context.sketch.attachment && form.operationMode === "cut" && (
         <small className="form-hint">
           {form.side === "negative"
@@ -1581,10 +1593,23 @@ function ExtrudeFeatureForm({
           onExtrudeEntity?.(context.sketch.id, context.entity.id, effectiveForm)
         }
       >
-        Create extrude
+        {formatExtrudeSubmitLabel(form.operationMode)}
       </button>
     </>
   );
+}
+
+function formatExtrudeSubmitLabel(
+  operationMode: FeatureExtrudeForm["operationMode"]
+): string {
+  switch (operationMode) {
+    case "add":
+      return "Add to body";
+    case "cut":
+      return "Cut body";
+    case "newBody":
+      return "Create new body";
+  }
 }
 
 function getInitialFeatureMode(
@@ -1871,6 +1896,34 @@ function BodyWorkbench({
           </button>
           <button
             type="button"
+            disabled={!getSourceEntityId(context.feature)}
+            onClick={() => {
+              const sketchId = getSourceSketchId(context.feature);
+              const entityId = getSourceEntityId(context.feature);
+              if (sketchId && entityId) {
+                onSelectSketch?.(sketchId, entityId);
+              }
+            }}
+          >
+            Source profile
+          </button>
+          {getSourceAxisEntityId(context.feature) && (
+            <button
+              type="button"
+              disabled={!getSourceAxisEntityId(context.feature)}
+              onClick={() => {
+                const sketchId = getSourceSketchId(context.feature);
+                const axisEntityId = getSourceAxisEntityId(context.feature);
+                if (sketchId && axisEntityId) {
+                  onSelectSketch?.(sketchId, axisEntityId);
+                }
+              }}
+            >
+              Source axis
+            </button>
+          )}
+          <button
+            type="button"
             className={deleteArmed ? "danger armed" : "danger"}
             disabled={disabled || !canDeleteFeature || !onDeleteFeature}
             title={
@@ -2034,7 +2087,8 @@ function GeneratedReferenceWorkbench({
   onCreateEdgeFinish,
   onCreateSketchOnFace,
   onNameGeneratedReference,
-  onSelectBody
+  onSelectBody,
+  onSelectSketch
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly context: Extract<
@@ -2053,6 +2107,7 @@ function GeneratedReferenceWorkbench({
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
   readonly onSelectBody?: (bodyId: string) => void;
+  readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
 }) {
   const [name, setName] = useState(context.reference.label);
   const selectedReference = createSelectedGeneratedReference(context.reference);
@@ -2112,6 +2167,7 @@ function GeneratedReferenceWorkbench({
           disabled={disabled}
           face={context.reference}
           onCreateSketchOnFace={onCreateSketchOnFace}
+          onSelectSketch={onSelectSketch}
         />
       )}
       {context.reference.kind === "edge" && (
@@ -2131,12 +2187,14 @@ function FaceReferenceWorkbench({
   actions,
   disabled,
   face,
-  onCreateSketchOnFace
+  onCreateSketchOnFace,
+  onSelectSketch
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly disabled: boolean;
   readonly face: CadGeneratedFaceReference;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
 }) {
   const action = actions.find(
     (candidate) => candidate.id === "sketch.createOnFace"
@@ -2167,7 +2225,16 @@ function FaceReferenceWorkbench({
       <button
         type="button"
         disabled={disabled || !action?.available || !sketchForm}
-        onClick={() => sketchForm && onCreateSketchOnFace?.(sketchForm)}
+        onClick={() => {
+          if (!sketchForm) {
+            return;
+          }
+
+          onCreateSketchOnFace?.(sketchForm);
+          if (sketchForm.id) {
+            onSelectSketch?.(sketchForm.id);
+          }
+        }}
       >
         Create sketch on face
       </button>
@@ -2465,6 +2532,34 @@ function getSourceSketchId(
   }
 
   return undefined;
+}
+
+function getSourceEntityId(
+  feature: CadFeatureSummary | undefined
+): string | undefined {
+  if (!feature) {
+    return undefined;
+  }
+
+  if (feature.kind === "extrude" || feature.kind === "revolve") {
+    return feature.entityId;
+  }
+
+  if (feature.kind === "hole") {
+    return feature.circleEntityId;
+  }
+
+  return undefined;
+}
+
+function getSourceAxisEntityId(
+  feature: CadFeatureSummary | undefined
+): string | undefined {
+  if (feature?.kind !== "revolve") {
+    return undefined;
+  }
+
+  return feature.axis.entityId;
 }
 
 function canDeleteAuthoredFeature(

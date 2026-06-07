@@ -40,7 +40,7 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Edit Rectangle");
     expect(markup).toContain("Driving dimension");
     expect(markup).toContain("Create feature");
-    expect(markup).toContain("Create extrude");
+    expect(markup).toContain("Create new body");
     expect(markup).toContain("Delete profile");
     expect(markup).not.toContain("Open Sketch");
   });
@@ -203,9 +203,75 @@ describe("ModelingActionsPanel", () => {
 
     expect(markup).toContain("Body actions");
     expect(markup).toContain("Source sketch");
+    expect(markup).toContain("Source profile");
     expect(markup).toContain("Delete feature");
     expect(markup).toContain("Sketch on face");
     expect(markup).not.toContain("feat_rect");
+  });
+
+  it("renders source axis recovery for selected revolve bodies", () => {
+    const body: CadBodySnapshot = {
+      id: "body_revolve",
+      kind: "solid",
+      partId: "part_default",
+      featureId: "feat_revolve",
+      name: "Revolve body",
+      source: {
+        type: "sketchRevolveFeature",
+        featureId: "feat_revolve",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        profileKind: "rectangle",
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_1",
+          entityId: "axis_1"
+        }
+      }
+    };
+    const feature: CadFeatureSummary = {
+      id: "feat_revolve",
+      kind: "revolve",
+      partId: "part_default",
+      bodyId: "body_revolve",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle",
+      axis: {
+        type: "sketchLine",
+        sketchId: "sketch_1",
+        entityId: "axis_1"
+      },
+      angleDegrees: 360,
+      operationMode: "newBody",
+      source: {
+        type: "sketchEntityWithAxis",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        axis: {
+          type: "sketchLine",
+          sketchId: "sketch_1",
+          entityId: "axis_1"
+        }
+      }
+    };
+    const context = {
+      selectionKind: "body" as const,
+      body,
+      feature
+    };
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        onSelectSketch: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Source sketch");
+    expect(markup).toContain("Source profile");
+    expect(markup).toContain("Source axis");
   });
 
   it("renders direct face sketch actions for selected bodies", () => {
@@ -340,7 +406,12 @@ describe("ModelingActionsPanel", () => {
 
     expect(markup).toContain("Cut body (1)");
     expect(markup).toContain("1 eligible cut target body.");
+    expect(markup).toContain("Target: Rectangle body / 2 mm.");
+    expect(markup).toContain(
+      "Cut hides that target and creates a cut result body."
+    );
     expect(markup).toContain("Negative cuts inward from the attached face.");
+    expect(markup).toContain("Cut body");
   });
 
   it("defaults circle profiles with eligible targets to hole creation", () => {

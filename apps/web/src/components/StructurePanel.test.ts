@@ -87,6 +87,48 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Chamfer");
     expect(markup).not.toContain("generated:face:body_base:startCap");
   });
+
+  it("keeps only the active sketch lineage open by default", () => {
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [createExtrudeBody("body_base", "feature_base")],
+        features: [createBaseFeature()],
+        focusedSketchId: "sketch_2",
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [
+          {
+            ...createPart(),
+            featureIds: ["feature_base"],
+            bodyIds: ["body_base"],
+            sketchIds: ["sketch_1", "sketch_2"]
+          }
+        ],
+        selectedId: undefined,
+        sketches: [
+          createSketch(),
+          {
+            id: "sketch_2",
+            name: "Second sketch",
+            plane: "XZ",
+            entities: []
+          }
+        ],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(
+      markup.match(/<details class="model-story-sketch-block" open="">/g)
+        ?.length
+    ).toBe(1);
+    expect(markup).toContain("Second sketch");
+    expect(markup).toContain("Open");
+  });
 });
 
 function createHealth(): ProjectHealthQueryResponse {

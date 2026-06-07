@@ -404,10 +404,10 @@ function BodyInspector({
   readonly units: DocumentUnits;
 }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
-  const canDeleteFeature = feature?.kind === "extrude";
+  const canDeleteFeature = Boolean(feature && feature.kind !== "primitive");
 
   function handleDeleteFeature() {
-    if (feature?.kind !== "extrude") {
+    if (!feature || feature.kind === "primitive") {
       return;
     }
 

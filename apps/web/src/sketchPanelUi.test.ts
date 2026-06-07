@@ -887,8 +887,8 @@ describe("sketch panel UI helpers", () => {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
-        label: "Rectangle body / 1 mm",
-        detail: "Rectangle new body / 1 mm / positive"
+        label: "Rectangle target 1 / 1 mm",
+        detail: "Rectangle new body / 1 mm / positive / body_rect"
       }
     ]);
   });
@@ -918,15 +918,15 @@ describe("sketch panel UI helpers", () => {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
-        label: "Rectangle body / 1 mm",
-        detail: "Rectangle new body / 1 mm / positive"
+        label: "Rectangle target 1 / 1 mm",
+        detail: "Rectangle new body / 1 mm / positive / body_rect"
       },
       {
         bodyId: "body_circle",
         featureId: "feat_circle",
         profileKind: "circle",
-        label: "Circle body / 1 mm",
-        detail: "Circle new body / 1 mm / positive"
+        label: "Circle target 2 / 1 mm",
+        detail: "Circle new body / 1 mm / positive / body_circle"
       }
     ]);
   });
@@ -959,15 +959,15 @@ describe("sketch panel UI helpers", () => {
         bodyId: "body_circle",
         featureId: "feat_circle",
         profileKind: "circle",
-        label: "Circle body / 1 mm",
-        detail: "Circle new body / 1 mm / positive"
+        label: "Circle target 2 / 1 mm",
+        detail: "Circle new body / 1 mm / positive / body_circle"
       },
       {
         bodyId: "body_rect",
         featureId: "feat_rect",
         profileKind: "rectangle",
-        label: "Rectangle body / 1 mm",
-        detail: "Rectangle new body / 1 mm / positive"
+        label: "Rectangle target 1 / 1 mm",
+        detail: "Rectangle new body / 1 mm / positive / body_rect"
       }
     ]);
   });
@@ -1185,7 +1185,7 @@ describe("sketch panel UI helpers", () => {
     ).toEqual([
       {
         entityId: "axis_1",
-        label: "Line / 4 mm",
+        label: "Axis 1 / 4 mm",
         detail: "0, -2 to 0, 2"
       }
     ]);

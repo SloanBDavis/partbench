@@ -52,6 +52,32 @@ describe("Inspector", () => {
     expect(markup).toContain("Selected reference");
     expect(markup).toContain('<optgroup label="Faces">');
   });
+
+  it("offers feature delete for non-extrude authored bodies", () => {
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createHoleBody(),
+        disabled: false,
+        feature: createHoleFeature(),
+        namedReferences: [],
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Delete feature");
+  });
 });
 
 function createBody(): CadBodySnapshot {
@@ -89,6 +115,45 @@ function createFeature(): Extract<
       type: "sketchEntity",
       sketchId: "sketch_1",
       entityId: "rect_1"
+    }
+  };
+}
+
+function createHoleBody(): CadBodySnapshot {
+  return {
+    id: "body_hole",
+    kind: "solid",
+    partId: "part:default",
+    featureId: "feat_hole",
+    source: {
+      type: "sketchHoleFeature",
+      featureId: "feat_hole",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      targetBodyId: "body_rect"
+    }
+  };
+}
+
+function createHoleFeature(): Extract<
+  CadFeatureSummary,
+  { readonly kind: "hole" }
+> {
+  return {
+    id: "feat_hole",
+    kind: "hole",
+    partId: "part:default",
+    bodyId: "body_hole",
+    targetBodyId: "body_rect",
+    sketchId: "sketch_1",
+    circleEntityId: "circle_1",
+    depthMode: "throughAll",
+    direction: "positive",
+    source: {
+      type: "sketchCircleHole",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      targetBodyId: "body_rect"
     }
   };
 }

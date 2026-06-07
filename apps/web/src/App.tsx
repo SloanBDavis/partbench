@@ -1928,6 +1928,7 @@ export function App() {
         <StructurePanel
           bodies={projectStructure.bodies}
           features={projectStructure.features}
+          focusedSketchId={focusedSketchId}
           generatedReferences={selectedBodyGeneratedReferences.references}
           geometryStatuses={
             derivedGeometryEnabled ? geometryStatusBySourceId : undefined

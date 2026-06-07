@@ -45,6 +45,7 @@ export interface StructureGeometryStatus {
 export interface StructurePanelProps {
   readonly bodies: readonly CadBodySnapshot[];
   readonly features: readonly CadFeatureSummary[];
+  readonly focusedSketchId?: string;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
@@ -69,6 +70,7 @@ export interface StructurePanelProps {
 export function StructurePanel({
   bodies,
   features,
+  focusedSketchId,
   generatedReferences,
   geometryStatuses,
   health,
@@ -139,6 +141,7 @@ export function StructurePanel({
               generatedReferences={generatedReferences}
               geometryStatuses={geometryStatuses}
               health={health}
+              focusedSketchId={focusedSketchId}
               node={partNode}
               selectedGeneratedReference={selectedGeneratedReference}
               selectedId={selectedId}
@@ -232,6 +235,7 @@ export function StructurePanel({
 }
 
 function ModelStoryPart({
+  focusedSketchId,
   generatedReferences,
   geometryStatuses,
   health,
@@ -243,6 +247,7 @@ function ModelStoryPart({
   onSelect,
   onSelectGeneratedReference
 }: {
+  readonly focusedSketchId?: string;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
@@ -279,21 +284,36 @@ function ModelStoryPart({
           });
 
           return (
-            <section key={sketch.id} className="model-story-sketch-block">
-              <button
-                type="button"
-                className="model-story-row sketch"
-                onClick={() => onFocusSketch(sketch.id)}
-              >
+            <details
+              key={sketch.id}
+              className="model-story-sketch-block"
+              open={isSketchNodeOpen(
+                sketchNode,
+                focusedSketchId,
+                selectedId,
+                selectedGeneratedReference
+              )}
+            >
+              <summary className="model-story-row sketch">
                 <StoryIndex value={stepNumbers.sketches.get(sketch.id) ?? 0} />
                 <span className="model-story-kind">
                   {sketch.attachment ? "Attached" : "Sketch"}
                 </span>
                 <span className="model-story-title">{sketch.name}</span>
                 <small>{formatSketchDetail(sketch)}</small>
+                <button
+                  type="button"
+                  className="model-story-inline-action"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onFocusSketch(sketch.id);
+                  }}
+                >
+                  Open
+                </button>
                 <HealthStatus status={status} />
                 <HealthIssues issues={issues} />
-              </button>
+              </summary>
 
               {sketchNode.entityNodes.length > 0 ? (
                 <div className="model-story-entities">
@@ -325,7 +345,9 @@ function ModelStoryPart({
                             }
                           >
                             <span className="model-story-spacer" />
-                            <span className="model-story-kind">Profile</span>
+                            <span className="model-story-kind">
+                              {formatEntityRole(entity)}
+                            </span>
                             <span className="model-story-title">
                               {formatEntityTitle(entity)}
                             </span>
@@ -369,7 +391,7 @@ function ModelStoryPart({
                   No profiles yet.
                 </p>
               )}
-            </section>
+            </details>
           );
         })}
 
@@ -423,6 +445,45 @@ function createModelStoryStepNumbers(node: StructureLineagePartNode): {
   }
 
   return { sketches, features };
+}
+
+function isSketchNodeOpen(
+  sketchNode: StructureLineagePartNode["sketchNodes"][number],
+  focusedSketchId: string | undefined,
+  selectedId: string | undefined,
+  selectedGeneratedReference: { readonly bodyId: string } | undefined
+): boolean {
+  if (sketchNode.sketch.id === focusedSketchId) {
+    return true;
+  }
+
+  return sketchNode.entityNodes.some((entityNode) =>
+    entityNode.featureNodes.some((featureNode) =>
+      isFeatureNodeInSelectedPath(
+        featureNode,
+        selectedId,
+        selectedGeneratedReference
+      )
+    )
+  );
+}
+
+function isFeatureNodeInSelectedPath(
+  featureNode: StructureLineageFeatureNode,
+  selectedId: string | undefined,
+  selectedGeneratedReference: { readonly bodyId: string } | undefined
+): boolean {
+  const selectedBodyId = selectedGeneratedReference?.bodyId ?? selectedId;
+
+  if (!selectedBodyId) {
+    return false;
+  }
+
+  return (
+    featureNode.feature.bodyId === selectedBodyId ||
+    featureNode.resultBody?.id === selectedBodyId ||
+    featureNode.target?.bodyId === selectedBodyId
+  );
 }
 
 function ModelStoryFeature({
@@ -800,7 +861,7 @@ function HealthIssues({ issues }: { readonly issues: readonly string[] }) {
 
 function formatSketchDetail(sketch: SketchSnapshot): string {
   const entityCount = `${sketch.entities.length} ${
-    sketch.entities.length === 1 ? "profile" : "profiles"
+    sketch.entities.length === 1 ? "entity" : "entities"
   }`;
 
   if (sketch.attachment) {
@@ -829,6 +890,18 @@ function formatEntityTitle(entity: SketchEntitySnapshot): string {
       return "Rectangle";
     case "circle":
       return "Circle";
+  }
+}
+
+function formatEntityRole(entity: SketchEntitySnapshot): string {
+  switch (entity.kind) {
+    case "line":
+      return "Axis";
+    case "point":
+      return "Point";
+    case "rectangle":
+    case "circle":
+      return "Profile";
   }
 }
 
@@ -899,7 +972,7 @@ function formatFeatureStoryDetail(
   if (feature.kind === "revolve") {
     return `${formatOperationLabel(feature.operationMode)} · ${
       feature.profileKind
-    } · ${formatNumber(feature.angleDegrees)} deg`;
+    } · axis line · ${formatNumber(feature.angleDegrees)} deg`;
   }
 
   if (feature.kind === "hole") {

@@ -256,9 +256,9 @@ export function createRevolveAxisOptions(
       ): entity is Extract<SketchEntitySnapshot, { readonly kind: "line" }> =>
         entity.kind === "line" && getLineLength(entity) > 0
     )
-    .map((entity) => ({
+    .map((entity, index) => ({
       entityId: entity.id,
-      label: `Line / ${getLineLength(entity)} mm`,
+      label: `Axis ${index + 1} / ${getLineLength(entity)} mm`,
       detail: `${formatSketchPointCoordinate(
         entity.start
       )} to ${formatSketchPointCoordinate(entity.end)}`
@@ -1034,7 +1034,7 @@ function createBooleanTargetBodyOptions(
         body.source.type === "sketchExtrudeFeature" &&
         body.consumedByFeatureId === undefined
     )
-    .flatMap((body) => {
+    .flatMap((body, index) => {
       const feature = features.find(
         (
           candidate
@@ -1057,8 +1057,12 @@ function createBooleanTargetBodyOptions(
           profileKind: feature.profileKind,
           label:
             body.name ??
-            `${formatProfileKind(feature.profileKind)} body / ${feature.depth} mm`,
-          detail: `${formatProfileKind(feature.profileKind)} new body / ${feature.depth} mm / ${feature.side}`
+            `${formatProfileKind(feature.profileKind)} target ${index + 1} / ${
+              feature.depth
+            } mm`,
+          detail: `${formatProfileKind(feature.profileKind)} new body / ${
+            feature.depth
+          } mm / ${feature.side} / ${body.id}`
         }
       ];
     });
