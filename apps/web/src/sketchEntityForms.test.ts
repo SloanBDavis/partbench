@@ -1,15 +1,90 @@
-import type { SketchEntitySnapshot } from "@web-cad/cad-protocol";
+import type {
+  SketchEntitySnapshot,
+  SketchSnapshot
+} from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import { buildUpdateSketchEntityOp } from "./cadCommands";
 import {
+  defaultSketchEntityForm,
   entityToSketchEntityForm,
   formatSketchEntity,
+  getDefaultSketchEntityFormForSketch,
   getSketchEntityFormLabels,
   sketchEntityFormToEntity,
   validateSketchEntityForm
 } from "./sketchEntityForms";
 
 describe("sketch entity form helpers", () => {
+  it("keeps base sketch entity defaults unchanged", () => {
+    const sketch = createSketch("sketch_1", [
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      }
+    ]);
+
+    expect(
+      getDefaultSketchEntityFormForSketch(sketch, "rectangle", [sketch])
+    ).toEqual(defaultSketchEntityForm);
+  });
+
+  it("shrinks first attached rectangle defaults from the source profile", () => {
+    const sourceSketch = createSketch("sketch_1", [
+      {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      }
+    ]);
+    const attachedSketch = createAttachedSketch(
+      "sketch_face",
+      "sketch_1",
+      "rect_1"
+    );
+
+    expect(
+      getDefaultSketchEntityFormForSketch(attachedSketch, "rectangle", [
+        sourceSketch,
+        attachedSketch
+      ])
+    ).toEqual({
+      ...defaultSketchEntityForm,
+      width: 2,
+      height: 1
+    });
+  });
+
+  it("shrinks first attached circle defaults from the source profile", () => {
+    const sourceSketch = createSketch("sketch_1", [
+      {
+        id: "circle_1",
+        kind: "circle",
+        center: [0, 0],
+        radius: 2
+      }
+    ]);
+    const attachedSketch = createAttachedSketch(
+      "sketch_face",
+      "sketch_1",
+      "circle_1"
+    );
+
+    expect(
+      getDefaultSketchEntityFormForSketch(attachedSketch, "circle", [
+        sourceSketch,
+        attachedSketch
+      ])
+    ).toEqual({
+      ...defaultSketchEntityForm,
+      radius: 1
+    });
+  });
+
   it("builds rectangle profile update commands from form values", () => {
     const entity: SketchEntitySnapshot = {
       id: "rect_1",
@@ -142,3 +217,37 @@ describe("sketch entity form helpers", () => {
     ).toBe("Rectangle 6 x 5 at (1, 2)");
   });
 });
+
+function createSketch(
+  id: string,
+  entities: readonly SketchEntitySnapshot[]
+): SketchSnapshot {
+  return {
+    id,
+    name: id,
+    plane: "XY",
+    entities
+  };
+}
+
+function createAttachedSketch(
+  id: string,
+  sourceSketchId: string,
+  sourceSketchEntityId: string
+): SketchSnapshot {
+  return {
+    id,
+    name: id,
+    plane: "XY",
+    attachment: {
+      kind: "generatedFace",
+      bodyId: "body_1",
+      faceStableId: "generated:face:body_1:endCap",
+      sourceFeatureId: "feat_1",
+      sourceSketchId,
+      sourceSketchEntityId,
+      faceRole: "endCap"
+    },
+    entities: []
+  };
+}

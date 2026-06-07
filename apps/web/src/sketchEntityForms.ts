@@ -1,6 +1,7 @@
 import type {
   SketchEntityKind,
-  SketchEntitySnapshot
+  SketchEntitySnapshot,
+  SketchSnapshot
 } from "@web-cad/cad-protocol";
 import type { SketchEntityForm } from "./cadCommands";
 
@@ -15,6 +16,46 @@ export const defaultSketchEntityForm: SketchEntityForm = {
   radius: 0.5
 };
 
+export function getDefaultSketchEntityFormForSketch(
+  sketch: SketchSnapshot,
+  kind: SketchEntityKind,
+  sketches: readonly SketchSnapshot[]
+): SketchEntityForm {
+  const form = { ...defaultSketchEntityForm };
+
+  if (!sketch.attachment || sketch.entities.length > 0) {
+    return form;
+  }
+
+  const sourceBounds = getAttachmentSourceBounds(sketch, sketches);
+  if (!sourceBounds) {
+    return form;
+  }
+
+  const width = Math.max(sourceBounds.width * 0.5, 0.1);
+  const height = Math.max(sourceBounds.height * 0.5, 0.1);
+
+  if (kind === "rectangle") {
+    return {
+      ...form,
+      width,
+      height
+    };
+  }
+
+  if (kind === "circle") {
+    return {
+      ...form,
+      radius: Math.max(
+        Math.min(sourceBounds.width, sourceBounds.height) * 0.25,
+        0.05
+      )
+    };
+  }
+
+  return form;
+}
+
 export type SketchEntityFormValidation =
   | { readonly ok: true }
   | { readonly ok: false; readonly message: string };
@@ -27,6 +68,40 @@ export interface SketchEntityFormLabels {
   readonly width?: string;
   readonly height?: string;
   readonly radius?: string;
+}
+
+function getAttachmentSourceBounds(
+  sketch: SketchSnapshot,
+  sketches: readonly SketchSnapshot[]
+): { readonly width: number; readonly height: number } | undefined {
+  const attachment = sketch.attachment;
+  if (!attachment) {
+    return undefined;
+  }
+
+  const sourceSketch = sketches.find(
+    (candidate) => candidate.id === attachment.sourceSketchId
+  );
+  const sourceEntity = sourceSketch?.entities.find(
+    (entity) => entity.id === attachment.sourceSketchEntityId
+  );
+
+  if (sourceEntity?.kind === "rectangle") {
+    return {
+      width: sourceEntity.width,
+      height: sourceEntity.height
+    };
+  }
+
+  if (sourceEntity?.kind === "circle") {
+    const diameter = sourceEntity.radius * 2;
+    return {
+      width: diameter,
+      height: diameter
+    };
+  }
+
+  return undefined;
 }
 
 export function entityToSketchEntityForm(

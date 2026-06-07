@@ -38,9 +38,9 @@ import type {
   ModelingSelectionContext
 } from "../modelingActions";
 import {
-  defaultSketchEntityForm,
   entityToSketchEntityForm,
   formatSketchEntity,
+  getDefaultSketchEntityFormForSketch,
   getSketchEntityFormLabels,
   sketchEntityFormToEntity,
   validateSketchEntityForm
@@ -301,6 +301,7 @@ export function ModelingActionsPanel({
         <SketchWorkbench
           disabled={disabled}
           sketch={context.sketch}
+          sketches={sketches}
           onAddEntity={onAddEntity}
           onSelectSketch={onSelectSketch}
         />
@@ -518,11 +519,13 @@ function NoSelectionWorkbench({
 function SketchWorkbench({
   disabled,
   sketch,
+  sketches,
   onAddEntity,
   onSelectSketch
 }: {
   readonly disabled: boolean;
   readonly sketch: SketchSnapshot;
+  readonly sketches: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
     kind: SketchEntityKind,
@@ -544,7 +547,11 @@ function SketchWorkbench({
               type="button"
               disabled={disabled}
               onClick={() =>
-                onAddEntity?.(sketch.id, kind, defaultSketchEntityForm)
+                onAddEntity?.(
+                  sketch.id,
+                  kind,
+                  getDefaultSketchEntityFormForSketch(sketch, kind, sketches)
+                )
               }
             >
               {formatSketchEntityKind(kind)}
