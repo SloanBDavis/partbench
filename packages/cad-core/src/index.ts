@@ -16,6 +16,7 @@ import type {
   CadFeatureSummary,
   CadGeneratedFaceReference,
   CadGeneratedEntityKind,
+  CadGeneratedReference,
   CadNamedReferenceRef,
   CadObjectSnapshot,
   CadObjectRef,
@@ -30,6 +31,14 @@ import type {
   CadQueryKind,
   CadQueryRequest,
   CadQueryResponse,
+  CadSelectionReferenceCandidate,
+  CadSelectionReferenceCommandTarget,
+  CadSelectionReferenceCandidateSource,
+  CadSelectionReferenceInput,
+  CadSelectionReferenceIssue,
+  CadSelectionReferenceIssueCode,
+  CadSelectionReferenceOperation,
+  CadSelectionReferenceStatus,
   CadSketchEntityRef,
   CadSketchConstraintRef,
   CadSketchDimensionRef,
@@ -182,6 +191,14 @@ export type {
   CadQueryRequest,
   CadQueryError,
   CadQueryResponse,
+  CadSelectionReferenceCandidate,
+  CadSelectionReferenceCommandTarget,
+  CadSelectionReferenceCandidateSource,
+  CadSelectionReferenceInput,
+  CadSelectionReferenceIssue,
+  CadSelectionReferenceIssueCode,
+  CadSelectionReferenceOperation,
+  CadSelectionReferenceStatus,
   CadSemanticDiffSummary,
   CadSketchDimensionRef,
   CadSketchConstraintRef,
@@ -1415,6 +1432,35 @@ export class CadEngine {
           name: reference.name,
           target: cloneNamedReferenceSnapshot(reference),
           reference: entry.reference
+        };
+      }
+
+      case "selection.referenceCandidates": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const selection = createSelectionReferenceCandidates(
+          this.#document,
+          structure,
+          this.#history.map((entry) => entry.transaction),
+          request.query.selection,
+          request.query.requiredOperation
+        );
+
+        return {
+          ok: true,
+          query: request.query.query,
+          cadOpsVersion: request.version,
+          selection: request.query.selection,
+          ...(request.query.requiredOperation
+            ? { requiredOperation: request.query.requiredOperation }
+            : {}),
+          status: selection.status,
+          candidateCount: selection.candidates.length,
+          candidates: selection.candidates,
+          issueCount: selection.issues.length,
+          issues: selection.issues
         };
       }
 
@@ -2846,6 +2892,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "body.generatedReferenceMeasurements":
     case "reference.listNamed":
     case "reference.resolveNamed":
+    case "selection.referenceCandidates":
     case "transaction.history":
       return true;
   }
@@ -2910,9 +2957,52 @@ function isCadQuery(value: unknown): boolean {
       );
     case "reference.resolveNamed":
       return typeof value.name === "string";
+    case "selection.referenceCandidates":
+      return (
+        isCadSelectionReferenceInput(value.selection) &&
+        (value.requiredOperation === undefined ||
+          isCadSelectionReferenceOperation(value.requiredOperation))
+      );
     default:
       return false;
   }
+}
+
+function isCadSelectionReferenceInput(
+  value: unknown
+): value is CadSelectionReferenceInput {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "body":
+      return typeof value.bodyId === "string";
+    case "generatedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        typeof value.stableId === "string" &&
+        (value.expectedKind === undefined ||
+          isGeneratedEntityKind(value.expectedKind))
+      );
+    case "namedReference":
+      return typeof value.name === "string";
+    default:
+      return false;
+  }
+}
+
+function isCadSelectionReferenceOperation(
+  value: unknown
+): value is CadSelectionReferenceOperation {
+  return (
+    value === "reference.nameGenerated" ||
+    value === "feature.attachSketchPlane" ||
+    value === "feature.chamfer" ||
+    value === "feature.fillet" ||
+    value === "feature.measureReference" ||
+    value === "feature.selectReference"
+  );
 }
 
 function isCadBodyDerivedExactMetadataSnapshot(
@@ -7281,6 +7371,471 @@ function createNamedReferenceEntry(
     status: "resolved",
     reference: result.reference
   };
+}
+
+function createSelectionReferenceCandidates(
+  document: CadDocument,
+  structure: CadProjectStructureSnapshot,
+  transactions: readonly Transaction[],
+  selection: CadSelectionReferenceInput,
+  requiredOperation: CadSelectionReferenceOperation | undefined
+): {
+  readonly status: CadSelectionReferenceStatus;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issues: readonly CadSelectionReferenceIssue[];
+} {
+  if (selection.type === "body") {
+    const body = structure.bodies.find(
+      (candidate) => candidate.id === selection.bodyId
+    );
+
+    if (!body) {
+      const issues = [
+        createSelectionIssue(
+          "MISSING_SELECTION_TARGET",
+          "missing",
+          `Selected body does not exist: ${selection.bodyId}`,
+          { bodyId: selection.bodyId }
+        )
+      ];
+
+      return {
+        status: "missing",
+        candidates: [],
+        issues
+      };
+    }
+
+    const references = createBodyGeneratedReferences(
+      document,
+      body.id,
+      body.partId
+    );
+
+    if (!references) {
+      const issues = [
+        ...createConsumedSelectionIssues(body),
+        createBodyReferenceUnavailableIssue(document, body)
+      ];
+
+      return {
+        status: chooseSelectionReferenceStatus(issues),
+        candidates: [],
+        issues
+      };
+    }
+
+    return createSingleSelectionReferenceCandidate({
+      source: "bodySelection",
+      selection,
+      body,
+      reference: references.body,
+      requiredOperation
+    });
+  }
+
+  if (selection.type === "generatedReference") {
+    const body = structure.bodies.find(
+      (candidate) => candidate.id === selection.bodyId
+    );
+
+    if (!body) {
+      const issues = [
+        createSelectionIssue(
+          "MISSING_SELECTION_TARGET",
+          "missing",
+          `Selected generated reference body does not exist: ${selection.bodyId}`,
+          { bodyId: selection.bodyId, stableId: selection.stableId }
+        )
+      ];
+
+      return {
+        status: "missing",
+        candidates: [],
+        issues
+      };
+    }
+
+    const references = createBodyGeneratedReferences(
+      document,
+      body.id,
+      body.partId
+    );
+
+    if (!references) {
+      const issues = [
+        ...createConsumedSelectionIssues(body),
+        createBodyReferenceUnavailableIssue(document, body, selection.stableId)
+      ];
+
+      return {
+        status: chooseSelectionReferenceStatus(issues),
+        candidates: [],
+        issues
+      };
+    }
+
+    const resolution = resolveGeneratedReference(
+      references,
+      selection.stableId
+    );
+
+    if (!resolution) {
+      const issues = [
+        createSelectionIssue(
+          "STALE_SELECTION_REFERENCE",
+          "stale",
+          `Selected generated reference is no longer available on ${selection.bodyId}: ${selection.stableId}`,
+          { bodyId: selection.bodyId, stableId: selection.stableId }
+        )
+      ];
+
+      return {
+        status: "stale",
+        candidates: [],
+        issues
+      };
+    }
+
+    const extraIssues =
+      selection.expectedKind !== undefined &&
+      selection.expectedKind !== resolution.kind
+        ? [
+            createSelectionIssue(
+              "SELECTION_KIND_MISMATCH",
+              "non-commandable",
+              `Selected generated reference ${selection.stableId} resolved as ${resolution.kind}, not ${selection.expectedKind}.`,
+              {
+                bodyId: selection.bodyId,
+                stableId: selection.stableId,
+                expected: selection.expectedKind,
+                received: resolution.kind
+              }
+            )
+          ]
+        : [];
+
+    return createSingleSelectionReferenceCandidate({
+      source: "generatedReferenceSelection",
+      selection,
+      body,
+      reference: resolution.reference,
+      requiredOperation,
+      extraIssues
+    });
+  }
+
+  const namedReference = document.namedReferences.get(selection.name);
+
+  if (!namedReference) {
+    const issues = [
+      createSelectionIssue(
+        "MISSING_SELECTION_TARGET",
+        "missing",
+        `Named reference does not exist: ${selection.name}`,
+        { referenceName: selection.name }
+      )
+    ];
+
+    return {
+      status: "missing",
+      candidates: [],
+      issues
+    };
+  }
+
+  const entry = createNamedReferenceEntry(
+    document,
+    namedReference,
+    transactions
+  );
+
+  if (entry.status === "stale" || !entry.reference) {
+    const issues = [
+      createSelectionIssue(
+        "STALE_SELECTION_REFERENCE",
+        "stale",
+        entry.error?.message ??
+          `Named reference target is stale: ${selection.name}`,
+        {
+          bodyId: namedReference.bodyId,
+          stableId: namedReference.stableId,
+          referenceName: namedReference.name
+        }
+      )
+    ];
+
+    return {
+      status: "stale",
+      candidates: [],
+      issues
+    };
+  }
+
+  const body = structure.bodies.find(
+    (candidate) => candidate.id === entry.reference?.bodyId
+  );
+
+  if (!body) {
+    const issues = [
+      createSelectionIssue(
+        "MISSING_SELECTION_TARGET",
+        "missing",
+        `Named reference body does not exist: ${entry.bodyId}`,
+        {
+          bodyId: entry.bodyId,
+          stableId: entry.stableId,
+          referenceName: entry.name
+        }
+      )
+    ];
+
+    return {
+      status: "missing",
+      candidates: [],
+      issues
+    };
+  }
+
+  return createSingleSelectionReferenceCandidate({
+    source: "namedReferenceSelection",
+    selection,
+    body,
+    reference: entry.reference,
+    requiredOperation
+  });
+}
+
+function createSingleSelectionReferenceCandidate(options: {
+  readonly source: CadSelectionReferenceCandidateSource;
+  readonly selection: CadSelectionReferenceInput;
+  readonly body: CadBodySnapshot;
+  readonly reference: CadGeneratedReference;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly extraIssues?: readonly CadSelectionReferenceIssue[];
+}): {
+  readonly status: CadSelectionReferenceStatus;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issues: readonly CadSelectionReferenceIssue[];
+} {
+  const consumedIssues = createConsumedSelectionIssues(options.body);
+  const baseOperations: readonly CadSelectionReferenceOperation[] =
+    consumedIssues.length > 0
+      ? []
+      : ["reference.nameGenerated", ...options.reference.eligibleOperations];
+  const operationIssues =
+    consumedIssues.length === 0
+      ? createCommandabilityIssues(
+          options.reference,
+          baseOperations,
+          options.requiredOperation
+        )
+      : [];
+  const issues = [
+    ...consumedIssues,
+    ...(options.extraIssues ?? []),
+    ...operationIssues
+  ];
+  const commandable = issues.length === 0;
+  const target: CadSelectionReferenceCommandTarget = {
+    type: "generatedReference",
+    bodyId: options.reference.bodyId,
+    stableId: options.reference.stableId,
+    kind: options.reference.kind,
+    ...(options.selection.type === "namedReference"
+      ? { referenceName: options.selection.name }
+      : {})
+  };
+  const candidate: CadSelectionReferenceCandidate = {
+    source: options.source,
+    target,
+    reference: options.reference,
+    commandable,
+    commandOperations: baseOperations,
+    label: options.reference.label,
+    ...(options.reference.description
+      ? { description: options.reference.description }
+      : {}),
+    issues
+  };
+
+  return {
+    status: commandable ? "resolved" : chooseSelectionReferenceStatus(issues),
+    candidates: [candidate],
+    issues
+  };
+}
+
+function createCommandabilityIssues(
+  reference: CadGeneratedReference,
+  operations: readonly CadSelectionReferenceOperation[],
+  requiredOperation: CadSelectionReferenceOperation | undefined
+): readonly CadSelectionReferenceIssue[] {
+  if (operations.length === 0) {
+    return [
+      createSelectionIssue(
+        "NON_COMMANDABLE_SELECTION_TARGET",
+        "non-commandable",
+        `Selected ${reference.kind} reference has no command-ready operations.`,
+        {
+          bodyId: reference.bodyId,
+          stableId: reference.stableId
+        }
+      )
+    ];
+  }
+
+  if (
+    requiredOperation !== undefined &&
+    !operations.includes(requiredOperation)
+  ) {
+    return [
+      createSelectionIssue(
+        "NON_COMMANDABLE_SELECTION_TARGET",
+        "non-commandable",
+        `Selected ${reference.kind} reference is not eligible for ${requiredOperation}.`,
+        {
+          bodyId: reference.bodyId,
+          stableId: reference.stableId,
+          expected: requiredOperation,
+          received: operations.join(", ")
+        }
+      )
+    ];
+  }
+
+  return [];
+}
+
+function createConsumedSelectionIssues(
+  body: CadBodySnapshot
+): readonly CadSelectionReferenceIssue[] {
+  if (!body.consumedByFeatureId) {
+    return [];
+  }
+
+  return [
+    createSelectionIssue(
+      "CONSUMED_SELECTION_BODY",
+      "consumed",
+      `Selected body ${body.id} is consumed by feature ${body.consumedByFeatureId}.`,
+      {
+        bodyId: body.id,
+        featureId: body.consumedByFeatureId
+      }
+    )
+  ];
+}
+
+function createBodyReferenceUnavailableIssue(
+  document: CadDocument,
+  body: CadBodySnapshot,
+  stableId?: string
+): CadSelectionReferenceIssue {
+  if (body.source.type === "primitiveFeature") {
+    return createSelectionIssue(
+      "UNSUPPORTED_SELECTION_TARGET",
+      "unsupported",
+      `Primitive body ${body.id} does not expose command-ready semantic generated references.`,
+      {
+        bodyId: body.id,
+        stableId,
+        featureId: body.featureId,
+        expected: "authored rectangle/circle newBody extrude"
+      }
+    );
+  }
+
+  if (body.source.type === "sketchExtrudeFeature") {
+    const feature = document.features.get(body.featureId);
+
+    if (feature?.kind === "extrude" && feature.operationMode !== "newBody") {
+      return createSelectionIssue(
+        "AMBIGUOUS_SELECTION_TOPOLOGY",
+        "ambiguous",
+        `Boolean result body ${body.id} does not yet have stable command-ready generated topology.`,
+        {
+          bodyId: body.id,
+          stableId,
+          featureId: body.featureId,
+          expected: "authored rectangle/circle newBody extrude",
+          received: `${feature.operationMode} extrude result`
+        }
+      );
+    }
+
+    return createSelectionIssue(
+      "STALE_SELECTION_REFERENCE",
+      "stale",
+      `Authored extrude body ${body.id} no longer resolves to generated references from its source sketch.`,
+      {
+        bodyId: body.id,
+        stableId,
+        featureId: body.featureId,
+        expected: "resolvable rectangle/circle newBody extrude source"
+      }
+    );
+  }
+
+  return createSelectionIssue(
+    "AMBIGUOUS_SELECTION_TOPOLOGY",
+    "ambiguous",
+    `Body ${body.id} does not yet have stable command-ready generated topology for V7 selection.`,
+    {
+      bodyId: body.id,
+      stableId,
+      featureId: body.featureId,
+      expected: "authored rectangle/circle newBody extrude",
+      received: body.source.type
+    }
+  );
+}
+
+function createSelectionIssue(
+  code: CadSelectionReferenceIssueCode,
+  status: Exclude<CadSelectionReferenceStatus, "resolved">,
+  message: string,
+  details: {
+    readonly bodyId?: BodyId;
+    readonly stableId?: string;
+    readonly referenceName?: NamedReferenceName;
+    readonly featureId?: FeatureId;
+    readonly expected?: string;
+    readonly received?: string;
+  } = {}
+): CadSelectionReferenceIssue {
+  return {
+    code,
+    status,
+    message,
+    ...(details.bodyId ? { bodyId: details.bodyId } : {}),
+    ...(details.stableId ? { stableId: details.stableId } : {}),
+    ...(details.referenceName ? { referenceName: details.referenceName } : {}),
+    ...(details.featureId ? { featureId: details.featureId } : {}),
+    ...(details.expected ? { expected: details.expected } : {}),
+    ...(details.received ? { received: details.received } : {})
+  };
+}
+
+function chooseSelectionReferenceStatus(
+  issues: readonly CadSelectionReferenceIssue[]
+): CadSelectionReferenceStatus {
+  const statuses = new Set(issues.map((issue) => issue.status));
+
+  for (const status of [
+    "missing",
+    "stale",
+    "consumed",
+    "ambiguous",
+    "unsupported",
+    "non-commandable"
+  ] satisfies readonly Exclude<CadSelectionReferenceStatus, "resolved">[]) {
+    if (statuses.has(status)) {
+      return status;
+    }
+  }
+
+  return "resolved";
 }
 
 function createQueryErrorFromGeneratedReferenceError(

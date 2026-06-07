@@ -3862,6 +3862,251 @@ describe("cad-core", () => {
     });
   });
 
+  it("returns command-ready V7 selection reference candidates for body generated and named selections", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const bodySelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "body", bodyId: "body_rect_1" }
+      }
+    });
+    const faceSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap",
+          expectedKind: "face"
+        },
+        requiredOperation: "feature.attachSketchPlane"
+      }
+    });
+
+    engine.applyBatch([
+      {
+        op: "reference.nameGenerated",
+        name: "Top face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    ]);
+    const namedSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "namedReference", name: "Top face" },
+        requiredOperation: "reference.nameGenerated"
+      }
+    });
+
+    expect(bodySelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      issueCount: 0,
+      candidates: [
+        {
+          source: "bodySelection",
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          target: {
+            type: "generatedReference",
+            bodyId: "body_rect_1",
+            stableId: "generated:body:body_rect_1",
+            kind: "body"
+          },
+          reference: {
+            kind: "body",
+            bodyId: "body_rect_1",
+            sourceFeatureId: "feat_rect_1"
+          }
+        }
+      ]
+    });
+    expect(faceSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      requiredOperation: "feature.attachSketchPlane",
+      candidateCount: 1,
+      issueCount: 0,
+      candidates: [
+        {
+          source: "generatedReferenceSelection",
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.attachSketchPlane"
+          ]),
+          target: {
+            type: "generatedReference",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face"
+          }
+        }
+      ]
+    });
+    expect(namedSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      selection: { type: "namedReference", name: "Top face" },
+      candidateCount: 1,
+      issueCount: 0,
+      candidates: [
+        {
+          source: "namedReferenceSelection",
+          commandable: true,
+          target: {
+            type: "generatedReference",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face",
+            referenceName: "Top face"
+          }
+        }
+      ]
+    });
+  });
+
+  it("returns structured V7 selection diagnostics for stale unsupported ambiguous and consumed targets", () => {
+    const engine = createRectangleExtrudeEngine();
+    const staleSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:missing",
+          expectedKind: "face"
+        }
+      }
+    });
+    const primitiveEngine = new CadEngine();
+    primitiveEngine.applyBatch([
+      {
+        op: "scene.createBox",
+        id: "box_1",
+        dimensions: { width: 1, height: 2, depth: 3 }
+      }
+    ]);
+    const unsupportedSelection = primitiveEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "body", bodyId: "body:box_1" }
+      }
+    });
+
+    engine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "feat_cut",
+        bodyId: "body_cut",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 2,
+        operationMode: "cut"
+      }
+    ]);
+    const ambiguousSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "body", bodyId: "body_cut" }
+      }
+    });
+    const consumedSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "body", bodyId: "body_rect_1" }
+      }
+    });
+
+    expect(staleSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "stale",
+      candidateCount: 0,
+      issues: [
+        {
+          code: "STALE_SELECTION_REFERENCE",
+          status: "stale",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:missing"
+        }
+      ]
+    });
+    expect(unsupportedSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "unsupported",
+      candidateCount: 0,
+      issues: [
+        {
+          code: "UNSUPPORTED_SELECTION_TARGET",
+          status: "unsupported",
+          bodyId: "body:box_1"
+        }
+      ]
+    });
+    expect(ambiguousSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "ambiguous",
+      candidateCount: 0,
+      issues: [
+        {
+          code: "AMBIGUOUS_SELECTION_TOPOLOGY",
+          status: "ambiguous",
+          bodyId: "body_cut",
+          featureId: "feat_cut"
+        }
+      ]
+    });
+    expect(consumedSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "consumed",
+      candidateCount: 1,
+      issues: [
+        {
+          code: "CONSUMED_SELECTION_BODY",
+          status: "consumed",
+          bodyId: "body_rect_1",
+          featureId: "feat_cut"
+        }
+      ],
+      candidates: [
+        {
+          commandable: false,
+          commandOperations: [],
+          issues: [
+            {
+              code: "CONSUMED_SELECTION_BODY",
+              status: "consumed",
+              bodyId: "body_rect_1",
+              featureId: "feat_cut"
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("validates generated references by kind and eligibility internally", () => {
     const rectangleEngine = createRectangleExtrudeEngine();
 

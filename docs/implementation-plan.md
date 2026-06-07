@@ -2,16 +2,17 @@
 
 This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
-next implementation roadmap.
+active implementation roadmap.
 
-Last updated: 2026-05-30.
+Last updated: 2026-06-07.
 
 Use this document for day-to-day implementation decisions. Use
-`docs/architecture.md` for long-term design, `docs/v4.md` for the completed
-constrained sketch solving milestone, `docs/v5.md` for the completed exact
-geometry/topology foundation milestone, `docs/v6.md` for the completed
-practical solid-modeling milestone, `docs/native-format.md` for project-format
-direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
+`docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
+archived V4 constrained sketch solving milestone, `docs/archive/v5.md` for the
+archived V5 exact geometry/topology foundation milestone, `docs/v6.md` for the
+completed V6 practical solid-modeling baseline, `docs/v7.md` for the active V7
+major-release draft, `docs/native-format.md` for project-format direction, and
+`docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
 
@@ -20,16 +21,20 @@ These constraints remain active:
 1. CADOps is the center of the system.
 2. Human UI, scripts, tests, and MCP/agent adapters use the same command layer.
 3. `cad-core` owns authoritative document state.
-4. Rendered primitives and meshes are derived views or caches.
+4. Rendered primitives, meshes, topology snapshots, exact metadata, thumbnails,
+   and storage caches are derived views or caches unless a scoped tranche
+   explicitly adds new source-of-truth data.
 5. React UI does not import geometry internals directly.
 6. Geometry, renderer, command engine, protocol, storage, and MCP boundaries stay
    separate.
 7. MCP wraps CADOps. MCP does not define the internal API.
-8. OCCT/WASM, WebGPU, OPFS, STEP, and exact topology are introduced only in
-   scoped milestones.
-9. V2, V3, V4, V5, and V6 are complete. Future modeling work should stay scoped
-   and should not start unrelated storage, renderer, or import/export systems
-   early.
+8. OCCT/WASM, WebGPU, OPFS, STEP, exact topology, assemblies, and hosted
+   collaboration are expanded only in scoped tranches.
+9. V2, V3, V4, V5, and V6 are complete. V7 is an active major-release planning
+   effort, not one narrow implementation milestone.
+10. V7 implementation tranches should stay independently testable and should not
+    mix unrelated storage, renderer, topology, import/export, or agent-safety
+    risks without explicit approval.
 
 ## Current Repo State
 
@@ -37,18 +42,19 @@ Partbench is implemented as a TypeScript pnpm workspace with a Vite React app
 and focused packages:
 
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
-  derived-geometry orchestration, project panel, batch panel, viewport, and
-  focused UI helpers.
+  derived-geometry orchestration, project panel, batch panel, current canvas
+  viewport, first feature tree, improved modeling workflow, and focused UI
+  helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
   line constraints, fixed/coincident/midpoint point constraints, parallel and
-  perpendicular line constraints,
-  authored rectangle/circle extrude features, narrow rectangle-tool add/cut
-  boolean source data, authored revolve, hole, chamfer, and fillet source
-  intent, named references, and versioned project JSON import/export.
+  perpendicular line constraints, authored rectangle/circle extrude features,
+  narrow rectangle-tool add/cut boolean source data, authored revolve, hole,
+  chamfer, and fillet source intent, named references, and versioned project
+  JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -70,56 +76,10 @@ Compatibility identifiers retained during the Partbench rename:
   lockfile churn.
 - `web-cad.project.v1` through `web-cad.project.v16` remain project-format schema
   identifiers. Renaming them would be a storage migration.
+- `web-cad.project.v7` is an older saved-project schema version, not the V7
+  release. If the V7 release adds new source-of-truth data, the next saved
+  schema should be `web-cad.project.v17`.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
-
-## Completed History
-
-The earlier project history is intentionally condensed here. Do not recreate
-long milestone logs in this implementation plan.
-
-### Initial Foundation
-
-The initial baseline established the pnpm workspace, Vite app, Vitest/lint/format
-checks, typed CADOps mutation protocol, in-memory document model, transactions,
-semantic diffs, undo/redo, browser command worker, canvas viewport, primitive
-scene objects, project JSON import/export, and agent/MCP wrappers.
-
-### V1 Baseline
-
-V1 completed the primitive-scene workflow: box, cylinder, sphere, cone, and torus
-creation/editing; transform, dimension, rename, delete, units, measurements,
-history, batch operations, and project save/load; viewport fit/reset/selection;
-OCCT-derived primitive meshes behind the worker path; and production-facing UI
-polish. V1 source details are now summarized here instead of maintained as a
-separate doc.
-
-### V2 Feature/Body Foundation
-
-V2 moved Partbench from primitives toward authored feature/body CAD while keeping
-V1 compatibility. It added:
-
-- source-of-truth sketches with point, line, rectangle, and circle entities;
-- `feature.extrude` for rectangle/circle sketch profiles;
-- authored body records, feature delete, depth/side edits, and profile edits;
-- sketches attached to generated planar face references;
-- generated body/face/edge/rectangle-vertex references, resolver queries,
-  labels, eligibility metadata, and source-of-truth named references;
-- source-derived measurements, project extents, generated-reference
-  measurements, and dependency/health queries;
-- narrow rectangle-tool boolean slices:
-  - cut rectangle target,
-  - cut circle target,
-  - add/fuse rectangle target;
-- derived geometry rebuilds through `geometry.booleanExtrudes` without making
-  meshes or OCCT authoritative;
-- UI support for sketches, extrudes, generated references, named references,
-  attached sketches, add/cut status, measurements, and project JSON;
-- agent-adapter and MCP pass-through coverage for current V2 commands/queries;
-- project JSON evolution through `web-cad.project.v6`, with explicit migrations
-  from older accepted versions.
-
-V2 is complete. Its detailed milestone file has been removed; this implementation
-plan now carries the durable V2 summary needed for future work.
 
 ## Current Scripts
 
@@ -185,6 +145,10 @@ Current Partbench can:
 - inspect parts, sketches, features, bodies, named references, dependency
   health, history, measurements, extents, topology, exact-metadata health, and
   generated-reference measurements;
+- query V7 selection/reference candidates through
+  `selection.referenceCandidates` for semantic body, generated-reference, and
+  named-reference selections, with structured missing, stale, unsupported,
+  ambiguous, consumed, and non-commandable diagnostics;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
 - rebuild supported revolve, hole, and rectangle-edge chamfer/fillet result
@@ -197,16 +161,17 @@ Current Partbench can:
 - use matching ready derived exact metadata snapshots for body topology, project
   extents, and project health measurement confidence for supported V6 result
   bodies;
-- use compact UI workflows for supported Extrude, Revolve, Hole, Chamfer, and
-  Fillet operations without offering known-unsupported targets as valid;
-- save/load current `web-cad.project.v16` JSON with migrations from older accepted
-  schemas;
+- use compact UI workflows and a first feature-tree/product workflow for
+  supported Extrude, Revolve, Hole, Chamfer, and Fillet operations without
+  offering known-unsupported targets as valid;
+- save/load current `web-cad.project.v16` JSON with migrations from older
+  accepted schemas;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
 
-The repo is a completed V6 practical solid-modeling milestone, not yet a full
-CAD system.
+The repo is a completed V6 practical solid-modeling baseline entering active V7
+release planning. It is not yet a full CAD system.
 
 Current limitations:
 
@@ -230,609 +195,217 @@ Current limitations:
   through derived exact metadata snapshots on `body.topology`, `project.extents`,
   and `project.health`, not through persisted source data.
 - Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
-  patterns, direct edits, general booleans, STEP import/export, OPFS/File
-  System Access,
-  WebGPU, assemblies, hosted collaboration, production MCP auth, or
-  natural-language command entry.
+  patterns, direct edits, general booleans, STEP import/export, OPFS/File System
+  Access, WebGPU, assemblies, hosted collaboration, production MCP auth, and
+  natural-language command entry remain unimplemented unless scoped into V7.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
-  build findings are documented separately and should not block future modeling
-  work.
-
-## Completed Roadmap: V3 Parametric Sketch Foundation
-
-V3 delivered the source-model foundation for parametric sketch editing. It
-intentionally avoided a full sketch solver, so V4 can take that hard problem on
-directly. The V3 product target was:
-
-> A user or agent can define and edit source-of-truth sketch dimensions and
-> parameters, rebuild downstream sketches/features/bodies/measurements through
-> CADOps, and inspect clear dependency health when something becomes invalid.
-
-V3 is agent-first. Parameters, dimensions, constraints, evaluator results,
-dependency health, validation failures, and rebuild effects must be
-typed/queryable through CADOps and wrapped by agent/MCP adapters. The UI should
-make the same structure usable for humans without adding hidden UI-only model
-state.
-
-### V3 Phase A: Parameter and Driving-Dimension Source Model
-
-Goal: introduce the smallest source-of-truth model for document parameters and
-sketch dimensions.
-
-Implemented in Phase A:
-
-- typed parameter records with names, numeric values, optional descriptions, and
-  validation;
-- typed sketch dimension records for rectangle width, rectangle height, and circle
-  radius;
-- CADOps commands for creating, updating, renaming, and deleting parameters and
-  dimensions;
-- semantic diffs, undo/redo, batch dry-run/commit, transaction history,
-  adapter/MCP pass-through, and project JSON import/export;
-- `web-cad.project.v7` with V1 through V6 import compatibility;
-- a direct evaluator path where literal or parameter-bound dimensions update
-  supported sketch entity values through CADOps.
-
-Non-goals:
-
-- No full solver yet.
-- No arbitrary expressions unless explicitly scoped.
-- No dragging solver UX.
-- No arbitrary profile recognition.
-- No parameter/dimension UI in the first core/source-model slice.
-
-### V3 Phase B: Minimal Constraint/Solver Slice
-
-Goal: broaden the Phase A direct evaluator toward a small sketch
-solver/evaluator structure in a controlled, testable way.
-
-Implemented deliverables:
-
-- a small internal sketch-solving/evaluation path in the correct package
-  boundary;
-- support for the next high-value cases only where endpoint/entity behavior is
-  explicit, such as line length or horizontal/vertical constraints;
-- structured evaluator status for healthy, unsupported, missing-target, and
-  invalid-value cases;
-- no UI-only solver state;
-- tests for deterministic inputs/outputs and failure shapes.
-
-Implemented evaluator slice:
-
-- line length dimensions are supported through the existing sketch dimension
-  lifecycle commands;
-- the evaluator preserves the current line midpoint and direction, then moves
-  both endpoints symmetrically to match the requested length;
-- zero-length lines reject line-length dimensions with a structured validation
-  error because the direction is ambiguous;
-- `sketch.evaluation` exposes the current direct evaluator as read-only query
-  data for human UI, scripts, agents, and MCP callers. It reports the sketch
-  identity, overall dimension status, driven dimensions, driven entity IDs,
-  effective values, and structured issues without persisting solver output;
-- horizontal and vertical line orientation constraints are supported as
-  source-of-truth sketch constraint records, separate from numeric dimensions;
-- horizontal/vertical constraint creation preserves line midpoint and current
-  length while aligning endpoints, and rejects duplicate, conflicting,
-  non-line, missing, or zero-length targets clearly;
-- `web-cad.project.v8` adds persisted sketch constraints with V1 through V7
-  import compatibility.
-
-Non-goals:
-
-- No general geometric constraint solver.
-- No tangent, concentric, equal, symmetry, spline, or complex profile solving
-  unless a later prompt scopes them deliberately.
-
-Solver direction guardrails:
-
-- parameters, dimensions, and constraints are source records with stable IDs,
-  not UI-only fields;
-- solver/evaluator outputs are deterministic derived data;
-- downstream features should consume evaluated sketch geometry once solver
-  behavior exists for that path;
-- invalid, unsupported, under-defined, over-defined, missing-target, or
-  inconsistent sketches must report structured status/errors instead of silently
-  producing misleading geometry;
-- React, renderer, OCCT, MCP, and agent layers must not own separate solver
-  authority.
-
-### V3 Phase C: Rebuild Propagation and Health
-
-Goal: make parameter/dimension edits propagate through the existing V2 body
-pipeline without breaking architectural boundaries.
-
-Implemented deliverables:
-
-- dimension/parameter edits update source sketches through CADOps;
-- authored extrudes, attached sketches, narrow boolean add/cut results,
-  measurements, extents, generated references, named references, and health
-  queries respond coherently;
-- `project.health` reports parameter-bound sketch dimensions, effective values,
-  sketch constraints, affected features/bodies, and structured missing,
-  invalid, inconsistent, or unsupported solver issues;
-- derived geometry cache keys and stale async handling include driven sketch
-  changes;
-- unsupported cases fail clearly and structurally.
-
-Non-goals:
-
-- No exact topology naming for boolean result bodies unless separately scoped.
-- No broad boolean expansion.
-
-### V3 Phase D: Human and Agent UX
-
-Goal: make parametric editing understandable in the UI and through structured
-agent queries.
-
-Completed deliverables:
-
-- compact UI for parameters, sketch dimensions, solver status, and downstream
-  dependency health;
-- compact UI for creating, renaming, and deleting horizontal/vertical line
-  constraints;
-- CADOps query support for parameter/dimension summaries and affected features;
-- agent/MCP wrapper coverage as thin pass-throughs;
-- UI helper tests for command building, filtering, status formatting, and
-  dependency display.
-
-Non-goals:
-
-- No browser E2E expansion unless explicitly scoped.
-- No natural-language parser.
-
-### V3 Phase E: Stabilization and Completion
-
-Goal: finish V3 as a coherent, well-tested milestone.
-
-Completed deliverables:
-
-- unit/package-level coverage for command/query contracts, serialization,
-  solver/evaluator behavior, rebuild propagation, derived geometry invalidation,
-  adapter/MCP wrappers, and UI helpers;
-- docs updated to mark V3 complete;
-- implementation-plan updated so future work starts from the completed V3
-  parametric sketch foundation.
-
-## V3 Acceptance Criteria
-
-V3 is complete when:
-
-1. Parameters, sketch dimensions, and current line orientation constraints are
-   source-of-truth document data.
-2. Current supported dimensions drive rectangle width/height, circle radius, and
-   line length through CADOps.
-3. Editing dimensions/parameters rebuilds downstream authored extrudes,
-   attached-sketch extrudes, narrow add/cut results, measurements, extents,
-   generated references, named references, and dependency health where
-   supported.
-4. Unsupported or unsolved sketch states fail with structured errors/status
-   instead of silently producing misleading geometry.
-5. Project JSON import/export/migration is explicit and tested.
-6. Agent/MCP adapters expose V3 commands/queries as wrappers over CADOps.
-7. The UI clearly presents parameters, dimensions, solver status, and downstream
-   impact without relying on debug text.
-8. Unit and package-level tests cover the behavior without depending on brittle
-   browser E2E workflows.
-
-## Completed Roadmap: V4 Constrained Sketch Solving
-
-V4 is complete. Its detailed scope and completion notes live in `docs/v4.md`.
-
-V4 should be a larger step than V3. The purpose is to make constrained sketching
-usable enough that sketches feel like CAD source data rather than independent
-form fields. V4 should still be bounded: it should solve the constrained-sketch
-and regeneration problem without starting unrelated systems such as STEP,
-native storage, WebGPU, or broad topology naming.
-
-The V4 product target is:
-
-> A user or agent can define a constrained sketch profile, drive it with
-> dimensions and parameters, extrude it, edit the sketch intent later, and see
-> downstream bodies, measurements, extents, references, health, and derived
-> meshes update coherently.
-
-V4 is agent-first. Constraint source records, solver/evaluator status,
-validation failures, semantic diffs, affected downstream features/bodies, and
-health must be typed/queryable through CADOps and wrapped by agent/MCP adapters.
-The UI should make that same structure usable for humans without hidden UI-only
-model state.
-
-### V4 Phase A: Solver Boundary And Sketch Reference Model
-
-Goal: make the solver/evaluator architecture explicit before adding more
-constraint behavior.
-
-Implemented:
-
-- isolate current direct evaluator logic behind a small internal `cad-core`
-  boundary;
-- define typed solve/evaluation input and output shapes;
-- define durable references for sketch points/entity roles where required for
-  constraints;
-- preserve current V3 command/query behavior;
-- keep solver/evaluator output derived, not persisted;
-- add tests proving V3 rectangle width/height, circle radius, line length, and
-  horizontal/vertical behavior is unchanged.
-
-### V4 Phase B: Point And Line Constraints
-
-Goal: add the first genuinely solver-shaped constraints.
-
-Implemented:
-
-- source-of-truth fixed point constraints for point position, line start, line
-  end, rectangle center, and circle center targets;
-- fixed constraints store durable target metadata plus a fixed coordinate;
-- source-of-truth coincident point constraints between two explicit point
-  targets using the same point target model;
-- coincident constraints use a deterministic first-slice evaluator: fixed
-  target wins, otherwise secondary target moves to primary target, conflicting
-  fixed coordinates fail clearly;
-- source-of-truth midpoint constraints from a line midpoint to a point/center
-  target;
-- source-of-truth parallel line constraints from a primary reference line to a
-  secondary driven line;
-- source-of-truth perpendicular line constraints from a primary reference line
-  to a secondary driven line;
-- CADOps validation, semantic diffs, undo/redo, batch dry-run/commit,
-  import/export, and adapter/MCP pass-through;
-- `web-cad.project.v13` with V1 through V12 import compatibility;
-- tests for successful solve cases and structured failure states.
-
-### V4 Phase C: Solver-Backed Dimensions And Orientation Constraints
-
-Goal: move V3 dimensions and orientation constraints through the common solver
-boundary and make supported combinations coherent.
-
-Implemented:
-
-- line length, rectangle width/height, circle radius, horizontal, and vertical
-  behavior evaluated through the common path;
-- supported combinations such as fixed endpoint plus line length and coincident
-  endpoints plus orientation;
-- parallel constraints preserve the secondary line midpoint/length and match
-  the primary line direction;
-- perpendicular constraints preserve the secondary line midpoint/length and set
-  it 90 degrees from the primary line direction;
-- conflict detection for supported constraints that disagree;
-- structured under-defined, over-defined, inconsistent, missing-target,
-  invalid-value, and unsupported statuses.
-
-### V4 Phase D: Regeneration And Health Hardening
-
-Goal: prove constrained sketches correctly drive the current feature/body
-pipeline.
-
-Implemented:
-
-- authored extrudes consume evaluated sketch geometry where solver behavior
-  applies;
-- attached-sketch extrudes keep resolving through generated face frames;
-- supported add/cut results rebuild or report honest unsupported status;
-- project extents, measurements, generated references, named references,
-  dependency health, sketch completeness status, transaction history, and
-  derived geometry cache keys remain coherent;
-- stale async geometry results cannot overwrite newer solved state.
-
-### V4 Phase E: Human And Agent Workflow UI
-
-Goal: make constrained sketching understandable without adding hidden model
-state.
-
-Implemented:
-
-- compact UI for supported dimensions and constraints;
-- clear selected sketch/entity constraint status;
-- concise solver health display;
-- command-building helpers for constraint create/edit/delete;
-- UI filtering so unsupported constraint targets are not presented as available;
-- unit tests for helper formatting, filtering, status, and commands.
-
-### V4 Phase F: Stabilization And Completion
-
-Goal: declare V4 complete only after the constrained sketch workflow is
-coherent, tested, documented, and ready for the next major architecture step.
-
-Completed:
-
-- review architecture boundaries, model behavior, derived geometry,
-  adapter/MCP wrappers, storage, docs, and UI helpers;
-- fix must-fix issues;
-- add high-signal unit/package coverage;
-- update docs to mark V4 complete and identify the next milestone.
-
-## Completed Roadmap: V5 Exact Geometry And Topology Foundation
-
-V5 is complete. Its detailed scope lives in `docs/v5.md`.
-
-V5 should make the current authored bodies more CAD-real without broadening the
-modeling surface too quickly. V4 made sketches and regeneration coherent. V5
-should close the next hard architecture gap: supported authored bodies,
-including current narrow boolean result bodies, need derived exact geometry,
-topology/reference health, generated references where safe, and trustworthy
-measurements/extents.
-
-The V5 product target is:
-
-> A user or agent can create the current supported bodies, including narrow
-> add/cut results, and inspect them as real CAD bodies with generated
-> references, exact/kernel-derived measurements where available, clear topology
-> health, and honest unsupported or ambiguous states.
-
-V5 is agent-first. Exact/topology status, reference health, measurement
-confidence, validation failures, stale/ambiguous diagnostics, and affected
-features/bodies must be typed/queryable through CADOps and wrapped by
-agent/MCP adapters. The UI should expose the same data compactly without
-claiming broad topological naming is solved.
-
-### V5 Phase A: Exact Geometry And Topology Boundary
-
-Goal: define the derived exact/topology result model before wiring it into more
-queries.
-
-Completed:
-
-- typed protocol/query shapes for derived body topology and exact measurement
-  status;
-- structured topology errors for unsupported body, stale source, ambiguous
-  topology, empty result, invalid result, and kernel failure;
-- cache-key/source identity rules for exact/topology data;
-- tests proving the new boundary is read-only and does not mutate source
-  document data.
-
-### V5 Phase B: Simple Extrude Exact/Topology Parity
-
-Goal: route simple rectangle/circle `newBody` extrudes through the new
-exact/topology boundary while preserving existing semantic generated reference
-behavior.
-
-Completed:
-
-- derived topology/measurement responses for rectangle and circle newBody
-  extrudes;
-- parity tests for existing generated references;
-- source-analytic measurement confidence for exact-for-source simple extrude
-  formulas;
-- project health entries for exact/topology status.
-
-### V5 Phase C: Boolean Result Topology
-
-Goal: make current supported boolean result bodies inspectable without claiming
-a full topological naming solution.
-
-Completed:
-
-- structured ambiguous responses for rectangle cut, circle-target cut, and
-  rectangle add/fuse result bodies because stable generated face/edge/vertex
-  roles cannot be proven yet;
-- unchanged resolver and named-reference behavior for simple generated
-  references;
-- health entries that surface topology ambiguity without treating valid boolean
-  source dependencies as broken.
-
-### V5 Phase D: Exact Measurements And Project Extents
-
-Goal: make supported body measurements and project extents use the best
-available derived exact data while preserving honest fallbacks.
-
-Completed:
-
-- measurement confidence/source metadata on body topology snapshots;
-- source-analytic confidence for current simple extrudes;
-- existing project extents warnings remain honest for boolean result bodies
-  because the current kernel path produces tessellated meshes rather than stable
-  exact mass properties.
-
-### V5 Phase E: Agent/MCP And UI Integration
-
-Goal: expose V5 exact/topology data in the same command/query-driven way as the
-rest of Partbench.
-
-Completed:
-
-- agent-adapter and MCP pass-through for body topology queries;
-- compact UI for selected body topology/reference health;
-- selected-body measurement confidence display through topology status;
-- UI helper coverage for topology status, model, counts, confidence, and errors.
-
-### V5 Phase F: Stabilization And Completion
-
-Goal: declare V5 complete only when supported authored bodies and narrow boolean
-result bodies have coherent exact/topology behavior, tests, and docs.
-
-Completed:
-
-- focused coverage for protocol, cad-core, project health, adapter/MCP, UI
-  formatting, source/derived separation, and docs;
-- docs updated to mark V5 complete and identify remaining exact B-rep and broad
-  topological naming limitations.
-
-## Completed Roadmap: V6 Practical Solid Modeling On Exact Geometry
-
-V6 is complete. Its detailed scope and completion notes live in `docs/v6.md`.
-
-V6 should be substantially larger than V5. V5 established the exact/topology
-boundary and honest status model. V6 should use that foundation to add practical
-solid-modeling capability: exact-kernel metadata, revolve, circular holes, and
-first edge-finishing operations.
-
-The V6 product target is:
-
-> A user or agent can create a constrained sketch, build a part with extrudes,
-> revolves, holes, and simple edge finishing, then inspect measurements,
-> topology health, history, and unsupported states through the same CADOps
-> command/query layer.
-
-V6 was implemented iteratively with focused prompts and unit/package coverage.
-The durable milestone decisions are:
-
-- new persisted V6 feature records should introduce explicit schema versions
-  (`web-cad.project.v14` for revolve, `web-cad.project.v15` for hole,
-  `web-cad.project.v16` for command-first chamfer/fillet);
+  build findings are documented separately and should not block V7 modeling,
+  topology, storage, or export planning.
+
+## Completed Milestones
+
+The older milestone logs are intentionally condensed here. Do not recreate long
+phase logs in this implementation plan.
+
+### Initial Foundation And V1
+
+The initial foundation established the pnpm workspace, Vite app, Vitest/lint/
+format checks, typed CADOps mutation protocol, in-memory document model,
+transactions, semantic diffs, undo/redo, browser command worker, canvas
+viewport, primitive scene objects, project JSON import/export, and agent/MCP
+wrappers.
+
+V1 completed the primitive-scene workflow: box, cylinder, sphere, cone, and
+torus creation/editing; transform, dimension, rename, delete, units,
+measurements, history, batch operations, project save/load, viewport
+fit/reset/selection, OCCT-derived primitive meshes behind the worker path, and
+production-facing UI polish.
+
+### V2 Feature/Body Foundation
+
+V2 moved Partbench from primitives toward authored feature/body CAD while keeping
+V1 compatibility. It added source-of-truth sketches, rectangle/circle extrudes,
+authored body records, feature delete/edit behavior, sketches attached to
+generated planar faces, generated and named references, source-derived
+measurements/extents, dependency health, and narrow rectangle-tool add/cut
+boolean workflows. V2 also kept derived geometry behind the geometry-worker
+boundary, added UI support for the new model concepts, exposed the behavior
+through agent/MCP wrappers, and evolved project JSON through
+`web-cad.project.v6`.
+
+### V3 Parametric Sketch Foundation
+
+V3 added source-of-truth document parameters, driving sketch dimensions,
+horizontal/vertical line orientation constraints, the first direct
+solver/evaluator structure, downstream rebuild propagation, dependency health,
+UI support, and agent/MCP pass-through. It introduced `web-cad.project.v7` for
+parameters and sketch dimensions and `web-cad.project.v8` for line orientation
+constraint source data.
+
+### V4 Constrained Sketch Solving
+
+V4 is archived in `docs/archive/v4.md`. It completed the constrained sketch
+solving milestone by adding a clearer solver/evaluator boundary, durable sketch
+point/entity targets, fixed/coincident/midpoint point constraints, parallel and
+perpendicular line constraints, solver-backed dimensions/orientation behavior,
+regeneration/health hardening, UI support, and agent/MCP wrappers. V4 evolved
+project JSON through `web-cad.project.v13`.
+
+### V5 Exact Geometry And Topology Foundation
+
+V5 is archived in `docs/archive/v5.md`. It completed the derived exact
+geometry/topology foundation for supported authored bodies. It added the
+read-only `body.topology` query, structured topology statuses, source identity
+and cache-key rules, exact/measurement confidence semantics, source-analytic
+simple extrude topology, honest ambiguous topology for current boolean results,
+project health/extents integration, UI status display, and agent/MCP
+pass-through. V5 did not add new source data and therefore did not introduce a
+new saved-project schema.
+
+### V6 Practical Solid Modeling On Exact Geometry
+
+V6 is complete and remains the immediate implementation baseline. Its detailed
+scope and completion notes live in `docs/v6.md`.
+
+V6 added practical solid-modeling capability: derived exact-kernel metadata,
+authored `feature.revolve`, circular `feature.hole`, command-first
+`feature.chamfer` and `feature.fillet`, target-consuming result-body behavior,
+derived mesh paths through OCCT for supported V6 result bodies, project
+structure/health/topology/extents integration, compact UI workflows, and
+agent/MCP pass-through.
+
+Durable V6 decisions:
+
+- new persisted feature records introduced explicit schemas:
+  `web-cad.project.v14` for revolve, `web-cad.project.v15` for hole, and
+  `web-cad.project.v16` for chamfer/fillet;
 - exact-kernel metadata remains derived and should not be persisted as source;
-- target-consuming features such as hole, chamfer, and fillet create result
-  bodies rather than mutating body identity in place;
-- generated references for V6 result bodies are exposed only where stable and
-  otherwise return structured ambiguity.
+- target-consuming features create result bodies rather than mutating body
+  identity in place;
+- generated references for V6 result bodies remain unsupported unless a future
+  stable topological naming design is explicitly implemented.
 
-### V6 Phase A: Exact Kernel Metadata And Measurement Upgrade
+## Active Roadmap: V7 Real CAD Alpha
 
-Goal: upgrade the geometry boundary so current and future bodies can return
-kernel-derived metadata where practical.
+V7 is a major release umbrella, not a single implementation milestone. The
+release should turn the V6 modeling baseline into an early usable local CAD
+product while preserving the architecture in `docs/architecture.md`.
 
-Implemented deliverables:
+The V7 release draft lives in `docs/v7.md`. This implementation plan adds the
+day-to-day sequencing rules.
 
-- typed geometry-kernel/worker requests for exact metadata;
-- derived bounds, volume, surface area, centroid, and topology/entity counts
-  where OCCT bindings allow;
-- structured diagnostics for unavailable bindings, kernel failure, empty result,
-  and invalid result;
-- cad-core read/query plumbing that keeps source JSON unchanged;
-- OCCT binding audit for mass properties, revolve, hole/cut, chamfer, and
-  fillet APIs.
+### V7 Release Pillars
 
-### V6 Phase B: `feature.revolve` Core
+V7 should be planned around these pillars:
 
-Goal: add the first new major authored feature type since extrude.
+- stable topology, references, and semantic selection;
+- production-grade viewport interaction and visual state;
+- local project workflow for open/save/save-as and future native package work;
+- interop, likely starting with export before broad import;
+- product UI hardening on top of the existing feature tree and improved modeling
+  workflow;
+- agent/MCP productization for larger, auditable workflows;
+- release samples, smoke checks, docs, and browser verification.
 
-Initial implementation:
+### Recommended Tranche Order
 
-- source-of-truth `feature.revolve` records and commands;
-- support for rectangle/circle profiles revolved around a non-zero same-sketch
-  line axis;
-- positive finite angle validation up to 360 degrees;
-- `newBody` only, with add/cut revolve modes rejected structurally;
-- semantic diffs, undo/redo, batch dry-run/commit, project structure/health,
-  transaction history, V14 import/export, adapter/MCP pass-through, and tests;
-- app derived-geometry/rendering support for authored revolve bodies through
-  the `geometry.revolveProfile` mesh path;
-- compact UI creation support for `newBody` revolve profiles with same-sketch
-  non-zero line axes;
-- generated references and source-derived measurements remain unsupported for
-  revolve result bodies, while matching derived exact metadata snapshots can
-  supply topology measurement confidence and project extents.
+The recommended starting sequence is:
 
-### V6 Phase C: Revolve Geometry And UI Integration
+1. **Reference And Selection Contract** - typed query/protocol support for
+   semantic selection candidates, reference eligibility, stale/ambiguous
+   diagnostics, and named-reference validation. This should not require WebGPU,
+   native storage, or STEP.
+2. **Feature Tree And Inspector Integration** - connect the current feature tree
+   and modeling workflow to reference and health semantics, with CADOps-backed
+   actions only.
+3. **Viewport Selection And Visual State** - map viewport interaction to the
+   same semantic references and expose active/consumed/pending/failed/selected
+   states without making renderer IDs authoritative.
+4. **Local Project Workflow** - harden JSON open/save first, then decide whether
+   File System Access, OPFS, thumbnails, or `.wcad` package work belongs in V7.
+5. **Export And Sharing** - add STEP export for supported exact bodies if scoped
+   and if the OCCT exchange boundary is ready; defer broad import unless V7
+   explicitly prioritizes interop.
+6. **Agent/MCP Release Surface** - shape project summary, dry-run previews,
+   audit metadata, and examples around the same reference/tree/health model.
+7. **Release Samples And Smokes** - add representative sample projects, smoke
+   scripts, manual browser checklist entries, and capability/limitation docs.
 
-Goal: make revolve visible and usable in the app.
+### First Tranche Implementation Guidance
 
-Implemented deliverables:
+The first V7 tranche starts with the Reference And Selection Contract. Its
+initial implementation adds a query-only semantic resolver:
 
-- compact feature creation UI that lets the user choose Extrude or Revolve;
-- valid axis filtering and clear validation messages;
-- selected-body topology/measurement health for revolve results.
+- `selection.referenceCandidates` accepts semantic selections only:
+  `{ type: "body", bodyId }`,
+  `{ type: "generatedReference", bodyId, stableId, expectedKind? }`, or
+  `{ type: "namedReference", name }`;
+- supported authored rectangle/circle `newBody` extrude selections return
+  command-ready generated-reference targets, command operation eligibility, and
+  labels/descriptions derived from source document state;
+- stale, ambiguous, missing, unsupported, consumed, kind-mismatched, and
+  non-commandable cases return structured diagnostics rather than vague strings
+  or renderer-derived IDs;
+- agent and MCP wrappers pass the same query result through CADOps/query paths;
+- UI helpers consume the query response for current feature-tree/modeling
+  workflow integration without owning model authority;
+- the query is derived and does not introduce `web-cad.project.v17`.
 
-### V6 Phase D: `feature.hole` Circular Cut Workflow
+Future V7 tranche plans should continue to include these details:
 
-Goal: add a practical face-based machining workflow.
+- exact CADOps/query shapes and response examples;
+- supported body/reference subset;
+- stale, ambiguous, missing, consumed, unsupported, and kernel-failed issue
+  shapes;
+- package touch list across `cad-protocol`, `cad-core`, app UI helpers,
+  adapter/MCP, geometry/worker if needed, and serialization if source data is
+  introduced;
+- feature tree, inspector, modeling panel, and viewport behavior;
+- migration impact. Query-only and derived data should not introduce a saved
+  project schema. New source-of-truth data should introduce
+  `web-cad.project.v17` with explicit migrations;
+- test matrix covering protocol validation, cad-core query behavior,
+  named-reference resolution, upstream edit stability, adapter/MCP pass-through,
+  UI helpers, and source/derived separation;
+- manual browser scenarios for selecting, naming, invalidating, and repairing a
+  supported face or edge.
 
-Planned deliverables:
+The first tranche should not implement broad arbitrary topology naming. It
+should prove the contract on the smallest useful, defensible subset and make all
+unsupported cases explicit.
 
-- source-of-truth `feature.hole` records and commands;
-- circular sketch entity tools on base-plane and attached planar-face sketches;
-- blind and through-all source intent with positive/negative direction;
-- target body consumption and authored result body creation;
-- project structure/health, semantic diffs, undo/redo, batch dry-run/commit,
-  transaction history, V15 import/export, adapter/MCP pass-through, and tests
-  for the command-first source model;
-- geometry-only `geometry.hole` feasibility through OCCT cylinder construction
-  and `BRepAlgoAPI_Cut`, returning serializable mesh data for rectangle/circle
-  extrude targets without changing cad-core source authority;
-- app derived-geometry wiring for supported hole result meshes, with consumed
-  targets omitted from render sources and no primitive fallback for pending or
-  unsupported hole results;
-- compact UI creation controls for circular hole tools, eligible target bodies,
-  blind/through-all depth, and direction;
-- matching derived exact metadata snapshots provide hole topology measurement
-  confidence and project extents where available; generated references and
-  exact topology naming remain unsupported.
+### V7 Scope Guardrails
 
-### V6 Phase E: Edge Finishing With Chamfer And Fillet
+Do not combine these in a single V7 tranche unless explicitly approved:
 
-Goal: add the first generated-edge-consuming modeling features.
+- WebGPU renderer replacement and topology/reference model changes;
+- native package storage and STEP import/export;
+- broad sketch solver expansion and general feature-graph expansion;
+- assembly/LOD architecture and local project format migration;
+- natural-language command parsing and production MCP auth.
 
-Implemented:
+Do not introduce another saved project format unless source-of-truth data
+requires it. Query results, topology summaries, derived exact metadata,
+selection state, thumbnails, mesh caches, and renderer display state should stay
+rebuildable by default.
 
-- `feature.chamfer` and `feature.fillet` source records and commands;
-- generated or named edge reference input through the existing
-  named-reference resolver path;
-- initial support for one stable semantic rectangle/circle newBody extrude edge
-  per feature;
-- target body consumption and authored result body creation;
-- structured validation failures for unsupported target bodies, stale/missing
-  references, non-edge references, ineligible generated references, and
-  non-positive distance/radius values;
-- project structure/health, semantic diffs, undo/redo, batch dry-run/commit,
-  transaction history, V16 import/export, adapter/MCP pass-through, and focused
-  tests;
-- `geometry.edgeFinish`, app derived rendering, compact UI controls, and
-  derived exact metadata snapshots for the rectangle-edge subset;
-- no generated references for chamfer/fillet result bodies, exact topology
-  naming, circle edge finishing, or source-derived measurements.
+## Deferred Unless Explicitly Scoped Into V7
 
-### V6 Phase F: Topology, Measurement, And Reference Health
-
-Goal: keep V6 result bodies inspectable without overstating topological naming.
-
-Implemented deliverables:
-
-- topology/measurement health for revolve, hole, chamfer, and fillet bodies;
-- named-reference stale/ambiguous handling after V6 features;
-- project health entries for consumed target chains and exact metadata
-  confidence;
-- project extents using kernel-derived bounds where available;
-- project health entries that accept matching derived exact metadata snapshots
-  and report exact measurement confidence without persisting the metadata.
-
-### V6 Phase G: Agent/MCP And UI Workflow Completion
-
-Goal: expose V6 workflows through the same command/query layer for humans and
-agents.
-
-Implemented deliverables:
-
-- agent-adapter and MCP pass-through for all V6 commands and queries;
-- compact UI workflows for Extrude, Revolve, Hole, Chamfer, and Fillet;
-- target/reference filtering so unsupported options are not offered;
-- helper tests for command building, filtering, status formatting, and project
-  JSON preview behavior.
-
-### V6 Phase H: Stabilization And Completion
-
-Goal: declare V6 complete only after the practical solid-modeling workflow is
-coherent, tested, documented, and ready for manual browser verification.
-
-Implemented deliverables:
-
-- coverage across protocol, cad-core, geometry-kernel, geometry-worker,
-  adapter/MCP, UI helpers, serialization, undo/redo, measurements/extents,
-  topology health, and docs;
-- required checks:
-  - `pnpm test`
-  - `pnpm typecheck`
-  - `pnpm build`
-  - `pnpm lint`
-  - `pnpm format:check`
-- manual browser verification of representative V6 workflows remains an
-  external release checklist item rather than a repository E2E test.
-
-## Deferred Beyond V6 Unless Explicitly Scoped
-
+- Full arbitrary topological naming for every OCCT result shape.
 - Full general sketch solving beyond the current V4 constrained-sketch scope.
 - Complex constraints such as tangent, concentric, equal, symmetry, spline, and
   curvature constraints.
 - Dragging solver UX.
 - Arbitrary parameter expressions.
-- Broad stable topological naming across arbitrary feature edits.
-- General booleans beyond current add/cut plus scoped V6 hole behavior.
+- General boolean trees beyond current add/cut plus scoped V6 hole behavior.
 - Shell, patterns, lofts, sweeps, mirror, direct edits, and broad feature
   editing beyond scoped V6 revolve/hole/chamfer/fillet workflows.
-- Persistent exact B-rep checkpoints.
-- STEP/IGES import/export.
-- OPFS cache implementation and File System Access open/save.
-- Native `.wcad` package implementation.
-- Local launcher with cross-origin isolation headers.
-- WebGPU production renderer.
+- Persistent exact B-rep checkpoints as source truth.
+- Broad STEP import with healing and assembly reconstruction.
+- OPFS cache implementation and File System Access open/save unless scoped.
+- Native `.wcad` package implementation unless scoped.
+- Local launcher with cross-origin isolation headers unless scoped.
+- WebGPU production renderer unless scoped.
 - Assemblies, mates, large-model LOD, and instancing.
 - Hosted collaboration.
 - Production MCP auth/permission system.
@@ -846,7 +419,8 @@ A future task is done only when:
 2. The implementation respects package boundaries.
 3. All CAD mutations go through CADOps.
 4. Source-of-truth state remains in `cad-core`.
-5. Rendered meshes remain derived.
+5. Rendered meshes, exact metadata, topology snapshots, and renderer state remain
+   derived unless the task explicitly adds source data.
 6. Relevant unit tests or focused package-level checks are added.
 7. Browser E2E tests are not added unless explicitly scoped.
 8. `pnpm test` passes.

@@ -26,6 +26,7 @@ describe("mcp-adapter", () => {
       "cad.generated_reference_measurements",
       "cad.named_references",
       "cad.resolve_named_reference",
+      "cad.selection_reference_candidates",
       "cad.transaction_history",
       "cad.batch"
     ]);
@@ -2078,6 +2079,74 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns V7 selection reference candidates through cad.selection_reference_candidates", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_selection_sketch",
+      entityId: "mcp_selection_circle",
+      featureId: "mcp_selection_feature",
+      bodyId: "mcp_selection_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.selection_reference_candidates",
+      requestId: "mcp_req_selection_refs",
+      arguments: {
+        selection: {
+          type: "generatedReference",
+          bodyId: "mcp_selection_body",
+          stableId: "generated:face:mcp_selection_body:endCap",
+          expectedKind: "face"
+        },
+        requiredOperation: "feature.attachSketchPlane"
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.selection_reference_candidates",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_selection_refs",
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "mcp_selection_body",
+          stableId: "generated:face:mcp_selection_body:endCap",
+          expectedKind: "face"
+        },
+        requiredOperation: "feature.attachSketchPlane",
+        status: "resolved",
+        candidateCount: 1,
+        issueCount: 0,
+        candidates: [
+          {
+            source: "generatedReferenceSelection",
+            commandable: true,
+            commandOperations: expect.arrayContaining([
+              "reference.nameGenerated",
+              "feature.attachSketchPlane"
+            ]),
+            target: {
+              type: "generatedReference",
+              bodyId: "mcp_selection_body",
+              stableId: "generated:face:mcp_selection_body:endCap",
+              kind: "face"
+            },
+            reference: {
+              kind: "face",
+              role: "endCap",
+              sourceFeatureId: "mcp_selection_feature"
+            },
+            issues: []
+          }
+        ],
+        issues: []
+      }
+    });
+  });
+
   it("resolves generated references through cad.resolve_generated_reference", () => {
     const server = new CadMcpServer();
 
@@ -2806,6 +2875,7 @@ describe("mcp-adapter", () => {
           { name: "cad.generated_reference_measurements" },
           { name: "cad.named_references" },
           { name: "cad.resolve_named_reference" },
+          { name: "cad.selection_reference_candidates" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }
         ]
@@ -2874,6 +2944,24 @@ describe("mcp-adapter", () => {
       })
     ).toMatchObject({
       toolName: "cad.body_measurements",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.selection_reference_candidates",
+        arguments: {
+          selection: {
+            type: "selectionBuffer",
+            index: 12
+          }
+        }
+      })
+    ).toMatchObject({
+      toolName: "cad.selection_reference_candidates",
       isError: true,
       structuredContent: {
         ok: false,

@@ -957,6 +957,7 @@ export type CadQueryKind =
   | "body.generatedReferenceMeasurements"
   | "reference.listNamed"
   | "reference.resolveNamed"
+  | "selection.referenceCandidates"
   | "transaction.history";
 
 export type CadQuery =
@@ -981,6 +982,7 @@ export type CadQuery =
   | BodyGeneratedReferenceMeasurementsQuery
   | ReferenceListNamedQuery
   | ReferenceResolveNamedQuery
+  | SelectionReferenceCandidatesQuery
   | TransactionHistoryQuery;
 
 export interface ParameterListQuery {
@@ -1083,6 +1085,12 @@ export interface ReferenceListNamedQuery {
 export interface ReferenceResolveNamedQuery {
   readonly query: "reference.resolveNamed";
   readonly name: NamedReferenceName;
+}
+
+export interface SelectionReferenceCandidatesQuery {
+  readonly query: "selection.referenceCandidates";
+  readonly selection: CadSelectionReferenceInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
 }
 
 export interface TransactionHistoryQuery {
@@ -1948,6 +1956,86 @@ export interface NamedGeneratedReferenceEntry extends NamedGeneratedReferenceSna
   readonly error?: CadQueryError;
 }
 
+export type CadSelectionReferenceInput =
+  | CadSelectionBodyInput
+  | CadSelectionGeneratedReferenceInput
+  | CadSelectionNamedReferenceInput;
+
+export interface CadSelectionBodyInput {
+  readonly type: "body";
+  readonly bodyId: BodyId;
+}
+
+export interface CadSelectionGeneratedReferenceInput {
+  readonly type: "generatedReference";
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly expectedKind?: CadGeneratedEntityKind;
+}
+
+export interface CadSelectionNamedReferenceInput {
+  readonly type: "namedReference";
+  readonly name: NamedReferenceName;
+}
+
+export type CadSelectionReferenceOperation =
+  | CadGeneratedReferenceEligibleOperation
+  | "reference.nameGenerated";
+
+export type CadSelectionReferenceStatus =
+  | "resolved"
+  | "missing"
+  | "stale"
+  | "unsupported"
+  | "ambiguous"
+  | "consumed"
+  | "non-commandable";
+
+export type CadSelectionReferenceIssueCode =
+  | "MISSING_SELECTION_TARGET"
+  | "STALE_SELECTION_REFERENCE"
+  | "UNSUPPORTED_SELECTION_TARGET"
+  | "AMBIGUOUS_SELECTION_TOPOLOGY"
+  | "CONSUMED_SELECTION_BODY"
+  | "NON_COMMANDABLE_SELECTION_TARGET"
+  | "SELECTION_KIND_MISMATCH";
+
+export interface CadSelectionReferenceIssue {
+  readonly code: CadSelectionReferenceIssueCode;
+  readonly status: Exclude<CadSelectionReferenceStatus, "resolved">;
+  readonly message: string;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly featureId?: FeatureId;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadSelectionReferenceCommandTarget {
+  readonly type: "generatedReference";
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly referenceName?: NamedReferenceName;
+}
+
+export type CadSelectionReferenceCandidateSource =
+  | "bodySelection"
+  | "generatedReferenceSelection"
+  | "namedReferenceSelection";
+
+export interface CadSelectionReferenceCandidate {
+  readonly source: CadSelectionReferenceCandidateSource;
+  readonly target: CadSelectionReferenceCommandTarget;
+  readonly reference: CadGeneratedReference;
+  readonly commandable: boolean;
+  readonly commandOperations: readonly CadSelectionReferenceOperation[];
+  readonly label: string;
+  readonly description?: string;
+  readonly issues: readonly CadSelectionReferenceIssue[];
+}
+
 export type CadDependencyHealthStatus =
   | "healthy"
   | "under-defined"
@@ -2410,6 +2498,7 @@ export type CadQueryResponse =
   | BodyGeneratedReferenceMeasurementsQueryResponse
   | ReferenceListNamedQueryResponse
   | ReferenceResolveNamedQueryResponse
+  | SelectionReferenceCandidatesQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
 
@@ -2634,6 +2723,19 @@ export interface ReferenceResolveNamedQueryResponse {
   readonly name: NamedReferenceName;
   readonly target: NamedGeneratedReferenceSnapshot;
   readonly reference: CadGeneratedReference;
+}
+
+export interface SelectionReferenceCandidatesQueryResponse {
+  readonly ok: true;
+  readonly query: "selection.referenceCandidates";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly selection: CadSelectionReferenceInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly status: CadSelectionReferenceStatus;
+  readonly candidateCount: number;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issueCount: number;
+  readonly issues: readonly CadSelectionReferenceIssue[];
 }
 
 export interface CadQueryErrorResponse {

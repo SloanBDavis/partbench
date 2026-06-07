@@ -956,6 +956,22 @@ read-only derived query. Missing or stale stable IDs return a structured
 `GENERATED_REFERENCE_NOT_FOUND` error rather than exposing raw OCCT, mesh, or
 renderer indexes.
 
+The `selection.referenceCandidates` query is the first V7 semantic
+selection/reference contract. It accepts only semantic selections:
+`{ type: "body", bodyId }`,
+`{ type: "generatedReference", bodyId, stableId, expectedKind? }`, or
+`{ type: "namedReference", name }`. It derives command-ready generated-reference
+candidates from the authoritative document, current named references, and the
+same generated-reference resolver described above. Supported rectangle/circle
+`newBody` extrude selections can resolve to body, face, edge, or vertex
+candidates with operation eligibility such as `reference.nameGenerated`,
+`feature.attachSketchPlane`, `feature.chamfer`, `feature.fillet`,
+`feature.measureReference`, and `feature.selectReference`. Unsupported,
+missing, stale, ambiguous, consumed, kind-mismatched, and non-commandable
+targets return structured diagnostics. Query inputs and outputs deliberately do
+not use OCCT IDs, mesh IDs, renderer object IDs, selection-buffer indexes, or
+other derived display/cache identifiers as stable public IDs.
+
 The companion `body.generatedReferenceMeasurements` query accepts the same body
 ID and generated stable ID and returns source-derived analytic measurements for
 the matched semantic reference where practical. Current authored
@@ -1036,8 +1052,9 @@ authored non-extrude feature source record. V6 introduced
 target-consuming feature source record. V6 introduced `web-cad.project.v16`
 when command-first `feature.chamfer` and `feature.fillet` records added
 edge-finishing source intent. Exact-kernel metadata, topology snapshots,
-measurement outputs, mesh results, and UI selection state remain derived and do
-not justify a schema version by themselves.
+measurement outputs, mesh results, semantic selection/reference candidate query
+outputs, and UI selection state remain derived and do not justify a schema
+version by themselves.
 
 Likely triggers:
 

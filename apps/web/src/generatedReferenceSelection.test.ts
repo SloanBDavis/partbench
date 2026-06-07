@@ -2,11 +2,15 @@ import { CadEngine, exportCadProjectJson } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedReference,
-  GeneratedReferenceMeasurement
+  GeneratedReferenceMeasurement,
+  SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
+  createSelectionReferenceCandidateSummaries,
   createSelectedGeneratedReference,
+  formatSelectionReferenceStatus,
+  getPrimarySelectionReferenceCandidate,
   getGeneratedReferenceSelectionState,
   isSelectedGeneratedReference,
   reconcileSelectedGeneratedReferenceBody
@@ -142,6 +146,106 @@ describe("generated reference selection helpers", () => {
 
     expect(project).not.toHaveProperty("selectedGeneratedReference");
     expect(JSON.stringify(project)).not.toContain(selection.stableId);
+  });
+
+  it("summarizes V7 selection reference candidate query responses", () => {
+    const references = createReferences();
+    const response: SelectionReferenceCandidatesQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: references.faces[0].stableId,
+        expectedKind: "face"
+      },
+      requiredOperation: "feature.attachSketchPlane",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        {
+          source: "generatedReferenceSelection",
+          target: {
+            type: "generatedReference",
+            bodyId: "body_1",
+            stableId: references.faces[0].stableId,
+            kind: "face"
+          },
+          reference: references.faces[0],
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          label: references.faces[0].label,
+          description: references.faces[0].description,
+          issues: []
+        }
+      ],
+      issueCount: 0,
+      issues: []
+    };
+
+    expect(getPrimarySelectionReferenceCandidate(response)).toEqual(
+      response.candidates[0]
+    );
+    expect(createSelectionReferenceCandidateSummaries(response)).toEqual([
+      {
+        tone: "ready",
+        title: "Face: Start cap",
+        detail: "4 command-ready operations",
+        stableId: "generated:face:body_1:startCap",
+        commandOperations: [
+          "reference.nameGenerated",
+          "feature.attachSketchPlane",
+          "feature.measureReference",
+          "feature.selectReference"
+        ],
+        issues: []
+      }
+    ]);
+  });
+
+  it("summarizes blocked V7 selection reference diagnostics", () => {
+    const response: SelectionReferenceCandidatesQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: { type: "body", bodyId: "body_cut" },
+      status: "ambiguous",
+      candidateCount: 0,
+      candidates: [],
+      issueCount: 1,
+      issues: [
+        {
+          code: "AMBIGUOUS_SELECTION_TOPOLOGY",
+          status: "ambiguous",
+          message:
+            "Boolean result body body_cut does not yet have stable command-ready generated topology.",
+          bodyId: "body_cut",
+          featureId: "feat_cut"
+        }
+      ]
+    };
+
+    expect(formatSelectionReferenceStatus(response.status)).toBe(
+      "Selection topology ambiguous"
+    );
+    expect(createSelectionReferenceCandidateSummaries(response)).toEqual([
+      {
+        tone: "blocked",
+        title: "Selection topology ambiguous",
+        detail:
+          "Boolean result body body_cut does not yet have stable command-ready generated topology.",
+        commandOperations: [],
+        issues: [
+          "Boolean result body body_cut does not yet have stable command-ready generated topology."
+        ]
+      }
+    ]);
   });
 });
 

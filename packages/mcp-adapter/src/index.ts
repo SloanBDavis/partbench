@@ -11,7 +11,10 @@ import type {
   CadActorMetadata,
   CadBatch,
   CadBodyDerivedExactMetadataSnapshot,
-  CadBodyExactMetadataSnapshot
+  CadBodyExactMetadataSnapshot,
+  CadGeneratedEntityKind,
+  CadSelectionReferenceInput,
+  CadSelectionReferenceOperation
 } from "@web-cad/cad-protocol";
 
 export type CadMcpToolName =
@@ -35,6 +38,7 @@ export type CadMcpToolName =
   | "cad.generated_reference_measurements"
   | "cad.named_references"
   | "cad.resolve_named_reference"
+  | "cad.selection_reference_candidates"
   | "cad.transaction_history"
   | "cad.batch";
 export type McpJsonRpcId = string | number | null;
@@ -206,6 +210,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.resolve_named_reference") {
       return this.#callResolveNamedReference(request);
+    }
+
+    if (request.name === "cad.selection_reference_candidates") {
+      return this.#callSelectionReferenceCandidates(request);
     }
 
     if (request.name === "cad.transaction_history") {
@@ -776,6 +784,36 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callSelectionReferenceCandidates(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isSelectionReferenceCandidatesToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.selection_reference_candidates expects arguments shaped as { selection: { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' } | { type: 'namedReference', name: string }, requiredOperation?: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "selection.referenceCandidates",
+            selection: request.arguments.selection,
+            ...(request.arguments.requiredOperation
+              ? { requiredOperation: request.arguments.requiredOperation }
+              : {})
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callTransactionHistory(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -1148,6 +1186,81 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.selection_reference_candidates",
+    description:
+      "Returns command-ready semantic CAD reference candidates for a body, generated reference, or named reference selection.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["selection"],
+      properties: {
+        selection: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "bodyId"],
+              properties: {
+                type: { const: "body" },
+                bodyId: {
+                  type: "string",
+                  description: "Source-of-truth body ID to resolve."
+                }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "bodyId", "stableId"],
+              properties: {
+                type: { const: "generatedReference" },
+                bodyId: {
+                  type: "string",
+                  description: "Source-of-truth body ID to inspect."
+                },
+                stableId: {
+                  type: "string",
+                  description: "Semantic generated reference stable ID."
+                },
+                expectedKind: {
+                  type: "string",
+                  enum: ["body", "face", "edge", "vertex"],
+                  description:
+                    "Optional expected generated reference entity kind."
+                }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "name"],
+              properties: {
+                type: { const: "namedReference" },
+                name: {
+                  type: "string",
+                  description: "Source-of-truth named generated reference."
+                }
+              }
+            }
+          ]
+        },
+        requiredOperation: {
+          type: "string",
+          enum: [
+            "reference.nameGenerated",
+            "feature.attachSketchPlane",
+            "feature.chamfer",
+            "feature.fillet",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          description:
+            "Optional command operation the selected target must support."
+        }
+      }
+    }
+  },
+  {
     name: "cad.transaction_history",
     description:
       "Returns read-only transaction history with actor, operation, and semantic diff summaries.",
@@ -1315,6 +1428,68 @@ function isResolveNamedReferenceToolArguments(
   value: unknown
 ): value is { readonly name: string } {
   return isRecord(value) && typeof value.name === "string" && value.name !== "";
+}
+
+function isSelectionReferenceCandidatesToolArguments(value: unknown): value is {
+  readonly selection: CadSelectionReferenceInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+} {
+  return (
+    isRecord(value) &&
+    isCadSelectionReferenceInput(value.selection) &&
+    (value.requiredOperation === undefined ||
+      isCadSelectionReferenceOperation(value.requiredOperation))
+  );
+}
+
+function isCadSelectionReferenceInput(
+  value: unknown
+): value is CadSelectionReferenceInput {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "body":
+      return typeof value.bodyId === "string" && value.bodyId !== "";
+    case "generatedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        value.bodyId !== "" &&
+        typeof value.stableId === "string" &&
+        value.stableId !== "" &&
+        (value.expectedKind === undefined ||
+          isGeneratedEntityKind(value.expectedKind))
+      );
+    case "namedReference":
+      return typeof value.name === "string" && value.name !== "";
+    default:
+      return false;
+  }
+}
+
+function isCadSelectionReferenceOperation(
+  value: unknown
+): value is CadSelectionReferenceOperation {
+  return (
+    value === "reference.nameGenerated" ||
+    value === "feature.attachSketchPlane" ||
+    value === "feature.chamfer" ||
+    value === "feature.fillet" ||
+    value === "feature.measureReference" ||
+    value === "feature.selectReference"
+  );
+}
+
+function isGeneratedEntityKind(
+  value: unknown
+): value is CadGeneratedEntityKind {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex"
+  );
 }
 
 function isEmptyObjectOrUndefined(value: unknown): boolean {

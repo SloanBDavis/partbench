@@ -39,6 +39,11 @@ import type {
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
+  CadSelectionReferenceCandidate,
+  CadSelectionReferenceInput,
+  CadSelectionReferenceIssue,
+  CadSelectionReferenceOperation,
+  CadSelectionReferenceStatus,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
   NamedGeneratedReferenceSnapshot,
@@ -207,6 +212,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyGeneratedReferenceMeasurementsQueryResponse
   | CadOpsAgentReferenceListNamedQueryResponse
   | CadOpsAgentReferenceResolveNamedQueryResponse
+  | CadOpsAgentSelectionReferenceCandidatesQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
 
@@ -467,6 +473,21 @@ export interface CadOpsAgentReferenceResolveNamedQueryResponse {
   readonly reference: CadGeneratedReference;
 }
 
+export interface CadOpsAgentSelectionReferenceCandidatesQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "selection.referenceCandidates";
+  readonly selection: CadSelectionReferenceInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly status: CadSelectionReferenceStatus;
+  readonly candidateCount: number;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issueCount: number;
+  readonly issues: readonly CadSelectionReferenceIssue[];
+}
+
 export interface CadOpsAgentTransactionHistoryQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -504,6 +525,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.generatedReferenceMeasurements"
     | "reference.listNamed"
     | "reference.resolveNamed"
+    | "selection.referenceCandidates"
     | "transaction.history";
   readonly error: CadQueryError;
 }
@@ -1116,6 +1138,25 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "selection.referenceCandidates") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      selection: response.selection,
+      ...(response.requiredOperation
+        ? { requiredOperation: response.requiredOperation }
+        : {}),
+      status: response.status,
+      candidateCount: response.candidateCount,
+      candidates: response.candidates,
+      issueCount: response.issueCount,
+      issues: response.issues
+    };
+  }
+
   return {
     ok: true,
     requestId: request.requestId,
@@ -1270,8 +1311,60 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "reference.resolveNamed" &&
         typeof value.query.name === "string") ||
+      (value.query.query === "selection.referenceCandidates" &&
+        isCadSelectionReferenceInput(value.query.selection) &&
+        (value.query.requiredOperation === undefined ||
+          isCadSelectionReferenceOperation(value.query.requiredOperation))) ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
+  );
+}
+
+function isCadSelectionReferenceInput(
+  value: unknown
+): value is CadSelectionReferenceInput {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "body":
+      return typeof value.bodyId === "string";
+    case "generatedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        typeof value.stableId === "string" &&
+        (value.expectedKind === undefined ||
+          isGeneratedEntityKind(value.expectedKind))
+      );
+    case "namedReference":
+      return typeof value.name === "string";
+    default:
+      return false;
+  }
+}
+
+function isCadSelectionReferenceOperation(
+  value: unknown
+): value is CadSelectionReferenceOperation {
+  return (
+    value === "reference.nameGenerated" ||
+    value === "feature.attachSketchPlane" ||
+    value === "feature.chamfer" ||
+    value === "feature.fillet" ||
+    value === "feature.measureReference" ||
+    value === "feature.selectReference"
+  );
+}
+
+function isGeneratedEntityKind(
+  value: unknown
+): value is CadGeneratedEntityKind {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex"
   );
 }
 

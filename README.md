@@ -9,7 +9,9 @@ The completed foundation supports primitive scene objects, source-of-truth
 sketches, rectangle/circle extrudes, generated and named references, attached
 sketches, measurements, dependency health, narrow rectangle-tool add/cut
 boolean workflows, document parameters, driving sketch dimensions, and the first
-line orientation constraints through the shared command layer.
+line orientation constraints through the shared command layer. The current V6
+baseline also supports scoped revolve, hole, chamfer, and fillet workflows with
+derived OCCT meshes and exact-metadata health where available.
 OCCT-derived meshes are display data only; the source of truth remains the typed
 document and transaction history in `cad-core`.
 
@@ -107,8 +109,10 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/architecture.md` - long-term architecture.
 - `docs/implementation-plan.md` - current implementation source of truth and
   roadmap.
-- `docs/v4.md` - completed V4 constrained sketch solving milestone.
-- `docs/v5.md` - active V5 exact geometry/topology target.
+- `docs/archive/v4.md` - archived V4 constrained sketch solving milestone.
+- `docs/archive/v5.md` - archived V5 exact geometry/topology foundation.
+- `docs/v6.md` - completed V6 practical solid-modeling baseline.
+- `docs/v7.md` - active V7 major-release draft.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -120,8 +124,10 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `packages/cad-core` - document model, transactions, undo/redo, project JSON
 - `packages/renderer` - simple renderer abstraction and canvas viewport support
 - `packages/occt-wasm` - isolated OCCT/WASM loading boundary
-- `packages/geometry-kernel` - isolated primitive tessellation facade
-- `packages/geometry-worker` - async worker boundary for tessellation
+- `packages/geometry-kernel` - typed primitive, feature, exact-metadata, and
+  edge-finish geometry facade
+- `packages/geometry-worker` - async worker boundary for derived geometry and
+  exact metadata
 - `packages/renderer-mesh-bridge` - mesh data adapter for the current renderer
 - `packages/agent-adapter` - CADOps adapter for external structured callers
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter
@@ -129,9 +135,10 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 ## Project Format
 
-Current project JSON exports use `web-cad.project.v8`. V1 through V7 project
+Current project JSON exports use `web-cad.project.v16`. V1 through V15 project
 JSON remain importable through explicit migrations; derived meshes, solver
-status, and geometry status are never saved as source-of-truth data.
+status, exact metadata, topology snapshots, and geometry status are never saved
+as source-of-truth data.
 
 `web-cad.project.*`, `web-cad.agent-adapter.v1`, and the `@web-cad/*`
 workspace package scope are retained as compatibility identifiers. They are not
@@ -140,17 +147,20 @@ protocol/package migration.
 
 ## Current Limitations
 
-- The renderer still uses simple primitive drawing as fallback while OCCT-derived
-  meshes are loading, disabled, unavailable, or failed.
-- OCCT/WASM is intentionally off the default production startup path and
-  currently backs primitive tessellation, rectangle/circle extrudes, and narrow
-  rectangle-tool add/cut derived meshes.
+- The renderer still uses simple primitive drawing as fallback while
+  OCCT-derived meshes are loading, disabled, unavailable, or failed.
+- OCCT/WASM is intentionally isolated behind geometry-worker/kernel boundaries
+  and currently backs primitive tessellation, rectangle/circle extrudes, narrow
+  rectangle-tool add/cut derived meshes, supported V6 result meshes, and derived
+  exact metadata where available.
 - Sketches, rectangle/circle extrude features, sketches attached to generated
-  planar face references, parameters, driving sketch dimensions, and line
-  orientation constraints are source-of-truth data, but there is no general
-  sketch solver, automatic profile recognition, broad feature editing, or full
-  topology naming yet.
-- V4 planning is focused on constrained sketch solving and reliable
-  regeneration before broader CAD features.
-- No real CAD topology, STEP import/export, OPFS persistence, WebGPU renderer, or
-  natural-language command parsing is implemented.
+  planar face references, parameters, driving sketch dimensions, supported
+  constraints, and V6 feature intent are source-of-truth data, but there is no
+  general sketch solver, automatic profile recognition, broad feature editing,
+  or full topology naming yet.
+- V7 planning is focused on turning the V6 baseline into a real CAD alpha:
+  stable references/selection, product workflow hardening, local project
+  workflow, interop, agent/MCP productization, and release hardening.
+- No broad stable topology, STEP import/export, OPFS persistence, WebGPU
+  renderer, assemblies, hosted collaboration, production MCP auth, or
+  natural-language command parsing is implemented unless scoped into V7.

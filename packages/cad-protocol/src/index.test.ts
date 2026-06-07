@@ -673,6 +673,19 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_1",
+            stableId: "generated:face:body_1:endCap",
+            expectedKind: "face"
+          },
+          requiredOperation: "feature.attachSketchPlane"
+        }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -700,6 +713,7 @@ describe("cad-protocol", () => {
       "body.measurements",
       "reference.listNamed",
       "reference.resolveNamed",
+      "selection.referenceCandidates",
       "transaction.history"
     ]);
   });
@@ -1560,6 +1574,110 @@ describe("cad-protocol", () => {
         role: "endCap",
         area: 8
       }
+    });
+  });
+
+  it("types selection reference candidate responses", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:endCap",
+        expectedKind: "face"
+      },
+      requiredOperation: "feature.attachSketchPlane",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        {
+          source: "generatedReferenceSelection",
+          target: {
+            type: "generatedReference",
+            bodyId: "body_1",
+            stableId: "generated:face:body_1:endCap",
+            kind: "face"
+          },
+          reference: {
+            kind: "face",
+            stableId: "generated:face:body_1:endCap",
+            label: "End cap",
+            eligibleOperations: [
+              "feature.attachSketchPlane",
+              "feature.measureReference",
+              "feature.selectReference"
+            ],
+            bodyId: "body_1",
+            ownerPartId: "part:default",
+            sourceFeatureId: "feat_1",
+            sourceSketchId: "sketch_1",
+            sourceSketchEntityId: "rect_1",
+            role: "endCap",
+            geometricSignature: {
+              profileKind: "rectangle",
+              sketchPlane: "XY",
+              extrudeSide: "positive",
+              depth: 3
+            }
+          },
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          label: "End cap",
+          issues: []
+        }
+      ],
+      issueCount: 0,
+      issues: []
+    };
+    const blocked: CadQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: { type: "body", bodyId: "body_cut" },
+      status: "ambiguous",
+      candidateCount: 0,
+      candidates: [],
+      issueCount: 1,
+      issues: [
+        {
+          code: "AMBIGUOUS_SELECTION_TOPOLOGY",
+          status: "ambiguous",
+          message:
+            "Boolean result body body_cut does not yet have stable command-ready generated topology.",
+          bodyId: "body_cut",
+          featureId: "feat_cut",
+          expected: "authored rectangle/circle newBody extrude",
+          received: "cut extrude result"
+        }
+      ]
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidates: [
+        {
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.attachSketchPlane"
+          ])
+        }
+      ]
+    });
+    expect(blocked).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "ambiguous",
+      issues: [{ code: "AMBIGUOUS_SELECTION_TOPOLOGY" }]
     });
   });
 });

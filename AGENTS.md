@@ -12,9 +12,10 @@ The long-term architecture is in:
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
-- `docs/v4.md` — completed V4 constrained sketch solving milestone
-- `docs/v5.md` — completed V5 exact geometry/topology foundation
-- `docs/v6.md` — active V6 practical solid-modeling target
+- `docs/archive/v4.md` — archived V4 constrained sketch solving milestone
+- `docs/archive/v5.md` — archived V5 exact geometry/topology foundation
+- `docs/v6.md` — completed V6 practical solid-modeling baseline
+- `docs/v7.md` — active V7 major-release draft
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 
@@ -25,7 +26,7 @@ Do not attempt to build the entire architecture at once. Implement only the mile
 3. The document model is authoritative. Rendered meshes are derived views/caches.
 4. Do not couple the React UI directly to geometry internals.
 5. Keep renderer, command engine, protocol, storage, and WASM geometry boundaries separate.
-6. Do not introduce Open CASCADE, WASM, MCP, OPFS, STEP import/export, or WebGPU until the requested milestone calls for it.
+6. Do not expand OCCT/WASM, MCP, OPFS, STEP import/export, WebGPU, assemblies, hosted collaboration, or native storage beyond the requested release tranche.
 7. Prefer small, testable packages over one large app.
 8. Every implemented command must have tests.
 9. Every command should produce a structured semantic diff.

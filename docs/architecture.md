@@ -8,9 +8,10 @@ This is not an implementation checklist. Codex should use this as architectural 
 The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
-- `docs/v4.md`
-- `docs/v5.md`
+- `docs/archive/v4.md`
+- `docs/archive/v5.md`
 - `docs/v6.md`
+- `docs/v7.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -922,6 +923,10 @@ AgentAuditEvent {
 The local MCP server should bind to `127.0.0.1`, require a per-session token, enforce origin checks, and never expose arbitrary filesystem access. Hosted MCP should use normal auth and per-project authorization.
 
 ## 20. What Codex should build first
+
+This section is historical initial-build guidance. The implementation has now
+progressed through the completed V6 baseline; follow `docs/implementation-plan.md`
+and `docs/v7.md` for current V7 work.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

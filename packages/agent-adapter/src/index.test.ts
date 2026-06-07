@@ -2659,6 +2659,74 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns V7 selection reference candidates through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_selection_refs",
+      entityId: "rect_selection_refs",
+      featureId: "feat_selection_refs",
+      bodyId: "body_selection_refs"
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_selection_refs",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_selection_refs",
+            stableId: "generated:face:body_selection_refs:endCap",
+            expectedKind: "face"
+          },
+          requiredOperation: "feature.attachSketchPlane"
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_selection_refs",
+      query: "selection.referenceCandidates",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_selection_refs",
+        stableId: "generated:face:body_selection_refs:endCap",
+        expectedKind: "face"
+      },
+      requiredOperation: "feature.attachSketchPlane",
+      status: "resolved",
+      candidateCount: 1,
+      issueCount: 0,
+      candidates: [
+        {
+          source: "generatedReferenceSelection",
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.attachSketchPlane"
+          ]),
+          target: {
+            type: "generatedReference",
+            bodyId: "body_selection_refs",
+            stableId: "generated:face:body_selection_refs:endCap",
+            kind: "face"
+          },
+          reference: {
+            kind: "face",
+            role: "endCap",
+            sourceFeatureId: "feat_selection_refs"
+          },
+          issues: []
+        }
+      ],
+      issues: []
+    });
+  });
+
   it("returns generated reference measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 
