@@ -2,9 +2,12 @@ import type {
   BodyGeneratedReferencesQueryResponse,
   CadBodySnapshot,
   CadFeatureSummary,
+  CadGeneratedReference,
   CadPartSnapshot,
   CadGeneratedFaceReference,
+  NamedGeneratedReferenceEntry,
   ProjectHealthQueryResponse,
+  SelectionReferenceCandidatesQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
@@ -52,6 +55,8 @@ describe("StructurePanel", () => {
 
   it("renders selected generated references inside the primary body lineage", () => {
     const references = createGeneratedReferences();
+    const face = references.faces[0];
+    const edge = references.edges[0];
     const markup = renderToStaticMarkup(
       createElement(StructurePanel, {
         bodies: [createExtrudeBody("body_base", "feature_base")],
@@ -61,6 +66,10 @@ describe("StructurePanel", () => {
         namedReferences: [],
         objects: [],
         parts: [createPart()],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, createSelectionReferenceCandidates(face)],
+          [edge.stableId, createSelectionReferenceCandidates(edge)]
+        ]),
         selectedGeneratedReference: {
           bodyId: "body_base",
           stableId: "generated:face:body_base:startCap"
@@ -82,10 +91,43 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Faces");
     expect(markup).toContain("Edges");
     expect(markup).toContain("Start cap");
-    expect(markup).toContain("Sketch plane");
+    expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Start uMin edge");
-    expect(markup).toContain("Chamfer");
     expect(markup).not.toContain("generated:face:body_base:startCap");
+  });
+
+  it("renders named reference candidate state from the V7 query contract", () => {
+    const face = createFaceReference();
+    const namedReference: NamedGeneratedReferenceEntry = {
+      name: "Top face",
+      kind: "face",
+      bodyId: face.bodyId,
+      stableId: face.stableId,
+      status: "resolved",
+      reference: face
+    };
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [],
+        features: [],
+        health: createHealth(),
+        namedReferences: [namedReference],
+        namedReferenceCandidatesByName: new Map([
+          ["Top face", createSelectionReferenceCandidates(face)]
+        ]),
+        objects: [],
+        parts: [createPart()],
+        sketches: [],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Named references");
+    expect(markup).toContain("Top face");
+    expect(markup).toContain("Command-ready reference");
   });
 
   it("keeps only the active sketch lineage open by default", () => {
@@ -348,5 +390,68 @@ function createFaceReference(): CadGeneratedFaceReference {
       sketchPlane: "XY",
       surfaceType: "plane"
     }
+  };
+}
+
+function createSelectionReferenceCandidates(
+  reference: CadGeneratedReference,
+  overrides: {
+    readonly status?: SelectionReferenceCandidatesQueryResponse["status"];
+    readonly commandable?: boolean;
+    readonly commandOperations?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"];
+    readonly message?: string;
+  } = {}
+): SelectionReferenceCandidatesQueryResponse {
+  const status = overrides.status ?? "resolved";
+  const message = overrides.message ?? "Selection is not commandable.";
+  const issue =
+    status === "resolved"
+      ? undefined
+      : {
+          code: "CONSUMED_SELECTION_BODY" as const,
+          status: status as Exclude<
+            SelectionReferenceCandidatesQueryResponse["status"],
+            "resolved"
+          >,
+          message,
+          bodyId: reference.bodyId,
+          featureId: "feature_cut"
+        };
+
+  return {
+    ok: true,
+    query: "selection.referenceCandidates",
+    cadOpsVersion: "cadops.v1",
+    selection: {
+      type: "generatedReference",
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      expectedKind: reference.kind
+    },
+    status,
+    candidateCount: 1,
+    candidates: [
+      {
+        source: "generatedReferenceSelection",
+        target: {
+          type: "generatedReference",
+          bodyId: reference.bodyId,
+          stableId: reference.stableId,
+          kind: reference.kind
+        },
+        reference,
+        commandable: overrides.commandable ?? true,
+        commandOperations:
+          overrides.commandOperations ??
+          ([
+            "reference.nameGenerated",
+            ...reference.eligibleOperations
+          ] as const),
+        label: reference.label,
+        issues: issue ? [issue] : []
+      }
+    ],
+    issueCount: issue ? 1 : 0,
+    issues: issue ? [issue] : []
   };
 }

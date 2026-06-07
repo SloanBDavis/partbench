@@ -18,6 +18,7 @@ import type {
   CadBatchResponse,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadSelectionReferenceInput,
   CadParameterSnapshot,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
@@ -25,6 +26,7 @@ import type {
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
   ProjectHealthQueryResponse,
+  SelectionReferenceCandidatesQueryResponse,
   SketchDimensionEntry,
   SketchDimensionTarget,
   SketchConstraintEntry,
@@ -143,6 +145,7 @@ import {
 import {
   formatGeneratedReferenceMeasurementError,
   formatGeneratedReferencesError,
+  getGeneratedReferenceItems,
   type GeneratedReferenceMeasurementDisplay
 } from "./generatedReferenceUi";
 import {
@@ -466,6 +469,76 @@ function readNamedReferences(): readonly NamedGeneratedReferenceEntry[] {
     : [];
 }
 
+function readSelectionReferenceCandidates(
+  selection: CadSelectionReferenceInput | undefined
+): SelectionReferenceCandidatesQueryResponse | undefined {
+  if (!selection) {
+    return undefined;
+  }
+
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "selection.referenceCandidates",
+      selection
+    }
+  });
+
+  return response.ok && response.query === "selection.referenceCandidates"
+    ? response
+    : undefined;
+}
+
+function readSelectionReferenceCandidatesByStableId(
+  references: BodyGeneratedReferencesQueryResponse | undefined
+): ReadonlyMap<string, SelectionReferenceCandidatesQueryResponse> {
+  const candidatesByStableId = new Map<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >();
+
+  if (!references) {
+    return candidatesByStableId;
+  }
+
+  for (const reference of getGeneratedReferenceItems(references)) {
+    const response = readSelectionReferenceCandidates({
+      type: "generatedReference",
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      expectedKind: reference.kind
+    });
+
+    if (response) {
+      candidatesByStableId.set(reference.stableId, response);
+    }
+  }
+
+  return candidatesByStableId;
+}
+
+function readNamedReferenceCandidatesByName(
+  references: readonly NamedGeneratedReferenceEntry[]
+): ReadonlyMap<string, SelectionReferenceCandidatesQueryResponse> {
+  const candidatesByName = new Map<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >();
+
+  for (const reference of references) {
+    const response = readSelectionReferenceCandidates({
+      type: "namedReference",
+      name: reference.name
+    });
+
+    if (response) {
+      candidatesByName.set(reference.name, response);
+    }
+  }
+
+  return candidatesByName;
+}
+
 function readParameters(): readonly CadParameterSnapshot[] {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -625,9 +698,12 @@ function readGeneratedFaceReferencesByKey(
 function createModelingSelectionContext({
   focusedSketchId,
   namedReferences,
+  referenceCandidatesByStableId,
   selectedBody,
   selectedBodyGeneratedReferences,
+  selectedBodyReferenceCandidates,
   selectedFeature,
+  selectedGeneratedReferenceCandidates,
   selectedGeneratedReferenceState,
   selectedId,
   selectedSketchContext,
@@ -639,9 +715,15 @@ function createModelingSelectionContext({
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly selectedBody?: CadBodySnapshot;
   readonly selectedBodyGeneratedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly selectedBodyReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly selectedFeature?: CadFeatureSummary;
+  readonly selectedGeneratedReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
   readonly selectedId?: string;
+  readonly referenceCandidatesByStableId: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedSketchContext?: SketchPanelSelectionContext;
   readonly sketchDimensionsBySketchId: ReadonlyMap<
     string,
@@ -659,7 +741,8 @@ function createModelingSelectionContext({
       reference: selectedGeneratedReferenceState.reference,
       body: selectedBody,
       feature: selectedFeature,
-      namedReferences
+      namedReferences,
+      selectionReferenceCandidates: selectedGeneratedReferenceCandidates
     };
   }
 
@@ -668,7 +751,9 @@ function createModelingSelectionContext({
       selectionKind: "body",
       body: selectedBody,
       feature: selectedFeature,
-      generatedReferences: selectedBodyGeneratedReferences
+      generatedReferences: selectedBodyGeneratedReferences,
+      referenceCandidatesByStableId,
+      selectionReferenceCandidates: selectedBodyReferenceCandidates
     };
   }
 
@@ -957,6 +1042,18 @@ export function App() {
       ? readBodyTopology(selectedBody.id, derivedExactMetadata)
       : {};
   const namedReferences = readNamedReferences();
+  const selectedBodyReferenceCandidates = selectedBody
+    ? readSelectionReferenceCandidates({
+        type: "body",
+        bodyId: selectedBody.id
+      })
+    : undefined;
+  const referenceCandidatesByStableId =
+    readSelectionReferenceCandidatesByStableId(
+      selectedBodyGeneratedReferences.references
+    );
+  const namedReferenceCandidatesByName =
+    readNamedReferenceCandidatesByName(namedReferences);
   const transactionHistory = readTransactionHistory();
   const parameters = readParameters();
   const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
@@ -967,12 +1064,29 @@ export function App() {
     selectedGeneratedReferenceMeasurements,
     document.units
   );
+  const selectedGeneratedReferenceCandidates =
+    selectedGeneratedReferenceState.status === "selected"
+      ? (referenceCandidatesByStableId.get(
+          selectedGeneratedReferenceState.reference.stableId
+        ) ??
+        readSelectionReferenceCandidates({
+          type: "generatedReference",
+          bodyId: selectedGeneratedReferenceState.reference.bodyId,
+          stableId: selectedGeneratedReferenceState.reference.stableId,
+          expectedKind: selectedGeneratedReferenceState.reference.kind
+        }))
+      : undefined;
+  const selectedSelectionReferenceCandidates =
+    selectedGeneratedReferenceCandidates ?? selectedBodyReferenceCandidates;
   const modelingSelectionContext = createModelingSelectionContext({
     focusedSketchId,
     namedReferences,
+    referenceCandidatesByStableId,
     selectedBody,
     selectedBodyGeneratedReferences: selectedBodyGeneratedReferences.references,
+    selectedBodyReferenceCandidates,
     selectedFeature,
+    selectedGeneratedReferenceCandidates,
     selectedGeneratedReferenceState,
     selectedId,
     selectedSketchContext,
@@ -1935,8 +2049,10 @@ export function App() {
           }
           health={projectHealth}
           namedReferences={namedReferences}
+          namedReferenceCandidatesByName={namedReferenceCandidatesByName}
           objects={sceneObjects}
           parts={projectStructure.parts}
+          referenceCandidatesByStableId={referenceCandidatesByStableId}
           selectedId={selectedId}
           selectedGeneratedReference={selectedGeneratedReference}
           sketches={sketches}
@@ -2068,8 +2184,17 @@ export function App() {
                       selectedGeneratedReferenceMeasurements
                     }
                     namedReferences={namedReferences}
+                    namedReferenceCandidatesByName={
+                      namedReferenceCandidatesByName
+                    }
                     object={selectedObject}
+                    referenceCandidatesByStableId={
+                      referenceCandidatesByStableId
+                    }
                     selectedGeneratedReference={selectedGeneratedReference}
+                    selectionReferenceCandidates={
+                      selectedSelectionReferenceCandidates
+                    }
                     units={document.units}
                     onApplyDimensions={(form) =>
                       void updateSelectedDimensions(form)

@@ -4,6 +4,7 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedReference,
   NamedGeneratedReferenceEntry,
+  SelectionReferenceCandidatesQueryResponse,
   SketchConstraintKind,
   SketchDimensionTarget,
   SketchEntityKind,
@@ -32,7 +33,12 @@ import {
   formatSketchOnFaceAvailability,
   getSketchAttachableFaces
 } from "../generatedReferenceUi";
-import { createSelectedGeneratedReference } from "../generatedReferenceSelection";
+import {
+  createSelectedGeneratedReference,
+  createSelectionReferenceCandidateSummaries,
+  formatSelectionReferenceOperationLabel,
+  formatSelectionReferenceStatus
+} from "../generatedReferenceSelection";
 import type {
   ModelingActionDescriptor,
   ModelingSelectionContext
@@ -247,6 +253,8 @@ export function ModelingActionsPanel({
         {summary.detail && <small>{summary.detail}</small>}
       </div>
 
+      <SelectionReferenceContractCard context={context} />
+
       {onCreateSketch && (
         <div className="quick-sketch-create" aria-label="Create sketch">
           <div className="quick-sketch-planes" aria-label="Sketch plane">
@@ -388,6 +396,57 @@ function getActiveSketchFromContext(
 
   if (context.selectionKind === "sketchEntity") {
     return context.sketch;
+  }
+
+  return undefined;
+}
+
+function SelectionReferenceContractCard({
+  context
+}: {
+  readonly context: ModelingSelectionContext;
+}) {
+  const response = getSelectionReferenceCandidatesFromContext(context);
+
+  if (!response) {
+    return null;
+  }
+
+  const summaries = createSelectionReferenceCandidateSummaries(response);
+  const primary = summaries[0];
+  const operations =
+    primary?.commandOperations.map(formatSelectionReferenceOperationLabel) ??
+    [];
+  const issues =
+    primary && primary.issues.length > 0
+      ? primary.issues
+      : response.issues.map((issue) => issue.message);
+
+  return (
+    <section className="workbench-card compact reference-contract-card">
+      <div className="workbench-card-heading">
+        <h3>Reference contract</h3>
+        <small>{formatSelectionReferenceStatus(response.status)}</small>
+      </div>
+      {primary && (
+        <small>
+          {primary.title} /{" "}
+          {operations.length > 0 ? operations.join(", ") : "No commands"}
+        </small>
+      )}
+      {issues.length > 0 && <p className="error-text compact">{issues[0]}</p>}
+    </section>
+  );
+}
+
+function getSelectionReferenceCandidatesFromContext(
+  context: ModelingSelectionContext
+): SelectionReferenceCandidatesQueryResponse | undefined {
+  if (
+    context.selectionKind === "body" ||
+    context.selectionKind === "generatedReference"
+  ) {
+    return context.selectionReferenceCandidates;
   }
 
   return undefined;
@@ -1867,8 +1926,16 @@ function BodyWorkbench({
   const attachableFaces = getSketchAttachableFaces(
     context.generatedReferences?.faces ?? []
   );
+  const eligibleFaceStableIds = new Set(
+    sketchAction?.target?.eligibleFaceStableIds ??
+      attachableFaces.map((face) => face.stableId)
+  );
+  const commandReadyAttachableFaces = attachableFaces.filter((face) =>
+    eligibleFaceStableIds.has(face.stableId)
+  );
   const [faceIndex, setFaceIndex] = useState(0);
-  const selectedFace = attachableFaces[faceIndex] ?? attachableFaces[0];
+  const selectedFace =
+    commandReadyAttachableFaces[faceIndex] ?? commandReadyAttachableFaces[0];
   const [sketchDraft, setSketchDraft] = useState(() => ({
     id: createNextSketchId(sketches),
     name: selectedFace ? createSketchOnFaceDefaultName(selectedFace) : ""
@@ -1956,14 +2023,14 @@ function BodyWorkbench({
         </div>
         <div className="workbench-subheading">
           <strong>Sketch on face</strong>
-          {attachableFaces.length > 0 && (
-            <small>{attachableFaces.length} faces</small>
+          {commandReadyAttachableFaces.length > 0 && (
+            <small>{commandReadyAttachableFaces.length} faces</small>
           )}
         </div>
-        {attachableFaces.length > 0 && selectedFace ? (
+        {commandReadyAttachableFaces.length > 0 && selectedFace ? (
           <>
             <div className="face-action-grid" aria-label="Sketch on face">
-              {attachableFaces.map((face) => {
+              {commandReadyAttachableFaces.map((face) => {
                 const directForm = buildSketchOnFaceForm(
                   context.body.id,
                   face,
@@ -2008,7 +2075,8 @@ function BodyWorkbench({
                     onChange={(event) => {
                       const nextIndex = Number(event.currentTarget.value);
                       const nextFace =
-                        attachableFaces[nextIndex] ?? attachableFaces[0];
+                        commandReadyAttachableFaces[nextIndex] ??
+                        commandReadyAttachableFaces[0];
 
                       setFaceIndex(nextIndex);
                       if (nextFace) {
@@ -2019,7 +2087,7 @@ function BodyWorkbench({
                       }
                     }}
                   >
-                    {attachableFaces.map((face, index) => (
+                    {commandReadyAttachableFaces.map((face, index) => (
                       <option key={face.stableId} value={index}>
                         {face.label}
                       </option>
@@ -2118,6 +2186,9 @@ function GeneratedReferenceWorkbench({
 }) {
   const [name, setName] = useState(context.reference.label);
   const selectedReference = createSelectedGeneratedReference(context.reference);
+  const nameAction = actions.find((action) => action.id === "reference.name");
+  const canSaveName =
+    name.trim().length > 0 && (nameAction ? nameAction.available : true);
 
   return (
     <div className="workbench-surface">
@@ -2146,7 +2217,7 @@ function GeneratedReferenceWorkbench({
           />
           <button
             type="button"
-            disabled={disabled || name.trim().length === 0}
+            disabled={disabled || !canSaveName}
             onClick={() =>
               onNameGeneratedReference?.(name.trim(), selectedReference)
             }
@@ -2154,6 +2225,11 @@ function GeneratedReferenceWorkbench({
             Save name
           </button>
         </div>
+        {nameAction && !nameAction.available && (
+          <p className="error-text compact">
+            {nameAction.reason ?? "This reference cannot be named."}
+          </p>
+        )}
         {namedReferences.length > 0 && (
           <small>
             Existing:{" "}

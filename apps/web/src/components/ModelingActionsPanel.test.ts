@@ -4,6 +4,8 @@ import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
+  SelectionReferenceCandidatesQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
@@ -480,9 +482,12 @@ describe("ModelingActionsPanel", () => {
     const reference = createFace({
       label: "Start cap"
     });
+    const selectionReferenceCandidates =
+      createSelectionReferenceCandidates(reference);
     const context = {
       selectionKind: "generatedReference",
-      reference
+      reference,
+      selectionReferenceCandidates
     } as const;
     const actions = deriveModelingActions({ context });
     const markup = renderToStaticMarkup(
@@ -495,9 +500,42 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Face");
     expect(markup).toContain("Start cap");
     expect(markup).toContain("Name reference");
+    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Back to body");
     expect(markup).toContain("Create sketch on face");
     expect(markup).not.toContain("generated:face:body_rect:startCap");
+  });
+
+  it("renders structured V7 diagnostics for non-commandable generated references", () => {
+    const reference = createFace({
+      label: "Start cap"
+    });
+    const selectionReferenceCandidates = createSelectionReferenceCandidates(
+      reference,
+      {
+        status: "consumed",
+        commandable: false,
+        commandOperations: [],
+        message: "Body body_rect was consumed by feat_cut."
+      }
+    );
+    const context = {
+      selectionKind: "generatedReference",
+      reference,
+      selectionReferenceCandidates
+    } as const;
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context
+      })
+    );
+
+    expect(markup).toContain("Selection body consumed");
+    expect(markup).toContain("Body body_rect was consumed by feat_cut.");
+    expect(markup).toContain("Name reference");
   });
 
   it("renders edge reference naming and edge-finish controls directly", () => {
@@ -626,5 +664,68 @@ function createEdge(
       curveType: "line"
     },
     ...overrides
+  };
+}
+
+function createSelectionReferenceCandidates(
+  reference: CadGeneratedReference,
+  overrides: {
+    readonly status?: SelectionReferenceCandidatesQueryResponse["status"];
+    readonly commandable?: boolean;
+    readonly commandOperations?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"];
+    readonly message?: string;
+  } = {}
+): SelectionReferenceCandidatesQueryResponse {
+  const status = overrides.status ?? "resolved";
+  const message = overrides.message ?? "Selection is not commandable.";
+  const issue =
+    status === "resolved"
+      ? undefined
+      : {
+          code: "CONSUMED_SELECTION_BODY" as const,
+          status: status as Exclude<
+            SelectionReferenceCandidatesQueryResponse["status"],
+            "resolved"
+          >,
+          message,
+          bodyId: reference.bodyId,
+          featureId: "feat_cut"
+        };
+
+  return {
+    ok: true,
+    query: "selection.referenceCandidates",
+    cadOpsVersion: "cadops.v1",
+    selection: {
+      type: "generatedReference",
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      expectedKind: reference.kind
+    },
+    status,
+    candidateCount: 1,
+    candidates: [
+      {
+        source: "generatedReferenceSelection",
+        target: {
+          type: "generatedReference",
+          bodyId: reference.bodyId,
+          stableId: reference.stableId,
+          kind: reference.kind
+        },
+        reference,
+        commandable: overrides.commandable ?? true,
+        commandOperations:
+          overrides.commandOperations ??
+          ([
+            "reference.nameGenerated",
+            ...reference.eligibleOperations
+          ] as const),
+        label: reference.label,
+        issues: issue ? [issue] : []
+      }
+    ],
+    issueCount: issue ? 1 : 0,
+    issues: issue ? [issue] : []
   };
 }

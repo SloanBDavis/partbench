@@ -12,7 +12,9 @@ import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedFaceReference,
   CadGeneratedReference,
-  NamedGeneratedReferenceEntry
+  CadSelectionReferenceOperation,
+  NamedGeneratedReferenceEntry,
+  SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { useState } from "react";
 import {
@@ -68,7 +70,11 @@ import {
 } from "../generatedReferenceUi";
 import {
   createSelectedGeneratedReference,
+  createSelectionReferenceCandidateSummaries,
+  formatSelectionReferenceOperationLabel,
+  formatSelectionReferenceStatus,
   getGeneratedReferenceSelectionState,
+  getSelectionReferenceOperationStatus,
   isSelectedGeneratedReference,
   type GeneratedReferenceSelectionState,
   type SelectedGeneratedReference
@@ -103,8 +109,11 @@ export function Inspector({
   generatedReferenceMeasurements,
   measurements,
   namedReferences,
+  namedReferenceCandidatesByName,
   object,
+  referenceCandidatesByStableId,
   selectedGeneratedReference,
+  selectionReferenceCandidates,
   units,
   onApplyDimensions,
   onApplyName,
@@ -135,8 +144,17 @@ export function Inspector({
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceCandidatesByName?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly object?: SceneObject;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyName: (name: string) => void;
@@ -180,8 +198,11 @@ export function Inspector({
         generatedReferenceMeasurements,
         measurements,
         namedReferences,
+        namedReferenceCandidatesByName,
         object,
+        referenceCandidatesByStableId,
         selectedGeneratedReference,
+        selectionReferenceCandidates,
         onApplyDimensions,
         onApplyName,
         onApplyTransform,
@@ -198,6 +219,7 @@ export function Inspector({
       })}
       <NamedReferencesPanel
         disabled={disabled}
+        candidatesByName={namedReferenceCandidatesByName}
         references={namedReferences}
         selectedGeneratedReference={selectedGeneratedReference}
         onInspectNamedReference={onInspectNamedReference}
@@ -224,8 +246,17 @@ function renderInspectorSelection(input: {
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceCandidatesByName?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly object?: SceneObject;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
   readonly onApplyName: (name: string) => void;
@@ -272,6 +303,8 @@ function renderInspectorSelection(input: {
         onNameGeneratedReference={input.onNameGeneratedReference}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
         namedReferences={input.namedReferences}
+        referenceCandidatesByStableId={input.referenceCandidatesByStableId}
+        selectionReferenceCandidates={input.selectionReferenceCandidates}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
         selectedGeneratedReference={input.selectedGeneratedReference}
@@ -361,6 +394,8 @@ function BodyInspector({
   onDeleteFeature,
   onUpdateExtrude,
   selectedGeneratedReference,
+  referenceCandidatesByStableId,
+  selectionReferenceCandidates,
   topology,
   topologyExactMetadataStatus,
   topologyError,
@@ -381,6 +416,11 @@ function BodyInspector({
   readonly topologyExactMetadataStatus?: string;
   readonly topologyError?: string;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onCreateEdgeFinish: (
     operation: EdgeFinishOperation,
@@ -484,6 +524,9 @@ function BodyInspector({
         exactMetadataStatus={topologyExactMetadataStatus}
         topology={topology}
       />
+      <SelectionReferenceContractPanel
+        response={selectionReferenceCandidates}
+      />
       {feature?.kind === "extrude" && (
         <ExtrudeDepthEditor
           key={`${feature.id}-${feature.depth}-${feature.side}`}
@@ -509,7 +552,9 @@ function BodyInspector({
           onNameGeneratedReference={onNameGeneratedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
           references={generatedReferences}
+          referenceCandidatesByStableId={referenceCandidatesByStableId}
           selectedGeneratedReference={selectedGeneratedReference}
+          selectionReferenceCandidates={selectionReferenceCandidates}
           units={units}
         />
       )}
@@ -640,6 +685,48 @@ function BodyTopologyPanel({
   );
 }
 
+function SelectionReferenceContractPanel({
+  response
+}: {
+  readonly response?: SelectionReferenceCandidatesQueryResponse;
+}) {
+  if (!response) {
+    return null;
+  }
+
+  const summaries = createSelectionReferenceCandidateSummaries(response);
+  const primary = summaries[0];
+  const operations =
+    primary?.commandOperations.map(formatSelectionReferenceOperationLabel) ??
+    [];
+  const issues =
+    primary && primary.issues.length > 0
+      ? primary.issues
+      : response.issues.map((issue) => issue.message);
+
+  return (
+    <section className="command-card nested reference-contract">
+      <div className="command-card-heading">
+        <h3>Reference contract</h3>
+        <span>{formatSelectionReferenceStatus(response.status)}</span>
+      </div>
+      {primary && (
+        <dl>
+          <div>
+            <dt>Target</dt>
+            <dd>{primary.title}</dd>
+          </div>
+          <div>
+            <dt>Commands</dt>
+            <dd>{operations.length > 0 ? operations.join(", ") : "None"}</dd>
+          </div>
+        </dl>
+      )}
+      {issues.length > 0 && <p className="error-text">{issues[0]}</p>}
+    </section>
+  );
+}
+
 function GeneratedReferencesPanel({
   body,
   bodyId,
@@ -654,7 +741,9 @@ function GeneratedReferencesPanel({
   onNameGeneratedReference,
   onSelectGeneratedReference,
   references,
+  referenceCandidatesByStableId,
   selectedGeneratedReference,
+  selectionReferenceCandidates,
   units
 }: {
   readonly body: CadBodySnapshot;
@@ -681,12 +770,24 @@ function GeneratedReferencesPanel({
     selection: SelectedGeneratedReference
   ) => void;
   readonly references?: BodyGeneratedReferencesQueryResponse;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly units: DocumentUnits;
 }) {
   const faces = references?.faces ?? [];
   const sketchAttachableFaces = getSketchAttachableFaces(faces);
-  const firstEligibleFace = sketchAttachableFaces[0];
+  const commandReadySketchAttachableFaces = sketchAttachableFaces.filter(
+    (face) =>
+      getSelectionReferenceOperationStatus(
+        referenceCandidatesByStableId?.get(face.stableId),
+        "feature.attachSketchPlane"
+      ).available
+  );
+  const firstEligibleFace = commandReadySketchAttachableFaces[0];
   const referenceItems = references
     ? getGeneratedReferenceItems(references)
     : [];
@@ -703,7 +804,7 @@ function GeneratedReferencesPanel({
     string | undefined
   >(firstEligibleFace?.stableId);
   const selectedFace =
-    sketchAttachableFaces.find(
+    commandReadySketchAttachableFaces.find(
       (face) => face.stableId === selectedFaceStableId
     ) ?? firstEligibleFace;
   const [draft, setDraft] = useState({
@@ -717,6 +818,12 @@ function GeneratedReferencesPanel({
   const sketchOnFaceForm = selectedFace
     ? buildSketchOnFaceForm(bodyId, selectedFace, draft)
     : undefined;
+  const selectedFaceContractStatus = getSelectionReferenceOperationStatus(
+    selectedFace
+      ? referenceCandidatesByStableId?.get(selectedFace.stableId)
+      : undefined,
+    "feature.attachSketchPlane"
+  );
   const hasValidName = draft.name.trim().length > 0;
   const selectedReferenceValue =
     selectedReferenceState.status === "selected"
@@ -775,11 +882,22 @@ function GeneratedReferencesPanel({
               No planar generated faces are available for attached sketches.
             </p>
           )}
-          {sketchAttachableFaces.length > 0 && (
+          {sketchAttachableFaces.length > 0 &&
+            commandReadySketchAttachableFaces.length === 0 && (
+              <p className="project-message">
+                {getFirstUnavailableReferenceOperationMessage(
+                  sketchAttachableFaces,
+                  referenceCandidatesByStableId,
+                  "feature.attachSketchPlane"
+                ) ??
+                  "No generated faces are command-ready for attached sketches."}
+              </p>
+            )}
+          {commandReadySketchAttachableFaces.length > 0 && (
             <section className="sketch-attachment">
               <div className="command-card-heading">
                 <h3>Create sketch on face</h3>
-                <span>{sketchAttachableFaces.length}</span>
+                <span>{commandReadySketchAttachableFaces.length}</span>
               </div>
               <label>
                 Face
@@ -787,7 +905,7 @@ function GeneratedReferencesPanel({
                   value={selectedFace?.stableId ?? ""}
                   disabled={disabled}
                   onChange={(event) => {
-                    const nextFace = sketchAttachableFaces.find(
+                    const nextFace = commandReadySketchAttachableFaces.find(
                       (face) => face.stableId === event.currentTarget.value
                     );
 
@@ -800,7 +918,7 @@ function GeneratedReferencesPanel({
                     }
                   }}
                 >
-                  {sketchAttachableFaces.map((face) => (
+                  {commandReadySketchAttachableFaces.map((face) => (
                     <option key={face.stableId} value={face.stableId}>
                       {face.label}
                     </option>
@@ -808,7 +926,11 @@ function GeneratedReferencesPanel({
                 </select>
               </label>
               {selectedFace && (
-                <small>{formatSketchOnFaceAvailability(selectedFace)}</small>
+                <small>
+                  {selectedFaceContractStatus.available
+                    ? formatSketchOnFaceAvailability(selectedFace)
+                    : selectedFaceContractStatus.message}
+                </small>
               )}
               <div className="field-grid">
                 <label>
@@ -839,7 +961,11 @@ function GeneratedReferencesPanel({
               </details>
               <button
                 type="button"
-                disabled={disabled || !sketchOnFaceForm}
+                disabled={
+                  disabled ||
+                  !sketchOnFaceForm ||
+                  !selectedFaceContractStatus.available
+                }
                 onClick={createOnSelectedFace}
               >
                 Create attached sketch
@@ -859,6 +985,7 @@ function GeneratedReferencesPanel({
             namedReferences={selectedNamedReferences}
             onDeleteNamedReference={onDeleteNamedReference}
             onNameGeneratedReference={onNameGeneratedReference}
+            selectionReferenceCandidates={selectionReferenceCandidates}
             state={selectedReferenceState}
             units={units}
           />
@@ -874,6 +1001,7 @@ function GeneratedReferencesPanel({
             namedReferences={selectedNamedReferences}
             onCreateEdgeFinish={onCreateEdgeFinish}
             preferredOperation={edgeFinishOperation}
+            selectionReferenceCandidates={selectionReferenceCandidates}
             state={selectedReferenceState}
           />
           <label>
@@ -908,6 +1036,7 @@ function GeneratedReferencesPanel({
           <GeneratedReferenceGroupsList
             disabled={disabled}
             groups={referenceGroups}
+            referenceCandidatesByStableId={referenceCandidatesByStableId}
             selectedGeneratedReference={selectedGeneratedReference}
             onSelectReference={selectReference}
             onUseEdgeForFinish={useEdgeForFinish}
@@ -922,6 +1051,7 @@ function GeneratedReferencesPanel({
 function GeneratedReferenceGroupsList({
   disabled,
   groups,
+  referenceCandidatesByStableId,
   selectedGeneratedReference,
   onSelectReference,
   onUseEdgeForFinish,
@@ -929,6 +1059,10 @@ function GeneratedReferenceGroupsList({
 }: {
   readonly disabled: boolean;
   readonly groups: readonly GeneratedReferenceGroup[];
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly onSelectReference: (reference: CadGeneratedReference) => void;
   readonly onUseEdgeForFinish: (
@@ -977,6 +1111,9 @@ function GeneratedReferenceGroupsList({
                   )}
                   <GeneratedReferenceActionRow
                     disabled={disabled}
+                    referenceCandidates={referenceCandidatesByStableId?.get(
+                      reference.stableId
+                    )}
                     reference={reference}
                     selected={isSelected}
                     onSelectReference={onSelectReference}
@@ -994,6 +1131,23 @@ function GeneratedReferenceGroupsList({
   );
 }
 
+function getFirstUnavailableReferenceOperationMessage(
+  references: readonly CadGeneratedReference[],
+  referenceCandidatesByStableId:
+    | ReadonlyMap<string, SelectionReferenceCandidatesQueryResponse>
+    | undefined,
+  operation: CadSelectionReferenceOperation
+): string | undefined {
+  return references
+    .map((reference) =>
+      getSelectionReferenceOperationStatus(
+        referenceCandidatesByStableId?.get(reference.stableId),
+        operation
+      )
+    )
+    .find((status) => !status.available)?.message;
+}
+
 function shouldOpenGeneratedReferenceGroup(
   groupKind: CadGeneratedReference["kind"],
   selectedKind: CadGeneratedReference["kind"] | undefined
@@ -1003,6 +1157,7 @@ function shouldOpenGeneratedReferenceGroup(
 
 function GeneratedReferenceActionRow({
   disabled,
+  referenceCandidates,
   reference,
   selected,
   onSelectReference,
@@ -1010,6 +1165,7 @@ function GeneratedReferenceActionRow({
   onUseFaceForSketch
 }: {
   readonly disabled: boolean;
+  readonly referenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly reference: CadGeneratedReference;
   readonly selected: boolean;
   readonly onSelectReference: (reference: CadGeneratedReference) => void;
@@ -1032,68 +1188,108 @@ function GeneratedReferenceActionRow({
       </div>
       {createGeneratedReferenceActionStatuses(reference).map((action) => {
         if (action.id === "reference.name") {
+          const contractStatus = getSelectionReferenceOperationStatus(
+            referenceCandidates,
+            "reference.nameGenerated"
+          );
+          const available = action.available && contractStatus.available;
+
           return (
             <div key={action.id} className="generated-reference-action">
               <button
                 type="button"
-                disabled={disabled || !action.available}
+                disabled={disabled || !available}
                 onClick={() => onSelectReference(reference)}
               >
                 Name
               </button>
-              {!action.available && (
-                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!available && (
+                <small>
+                  {action.available
+                    ? contractStatus.message
+                    : formatGeneratedReferenceActionStatus(action)}
+                </small>
               )}
             </div>
           );
         }
 
         if (action.id === "sketch.createOnFace" && reference.kind === "face") {
+          const contractStatus = getSelectionReferenceOperationStatus(
+            referenceCandidates,
+            "feature.attachSketchPlane"
+          );
+          const available = action.available && contractStatus.available;
+
           return (
             <div key={action.id} className="generated-reference-action">
               <button
                 type="button"
-                disabled={disabled || !action.available}
+                disabled={disabled || !available}
                 onClick={() => onUseFaceForSketch(reference)}
               >
                 Sketch
               </button>
-              {!action.available && (
-                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!available && (
+                <small>
+                  {action.available
+                    ? contractStatus.message
+                    : formatGeneratedReferenceActionStatus(action)}
+                </small>
               )}
             </div>
           );
         }
 
         if (action.id === "feature.chamfer" && reference.kind === "edge") {
+          const contractStatus = getSelectionReferenceOperationStatus(
+            referenceCandidates,
+            "feature.chamfer"
+          );
+          const available = action.available && contractStatus.available;
+
           return (
             <div key={action.id} className="generated-reference-action">
               <button
                 type="button"
-                disabled={disabled || !action.available}
+                disabled={disabled || !available}
                 onClick={() => onUseEdgeForFinish(reference, "chamfer")}
               >
                 Chamfer
               </button>
-              {!action.available && (
-                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!available && (
+                <small>
+                  {action.available
+                    ? contractStatus.message
+                    : formatGeneratedReferenceActionStatus(action)}
+                </small>
               )}
             </div>
           );
         }
 
         if (action.id === "feature.fillet" && reference.kind === "edge") {
+          const contractStatus = getSelectionReferenceOperationStatus(
+            referenceCandidates,
+            "feature.fillet"
+          );
+          const available = action.available && contractStatus.available;
+
           return (
             <div key={action.id} className="generated-reference-action">
               <button
                 type="button"
-                disabled={disabled || !action.available}
+                disabled={disabled || !available}
                 onClick={() => onUseEdgeForFinish(reference, "fillet")}
               >
                 Fillet
               </button>
-              {!action.available && (
-                <small>{formatGeneratedReferenceActionStatus(action)}</small>
+              {!available && (
+                <small>
+                  {action.available
+                    ? contractStatus.message
+                    : formatGeneratedReferenceActionStatus(action)}
+                </small>
               )}
             </div>
           );
@@ -1130,6 +1326,7 @@ function SelectedGeneratedReferencePanel({
   namedReferences,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  selectionReferenceCandidates,
   state,
   units
 }: {
@@ -1140,6 +1337,7 @@ function SelectedGeneratedReferencePanel({
     name: string,
     target: SelectedGeneratedReference
   ) => void;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly state: GeneratedReferenceSelectionState;
   readonly units: DocumentUnits;
 }) {
@@ -1147,8 +1345,14 @@ function SelectedGeneratedReferencePanel({
     state.status === "selected" ? state.reference.label : ""
   );
   const normalizedName = name.trim();
+  const nameStatus = getSelectionReferenceOperationStatus(
+    selectionReferenceCandidates,
+    "reference.nameGenerated"
+  );
   const canNameReference =
-    state.status === "selected" && normalizedName.length > 0;
+    state.status === "selected" &&
+    normalizedName.length > 0 &&
+    nameStatus.available;
 
   if (state.status === "none") {
     return null;
@@ -1182,6 +1386,9 @@ function SelectedGeneratedReferencePanel({
             Eligible: {formatGeneratedReferenceOperationLabels(state.reference)}
           </small>
           <GeneratedReferenceIdentityDetails reference={state.reference} />
+          <SelectionReferenceContractPanel
+            response={selectionReferenceCandidates}
+          />
           {state.reference.eligibilityNotes &&
             state.reference.eligibilityNotes.length > 0 && (
               <small>{state.reference.eligibilityNotes.join(" ")}</small>
@@ -1212,6 +1419,9 @@ function SelectedGeneratedReferencePanel({
               Save name
             </button>
           </div>
+          {!nameStatus.available && (
+            <p className="error-text">{nameStatus.message}</p>
+          )}
           {namedReferences.length > 0 && (
             <div className="named-reference-matches">
               <strong>Names for this reference</strong>
@@ -1247,6 +1457,7 @@ function EdgeFinishEditor({
   namedReferences,
   onCreateEdgeFinish,
   preferredOperation,
+  selectionReferenceCandidates,
   state
 }: {
   readonly body: CadBodySnapshot;
@@ -1258,6 +1469,7 @@ function EdgeFinishEditor({
     form: FeatureEdgeFinishForm
   ) => void;
   readonly preferredOperation: EdgeFinishOperation;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly state: GeneratedReferenceSelectionState;
 }) {
   const [operation, setOperation] =
@@ -1289,6 +1501,11 @@ function EdgeFinishEditor({
     scalar,
     selectionState: state
   });
+  const contractStatus = getSelectionReferenceOperationStatus(
+    selectionReferenceCandidates,
+    operation === "chamfer" ? "feature.chamfer" : "feature.fillet"
+  );
+  const canCreateEdgeFinish = status.available && contractStatus.available;
   const form = buildEdgeFinishForm({
     draft,
     operation,
@@ -1405,7 +1622,7 @@ function EdgeFinishEditor({
       </details>
       <button
         type="button"
-        disabled={disabled || !status.available || !form}
+        disabled={disabled || !canCreateEdgeFinish || !form}
         onClick={() => {
           if (form) {
             onCreateEdgeFinish(operation, form);
@@ -1414,7 +1631,9 @@ function EdgeFinishEditor({
       >
         Create {operation}
       </button>
-      {status.available ? (
+      {!contractStatus.available ? (
+        <p className="error-text">{contractStatus.message}</p>
+      ) : status.available ? (
         <small>{status.message}</small>
       ) : (
         <p className="error-text">{status.message}</p>
@@ -1424,12 +1643,17 @@ function EdgeFinishEditor({
 }
 
 function NamedReferencesPanel({
+  candidatesByName,
   disabled,
   references,
   selectedGeneratedReference,
   onInspectNamedReference,
   onDeleteNamedReference
 }: {
+  readonly candidatesByName?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly disabled: boolean;
   readonly references: readonly NamedGeneratedReferenceEntry[];
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
@@ -1455,6 +1679,9 @@ function NamedReferencesPanel({
       <ul className="reference-list compact named-reference-list">
         {references.map((reference) => {
           const status = formatNamedReferenceStatus(reference);
+          const contractResponse = candidatesByName?.get(reference.name);
+          const contractIssues =
+            contractResponse?.issues.map((issue) => issue.message) ?? [];
           const isSelected =
             selectedGeneratedReference?.bodyId === reference.bodyId &&
             selectedGeneratedReference.stableId === reference.stableId &&
@@ -1477,6 +1704,20 @@ function NamedReferencesPanel({
               >
                 {status.text}
               </small>
+              {contractResponse && (
+                <small
+                  className={
+                    contractResponse.status === "resolved"
+                      ? undefined
+                      : "error-text inline"
+                  }
+                >
+                  {formatSelectionReferenceStatus(contractResponse.status)}
+                </small>
+              )}
+              {contractIssues.length > 0 && (
+                <small className="error-text inline">{contractIssues[0]}</small>
+              )}
               <div className="button-row compact">
                 <button
                   type="button"

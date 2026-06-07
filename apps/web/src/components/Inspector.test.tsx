@@ -1,8 +1,10 @@
 import type { CadBodySnapshot, CadFeatureSummary } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadGeneratedReference,
   CadGeneratedEdgeReference,
-  CadGeneratedFaceReference
+  CadGeneratedFaceReference,
+  SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -13,6 +15,8 @@ describe("Inspector", () => {
   it("renders generated references as grouped actionable cards", () => {
     const face = createFace();
     const edge = createEdge();
+    const faceCandidates = createSelectionReferenceCandidates(face);
+    const edgeCandidates = createSelectionReferenceCandidates(edge);
     const markup = renderToStaticMarkup(
       createElement(Inspector, {
         body: createBody(),
@@ -20,11 +24,16 @@ describe("Inspector", () => {
         feature: createFeature(),
         generatedReferences: createGeneratedReferences(face, edge),
         namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates],
+          [edge.stableId, edgeCandidates]
+        ]),
         selectedGeneratedReference: {
           bodyId: "body_rect",
           stableId: face.stableId,
           kind: "face"
         },
+        selectionReferenceCandidates: faceCandidates,
         units: "mm",
         onApplyDimensions: () => undefined,
         onApplyName: () => undefined,
@@ -48,9 +57,56 @@ describe("Inspector", () => {
     expect(markup).toContain("Chamfer");
     expect(markup).toContain("Fillet");
     expect(markup).toContain("Name");
+    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Stable ID and source");
     expect(markup).toContain("Selected reference");
     expect(markup).toContain('<optgroup label="Faces">');
+  });
+
+  it("renders structured candidate diagnostics for consumed selected references", () => {
+    const face = createFace();
+    const edge = createEdge();
+    const consumedCandidates = createSelectionReferenceCandidates(face, {
+      status: "consumed",
+      commandable: false,
+      commandOperations: [],
+      message: "Body body_rect was consumed by feat_cut."
+    });
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, edge),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, consumedCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_rect",
+          stableId: face.stableId,
+          kind: "face"
+        },
+        selectionReferenceCandidates: consumedCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Selection body consumed");
+    expect(markup).toContain("Body body_rect was consumed by feat_cut.");
   });
 
   it("offers feature delete for non-extrude authored bodies", () => {
@@ -247,5 +303,68 @@ function createSignature() {
     sketchPlane: "XY" as const,
     extrudeSide: "positive" as const,
     depth: 2
+  };
+}
+
+function createSelectionReferenceCandidates(
+  reference: CadGeneratedReference,
+  overrides: {
+    readonly status?: SelectionReferenceCandidatesQueryResponse["status"];
+    readonly commandable?: boolean;
+    readonly commandOperations?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"];
+    readonly message?: string;
+  } = {}
+): SelectionReferenceCandidatesQueryResponse {
+  const status = overrides.status ?? "resolved";
+  const message = overrides.message ?? "Selection is not commandable.";
+  const issue =
+    status === "resolved"
+      ? undefined
+      : {
+          code: "CONSUMED_SELECTION_BODY" as const,
+          status: status as Exclude<
+            SelectionReferenceCandidatesQueryResponse["status"],
+            "resolved"
+          >,
+          message,
+          bodyId: reference.bodyId,
+          featureId: "feat_cut"
+        };
+
+  return {
+    ok: true,
+    query: "selection.referenceCandidates",
+    cadOpsVersion: "cadops.v1",
+    selection: {
+      type: "generatedReference",
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      expectedKind: reference.kind
+    },
+    status,
+    candidateCount: 1,
+    candidates: [
+      {
+        source: "generatedReferenceSelection",
+        target: {
+          type: "generatedReference",
+          bodyId: reference.bodyId,
+          stableId: reference.stableId,
+          kind: reference.kind
+        },
+        reference,
+        commandable: overrides.commandable ?? true,
+        commandOperations:
+          overrides.commandOperations ??
+          ([
+            "reference.nameGenerated",
+            ...reference.eligibleOperations
+          ] as const),
+        label: reference.label,
+        issues: issue ? [issue] : []
+      }
+    ],
+    issueCount: issue ? 1 : 0,
+    issues: issue ? [issue] : []
   };
 }

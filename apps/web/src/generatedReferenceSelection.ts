@@ -4,6 +4,7 @@ import type {
   CadGeneratedReference,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceIssue,
+  CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
   DocumentUnits,
   SelectionReferenceCandidatesQueryResponse
@@ -42,8 +43,13 @@ export interface SelectionReferenceCandidateSummary {
   readonly title: string;
   readonly detail: string;
   readonly stableId?: string;
-  readonly commandOperations: readonly string[];
+  readonly commandOperations: readonly CadSelectionReferenceOperation[];
   readonly issues: readonly string[];
+}
+
+export interface SelectionReferenceOperationStatus {
+  readonly available: boolean;
+  readonly message?: string;
 }
 
 export function createSelectedGeneratedReference(
@@ -143,6 +149,86 @@ export function getPrimarySelectionReferenceCandidate(
     response.candidates.find((candidate) => candidate.commandable) ??
     response.candidates[0]
   );
+}
+
+export function getSelectionReferenceCandidateForOperation(
+  response: SelectionReferenceCandidatesQueryResponse | undefined,
+  operation: CadSelectionReferenceOperation
+): CadSelectionReferenceCandidate | undefined {
+  if (!response) {
+    return undefined;
+  }
+
+  return (
+    response.candidates.find(
+      (candidate) =>
+        candidate.commandable && candidate.commandOperations.includes(operation)
+    ) ?? getPrimarySelectionReferenceCandidate(response)
+  );
+}
+
+export function getSelectionReferenceOperationStatus(
+  response: SelectionReferenceCandidatesQueryResponse | undefined,
+  operation: CadSelectionReferenceOperation
+): SelectionReferenceOperationStatus {
+  if (!response) {
+    return { available: true };
+  }
+
+  const candidate = getSelectionReferenceCandidateForOperation(
+    response,
+    operation
+  );
+
+  if (
+    candidate?.commandable &&
+    candidate.commandOperations.includes(operation)
+  ) {
+    return { available: true };
+  }
+
+  const issue =
+    candidate?.issues[0] ??
+    response.issues[0] ??
+    (candidate && !candidate.commandable ? candidate.issues[0] : undefined);
+
+  if (issue) {
+    return {
+      available: false,
+      message: formatSelectionReferenceIssue(issue)
+    };
+  }
+
+  if (response.status !== "resolved") {
+    return {
+      available: false,
+      message: formatSelectionReferenceStatus(response.status)
+    };
+  }
+
+  return {
+    available: false,
+    message: `${formatSelectionReferenceOperationLabel(operation)} is not command-ready for this selection.`
+  };
+}
+
+export function formatSelectionReferenceOperationLabel(
+  operation: CadSelectionReferenceOperation
+): string {
+  switch (operation) {
+    case "reference.nameGenerated":
+      return "Name reference";
+    case "feature.attachSketchPlane":
+      return "Create sketch on face";
+    case "feature.chamfer":
+      return "Chamfer";
+    case "feature.fillet":
+      return "Fillet";
+    case "feature.measureReference":
+      return "Measure reference";
+    case "feature.selectReference":
+      return "Inspect reference";
+  }
 }
 
 export function createSelectionReferenceCandidateSummaries(

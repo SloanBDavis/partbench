@@ -149,6 +149,10 @@ Current Partbench can:
   `selection.referenceCandidates` for semantic body, generated-reference, and
   named-reference selections, with structured missing, stale, unsupported,
   ambiguous, consumed, and non-commandable diagnostics;
+- surface V7 selection/reference candidate state in the feature tree,
+  inspector, and modeling workflow, including command-ready summaries,
+  supported command operations, and structured diagnostics for blocked
+  reference-consuming affordances;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
 - rebuild supported revolve, hole, and rectangle-edge chamfer/fillet result
@@ -189,6 +193,9 @@ Current limitations:
   V6 revolve, hole, chamfer, and fillet result bodies also keep generated
   references unsupported unless a future stable topological naming design is
   explicitly implemented.
+- Feature tree, inspector, and modeling workflow integration currently consumes
+  semantic selections that the UI already exposes. Viewport picking and
+  selection-buffer mapping are not implemented yet.
 - There is no authoritative B-rep topology persisted in the document model.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
@@ -331,10 +338,9 @@ The recommended starting sequence is:
 7. **Release Samples And Smokes** - add representative sample projects, smoke
    scripts, manual browser checklist entries, and capability/limitation docs.
 
-### First Tranche Implementation Guidance
+### Implemented Tranche A: Reference And Selection Contract
 
-The first V7 tranche starts with the Reference And Selection Contract. Its
-initial implementation adds a query-only semantic resolver:
+The first V7 tranche added a query-only semantic resolver:
 
 - `selection.referenceCandidates` accepts semantic selections only:
   `{ type: "body", bodyId }`,
@@ -350,6 +356,28 @@ initial implementation adds a query-only semantic resolver:
 - UI helpers consume the query response for current feature-tree/modeling
   workflow integration without owning model authority;
 - the query is derived and does not introduce `web-cad.project.v17`.
+
+### Implemented Tranche B: Feature Tree And Inspector Integration
+
+The second V7 tranche connects the upgraded feature tree, inspector, and
+modeling workflow to the selection/reference contract:
+
+- the app queries `selection.referenceCandidates` for selected semantic body
+  rows, generated-reference rows, selected generated references, and named
+  references already exposed by the UI;
+- the feature tree and named-reference list display command-ready or diagnostic
+  candidate state without exposing renderer, mesh, OCCT, or selection-buffer
+  IDs as stable public IDs;
+- the inspector displays a reference-contract summary and structured
+  diagnostics for selected bodies/generated references and named references;
+- modeling actions combine existing command-builder validation with
+  query-derived commandability for sketch-on-face, generated-reference naming,
+  chamfer, and fillet affordances;
+- all authority remains in `cad-core`/CADOps. React formats and routes query
+  results only;
+- the integration is derived/query-only and does not introduce
+  `web-cad.project.v17`, persisted selection state, viewport picking, WebGPU,
+  STEP, OPFS, `.wcad`, assemblies, or new modeling commands.
 
 Future V7 tranche plans should continue to include these details:
 

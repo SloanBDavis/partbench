@@ -9,9 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   createSelectionReferenceCandidateSummaries,
   createSelectedGeneratedReference,
+  formatSelectionReferenceOperationLabel,
   formatSelectionReferenceStatus,
   getPrimarySelectionReferenceCandidate,
   getGeneratedReferenceSelectionState,
+  getSelectionReferenceOperationStatus,
   isSelectedGeneratedReference,
   reconcileSelectedGeneratedReferenceBody
 } from "./generatedReferenceSelection";
@@ -148,6 +150,49 @@ describe("generated reference selection helpers", () => {
     expect(JSON.stringify(project)).not.toContain(selection.stableId);
   });
 
+  it("keeps V7 selection reference candidate queries out of project JSON", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_1",
+        bodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 3
+      }
+    ]);
+
+    const before = exportCadProjectJson(engine);
+
+    engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap",
+          expectedKind: "face"
+        }
+      }
+    });
+
+    expect(exportCadProjectJson(engine)).toBe(before);
+    expect(before).not.toContain("selection.referenceCandidates");
+    expect(before).not.toContain("selectedGeneratedReference");
+  });
+
   it("summarizes V7 selection reference candidate query responses", () => {
     const references = createReferences();
     const response: SelectionReferenceCandidatesQueryResponse = {
@@ -246,6 +291,99 @@ describe("generated reference selection helpers", () => {
         ]
       }
     ]);
+  });
+
+  it("derives V7 operation availability from selection reference candidates", () => {
+    const references = createReferences();
+    const resolvedResponse: SelectionReferenceCandidatesQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: references.faces[0].stableId,
+        expectedKind: "face"
+      },
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        {
+          source: "generatedReferenceSelection",
+          target: {
+            type: "generatedReference",
+            bodyId: "body_1",
+            stableId: references.faces[0].stableId,
+            kind: "face"
+          },
+          reference: references.faces[0],
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.attachSketchPlane"
+          ],
+          label: references.faces[0].label,
+          issues: []
+        }
+      ],
+      issueCount: 0,
+      issues: []
+    };
+    const consumedResponse: SelectionReferenceCandidatesQueryResponse = {
+      ...resolvedResponse,
+      status: "consumed",
+      candidates: [
+        {
+          ...resolvedResponse.candidates[0],
+          commandable: false,
+          commandOperations: [],
+          issues: [
+            {
+              code: "CONSUMED_SELECTION_BODY",
+              status: "consumed",
+              message: "Body body_1 was consumed by feat_cut.",
+              bodyId: "body_1",
+              featureId: "feat_cut"
+            }
+          ]
+        }
+      ],
+      issueCount: 1,
+      issues: [
+        {
+          code: "CONSUMED_SELECTION_BODY",
+          status: "consumed",
+          message: "Body body_1 was consumed by feat_cut.",
+          bodyId: "body_1",
+          featureId: "feat_cut"
+        }
+      ]
+    };
+
+    expect(formatSelectionReferenceOperationLabel("feature.chamfer")).toBe(
+      "Chamfer"
+    );
+    expect(
+      getSelectionReferenceOperationStatus(
+        resolvedResponse,
+        "feature.attachSketchPlane"
+      )
+    ).toEqual({ available: true });
+    expect(
+      getSelectionReferenceOperationStatus(resolvedResponse, "feature.chamfer")
+    ).toEqual({
+      available: false,
+      message: "Chamfer is not command-ready for this selection."
+    });
+    expect(
+      getSelectionReferenceOperationStatus(
+        consumedResponse,
+        "reference.nameGenerated"
+      )
+    ).toEqual({
+      available: false,
+      message: "Body body_1 was consumed by feat_cut."
+    });
   });
 });
 

@@ -4,6 +4,8 @@ import type {
   CadFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
+  SelectionReferenceCandidatesQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
@@ -325,6 +327,85 @@ describe("modeling action helpers", () => {
     });
   });
 
+  it("uses V7 selection reference candidates to block consumed face actions", () => {
+    const face = createFace();
+    const consumedCandidates = createSelectionReferenceCandidates(face, {
+      status: "consumed",
+      commandable: false,
+      commandOperations: [],
+      message: "Body body_rect was consumed by feat_cut."
+    });
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "generatedReference",
+        reference: face,
+        selectionReferenceCandidates: consumedCandidates
+      }
+    });
+    const bodyActions = deriveModelingActions({
+      context: {
+        selectionKind: "body",
+        body: createBody("body_rect", "feat_rect"),
+        feature: createExtrudeFeature(
+          "feat_rect",
+          "body_rect",
+          "rectangle",
+          "newBody"
+        ),
+        generatedReferences: createGeneratedReferences({ faces: [face] }),
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, consumedCandidates]
+        ])
+      }
+    });
+
+    expect(actionById(actions, "reference.name")).toMatchObject({
+      available: false,
+      reason: "Body body_rect was consumed by feat_cut."
+    });
+    expect(actionById(actions, "sketch.createOnFace")).toMatchObject({
+      available: false,
+      reason: "Body body_rect was consumed by feat_cut."
+    });
+    expect(actionById(bodyActions, "sketch.createOnFace")).toMatchObject({
+      available: false,
+      reason: "Body body_rect was consumed by feat_cut.",
+      target: { eligibleFaceStableIds: [] }
+    });
+  });
+
+  it("uses V7 selection reference candidates to block unsupported edge operations", () => {
+    const edge = createEdge();
+    const edgeCandidates = createSelectionReferenceCandidates(edge, {
+      commandOperations: ["reference.nameGenerated", "feature.fillet"]
+    });
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "generatedReference",
+        reference: edge,
+        body: createBody("body_rect", "feat_rect"),
+        feature: createExtrudeFeature(
+          "feat_rect",
+          "body_rect",
+          "rectangle",
+          "newBody"
+        ),
+        selectionReferenceCandidates: edgeCandidates
+      }
+    });
+
+    expect(actionById(actions, "reference.name")).toMatchObject({
+      available: true
+    });
+    expect(actionById(actions, "feature.chamfer")).toMatchObject({
+      available: false,
+      reason: "Chamfer is not command-ready for this selection."
+    });
+    expect(actionById(actions, "feature.fillet")).toMatchObject({
+      available: true
+    });
+  });
+
   it("explains unsupported generated edge finish targets", () => {
     const unsupportedEdge = createEdge({
       stableId: "generated:edge:body_rect:start:circular",
@@ -528,5 +609,68 @@ function createEdge(
       curveType: "line"
     },
     ...overrides
+  };
+}
+
+function createSelectionReferenceCandidates(
+  reference: CadGeneratedReference,
+  overrides: {
+    readonly status?: SelectionReferenceCandidatesQueryResponse["status"];
+    readonly commandable?: boolean;
+    readonly commandOperations?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"];
+    readonly message?: string;
+  } = {}
+): SelectionReferenceCandidatesQueryResponse {
+  const status = overrides.status ?? "resolved";
+  const message = overrides.message ?? "Selection is not commandable.";
+  const issue =
+    status === "resolved"
+      ? undefined
+      : {
+          code: "CONSUMED_SELECTION_BODY" as const,
+          status: status as Exclude<
+            SelectionReferenceCandidatesQueryResponse["status"],
+            "resolved"
+          >,
+          message,
+          bodyId: reference.bodyId,
+          featureId: "feat_cut"
+        };
+
+  return {
+    ok: true,
+    query: "selection.referenceCandidates",
+    cadOpsVersion: "cadops.v1",
+    selection: {
+      type: "generatedReference",
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      expectedKind: reference.kind
+    },
+    status,
+    candidateCount: 1,
+    candidates: [
+      {
+        source: "generatedReferenceSelection",
+        target: {
+          type: "generatedReference",
+          bodyId: reference.bodyId,
+          stableId: reference.stableId,
+          kind: reference.kind
+        },
+        reference,
+        commandable: overrides.commandable ?? true,
+        commandOperations:
+          overrides.commandOperations ??
+          ([
+            "reference.nameGenerated",
+            ...reference.eligibleOperations
+          ] as const),
+        label: reference.label,
+        issues: issue ? [issue] : []
+      }
+    ],
+    issueCount: issue ? 1 : 0,
+    issues: issue ? [issue] : []
   };
 }

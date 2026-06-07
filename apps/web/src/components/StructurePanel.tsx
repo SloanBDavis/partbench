@@ -6,6 +6,7 @@ import type {
   CadPartSnapshot,
   NamedGeneratedReferenceEntry,
   ProjectHealthQueryResponse,
+  SelectionReferenceCandidatesQueryResponse,
   SketchEntitySnapshot,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
@@ -15,6 +16,10 @@ import {
   formatNamedReferenceStatus,
   formatNamedReferenceTarget
 } from "../generatedReferenceUi";
+import {
+  createSelectionReferenceCandidateSummaries,
+  formatSelectionReferenceStatus
+} from "../generatedReferenceSelection";
 import {
   formatDimensions,
   formatObjectKind,
@@ -49,6 +54,14 @@ export interface StructurePanelProps {
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
+  readonly namedReferenceCandidatesByName?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly objects: readonly SceneObject[];
   readonly parts: readonly CadPartSnapshot[];
@@ -74,9 +87,11 @@ export function StructurePanel({
   generatedReferences,
   geometryStatuses,
   health,
+  namedReferenceCandidatesByName,
   namedReferences,
   objects,
   parts,
+  referenceCandidatesByStableId,
   selectedId,
   selectedGeneratedReference,
   sketches,
@@ -142,6 +157,7 @@ export function StructurePanel({
               geometryStatuses={geometryStatuses}
               health={health}
               focusedSketchId={focusedSketchId}
+              referenceCandidatesByStableId={referenceCandidatesByStableId}
               node={partNode}
               selectedGeneratedReference={selectedGeneratedReference}
               selectedId={selectedId}
@@ -201,6 +217,9 @@ export function StructurePanel({
                   reference.name
                 );
                 const namedStatus = formatNamedReferenceStatus(reference);
+                const contractResponse = namedReferenceCandidatesByName?.get(
+                  reference.name
+                );
                 const issues = getHealthIssues(health, {
                   kind: "namedReference",
                   name: reference.name
@@ -220,6 +239,24 @@ export function StructurePanel({
                       <strong>{reference.kind}</strong>
                       <small>{formatNamedReferenceTarget(reference)}</small>
                       <small>{namedStatus.text}</small>
+                      {contractResponse && (
+                        <small
+                          className={
+                            contractResponse.status === "resolved"
+                              ? undefined
+                              : "error-text inline"
+                          }
+                        >
+                          {formatSelectionReferenceStatus(
+                            contractResponse.status
+                          )}
+                        </small>
+                      )}
+                      {contractResponse?.issues[0] && (
+                        <small className="error-text inline">
+                          {contractResponse.issues[0].message}
+                        </small>
+                      )}
                       <HealthStatus status={status} />
                       <HealthIssues issues={issues} />
                     </button>
@@ -240,6 +277,7 @@ function ModelStoryPart({
   geometryStatuses,
   health,
   node,
+  referenceCandidatesByStableId,
   selectedGeneratedReference,
   selectedId,
   units,
@@ -252,6 +290,10 @@ function ModelStoryPart({
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly node: StructureLineagePartNode;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: {
     readonly bodyId: string;
     readonly stableId: string;
@@ -364,6 +406,9 @@ function ModelStoryPart({
                                 geometryStatuses={geometryStatuses}
                                 health={health}
                                 node={featureNode}
+                                referenceCandidatesByStableId={
+                                  referenceCandidatesByStableId
+                                }
                                 selectedGeneratedReference={
                                   selectedGeneratedReference
                                 }
@@ -404,6 +449,7 @@ function ModelStoryPart({
                 geometryStatuses={geometryStatuses}
                 health={health}
                 node={featureNode}
+                referenceCandidatesByStableId={referenceCandidatesByStableId}
                 selectedGeneratedReference={selectedGeneratedReference}
                 selectedId={selectedId}
                 step={stepNumbers.features.get(featureNode.feature.id) ?? 0}
@@ -491,6 +537,7 @@ function ModelStoryFeature({
   geometryStatuses,
   health,
   node,
+  referenceCandidatesByStableId,
   selectedGeneratedReference,
   selectedId,
   step,
@@ -502,6 +549,10 @@ function ModelStoryFeature({
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly node: StructureLineageFeatureNode;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: {
     readonly bodyId: string;
     readonly stableId: string;
@@ -554,6 +605,7 @@ function ModelStoryFeature({
           generatedReferences={generatedReferences}
           geometryStatuses={geometryStatuses}
           health={health}
+          referenceCandidatesByStableId={referenceCandidatesByStableId}
           resultBody={node.resultBody}
           selectedGeneratedReference={selectedGeneratedReference}
           selectedId={selectedId}
@@ -614,6 +666,7 @@ function ModelStoryResultBody({
   generatedReferences,
   geometryStatuses,
   health,
+  referenceCandidatesByStableId,
   resultBody,
   selectedGeneratedReference,
   selectedId,
@@ -624,6 +677,10 @@ function ModelStoryResultBody({
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly resultBody?: CadBodySnapshot;
   readonly selectedGeneratedReference?: {
     readonly bodyId: string;
@@ -684,6 +741,7 @@ function ModelStoryResultBody({
       {referencesForBody && (
         <ModelStoryReferences
           references={referencesForBody}
+          referenceCandidatesByStableId={referenceCandidatesByStableId}
           selectedGeneratedReference={selectedGeneratedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
         />
@@ -694,10 +752,15 @@ function ModelStoryResultBody({
 
 function ModelStoryReferences({
   references,
+  referenceCandidatesByStableId,
   selectedGeneratedReference,
   onSelectGeneratedReference
 }: {
   readonly references: BodyGeneratedReferencesQueryResponse;
+  readonly referenceCandidatesByStableId?: ReadonlyMap<
+    string,
+    SelectionReferenceCandidatesQueryResponse
+  >;
   readonly selectedGeneratedReference?: {
     readonly bodyId: string;
     readonly stableId: string;
@@ -750,6 +813,9 @@ function ModelStoryReferences({
                 const isSelected =
                   selectedGeneratedReference?.bodyId === reference.bodyId &&
                   selectedGeneratedReference.stableId === reference.stableId;
+                const contractResponse = referenceCandidatesByStableId?.get(
+                  reference.stableId
+                );
 
                 return (
                   <li key={reference.stableId}>
@@ -767,8 +833,20 @@ function ModelStoryReferences({
                         {formatGeneratedReferenceKindLabel(reference)}
                       </strong>
                       <small>
-                        {formatGeneratedReferenceOperationLine(reference)}
+                        {formatStructureReferenceCandidateLine(
+                          reference,
+                          contractResponse
+                        )}
                       </small>
+                      {contractResponse &&
+                        contractResponse.status !== "resolved" && (
+                          <small className="error-text inline">
+                            {contractResponse.issues[0]?.message ??
+                              formatSelectionReferenceStatus(
+                                contractResponse.status
+                              )}
+                          </small>
+                        )}
                     </button>
                   </li>
                 );
@@ -1114,6 +1192,30 @@ function formatGeneratedReferenceOperationLine(
   }
 
   return labels.length > 0 ? labels.join(" / ") : "Reference";
+}
+
+function formatStructureReferenceCandidateLine(
+  reference: CadGeneratedReference,
+  response: SelectionReferenceCandidatesQueryResponse | undefined
+): string {
+  if (!response) {
+    return formatGeneratedReferenceOperationLine(reference);
+  }
+
+  if (response.status !== "resolved") {
+    return formatSelectionReferenceStatus(response.status);
+  }
+
+  const summary = createSelectionReferenceCandidateSummaries(response)[0];
+  const commandCount = summary?.commandOperations.length ?? 0;
+
+  if (commandCount === 0) {
+    return "Command-ready reference";
+  }
+
+  return `Command-ready reference / ${commandCount} command${
+    commandCount === 1 ? "" : "s"
+  }`;
 }
 
 function formatVec2(point: readonly [number, number], units: DocumentUnits) {

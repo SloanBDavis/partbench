@@ -5,7 +5,9 @@ import type {
   CadGeneratedEntityKind,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadSelectionReferenceOperation,
   NamedGeneratedReferenceEntry,
+  SelectionReferenceCandidatesQueryResponse,
   SketchConstraintEntry,
   SketchDimensionEntry,
   SketchEntityId,
@@ -26,7 +28,10 @@ import {
   formatSketchOnFaceAvailability,
   getSketchAttachableFaces
 } from "./generatedReferenceUi";
-import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
+import {
+  getSelectionReferenceOperationStatus,
+  type GeneratedReferenceSelectionState
+} from "./generatedReferenceSelection";
 import {
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
@@ -146,6 +151,11 @@ export type ModelingSelectionContext =
       readonly body: CadBodySnapshot;
       readonly feature?: CadFeatureSummary;
       readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
+      readonly referenceCandidatesByStableId?: ReadonlyMap<
+        string,
+        SelectionReferenceCandidatesQueryResponse
+      >;
+      readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
     }
   | {
       readonly selectionKind: "generatedReference";
@@ -153,6 +163,7 @@ export type ModelingSelectionContext =
       readonly body?: CadBodySnapshot;
       readonly feature?: CadFeatureSummary;
       readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+      readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
     };
 
 export interface ModelingActionState {
@@ -459,9 +470,18 @@ function createBodyActions(
   const attachableFaces = getSketchAttachableFaces(
     context.generatedReferences?.faces ?? []
   );
+  const commandableAttachableFaces = attachableFaces.filter(
+    (face) =>
+      getSelectionReferenceOperationStatus(
+        context.referenceCandidatesByStableId?.get(face.stableId),
+        "feature.attachSketchPlane"
+      ).available
+  );
   const sketchOnFaceReason = getBodySketchOnFaceReason(
     context.generatedReferences,
-    attachableFaces
+    attachableFaces,
+    commandableAttachableFaces,
+    context.referenceCandidatesByStableId
   );
 
   return [
@@ -494,12 +514,14 @@ function createBodyActions(
       label: "Create sketch on face",
       kind: "command",
       category: "sketch",
-      available: attachableFaces.length > 0,
+      available: commandableAttachableFaces.length > 0,
       reason: sketchOnFaceReason,
       target: {
         bodyId: context.body.id,
         featureId: context.feature?.id,
-        eligibleFaceStableIds: attachableFaces.map((face) => face.stableId)
+        eligibleFaceStableIds: commandableAttachableFaces.map(
+          (face) => face.stableId
+        )
       },
       selection
     }
@@ -508,14 +530,31 @@ function createBodyActions(
 
 function getBodySketchOnFaceReason(
   references: BodyGeneratedReferencesQueryResponse | undefined,
-  attachableFaces: readonly CadGeneratedFaceReference[]
+  attachableFaces: readonly CadGeneratedFaceReference[],
+  commandableAttachableFaces: readonly CadGeneratedFaceReference[],
+  referenceCandidatesByStableId:
+    | ReadonlyMap<string, SelectionReferenceCandidatesQueryResponse>
+    | undefined
 ): string | undefined {
-  if (attachableFaces.length > 0) {
+  if (commandableAttachableFaces.length > 0) {
     return undefined;
   }
 
   if (!references) {
     return "Generated references are unavailable for the selected body.";
+  }
+
+  const firstContractIssue = attachableFaces
+    .map((face) =>
+      getSelectionReferenceOperationStatus(
+        referenceCandidatesByStableId?.get(face.stableId),
+        "feature.attachSketchPlane"
+      )
+    )
+    .find((status) => !status.available)?.message;
+
+  if (firstContractIssue) {
+    return firstContractIssue;
   }
 
   return "No planar generated faces are available for attached sketches.";
@@ -533,12 +572,17 @@ function createGeneratedReferenceActions(
     stableId: context.reference.stableId,
     referenceKind: context.reference.kind
   };
+  const nameStatus = getSelectionReferenceOperationStatus(
+    context.selectionReferenceCandidates,
+    "reference.nameGenerated"
+  );
   const nameAction: ModelingActionDescriptor = {
     id: "reference.name",
     label: "Name reference",
     kind: "command",
     category: "generatedReference",
-    available: true,
+    available: nameStatus.available,
+    reason: nameStatus.available ? undefined : nameStatus.message,
     target: createGeneratedReferenceTarget(context.reference),
     selection
   };
@@ -546,7 +590,11 @@ function createGeneratedReferenceActions(
   if (context.reference.kind === "face") {
     return [
       nameAction,
-      createGeneratedFaceSketchAction(context.reference, selection)
+      createGeneratedFaceSketchAction(
+        context.reference,
+        selection,
+        context.selectionReferenceCandidates
+      )
     ];
   }
 
@@ -563,9 +611,17 @@ function createGeneratedReferenceActions(
 
 function createGeneratedFaceSketchAction(
   face: CadGeneratedFaceReference,
-  selection: ModelingActionSelectionMetadata
+  selection: ModelingActionSelectionMetadata,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
 ): ModelingActionDescriptor {
-  const available = canCreateSketchOnFace(face);
+  const faceAvailable = canCreateSketchOnFace(face);
+  const contractStatus = getSelectionReferenceOperationStatus(
+    selectionReferenceCandidates,
+    "feature.attachSketchPlane"
+  );
+  const available = faceAvailable && contractStatus.available;
 
   return {
     id: "sketch.createOnFace",
@@ -573,7 +629,11 @@ function createGeneratedFaceSketchAction(
     kind: "command",
     category: "sketch",
     available,
-    reason: available ? undefined : formatSketchOnFaceAvailability(face),
+    reason: available
+      ? undefined
+      : faceAvailable
+        ? contractStatus.message
+        : formatSketchOnFaceAvailability(face),
     target: {
       ...createGeneratedReferenceTarget(face),
       eligibleFaceStableIds: available ? [face.stableId] : []
@@ -603,14 +663,25 @@ function createEdgeFinishAction(
     scalar: DEFAULT_EDGE_FINISH_SCALAR,
     selectionState: state
   });
+  const contractOperation: CadSelectionReferenceOperation =
+    operation === "chamfer" ? "feature.chamfer" : "feature.fillet";
+  const contractStatus = getSelectionReferenceOperationStatus(
+    context.selectionReferenceCandidates,
+    contractOperation
+  );
+  const available = status.available && contractStatus.available;
 
   return {
     id: operation === "chamfer" ? "feature.chamfer" : "feature.fillet",
     label: operation === "chamfer" ? "Chamfer" : "Fillet",
     kind: "command",
     category: "feature",
-    available: status.available,
-    reason: status.available ? undefined : status.message,
+    available,
+    reason: available
+      ? undefined
+      : contractStatus.available
+        ? status.message
+        : contractStatus.message,
     target: createGeneratedReferenceTarget(context.reference),
     selection
   };
