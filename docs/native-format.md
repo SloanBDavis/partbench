@@ -73,6 +73,12 @@ same-current-export detection, and structured validation issues before import.
 The preview uses the same importability checks as load, including transaction
 replay, so malformed history is blocked before the user imports it. This remains
 ordinary JSON import/export and does not use OPFS or the File System Access API.
+In V7 Tranche D2, the Project panel also reports local storage capability status
+as app-layer derived state: JSON import/export is the active mode, browser
+download/upload primitives and File System Access picker presence are detected
+without invoking picker APIs, and OPFS, thumbnails, cache storage, and native
+`.wcad` packages are shown as deferred. That capability/status state is not
+written into project JSON and does not require a schema change.
 
 The current exported JSON shape is:
 
@@ -1358,3 +1364,7 @@ System Access API behavior.
 
 JSON export/import remains the deliberate debuggable interchange path and
 `.wcad` remains a documented direction rather than a runtime storage feature.
+Reporting that a browser exposes File System Access or OPFS APIs does not make
+those APIs part of the saved project format. Until a scoped native storage
+tranche implements package/cache behavior, no file handles, OPFS directories,
+thumbnails, mesh caches, or native package artifacts are persisted.

@@ -176,6 +176,7 @@ import {
   formatProjectJsonSummary,
   type ProjectJsonDraftSource
 } from "./projectJson";
+import { createProjectStorageCapabilityStatus } from "./projectStorageCapabilities";
 import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
@@ -1235,6 +1236,10 @@ export function App() {
     draftJson: projectJson,
     draftSource: projectJsonDraftSource
   });
+  const projectStorageCapabilities = useMemo(
+    () => createProjectStorageCapabilityStatus(window),
+    []
+  );
   const currentProjectSummary = projectJsonWorkflow.current.summary;
   const utilityPanels: readonly {
     readonly id: UtilityPanelId;
@@ -1967,6 +1972,14 @@ export function App() {
   }
 
   function downloadProjectJson() {
+    if (!projectStorageCapabilities.jsonDownloadAvailable) {
+      setProjectMessage(
+        "Project JSON download is unavailable in this browser runtime."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
+
     const projectJson = exportCadProjectJson(engine);
     const blob = new Blob([projectJson], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -2451,6 +2464,7 @@ export function App() {
                   <ProjectJsonPanel
                     disabled={commandPending}
                     projectJson={projectJson}
+                    storageCapabilities={projectStorageCapabilities}
                     workflow={projectJsonWorkflow}
                     message={projectMessage}
                     messageTone={projectMessageTone}

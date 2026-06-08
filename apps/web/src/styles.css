@@ -2973,6 +2973,73 @@ button.dimension-status-row {
   overflow-wrap: anywhere;
 }
 
+.project-capability-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.project-capability-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 7px;
+  background: #fbfcfa;
+}
+
+.project-capability-item.active {
+  border-left-color: var(--success);
+}
+
+.project-capability-item.available {
+  border-left-color: var(--amber);
+}
+
+.project-capability-item.unavailable,
+.project-capability-item.deferred {
+  border-left-color: var(--quiet);
+}
+
+.project-capability-item dt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-capability-item dt span {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.project-capability-item dt strong {
+  color: var(--quiet);
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.project-capability-item dd {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.project-capability-item dd span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
 .project-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -6,10 +6,16 @@ import {
   type ProjectJsonSummary,
   type ProjectJsonWorkflowState
 } from "../projectJson";
+import {
+  getProjectStorageAvailabilityLabel,
+  type ProjectStorageCapabilityEntry,
+  type ProjectStorageCapabilityStatus
+} from "../projectStorageCapabilities";
 
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
   readonly projectJson: string;
+  readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly workflow: ProjectJsonWorkflowState;
   readonly message?: string;
   readonly messageTone?: "info" | "error";
@@ -26,6 +32,7 @@ export function ProjectJsonPanel({
   projectJson,
   message,
   messageTone = "info",
+  storageCapabilities,
   workflow,
   onProjectJsonChange,
   onProjectFileLoaded,
@@ -67,17 +74,22 @@ export function ProjectJsonPanel({
           summary={workflow.current.summary}
         />
       </section>
+      <ProjectStorageStatus storageCapabilities={storageCapabilities} />
       <div className="button-row">
         <button type="button" onClick={onExport} disabled={disabled}>
           Generate export
         </button>
-        <button type="button" onClick={onDownload} disabled={disabled}>
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={disabled || !storageCapabilities.jsonDownloadAvailable}
+        >
           Download project
         </button>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
+          disabled={disabled || !storageCapabilities.jsonUploadAvailable}
         >
           Load file
         </button>
@@ -94,7 +106,7 @@ export function ProjectJsonPanel({
         className="hidden-file-input"
         type="file"
         accept="application/json,.json"
-        disabled={disabled}
+        disabled={disabled || !storageCapabilities.jsonUploadAvailable}
         onChange={(event) => {
           void loadProjectFile(event.currentTarget.files?.[0]);
           event.currentTarget.value = "";
@@ -132,6 +144,51 @@ export function ProjectJsonPanel({
         </p>
       )}
     </section>
+  );
+}
+
+function ProjectStorageStatus({
+  storageCapabilities
+}: {
+  readonly storageCapabilities: ProjectStorageCapabilityStatus;
+}) {
+  return (
+    <section className="project-workflow-section" aria-label="Save/open status">
+      <div className="project-workflow-heading">
+        <h3>Save/open status</h3>
+        <span>{storageCapabilities.jsonImportExport.label}</span>
+      </div>
+      <p className="project-workflow-detail">
+        Active storage mode is ordinary JSON import/export.
+      </p>
+      <dl className="project-capability-list">
+        {storageCapabilities.entries.map((entry) => (
+          <ProjectStorageCapabilityRow key={entry.mode} entry={entry} />
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function ProjectStorageCapabilityRow({
+  entry
+}: {
+  readonly entry: ProjectStorageCapabilityEntry;
+}) {
+  return (
+    <div className={`project-capability-item ${entry.availability}`}>
+      <dt>
+        <span>{entry.label}</span>
+        <strong>
+          {getProjectStorageAvailabilityLabel(entry.availability)}
+        </strong>
+      </dt>
+      <dd>
+        <span>{entry.detail}</span>
+        <span>{entry.limitation}</span>
+        <span>{entry.nextStep}</span>
+      </dd>
+    </div>
   );
 }
 

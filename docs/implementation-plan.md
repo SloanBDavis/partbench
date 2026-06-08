@@ -193,7 +193,8 @@ Current Partbench can:
 - save/load current `web-cad.project.v16` JSON with migrations from older
   accepted schemas, while the Project panel shows draft source, schema/
   migration status, structured validation issues, replacement/history impact,
-  and same-current-export detection before import;
+  same-current-export detection before import, and app-layer save/open
+  capability status for the active JSON fallback versus deferred native storage;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
@@ -233,9 +234,12 @@ Current limitations:
   through derived exact metadata snapshots on `body.topology`, `project.extents`,
   and `project.health`, not through persisted source data.
 - Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
-  patterns, direct edits, general booleans, STEP import/export, OPFS/File System
-  Access, WebGPU, assemblies, hosted collaboration, production MCP auth, and
-  natural-language command entry remain unimplemented unless scoped into V7.
+  patterns, direct edits, general booleans, STEP import/export, OPFS-backed
+  storage, File System Access open/save flows, WebGPU, assemblies, hosted
+  collaboration, production MCP auth, and natural-language command entry remain
+  unimplemented unless scoped into V7. The web app may report File System
+  Access API availability, but it does not call picker APIs or request
+  file-handle permissions in D2.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
   build findings are documented separately and should not block V7 modeling,
   topology, storage, or export planning.
@@ -545,8 +549,8 @@ Do not combine these in a single V7 tranche unless explicitly approved:
 
 Do not introduce another saved project format unless source-of-truth data
 requires it. Query results, topology summaries, derived exact metadata,
-selection state, thumbnails, mesh caches, and renderer display state should stay
-rebuildable by default.
+selection state, storage capability/status state, thumbnails, mesh caches, and
+renderer display state should stay rebuildable by default.
 
 ## Deferred Unless Explicitly Scoped Into V7
 

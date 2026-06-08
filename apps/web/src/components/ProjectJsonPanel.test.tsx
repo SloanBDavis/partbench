@@ -9,6 +9,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createProjectJsonWorkflowState } from "../projectJson";
+import { createProjectStorageCapabilityStatus } from "../projectStorageCapabilities";
 import { ProjectJsonPanel } from "./ProjectJsonPanel";
 
 describe("ProjectJsonPanel", () => {
@@ -35,6 +36,9 @@ describe("ProjectJsonPanel", () => {
       createElement(ProjectJsonPanel, {
         disabled: false,
         projectJson: JSON.stringify(legacyDraft),
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
         workflow: createProjectJsonWorkflowState({
           currentProject: exportCadProject(currentEngine),
           draftJson: JSON.stringify(legacyDraft),
@@ -67,6 +71,9 @@ describe("ProjectJsonPanel", () => {
       createElement(ProjectJsonPanel, {
         disabled: false,
         projectJson,
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
         workflow: createProjectJsonWorkflowState({
           currentProject: exportCadProject(engine),
           draftJson: projectJson,
@@ -92,6 +99,9 @@ describe("ProjectJsonPanel", () => {
       createElement(ProjectJsonPanel, {
         disabled: false,
         projectJson: "{",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
         workflow: createProjectJsonWorkflowState({
           currentProject: exportCadProject(new CadEngine()),
           draftJson: "{",
@@ -122,6 +132,9 @@ describe("ProjectJsonPanel", () => {
       createElement(ProjectJsonPanel, {
         disabled: false,
         projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
         workflow: createProjectJsonWorkflowState({
           currentProject: exportCadProject(new CadEngine()),
           draftJson: "",
@@ -143,4 +156,100 @@ describe("ProjectJsonPanel", () => {
       /<button type="button" disabled="">Import project<\/button>/
     );
   });
+
+  it("renders JSON fallback as active and native storage capabilities as deferred", () => {
+    const engine = new CadEngine();
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus({
+          ...createJsonFallbackTarget(),
+          showOpenFilePicker: () => undefined,
+          showSaveFilePicker: () => undefined,
+          navigator: {
+            storage: {
+              getDirectory: () => undefined
+            }
+          }
+        }),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Save/open status");
+    expect(markup).toContain("Active storage mode is ordinary JSON");
+    expect(markup).toContain("JSON import/export");
+    expect(markup).toContain("Active");
+    expect(markup).toContain("Direct browser file handles");
+    expect(markup).toContain("Available");
+    expect(markup).toContain("does not call picker APIs");
+    expect(markup).toContain("OPFS browser cache");
+    expect(markup).toContain("Native .wcad package");
+    expect(markup).toContain("Deferred");
+    expect(markup).toContain("No recovery store");
+    expect(markup).toContain("No manifest");
+  });
+
+  it("disables file-specific controls when JSON fallback primitives are unavailable", () => {
+    const engine = new CadEngine();
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus({}),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    expect(markup).toMatch(/<button type="button">Generate export<\/button>/);
+    expect(markup).toMatch(
+      /<button type="button" disabled="">Download project<\/button>/
+    );
+    expect(markup).toMatch(
+      /<button type="button" disabled="">Load file<\/button>/
+    );
+  });
 });
+
+function createJsonFallbackTarget() {
+  function FileConstructor() {
+    return undefined;
+  }
+
+  FileConstructor.prototype.text = () => "";
+
+  return {
+    Blob: function BlobConstructor() {
+      return undefined;
+    },
+    File: FileConstructor,
+    URL: {
+      createObjectURL: () => "",
+      revokeObjectURL: () => undefined
+    },
+    document: {
+      createElement: () => ({})
+    }
+  };
+}
