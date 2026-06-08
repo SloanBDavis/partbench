@@ -130,6 +130,8 @@ import {
 } from "./sketchSolver";
 import { createProjectExportReadiness } from "./projectExportReadiness";
 
+export * from "./releaseSamples";
+
 export type {
   CadActorMetadata,
   BoxDimensions,

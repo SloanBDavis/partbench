@@ -93,6 +93,14 @@ is display output only: it is not source authority, is not stored in project
 JSON, does not create a persisted export job, and does not require
 `web-cad.project.v17`. STEP remains unavailable until an exact exchange writer
 binding exists.
+In V7 Tranche G1, `packages/cad-core/src/releaseSamples.ts` adds deterministic
+release acceptance fixtures as typed CADOps batches plus expected query
+metadata. Those fixtures are built into projects by executing existing CADOps
+batches, then using the current import/export path. They do not store static
+project JSON, derived meshes, exact metadata, topology caches, browser storage
+state, app-derived GLB artifacts, renderer IDs, OCCT IDs, cache IDs, or
+selection-buffer IDs as source truth, and therefore do not require
+`web-cad.project.v17`.
 
 The current exported JSON shape is:
 

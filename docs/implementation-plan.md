@@ -647,6 +647,39 @@ reviewable before commit without adding MCP-only semantics:
   response-derived and not persisted, except for existing commit audit metadata
   stored with committed transactions.
 
+### Implemented Tranche G1: Release Samples And Acceptance Fixtures
+
+The first release-hardening slice adds deterministic source fixtures without
+adding browser automation or a new saved-project schema:
+
+- `packages/cad-core/src/releaseSamples.ts` exposes
+  `V7_RELEASE_SAMPLE_FIXTURES`, `listV7ReleaseSampleFixtures()`, and
+  `createV7ReleaseSampleBatch(id)`;
+- fixtures are built from CADOps batches and are intended to be committed into a
+  fresh `CadEngine`, exported with current project JSON, imported again, and
+  queried through existing CADOps/query paths;
+- the initial fixture catalog covers a rectangle `newBody` extrude with
+  generated face/edge references and named references, a circle `newBody`
+  extrude with generated references and export/reference readiness coverage,
+  and a consumed-body diagnostics sample that keeps consumed source references
+  non-commandable and current cut-result topology ambiguous;
+- fixture metadata records id, title, description, units, workflow tags,
+  expected source counts, expected structured health status/issue count,
+  expected generated and named reference targets, expected
+  `selection.referenceCandidates` outcomes, expected `project.summary`
+  reference/export counts, expected `project.exportReadiness` status, and known
+  limitations;
+- tests verify import/export through `web-cad.project.v16`, no
+  `web-cad.project.v17`, project health, semantic reference resolution,
+  structured selection diagnostics, source STEP/Mesh-GLB readiness,
+  `project.summary` counts, and separation from renderer, mesh, OCCT, cache,
+  and selection-buffer identifiers.
+
+G1 remains source-only. It does not persist derived meshes, exact metadata,
+topology caches, app-derived GLB artifacts, browser storage capability state, or
+selection state. Browser smoke scripts, manual checklist automation, and wider
+sample coverage remain later Tranche G work.
+
 Future V7 tranche plans should continue to include these details:
 
 - exact CADOps/query shapes and response examples;
