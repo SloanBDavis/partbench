@@ -377,7 +377,7 @@ work.
 V7 is organized around these pillars:
 
 - stable topology, references, and semantic selection;
-- production-grade viewport interaction and visual state;
+- product-grade viewport interaction and visual state;
 - local project JSON workflow and future native package decisions;
 - interop, starting with export readiness/visualization before broad import;
 - product UI hardening on top of the existing feature tree and improved modeling
