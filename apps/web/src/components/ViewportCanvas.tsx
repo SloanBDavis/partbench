@@ -14,36 +14,31 @@ import {
   fitCameraToRenderObject,
   fitCameraToRenderScene
 } from "../viewportCamera";
-import type { ViewportReferenceAction } from "../viewportReferenceActions";
-import type { ViewportSelectionDisplay } from "../viewportSelectionDisplay";
-import type { ViewportHoverState } from "../viewportHoverIntent";
-import type { ViewportMeasurementOverlay } from "../viewportMeasurementOverlay";
+import type {
+  ViewportInteractionReferenceAction,
+  ViewportInteractionSurface
+} from "../viewportInteractionSurface";
 
 export function ViewportCanvas({
-  hoverState,
-  measurementOverlay,
+  interactionSurface,
   meshes,
   onHover,
   onSelectGeneratedReference,
   onSelect,
   primitives,
-  referenceActions = [],
-  selectedId,
-  selectionDisplay
+  selectedId
 }: {
-  readonly hoverState?: ViewportHoverState;
-  readonly measurementOverlay?: ViewportMeasurementOverlay;
+  readonly interactionSurface: ViewportInteractionSurface;
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly onHover?: (id: string | undefined) => void;
   readonly onSelect: (id: string | undefined) => void;
   readonly onSelectGeneratedReference?: (
-    reference: ViewportReferenceAction["reference"]
+    reference: ViewportInteractionReferenceAction["reference"]
   ) => void;
   readonly primitives: readonly RenderPrimitive[];
-  readonly referenceActions?: readonly ViewportReferenceAction[];
-  readonly selectionDisplay: ViewportSelectionDisplay;
   readonly selectedId?: string;
 }) {
+  const { hover, referenceSection, selection } = interactionSurface;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [camera, setCamera] = useState<RenderCamera>(() =>
@@ -185,124 +180,203 @@ export function ViewportCanvas({
           </div>
         </div>
         <div
-          className={`viewport-status viewport-status-${selectionDisplay.tone}`}
+          className={`viewport-interaction-surface viewport-interaction-surface-${selection.tone}`}
           aria-live="polite"
-          data-selection-kind={selectionDisplay.selectionKind}
-          data-geometry-status={selectionDisplay.geometryStatus}
+          aria-label="Viewport interaction summary"
+          data-selection-kind={selection.selectionKind}
+          data-geometry-status={selection.geometryStatus}
+          data-reference-overflow-count={
+            referenceSection?.overflowCount.toString() ?? "0"
+          }
         >
-          <strong>{selectionDisplay.title}</strong>
-          <span>{selectionDisplay.detail}</span>
-          {selectionDisplay.referenceSummary &&
-            selectionDisplay.referenceSummary !== selectionDisplay.title && (
-              <small>{selectionDisplay.referenceSummary}</small>
-            )}
-          {selectionDisplay.commandOperationLabels.length > 0 && (
-            <small>{selectionDisplay.commandOperationLabels.join(", ")}</small>
-          )}
-          {selectionDisplay.diagnostics[0] && (
-            <small className="viewport-status-diagnostic">
-              {selectionDisplay.diagnostics[0].message}
-            </small>
-          )}
-          {selectionDisplay.geometryDetail && (
-            <small>{selectionDisplay.geometryDetail}</small>
-          )}
-        </div>
-        {hoverState && hoverState.kind !== "empty" && (
-          <div
-            className={`viewport-hover-status viewport-hover-status-${hoverState.tone}`}
-            data-hover-kind={hoverState.kind}
-            data-reference-status={hoverState.referenceStatus}
-            aria-label="Viewport hover status"
-          >
-            <strong>{hoverState.title}</strong>
-            <span>{hoverState.detail}</span>
-            {hoverState.commandOperationLabels.length > 0 && (
-              <small>{hoverState.commandOperationLabels.join(", ")}</small>
-            )}
-            {hoverState.diagnostics[0] && (
-              <small className="viewport-hover-diagnostic">
-                {hoverState.diagnostics[0].message}
-              </small>
-            )}
-          </div>
-        )}
-        {measurementOverlay && (
-          <div
-            className={`viewport-measurement-overlay viewport-measurement-overlay-${measurementOverlay.tone}`}
-            aria-label="Viewport measurements"
-            data-measurement-kind={measurementOverlay.selectionKind}
-            data-measurement-source={measurementOverlay.source}
-          >
-            <div className="viewport-measurement-heading">
-              <strong>{measurementOverlay.title}</strong>
-              <span>{measurementOverlay.detail}</span>
+          <section className="viewport-selection-summary">
+            <div className="viewport-selection-heading">
+              <strong>{selection.title}</strong>
+              <span>{selection.detail}</span>
             </div>
-            {measurementOverlay.error && (
-              <small className="viewport-measurement-error">
-                {measurementOverlay.error}
-              </small>
+            <div className="viewport-selection-meta">
+              {selection.referenceSummary &&
+                selection.referenceSummary !== selection.title && (
+                  <small>{selection.referenceSummary}</small>
+                )}
+              {selection.commandOperationLabels.length > 0 && (
+                <small>{selection.commandOperationLabels.join(", ")}</small>
+              )}
+              {selection.geometryDetail && (
+                <small>{selection.geometryDetail}</small>
+              )}
+            </div>
+            {selection.diagnostics.length > 0 && (
+              <div
+                className="viewport-selection-diagnostics"
+                aria-label="Viewport selection diagnostics"
+              >
+                {selection.diagnostics.map((diagnostic) => (
+                  <small
+                    key={`${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`}
+                    className="viewport-selection-diagnostic"
+                    data-diagnostic-code={diagnostic.code}
+                    data-diagnostic-status={diagnostic.status}
+                  >
+                    {diagnostic.message}
+                  </small>
+                ))}
+              </div>
             )}
-            {measurementOverlay.rows.length > 0 && (
-              <dl>
-                {measurementOverlay.rows.map((row) => (
-                  <div key={row.label}>
-                    <dt>{row.label}</dt>
-                    <dd>{row.value}</dd>
+            {selection.measurement && (
+              <section
+                className={`viewport-measurement-section viewport-measurement-section-${selection.measurement.tone}`}
+                aria-label="Viewport measurements"
+                data-measurement-source={selection.measurement.source}
+              >
+                <div className="viewport-section-heading">
+                  <strong>Measurements</strong>
+                  <small>{selection.measurement.title}</small>
+                </div>
+                <span className="viewport-section-detail">
+                  {selection.measurement.detail}
+                </span>
+                {selection.measurement.error && (
+                  <small className="viewport-measurement-error">
+                    {selection.measurement.error}
+                  </small>
+                )}
+                {selection.measurement.rows.length > 0 && (
+                  <dl>
+                    {selection.measurement.rows.map((row) => (
+                      <div key={row.label}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+                {selection.measurement.overflowCount > 0 && (
+                  <small className="viewport-overflow-note">
+                    {selection.measurement.overflowCount} more measurements
+                  </small>
+                )}
+              </section>
+            )}
+          </section>
+
+          {referenceSection && (
+            <section
+              className="viewport-reference-section"
+              aria-label="Viewport reference candidates"
+            >
+              <div className="viewport-section-heading">
+                <strong>{referenceSection.title}</strong>
+                <small>{referenceSection.summary}</small>
+              </div>
+              <div className="viewport-reference-counts">
+                <small>{referenceSection.commandableCount} command-ready</small>
+                {referenceSection.blockedCount > 0 && (
+                  <small>{referenceSection.blockedCount} blocked</small>
+                )}
+              </div>
+              <div className="viewport-reference-groups">
+                {referenceSection.groups.map((group) => (
+                  <div
+                    key={group.kindLabel}
+                    className="viewport-reference-group"
+                    data-reference-group={group.kindLabel}
+                  >
+                    <div className="viewport-reference-group-heading">
+                      <strong>{group.kindLabel}</strong>
+                      <small>
+                        {group.visibleCount} of {group.totalCount}
+                      </small>
+                    </div>
+                    <ul>
+                      {group.actions.map((action) => (
+                        <li key={action.id}>
+                          <button
+                            type="button"
+                            className={
+                              action.selected
+                                ? "viewport-reference-action selected"
+                                : action.commandable
+                                  ? "viewport-reference-action"
+                                  : "viewport-reference-action blocked"
+                            }
+                            aria-pressed={action.selected}
+                            data-commandable={
+                              action.commandable ? "true" : "false"
+                            }
+                            data-reference-kind={action.reference.kind}
+                            onClick={() =>
+                              onSelectGeneratedReference?.(action.reference)
+                            }
+                          >
+                            <span>{action.label}</span>
+                            <strong>
+                              {action.commandable ? "Command-ready" : "Blocked"}
+                            </strong>
+                            {action.commandOperationLabels.length > 0 && (
+                              <small>
+                                {action.commandOperationLabels.join(", ")}
+                              </small>
+                            )}
+                            {action.diagnostic && (
+                              <small
+                                className="viewport-reference-diagnostic"
+                                data-diagnostic-code={action.diagnostic.code}
+                                data-diagnostic-status={
+                                  action.diagnostic.status
+                                }
+                              >
+                                {action.diagnostic.message}
+                              </small>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 ))}
-              </dl>
-            )}
-          </div>
-        )}
-        {referenceActions.length > 0 && (
-          <div
-            className="viewport-reference-actions"
-            aria-label="Viewport reference candidates"
-          >
-            <div className="viewport-reference-actions-header">
-              <strong>References</strong>
-              <small>{referenceActions.length}</small>
-            </div>
-            <ul>
-              {referenceActions.map((action) => (
-                <li key={action.id}>
-                  <button
-                    type="button"
-                    className={
-                      action.selected
-                        ? "viewport-reference-action selected"
-                        : action.commandable
-                          ? "viewport-reference-action"
-                          : "viewport-reference-action blocked"
-                    }
-                    aria-pressed={action.selected}
-                    data-commandable={action.commandable ? "true" : "false"}
-                    data-reference-kind={action.reference.kind}
-                    onClick={() =>
-                      onSelectGeneratedReference?.(action.reference)
-                    }
-                  >
-                    <span>
-                      {action.kindLabel}: {action.label}
-                    </span>
-                    <strong>
-                      {action.commandable ? "Command-ready" : "Blocked"}
-                    </strong>
-                    {action.commandOperationLabels.length > 0 && (
-                      <small>{action.commandOperationLabels.join(", ")}</small>
-                    )}
-                    {action.diagnostic && (
-                      <small className="viewport-reference-diagnostic">
-                        {action.diagnostic.message}
-                      </small>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+              </div>
+              {referenceSection.overflowCount > 0 && (
+                <small className="viewport-overflow-note">
+                  {referenceSection.overflowCount} more references available in
+                  the inspector
+                </small>
+              )}
+            </section>
+          )}
+
+          {hover && (
+            <section
+              className={`viewport-hover-summary viewport-hover-summary-${hover.tone}`}
+              aria-label="Viewport hover status"
+              data-hover-kind={hover.kind}
+              data-reference-status={hover.referenceStatus}
+            >
+              <div className="viewport-section-heading">
+                <strong>Hover</strong>
+                <small>{hover.title}</small>
+              </div>
+              <span className="viewport-section-detail">{hover.detail}</span>
+              {hover.commandOperationLabels.length > 0 && (
+                <small>{hover.commandOperationLabels.join(", ")}</small>
+              )}
+              {hover.diagnostics.length > 0 && (
+                <div className="viewport-hover-diagnostics">
+                  {hover.diagnostics.map((diagnostic) => (
+                    <small
+                      key={`${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`}
+                      className="viewport-hover-diagnostic"
+                      data-diagnostic-code={diagnostic.code}
+                      data-diagnostic-status={diagnostic.status}
+                    >
+                      {diagnostic.message}
+                    </small>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
         <canvas
           ref={canvasRef}
           aria-label="3D scene viewport"

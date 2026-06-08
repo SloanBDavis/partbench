@@ -153,22 +153,23 @@ Current Partbench can:
   inspector, and modeling workflow, including command-ready summaries,
   supported command operations, and structured diagnostics for blocked
   reference-consuming affordances;
-- surface the same V7 selection/reference candidate state in the viewport
-  status overlay for selected bodies, generated references, and named
-  references after they resolve to generated references, while keeping
-  viewport highlighting derived from source/query state;
+- surface the same V7 selection/reference candidate state in a unified viewport
+  interaction surface for selected bodies, generated references, and named
+  references after they resolve to generated references, while keeping viewport
+  highlighting derived from source/query state;
 - route current canvas body/object clicks through a typed viewport pick-intent
   helper so body-backed renderables consume `selection.referenceCandidates`
   status and diagnostics instead of treating renderer IDs as command authority;
-- show compact viewport-adjacent generated-reference actions for the selected
+- show grouped and capped viewport generated-reference actions for the selected
   supported body, derived from `selection.referenceCandidates` candidate
   references, operation labels, commandability, and structured diagnostics;
-- show transient viewport hover status for current canvas body/object render IDs
-  by resolving them to the same semantic body/reference-candidate query
-  summaries used by viewport pick intent, while reporting sketch/unknown targets
-  as structured unsupported or missing hover diagnostics;
-- show a compact viewport measurement/inspection overlay for the selected
-  semantic body or generated reference using existing `body.measurements` and
+- show transient subordinate viewport hover status for current canvas
+  body/object render IDs by resolving them to the same semantic
+  body/reference-candidate query summaries used by viewport pick intent, while
+  reporting sketch/unknown targets as structured unsupported or missing hover
+  diagnostics and suppressing duplicate selected-target hover after clicks;
+- attach compact measurement/inspection rows to the selected semantic body or
+  generated-reference summary using existing `body.measurements` and
   `body.generatedReferenceMeasurements` query results already surfaced by the
   inspector;
 - keep a lightweight deterministic V7 viewport baseline helper/check for a
@@ -220,10 +221,10 @@ Current limitations:
   and query-derived generated-reference selection only through explicit
   viewport-adjacent candidate actions. Exact face/edge/vertex picking, exact
   reference highlighting, and selection-buffer mapping are not implemented yet.
-- The C3 hover, status, reference-action, and measurement surfaces are compact
-  and intentionally layered rather than a final unified CAD interaction model.
-  A later viewport interaction coherence pass should consolidate their placement,
-  priority, and visual language.
+- The C4 viewport interaction surface consolidates selected status,
+  reference-action groups, subordinate hover, and selected-target measurements
+  into one compact CAD interaction model. Exact face/edge/vertex picking and
+  exact reference highlighting remain future work.
 - There is no authoritative B-rep topology persisted in the document model.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
@@ -478,10 +479,34 @@ without broadening renderer authority:
   output;
 - this slice remains query-only/derived. It does not add exact face/edge/vertex
   picking, persistent hover/selection state, new modeling commands, storage
-  migration, WebGPU, or `web-cad.project.v17`;
-- the hover/status/reference-action/measurement UI is intentionally minimal.
-  A follow-up viewport interaction coherence pass should unify these surfaces
-  into one product interaction model.
+  migration, WebGPU, or `web-cad.project.v17`.
+
+### Implemented Tranche C4: Viewport Interaction Cohesion
+
+The fourth viewport slice consolidates the C1-C3 viewport surfaces into one
+compact CAD interaction model without changing modeling, renderer, storage, or
+topology authority:
+
+- `apps/web` composes selected status, grouped reference actions, attached
+  measurements, subordinate hover, and structured diagnostics through a typed
+  app-layer viewport interaction surface helper;
+- selected body/generated-reference status remains primary. Hover is transient,
+  subordinate, and suppressed when it would duplicate the selected render target
+  after a click;
+- generated-reference actions are prioritized and capped in compact kind groups
+  so supported faces/edges stay reachable without visually swamping the
+  viewport. Overflow remains discoverable through the inspector and existing
+  generated-reference panels;
+- body and generated-reference measurements remain sourced from existing CADOps
+  queries and render as rows attached to the selected summary rather than as a
+  separate floating overlay;
+- unsupported, missing, stale, consumed, and non-commandable states keep
+  structured diagnostic code/status metadata in the viewport surface while raw
+  mesh, OCCT, cache, and future selection-buffer identifiers stay out of visible
+  text;
+- this slice remains query-only/derived. It does not add exact face/edge/vertex
+  picking, persistent hover/selection state, new modeling commands, storage
+  migration, WebGPU, or `web-cad.project.v17`.
 
 Future V7 tranche plans should continue to include these details:
 

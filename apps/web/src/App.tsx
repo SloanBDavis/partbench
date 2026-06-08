@@ -162,6 +162,7 @@ import {
   resolveViewportHoverIntent,
   type ViewportHoverState
 } from "./viewportHoverIntent";
+import { createViewportInteractionSurface } from "./viewportInteractionSurface";
 import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
 import { createViewportReferenceActions } from "./viewportReferenceActions";
 import {
@@ -1201,6 +1202,12 @@ export function App() {
     candidatesByStableId: referenceCandidatesByStableId,
     selectedGeneratedReference
   });
+  const viewportInteractionSurface = createViewportInteractionSurface({
+    selectionDisplay: viewportSelectionDisplay,
+    hoverState: viewportHoverState,
+    measurementOverlay: viewportMeasurementOverlay,
+    referenceActions: viewportReferenceActions
+  });
   const renderScene = useMemo(
     () =>
       createRenderSceneInputs(
@@ -2148,10 +2155,7 @@ export function App() {
           primitives={renderScene.primitives}
           meshes={renderScene.meshes}
           selectedId={viewportSelectionDisplay.renderTargetId ?? selectedId}
-          selectionDisplay={viewportSelectionDisplay}
-          hoverState={viewportHoverState}
-          measurementOverlay={viewportMeasurementOverlay}
-          referenceActions={viewportReferenceActions}
+          interactionSurface={viewportInteractionSurface}
           onHover={hoverViewportTarget}
           onSelect={selectViewportPick}
           onSelectGeneratedReference={selectGeneratedReference}
