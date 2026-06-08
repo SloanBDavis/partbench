@@ -90,6 +90,12 @@ batches do not require that flag. This permission check happens in the adapter
 stack and is only an accidental-commit guard; it is not authentication or hosted
 authorization.
 
+`cad.batch` responses include the same structured agent review block as the MCP
+adapter package: requested mode, effective intent, operation labels,
+entity-change counts, audit summary, commit-gate state, hints, and blockers.
+Refused commits include a `COMMIT_NOT_ALLOWED` review blocker and do not mutate
+the in-memory document.
+
 The server keeps an in-memory `cad-core` document for the lifetime of the
 process through the existing adapter stack. Restarting the process resets that
 document.

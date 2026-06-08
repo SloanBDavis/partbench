@@ -247,7 +247,10 @@ MCP also passes generic audit metadata through the agent adapter: source `mcp`,
 tool name `cad.batch`, request ID, intent, and operation count. The committed
 transaction history exposes this audit metadata. Missing `allowCommit: true`
 returns a structured `COMMIT_NOT_ALLOWED` adapter error and does not mutate the
-document.
+document. Batch responses also include an agent review block so a caller can
+inspect requested mode, effective intent, operation labels, entity-change
+counts, audit summary, commit-gate state, hints, and blockers before deciding
+whether to re-run a dry-run as an allowed commit.
 
 ## Response Shape
 
@@ -275,6 +278,44 @@ agent adapter response:
       "toolName": "cad.batch",
       "intent": "dryRun",
       "operationCount": 2
+    },
+    "review": {
+      "requestedMode": "dryRun",
+      "effectiveIntent": "dryRun",
+      "operationCount": 2,
+      "entityChanges": {
+        "objects": { "created": 1, "modified": 0, "deleted": 0 }
+      },
+      "operations": [
+        {
+          "index": 0,
+          "op": "scene.createBox",
+          "intent": "create",
+          "label": "Create box preview_box",
+          "objectId": "preview_box"
+        },
+        {
+          "index": 1,
+          "op": "document.updateUnits",
+          "intent": "modify",
+          "label": "Set document units to in"
+        }
+      ],
+      "audit": {
+        "source": "mcp",
+        "requestId": "mcp_jsonrpc_3",
+        "toolName": "cad.batch",
+        "intent": "dryRun",
+        "operationCount": 2
+      },
+      "commitGate": {
+        "commitsRequireExplicitPermission": true,
+        "dryRunsRequirePermission": false,
+        "permissionProvided": false,
+        "blocked": false
+      },
+      "hints": [],
+      "blockers": []
     }
   },
   "content": [
