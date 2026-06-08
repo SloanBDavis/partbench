@@ -12,14 +12,17 @@ describe("V7 release sample smoke runner", () => {
 
     expect(result).toMatchObject({
       ok: true,
-      sampleCount: 3,
-      passedCount: 3,
+      sampleCount: 6,
+      passedCount: 6,
       failedCount: 0
     });
     expect(result.samples.map((sample) => sample.id)).toEqual([
       "v7-rectangle-extrude-reference",
       "v7-circle-extrude-export",
-      "v7-consumed-body-diagnostics"
+      "v7-consumed-body-diagnostics",
+      "v7-revolve-source-diagnostics",
+      "v7-hole-source-diagnostics",
+      "v7-edge-finish-source-diagnostics"
     ]);
     expect(result.samples).toEqual(
       expect.arrayContaining([
@@ -44,10 +47,13 @@ describe("V7 release sample smoke runner", () => {
     expect(formatV7ReleaseSampleSmokeSummary(result)).toBe(
       [
         "V7 release sample smoke passed",
-        "samples: 3 passed, 0 failed, 3 total",
+        "samples: 6 passed, 0 failed, 6 total",
         "- pass v7-rectangle-extrude-reference | V7 rectangle extrude reference sample | health under-defined/1 | 4 selections, 4 candidates, 4 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-circle-extrude-export | V7 circle extrude export-readiness sample | health under-defined/1 | 5 selections, 5 candidates, 4 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
-        "- pass v7-consumed-body-diagnostics | V7 consumed body diagnostics sample | health under-defined/1 | 4 selections, 3 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable"
+        "- pass v7-consumed-body-diagnostics | V7 consumed body diagnostics sample | health under-defined/1 | 4 selections, 3 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
+        "- pass v7-revolve-source-diagnostics | V7 revolve source diagnostics sample | health under-defined/1 | 2 selections, 0 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
+        "- pass v7-hole-source-diagnostics | V7 hole source diagnostics sample | health under-defined/2 | 3 selections, 2 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
+        "- pass v7-edge-finish-source-diagnostics | V7 edge-finish source diagnostics sample | health under-defined/2 | 5 selections, 3 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable"
       ].join("\n")
     );
   });

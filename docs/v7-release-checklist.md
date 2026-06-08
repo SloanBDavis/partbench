@@ -15,6 +15,9 @@ The smoke builds every `V7_RELEASE_SAMPLE_FIXTURES` sample through
 `createV7ReleaseSampleBatch(id)`, exports and imports current project JSON, and
 verifies:
 
+- release acceptance coverage for authored rectangle/circle `newBody`
+  extrudes, authored rectangle `newBody` revolve, authored hole result bodies,
+  and edge-finished chamfer/fillet workflows;
 - current saved-project schema remains `web-cad.project.v16`;
 - `web-cad.project.v17` is not introduced by fixture or query-only work;
 - `project.health` expected status and issue counts;
@@ -33,6 +36,11 @@ node scripts/smoke-v7-release-samples.mjs --json
 
 The smoke does not write metrics, project JSON, derived meshes, topology caches,
 or export artifacts to tracked files.
+
+For revolve, hole, chamfer, and fillet samples, exact stable generated result
+topology remains deferred. The smoke expects structured ambiguous/consumed or
+non-commandable diagnostics rather than command-ready result face/edge
+references.
 
 ## Automated Browser Workflow Smoke
 

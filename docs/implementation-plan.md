@@ -765,6 +765,36 @@ downloads, metrics, project JSON, meshes, topology caches, or selection state,
 and does not introduce browser picking, new CAD commands, native storage, STEP,
 WebGPU, assemblies, or `web-cad.project.v17`.
 
+### Implemented Tranche G4: Extended Release Acceptance Samples
+
+The fourth release-hardening slice broadens source/query acceptance coverage for
+existing V6 feature breadth without changing modeling behavior or project
+schema:
+
+- `V7_RELEASE_SAMPLE_FIXTURES` now includes deterministic source-only samples
+  for authored rectangle `newBody` revolve, authored hole result diagnostics,
+  and edge-finished chamfer/fillet result diagnostics, in addition to the
+  original extrude/reference/export fixtures;
+- the new samples use existing CADOps feature operations and are automatically
+  exercised by `pnpm smoke:v7-release-samples`;
+- each added fixture records source counts, health expectations,
+  generated/named reference expectations where defensible, structured
+  `selection.referenceCandidates` outcomes, `project.summary` reference/export
+  counts, `project.exportReadiness`, and known limitations;
+- revolve, hole, chamfer, and fillet result bodies intentionally remain
+  ambiguous/unsupported for generated semantic references. Consumed source
+  bodies and target edges can still resolve semantically for diagnostics, but
+  they are non-commandable after consumption;
+- tests and smoke coverage continue to verify current
+  `web-cad.project.v16` import/export behavior, absence of
+  `web-cad.project.v17`, source/query-derived fixture data, and separation from
+  renderer, mesh, OCCT, cache, and selection-buffer IDs.
+
+G4 is acceptance/sample coverage only. It does not add browser automation,
+new modeling commands, exact stable topology, persisted derived data,
+screenshots, export artifacts, storage work, STEP/IGES, WebGPU, assemblies, or
+schema migration.
+
 Future V7 tranche plans should continue to include these details:
 
 - exact CADOps/query shapes and response examples;

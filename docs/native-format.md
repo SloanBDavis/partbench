@@ -107,6 +107,14 @@ accepted release samples still emit `web-cad.project.v16`, not
 `web-cad.project.v17`. The smoke is stdout-only by default and does not write
 sample projects, metrics, derived meshes, topology caches, export artifacts, or
 browser storage state into source truth.
+In V7 Tranche G4, the same fixture catalog expands to cover existing V6 feature
+breadth used by the V7 release acceptance suite: authored `newBody` extrude,
+authored `newBody` revolve, authored hole result bodies, and edge-finished
+chamfer/fillet workflows. These fixtures still store only source CADOps and
+expected query metadata. Revolve, hole, chamfer, and fillet result bodies remain
+diagnostic for semantic generated references and export readiness; their exact
+stable result topology is not persisted and does not require
+`web-cad.project.v17`.
 
 The current exported JSON shape is:
 

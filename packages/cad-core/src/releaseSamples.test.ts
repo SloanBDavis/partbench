@@ -25,7 +25,10 @@ describe("V7 release sample fixtures", () => {
     expect(fixtures.map((fixture) => fixture.id)).toEqual([
       "v7-rectangle-extrude-reference",
       "v7-circle-extrude-export",
-      "v7-consumed-body-diagnostics"
+      "v7-consumed-body-diagnostics",
+      "v7-revolve-source-diagnostics",
+      "v7-hole-source-diagnostics",
+      "v7-edge-finish-source-diagnostics"
     ]);
 
     for (const fixture of fixtures) {

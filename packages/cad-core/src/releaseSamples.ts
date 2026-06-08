@@ -16,13 +16,22 @@ import type {
 export type V7ReleaseSampleId =
   | "v7-rectangle-extrude-reference"
   | "v7-circle-extrude-export"
-  | "v7-consumed-body-diagnostics";
+  | "v7-consumed-body-diagnostics"
+  | "v7-revolve-source-diagnostics"
+  | "v7-hole-source-diagnostics"
+  | "v7-edge-finish-source-diagnostics";
 
 export type V7ReleaseSampleWorkflowTag =
   | "sketch"
   | "rectangle-profile"
   | "circle-profile"
+  | "axis-line"
   | "new-body-extrude"
+  | "new-body-revolve"
+  | "hole"
+  | "chamfer"
+  | "fillet"
+  | "edge-finish"
   | "generated-references"
   | "named-references"
   | "selection-reference-candidates"
@@ -121,6 +130,21 @@ const CONSUMED_TARGET_BODY_ID = "v7_consumed_rect_body";
 const CONSUMED_RESULT_BODY_ID = "v7_consumed_cut_body";
 const CONSUMED_END_FACE = `generated:face:${CONSUMED_TARGET_BODY_ID}:endCap`;
 const CONSUMED_LONG_EDGE = `generated:edge:${CONSUMED_TARGET_BODY_ID}:longitudinal:uMin:vMin`;
+
+const REVOLVE_BODY_ID = "v7_revolve_body";
+
+const HOLE_TARGET_BODY_ID = "v7_hole_target_body";
+const HOLE_RESULT_BODY_ID = "v7_hole_result_body";
+const HOLE_TARGET_END_FACE = `generated:face:${HOLE_TARGET_BODY_ID}:endCap`;
+const HOLE_TARGET_LONG_EDGE = `generated:edge:${HOLE_TARGET_BODY_ID}:longitudinal:uMin:vMin`;
+
+const CHAMFER_TARGET_BODY_ID = "v7_chamfer_target_body";
+const CHAMFER_RESULT_BODY_ID = "v7_chamfer_result_body";
+const CHAMFER_TARGET_EDGE = `generated:edge:${CHAMFER_TARGET_BODY_ID}:start:uMin`;
+
+const FILLET_TARGET_BODY_ID = "v7_fillet_target_body";
+const FILLET_RESULT_BODY_ID = "v7_fillet_result_body";
+const FILLET_TARGET_EDGE = `generated:edge:${FILLET_TARGET_BODY_ID}:longitudinal:uMax:vMax`;
 
 export const V7_RELEASE_SAMPLE_FIXTURES = [
   {
@@ -632,6 +656,507 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
         depth: 1,
         side: "positive",
         operationMode: "cut"
+      }
+    ]
+  },
+  {
+    id: "v7-revolve-source-diagnostics",
+    title: "V7 revolve source diagnostics sample",
+    description:
+      "Authored rectangle profile revolved as a new body, proving V6 source support while reporting result topology as diagnostic rather than stable.",
+    units: "mm",
+    workflowTags: [
+      "sketch",
+      "rectangle-profile",
+      "axis-line",
+      "new-body-revolve",
+      "selection-reference-candidates",
+      "export-readiness",
+      "unsupported-result-topology"
+    ],
+    expectedSourceCounts: {
+      sketchCount: 1,
+      sketchEntityCount: 2,
+      featureCount: 1,
+      bodyCount: 1,
+      activeBodyCount: 1,
+      consumedBodyCount: 0,
+      namedReferenceCount: 0
+    },
+    expectedHealthStatus: "under-defined",
+    expectedHealthIssueCount: 1,
+    expectedGeneratedReferences: [],
+    expectedNamedReferences: [],
+    expectedSelectionQueries: [
+      {
+        selection: { type: "body", bodyId: REVOLVE_BODY_ID },
+        expectedStatus: "ambiguous",
+        expectedCandidateCount: 0,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: {
+          type: "generatedReference",
+          bodyId: REVOLVE_BODY_ID,
+          stableId: `generated:face:${REVOLVE_BODY_ID}:endCap`,
+          expectedKind: "face"
+        },
+        requiredOperation: "feature.attachSketchPlane",
+        expectedStatus: "ambiguous",
+        expectedCandidateCount: 0,
+        expectedCommandableCount: 0
+      }
+    ],
+    expectedReferenceSummary: {
+      namedReferenceCount: 0,
+      semanticBodySelectionCount: 1,
+      generatedReferenceBodyCount: 0,
+      generatedReferenceCount: 0,
+      commandableReferenceCount: 0
+    },
+    expectedExportReadiness: {
+      status: "deferred",
+      canExportFiles: false,
+      bodyCount: 1,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 0,
+      formats: [
+        {
+          format: "step",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 0,
+          deferredBodyCount: 1,
+          unavailableBodyCount: 0
+        },
+        {
+          format: "glb",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 0,
+          deferredBodyCount: 1,
+          unavailableBodyCount: 0
+        }
+      ]
+    },
+    knownLimitations: [
+      "The authored revolve source is accepted, round-trippable, and health-checked, but result-body topology is not stable for command-ready references.",
+      "File export writers for revolve result bodies remain deferred."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v7_revolve_sketch",
+        name: "Revolve release profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v7_revolve_sketch",
+        id: "v7_revolve_profile",
+        center: [2, 0],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v7_revolve_sketch",
+        id: "v7_revolve_axis",
+        start: [0, -2],
+        end: [0, 2]
+      },
+      {
+        op: "feature.revolve",
+        id: "v7_revolve_feature",
+        bodyId: REVOLVE_BODY_ID,
+        name: "Revolve diagnostic body",
+        sketchId: "v7_revolve_sketch",
+        entityId: "v7_revolve_profile",
+        axis: {
+          type: "sketchLine",
+          sketchId: "v7_revolve_sketch",
+          entityId: "v7_revolve_axis"
+        },
+        angleDegrees: 270,
+        operationMode: "newBody"
+      }
+    ]
+  },
+  {
+    id: "v7-hole-source-diagnostics",
+    title: "V7 hole source diagnostics sample",
+    description:
+      "Authored rectangle target with a through hole result, preserving consumed-target diagnostics and unsupported result topology.",
+    units: "mm",
+    workflowTags: [
+      "sketch",
+      "rectangle-profile",
+      "circle-profile",
+      "new-body-extrude",
+      "hole",
+      "generated-references",
+      "named-references",
+      "selection-reference-candidates",
+      "export-readiness",
+      "consumed-body",
+      "unsupported-result-topology"
+    ],
+    expectedSourceCounts: {
+      sketchCount: 2,
+      sketchEntityCount: 2,
+      featureCount: 2,
+      bodyCount: 2,
+      activeBodyCount: 1,
+      consumedBodyCount: 1,
+      namedReferenceCount: 1
+    },
+    expectedHealthStatus: "under-defined",
+    expectedHealthIssueCount: 2,
+    expectedGeneratedReferences: [
+      {
+        bodyId: HOLE_TARGET_BODY_ID,
+        bodyStableId: `generated:body:${HOLE_TARGET_BODY_ID}`,
+        faceStableIds: [HOLE_TARGET_END_FACE],
+        edgeStableIds: [HOLE_TARGET_LONG_EDGE],
+        vertexStableIds: []
+      }
+    ],
+    expectedNamedReferences: [
+      {
+        name: "Hole target top face",
+        bodyId: HOLE_TARGET_BODY_ID,
+        stableId: HOLE_TARGET_END_FACE,
+        kind: "face"
+      }
+    ],
+    expectedSelectionQueries: [
+      {
+        selection: { type: "body", bodyId: HOLE_TARGET_BODY_ID },
+        expectedStatus: "consumed",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: {
+          type: "namedReference",
+          name: "Hole target top face"
+        },
+        requiredOperation: "feature.attachSketchPlane",
+        expectedStatus: "consumed",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: { type: "body", bodyId: HOLE_RESULT_BODY_ID },
+        expectedStatus: "ambiguous",
+        expectedCandidateCount: 0,
+        expectedCommandableCount: 0
+      }
+    ],
+    expectedReferenceSummary: {
+      namedReferenceCount: 1,
+      semanticBodySelectionCount: 2,
+      generatedReferenceBodyCount: 0,
+      generatedReferenceCount: 0,
+      commandableReferenceCount: 0
+    },
+    expectedExportReadiness: {
+      status: "deferred",
+      canExportFiles: false,
+      bodyCount: 2,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 1,
+      formats: [
+        {
+          format: "step",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 0,
+          deferredBodyCount: 1,
+          unavailableBodyCount: 1
+        },
+        {
+          format: "glb",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 0,
+          deferredBodyCount: 1,
+          unavailableBodyCount: 1
+        }
+      ]
+    },
+    knownLimitations: [
+      "The hole result body is source-modeled but does not expose stable generated face or edge references.",
+      "The original target body remains semantically resolvable for diagnostics but is non-commandable after consumption."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v7_hole_target_sketch",
+        name: "Hole target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v7_hole_target_sketch",
+        id: "v7_hole_target_profile",
+        center: [0, 0],
+        width: 5,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "v7_hole_target_extrude",
+        bodyId: HOLE_TARGET_BODY_ID,
+        name: "Hole target body",
+        sketchId: "v7_hole_target_sketch",
+        entityId: "v7_hole_target_profile",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "Hole target top face",
+        bodyId: HOLE_TARGET_BODY_ID,
+        stableId: HOLE_TARGET_END_FACE
+      },
+      {
+        op: "sketch.create",
+        id: "v7_hole_sketch",
+        name: "Hole release profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v7_hole_sketch",
+        id: "v7_hole_profile",
+        center: [0.5, 0],
+        radius: 0.35
+      },
+      {
+        op: "feature.hole",
+        id: "v7_hole_feature",
+        bodyId: HOLE_RESULT_BODY_ID,
+        name: "Hole diagnostic result",
+        targetBodyId: HOLE_TARGET_BODY_ID,
+        sketchId: "v7_hole_sketch",
+        circleEntityId: "v7_hole_profile",
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    ]
+  },
+  {
+    id: "v7-edge-finish-source-diagnostics",
+    title: "V7 edge-finish source diagnostics sample",
+    description:
+      "Two authored rectangle targets finished with chamfer and fillet operations, proving existing edge-finish source workflows without claiming stable result topology.",
+    units: "mm",
+    workflowTags: [
+      "sketch",
+      "rectangle-profile",
+      "new-body-extrude",
+      "chamfer",
+      "fillet",
+      "edge-finish",
+      "generated-references",
+      "named-references",
+      "selection-reference-candidates",
+      "export-readiness",
+      "consumed-body",
+      "unsupported-result-topology"
+    ],
+    expectedSourceCounts: {
+      sketchCount: 2,
+      sketchEntityCount: 2,
+      featureCount: 4,
+      bodyCount: 4,
+      activeBodyCount: 2,
+      consumedBodyCount: 2,
+      namedReferenceCount: 1
+    },
+    expectedHealthStatus: "under-defined",
+    expectedHealthIssueCount: 2,
+    expectedGeneratedReferences: [
+      {
+        bodyId: CHAMFER_TARGET_BODY_ID,
+        bodyStableId: `generated:body:${CHAMFER_TARGET_BODY_ID}`,
+        faceStableIds: [`generated:face:${CHAMFER_TARGET_BODY_ID}:endCap`],
+        edgeStableIds: [CHAMFER_TARGET_EDGE],
+        vertexStableIds: []
+      },
+      {
+        bodyId: FILLET_TARGET_BODY_ID,
+        bodyStableId: `generated:body:${FILLET_TARGET_BODY_ID}`,
+        faceStableIds: [`generated:face:${FILLET_TARGET_BODY_ID}:endCap`],
+        edgeStableIds: [FILLET_TARGET_EDGE],
+        vertexStableIds: []
+      }
+    ],
+    expectedNamedReferences: [
+      {
+        name: "Fillet source edge",
+        bodyId: FILLET_TARGET_BODY_ID,
+        stableId: FILLET_TARGET_EDGE,
+        kind: "edge"
+      }
+    ],
+    expectedSelectionQueries: [
+      {
+        selection: { type: "body", bodyId: CHAMFER_TARGET_BODY_ID },
+        expectedStatus: "consumed",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: {
+          type: "generatedReference",
+          bodyId: CHAMFER_TARGET_BODY_ID,
+          stableId: CHAMFER_TARGET_EDGE,
+          expectedKind: "edge"
+        },
+        requiredOperation: "feature.chamfer",
+        expectedStatus: "consumed",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: {
+          type: "namedReference",
+          name: "Fillet source edge"
+        },
+        requiredOperation: "feature.fillet",
+        expectedStatus: "consumed",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: { type: "body", bodyId: CHAMFER_RESULT_BODY_ID },
+        expectedStatus: "ambiguous",
+        expectedCandidateCount: 0,
+        expectedCommandableCount: 0
+      },
+      {
+        selection: { type: "body", bodyId: FILLET_RESULT_BODY_ID },
+        expectedStatus: "ambiguous",
+        expectedCandidateCount: 0,
+        expectedCommandableCount: 0
+      }
+    ],
+    expectedReferenceSummary: {
+      namedReferenceCount: 1,
+      semanticBodySelectionCount: 4,
+      generatedReferenceBodyCount: 0,
+      generatedReferenceCount: 0,
+      commandableReferenceCount: 0
+    },
+    expectedExportReadiness: {
+      status: "deferred",
+      canExportFiles: false,
+      bodyCount: 4,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 2,
+      unavailableBodyCount: 2,
+      formats: [
+        {
+          format: "step",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 0,
+          deferredBodyCount: 2,
+          unavailableBodyCount: 2
+        },
+        {
+          format: "glb",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 0,
+          deferredBodyCount: 2,
+          unavailableBodyCount: 2
+        }
+      ]
+    },
+    knownLimitations: [
+      "Chamfer and fillet source operations are accepted and round-trippable, but their result bodies intentionally report ambiguous generated topology.",
+      "Consumed target edges remain useful diagnostics, not commandable downstream references."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v7_chamfer_target_sketch",
+        name: "Chamfer target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v7_chamfer_target_sketch",
+        id: "v7_chamfer_target_profile",
+        center: [-2, 0],
+        width: 3,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v7_chamfer_target_extrude",
+        bodyId: CHAMFER_TARGET_BODY_ID,
+        name: "Chamfer target body",
+        sketchId: "v7_chamfer_target_sketch",
+        entityId: "v7_chamfer_target_profile",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "feature.chamfer",
+        id: "v7_chamfer_feature",
+        bodyId: CHAMFER_RESULT_BODY_ID,
+        name: "Chamfer diagnostic result",
+        targetBodyId: CHAMFER_TARGET_BODY_ID,
+        edgeStableId: CHAMFER_TARGET_EDGE,
+        distance: 0.2
+      },
+      {
+        op: "sketch.create",
+        id: "v7_fillet_target_sketch",
+        name: "Fillet target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v7_fillet_target_sketch",
+        id: "v7_fillet_target_profile",
+        center: [2, 0],
+        width: 3,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v7_fillet_target_extrude",
+        bodyId: FILLET_TARGET_BODY_ID,
+        name: "Fillet target body",
+        sketchId: "v7_fillet_target_sketch",
+        entityId: "v7_fillet_target_profile",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "Fillet source edge",
+        bodyId: FILLET_TARGET_BODY_ID,
+        stableId: FILLET_TARGET_EDGE
+      },
+      {
+        op: "feature.fillet",
+        id: "v7_fillet_feature",
+        bodyId: FILLET_RESULT_BODY_ID,
+        name: "Fillet diagnostic result",
+        targetBodyId: FILLET_TARGET_BODY_ID,
+        namedReference: "Fillet source edge",
+        radius: 0.25
       }
     ]
   }
