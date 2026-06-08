@@ -1,9 +1,35 @@
-# V7 Release Checklist Seed
+# V7 Release Readiness Checklist
 
-This checklist combines automated source/query smokes, an automated browser
-workflow smoke, and the manual checks that still need a human release pass.
+This checklist combines the authoritative automated release commands, automated
+V7 source/query and browser workflow smokes, and the manual checks that still
+need a human release pass.
 
-## Automated Source Smoke
+## Required Automated Commands
+
+For a V7 release-candidate pass, run:
+
+```sh
+pnpm smoke:v7-release-samples
+pnpm smoke:v7-browser-workflow
+pnpm test
+pnpm typecheck
+pnpm lint
+pnpm format:check
+pnpm build
+```
+
+Notes:
+
+- `pnpm smoke:v7-release-samples` is the deterministic non-browser
+  source/query acceptance smoke.
+- `pnpm smoke:v7-browser-workflow` runs `pnpm build` internally, serves the
+  built app, and drives the core browser workflow. Running `pnpm build`
+  separately at the end is still the explicit build verification command.
+- For docs-only release-readiness edits, `pnpm format:check` is the minimum
+  required check. Run the broader command set for release candidates or when a
+  documentation audit exposes source, script, schema, or test changes.
+
+## Automated Source Smoke Details
 
 Run:
 
@@ -42,7 +68,7 @@ topology remains deferred. The smoke expects structured ambiguous/consumed or
 non-commandable diagnostics rather than command-ready result face/edge
 references.
 
-## Automated Browser Workflow Smoke
+## Automated Browser Workflow Smoke Details
 
 Run:
 
@@ -84,8 +110,8 @@ meshes, topology caches, selection state, or export artifacts to tracked files.
 
 ## Manual Browser Checks
 
-Run the app and verify the remaining representative V7 workflows before a
-release:
+Run the app and verify the remaining representative V7 workflows and visual
+coherence before a release:
 
 - Feature tree and modeling workflow beyond the automated rectangle path:
   create a circle profile, extrude `newBody`, select the resulting body from
@@ -95,19 +121,22 @@ release:
   sketch on a supported generated planar face, then verify unsupported or stale
   cases show structured diagnostics.
 - Viewport interaction surface: select bodies and current generated references
-  from tree/inspector paths and verify hover measurements, reference actions,
-  and diagnostics feel like one coherent interaction model.
+  from tree/inspector paths and verify hover measurements, grouped reference
+  actions, selected-target status, and diagnostics read as one coherent
+  interaction model.
 - Project JSON workflow: export current JSON, import it into preview, confirm
   schema/source summary and replacement impact, then load it without losing the
   feature tree, named references, or selection diagnostics.
-- Visualization GLB: for a supported active rectangle or circle `newBody`
-  extrude with ready derived mesh, open the Project/File panel and verify
-  Mesh/GLB readiness plus transient `partbench-visualization.glb` download
-  behavior. STEP should remain honestly deferred.
+- Visualization GLB: only when derived geometry is intentionally enabled and a
+  supported active rectangle or circle `newBody` extrude has a ready derived
+  mesh, open the Project/File panel and verify Mesh/GLB readiness plus
+  transient `partbench-visualization.glb` download behavior. Normal production
+  builds may skip this path when no ready derived visualization mesh is
+  available. STEP should remain honestly deferred.
 
 ## Still Manual Or Deferred
 
-- This checklist is not browser E2E automation.
+- This checklist is not a replacement for broad browser E2E automation.
 - The browser smoke is a release confidence check, not the only durable signal.
 - OPFS, File System Access open/save, `.wcad` packages, STEP/IGES import/export,
   WebGPU, assemblies, persistent selection state, and broad arbitrary topology

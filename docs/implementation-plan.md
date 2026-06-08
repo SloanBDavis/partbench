@@ -10,8 +10,9 @@ Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
 archived V4 constrained sketch solving milestone, `docs/archive/v5.md` for the
 archived V5 exact geometry/topology foundation milestone, `docs/v6.md` for the
-completed V6 practical solid-modeling baseline, `docs/v7.md` for the active V7
-major-release draft, `docs/native-format.md` for project-format direction, and
+completed V6 practical solid-modeling baseline, `docs/v7.md` for the V7
+release-readiness record and remaining roadmap, `docs/native-format.md` for
+project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
@@ -30,8 +31,9 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, exact topology, assemblies, and hosted
    collaboration are expanded only in scoped tranches.
-9. V2, V3, V4, V5, and V6 are complete. V7 is an active major-release planning
-   effort, not one narrow implementation milestone.
+9. V2, V3, V4, V5, and V6 are complete. V7 is a broad major-release umbrella;
+   Tranches A through G4 are implemented, and later V7 work remains explicitly
+   scoped/deferred rather than one narrow milestone.
 10. V7 implementation tranches should stay independently testable and should not
     mix unrelated storage, renderer, topology, import/export, or agent-safety
     risks without explicit approval.
@@ -231,8 +233,9 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo is a completed V6 practical solid-modeling baseline entering active V7
-release planning. It is not yet a full CAD system.
+The repo now includes the implemented V7 Tranche A-G4 product surface on top of
+the completed V6 practical solid-modeling baseline. It is not yet a full CAD
+system.
 
 Current limitations:
 
@@ -359,51 +362,57 @@ Durable V6 decisions:
 - generated references for V6 result bodies remain unsupported unless a future
   stable topological naming design is explicitly implemented.
 
-## Active Roadmap: V7 Real CAD Alpha
+## V7 Real CAD Alpha Status And Roadmap
 
 V7 is a major release umbrella, not a single implementation milestone. The
-release should turn the V6 modeling baseline into an early usable local CAD
-product while preserving the architecture in `docs/architecture.md`.
+implemented A-G4 surface turns the V6 modeling baseline into an early usable
+local CAD alpha while preserving the architecture in `docs/architecture.md`.
 
-The V7 release draft lives in `docs/v7.md`. This implementation plan adds the
-day-to-day sequencing rules.
+The V7 release-readiness record lives in `docs/v7.md`. This implementation plan
+records the current status and day-to-day sequencing rules for any later V7
+work.
 
 ### V7 Release Pillars
 
-V7 should be planned around these pillars:
+V7 is organized around these pillars:
 
 - stable topology, references, and semantic selection;
 - production-grade viewport interaction and visual state;
-- local project workflow for open/save/save-as and future native package work;
-- interop, likely starting with export before broad import;
+- local project JSON workflow and future native package decisions;
+- interop, starting with export readiness/visualization before broad import;
 - product UI hardening on top of the existing feature tree and improved modeling
   workflow;
 - agent/MCP productization for larger, auditable workflows;
 - release samples, smoke checks, docs, and browser verification.
 
-### Recommended Tranche Order
+### Implemented Tranche Sequence And Remaining Order
 
-The recommended starting sequence is:
+The implemented sequence through G4 is:
 
-1. **Reference And Selection Contract** - typed query/protocol support for
+1. **Reference And Selection Contract** - implemented typed query/protocol
+   support for
    semantic selection candidates, reference eligibility, stale/ambiguous
-   diagnostics, and named-reference validation. This should not require WebGPU,
-   native storage, or STEP.
-2. **Feature Tree And Inspector Integration** - connect the current feature tree
-   and modeling workflow to reference and health semantics, with CADOps-backed
-   actions only.
-3. **Viewport Selection And Visual State** - map viewport interaction to the
-   same semantic references and expose active/consumed/pending/failed/selected
-   states without making renderer IDs authoritative.
-4. **Local Project Workflow** - harden JSON open/save first, then decide whether
-   File System Access, OPFS, thumbnails, or `.wcad` package work belongs in V7.
-5. **Export And Sharing** - add STEP export for supported exact bodies if scoped
-   and if the OCCT exchange boundary is ready; defer broad import unless V7
-   explicitly prioritizes interop.
-6. **Agent/MCP Release Surface** - shape project summary, dry-run previews,
-   audit metadata, and examples around the same reference/tree/health model.
-7. **Release Samples And Smokes** - add representative sample projects, smoke
-   scripts, manual browser checklist entries, and capability/limitation docs.
+   diagnostics, and named-reference validation without requiring WebGPU, native
+   storage, or STEP.
+2. **Feature Tree And Inspector Integration** - implemented current feature
+   tree, inspector, and modeling workflow integration with reference/health
+   semantics, using CADOps-backed actions only.
+3. **Viewport Selection And Visual State** - implemented current canvas
+   semantic pick intent, hover/status, grouped reference actions, and selected
+   measurements without making renderer IDs authoritative.
+4. **Local Project Workflow** - implemented JSON open/save polish and app-layer
+   storage capability status. File System Access picker operations, OPFS,
+   thumbnails, and `.wcad` packages remain deferred.
+5. **Export And Sharing** - implemented `project.exportReadiness` and optional
+   app-derived Mesh/GLB visualization export from ready derived meshes. STEP
+   import/export remains deferred until an exact exchange writer binding is
+   scoped.
+6. **Agent/MCP Release Surface** - implemented release-oriented
+   `project.summary`, dry-run/commit review blocks, audit metadata, and thin
+   MCP pass-through over the same CADOps/query paths.
+7. **Release Samples And Smokes** - implemented source/query release samples,
+   release-sample smoke, browser workflow smoke, checklist/docs, and G4 extended
+   acceptance samples.
 
 ### Implemented Tranche A: Reference And Selection Contract
 
@@ -712,7 +721,7 @@ topology caches, app-derived GLB artifacts, browser storage capability state, or
 selection state. Browser smoke scripts, manual checklist automation, and wider
 sample coverage remain later Tranche G work.
 
-### Implemented Tranche G2: Release Sample Smoke Runner And Checklist Seed
+### Implemented Tranche G2: Release Sample Smoke Runner And Checklist Baseline
 
 The second release-hardening slice turns the G1 fixtures into a repeatable
 non-browser release smoke:
@@ -814,9 +823,9 @@ Future V7 tranche plans should continue to include these details:
 - manual browser scenarios for invalidating and repairing a supported face or
   edge, and for GLB download when derived geometry is intentionally enabled.
 
-The first tranche should not implement broad arbitrary topology naming. It
-should prove the contract on the smallest useful, defensible subset and make all
-unsupported cases explicit.
+Future topology/reference tranches should not jump straight to broad arbitrary
+topology naming. They should extend the smallest useful, defensible subset and
+make all unsupported cases explicit.
 
 ### V7 Scope Guardrails
 

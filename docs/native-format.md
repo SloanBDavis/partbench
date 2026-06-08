@@ -26,8 +26,8 @@ through explicit migration. The
 identifiers after the Partbench product rename; changing them would require a
 deliberate project-format migration. Future storage work should use this
 document to evolve toward a native package without prematurely introducing
-OPFS, File System Access API, STEP import/export, real topology, or a final
-`.wcad` implementation.
+OPFS, File System Access API, STEP import/export, persisted exact topology, or a
+final `.wcad` implementation.
 
 ## Current Format
 
@@ -107,6 +107,11 @@ accepted release samples still emit `web-cad.project.v16`, not
 `web-cad.project.v17`. The smoke is stdout-only by default and does not write
 sample projects, metrics, derived meshes, topology caches, export artifacts, or
 browser storage state into source truth.
+In V7 Tranche G3, `pnpm smoke:v7-browser-workflow` exercises the built web app
+through a deterministic browser workflow using the same project JSON and
+CADOps/query surfaces. It does not write screenshots, metrics, project JSON,
+derived meshes, topology caches, selection state, or export artifacts into
+source truth and does not require `web-cad.project.v17`.
 In V7 Tranche G4, the same fixture catalog expands to cover existing V6 feature
 breadth used by the V7 release acceptance suite: authored `newBody` extrude,
 authored `newBody` revolve, authored hole result bodies, and edge-finished
@@ -1154,9 +1159,10 @@ such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
-Future V6 slices should introduce another project format only if they add
-persisted source-of-truth data that cannot be represented by the current V16
-feature and constraint records. Solver/evaluator status and exact-kernel query
+Future V7 or later slices should introduce another project format only if they
+add persisted source-of-truth data that cannot be represented by the current V16
+feature and constraint records. Solver/evaluator status, reference-candidate
+status, export-readiness status, release-smoke metadata, and exact-kernel query
 results should remain derived query/cache data.
 
 ## Rebuildable Cache
