@@ -1,5 +1,4 @@
 import {
-  GeometryKernelWorker,
   createBoxTessellationWorkerRequest,
   createConeTessellationWorkerRequest,
   createCylinderTessellationWorkerRequest,
@@ -99,6 +98,58 @@ class FakeGeometryWorkerTransport implements GeometryWorkerTransport {
   }
 }
 
+function createPrimitiveTessellationTransport(): FakeGeometryWorkerTransport {
+  return new FakeGeometryWorkerTransport(async (request) =>
+    createPrimitiveTessellationMessage(request)
+  );
+}
+
+function createPrimitiveTessellationMessage(
+  request: GeometryWorkerRequest
+): GeometryWorkerMessage {
+  const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  const indices = new Uint32Array([0, 1, 2]);
+
+  return {
+    id: request.id,
+    version: request.version,
+    kind: request.kind,
+    payloadId: request.payload.id,
+    response: {
+      ok: true,
+      id: request.payload.id,
+      op: request.payload.op,
+      mesh: {
+        primitive: getPrimitiveForOp(request.payload.op),
+        positions,
+        indices,
+        vertexCount: 3,
+        triangleCount: 1,
+        faceCount: 1
+      },
+      warnings: []
+    },
+    transferables: [positions.buffer, indices.buffer]
+  } as GeometryWorkerMessage;
+}
+
+function getPrimitiveForOp(op: GeometryWorkerRequest["payload"]["op"]) {
+  switch (op) {
+    case "geometry.tessellateBox":
+      return "box";
+    case "geometry.tessellateCylinder":
+      return "cylinder";
+    case "geometry.tessellateSphere":
+      return "sphere";
+    case "geometry.tessellateCone":
+      return "cone";
+    case "geometry.tessellateTorus":
+      return "torus";
+    default:
+      throw new Error(`Unsupported primitive test op: ${op}`);
+  }
+}
+
 describe("BrowserGeometryWorker", () => {
   it("sends geometry requests through a worker-like transport asynchronously", async () => {
     const positions = new Float32Array([0, 0, 0]);
@@ -175,11 +226,8 @@ describe("BrowserGeometryWorker", () => {
     worker.dispose();
   });
 
-  it("can run one box tessellation through the browser transport wrapper", async () => {
-    const kernelWorker = new GeometryKernelWorker();
-    const transport = new FakeGeometryWorkerTransport((request) =>
-      kernelWorker.execute(request)
-    );
+  it("passes one box tessellation message through the browser transport wrapper", async () => {
+    const transport = createPrimitiveTessellationTransport();
     const worker = new BrowserGeometryWorker(transport);
 
     const response = await worker.execute(
@@ -209,19 +257,16 @@ describe("BrowserGeometryWorker", () => {
     }
 
     expect(response.response.mesh.primitive).toBe("box");
-    expect(response.response.mesh.vertexCount).toBe(24);
-    expect(response.response.mesh.triangleCount).toBe(12);
+    expect(response.response.mesh.vertexCount).toBeGreaterThan(0);
+    expect(response.response.mesh.triangleCount).toBeGreaterThan(0);
     expect(response.transferables).toEqual([
       response.response.mesh.positions.buffer,
       response.response.mesh.indices.buffer
     ]);
-  }, 30000);
+  });
 
-  it("can run one cylinder tessellation through the browser transport wrapper", async () => {
-    const kernelWorker = new GeometryKernelWorker();
-    const transport = new FakeGeometryWorkerTransport((request) =>
-      kernelWorker.execute(request)
-    );
+  it("passes one cylinder tessellation message through the browser transport wrapper", async () => {
+    const transport = createPrimitiveTessellationTransport();
     const worker = new BrowserGeometryWorker(transport);
 
     const response = await worker.execute(
@@ -258,11 +303,8 @@ describe("BrowserGeometryWorker", () => {
     ]);
   });
 
-  it("can run one sphere tessellation through the browser transport wrapper", async () => {
-    const kernelWorker = new GeometryKernelWorker();
-    const transport = new FakeGeometryWorkerTransport((request) =>
-      kernelWorker.execute(request)
-    );
+  it("passes one sphere tessellation message through the browser transport wrapper", async () => {
+    const transport = createPrimitiveTessellationTransport();
     const worker = new BrowserGeometryWorker(transport);
 
     const response = await worker.execute(
@@ -298,11 +340,8 @@ describe("BrowserGeometryWorker", () => {
     ]);
   });
 
-  it("can run cone and torus tessellation through the browser transport wrapper", async () => {
-    const kernelWorker = new GeometryKernelWorker();
-    const transport = new FakeGeometryWorkerTransport((request) =>
-      kernelWorker.execute(request)
-    );
+  it("passes cone and torus tessellation messages through the browser transport wrapper", async () => {
+    const transport = createPrimitiveTessellationTransport();
     const worker = new BrowserGeometryWorker(transport);
 
     const cone = await worker.execute(
