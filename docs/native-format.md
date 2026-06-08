@@ -101,6 +101,12 @@ project JSON, derived meshes, exact metadata, topology caches, browser storage
 state, app-derived GLB artifacts, renderer IDs, OCCT IDs, cache IDs, or
 selection-buffer IDs as source truth, and therefore do not require
 `web-cad.project.v17`.
+In V7 Tranche G2, `pnpm smoke:v7-release-samples` exercises those fixtures
+through the same current project JSON import/export path and verifies that the
+accepted release samples still emit `web-cad.project.v16`, not
+`web-cad.project.v17`. The smoke is stdout-only by default and does not write
+sample projects, metrics, derived meshes, topology caches, export artifacts, or
+browser storage state into source truth.
 
 The current exported JSON shape is:
 

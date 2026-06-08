@@ -67,6 +67,9 @@ and focused packages:
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
+- `scripts/smoke-v7-release-samples.mjs` and
+  `scripts/v7-release-samples.mjs` - deterministic non-browser V7 release
+  sample acceptance smoke over cad-core source/query fixtures.
 - `scripts/smoke-occt-browser.mjs` and `scripts/occt-smoke` - non-gating
   browser smoke/metrics runner for the OCCT worker path.
 
@@ -92,6 +95,7 @@ pnpm typecheck
 pnpm build
 pnpm lint
 pnpm format:check
+pnpm smoke:v7-release-samples
 pnpm smoke:feature-delete-ui
 ```
 
@@ -121,6 +125,18 @@ pnpm smoke:occt-browser
 
 The smoke writes JSONL telemetry to `.metrics/occt-browser.jsonl`. Timing
 magnitude is tracked, not used as a pass/fail budget.
+
+V7 release sample source/query smoke:
+
+```sh
+pnpm smoke:v7-release-samples
+```
+
+The smoke is deterministic, non-browser, and stdout-only by default. It builds
+the G1 release fixtures through CADOps, round-trips current project JSON, and
+verifies the V7 release-critical query surface. Use
+`node scripts/smoke-v7-release-samples.mjs --json` only when structured stdout
+is useful for CI or release tooling.
 
 ## Current Capabilities
 
@@ -679,6 +695,31 @@ G1 remains source-only. It does not persist derived meshes, exact metadata,
 topology caches, app-derived GLB artifacts, browser storage capability state, or
 selection state. Browser smoke scripts, manual checklist automation, and wider
 sample coverage remain later Tranche G work.
+
+### Implemented Tranche G2: Release Sample Smoke Runner And Checklist Seed
+
+The second release-hardening slice turns the G1 fixtures into a repeatable
+non-browser release smoke:
+
+- `scripts/v7-release-samples.mjs` exposes a pure
+  `runV7ReleaseSampleSmoke()` helper plus deterministic human-summary
+  formatting;
+- `scripts/smoke-v7-release-samples.mjs` is the CLI entry point, with optional
+  `--json` stdout for CI/release tooling and no tracked metrics output;
+- `pnpm smoke:v7-release-samples` runs the CLI from root package scripts;
+- the smoke commits every fixture through `createV7ReleaseSampleBatch(id)`,
+  exports/imports current project JSON, and verifies current schema only,
+  project health, `selection.referenceCandidates`, `project.exportReadiness`,
+  `project.summary`, and public source/derived separation;
+- tests cover the success summary and a synthetic fixture-expectation failure
+  path;
+- `docs/v7-release-checklist.md` seeds the manual V7 release checklist and
+  explicitly separates automated source/query smoke from browser verification.
+
+G2 does not add browser E2E automation, persistent metrics, static sample JSON,
+derived meshes, topology caches, app-derived GLB artifacts, OPFS/File System
+Access, `.wcad` storage, STEP/IGES, WebGPU, assemblies, new modeling commands,
+or `web-cad.project.v17`.
 
 Future V7 tranche plans should continue to include these details:
 
