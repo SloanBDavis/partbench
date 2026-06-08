@@ -33,6 +33,14 @@ Notes:
   required check. Run the broader command set for release candidates or when a
   documentation audit exposes source, script, schema, or test changes.
 
+## Completion Gate Note
+
+The automated commands above are the required release-candidate gates. The
+manual browser checks below are a release QA pass for visual breadth, varied
+workflow data, and coherence beyond deterministic smokes. Record them when they
+are performed; they are not hidden implementation tranches and do not imply that
+explicitly deferred architecture items are part of the current V7 scope.
+
 ## Automated Source Smoke Details
 
 Run:

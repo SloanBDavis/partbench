@@ -421,6 +421,13 @@ The implemented sequence through G7 is:
    acceptance samples, G6 browser checklist automation expansion, and G7
    derived-geometry GLB release smoke.
 
+Numbering note: there is intentionally no separate implemented G5 tranche in the
+release-hardening record. The remaining checklist-automation work that could
+have been split out as G5 was recorded as the G6 browser checklist automation
+expansion, and the derived-geometry GLB release smoke was then recorded as G7.
+The absent G5 label is a documentation/history numbering gap only; it does not
+represent hidden in-scope V7 implementation work.
+
 ### Implemented Tranche A: Reference And Selection Contract
 
 The first V7 tranche added a query-only semantic resolver:
@@ -812,6 +819,15 @@ new modeling commands, exact stable topology, persisted derived data,
 screenshots, export artifacts, storage work, STEP/IGES, WebGPU, assemblies, or
 schema migration.
 
+### Tranche G5 Numbering Note
+
+No separate G5 tranche is implemented or required for the current V7 release
+scope. The release-hardening work moved from G4 extended acceptance samples to
+G6 browser checklist automation, then to G7 derived-geometry GLB smoke. Keeping
+the G6/G7 labels avoids rewriting existing tranche history, and the missing G5
+number is not a deferred feature, storage milestone, renderer milestone, or
+release blocker.
+
 ### Implemented Tranche G6: Browser Release Checklist Automation Expansion
 
 The sixth release-hardening slice expands the existing focused browser workflow
@@ -869,6 +885,18 @@ meshes, topology caches, selection state, GLB artifacts, or cache artifacts. The
 GLB remains app-derived display output from ready mesh DTOs and does not become
 source-of-truth data in `cad-core`, storage, CADOps schemas, or
 `web-cad.project.v17`.
+
+### V7 Release Completion Gate Semantics
+
+For implementation accounting, V7 is complete through the implemented A-G7
+tranche scope described above. For a release-candidate pass, the required
+automated gates are the commands listed in `docs/v7-release-checklist.md`,
+including the default browser workflow smoke and the opt-in derived GLB smoke.
+Manual browser checks are a release QA pass for visual breadth, varied data, and
+workflow coherence beyond deterministic smokes. They can be recorded when
+performed, but they are not hidden implementation tranches and do not imply that
+deferred items such as STEP, WebGPU, native storage, assemblies, broad topology
+naming, or broad sketch solving are implemented.
 
 Future V7 tranche plans should continue to include these details:
 
