@@ -1,17 +1,18 @@
 import { useRef } from "react";
 import {
   getProjectImportStatusText,
-  type ProjectJsonPreview,
-  type ProjectJsonSummary
+  type ProjectJsonDraftWorkflowState,
+  type ProjectJsonImportImpact,
+  type ProjectJsonSummary,
+  type ProjectJsonWorkflowState
 } from "../projectJson";
 
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
   readonly projectJson: string;
-  readonly currentSummary: ProjectJsonSummary;
+  readonly workflow: ProjectJsonWorkflowState;
   readonly message?: string;
   readonly messageTone?: "info" | "error";
-  readonly preview: ProjectJsonPreview;
   readonly onProjectJsonChange: (projectJson: string) => void;
   readonly onProjectFileLoaded: (projectJson: string, fileName: string) => void;
   readonly onProjectFileError: (message: string) => void;
@@ -21,12 +22,11 @@ export interface ProjectJsonPanelProps {
 }
 
 export function ProjectJsonPanel({
-  currentSummary,
   disabled,
   projectJson,
   message,
   messageTone = "info",
-  preview,
+  workflow,
   onProjectJsonChange,
   onProjectFileLoaded,
   onProjectFileError,
@@ -54,7 +54,19 @@ export function ProjectJsonPanel({
         <h2>Project</h2>
         <span>JSON</span>
       </div>
-      <ProjectSummary title="Current" summary={currentSummary} />
+      <section className="project-workflow-section" aria-label="Current JSON">
+        <div className="project-workflow-heading">
+          <h3>Current source</h3>
+          <span>{workflow.current.sourceLabel}</span>
+        </div>
+        <p className="project-workflow-detail">
+          {workflow.current.sourceDetail}
+        </p>
+        <ProjectSummary
+          title="Current project"
+          summary={workflow.current.summary}
+        />
+      </section>
       <div className="button-row">
         <button type="button" onClick={onExport} disabled={disabled}>
           Generate export
@@ -72,7 +84,7 @@ export function ProjectJsonPanel({
         <button
           type="button"
           onClick={onImport}
-          disabled={disabled || preview.status !== "valid"}
+          disabled={disabled || workflow.draft.preview.status !== "valid"}
         >
           Import project
         </button>
@@ -89,12 +101,18 @@ export function ProjectJsonPanel({
         }}
       />
       <p className="project-import-status">
-        {getProjectImportStatusText(preview)}
+        {getProjectImportStatusText(
+          workflow.draft.preview,
+          workflow.draft.impact
+        )}
       </p>
-      <ProjectPreview preview={preview} />
+      <ProjectDraftWorkflow draft={workflow.draft} />
       <details
         className="advanced-options project-json-editor"
-        open={preview.status === "invalid"}
+        open={
+          workflow.draft.preview.status === "invalid" ||
+          workflow.draft.source.kind === "edited"
+        }
       >
         <summary>JSON editor</summary>
         <textarea
@@ -114,6 +132,70 @@ export function ProjectJsonPanel({
         </p>
       )}
     </section>
+  );
+}
+
+function ProjectDraftWorkflow({
+  draft
+}: {
+  readonly draft: ProjectJsonDraftWorkflowState;
+}) {
+  return (
+    <section className="project-workflow-section" aria-label="Import draft">
+      <div className="project-workflow-heading">
+        <h3>Import draft</h3>
+        <span>{getDraftStatusLabel(draft)}</span>
+      </div>
+      <dl className="project-workflow-grid">
+        <ProjectWorkflowRow
+          label="Source"
+          value={draft.source.label}
+          detail={draft.source.detail}
+        />
+        <ProjectWorkflowRow
+          label="Schema"
+          value={draft.schema.label}
+          detail={draft.schema.detail}
+        />
+        <ProjectWorkflowRow
+          label="Impact"
+          value={draft.impact?.label ?? "Import blocked"}
+          detail={
+            draft.impact?.detail ??
+            "A valid project draft is required before import."
+          }
+        />
+        <ProjectWorkflowRow
+          label="History"
+          value={getHistoryImpactLabel(draft.impact)}
+          detail={
+            draft.impact?.historyDetail ??
+            "Undo and redo history will be inspected after validation."
+          }
+        />
+      </dl>
+      <ProjectPreview draft={draft} />
+    </section>
+  );
+}
+
+function ProjectWorkflowRow({
+  detail,
+  label,
+  value
+}: {
+  readonly detail: string;
+  readonly label: string;
+  readonly value: string;
+}) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>
+        <strong>{value}</strong>
+        <span>{detail}</span>
+      </dd>
+    </div>
   );
 }
 
@@ -165,13 +247,19 @@ function ProjectSummary({
   );
 }
 
-function ProjectPreview({ preview }: { readonly preview: ProjectJsonPreview }) {
+function ProjectPreview({
+  draft
+}: {
+  readonly draft: ProjectJsonDraftWorkflowState;
+}) {
+  const preview = draft.preview;
+
   if (preview.status === "empty") {
     return <p className="empty-state compact">No import preview</p>;
   }
 
   if (preview.status === "valid") {
-    return <ProjectSummary title="Import preview" summary={preview.summary} />;
+    return <ProjectSummary title="Preview source" summary={preview.summary} />;
   }
 
   return (
@@ -181,9 +269,9 @@ function ProjectPreview({ preview }: { readonly preview: ProjectJsonPreview }) {
     >
       <h3>Import validation</h3>
       <p className="error-text">{preview.message}</p>
-      {preview.issues.length > 0 && (
+      {draft.validationIssues.length > 0 && (
         <ul>
-          {preview.issues.map((issue, index) => (
+          {draft.validationIssues.map((issue, index) => (
             <li key={`${issue.path}:${issue.code}:${index}`}>
               <code>{issue.code}</code>
               <span>{issue.path}</span>
@@ -194,4 +282,28 @@ function ProjectPreview({ preview }: { readonly preview: ProjectJsonPreview }) {
       )}
     </section>
   );
+}
+
+function getDraftStatusLabel(draft: ProjectJsonDraftWorkflowState): string {
+  if (draft.preview.status === "valid") {
+    return "Valid";
+  }
+
+  if (draft.preview.status === "invalid") {
+    return "Invalid";
+  }
+
+  return "Empty";
+}
+
+function getHistoryImpactLabel(
+  impact: ProjectJsonImportImpact | undefined
+): string {
+  if (!impact) {
+    return "Pending validation";
+  }
+
+  return impact.restoresUndoRedoHistory
+    ? "Restores history"
+    : "No history in draft";
 }

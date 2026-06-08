@@ -191,7 +191,9 @@ Current Partbench can:
   supported Extrude, Revolve, Hole, Chamfer, and Fillet operations without
   offering known-unsupported targets as valid;
 - save/load current `web-cad.project.v16` JSON with migrations from older
-  accepted schemas;
+  accepted schemas, while the Project panel shows draft source, schema/
+  migration status, structured validation issues, replacement/history impact,
+  and same-current-export detection before import;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations

@@ -1,4 +1,5 @@
 import {
+  CAD_PROJECT_FORMAT_VERSION_V1,
   CadEngine,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   exportCadProject,
@@ -6,7 +7,9 @@ import {
 } from "@web-cad/cad-core";
 import { describe, expect, it } from "vitest";
 import {
+  createProjectJsonDraftSourceForEditorValue,
   createProjectJsonPreview,
+  createProjectJsonWorkflowState,
   formatProjectJsonSummary,
   getProjectImportStatusText,
   summarizeCadProject
@@ -190,6 +193,173 @@ describe("projectJson helpers", () => {
     );
   });
 
+  it("summarizes empty import draft workflow state", () => {
+    const engine = new CadEngine();
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(engine),
+      draftJson: " ",
+      draftSource: { kind: "empty" }
+    });
+
+    expect(workflow.current.sourceLabel).toBe("cad-core document");
+    expect(workflow.draft.source).toMatchObject({
+      kind: "empty",
+      label: "Empty draft"
+    });
+    expect(workflow.draft.preview.status).toBe("empty");
+    expect(workflow.draft.schema).toMatchObject({
+      status: "empty",
+      label: "No schema"
+    });
+    expect(workflow.draft.impact).toBeUndefined();
+  });
+
+  it("detects pasted or edited JSON that matches the current export", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const minifiedCurrentJson = JSON.stringify(
+      JSON.parse(exportCadProjectJson(engine))
+    );
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(engine),
+      draftJson: minifiedCurrentJson,
+      draftSource:
+        createProjectJsonDraftSourceForEditorValue(minifiedCurrentJson)
+    });
+
+    expect(workflow.draft.source).toMatchObject({
+      kind: "edited",
+      label: "Pasted or edited JSON"
+    });
+    expect(workflow.draft.schema).toMatchObject({
+      status: "current",
+      sourceSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      normalizedSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+    });
+    expect(workflow.draft.impact).toMatchObject({
+      sameDocumentSourceAsCurrent: true,
+      wouldReplaceCurrentDocument: false,
+      restoresUndoRedoHistory: true,
+      undoTransactionCount: 1,
+      redoTransactionCount: 0,
+      label: "No document source change detected"
+    });
+    expect(
+      getProjectImportStatusText(workflow.draft.preview, workflow.draft.impact)
+    ).toContain("may still restore undo/redo history");
+  });
+
+  it("keeps same document source detection separate from undo history", () => {
+    const currentEngine = new CadEngine();
+    const draftEngine = new CadEngine();
+    const createBox = {
+      op: "scene.createBox" as const,
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    };
+
+    currentEngine.apply(createBox);
+    draftEngine.apply(createBox);
+    draftEngine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 2 }
+    });
+    draftEngine.undo();
+
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(currentEngine),
+      draftJson: exportCadProjectJson(draftEngine),
+      draftSource: { kind: "loadedFile", fileName: "same-part.json" }
+    });
+
+    expect(workflow.draft.impact).toMatchObject({
+      sameDocumentSourceAsCurrent: true,
+      wouldReplaceCurrentDocument: false,
+      restoresUndoRedoHistory: true,
+      undoTransactionCount: 1,
+      redoTransactionCount: 1,
+      label: "No document source change detected"
+    });
+    expect(workflow.draft.impact?.historyDetail).toBe(
+      "Restores 1 undo transaction(s) and 1 redo transaction(s)."
+    );
+  });
+
+  it("reports replacement and undo history impact for valid drafts", () => {
+    const currentEngine = new CadEngine();
+    const draftEngine = new CadEngine();
+
+    draftEngine.apply({
+      op: "scene.createCylinder",
+      id: "cylinder_1",
+      dimensions: { radius: 1, height: 4 }
+    });
+    draftEngine.apply({
+      op: "scene.createSphere",
+      id: "sphere_1",
+      dimensions: { radius: 2 }
+    });
+    draftEngine.undo();
+
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(currentEngine),
+      draftJson: exportCadProjectJson(draftEngine),
+      draftSource: { kind: "generatedExport" }
+    });
+
+    expect(workflow.draft.preview.status).toBe("valid");
+    expect(workflow.draft.impact).toMatchObject({
+      sameDocumentSourceAsCurrent: false,
+      wouldReplaceCurrentDocument: true,
+      restoresUndoRedoHistory: true,
+      undoTransactionCount: 1,
+      redoTransactionCount: 1,
+      label: "Will replace current document"
+    });
+    expect(workflow.draft.impact?.historyDetail).toBe(
+      "Restores 1 undo transaction(s) and 1 redo transaction(s)."
+    );
+  });
+
+  it("surfaces legacy schema migration through cad-core import behavior", () => {
+    const engine = new CadEngine();
+    const currentProject = exportCadProject(engine);
+    const legacyV1Project = {
+      ...currentProject,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V1,
+      document: {
+        units: currentProject.document.units,
+        objects: currentProject.document.objects,
+        nextObjectNumber: currentProject.document.nextObjectNumber
+      }
+    };
+    const workflow = createProjectJsonWorkflowState({
+      currentProject,
+      draftJson: JSON.stringify(legacyV1Project),
+      draftSource: { kind: "loadedFile", fileName: "legacy-v1.json" }
+    });
+
+    expect(workflow.draft.source).toMatchObject({
+      kind: "loadedFile",
+      fileName: "legacy-v1.json"
+    });
+    expect(workflow.draft.preview.status).toBe("valid");
+    expect(workflow.draft.schema).toMatchObject({
+      status: "legacyMigrated",
+      label: "Legacy schema accepted",
+      sourceSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V1,
+      normalizedSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+    });
+    expect(workflow.draft.schema.detail).toContain("cad-core migration");
+  });
+
   it("returns structured import issues for malformed JSON", () => {
     const preview = createProjectJsonPreview("{");
 
@@ -210,6 +380,27 @@ describe("projectJson helpers", () => {
     expect(getProjectImportStatusText(preview)).toBe(
       "Import is blocked until the project JSON validates successfully."
     );
+  });
+
+  it("keeps invalid workflow issues structured with code, path, and message", () => {
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(new CadEngine()),
+      draftJson: "{",
+      draftSource: { kind: "edited" }
+    });
+
+    expect(workflow.draft.preview.status).toBe("invalid");
+    expect(workflow.draft.validationIssues).toEqual([
+      {
+        code: "INVALID_JSON",
+        path: "$",
+        message: "Project JSON could not be parsed."
+      }
+    ]);
+    expect(workflow.draft.schema).toMatchObject({
+      status: "invalid",
+      label: "Schema blocked"
+    });
   });
 
   it("returns structured import issues for unsupported project versions", () => {
@@ -276,5 +467,38 @@ describe("projectJson helpers", () => {
         path: "$.history"
       })
     ]);
+  });
+
+  it("does not serialize app-layer workflow state into project JSON", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+
+    const beforeJson = exportCadProjectJson(engine);
+    const workflow = createProjectJsonWorkflowState({
+      currentProject: exportCadProject(engine),
+      draftJson: beforeJson,
+      draftSource: {
+        kind: "downloadedExport",
+        fileName: "partbench-project.json"
+      }
+    });
+    const exported = JSON.parse(exportCadProjectJson(engine)) as Record<
+      string,
+      unknown
+    >;
+
+    expect(workflow.draft.source).toMatchObject({
+      kind: "downloadedExport",
+      fileName: "partbench-project.json"
+    });
+    expect(exported).not.toHaveProperty("workflow");
+    expect(exported).not.toHaveProperty("projectJsonDraftSource");
+    expect(JSON.stringify(exported)).not.toContain("partbench-project.json");
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 });

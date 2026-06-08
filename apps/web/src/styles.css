@@ -2058,6 +2058,12 @@ canvas:active {
   background: var(--panel-soft);
 }
 
+.advanced-tools-drawer[open] {
+  display: grid;
+  height: min(54dvh, 520px);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .advanced-tools-drawer > summary {
   display: flex;
   align-items: center;
@@ -2084,7 +2090,7 @@ canvas:active {
 }
 
 .advanced-tools-drawer .utility-dock {
-  max-height: min(54dvh, 520px);
+  max-height: none;
 }
 
 .utility-dock {
@@ -2899,11 +2905,72 @@ button.dimension-status-row {
 }
 
 .project-summary,
+.project-workflow-section,
 .project-validation {
   display: grid;
   gap: 8px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
+}
+
+.project-workflow-section {
+  gap: 9px;
+}
+
+.project-workflow-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.project-workflow-heading span {
+  min-width: 0;
+  color: var(--amber);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.project-workflow-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.project-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin: 0;
+}
+
+.project-workflow-grid div {
+  min-width: 0;
+}
+
+.project-workflow-grid dd {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  min-width: 0;
+}
+
+.project-workflow-grid strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.project-workflow-grid span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .project-summary-grid {
@@ -2918,6 +2985,7 @@ button.dimension-status-row {
 }
 
 .project-summary-grid dt,
+.project-workflow-grid dt,
 .inspector dt,
 .metrics-list dt,
 .geometry-error dt,
@@ -3277,6 +3345,7 @@ button.dimension-status-row {
   .field-grid.three,
   .field-grid.four,
   .named-reference-editor,
+  .project-workflow-grid,
   .project-summary-grid {
     grid-template-columns: 1fr;
   }

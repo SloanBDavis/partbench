@@ -65,13 +65,14 @@ parseCadProjectJson(json)
 importCadProjectJson(json)
 ```
 
-The web app Project panel uses this same format for the V1 save/load flow. It
-can generate/download current project JSON, load JSON into an import preview,
-and show schema/version, object count, transaction count, redo count, and
-structured validation issues before import. The preview uses the same
-importability checks as load, including transaction replay, so malformed history
-is blocked before the user imports it. This remains ordinary JSON import/export
-and does not use OPFS or the File System Access API.
+The web app Project panel uses this same format for the current JSON save/load
+flow. It can generate/download current project JSON, load JSON into an import
+preview, and show current source truth, draft source, schema/version, migration
+status, object count, transaction count, redo count, replacement impact,
+same-current-export detection, and structured validation issues before import.
+The preview uses the same importability checks as load, including transaction
+replay, so malformed history is blocked before the user imports it. This remains
+ordinary JSON import/export and does not use OPFS or the File System Access API.
 
 The current exported JSON shape is:
 

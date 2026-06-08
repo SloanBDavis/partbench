@@ -170,9 +170,11 @@ import {
   type ModelingSelectionContext
 } from "./modelingActions";
 import {
+  createProjectJsonDraftSourceForEditorValue,
   createProjectJsonPreview,
+  createProjectJsonWorkflowState,
   formatProjectJsonSummary,
-  summarizeCadProject
+  type ProjectJsonDraftSource
 } from "./projectJson";
 import {
   createAddTargetBodyOptions,
@@ -903,6 +905,8 @@ export function App() {
   const [unitUpdateMode, setUnitUpdateMode] =
     useState<DocumentUnitUpdateMode>("metadataOnly");
   const [projectJson, setProjectJson] = useState("");
+  const [projectJsonDraftSource, setProjectJsonDraftSource] =
+    useState<ProjectJsonDraftSource>({ kind: "empty" });
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
   const [projectMessageTone, setProjectMessageTone] = useState<
     "info" | "error"
@@ -1225,11 +1229,13 @@ export function App() {
       sketches
     ]
   );
-  const currentProjectSummary = summarizeCadProject(exportCadProject(engine));
-  const projectJsonPreview = useMemo(
-    () => createProjectJsonPreview(projectJson),
-    [projectJson]
-  );
+  const currentProject = exportCadProject(engine);
+  const projectJsonWorkflow = createProjectJsonWorkflowState({
+    currentProject,
+    draftJson: projectJson,
+    draftSource: projectJsonDraftSource
+  });
+  const currentProjectSummary = projectJsonWorkflow.current.summary;
   const utilityPanels: readonly {
     readonly id: UtilityPanelId;
     readonly label: string;
@@ -1953,6 +1959,7 @@ export function App() {
 
   function exportProjectJson() {
     setProjectJson(exportCadProjectJson(engine));
+    setProjectJsonDraftSource({ kind: "generatedExport" });
     setProjectMessage(
       `Generated ${formatProjectJsonSummary(currentProjectSummary)}.`
     );
@@ -1971,6 +1978,10 @@ export function App() {
     link.remove();
     URL.revokeObjectURL(url);
     setProjectJson(projectJson);
+    setProjectJsonDraftSource({
+      kind: "downloadedExport",
+      fileName: "partbench-project.json"
+    });
     setProjectMessage(
       `Downloaded ${formatProjectJsonSummary(currentProjectSummary)}.`
     );
@@ -1979,6 +1990,7 @@ export function App() {
 
   function loadProjectFile(projectJson: string, fileName: string) {
     setProjectJson(projectJson);
+    setProjectJsonDraftSource({ kind: "loadedFile", fileName });
     setProjectMessage(`Loaded ${fileName} for import preview.`);
     setProjectMessageTone("info");
   }
@@ -2439,12 +2451,14 @@ export function App() {
                   <ProjectJsonPanel
                     disabled={commandPending}
                     projectJson={projectJson}
-                    currentSummary={currentProjectSummary}
+                    workflow={projectJsonWorkflow}
                     message={projectMessage}
                     messageTone={projectMessageTone}
-                    preview={projectJsonPreview}
                     onProjectJsonChange={(value) => {
                       setProjectJson(value);
+                      setProjectJsonDraftSource(
+                        createProjectJsonDraftSourceForEditorValue(value)
+                      );
                       setProjectMessage(undefined);
                     }}
                     onProjectFileLoaded={loadProjectFile}
