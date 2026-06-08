@@ -149,6 +149,7 @@ export interface CadOpsAgentSuccessResponse {
   readonly transactionId?: string;
   readonly actor?: CadActorMetadata;
   readonly audit?: CadTransactionAuditMetadata;
+  readonly review: CadOpsAgentWorkflowReview;
 }
 
 export interface CadOpsAgentErrorResponse {
@@ -185,6 +186,7 @@ export interface CadOpsAgentErrorResponse {
   readonly deletedBodyIds?: readonly string[];
   readonly warnings: readonly string[];
   readonly audit?: CadTransactionAuditMetadata;
+  readonly review: CadOpsAgentWorkflowReview;
 }
 
 export type CadOpsAgentExecutionError =
@@ -197,6 +199,103 @@ export interface CadOpsAgentPermissionError {
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
+}
+
+export interface CadOpsAgentWorkflowReview {
+  readonly requestedMode: CadBatchMode;
+  readonly effectiveIntent: CadBatchMode;
+  readonly operationCount: number;
+  readonly entityChanges: CadOpsAgentEntityChangeSummary;
+  readonly operations: readonly CadOpsAgentOperationReview[];
+  readonly audit: CadOpsAgentReviewAuditSummary;
+  readonly commitGate: CadOpsAgentCommitGateSummary;
+  readonly hints: readonly CadOpsAgentReviewNotice[];
+  readonly blockers: readonly CadOpsAgentReviewNotice[];
+}
+
+export interface CadOpsAgentEntityChangeSummary {
+  readonly objects: CadOpsAgentEntityChangeCount;
+  readonly sketches: CadOpsAgentEntityChangeCount;
+  readonly sketchEntities: CadOpsAgentEntityChangeCount;
+  readonly parameters: CadOpsAgentEntityChangeCount;
+  readonly sketchDimensions: CadOpsAgentEntityChangeCount;
+  readonly sketchConstraints: CadOpsAgentEntityChangeCount;
+  readonly features: CadOpsAgentEntityChangeCount;
+  readonly bodies: CadOpsAgentEntityChangeCount;
+  readonly namedReferences: CadOpsAgentEntityChangeCount;
+}
+
+export interface CadOpsAgentEntityChangeCount {
+  readonly created: number;
+  readonly modified: number;
+  readonly deleted: number;
+}
+
+export type CadOpsAgentOperationIntent =
+  | "create"
+  | "modify"
+  | "delete"
+  | "other";
+
+export interface CadOpsAgentOperationReview {
+  readonly index: number;
+  readonly op: CadOp["op"];
+  readonly intent: CadOpsAgentOperationIntent;
+  readonly label: string;
+  readonly destructive?: true;
+  readonly objectId?: string;
+  readonly parameterId?: string;
+  readonly sketchId?: string;
+  readonly sketchEntityId?: string;
+  readonly sketchDimensionId?: string;
+  readonly sketchConstraintId?: string;
+  readonly featureId?: string;
+  readonly bodyId?: string;
+  readonly targetBodyId?: string;
+  readonly referenceName?: string;
+  readonly stableId?: string;
+}
+
+export interface CadOpsAgentReviewAuditSummary {
+  readonly source: string;
+  readonly requestId: string;
+  readonly toolName?: string;
+  readonly intent: CadBatchMode;
+  readonly operationCount: number;
+  readonly actor?: CadOpsAgentReviewActorSummary;
+}
+
+export interface CadOpsAgentReviewActorSummary {
+  readonly type: CadActorMetadata["type"];
+  readonly id?: string;
+  readonly name?: string;
+}
+
+export interface CadOpsAgentCommitGateSummary {
+  readonly commitsRequireExplicitPermission: true;
+  readonly dryRunsRequirePermission: false;
+  readonly permissionProvided: boolean;
+  readonly blocked: boolean;
+  readonly message: string;
+}
+
+export type CadOpsAgentReviewNoticeSeverity = "hint" | "warning" | "blocker";
+
+export type CadOpsAgentReviewNoticeCode =
+  | "VALIDATION_ERROR"
+  | "EMPTY_BATCH"
+  | "COMMIT_NOT_ALLOWED"
+  | "DESTRUCTIVE_DELETE"
+  | "WARNINGS_PRESENT";
+
+export interface CadOpsAgentReviewNotice {
+  readonly code: CadOpsAgentReviewNoticeCode;
+  readonly severity: CadOpsAgentReviewNoticeSeverity;
+  readonly message: string;
+  readonly opIndex?: number;
+  readonly op?: CadOp["op"];
+  readonly errorCode?: CadBatchValidationError["code"];
+  readonly path?: string;
 }
 
 export type CadOpsAgentQueryResponse =
@@ -668,6 +767,8 @@ function toAgentResponse(
   request: CadOpsAgentRequest,
   response: CadBatchResponse
 ): CadOpsAgentResponse {
+  const review = createAgentWorkflowReview(request, { response });
+
   if (!response.ok) {
     return {
       ok: false,
@@ -682,7 +783,8 @@ function toAgentResponse(
       deletedIds: response.deletedIds,
       ...toAgentDiffIds(response),
       warnings: response.warnings,
-      ...(request.batch.audit ? { audit: request.batch.audit } : {})
+      ...(request.batch.audit ? { audit: request.batch.audit } : {}),
+      review
     };
   }
 
@@ -699,7 +801,8 @@ function toAgentResponse(
     warnings: response.warnings,
     transactionId: response.transactionId,
     ...(response.actor ? { actor: response.actor } : {}),
-    ...(response.audit ? { audit: response.audit } : {})
+    ...(response.audit ? { audit: response.audit } : {}),
+    review
   };
 }
 
@@ -833,6 +936,8 @@ function createAgentPermissionErrorResponse(
   request: CadOpsAgentRequest,
   error: CadOpsAgentPermissionError
 ): CadOpsAgentErrorResponse {
+  const review = createAgentWorkflowReview(request, { permissionError: error });
+
   return {
     ok: false,
     requestId: request.requestId,
@@ -845,7 +950,8 @@ function createAgentPermissionErrorResponse(
     modifiedIds: [],
     deletedIds: [],
     warnings: [],
-    ...(request.batch.audit ? { audit: request.batch.audit } : {})
+    ...(request.batch.audit ? { audit: request.batch.audit } : {}),
+    review
   };
 }
 
@@ -859,6 +965,763 @@ function createAgentAuditMetadata(
     intent: request.batch.mode,
     operationCount: request.batch.ops.length
   };
+}
+
+function createAgentWorkflowReview(
+  request: CadOpsAgentRequest,
+  options: {
+    readonly response?: CadBatchResponse;
+    readonly permissionError?: CadOpsAgentPermissionError;
+  }
+): CadOpsAgentWorkflowReview {
+  const warnings = options.response?.warnings ?? [];
+  const blockers = createReviewBlockers(request, options);
+  const hints = createReviewHints(request, warnings);
+
+  return {
+    requestedMode: request.batch.mode,
+    effectiveIntent: options.response?.mode ?? request.batch.mode,
+    operationCount: request.batch.ops.length,
+    entityChanges: createEntityChangeSummary(
+      options.response,
+      request.batch.ops
+    ),
+    operations: request.batch.ops.map((op, index) =>
+      createOperationReview(index, op)
+    ),
+    audit: createReviewAuditSummary(request),
+    commitGate: createCommitGateSummary(request),
+    hints,
+    blockers
+  };
+}
+
+function createEntityChangeSummary(
+  response: CadBatchResponse | undefined,
+  ops: readonly CadOp[]
+): CadOpsAgentEntityChangeSummary {
+  const namedReferenceCounts =
+    response?.ok === true
+      ? {
+          created: ops.filter((op) => op.op === "reference.nameGenerated")
+            .length,
+          modified: 0,
+          deleted: ops.filter((op) => op.op === "reference.deleteName").length
+        }
+      : emptyChangeCount();
+
+  return {
+    objects: createChangeCount(
+      response?.createdIds,
+      response?.modifiedIds,
+      response?.deletedIds
+    ),
+    sketches: createChangeCount(
+      response?.createdSketchIds,
+      response?.modifiedSketchIds,
+      response?.deletedSketchIds
+    ),
+    sketchEntities: createChangeCount(
+      response?.createdSketchEntityIds,
+      response?.modifiedSketchEntityIds,
+      response?.deletedSketchEntityIds
+    ),
+    parameters: createChangeCount(
+      response?.createdParameterIds,
+      response?.modifiedParameterIds,
+      response?.deletedParameterIds
+    ),
+    sketchDimensions: createChangeCount(
+      response?.createdSketchDimensionIds,
+      response?.modifiedSketchDimensionIds,
+      response?.deletedSketchDimensionIds
+    ),
+    sketchConstraints: createChangeCount(
+      response?.createdSketchConstraintIds,
+      response?.modifiedSketchConstraintIds,
+      response?.deletedSketchConstraintIds
+    ),
+    features: createChangeCount(
+      response?.createdFeatureIds,
+      response?.modifiedFeatureIds,
+      response?.deletedFeatureIds
+    ),
+    bodies: createChangeCount(
+      response?.createdBodyIds,
+      response?.modifiedBodyIds,
+      response?.deletedBodyIds
+    ),
+    namedReferences: namedReferenceCounts
+  };
+}
+
+function createChangeCount(
+  created: readonly unknown[] | undefined,
+  modified: readonly unknown[] | undefined,
+  deleted: readonly unknown[] | undefined
+): CadOpsAgentEntityChangeCount {
+  return {
+    created: created?.length ?? 0,
+    modified: modified?.length ?? 0,
+    deleted: deleted?.length ?? 0
+  };
+}
+
+function emptyChangeCount(): CadOpsAgentEntityChangeCount {
+  return {
+    created: 0,
+    modified: 0,
+    deleted: 0
+  };
+}
+
+function createReviewAuditSummary(
+  request: CadOpsAgentRequest
+): CadOpsAgentReviewAuditSummary {
+  const audit = request.batch.audit ?? createAgentAuditMetadata(request);
+
+  return {
+    source: audit.source ?? request.source?.source ?? "agent-adapter",
+    requestId: audit.requestId ?? request.requestId,
+    ...(audit.toolName ? { toolName: audit.toolName } : {}),
+    intent: audit.intent,
+    operationCount: audit.operationCount,
+    ...(request.batch.actor
+      ? {
+          actor: {
+            type: request.batch.actor.type,
+            ...(request.batch.actor.id ? { id: request.batch.actor.id } : {}),
+            ...(request.batch.actor.name
+              ? { name: request.batch.actor.name }
+              : {})
+          }
+        }
+      : {})
+  };
+}
+
+function createCommitGateSummary(
+  request: CadOpsAgentRequest
+): CadOpsAgentCommitGateSummary {
+  const permissionProvided = request.permissions?.allowCommit === true;
+  const blocked = request.batch.mode === "commit" && !permissionProvided;
+
+  return {
+    commitsRequireExplicitPermission: true,
+    dryRunsRequirePermission: false,
+    permissionProvided,
+    blocked,
+    message:
+      request.batch.mode === "dryRun"
+        ? "Dry-run requested; commit permission is not required."
+        : permissionProvided
+          ? "Commit requested and explicitly allowed by adapter permissions."
+          : "Commit requested but blocked because permissions.allowCommit is not true."
+  };
+}
+
+function createReviewBlockers(
+  request: CadOpsAgentRequest,
+  options: {
+    readonly response?: CadBatchResponse;
+    readonly permissionError?: CadOpsAgentPermissionError;
+  }
+): readonly CadOpsAgentReviewNotice[] {
+  const blockers: CadOpsAgentReviewNotice[] = [];
+
+  if (request.batch.ops.length === 0) {
+    blockers.push({
+      code: "EMPTY_BATCH",
+      severity: "blocker",
+      message: "Batch has no operations to review or execute."
+    });
+  }
+
+  if (options.permissionError) {
+    blockers.push({
+      code: "COMMIT_NOT_ALLOWED",
+      severity: "blocker",
+      message: options.permissionError.message,
+      path: options.permissionError.path
+    });
+  }
+
+  if (options.response && !options.response.ok) {
+    for (const error of options.response.errors) {
+      const code =
+        error.code === "EMPTY_BATCH" ? "EMPTY_BATCH" : "VALIDATION_ERROR";
+
+      if (
+        code === "EMPTY_BATCH" &&
+        blockers.some((blocker) => blocker.code === "EMPTY_BATCH")
+      ) {
+        continue;
+      }
+
+      blockers.push({
+        code,
+        severity: "blocker",
+        message: `${error.code}: ${error.message}`,
+        ...(error.opIndex !== undefined ? { opIndex: error.opIndex } : {}),
+        ...(error.op ? { op: error.op } : {}),
+        errorCode: error.code,
+        ...(error.path ? { path: error.path } : {})
+      });
+    }
+  }
+
+  return blockers;
+}
+
+function createReviewHints(
+  request: CadOpsAgentRequest,
+  warnings: readonly string[]
+): readonly CadOpsAgentReviewNotice[] {
+  const hints: CadOpsAgentReviewNotice[] = [];
+  const destructiveOps = request.batch.ops
+    .map((op, index) => ({ op, index }))
+    .filter(({ op }) => isDestructiveOperation(op));
+
+  if (destructiveOps.length > 0) {
+    const first = destructiveOps[0];
+
+    hints.push({
+      code: "DESTRUCTIVE_DELETE",
+      severity: "warning",
+      message: `Batch includes ${destructiveOps.length} destructive delete operation(s); review targets before commit.`,
+      opIndex: first.index,
+      op: first.op.op
+    });
+  }
+
+  if (warnings.length > 0) {
+    hints.push({
+      code: "WARNINGS_PRESENT",
+      severity: "warning",
+      message: `CADOps returned ${warnings.length} warning(s); review warnings before commit.`
+    });
+  }
+
+  return hints;
+}
+
+function createOperationReview(
+  index: number,
+  op: CadOp
+): CadOpsAgentOperationReview {
+  switch (op.op) {
+    case "document.updateUnits":
+      return operationReviewBase(
+        index,
+        op,
+        "modify",
+        `Set document units to ${op.units}`
+      );
+
+    case "parameter.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create parameter ${op.id ?? op.name}`
+        ),
+        ...(op.id ? { parameterId: op.id } : {})
+      };
+
+    case "parameter.update":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update parameter ${op.id}`
+        ),
+        parameterId: op.id
+      };
+
+    case "parameter.rename":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Rename parameter ${op.id}`
+        ),
+        parameterId: op.id
+      };
+
+    case "parameter.delete":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "delete",
+          `Delete parameter ${op.id}`
+        ),
+        parameterId: op.id
+      };
+
+    case "scene.createBox":
+      return createObjectCreateOperationReview(index, op, "box");
+
+    case "scene.createCylinder":
+      return createObjectCreateOperationReview(index, op, "cylinder");
+
+    case "scene.createSphere":
+      return createObjectCreateOperationReview(index, op, "sphere");
+
+    case "scene.createCone":
+      return createObjectCreateOperationReview(index, op, "cone");
+
+    case "scene.createTorus":
+      return createObjectCreateOperationReview(index, op, "torus");
+
+    case "scene.deleteObject":
+      return {
+        ...operationReviewBase(index, op, "delete", `Delete object ${op.id}`),
+        objectId: op.id
+      };
+
+    case "scene.updateTransform":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update transform for ${op.id}`
+        ),
+        objectId: op.id
+      };
+
+    case "scene.updateBoxDimensions":
+      return createObjectUpdateOperationReview(index, op, "box");
+
+    case "scene.updateCylinderDimensions":
+      return createObjectUpdateOperationReview(index, op, "cylinder");
+
+    case "scene.updateSphereDimensions":
+      return createObjectUpdateOperationReview(index, op, "sphere");
+
+    case "scene.updateConeDimensions":
+      return createObjectUpdateOperationReview(index, op, "cone");
+
+    case "scene.updateTorusDimensions":
+      return createObjectUpdateOperationReview(index, op, "torus");
+
+    case "scene.renameObject":
+      return {
+        ...operationReviewBase(index, op, "modify", `Rename object ${op.id}`),
+        objectId: op.id
+      };
+
+    case "sketch.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create sketch ${op.id ?? op.name} on ${op.plane}`
+        ),
+        ...(op.id ? { sketchId: op.id } : {})
+      };
+
+    case "sketch.createOnFace": {
+      const target = op.referenceName
+        ? `named reference ${op.referenceName}`
+        : op.faceStableId
+          ? `face ${op.faceStableId}`
+          : op.bodyId
+            ? `face on ${op.bodyId}`
+            : "selected face";
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create sketch ${op.id ?? op.name} on ${target}`
+        ),
+        ...(op.id ? { sketchId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        ...(op.referenceName ? { referenceName: op.referenceName } : {}),
+        ...(op.faceStableId ? { stableId: op.faceStableId } : {})
+      };
+    }
+
+    case "sketch.rename":
+      return {
+        ...operationReviewBase(index, op, "modify", `Rename sketch ${op.id}`),
+        sketchId: op.id
+      };
+
+    case "sketch.delete":
+      return {
+        ...operationReviewBase(index, op, "delete", `Delete sketch ${op.id}`),
+        sketchId: op.id
+      };
+
+    case "sketch.addPoint":
+      return createSketchEntityAddOperationReview(index, op, "point");
+
+    case "sketch.addLine":
+      return createSketchEntityAddOperationReview(index, op, "line");
+
+    case "sketch.addRectangle":
+      return createSketchEntityAddOperationReview(index, op, "rectangle");
+
+    case "sketch.addCircle":
+      return createSketchEntityAddOperationReview(index, op, "circle");
+
+    case "sketch.updateEntity":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update ${op.entity.kind} ${op.entity.id} in ${op.sketchId}`
+        ),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entity.id
+      };
+
+    case "sketch.deleteEntity":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "delete",
+          `Delete entity ${op.entityId} from ${op.sketchId}`
+        ),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entityId
+      };
+
+    case "sketch.dimension.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create sketch dimension ${op.id ?? op.name} on ${op.sketchId}/${op.entityId}`
+        ),
+        ...(op.id ? { sketchDimensionId: op.id } : {}),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entityId
+      };
+
+    case "sketch.dimension.update":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update sketch dimension ${op.id}`
+        ),
+        sketchDimensionId: op.id
+      };
+
+    case "sketch.dimension.rename":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Rename sketch dimension ${op.id}`
+        ),
+        sketchDimensionId: op.id
+      };
+
+    case "sketch.dimension.delete":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "delete",
+          `Delete sketch dimension ${op.id}`
+        ),
+        sketchDimensionId: op.id
+      };
+
+    case "sketch.constraint.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create ${op.kind} sketch constraint ${op.id ?? op.name} on ${op.sketchId}`
+        ),
+        ...(op.id ? { sketchConstraintId: op.id } : {}),
+        sketchId: op.sketchId
+      };
+
+    case "sketch.constraint.rename":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Rename sketch constraint ${op.id}`
+        ),
+        sketchConstraintId: op.id
+      };
+
+    case "sketch.constraint.delete":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "delete",
+          `Delete sketch constraint ${op.id}`
+        ),
+        sketchConstraintId: op.id
+      };
+
+    case "feature.extrude": {
+      const operationMode = op.operationMode ?? "newBody";
+      const operationLabel =
+        operationMode === "newBody" ? "new body" : operationMode;
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create ${operationLabel} extrude feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.entityId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        ...(op.targetBodyId ? { targetBodyId: op.targetBodyId } : {}),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entityId
+      };
+    }
+
+    case "feature.revolve":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create revolve feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.entityId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        ...(op.targetBodyId ? { targetBodyId: op.targetBodyId } : {}),
+        sketchId: op.sketchId,
+        sketchEntityId: op.entityId
+      };
+
+    case "feature.hole":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create hole feature ${op.id ?? "with generated ID"} from ${op.sketchId}/${op.circleEntityId} into ${op.targetBodyId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId,
+        sketchId: op.sketchId,
+        sketchEntityId: op.circleEntityId
+      };
+
+    case "feature.chamfer": {
+      const target = op.namedReference
+        ? `named reference ${op.namedReference}`
+        : op.edgeStableId;
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create chamfer feature ${op.id ?? "with generated ID"} on ${target} of ${op.targetBodyId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId,
+        ...(op.namedReference ? { referenceName: op.namedReference } : {}),
+        ...(op.edgeStableId ? { stableId: op.edgeStableId } : {})
+      };
+    }
+
+    case "feature.fillet": {
+      const target = op.namedReference
+        ? `named reference ${op.namedReference}`
+        : op.edgeStableId;
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create fillet feature ${op.id ?? "with generated ID"} on ${target} of ${op.targetBodyId}`
+        ),
+        ...(op.id ? { featureId: op.id } : {}),
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        targetBodyId: op.targetBodyId,
+        ...(op.namedReference ? { referenceName: op.namedReference } : {}),
+        ...(op.edgeStableId ? { stableId: op.edgeStableId } : {})
+      };
+    }
+
+    case "feature.delete":
+      return {
+        ...operationReviewBase(index, op, "delete", `Delete feature ${op.id}`),
+        featureId: op.id
+      };
+
+    case "feature.updateExtrude": {
+      const edits = [
+        ...(op.depth !== undefined ? [`depth ${op.depth}`] : []),
+        ...(op.side !== undefined ? [`side ${op.side}`] : [])
+      ];
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update extrude feature ${op.id}${
+            edits.length > 0 ? ` (${edits.join(", ")})` : ""
+          }`
+        ),
+        featureId: op.id
+      };
+    }
+
+    case "reference.nameGenerated":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Name generated reference ${op.name} on ${op.bodyId}`
+        ),
+        referenceName: op.name,
+        bodyId: op.bodyId,
+        stableId: op.stableId
+      };
+
+    case "reference.deleteName":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "delete",
+          `Delete named reference ${op.name}`
+        ),
+        referenceName: op.name
+      };
+  }
+}
+
+function createObjectCreateOperationReview(
+  index: number,
+  op: Extract<
+    CadOp,
+    {
+      readonly op:
+        | "scene.createBox"
+        | "scene.createCylinder"
+        | "scene.createSphere"
+        | "scene.createCone"
+        | "scene.createTorus";
+    }
+  >,
+  kind: "box" | "cylinder" | "sphere" | "cone" | "torus"
+): CadOpsAgentOperationReview {
+  return {
+    ...operationReviewBase(
+      index,
+      op,
+      "create",
+      `Create ${kind} ${op.id ?? "with generated ID"}`
+    ),
+    ...(op.id ? { objectId: op.id } : {})
+  };
+}
+
+function createObjectUpdateOperationReview(
+  index: number,
+  op: Extract<
+    CadOp,
+    {
+      readonly op:
+        | "scene.updateBoxDimensions"
+        | "scene.updateCylinderDimensions"
+        | "scene.updateSphereDimensions"
+        | "scene.updateConeDimensions"
+        | "scene.updateTorusDimensions";
+    }
+  >,
+  kind: "box" | "cylinder" | "sphere" | "cone" | "torus"
+): CadOpsAgentOperationReview {
+  return {
+    ...operationReviewBase(
+      index,
+      op,
+      "modify",
+      `Update ${kind} dimensions for ${op.id}`
+    ),
+    objectId: op.id
+  };
+}
+
+function createSketchEntityAddOperationReview(
+  index: number,
+  op: Extract<
+    CadOp,
+    {
+      readonly op:
+        | "sketch.addPoint"
+        | "sketch.addLine"
+        | "sketch.addRectangle"
+        | "sketch.addCircle";
+    }
+  >,
+  kind: "point" | "line" | "rectangle" | "circle"
+): CadOpsAgentOperationReview {
+  return {
+    ...operationReviewBase(
+      index,
+      op,
+      "create",
+      `Add ${kind} ${op.id ?? "with generated ID"} to ${op.sketchId}`
+    ),
+    sketchId: op.sketchId,
+    ...(op.id ? { sketchEntityId: op.id } : {})
+  };
+}
+
+function operationReviewBase(
+  index: number,
+  op: CadOp,
+  intent: CadOpsAgentOperationIntent,
+  label: string
+): CadOpsAgentOperationReview {
+  return {
+    index,
+    op: op.op,
+    intent,
+    label,
+    ...(isDestructiveOperation(op) ? { destructive: true as const } : {})
+  };
+}
+
+function isDestructiveOperation(op: CadOp): boolean {
+  return (
+    op.op === "parameter.delete" ||
+    op.op === "scene.deleteObject" ||
+    op.op === "sketch.delete" ||
+    op.op === "sketch.deleteEntity" ||
+    op.op === "sketch.dimension.delete" ||
+    op.op === "sketch.constraint.delete" ||
+    op.op === "feature.delete" ||
+    op.op === "reference.deleteName"
+  );
 }
 
 function toAgentQueryResponse(

@@ -43,6 +43,51 @@ describe("agent-adapter", () => {
         requestId: "agent_req_1",
         intent: "dryRun",
         operationCount: 1
+      },
+      review: {
+        requestedMode: "dryRun",
+        effectiveIntent: "dryRun",
+        operationCount: 1,
+        entityChanges: {
+          objects: { created: 1, modified: 0, deleted: 0 },
+          sketches: { created: 0, modified: 0, deleted: 0 },
+          sketchEntities: { created: 0, modified: 0, deleted: 0 },
+          parameters: { created: 0, modified: 0, deleted: 0 },
+          sketchDimensions: { created: 0, modified: 0, deleted: 0 },
+          sketchConstraints: { created: 0, modified: 0, deleted: 0 },
+          features: { created: 0, modified: 0, deleted: 0 },
+          bodies: { created: 0, modified: 0, deleted: 0 },
+          namedReferences: { created: 0, modified: 0, deleted: 0 }
+        },
+        operations: [
+          {
+            index: 0,
+            op: "scene.createBox",
+            intent: "create",
+            label: "Create box preview_box",
+            objectId: "preview_box"
+          }
+        ],
+        audit: {
+          source: "agent-adapter",
+          requestId: "agent_req_1",
+          intent: "dryRun",
+          operationCount: 1,
+          actor: {
+            type: "agent",
+            id: "agent-adapter",
+            name: "Agent Adapter"
+          }
+        },
+        commitGate: {
+          commitsRequireExplicitPermission: true,
+          dryRunsRequirePermission: false,
+          permissionProvided: false,
+          blocked: false,
+          message: "Dry-run requested; commit permission is not required."
+        },
+        hints: [],
+        blockers: []
       }
     });
     expect(engine.getDocument().objects.size).toBe(0);
@@ -94,12 +139,82 @@ describe("agent-adapter", () => {
         requestId: "agent_req_2",
         intent: "commit",
         operationCount: 1
+      },
+      review: {
+        requestedMode: "commit",
+        effectiveIntent: "commit",
+        operationCount: 1,
+        entityChanges: {
+          objects: { created: 1, modified: 0, deleted: 0 },
+          sketches: { created: 0, modified: 0, deleted: 0 },
+          sketchEntities: { created: 0, modified: 0, deleted: 0 },
+          parameters: { created: 0, modified: 0, deleted: 0 },
+          sketchDimensions: { created: 0, modified: 0, deleted: 0 },
+          sketchConstraints: { created: 0, modified: 0, deleted: 0 },
+          features: { created: 0, modified: 0, deleted: 0 },
+          bodies: { created: 0, modified: 0, deleted: 0 },
+          namedReferences: { created: 0, modified: 0, deleted: 0 }
+        },
+        operations: [
+          {
+            index: 0,
+            op: "scene.createCylinder",
+            intent: "create",
+            label: "Create cylinder committed_cylinder",
+            objectId: "committed_cylinder"
+          }
+        ],
+        audit: {
+          source: "agent-adapter",
+          requestId: "agent_req_2",
+          intent: "commit",
+          operationCount: 1,
+          actor: {
+            type: "agent",
+            id: "fixture-agent",
+            name: "Fixture Agent"
+          }
+        },
+        commitGate: {
+          commitsRequireExplicitPermission: true,
+          dryRunsRequirePermission: false,
+          permissionProvided: true,
+          blocked: false,
+          message:
+            "Commit requested and explicitly allowed by adapter permissions."
+        },
+        hints: [],
+        blockers: []
       }
     });
     expect(adapter.getEngine().getTransactions()[0]?.actor).toEqual({
       type: "agent",
       id: "fixture-agent",
       name: "Fixture Agent"
+    });
+    expect(adapter.getEngine().getTransactions()[0]?.audit).toEqual(
+      response.audit
+    );
+    expect(
+      adapter.getEngine().executeQuery({
+        version: "cadops.v1",
+        query: { query: "transaction.history" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "transaction.history",
+      transactionCount: 1,
+      transactions: [
+        {
+          id: "txn_1",
+          actor: {
+            type: "agent",
+            id: "fixture-agent",
+            name: "Fixture Agent"
+          },
+          audit: response.audit
+        }
+      ]
     });
     expect(
       adapter.getEngine().getDocument().objects.get("committed_cylinder")?.kind
@@ -140,9 +255,209 @@ describe("agent-adapter", () => {
         requestId: "agent_req_blocked_commit",
         intent: "commit",
         operationCount: 1
+      },
+      review: {
+        requestedMode: "commit",
+        effectiveIntent: "commit",
+        operationCount: 1,
+        entityChanges: {
+          objects: { created: 0, modified: 0, deleted: 0 }
+        },
+        operations: [
+          {
+            index: 0,
+            op: "scene.createBox",
+            intent: "create",
+            label: "Create box blocked_box",
+            objectId: "blocked_box"
+          }
+        ],
+        audit: {
+          source: "agent-adapter",
+          requestId: "agent_req_blocked_commit",
+          intent: "commit",
+          operationCount: 1,
+          actor: {
+            type: "agent",
+            id: "agent-adapter",
+            name: "Agent Adapter"
+          }
+        },
+        commitGate: {
+          permissionProvided: false,
+          blocked: true
+        },
+        blockers: [
+          {
+            code: "COMMIT_NOT_ALLOWED",
+            severity: "blocker",
+            path: "$.permissions.allowCommit"
+          }
+        ]
       }
     });
     expect(adapter.getEngine().getDocument().objects.size).toBe(0);
+  });
+
+  it("returns a reviewable dry-run preview for a representative V7 workflow", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_workflow_preview",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      actor: {
+        type: "agent",
+        id: "workflow-agent",
+        name: "Workflow Agent"
+      },
+      source: {
+        source: "agent-workflow-preview",
+        toolName: "cad.batch"
+      },
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "sketch_preview",
+            name: "Preview profile",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_preview",
+            id: "rect_preview",
+            center: [0, 0],
+            width: 4,
+            height: 2
+          },
+          {
+            op: "sketch.addCircle",
+            sketchId: "sketch_preview",
+            id: "circle_preview",
+            center: [1, 0],
+            radius: 0.25
+          },
+          {
+            op: "feature.extrude",
+            id: "feat_preview",
+            bodyId: "body_preview",
+            sketchId: "sketch_preview",
+            entityId: "rect_preview",
+            depth: 6
+          },
+          {
+            op: "reference.nameGenerated",
+            name: "Preview end face",
+            bodyId: "body_preview",
+            stableId: "generated:face:body_preview:endCap"
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_preview"],
+      createdSketchEntityIds: ["rect_preview", "circle_preview"],
+      createdFeatureIds: ["feat_preview"],
+      createdBodyIds: ["body_preview"],
+      review: {
+        requestedMode: "dryRun",
+        effectiveIntent: "dryRun",
+        operationCount: 5,
+        entityChanges: {
+          sketches: { created: 1, modified: 0, deleted: 0 },
+          sketchEntities: { created: 2, modified: 0, deleted: 0 },
+          features: { created: 1, modified: 0, deleted: 0 },
+          bodies: { created: 1, modified: 0, deleted: 0 },
+          namedReferences: { created: 1, modified: 0, deleted: 0 }
+        },
+        operations: [
+          {
+            index: 0,
+            op: "sketch.create",
+            intent: "create",
+            label: "Create sketch sketch_preview on XY",
+            sketchId: "sketch_preview"
+          },
+          {
+            index: 1,
+            op: "sketch.addRectangle",
+            intent: "create",
+            label: "Add rectangle rect_preview to sketch_preview",
+            sketchId: "sketch_preview",
+            sketchEntityId: "rect_preview"
+          },
+          {
+            index: 2,
+            op: "sketch.addCircle",
+            intent: "create",
+            label: "Add circle circle_preview to sketch_preview",
+            sketchId: "sketch_preview",
+            sketchEntityId: "circle_preview"
+          },
+          {
+            index: 3,
+            op: "feature.extrude",
+            intent: "create",
+            label:
+              "Create new body extrude feature feat_preview from sketch_preview/rect_preview",
+            sketchId: "sketch_preview",
+            sketchEntityId: "rect_preview",
+            featureId: "feat_preview",
+            bodyId: "body_preview"
+          },
+          {
+            index: 4,
+            op: "reference.nameGenerated",
+            intent: "create",
+            label: "Name generated reference Preview end face on body_preview",
+            referenceName: "Preview end face",
+            bodyId: "body_preview",
+            stableId: "generated:face:body_preview:endCap"
+          }
+        ],
+        audit: {
+          source: "agent-workflow-preview",
+          requestId: "agent_req_workflow_preview",
+          toolName: "cad.batch",
+          intent: "dryRun",
+          operationCount: 5,
+          actor: {
+            type: "agent",
+            id: "workflow-agent",
+            name: "Workflow Agent"
+          }
+        },
+        commitGate: {
+          permissionProvided: false,
+          blocked: false
+        },
+        hints: [],
+        blockers: []
+      }
+    });
+    if (!response.ok) {
+      throw new Error("Expected workflow preview to succeed.");
+    }
+    expect(response.transactionId).toBeUndefined();
+    expect(adapter.getEngine().getDocument().sketches.size).toBe(0);
+    expect(adapter.getEngine().getDocument().features.size).toBe(0);
+    expect(
+      adapter.getEngine().executeQuery({
+        version: "cadops.v1",
+        query: { query: "project.structure" }
+      })
+    ).toMatchObject({
+      ok: true,
+      bodyCount: 0
+    });
+    expect(JSON.stringify(response.review)).not.toMatch(
+      /\b(mesh|occt|renderer|selection-buffer)\b/i
+    );
   });
 
   it("returns structured CADOps validation errors", () => {
@@ -191,7 +506,121 @@ describe("agent-adapter", () => {
       createdIds: [],
       modifiedIds: [],
       deletedIds: [],
-      warnings: []
+      warnings: [],
+      review: {
+        requestedMode: "commit",
+        effectiveIntent: "commit",
+        operationCount: 1,
+        operations: [
+          {
+            index: 0,
+            op: "scene.deleteObject",
+            intent: "delete",
+            label: "Delete object missing_object",
+            objectId: "missing_object",
+            destructive: true
+          }
+        ],
+        hints: [
+          {
+            code: "DESTRUCTIVE_DELETE",
+            severity: "warning",
+            opIndex: 0,
+            op: "scene.deleteObject"
+          }
+        ],
+        blockers: [
+          {
+            code: "VALIDATION_ERROR",
+            severity: "blocker",
+            errorCode: "OBJECT_NOT_FOUND",
+            opIndex: 0,
+            op: "scene.deleteObject",
+            path: "$.ops[0].id"
+          }
+        ]
+      }
+    });
+  });
+
+  it("returns an empty-batch review blocker", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    const response = adapter.execute({
+      requestId: "agent_req_empty_batch",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: []
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      requestId: "agent_req_empty_batch",
+      mode: "dryRun",
+      error: {
+        code: "EMPTY_BATCH"
+      },
+      review: {
+        requestedMode: "dryRun",
+        effectiveIntent: "dryRun",
+        operationCount: 0,
+        operations: [],
+        blockers: [
+          {
+            code: "EMPTY_BATCH",
+            severity: "blocker",
+            message: "Batch has no operations to review or execute."
+          }
+        ]
+      }
+    });
+    expect(adapter.getEngine().getTransactions()).toEqual([]);
+  });
+
+  it("surfaces non-empty CADOps warnings as review hints", () => {
+    const adapter = new CadOpsAgentAdapter({
+      executeBatch: () => ({
+        ok: true,
+        mode: "dryRun",
+        createdIds: [],
+        modifiedIds: [],
+        deletedIds: [],
+        warnings: ["Synthetic warning for review coverage."]
+      })
+    } as unknown as CadEngine);
+
+    const response = adapter.execute({
+      requestId: "agent_req_warning_hint",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "warning_box",
+            dimensions: { width: 1, height: 1, depth: 1 }
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      warnings: ["Synthetic warning for review coverage."],
+      review: {
+        hints: [
+          {
+            code: "WARNINGS_PRESENT",
+            severity: "warning",
+            message:
+              "CADOps returned 1 warning(s); review warnings before commit."
+          }
+        ]
+      }
     });
   });
 

@@ -72,7 +72,42 @@ describe("mcp-adapter", () => {
         mode: "dryRun",
         createdIds: ["preview_box"],
         modifiedIds: [],
-        deletedIds: []
+        deletedIds: [],
+        review: {
+          requestedMode: "dryRun",
+          effectiveIntent: "dryRun",
+          operationCount: 1,
+          entityChanges: {
+            objects: { created: 1, modified: 0, deleted: 0 }
+          },
+          operations: [
+            {
+              index: 0,
+              op: "scene.createBox",
+              intent: "create",
+              label: "Create box preview_box",
+              objectId: "preview_box"
+            }
+          ],
+          audit: {
+            source: "mcp",
+            requestId: "mcp_req_dry_run",
+            toolName: "cad.batch",
+            intent: "dryRun",
+            operationCount: 1,
+            actor: {
+              type: "agent",
+              id: "mcp",
+              name: "MCP Client"
+            }
+          },
+          commitGate: {
+            permissionProvided: false,
+            blocked: false
+          },
+          hints: [],
+          blockers: []
+        }
       }
     });
     expect(summary.structuredContent).toMatchObject({
@@ -264,6 +299,46 @@ describe("mcp-adapter", () => {
           toolName: "cad.batch",
           intent: "commit",
           operationCount: 1
+        },
+        review: {
+          requestedMode: "commit",
+          effectiveIntent: "commit",
+          operationCount: 1,
+          entityChanges: {
+            objects: { created: 0, modified: 0, deleted: 0 }
+          },
+          operations: [
+            {
+              index: 0,
+              op: "scene.createBox",
+              intent: "create",
+              label: "Create box blocked_mcp_box",
+              objectId: "blocked_mcp_box"
+            }
+          ],
+          audit: {
+            source: "mcp",
+            requestId: "mcp_req_blocked_commit",
+            toolName: "cad.batch",
+            intent: "commit",
+            operationCount: 1,
+            actor: {
+              type: "agent",
+              id: "mcp",
+              name: "MCP Client"
+            }
+          },
+          commitGate: {
+            permissionProvided: false,
+            blocked: true
+          },
+          blockers: [
+            {
+              code: "COMMIT_NOT_ALLOWED",
+              severity: "blocker",
+              path: "$.permissions.allowCommit"
+            }
+          ]
         }
       }
     });

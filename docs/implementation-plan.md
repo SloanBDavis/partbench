@@ -514,6 +514,38 @@ topology authority:
   picking, persistent hover/selection state, new modeling commands, storage
   migration, WebGPU, or `web-cad.project.v17`.
 
+### Implemented Tranche D1: Project JSON Workflow Polish
+
+The first local-project slice makes the existing JSON save/open workflow more
+credible without introducing a native package or new schema:
+
+- the Project panel summarizes the authoritative current export, draft source
+  state, schema/migration status, structured validation issues,
+  replacement/history impact, and same-document-source detection before import;
+- import/export remains ordinary `web-cad.project.v16` JSON through cad-core.
+  The app does not make draft JSON, thumbnails, caches, browser file handles, or
+  derived geometry part of the source-of-truth document;
+- invalid, stale, unsupported, and replacement-risk states are surfaced as
+  structured project diagnostics rather than vague import/export text;
+- this slice does not add File System Access open/save handles, OPFS, `.wcad`
+  packages, thumbnails, cache storage, STEP/IGES import/export, or
+  `web-cad.project.v17`.
+
+### Implemented Tranche D2: Local Storage Capability Status
+
+The second local-project slice makes the Project panel explicit about what the
+current browser/app can and cannot do:
+
+- ordinary JSON download/upload remains the active local project path;
+- the app reports detected availability for the existing download/upload
+  primitives and File System Access picker functions, while OPFS, thumbnails,
+  cache storage, and native `.wcad` packages remain deferred capabilities;
+- capability reporting is status-only. It does not call File System Access
+  picker APIs, request file permissions, write OPFS data, create thumbnails or
+  cache files, or change saved project format;
+- no new source data is introduced, so no `web-cad.project.v17` migration is
+  added.
+
 ### Implemented Tranche E1: Export Readiness Contract
 
 The first export slice adds an honest readiness/status contract before any file
@@ -590,6 +622,30 @@ without adding source data:
 - no saved project schema change is introduced. Summary results, workflow hints,
   export readiness, and reference capability counts are query-derived and not
   persisted.
+
+### Implemented Tranche F2: Agent Workflow Preview And Audit Surface
+
+The second agent/MCP release-surface slice makes multi-step `cad.batch` calls
+reviewable before commit without adding MCP-only semantics:
+
+- every agent-adapter batch response now includes a compact `review` block with
+  requested mode, effective intent, operation count, entity-change counts,
+  operation review labels, audit summary, commit-gate summary, hints, and
+  blockers;
+- dry-runs remain non-mutating and return no transaction id. Commits still
+  require `permissions.allowCommit === true`, and refused commits return a
+  `COMMIT_NOT_ALLOWED` review blocker without executing CADOps;
+- validation errors, empty batches, destructive delete operations, and CADOps
+  warnings are surfaced as structured review blockers or hints;
+- successful commit transactions preserve the normalized audit metadata in
+  transaction history;
+- `cad.batch` and the stdio MCP transport remain thin pass-throughs over the
+  agent adapter/CADOps path. The review surface summarizes request/result data
+  and does not promote renderer, mesh, OCCT, cache, or selection-buffer
+  identifiers to public stable IDs;
+- no saved project schema change is introduced. Preview/review data is
+  response-derived and not persisted, except for existing commit audit metadata
+  stored with committed transactions.
 
 Future V7 tranche plans should continue to include these details:
 

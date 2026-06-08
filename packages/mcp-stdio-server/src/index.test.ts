@@ -134,6 +134,146 @@ describe("mcp stdio server", () => {
     });
   });
 
+  it("passes cad.batch review previews and commit refusals over JSON-RPC", () => {
+    const session = createMcpStdioSession();
+    const preview = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "preview-batch",
+          method: "tools/call",
+          params: {
+            name: "cad.batch",
+            arguments: {
+              batch: {
+                version: "cadops.v1",
+                mode: "dryRun",
+                ops: [
+                  {
+                    op: "scene.createBox",
+                    id: "stdio_preview_box",
+                    dimensions: { width: 1, height: 2, depth: 3 }
+                  }
+                ]
+              }
+            }
+          }
+        })
+      )
+    );
+    const blocked = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "blocked-batch",
+          method: "tools/call",
+          params: {
+            name: "cad.batch",
+            arguments: {
+              batch: {
+                version: "cadops.v1",
+                mode: "commit",
+                ops: [
+                  {
+                    op: "scene.createBox",
+                    id: "stdio_blocked_box",
+                    dimensions: { width: 1, height: 1, depth: 1 }
+                  }
+                ]
+              }
+            }
+          }
+        })
+      )
+    );
+    const summary = parseLineResponse(
+      session.handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "preview-summary",
+          method: "tools/call",
+          params: {
+            name: "cad.project_summary",
+            arguments: {}
+          }
+        })
+      )
+    );
+
+    expect(preview).toMatchObject({
+      jsonrpc: "2.0",
+      id: "preview-batch",
+      result: {
+        toolName: "cad.batch",
+        isError: false,
+        structuredContent: {
+          ok: true,
+          requestId: "mcp_jsonrpc_preview-batch",
+          mode: "dryRun",
+          createdIds: ["stdio_preview_box"],
+          review: {
+            requestedMode: "dryRun",
+            operationCount: 1,
+            entityChanges: {
+              objects: { created: 1, modified: 0, deleted: 0 }
+            },
+            audit: {
+              source: "mcp",
+              requestId: "mcp_jsonrpc_preview-batch",
+              toolName: "cad.batch"
+            },
+            commitGate: {
+              permissionProvided: false,
+              blocked: false
+            },
+            blockers: []
+          }
+        }
+      }
+    });
+    expect(blocked).toMatchObject({
+      jsonrpc: "2.0",
+      id: "blocked-batch",
+      result: {
+        toolName: "cad.batch",
+        isError: true,
+        structuredContent: {
+          ok: false,
+          requestId: "mcp_jsonrpc_blocked-batch",
+          mode: "commit",
+          error: {
+            code: "COMMIT_NOT_ALLOWED"
+          },
+          review: {
+            requestedMode: "commit",
+            operationCount: 1,
+            commitGate: {
+              permissionProvided: false,
+              blocked: true
+            },
+            blockers: [
+              {
+                code: "COMMIT_NOT_ALLOWED",
+                severity: "blocker",
+                path: "$.permissions.allowCommit"
+              }
+            ]
+          }
+        }
+      }
+    });
+    expect(summary).toMatchObject({
+      jsonrpc: "2.0",
+      id: "preview-summary",
+      result: {
+        structuredContent: {
+          ok: true,
+          objectCount: 0
+        }
+      }
+    });
+  });
+
   it("handles sketch extrude cad.batch calls over line-delimited JSON-RPC", () => {
     const session = createMcpStdioSession();
     const commit = parseLineResponse(

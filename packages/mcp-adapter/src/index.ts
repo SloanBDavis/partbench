@@ -1313,7 +1313,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.batch",
     description:
-      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response.",
+      "Runs a structured CADOps batch in dry-run or commit mode and returns the CADOps response with agent review/audit summary.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
