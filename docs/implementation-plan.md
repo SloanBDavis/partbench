@@ -96,6 +96,7 @@ pnpm build
 pnpm lint
 pnpm format:check
 pnpm smoke:v7-release-samples
+pnpm smoke:v7-browser-workflow
 pnpm smoke:feature-delete-ui
 ```
 
@@ -137,6 +138,21 @@ the G1 release fixtures through CADOps, round-trips current project JSON, and
 verifies the V7 release-critical query surface. Use
 `node scripts/smoke-v7-release-samples.mjs --json` only when structured stdout
 is useful for CI or release tooling.
+
+V7 browser workflow smoke:
+
+```sh
+pnpm smoke:v7-browser-workflow
+```
+
+The smoke follows the existing built-app/static-server/CDP pattern. It runs
+`pnpm build`, opens the built app in a Chromium-compatible browser, creates a
+deterministic sketch/rectangle/new-body extrude, checks the model tree,
+inspector, modeling context, viewport reference surface, named-reference route,
+and Project/File panel, then reports required checks plus optional skipped GLB
+download readiness. Default production builds keep derived geometry disabled,
+so the GLB download check may be skipped unless the app was built with derived
+geometry enabled.
 
 ## Current Capabilities
 
@@ -721,6 +737,34 @@ derived meshes, topology caches, app-derived GLB artifacts, OPFS/File System
 Access, `.wcad` storage, STEP/IGES, WebGPU, assemblies, new modeling commands,
 or `web-cad.project.v17`.
 
+### Implemented Tranche G3: Browser Release Workflow Smoke
+
+The third release-hardening slice automates the core browser workflow from the
+G2 checklist without adding broad E2E infrastructure:
+
+- `scripts/smoke-v7-browser-workflow.mjs` reuses the existing
+  `scripts/occt-smoke/browser.mjs` Chromium/CDP helpers and static-server
+  pattern;
+- `pnpm smoke:v7-browser-workflow` builds the app, serves `apps/web/dist`, and
+  runs the browser workflow smoke;
+- the smoke creates deterministic source IDs for a sketch, rectangle profile,
+  extrude feature, result body, and named face reference;
+- required checks verify app load, authored `newBody` modeling, model-tree/body
+  selection, inspector/modeling `selection.referenceCandidates` status,
+  generated-reference selection from the viewport reference surface,
+  named-reference routing, Project/File JSON workflow, storage capability
+  status, STEP deferred status, and Mesh/GLB status;
+- GLB download is reported as a required pass only when the built app exposes a
+  ready derived visualization mesh and an enabled download button. Otherwise it
+  is recorded as an explicit skipped check with the observed readiness text;
+- `scripts/v7-browser-workflow.mjs` exposes deterministic summary/result
+  helpers covered by focused script tests.
+
+G3 does not replace the G2 source/query smoke, does not persist screenshots,
+downloads, metrics, project JSON, meshes, topology caches, or selection state,
+and does not introduce browser picking, new CAD commands, native storage, STEP,
+WebGPU, assemblies, or `web-cad.project.v17`.
+
 Future V7 tranche plans should continue to include these details:
 
 - exact CADOps/query shapes and response examples;
@@ -737,8 +781,8 @@ Future V7 tranche plans should continue to include these details:
 - test matrix covering protocol validation, cad-core query behavior,
   named-reference resolution, upstream edit stability, adapter/MCP pass-through,
   UI helpers, and source/derived separation;
-- manual browser scenarios for selecting, naming, invalidating, and repairing a
-  supported face or edge.
+- manual browser scenarios for invalidating and repairing a supported face or
+  edge, and for GLB download when derived geometry is intentionally enabled.
 
 The first tranche should not implement broad arbitrary topology naming. It
 should prove the contract on the smallest useful, defensible subset and make all
