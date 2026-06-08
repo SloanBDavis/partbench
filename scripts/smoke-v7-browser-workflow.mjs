@@ -13,7 +13,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global document, Event, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, Node */
+/* global DataTransfer, document, Event, File, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
@@ -165,10 +165,22 @@ async function runV7BrowserWorkflowSmoke(client, appUrl, timeoutMs) {
 
 async function v7BrowserWorkflowSmoke({ timeoutMs }) {
   const ids = {
+    attachedEntityId: "v7_smoke_attached_rect",
+    attachedSketchId: "v7_smoke_attached_sketch",
+    attachedSketchName: "V7 smoke attached face sketch",
     bodyId: "v7_smoke_body",
+    bodyName: "V7 smoke rectangle body",
+    circleBodyId: "v7_smoke_circle_body",
+    circleBodyName: "V7 smoke circle body",
+    circleEntityId: "v7_smoke_circle",
+    circleFeatureId: "v7_smoke_circle_feature",
+    cutBodyId: "v7_smoke_cut_body",
+    cutBodyName: "V7 smoke cut result",
+    cutFeatureId: "v7_smoke_cut_feature",
     entityId: "v7_smoke_rect",
     featureId: "v7_smoke_feature",
     namedReference: "v7_smoke_top_face",
+    projectFileName: "v7-browser-workflow-roundtrip.json",
     sketchId: "v7_smoke_sketch"
   };
   const checks = [];
@@ -199,7 +211,10 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
   pass("create-sketch", "created deterministic sketch", ids.sketchId);
 
   clickButton(getElementByAriaLabel("Add sketch entity"), "Rectangle");
-  const entityEditor = getSectionByAriaLabel("Sketch entity editor");
+  const entityEditor = await waitForSectionByAriaLabel(
+    "Sketch entity editor",
+    "rectangle entity editor"
+  );
   setSelectByLabel(entityEditor, "Entity", "rectangle");
   setInputByDetailsSummary(entityEditor, "Optional ID", ids.entityId);
   setFieldByLabel(entityEditor, "Width", "2");
@@ -221,43 +236,91 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
   setSelectByLabel(featureEditor, "Operation", "newBody");
   setFieldByLabel(featureEditor, "Optional feature ID", ids.featureId);
   setFieldByLabel(featureEditor, "Optional body ID", ids.bodyId);
+  setFieldByLabel(featureEditor, "Optional name", ids.bodyName);
   clickButton(featureEditor, "Create extrude");
   await waitFor(
     () =>
-      includesText(getElementByAriaLabel("Model structure"), ids.bodyId) ||
+      includesText(getElementByAriaLabel("Model structure"), ids.bodyName) ||
       includesText(getElementByAriaLabel("Inspector"), ids.bodyId),
     "created deterministic extrude body"
   );
   pass("create-extrude", "created deterministic newBody extrude", ids.bodyId);
 
+  clickButtonContaining(getElementByAriaLabel("Add sketch entity"), "Circle");
+  const circleEntityEditor = await waitForSectionByAriaLabel(
+    "Sketch entity editor",
+    "circle entity editor"
+  );
+  setSelectByLabel(circleEntityEditor, "Entity", "circle");
+  setInputByDetailsSummary(
+    circleEntityEditor,
+    "Optional ID",
+    ids.circleEntityId
+  );
+  setFieldByLabel(circleEntityEditor, "Center X", "3");
+  setFieldByLabel(circleEntityEditor, "Center Y", "0");
+  setFieldByLabel(circleEntityEditor, "Radius", "0.5");
+  clickButton(circleEntityEditor, "Add entity");
+  await waitFor(
+    () =>
+      includesText(
+        getElementByAriaLabel("Select sketch entity"),
+        ids.circleEntityId
+      ),
+    "created deterministic circle"
+  );
+  pass(
+    "create-circle",
+    "created deterministic circle profile",
+    ids.circleEntityId
+  );
+
+  const circleFeatureEditor = getSectionByAriaLabel("Create authored feature");
+  setFieldByLabel(circleFeatureEditor, "Depth", "1");
+  setSelectByLabel(circleFeatureEditor, "Operation", "newBody");
+  setFieldByLabel(
+    circleFeatureEditor,
+    "Optional feature ID",
+    ids.circleFeatureId
+  );
+  setFieldByLabel(circleFeatureEditor, "Optional body ID", ids.circleBodyId);
+  setFieldByLabel(circleFeatureEditor, "Optional name", ids.circleBodyName);
+  clickButton(circleFeatureEditor, "Create extrude");
+  await waitFor(
+    () =>
+      includesText(
+        getElementByAriaLabel("Model structure"),
+        ids.circleBodyName
+      ) || includesText(getElementByAriaLabel("Inspector"), ids.circleBodyId),
+    "created deterministic circle extrude body"
+  );
+  pass(
+    "create-circle-extrude",
+    "created deterministic circle newBody extrude",
+    ids.circleBodyId
+  );
+
   clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Details");
   const modelStructure = getElementByAriaLabel("Model structure");
   const modeling = getSectionByAriaLabel("Modeling context");
-  getButtonContaining(modelStructure, "Result body")?.click();
+  clickButtonContaining(modelStructure, ids.circleBodyName);
 
-  await waitFor(() => {
-    const currentViewportSummary = getElementByAriaLabel(
-      "Viewport interaction summary"
-    );
-    const currentInspector = getElementByAriaLabel("Inspector");
-    const ready =
-      currentViewportSummary.dataset.selectionKind === "body" &&
-      includesText(currentViewportSummary, "Command-ready") &&
-      includesText(currentInspector, ids.bodyId) &&
-      includesText(currentInspector, "Command-ready reference");
+  await waitForBodyCommandReady(
+    ids.circleBodyId,
+    "circle body command-ready reference state"
+  );
+  pass(
+    "circle-body-reference-contract",
+    "feature tree circle body selection shows command-ready semantic reference state",
+    getViewportSelectionText()
+  );
 
-    if (!ready) {
-      throw new Error(
-        [
-          `viewportKind=${currentViewportSummary.dataset.selectionKind ?? ""}`,
-          `viewport=${normalize(currentViewportSummary.textContent).slice(0, 180)}`,
-          `inspector=${normalize(currentInspector.textContent).slice(0, 180)}`
-        ].join("; ")
-      );
-    }
+  clickButtonContaining(getElementByAriaLabel("Model structure"), ids.bodyName);
 
-    return true;
-  }, "body command-ready reference state");
+  await waitForBodyCommandReady(
+    ids.bodyId,
+    "body command-ready reference state"
+  );
   const viewportSummary = getElementByAriaLabel("Viewport interaction summary");
   pass(
     "body-reference-contract",
@@ -373,6 +436,128 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
         "named reference routes to command-ready generated reference"
       );
     }
+
+    const inspector = getElementByAriaLabel("Inspector");
+    setFieldByLabel(inspector, "Sketch name", ids.attachedSketchName);
+    setInputByDetailsSummary(
+      inspector,
+      "Advanced sketch options",
+      ids.attachedSketchId
+    );
+    clickButton(inspector, "Create attached sketch");
+    await waitFor(
+      () =>
+        includesText(getElementByAriaLabel("Model structure"), "Attached") &&
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.attachedSketchName
+        ),
+      "created attached sketch on generated face"
+    );
+    pass(
+      "attached-sketch-create",
+      "created a sketch on a supported generated planar face",
+      ids.attachedSketchId
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    await waitFor(() => {
+      const activeSketch = getControlByLabel(
+        getSectionByAriaLabel("Sketches"),
+        "Active sketch"
+      );
+
+      return [...activeSketch.querySelectorAll("option")].some(
+        (option) => option.value === ids.attachedSketchId
+      );
+    }, "attached sketch active-sketch option");
+    setSelectByLabel(
+      getSectionByAriaLabel("Sketches"),
+      "Active sketch",
+      ids.attachedSketchId
+    );
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.attachedSketchId,
+      "attached sketch became active"
+    );
+    pass(
+      "attached-sketch-active",
+      "attached sketch appears in model structure and becomes active through command state",
+      ids.attachedSketchName
+    );
+
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Rectangle");
+    const attachedEntityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "attached rectangle entity editor"
+    );
+    setSelectByLabel(attachedEntityEditor, "Entity", "rectangle");
+    setInputByDetailsSummary(
+      attachedEntityEditor,
+      "Optional ID",
+      ids.attachedEntityId
+    );
+    setFieldByLabel(attachedEntityEditor, "Width", "0.5");
+    setFieldByLabel(attachedEntityEditor, "Height", "0.5");
+    clickButton(attachedEntityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.attachedEntityId
+        ),
+      "created deterministic attached rectangle"
+    );
+
+    let attachedFeatureEditor = getSectionByAriaLabel(
+      "Create authored feature"
+    );
+    setFieldByLabel(attachedFeatureEditor, "Depth", "0.5");
+    setSelectByLabel(attachedFeatureEditor, "Operation", "cut");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "cut target body control"
+    );
+    attachedFeatureEditor = getSectionByAriaLabel("Create authored feature");
+    setSelectByLabel(attachedFeatureEditor, "Target body", ids.bodyId);
+    setFieldByLabel(
+      attachedFeatureEditor,
+      "Optional feature ID",
+      ids.cutFeatureId
+    );
+    setFieldByLabel(attachedFeatureEditor, "Optional body ID", ids.cutBodyId);
+    setFieldByLabel(attachedFeatureEditor, "Optional name", ids.cutBodyName);
+    clickButton(attachedFeatureEditor, "Create extrude");
+    await waitFor(
+      () =>
+        includesText(getElementByAriaLabel("Model structure"), ids.cutBodyName),
+      "created deterministic cut result body"
+    );
+    pass(
+      "attached-cut-create",
+      "created a deterministic cut to exercise consumed-reference diagnostics",
+      ids.cutBodyId
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Details");
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.bodyName
+    );
+    await waitForConsumedDiagnostic();
+    pass(
+      "consumed-body-diagnostic",
+      "consumed body selection shows structured reference diagnostics",
+      getDiagnosticText()
+    );
   }
 
   openDetailsBySummary(document.body, "Advanced tools");
@@ -413,6 +598,82 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
       "Project/File panel reports JSON, storage capability, and export readiness"
     );
   }
+
+  clickButton(projectPanel, "Generate export");
+  await waitFor(() => {
+    const projectText = compactText(projectPanel.textContent, 520);
+    const projectJson = getProjectJsonEditorValue(projectPanel);
+    const ready =
+      includesText(projectPanel, "Import draft") &&
+      includesText(projectPanel, "No document source change detected") &&
+      projectJson.trim().startsWith("{");
+
+    if (!ready) {
+      throw new Error(
+        `projectPanel=${projectText}; jsonStart=${projectJson
+          .trim()
+          .slice(0, 120)}`
+      );
+    }
+
+    return true;
+  }, "generated project JSON preview");
+  assertExportedProjectJsonIncludes(getProjectJsonEditorValue(projectPanel));
+  pass(
+    "project-json-export-preview",
+    "generated project JSON preview preserves feature tree and named references",
+    "web-cad.project.v16"
+  );
+
+  const exportedProjectJson = getProjectJsonEditorValue(projectPanel);
+  loadProjectFileIntoInput(
+    projectPanel,
+    exportedProjectJson,
+    ids.projectFileName
+  );
+  await waitFor(
+    () =>
+      includesText(projectPanel, `Loaded ${ids.projectFileName}`) &&
+      includesText(projectPanel, "Loaded file") &&
+      includesText(projectPanel, "Import draft") &&
+      includesText(projectPanel, "No document source change detected"),
+    "loaded project JSON import preview"
+  );
+  pass(
+    "project-json-load-preview",
+    "loaded project JSON through the Project/File import preview path",
+    ids.projectFileName
+  );
+
+  clickButton(projectPanel, "Import project");
+  await waitFor(
+    () =>
+      includesText(projectPanel, "Imported web-cad.project.v16") &&
+      includesText(getElementByAriaLabel("Model structure"), ids.bodyName),
+    "imported project JSON"
+  );
+  pass(
+    "project-json-import",
+    "imported the generated project JSON through the Project/File path"
+  );
+
+  await waitForRoundTripModelStructure();
+  pass(
+    "project-json-roundtrip-model",
+    "project JSON round-trip preserves feature tree, attached sketch, and named reference",
+    compactText(getElementByAriaLabel("Model structure").textContent)
+  );
+
+  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Details");
+  clickButtonContaining(getElementByAriaLabel("Model structure"), ids.bodyName);
+  await waitForConsumedDiagnostic();
+  pass(
+    "project-json-roundtrip-diagnostic",
+    "project JSON round-trip preserves selection/reference diagnostics",
+    getDiagnosticText()
+  );
+
+  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "File");
 
   const glbButton = getButtonByText(projectPanel, "Download visualization GLB");
   if (!glbButton) {
@@ -458,6 +719,122 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
     });
   }
 
+  async function waitForBodyCommandReady(bodyId, label) {
+    await waitFor(() => {
+      const currentViewportSummary = getElementByAriaLabel(
+        "Viewport interaction summary"
+      );
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        currentViewportSummary.dataset.selectionKind === "body" &&
+        includesText(currentViewportSummary, "Command-ready") &&
+        includesText(currentInspector, bodyId) &&
+        includesText(currentInspector, "Command-ready reference") &&
+        includesText(currentModeling, "Reference contract") &&
+        includesText(currentModeling, "Command-ready reference");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `viewportKind=${currentViewportSummary.dataset.selectionKind ?? ""}`,
+            `viewport=${normalize(currentViewportSummary.textContent).slice(0, 180)}`,
+            `inspector=${normalize(currentInspector.textContent).slice(0, 180)}`,
+            `modeling=${normalize(currentModeling.textContent).slice(0, 180)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, label);
+  }
+
+  async function waitForConsumedDiagnostic() {
+    await waitFor(() => {
+      const viewportDiagnostics = getElementByAriaLabel(
+        "Viewport selection diagnostics"
+      );
+      const consumedDiagnostic = viewportDiagnostics.querySelector(
+        '[data-diagnostic-code="CONSUMED_SELECTION_BODY"][data-diagnostic-status="consumed"]'
+      );
+      const inspector = getElementByAriaLabel("Inspector");
+      const modelingContext = getSectionByAriaLabel("Modeling context");
+      const ready =
+        Boolean(consumedDiagnostic) &&
+        includesText(viewportDiagnostics, ids.cutFeatureId) &&
+        includesText(inspector, "Selection body consumed") &&
+        includesText(inspector, ids.cutFeatureId) &&
+        includesText(modelingContext, "Selection body consumed");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `diagnostics=${normalize(viewportDiagnostics.textContent).slice(0, 180)}`,
+            `inspector=${normalize(inspector.textContent).slice(0, 180)}`,
+            `modeling=${normalize(modelingContext.textContent).slice(0, 180)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "consumed body structured diagnostics");
+  }
+
+  async function waitForRoundTripModelStructure() {
+    await waitFor(() => {
+      const structure = getElementByAriaLabel("Model structure");
+      const requiredText = [
+        ids.bodyName,
+        ids.circleBodyName,
+        ids.attachedSketchName,
+        ids.cutBodyName,
+        ids.namedReference,
+        "Hidden input / replaced by result"
+      ];
+
+      return requiredText.every((text) => includesText(structure, text));
+    }, "round-tripped model structure");
+  }
+
+  function assertExportedProjectJsonIncludes(projectJson) {
+    let project;
+
+    try {
+      project = JSON.parse(projectJson);
+    } catch (error) {
+      fail(
+        "project-json-export-parse",
+        "generated project JSON parses",
+        error instanceof Error ? error.message : "Unknown JSON parse error."
+      );
+      return;
+    }
+
+    const requiredSnippets = [
+      ids.bodyId,
+      ids.circleBodyId,
+      ids.attachedSketchId,
+      ids.cutFeatureId,
+      ids.cutBodyName,
+      ids.namedReference
+    ];
+    const missing = requiredSnippets.filter(
+      (snippet) => !projectJson.includes(snippet)
+    );
+
+    if (project.schemaVersion !== "web-cad.project.v16") {
+      missing.push("schemaVersion:web-cad.project.v16");
+    }
+
+    if (missing.length > 0) {
+      fail(
+        "project-json-export-preview",
+        "generated project JSON preview preserves feature tree and named references",
+        `Missing ${missing.join(", ")}`
+      );
+    }
+  }
+
   async function waitFor(predicate, label) {
     const deadline = Date.now() + timeoutMs;
     let lastError;
@@ -498,6 +875,53 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
       getElementByAriaLabel("Export readiness").textContent,
       520
     );
+  }
+
+  function getDiagnosticText() {
+    return compactText(
+      getElementByAriaLabel("Viewport selection diagnostics").textContent,
+      360
+    );
+  }
+
+  function getProjectJsonEditorValue(projectPanel) {
+    const editor = getDetailsBySummary(
+      projectPanel,
+      "JSON editor"
+    ).querySelector("textarea");
+
+    if (!(editor instanceof HTMLTextAreaElement)) {
+      throw new Error("Project JSON editor has no textarea.");
+    }
+
+    return editor.value;
+  }
+
+  function loadProjectFileIntoInput(projectPanel, projectJson, fileName) {
+    const input = projectPanel.querySelector('input[type="file"]');
+
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Project file input was not found.");
+    }
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(
+      new File([projectJson], fileName, { type: "application/json" })
+    );
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: dataTransfer.files
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  async function waitForSectionByAriaLabel(label, waitLabel) {
+    await waitFor(
+      () => Boolean(document.querySelector(`section[aria-label="${label}"]`)),
+      waitLabel
+    );
+
+    return getSectionByAriaLabel(label);
   }
 
   function getSectionByAriaLabel(label) {
@@ -605,17 +1029,21 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
   }
 
   function getControlByLabel(scope, label) {
-    const matchingLabel = [...scope.querySelectorAll("label")].find(
-      (candidate) => getDirectLabelText(candidate) === label
-    );
-
-    const control = matchingLabel?.querySelector("input, select, textarea");
+    const control = queryControlByLabel(scope, label);
 
     if (!control) {
       throw new Error(`Could not find control labelled ${label}.`);
     }
 
     return control;
+  }
+
+  function queryControlByLabel(scope, label) {
+    const matchingLabel = [...scope.querySelectorAll("label")].find(
+      (candidate) => getDirectLabelText(candidate) === label
+    );
+
+    return matchingLabel?.querySelector("input, select, textarea");
   }
 
   function clickButton(scope, text) {

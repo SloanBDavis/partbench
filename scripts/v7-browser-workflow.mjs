@@ -1,13 +1,45 @@
+export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
+  "app-load",
+  "create-sketch",
+  "create-rectangle",
+  "create-extrude",
+  "create-circle",
+  "create-circle-extrude",
+  "circle-body-reference-contract",
+  "body-reference-contract",
+  "modeling-reference-status",
+  "generated-reference-selection",
+  "generated-reference-contract",
+  "named-reference-create",
+  "named-reference-route",
+  "attached-sketch-create",
+  "attached-sketch-active",
+  "attached-cut-create",
+  "consumed-body-diagnostic",
+  "project-file-panel",
+  "project-json-export-preview",
+  "project-json-load-preview",
+  "project-json-import",
+  "project-json-roundtrip-model",
+  "project-json-roundtrip-diagnostic"
+]);
+
 export function createV7BrowserWorkflowSmokeResult({
   checks = [],
   consoleErrors = [],
   exceptions = [],
   ids,
+  requiredCheckIds = V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS,
   skipped = []
 }) {
   const failedChecks = checks.filter((check) => check.status === "fail");
+  const observedCheckIds = new Set(checks.map((check) => check.id));
+  const missingRequiredChecks = requiredCheckIds.filter(
+    (id) => !observedCheckIds.has(id)
+  );
   const ok =
     failedChecks.length === 0 &&
+    missingRequiredChecks.length === 0 &&
     consoleErrors.length === 0 &&
     exceptions.length === 0;
 
@@ -15,9 +47,11 @@ export function createV7BrowserWorkflowSmokeResult({
     ok,
     passedCount: checks.filter((check) => check.status === "pass").length,
     failedCount: failedChecks.length,
+    missingRequiredCount: missingRequiredChecks.length,
     skippedCount: skipped.length,
     ids,
     checks,
+    missingRequiredChecks,
     skipped,
     consoleErrors,
     exceptions
@@ -27,7 +61,7 @@ export function createV7BrowserWorkflowSmokeResult({
 export function formatV7BrowserWorkflowSmokeSummary(result) {
   const lines = [
     `V7 browser workflow smoke ${result.ok ? "passed" : "failed"}`,
-    `checks: ${result.passedCount} passed, ${result.failedCount} failed, ${result.skippedCount} skipped`
+    `checks: ${result.passedCount} passed, ${result.failedCount} failed, ${result.skippedCount} skipped, ${result.missingRequiredCount} missing required`
   ];
 
   for (const check of result.checks) {
@@ -35,6 +69,10 @@ export function formatV7BrowserWorkflowSmokeSummary(result) {
     if (check.detail) {
       lines.push(`  ${check.detail}`);
     }
+  }
+
+  for (const missing of result.missingRequiredChecks) {
+    lines.push(`- missing ${missing}`);
   }
 
   for (const skipped of result.skipped) {

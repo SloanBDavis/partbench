@@ -32,7 +32,7 @@ These constraints remain active:
 8. OCCT/WASM, WebGPU, OPFS, STEP, exact topology, assemblies, and hosted
    collaboration are expanded only in scoped tranches.
 9. V2, V3, V4, V5, and V6 are complete. V7 is a broad major-release umbrella;
-   Tranches A through G4 are implemented, and later V7 work remains explicitly
+   Tranches A through G6 are implemented, and later V7 work remains explicitly
    scoped/deferred rather than one narrow milestone.
 10. V7 implementation tranches should stay independently testable and should not
     mix unrelated storage, renderer, topology, import/export, or agent-safety
@@ -148,13 +148,15 @@ pnpm smoke:v7-browser-workflow
 ```
 
 The smoke follows the existing built-app/static-server/CDP pattern. It runs
-`pnpm build`, opens the built app in a Chromium-compatible browser, creates a
-deterministic sketch/rectangle/new-body extrude, checks the model tree,
-inspector, modeling context, viewport reference surface, named-reference route,
-and Project/File panel, then reports required checks plus optional skipped GLB
-download readiness. Default production builds keep derived geometry disabled,
-so the GLB download check may be skipped unless the app was built with derived
-geometry enabled.
+`pnpm build`, opens the built app in a Chromium-compatible browser, creates
+deterministic sketch/rectangle/circle/new-body extrudes, checks model-tree body
+selection, inspector/modeling `selection.referenceCandidates` status, viewport
+reference selection, named-reference routing, attached-sketch creation on a
+generated planar face, consumed-body structured diagnostics, and Project/File
+JSON export/load/import round-trip behavior, then reports required checks plus
+optional skipped GLB download readiness. Default production builds keep derived
+geometry disabled, so the GLB download check may be skipped unless the app was
+built with derived geometry enabled.
 
 ## Current Capabilities
 
@@ -233,7 +235,7 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes the implemented V7 Tranche A-G4 product surface on top of
+The repo now includes the implemented V7 Tranche A-G6 product surface on top of
 the completed V6 practical solid-modeling baseline. It is not yet a full CAD
 system.
 
@@ -365,7 +367,7 @@ Durable V6 decisions:
 ## V7 Real CAD Alpha Status And Roadmap
 
 V7 is a major release umbrella, not a single implementation milestone. The
-implemented A-G4 surface turns the V6 modeling baseline into an early usable
+implemented A-G6 surface turns the V6 modeling baseline into an early usable
 local CAD alpha while preserving the architecture in `docs/architecture.md`.
 
 The V7 release-readiness record lives in `docs/v7.md`. This implementation plan
@@ -387,7 +389,7 @@ V7 is organized around these pillars:
 
 ### Implemented Tranche Sequence And Remaining Order
 
-The implemented sequence through G4 is:
+The implemented sequence through G6 is:
 
 1. **Reference And Selection Contract** - implemented typed query/protocol
    support for
@@ -411,8 +413,8 @@ The implemented sequence through G4 is:
    `project.summary`, dry-run/commit review blocks, audit metadata, and thin
    MCP pass-through over the same CADOps/query paths.
 7. **Release Samples And Smokes** - implemented source/query release samples,
-   release-sample smoke, browser workflow smoke, checklist/docs, and G4 extended
-   acceptance samples.
+   release-sample smoke, browser workflow smoke, checklist/docs, G4 extended
+   acceptance samples, and G6 browser checklist automation expansion.
 
 ### Implemented Tranche A: Reference And Selection Contract
 
@@ -803,6 +805,37 @@ G4 is acceptance/sample coverage only. It does not add browser automation,
 new modeling commands, exact stable topology, persisted derived data,
 screenshots, export artifacts, storage work, STEP/IGES, WebGPU, assemblies, or
 schema migration.
+
+### Implemented Tranche G6: Browser Release Checklist Automation Expansion
+
+The sixth release-hardening slice expands the existing focused browser workflow
+smoke to automate practical checklist coverage that had remained manual:
+
+- `scripts/smoke-v7-browser-workflow.mjs` still uses the production build,
+  static app server, and Chromium/CDP runner rather than a broad E2E framework;
+- the browser path now creates and selects a deterministic circle `newBody`
+  extrude in addition to the original rectangle workflow, verifying
+  inspector/modeling command-ready reference state from
+  `selection.referenceCandidates`;
+- the smoke creates a sketch on a supported generated planar face through the
+  existing generated-reference/inspector route and verifies model-structure and
+  active-sketch state without making UI state authoritative;
+- the smoke creates a deterministic attached rectangle cut so the original body
+  becomes consumed, then verifies structured consumed-reference diagnostics in
+  the viewport, inspector, and modeling context;
+- the Project/File workflow now generates current JSON, loads the exported JSON
+  into import preview through the existing file-input path, imports it, and
+  verifies the feature tree, named reference, attached sketch, and
+  selection/reference diagnostics after the round-trip;
+- `scripts/v7-browser-workflow.mjs` records the required browser checklist
+  check IDs and marks the smoke failed if a required workflow silently
+  disappears from the browser result.
+
+G6 does not add new CAD commands, schemas, storage features, screenshots,
+downloads, metrics, persistent artifacts, GLB requirements, native storage,
+STEP/IGES, WebGPU, assemblies, exact face/edge viewport picking, or
+`web-cad.project.v17`. Optional GLB download behavior remains skipped with an
+explicit reason when derived visualization geometry is unavailable.
 
 Future V7 tranche plans should continue to include these details:
 

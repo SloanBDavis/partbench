@@ -81,17 +81,26 @@ drives a Chromium-compatible browser through real UI/DOM interactions. It
 verifies:
 
 - app load without browser runtime exceptions or console errors;
-- deterministic sketch, rectangle profile, and `newBody` extrude creation;
-- model tree/body selection plus inspector/modeling command-ready status from
-  `selection.referenceCandidates`;
+- deterministic base sketch, rectangle profile, circle profile, and `newBody`
+  extrude creation;
+- model tree/body selection for rectangle and circle bodies plus
+  inspector/modeling command-ready status from `selection.referenceCandidates`;
 - generated face selection through the viewport reference surface, named
   reference creation, and named-reference routing back to the selected generated
   reference;
+- attached sketch creation on a supported generated planar face through the
+  existing inspector/modeling route, with the sketch appearing in model
+  structure and becoming active through command state;
+- a deterministic consumed-body diagnostic path, using an attached rectangle cut
+  to verify structured `CONSUMED_SELECTION_BODY`/`consumed` status instead of
+  vague blocked text;
 - viewport semantic selection/status updates for the selected body/reference
   without claiming exact face/edge viewport picking;
-- Project/File JSON workflow status, JSON import/export storage status,
-  deferred native storage capabilities, export readiness, STEP deferred status,
-  and Mesh/GLB status.
+- Project/File JSON workflow status, generated export preview, synthetic
+  file-load preview, import, round-tripped feature tree/named-reference
+  preservation, selection/reference diagnostics after import, JSON
+  import/export storage status, deferred native storage capabilities, export
+  readiness, STEP deferred status, and Mesh/GLB status.
 
 The root script runs a normal production build, which keeps derived geometry
 disabled unless the build environment explicitly enables it. If the browser run
@@ -113,20 +122,20 @@ meshes, topology caches, selection state, or export artifacts to tracked files.
 Run the app and verify the remaining representative V7 workflows and visual
 coherence before a release:
 
-- Feature tree and modeling workflow beyond the automated rectangle path:
-  create a circle profile, extrude `newBody`, select the resulting body from
-  the tree, and verify the inspector shows command-ready references from
-  `selection.referenceCandidates`.
-- Generated and named references beyond the automated happy path: create a
-  sketch on a supported generated planar face, then verify unsupported or stale
-  cases show structured diagnostics.
+- Feature tree and modeling workflow breadth beyond the deterministic smoke:
+  repeat representative rectangle/circle/new-body selections with varied names,
+  dimensions, and active sketches, then verify inspector/modeling state stays
+  coherent.
+- Generated and named references beyond the automated happy path: try multiple
+  generated planar faces and named references, then verify any unsupported or
+  stale cases show structured diagnostics.
 - Viewport interaction surface: select bodies and current generated references
   from tree/inspector paths and verify hover measurements, grouped reference
   actions, selected-target status, and diagnostics read as one coherent
   interaction model.
-- Project JSON workflow: export current JSON, import it into preview, confirm
-  schema/source summary and replacement impact, then load it without losing the
-  feature tree, named references, or selection diagnostics.
+- Project JSON workflow beyond the deterministic round-trip: manually inspect
+  downloaded JSON when needed, paste edited invalid/legacy drafts, and verify
+  schema/source summary, validation, and replacement-impact messaging.
 - Visualization GLB: only when derived geometry is intentionally enabled and a
   supported active rectangle or circle `newBody` extrude has a ready derived
   mesh, open the Project/File panel and verify Mesh/GLB readiness plus
