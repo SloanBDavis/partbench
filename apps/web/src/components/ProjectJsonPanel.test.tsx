@@ -5,6 +5,7 @@ import {
   exportCadProject,
   exportCadProjectJson
 } from "@web-cad/cad-core";
+import type { ProjectExportReadinessQueryResponse } from "@web-cad/cad-protocol";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -64,7 +65,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Preview source");
   });
 
-  it("renders generated-export same-current state without replacement impact", () => {
+  it("renders generated-export same-document-source state without replacement impact", () => {
     const engine = new CadEngine();
     const projectJson = exportCadProjectJson(engine);
     const markup = renderToStaticMarkup(
@@ -201,6 +202,133 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("No manifest");
   });
 
+  it("renders export readiness without internal display-state identifiers", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_export",
+        name: "Profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_export",
+        id: "rect_export",
+        center: [0, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_export",
+        bodyId: "body_export",
+        sketchId: "sketch_export",
+        entityId: "rect_export",
+        depth: 1
+      }
+    ]);
+
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        exportReadiness: readExportReadiness(engine),
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Export readiness");
+    expect(markup).toContain("Deferred");
+    expect(markup).toContain("STEP");
+    expect(markup).toContain("Mesh/GLB visualization");
+    expect(markup).toContain(
+      "STEP and GLB file export are not implemented yet"
+    );
+    expect(markup).toContain("Source body is supported");
+    expect(markup).toContain(
+      "Display output and temporary visualization state"
+    );
+    const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
+    const exportSectionEnd = markup.indexOf(
+      '<div class="button-row"',
+      exportSectionStart
+    );
+    const exportReadinessMarkup = markup.slice(
+      exportSectionStart,
+      exportSectionEnd
+    );
+    expect(exportReadinessMarkup).not.toMatch(
+      /OCCT|renderer|cache|selection-buffer/i
+    );
+  });
+
+  it("renders primitive-only export readiness as unavailable", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_export",
+      name: "Reference box",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        exportReadiness: readExportReadiness(engine),
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
+    const exportSectionEnd = markup.indexOf(
+      '<div class="button-row"',
+      exportSectionStart
+    );
+    const exportReadinessMarkup = markup.slice(
+      exportSectionStart,
+      exportSectionEnd
+    );
+
+    expect(exportReadinessMarkup).toContain("Unavailable");
+    expect(exportReadinessMarkup).toContain("Primitive object source");
+    expect(exportReadinessMarkup).toContain("not treated as an authored CAD");
+    expect(exportReadinessMarkup).toContain("STEP");
+    expect(exportReadinessMarkup).toContain("Mesh/GLB visualization");
+    expect(exportReadinessMarkup).not.toMatch(
+      /OCCT|renderer|cache|selection-buffer/i
+    );
+  });
+
   it("disables file-specific controls when JSON fallback primitives are unavailable", () => {
     const engine = new CadEngine();
     const markup = renderToStaticMarkup(
@@ -231,6 +359,21 @@ describe("ProjectJsonPanel", () => {
     );
   });
 });
+
+function readExportReadiness(
+  engine: CadEngine
+): ProjectExportReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.exportReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.exportReadiness") {
+    throw new Error("Expected project export readiness.");
+  }
+
+  return response;
+}
 
 function createJsonFallbackTarget() {
   function FileConstructor() {

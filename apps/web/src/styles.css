@@ -2993,6 +2993,10 @@ button.dimension-status-row {
   border-left-color: var(--success);
 }
 
+.project-capability-item.supported {
+  border-left-color: var(--success);
+}
+
 .project-capability-item.available {
   border-left-color: var(--amber);
 }

@@ -12,6 +12,7 @@ describe("mcp-adapter", () => {
       "cad.project_features",
       "cad.project_structure",
       "cad.project_health",
+      "cad.project_export_readiness",
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
@@ -752,6 +753,87 @@ describe("mcp-adapter", () => {
             featureId: "feature:mcp_structure_box",
             bodyId: "body:mcp_structure_box"
           }
+        ]
+      }
+    });
+  });
+
+  it("returns export readiness through cad.project_export_readiness", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_export_ready_body",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_export_ready",
+              name: "Export profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_export_ready",
+              id: "rect_export_ready",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_export_ready",
+              bodyId: "body_export_ready",
+              sketchId: "sketch_export_ready",
+              entityId: "rect_export_ready",
+              depth: 1.5
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.project_export_readiness",
+      requestId: "mcp_req_export_readiness"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_export_readiness",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_export_readiness",
+        query: "project.exportReadiness",
+        status: "deferred",
+        canExportFiles: false,
+        bodyCount: 1,
+        sourceSupportedBodyCount: 1,
+        formats: expect.arrayContaining([
+          expect.objectContaining({
+            format: "step",
+            label: "STEP",
+            status: "deferred",
+            available: false
+          }),
+          expect.objectContaining({
+            format: "glb",
+            label: "Mesh/GLB visualization",
+            status: "deferred",
+            available: false
+          })
+        ]),
+        bodies: [
+          expect.objectContaining({
+            bodyId: "body_export_ready",
+            sourceKind: "authoredExtrude",
+            sourceStatus: "supported",
+            status: "deferred"
+          })
         ]
       }
     });
@@ -2861,6 +2943,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
+          { name: "cad.project_export_readiness" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },

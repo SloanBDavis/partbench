@@ -24,6 +24,7 @@ export type CadMcpToolName =
   | "cad.project_features"
   | "cad.project_structure"
   | "cad.project_health"
+  | "cad.project_export_readiness"
   | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.body_topology"
@@ -154,6 +155,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_health") {
       return this.#callProjectHealth(request);
+    }
+
+    if (request.name === "cad.project_export_readiness") {
+      return this.#callProjectExportReadiness(request);
     }
 
     if (request.name === "cad.project_sketches") {
@@ -412,6 +417,30 @@ export class CadMcpServer {
                 }
               : {})
           }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectExportReadiness(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_export_readiness does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.exportReadiness" }
         }
       })
     );
@@ -953,6 +982,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_health",
     description:
       "Returns read-only dependency and health status for authored sketches, features, generated bodies, and named references.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.project_export_readiness",
+    description:
+      "Returns read-only export readiness for current source bodies and deferred STEP/GLB writer status.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

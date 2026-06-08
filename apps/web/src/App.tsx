@@ -25,6 +25,7 @@ import type {
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
+  ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
   SketchDimensionEntry,
@@ -367,6 +368,19 @@ function readProjectHealth(
         sketchConstraints: [],
         namedReferences: []
       };
+}
+
+function readProjectExportReadiness():
+  | ProjectExportReadinessQueryResponse
+  | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.exportReadiness" }
+  });
+
+  return response.ok && response.query === "project.exportReadiness"
+    ? response
+    : undefined;
 }
 
 function createDerivedExactMetadataSnapshotsForProjectQuery(
@@ -967,6 +981,7 @@ export function App() {
   );
   const projectStructure = readProjectStructure();
   const projectHealth = readProjectHealth(derivedExactMetadata);
+  const projectExportReadiness = readProjectExportReadiness();
   const sketchExtrudeBodies = useMemo(
     () =>
       projectStructure.bodies.filter(
@@ -2463,6 +2478,7 @@ export function App() {
                 >
                   <ProjectJsonPanel
                     disabled={commandPending}
+                    exportReadiness={projectExportReadiness}
                     projectJson={projectJson}
                     storageCapabilities={projectStorageCapabilities}
                     workflow={projectJsonWorkflow}

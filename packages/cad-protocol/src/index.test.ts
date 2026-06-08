@@ -11,6 +11,8 @@ import type {
   CadHoleFeatureSummary,
   CadObjectModelSource,
   CadPartSnapshot,
+  CadExportDiagnostic,
+  CadExportFormatReadiness,
   CadPrimitiveFeatureSummary,
   CadOp,
   CadRevolveFeatureSummary,
@@ -30,6 +32,96 @@ describe("cad-protocol", () => {
     expect(protocolPackage).toEqual({
       name: "@web-cad/cad-protocol",
       status: "ready"
+    });
+  });
+
+  it("types the project export readiness query contract", () => {
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: { query: "project.exportReadiness" }
+    };
+    const writerDiagnostic: CadExportDiagnostic = {
+      code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+      status: "deferred",
+      format: "step",
+      message:
+        "STEP file export is not implemented yet; this query reports readiness and blockers only."
+    };
+    const format: CadExportFormatReadiness = {
+      format: "step",
+      label: "STEP",
+      status: "deferred",
+      available: false,
+      fileExtensions: [".step", ".stp"],
+      units: "mm",
+      sourceBoundaryNote: "Authoritative document state.",
+      derivedBoundaryNote: "No derived display state.",
+      candidateBodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 0,
+      diagnostics: [writerDiagnostic]
+    };
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "project.exportReadiness",
+      cadOpsVersion: "cadops.v1",
+      status: "deferred",
+      canExportFiles: false,
+      units: "mm",
+      sourceBoundaryNote: "Authoritative document state.",
+      derivedBoundaryNote: "No derived display state.",
+      formatCount: 1,
+      formats: [format],
+      bodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 0,
+      bodies: [
+        {
+          bodyId: "body_1",
+          bodyKind: "solid",
+          featureId: "feat_1",
+          partId: "part_default",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "supported",
+          status: "deferred",
+          sourceBoundaryNote: "Authoritative document state.",
+          derivedBoundaryNote: "No derived display state.",
+          formats: [
+            {
+              format: "step",
+              label: "STEP",
+              status: "deferred",
+              diagnostics: [writerDiagnostic]
+            }
+          ],
+          diagnostics: [
+            {
+              code: "EXPORT_BODY_SOURCE_SUPPORTED",
+              status: "supported",
+              message:
+                "Authored rectangle newBody extrude body has supported source semantics.",
+              bodyId: "body_1",
+              bodyKind: "solid",
+              sourceKind: "authoredExtrude",
+              featureId: "feat_1"
+            }
+          ]
+        }
+      ],
+      diagnosticCount: 1,
+      diagnostics: [writerDiagnostic]
+    };
+
+    expect(request.query.query).toBe("project.exportReadiness");
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.exportReadiness",
+      status: "deferred",
+      canExportFiles: false,
+      formats: [{ format: "step", available: false }],
+      bodies: [{ sourceStatus: "supported", status: "deferred" }]
     });
   });
 

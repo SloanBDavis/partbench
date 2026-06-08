@@ -1531,6 +1531,60 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns project export readiness through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_export_readiness",
+      entityId: "rect_export_readiness",
+      featureId: "feat_export_readiness",
+      bodyId: "body_export_readiness"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_export_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.exportReadiness" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_export_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.exportReadiness",
+      status: "deferred",
+      canExportFiles: false,
+      units: "mm",
+      formatCount: 2,
+      bodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      formats: expect.arrayContaining([
+        expect.objectContaining({
+          format: "step",
+          status: "deferred",
+          available: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_WRITER_NOT_IMPLEMENTED"
+            })
+          ])
+        })
+      ]),
+      bodies: [
+        expect.objectContaining({
+          bodyId: "body_export_readiness",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "supported",
+          status: "deferred"
+        })
+      ]
+    });
+  });
+
   it("returns derived body topology status through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

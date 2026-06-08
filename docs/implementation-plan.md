@@ -193,7 +193,7 @@ Current Partbench can:
 - save/load current `web-cad.project.v16` JSON with migrations from older
   accepted schemas, while the Project panel shows draft source, schema/
   migration status, structured validation issues, replacement/history impact,
-  same-current-export detection before import, and app-layer save/open
+  same-document-source detection before import, and app-layer save/open
   capability status for the active JSON fallback versus deferred native storage;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
@@ -513,6 +513,29 @@ topology authority:
 - this slice remains query-only/derived. It does not add exact face/edge/vertex
   picking, persistent hover/selection state, new modeling commands, storage
   migration, WebGPU, or `web-cad.project.v17`.
+
+### Implemented Tranche E1: Export Readiness Contract
+
+The first export slice adds an honest readiness/status contract before any file
+writer implementation:
+
+- `project.exportReadiness` reports STEP and Mesh/GLB visualization formats,
+  current file-export availability, units, source/derived boundary notes,
+  source-supported body counts, deferred/unavailable body counts, and structured
+  diagnostics;
+- the core query is derived from authoritative document/project structure only.
+  It does not call geometry workers, renderer paths, display caches, browser
+  APIs, or file/export writers;
+- active rectangle/circle `newBody` extrudes are marked source-supported but
+  file-export deferred because no writer exists yet. Consumed bodies,
+  primitive compatibility bodies, and V6 result bodies are distinguished with
+  structured diagnostics;
+- agent-adapter and MCP expose thin pass-throughs over the same CADOps query;
+- the Project panel displays compact export readiness for users without making
+  display output or temporary derived state authoritative;
+- this slice does not implement STEP/GLB generation, import paths, export jobs,
+  OPFS/File System Access flows, native package storage, new modeling commands,
+  or `web-cad.project.v17`.
 
 Future V7 tranche plans should continue to include these details:
 

@@ -3,6 +3,7 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBatch,
   CadQueryRequest,
+  ProjectExportReadinessQueryResponse,
   SketchConstraintSnapshot,
   SketchDimensionSnapshot,
   SketchEntitySnapshot
@@ -94,6 +95,21 @@ function createCircleExtrudeEngine(): CadEngine {
   ]);
 
   return engine;
+}
+
+function readProjectExportReadiness(
+  engine: CadEngine
+): ProjectExportReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.exportReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.exportReadiness") {
+    throw new Error("Expected project.exportReadiness response.");
+  }
+
+  return response;
 }
 
 function createRectangleRevolveEngine(): CadEngine {
@@ -20035,5 +20051,271 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       path: "$.document.sketchConstraints[0].target.role",
       message: "not supported"
     });
+  });
+
+  it("reports empty project export readiness without creating export state", () => {
+    const engine = new CadEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const readiness = readProjectExportReadiness(engine);
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "project.exportReadiness",
+      status: "unavailable",
+      canExportFiles: false,
+      units: "mm",
+      formatCount: 2,
+      bodyCount: 0,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 0,
+      unavailableBodyCount: 0,
+      formats: [
+        expect.objectContaining({
+          format: "step",
+          status: "unavailable",
+          available: false,
+          candidateBodyCount: 0,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+              status: "deferred"
+            }),
+            expect.objectContaining({
+              code: "EXPORT_PROJECT_EMPTY",
+              status: "unavailable"
+            })
+          ])
+        }),
+        expect.objectContaining({
+          format: "glb",
+          status: "unavailable",
+          available: false,
+          candidateBodyCount: 0
+        })
+      ],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPORT_PROJECT_EMPTY",
+          status: "unavailable"
+        })
+      ])
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("reports rectangle and circle newBody extrudes as source-supported but file-export deferred", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_circle_export",
+        name: "Circle profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_circle_export",
+        id: "circle_export",
+        center: [4, 0],
+        radius: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_export",
+        bodyId: "body_circle_export",
+        sketchId: "sketch_circle_export",
+        entityId: "circle_export",
+        depth: 2
+      }
+    ]);
+
+    const readiness = readProjectExportReadiness(engine);
+
+    expect(readiness).toMatchObject({
+      status: "deferred",
+      canExportFiles: false,
+      bodyCount: 2,
+      sourceSupportedBodyCount: 2,
+      deferredBodyCount: 2,
+      unavailableBodyCount: 0,
+      formats: [
+        expect.objectContaining({
+          format: "step",
+          status: "deferred",
+          sourceSupportedBodyCount: 2,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+              status: "deferred",
+              expected: "file writer",
+              received: "readiness contract only"
+            })
+          ])
+        }),
+        expect.objectContaining({
+          format: "glb",
+          status: "deferred",
+          sourceSupportedBodyCount: 2
+        })
+      ],
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "supported",
+          status: "deferred",
+          formats: expect.arrayContaining([
+            expect.objectContaining({
+              format: "step",
+              status: "deferred",
+              diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                  code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+                  format: "step"
+                })
+              ])
+            })
+          ]),
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_BODY_SOURCE_SUPPORTED",
+              status: "supported"
+            })
+          ])
+        }),
+        expect.objectContaining({
+          bodyId: "body_circle_export",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "supported",
+          status: "deferred",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_BODY_SOURCE_SUPPORTED",
+              status: "supported"
+            })
+          ])
+        })
+      ])
+    });
+  });
+
+  it("distinguishes consumed targets from deferred V6 result bodies", () => {
+    const engine = createRectangleHoleEngine();
+    const readiness = readProjectExportReadiness(engine);
+
+    expect(readiness).toMatchObject({
+      bodyCount: 2,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 1,
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "unavailable",
+          status: "unavailable",
+          consumedByFeatureId: "feat_hole_1",
+          formats: expect.arrayContaining([
+            expect.objectContaining({
+              format: "step",
+              status: "unavailable",
+              diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                  code: "EXPORT_BODY_CONSUMED",
+                  status: "unavailable",
+                  consumedByFeatureId: "feat_hole_1"
+                })
+              ])
+            })
+          ])
+        }),
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          sourceKind: "authoredHole",
+          sourceStatus: "deferred",
+          status: "deferred",
+          formats: expect.arrayContaining([
+            expect.objectContaining({
+              format: "glb",
+              status: "deferred",
+              diagnostics: expect.arrayContaining([
+                expect.objectContaining({
+                  code: "EXPORT_RESULT_BODY_DEFERRED",
+                  status: "deferred"
+                }),
+                expect.objectContaining({
+                  code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+                  status: "deferred"
+                })
+              ])
+            })
+          ]),
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_RESULT_BODY_DEFERRED",
+              status: "deferred",
+              received: "sketchHoleFeature"
+            })
+          ])
+        })
+      ])
+    });
+  });
+
+  it("reports primitive scene object bodies as unavailable for CAD export readiness", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_export",
+      name: "Reference box",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    expect(readProjectExportReadiness(engine)).toMatchObject({
+      status: "unavailable",
+      canExportFiles: false,
+      bodyCount: 1,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 0,
+      unavailableBodyCount: 1,
+      bodies: [
+        expect.objectContaining({
+          bodyId: "body:box_export",
+          bodyName: "Reference box",
+          sourceKind: "primitiveCompatibility",
+          sourceStatus: "unavailable",
+          status: "unavailable",
+          objectId: "box_export",
+          primitive: "box",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE",
+              status: "unavailable",
+              objectId: "box_export",
+              expected: "authored CAD body feature"
+            })
+          ])
+        })
+      ]
+    });
+  });
+
+  it("keeps export readiness derived and out of project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+
+    expect(readProjectExportReadiness(engine)).toMatchObject({
+      ok: true,
+      query: "project.exportReadiness",
+      bodyCount: 1
+    });
+
+    const afterJson = exportCadProjectJson(engine);
+    expect(afterJson).toBe(beforeJson);
+    expect(afterJson).not.toContain("project.exportReadiness");
+    expect(afterJson).not.toContain("exportReadiness");
+    expect(afterJson).not.toContain("EXPORT_WRITER_NOT_IMPLEMENTED");
   });
 });

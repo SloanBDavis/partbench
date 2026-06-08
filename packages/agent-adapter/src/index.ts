@@ -19,6 +19,10 @@ import type {
   CadBodySnapshot,
   CadBodyTopologySnapshot,
   CadDependencyHealthStatus,
+  CadExportBodyReadiness,
+  CadExportDiagnostic,
+  CadExportFormatReadiness,
+  CadExportReadinessStatus,
   CadFeatureSummary,
   CadNamedReferenceHealth,
   CadSketchConstraintHealth,
@@ -197,6 +201,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentProjectStructureQueryResponse
   | CadOpsAgentProjectHealthQueryResponse
+  | CadOpsAgentProjectExportReadinessQueryResponse
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
@@ -299,6 +304,28 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
   readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
+}
+
+export interface CadOpsAgentProjectExportReadinessQueryResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly query: "project.exportReadiness";
+  readonly status: CadExportReadinessStatus;
+  readonly canExportFiles: boolean;
+  readonly units: DocumentUnits;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly formatCount: number;
+  readonly formats: readonly CadExportFormatReadiness[];
+  readonly bodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly bodies: readonly CadExportBodyReadiness[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
 }
 
 export interface CadOpsAgentProjectSketchesQueryResponse {
@@ -510,6 +537,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.features"
     | "project.structure"
     | "project.health"
+    | "project.exportReadiness"
     | "project.sketches"
     | "object.get"
     | "object.measurements"
@@ -935,6 +963,30 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.exportReadiness") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      status: response.status,
+      canExportFiles: response.canExportFiles,
+      units: response.units,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      formatCount: response.formatCount,
+      formats: response.formats,
+      bodyCount: response.bodyCount,
+      sourceSupportedBodyCount: response.sourceSupportedBodyCount,
+      deferredBodyCount: response.deferredBodyCount,
+      unavailableBodyCount: response.unavailableBodyCount,
+      bodies: response.bodies,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics
+    };
+  }
+
   if (response.query === "project.sketches") {
     return {
       ok: true,
@@ -1262,6 +1314,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.features" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.structure" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.exportReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.health" &&
         (Object.keys(value.query).length === 1 ||

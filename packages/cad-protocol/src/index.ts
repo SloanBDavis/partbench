@@ -942,6 +942,7 @@ export type CadQueryKind =
   | "project.features"
   | "project.structure"
   | "project.health"
+  | "project.exportReadiness"
   | "project.sketches"
   | "object.get"
   | "object.measurements"
@@ -967,6 +968,7 @@ export type CadQuery =
   | ProjectFeaturesQuery
   | ProjectStructureQuery
   | ProjectHealthQuery
+  | ProjectExportReadinessQuery
   | ProjectSketchesQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
@@ -1009,6 +1011,10 @@ export interface ProjectStructureQuery {
 export interface ProjectHealthQuery {
   readonly query: "project.health";
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+}
+
+export interface ProjectExportReadinessQuery {
+  readonly query: "project.exportReadiness";
 }
 
 export interface ProjectSketchesQuery {
@@ -2476,6 +2482,86 @@ export interface CadBodyTopologySnapshot {
   readonly issues: readonly CadBodyTopologyIssue[];
 }
 
+export type CadExportFormatId = "step" | "glb";
+
+export type CadExportReadinessStatus = "supported" | "deferred" | "unavailable";
+
+export type CadExportBodySourceKind =
+  | "authoredExtrude"
+  | "authoredRevolve"
+  | "authoredHole"
+  | "authoredChamfer"
+  | "authoredFillet"
+  | "primitiveCompatibility"
+  | "unresolvedSource";
+
+export type CadExportDiagnosticCode =
+  | "EXPORT_WRITER_NOT_IMPLEMENTED"
+  | "EXPORT_PROJECT_EMPTY"
+  | "EXPORT_BODY_SOURCE_SUPPORTED"
+  | "EXPORT_BODY_CONSUMED"
+  | "EXPORT_BODY_SOURCE_UNRESOLVED"
+  | "EXPORT_BODY_SOURCE_UNSUPPORTED"
+  | "EXPORT_RESULT_BODY_DEFERRED"
+  | "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE";
+
+export interface CadExportDiagnostic {
+  readonly code: CadExportDiagnosticCode;
+  readonly status: CadExportReadinessStatus;
+  readonly message: string;
+  readonly format?: CadExportFormatId;
+  readonly bodyId?: BodyId;
+  readonly bodyName?: string;
+  readonly bodyKind?: CadBodySnapshot["kind"];
+  readonly sourceKind?: CadExportBodySourceKind;
+  readonly featureId?: FeatureId;
+  readonly objectId?: ObjectId;
+  readonly consumedByFeatureId?: FeatureId;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadExportFormatReadiness {
+  readonly format: CadExportFormatId;
+  readonly label: string;
+  readonly status: CadExportReadinessStatus;
+  readonly available: boolean;
+  readonly fileExtensions: readonly string[];
+  readonly units: DocumentUnits;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly candidateBodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadExportBodyFormatReadiness {
+  readonly format: CadExportFormatId;
+  readonly label: string;
+  readonly status: CadExportReadinessStatus;
+  readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadExportBodyReadiness {
+  readonly bodyId: BodyId;
+  readonly bodyName?: string;
+  readonly bodyKind: CadBodySnapshot["kind"];
+  readonly featureId: FeatureId;
+  readonly partId: PartId;
+  readonly sourceKind: CadExportBodySourceKind;
+  readonly sourceStatus: CadExportReadinessStatus;
+  readonly status: CadExportReadinessStatus;
+  readonly consumedByFeatureId?: FeatureId;
+  readonly objectId?: ObjectId;
+  readonly primitive?: CadObjectKind;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly formats: readonly CadExportBodyFormatReadiness[];
+  readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
 export type CadQueryResponse =
   | ParameterListQueryResponse
   | ParameterGetQueryResponse
@@ -2483,6 +2569,7 @@ export type CadQueryResponse =
   | ProjectFeaturesQueryResponse
   | ProjectStructureQueryResponse
   | ProjectHealthQueryResponse
+  | ProjectExportReadinessQueryResponse
   | ProjectSketchesQueryResponse
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
@@ -2573,6 +2660,26 @@ export interface ProjectHealthQueryResponse {
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
   readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
+}
+
+export interface ProjectExportReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "project.exportReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadExportReadinessStatus;
+  readonly canExportFiles: boolean;
+  readonly units: DocumentUnits;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly formatCount: number;
+  readonly formats: readonly CadExportFormatReadiness[];
+  readonly bodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly bodies: readonly CadExportBodyReadiness[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
 }
 
 export interface ProjectSketchesQueryResponse {

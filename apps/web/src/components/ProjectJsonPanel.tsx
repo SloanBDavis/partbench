@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import type { ProjectExportReadinessQueryResponse } from "@web-cad/cad-protocol";
 import {
   getProjectImportStatusText,
   type ProjectJsonDraftWorkflowState,
@@ -11,9 +12,14 @@ import {
   type ProjectStorageCapabilityEntry,
   type ProjectStorageCapabilityStatus
 } from "../projectStorageCapabilities";
+import {
+  createProjectExportReadinessDisplay,
+  type ProjectExportReadinessRow
+} from "../projectExportReadiness";
 
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
+  readonly exportReadiness?: ProjectExportReadinessQueryResponse;
   readonly projectJson: string;
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly workflow: ProjectJsonWorkflowState;
@@ -29,6 +35,7 @@ export interface ProjectJsonPanelProps {
 
 export function ProjectJsonPanel({
   disabled,
+  exportReadiness,
   projectJson,
   message,
   messageTone = "info",
@@ -75,6 +82,9 @@ export function ProjectJsonPanel({
         />
       </section>
       <ProjectStorageStatus storageCapabilities={storageCapabilities} />
+      {exportReadiness && (
+        <ProjectExportReadinessStatus exportReadiness={exportReadiness} />
+      )}
       <div className="button-row">
         <button type="button" onClick={onExport} disabled={disabled}>
           Generate export
@@ -144,6 +154,70 @@ export function ProjectJsonPanel({
         </p>
       )}
     </section>
+  );
+}
+
+function ProjectExportReadinessStatus({
+  exportReadiness
+}: {
+  readonly exportReadiness: ProjectExportReadinessQueryResponse;
+}) {
+  const display = createProjectExportReadinessDisplay(exportReadiness);
+
+  return (
+    <section className="project-workflow-section" aria-label="Export readiness">
+      <div className="project-workflow-heading">
+        <h3>Export readiness</h3>
+        <span>{display.statusLabel}</span>
+      </div>
+      <p className="project-workflow-detail">{display.detail}</p>
+      <dl className="project-workflow-grid">
+        <ProjectWorkflowRow
+          label="Source bodies"
+          value={display.bodySummary}
+          detail={display.sourceDetail}
+        />
+        <ProjectWorkflowRow
+          label="Boundary"
+          value="Source only"
+          detail={display.derivedDetail}
+        />
+      </dl>
+      <dl className="project-capability-list" aria-label="Export formats">
+        {display.formatRows.map((row) => (
+          <ProjectExportReadinessRowView key={row.id} row={row} />
+        ))}
+      </dl>
+      {display.bodyRows.length > 0 ? (
+        <dl className="project-capability-list" aria-label="Export body status">
+          {display.bodyRows.map((row) => (
+            <ProjectExportReadinessRowView key={row.id} row={row} />
+          ))}
+        </dl>
+      ) : (
+        <p className="empty-state compact">No candidate export bodies</p>
+      )}
+    </section>
+  );
+}
+
+function ProjectExportReadinessRowView({
+  row
+}: {
+  readonly row: ProjectExportReadinessRow;
+}) {
+  return (
+    <div className={`project-capability-item ${row.status}`}>
+      <dt>
+        <span>{row.label}</span>
+        <strong>{row.statusLabel}</strong>
+      </dt>
+      <dd>
+        <span>{row.detail}</span>
+        <span>{row.limitation}</span>
+        <span>{row.nextStep}</span>
+      </dd>
+    </div>
   );
 }
 

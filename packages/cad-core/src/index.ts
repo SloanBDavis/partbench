@@ -127,6 +127,7 @@ import {
   type SketchSolverApplyIssue,
   type SketchSolverDocument
 } from "./sketchSolver";
+import { createProjectExportReadiness } from "./projectExportReadiness";
 
 export type {
   CadActorMetadata,
@@ -153,6 +154,14 @@ export type {
   CadBodyTopologySourceIdentity,
   CadBodyTopologySourceKind,
   CadBodyTopologyStatus,
+  CadExportBodyReadiness,
+  CadExportBodyFormatReadiness,
+  CadExportBodySourceKind,
+  CadExportDiagnostic,
+  CadExportDiagnosticCode,
+  CadExportFormatId,
+  CadExportFormatReadiness,
+  CadExportReadinessStatus,
   CadAttachedSketchHealth,
   CadAuthoredExtrudeHealth,
   CadAuthoredFilletHealth,
@@ -939,6 +948,19 @@ export class CadEngine {
           derivedExactMetadata: request.query.derivedExactMetadata ?? [],
           bodyExists: (bodyId) =>
             structure.bodies.some((body) => body.id === bodyId)
+        });
+      }
+
+      case "project.exportReadiness": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createProjectExportReadiness({
+          document: this.#document,
+          cadOpsVersion: request.version,
+          bodies: structure.bodies
         });
       }
 
@@ -2877,6 +2899,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.features":
     case "project.structure":
     case "project.health":
+    case "project.exportReadiness":
     case "project.sketches":
     case "object.get":
     case "object.measurements":
@@ -2910,6 +2933,7 @@ function isCadQuery(value: unknown): boolean {
     case "project.summary":
     case "project.features":
     case "project.structure":
+    case "project.exportReadiness":
     case "project.sketches":
     case "reference.listNamed":
     case "transaction.history":
