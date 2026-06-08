@@ -165,6 +165,93 @@ describe("viewportSelectionDisplay", () => {
     ]);
   });
 
+  it("surfaces unresolved viewport pick diagnostics as structured status", () => {
+    const display = createViewportSelectionDisplay({
+      derivedGeometryEnabled: true,
+      selectedGeneratedReferenceState: { status: "none" },
+      viewportPickIntent: {
+        kind: "unsupported",
+        issues: [
+          {
+            code: "UNSUPPORTED_SELECTION_TARGET",
+            status: "unsupported",
+            message:
+              "Sketch display geometry is not selectable as a command-ready CAD body from the viewport."
+          }
+        ]
+      }
+    });
+
+    expect(display).toMatchObject({
+      selectionKind: "none",
+      title: "Viewport pick unsupported",
+      detail: "Selection target unsupported",
+      tone: "blocked",
+      diagnostics: [
+        {
+          code: "UNSUPPORTED_SELECTION_TARGET",
+          status: "unsupported",
+          message:
+            "Sketch display geometry is not selectable as a command-ready CAD body from the viewport."
+        }
+      ]
+    });
+  });
+
+  it("keeps object render IDs separate from object-backed body candidate status", () => {
+    const display = createViewportSelectionDisplay({
+      derivedGeometryEnabled: true,
+      selectedBody: createBody({
+        id: "body:box_1",
+        objectId: "box_1",
+        primitive: "box",
+        source: {
+          type: "primitiveFeature",
+          featureId: "feature:box_1",
+          objectId: "box_1"
+        }
+      }),
+      selectedGeneratedReferenceState: { status: "none" },
+      selectedObject: {
+        id: "box_1",
+        kind: "box",
+        dimensions: { width: 2, height: 2, depth: 2 },
+        transform: {
+          translation: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }
+      },
+      selectionReferenceCandidates: {
+        ok: true,
+        query: "selection.referenceCandidates",
+        cadOpsVersion: "cadops.v1",
+        selection: { type: "body", bodyId: "body:box_1" },
+        status: "unsupported",
+        candidateCount: 0,
+        candidates: [],
+        issueCount: 1,
+        issues: [
+          {
+            code: "UNSUPPORTED_SELECTION_TARGET",
+            status: "unsupported",
+            message:
+              "Primitive body body:box_1 does not expose command-ready semantic generated references.",
+            bodyId: "body:box_1"
+          }
+        ]
+      }
+    });
+
+    expect(display.selectionKind).toBe("body");
+    expect(display.renderTargetId).toBe("box_1");
+    expect(display.referenceStatus).toBe("unsupported");
+    expect(display.diagnostics[0]).toMatchObject({
+      code: "UNSUPPORTED_SELECTION_TARGET",
+      status: "unsupported"
+    });
+  });
+
   it("keeps raw mesh OCCT and selection-buffer identifiers out of viewport display state", () => {
     const face = createFaceReference({
       stableId: "selection-buffer:face:17"
@@ -208,24 +295,35 @@ function createBody(
   overrides: {
     readonly consumedByFeatureId?: string;
     readonly name?: string;
+    readonly id?: string;
+    readonly objectId?: string;
+    readonly primitive?: CadBodySnapshot["primitive"];
+    readonly source?: CadBodySnapshot["source"];
   } = {}
 ): CadBodySnapshot {
   return {
-    id: "body_rect",
+    id: overrides.id ?? "body_rect",
     kind: "solid",
     partId: "part:default",
-    featureId: "feat_rect",
+    featureId:
+      overrides.source?.type === "primitiveFeature"
+        ? overrides.source.featureId
+        : "feat_rect",
     ...(overrides.consumedByFeatureId
       ? { consumedByFeatureId: overrides.consumedByFeatureId }
       : {}),
+    ...(overrides.objectId ? { objectId: overrides.objectId } : {}),
+    ...(overrides.primitive ? { primitive: overrides.primitive } : {}),
     ...(overrides.name ? { name: overrides.name } : {}),
-    source: {
-      type: "sketchExtrudeFeature",
-      featureId: "feat_rect",
-      sketchId: "sketch_1",
-      entityId: "rect_1",
-      profileKind: "rectangle"
-    }
+    source:
+      overrides.source ??
+      ({
+        type: "sketchExtrudeFeature",
+        featureId: "feat_rect",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        profileKind: "rectangle"
+      } satisfies CadBodySnapshot["source"])
   };
 }
 

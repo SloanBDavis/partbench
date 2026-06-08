@@ -14,18 +14,25 @@ import {
   fitCameraToRenderObject,
   fitCameraToRenderScene
 } from "../viewportCamera";
+import type { ViewportReferenceAction } from "../viewportReferenceActions";
 import type { ViewportSelectionDisplay } from "../viewportSelectionDisplay";
 
 export function ViewportCanvas({
   meshes,
+  onSelectGeneratedReference,
   onSelect,
   primitives,
+  referenceActions = [],
   selectedId,
   selectionDisplay
 }: {
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly onSelect: (id: string | undefined) => void;
+  readonly onSelectGeneratedReference?: (
+    reference: ViewportReferenceAction["reference"]
+  ) => void;
   readonly primitives: readonly RenderPrimitive[];
+  readonly referenceActions?: readonly ViewportReferenceAction[];
   readonly selectionDisplay: ViewportSelectionDisplay;
   readonly selectedId?: string;
 }) {
@@ -172,6 +179,54 @@ export function ViewportCanvas({
             <small>{selectionDisplay.geometryDetail}</small>
           )}
         </div>
+        {referenceActions.length > 0 && (
+          <div
+            className="viewport-reference-actions"
+            aria-label="Viewport reference candidates"
+          >
+            <div className="viewport-reference-actions-header">
+              <strong>References</strong>
+              <small>{referenceActions.length}</small>
+            </div>
+            <ul>
+              {referenceActions.map((action) => (
+                <li key={action.id}>
+                  <button
+                    type="button"
+                    className={
+                      action.selected
+                        ? "viewport-reference-action selected"
+                        : action.commandable
+                          ? "viewport-reference-action"
+                          : "viewport-reference-action blocked"
+                    }
+                    aria-pressed={action.selected}
+                    data-commandable={action.commandable ? "true" : "false"}
+                    data-reference-kind={action.reference.kind}
+                    onClick={() =>
+                      onSelectGeneratedReference?.(action.reference)
+                    }
+                  >
+                    <span>
+                      {action.kindLabel}: {action.label}
+                    </span>
+                    <strong>
+                      {action.commandable ? "Command-ready" : "Blocked"}
+                    </strong>
+                    {action.commandOperationLabels.length > 0 && (
+                      <small>{action.commandOperationLabels.join(", ")}</small>
+                    )}
+                    {action.diagnostic && (
+                      <small className="viewport-reference-diagnostic">
+                        {action.diagnostic.message}
+                      </small>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           aria-label="3D scene viewport"

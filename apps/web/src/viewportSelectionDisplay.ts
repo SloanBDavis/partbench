@@ -19,6 +19,7 @@ import {
   type GeneratedReferenceSelectionState
 } from "./generatedReferenceSelection";
 import { formatObjectKind, getObjectDisplayName } from "./sceneObjectDisplay";
+import type { ViewportPickIntent } from "./viewportPickIntent";
 
 export type ViewportSelectionKind =
   | "none"
@@ -61,6 +62,7 @@ export interface CreateViewportSelectionDisplayInput {
   readonly selectedGeometryEntry?: DerivedGeometryEntry;
   readonly selectedObject?: SceneObject;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
+  readonly viewportPickIntent?: ViewportPickIntent;
 }
 
 interface ReferenceCandidateDisplay {
@@ -79,7 +81,8 @@ export function createViewportSelectionDisplay({
   selectedGeneratedReferenceState,
   selectedGeometryEntry,
   selectedObject,
-  selectionReferenceCandidates
+  selectionReferenceCandidates,
+  viewportPickIntent
 }: CreateViewportSelectionDisplayInput): ViewportSelectionDisplay {
   const geometry = createViewportGeometryDisplay(
     derivedGeometryEnabled,
@@ -148,7 +151,7 @@ export function createViewportSelectionDisplay({
         (consumedDiagnostics.length > 0
           ? "warning"
           : toneFromGeometryStatus(geometry.status)),
-      renderTargetId: selectedBody.id,
+      renderTargetId: selectedObject?.id ?? selectedBody.id,
       geometry,
       candidateDisplay,
       diagnostics: consumedDiagnostics
@@ -163,6 +166,28 @@ export function createViewportSelectionDisplay({
       tone: toneFromGeometryStatus(geometry.status),
       renderTargetId: selectedObject.id,
       geometry
+    });
+  }
+
+  if (viewportPickIntent?.kind === "unsupported") {
+    return createDisplay({
+      selectionKind: "none",
+      title: "Viewport pick unsupported",
+      detail: "Selection target unsupported",
+      tone: "blocked",
+      geometry,
+      diagnostics: viewportPickIntent.issues
+    });
+  }
+
+  if (viewportPickIntent?.kind === "missing") {
+    return createDisplay({
+      selectionKind: "none",
+      title: "Viewport pick unavailable",
+      detail: "Selection target missing",
+      tone: "blocked",
+      geometry,
+      diagnostics: viewportPickIntent.issues
     });
   }
 

@@ -155,6 +155,11 @@ import {
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
 import {
+  resolveViewportPickIntent,
+  type ViewportPickIntent
+} from "./viewportPickIntent";
+import { createViewportReferenceActions } from "./viewportReferenceActions";
+import {
   deriveModelingActions,
   type ModelingSelectionContext
 } from "./modelingActions";
@@ -864,6 +869,9 @@ export function App() {
     engine.getDocument()
   );
   const [selectedId, setSelectedId] = useState<string | undefined>();
+  const [viewportPickIntent, setViewportPickIntent] = useState<
+    ViewportPickIntent | undefined
+  >();
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
   >();
@@ -990,6 +998,13 @@ export function App() {
   const selectedBody = selectedId
     ? projectStructure.bodies.find((body) => body.id === selectedId)
     : undefined;
+  const selectedViewportBody =
+    selectedBody ??
+    (selectedObject
+      ? projectStructure.bodies.find(
+          (body) => body.objectId === selectedObject.id
+        )
+      : undefined);
   const addTargetBodyOptions = useMemo(
     () =>
       createAddTargetBodyOptions(
@@ -1047,6 +1062,14 @@ export function App() {
         bodyId: selectedBody.id
       })
     : undefined;
+  const selectedViewportBodyReferenceCandidates =
+    selectedBodyReferenceCandidates ??
+    (selectedViewportBody
+      ? readSelectionReferenceCandidates({
+          type: "body",
+          bodyId: selectedViewportBody.id
+        })
+      : undefined);
   const referenceCandidatesByStableId =
     readSelectionReferenceCandidatesByStableId(
       selectedBodyGeneratedReferences.references
@@ -1077,6 +1100,9 @@ export function App() {
       : undefined;
   const selectedSelectionReferenceCandidates =
     selectedGeneratedReferenceCandidates ?? selectedBodyReferenceCandidates;
+  const viewportSelectionReferenceCandidates =
+    selectedGeneratedReferenceCandidates ??
+    selectedViewportBodyReferenceCandidates;
   const modelingSelectionContext = createModelingSelectionContext({
     focusedSketchId,
     namedReferences,
@@ -1143,11 +1169,17 @@ export function App() {
     : undefined;
   const viewportSelectionDisplay = createViewportSelectionDisplay({
     derivedGeometryEnabled,
-    selectedBody,
+    selectedBody: selectedViewportBody,
     selectedGeneratedReferenceState,
     selectedGeometryEntry,
     selectedObject,
-    selectionReferenceCandidates: selectedSelectionReferenceCandidates
+    selectionReferenceCandidates: viewportSelectionReferenceCandidates,
+    viewportPickIntent
+  });
+  const viewportReferenceActions = createViewportReferenceActions({
+    references: selectedBodyGeneratedReferences.references,
+    candidatesByStableId: referenceCandidatesByStableId,
+    selectedGeneratedReference
   });
   const renderScene = useMemo(
     () =>
@@ -1225,6 +1257,7 @@ export function App() {
     const nextDocument = engine.getDocument();
     const nextStructure = readProjectStructure();
     reconcileDerivedGeometry(nextDocument, nextStructure);
+    setViewportPickIntent(undefined);
     setDocument(nextDocument);
     setSelectedId(
       nextSelectedId !== null &&
@@ -1240,7 +1273,21 @@ export function App() {
   }
 
   function selectObject(objectId: string | undefined) {
+    setViewportPickIntent(undefined);
     setSelectedId(objectId);
+    setSelectedGeneratedReference(undefined);
+  }
+
+  function selectViewportPick(pickedRenderId: string | undefined) {
+    const intent = resolveViewportPickIntent({
+      pickedRenderId,
+      bodies: projectStructure.bodies,
+      objects: sceneObjects,
+      readReferenceCandidates: readSelectionReferenceCandidates
+    });
+
+    setViewportPickIntent(intent.kind === "empty" ? undefined : intent);
+    setSelectedId(intent.selectedId);
     setSelectedGeneratedReference(undefined);
   }
 
@@ -1490,6 +1537,7 @@ export function App() {
   }
 
   function focusSketch(sketchId: string, entityId?: string) {
+    setViewportPickIntent(undefined);
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
     setFocusedSketchId(sketchId);
@@ -1734,6 +1782,7 @@ export function App() {
     }
 
     setCommandError(undefined);
+    setViewportPickIntent(undefined);
     setSelectedId(response.reference.bodyId);
     setSelectedGeneratedReference(
       createSelectedGeneratedReference(response.reference)
@@ -1741,6 +1790,7 @@ export function App() {
   }
 
   function selectGeneratedReference(reference: CadGeneratedReference) {
+    setViewportPickIntent(undefined);
     setSelectedId(reference.bodyId);
     setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
   }
@@ -2062,7 +2112,9 @@ export function App() {
           meshes={renderScene.meshes}
           selectedId={viewportSelectionDisplay.renderTargetId ?? selectedId}
           selectionDisplay={viewportSelectionDisplay}
-          onSelect={selectObject}
+          referenceActions={viewportReferenceActions}
+          onSelect={selectViewportPick}
+          onSelectGeneratedReference={selectGeneratedReference}
         />
 
         <div className="right-rail" aria-label="Context and advanced tools">

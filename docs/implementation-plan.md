@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-07.
+Last updated: 2026-06-08.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
@@ -157,6 +157,12 @@ Current Partbench can:
   status overlay for selected bodies, generated references, and named
   references after they resolve to generated references, while keeping
   viewport highlighting derived from source/query state;
+- route current canvas body/object clicks through a typed viewport pick-intent
+  helper so body-backed renderables consume `selection.referenceCandidates`
+  status and diagnostics instead of treating renderer IDs as command authority;
+- show compact viewport-adjacent generated-reference actions for the selected
+  supported body, derived from `selection.referenceCandidates` candidate
+  references, operation labels, commandability, and structured diagnostics;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
 - rebuild supported revolve, hole, and rectangle-edge chamfer/fillet result
@@ -198,9 +204,11 @@ Current limitations:
   references unsupported unless a future stable topological naming design is
   explicitly implemented.
 - Feature tree, inspector, modeling workflow, and viewport status integration
-  currently consume semantic selections that the UI already exposes. Viewport
-  picking, exact face/edge highlighting, and selection-buffer mapping are not
-  implemented yet.
+  consume semantic selections that the UI already exposes. The current viewport
+  supports body/object-granularity pick intent for current canvas renderables
+  and query-derived generated-reference selection only through explicit
+  viewport-adjacent candidate actions. Exact face/edge/vertex picking, exact
+  reference highlighting, and selection-buffer mapping are not implemented yet.
 - There is no authoritative B-rep topology persisted in the document model.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
@@ -402,6 +410,36 @@ to the same semantic contract without adding viewport picking:
   stable IDs;
 - this slice does not add viewport picking, persistent selection state, new
   modeling commands, storage migration, WebGPU, or `web-cad.project.v17`.
+
+### Implemented Tranche C2: Viewport Pick Intent And Reference Selection
+
+The second viewport slice adds narrow current-canvas pick intent while keeping
+the renderer derived:
+
+- `apps/web` resolves `pickRenderScene` body/object IDs through a typed helper
+  against current project structure and scene objects. Authored body renderables
+  select the same semantic body IDs used by the feature tree and inspector.
+- primitive object clicks keep the existing object-editing selection while the
+  viewport status can still consume the object-backed primitive body candidate
+  response and show its structured unsupported-reference diagnostic;
+- unsupported sketch-display and stale/unknown render targets become structured
+  viewport pick diagnostics. They are not promoted to generated-reference
+  selections;
+- the viewport body-click path reads `selection.referenceCandidates` and uses
+  the query response for resolved, missing, stale, unsupported, ambiguous,
+  consumed, and non-commandable status where CADOps can prove it;
+- the viewport overlays a compact generated-reference action list for the
+  selected supported body. Actions are built from
+  `selection.referenceCandidates` candidate references and operation labels,
+  can explicitly select a generated reference into the existing UI selection
+  state, and show commandability plus the first structured diagnostic for
+  blocked candidates;
+- renderer, mesh, OCCT, and future selection-buffer IDs remain derived internal
+  details. The new helpers do not expose raw renderer/mesh/OCCT/selection-buffer
+  IDs as visible UI or stable public IDs;
+- this slice remains query-only/derived and does not add exact face/edge/vertex
+  picking, persistent selection state, new modeling commands, storage
+  migration, WebGPU, or `web-cad.project.v17`.
 
 Future V7 tranche plans should continue to include these details:
 
