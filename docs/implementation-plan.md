@@ -193,25 +193,20 @@ Current Partbench can:
   inspector, and modeling workflow, including command-ready summaries,
   supported command operations, and structured diagnostics for blocked
   reference-consuming affordances;
-- surface the same V7 selection/reference candidate state in a unified viewport
-  interaction surface for selected bodies, generated references, and named
-  references after they resolve to generated references, while keeping viewport
-  highlighting derived from source/query state;
+- surface the same V7 selection/reference candidate state in the left
+  `Selection` tab and inspector/modeling workflow for selected bodies,
+  generated references, and named references after they resolve to generated
+  references, while keeping viewport highlighting derived from source/query
+  state;
 - route current canvas body/object clicks through a typed viewport pick-intent
   helper so body-backed renderables consume `selection.referenceCandidates`
   status and diagnostics instead of treating renderer IDs as command authority;
-- show grouped and capped viewport generated-reference actions for the selected
-  supported body, derived from `selection.referenceCandidates` candidate
-  references, operation labels, commandability, and structured diagnostics;
-- show transient subordinate viewport hover status for current canvas
-  body/object render IDs by resolving them to the same semantic
-  body/reference-candidate query summaries used by viewport pick intent, while
-  reporting sketch/unknown targets as structured unsupported or missing hover
-  diagnostics and suppressing duplicate selected-target hover after clicks;
-- attach compact measurement/inspection rows to the selected semantic body or
-  generated-reference summary using existing `body.measurements` and
-  `body.generatedReferenceMeasurements` query results already surfaced by the
-  inspector;
+- keep generated-reference actions, operation labels, commandability, structured
+  diagnostics, and selected-target measurements in the inspector/modeling
+  surfaces rather than floating them over the viewport;
+- keep helper-level hover/measurement/interaction readiness tests available for
+  future viewport work, but do not make them the visible product surface until
+  a consolidated interaction model is explicitly designed;
 - keep a lightweight deterministic V7 viewport baseline helper/check for a
   rectangle extrude body with generated references and derived geometry status,
   without exposing raw mesh, OCCT, cache, or selection-buffer identifiers;
@@ -259,16 +254,17 @@ Current limitations:
   V6 revolve, hole, chamfer, and fillet result bodies also keep generated
   references unsupported unless a future stable topological naming design is
   explicitly implemented.
-- Feature tree, inspector, modeling workflow, and viewport status integration
-  consume semantic selections that the UI already exposes. The current viewport
-  supports body/object-granularity pick intent for current canvas renderables
-  and query-derived generated-reference selection only through explicit
-  viewport-adjacent candidate actions. Exact face/edge/vertex picking, exact
+- Feature tree, inspector, modeling workflow, agents, MCP, and the left
+  `Selection` tab consume semantic selections that the UI already exposes. The
+  current viewport supports body/object-granularity pick intent for current
+  canvas renderables, but commandability details, generated-reference actions,
+  diagnostics, and measurements are shown in the Selection/inspector/modeling
+  surfaces rather than over the viewport. Exact face/edge/vertex picking, exact
   reference highlighting, and selection-buffer mapping are not implemented yet.
-- The C4 viewport interaction surface consolidates selected status,
-  reference-action groups, subordinate hover, and selected-target measurements
-  into one compact CAD interaction model. Exact face/edge/vertex picking and
-  exact reference highlighting remain future work.
+- The C4 helper work still provides typed viewport interaction readiness for
+  future selection-buffer work, but the visible C4 product correction keeps the
+  viewport unobstructed and moves current-selection detail into the left
+  `Selection` tab.
 - There is no authoritative B-rep topology persisted in the document model.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
@@ -404,8 +400,9 @@ The implemented sequence through G7 is:
    tree, inspector, and modeling workflow integration with reference/health
    semantics, using CADOps-backed actions only.
 3. **Viewport Selection And Visual State** - implemented current canvas
-   semantic pick intent, hover/status, grouped reference actions, and selected
-   measurements without making renderer IDs authoritative.
+   semantic pick intent, selected highlighting, and unobstructed viewport
+   layout, with current-selection details/actions/measurements in the left
+   `Selection` tab instead of renderer-owned UI.
 4. **Local Project Workflow** - implemented JSON open/save polish and app-layer
    storage capability status. File System Access picker operations, OPFS,
    thumbnails, and `.wcad` packages remain deferred.
@@ -471,17 +468,18 @@ modeling workflow to the selection/reference contract:
 
 ### Implemented Tranche C1: Viewport Semantic Selection Readiness
 
-The first viewport-readiness slice connects viewport-adjacent selection status
-to the same semantic contract without adding viewport picking:
+The first viewport-readiness slice connects viewport selection readiness to the
+same semantic contract without adding exact face/edge/vertex picking:
 
-- the app derives a typed viewport selection display from selected semantic body
-  and generated-reference state plus the current `selection.referenceCandidates`
+- the app derives typed semantic display state from selected body and
+  generated-reference state plus the current `selection.referenceCandidates`
   response;
 - named references participate after the existing UI resolves them to generated
   references;
-- the viewport status overlay shows command-ready summaries, supported
-  operations, structured diagnostics, consumed-body state, and derived geometry
-  ready/pending/failed/fallback state;
+- command-ready summaries, supported operations, structured diagnostics,
+  consumed-body state, measurements, and generated-reference actions are visible
+  in the left `Selection` tab/inspector/modeling workflow, not as a viewport
+  overlay;
 - current viewport highlighting remains source body/object ID based. Renderer,
   mesh, OCCT, and future selection-buffer identifiers are not promoted to public
   stable IDs;
@@ -496,21 +494,21 @@ the renderer derived:
 - `apps/web` resolves `pickRenderScene` body/object IDs through a typed helper
   against current project structure and scene objects. Authored body renderables
   select the same semantic body IDs used by the feature tree and inspector.
-- primitive object clicks keep the existing object-editing selection while the
-  viewport status can still consume the object-backed primitive body candidate
-  response and show its structured unsupported-reference diagnostic;
+- primitive object clicks keep the existing object-editing selection while
+  object-backed primitive body candidate diagnostics remain available through
+  the selection/inspector surfaces;
 - unsupported sketch-display and stale/unknown render targets become structured
   viewport pick diagnostics. They are not promoted to generated-reference
   selections;
-- the viewport body-click path reads `selection.referenceCandidates` and uses
-  the query response for resolved, missing, stale, unsupported, ambiguous,
-  consumed, and non-commandable status where CADOps can prove it;
-- the viewport overlays a compact generated-reference action list for the
-  selected supported body. Actions are built from
-  `selection.referenceCandidates` candidate references and operation labels,
-  can explicitly select a generated reference into the existing UI selection
-  state, and show commandability plus the first structured diagnostic for
-  blocked candidates;
+- the viewport body-click path updates the same semantic app selection used by
+  the feature tree and inspector. `selection.referenceCandidates` responses
+  provide resolved, missing, stale, unsupported, ambiguous, consumed, and
+  non-commandable status where CADOps can prove it;
+- generated-reference action lists stay in the Selection/inspector surface.
+  They are built from `selection.referenceCandidates` candidate references and
+  operation labels, can explicitly select a generated reference into the
+  existing UI selection state, and show commandability plus structured
+  diagnostics for blocked candidates;
 - renderer, mesh, OCCT, and future selection-buffer IDs remain derived internal
   details. The new helpers do not expose raw renderer/mesh/OCCT/selection-buffer
   IDs as visible UI or stable public IDs;
@@ -520,20 +518,19 @@ the renderer derived:
 
 ### Implemented Tranche C3: Viewport Hover And Measurement Overlay
 
-The third viewport slice makes current canvas interaction more inspectable
-without broadening renderer authority:
+The third viewport slice added helper-level readiness for inspectable current
+canvas interaction without broadening renderer authority:
 
 - `apps/web` resolves transient hover render IDs through a typed app-layer
   hover helper that mirrors viewport pick semantics for body/object targets and
   emits structured unsupported or missing diagnostics for sketch/unknown targets;
-- hover display shows body/object titles, commandability summaries, supported
-  operation labels, and first structured diagnostics from
-  `selection.referenceCandidates`, but does not mutate selection or select
-  generated references;
-- the viewport renders a compact selected-target measurement overlay sourced
-  from existing `body.measurements` and
-  `body.generatedReferenceMeasurements` query results, including structured
-  unsupported, missing, or stale measurement text where those queries report it;
+- helper-level hover display can derive body/object titles, commandability
+  summaries, supported operation labels, and first structured diagnostics from
+  `selection.referenceCandidates`, but visible current-selection detail remains
+  in the Selection/inspector/modeling surfaces;
+- selected-target measurements remain sourced from existing `body.measurements`
+  and `body.generatedReferenceMeasurements` query results and are surfaced by
+  the inspector rather than a viewport overlay;
 - a small deterministic viewport baseline helper/check covers a rectangle
   extrude body with generated references and ready derived geometry status while
   excluding raw mesh, OCCT, cache, and selection-buffer IDs from visible helper
@@ -544,27 +541,23 @@ without broadening renderer authority:
 
 ### Implemented Tranche C4: Viewport Interaction Cohesion
 
-The fourth viewport slice consolidates the C1-C3 viewport surfaces into one
-compact CAD interaction model without changing modeling, renderer, storage, or
-topology authority:
+The fourth viewport slice consolidated the C1-C3 helper surfaces, then the
+visible product surface was corrected to keep the viewport unobstructed without
+changing modeling, renderer, storage, or topology authority:
 
-- `apps/web` composes selected status, grouped reference actions, attached
-  measurements, subordinate hover, and structured diagnostics through a typed
-  app-layer viewport interaction surface helper;
-- selected body/generated-reference status remains primary. Hover is transient,
-  subordinate, and suppressed when it would duplicate the selected render target
-  after a click;
-- generated-reference actions are prioritized and capped in compact kind groups
-  so supported faces/edges stay reachable without visually swamping the
-  viewport. Overflow remains discoverable through the inspector and existing
-  generated-reference panels;
-- body and generated-reference measurements remain sourced from existing CADOps
-  queries and render as rows attached to the selected summary rather than as a
-  separate floating overlay;
-- unsupported, missing, stale, consumed, and non-commandable states keep
-  structured diagnostic code/status metadata in the viewport surface while raw
-  mesh, OCCT, cache, and future selection-buffer identifiers stay out of visible
-  text;
+- `apps/web` retains typed app-layer helpers for selected status, grouped
+  reference actions, attached measurements, subordinate hover, and structured
+  diagnostics as future viewport-readiness infrastructure;
+- the visible app layout now gives the left rail two model-browser tabs:
+  `Tree` for structure navigation and `Selection` for the current semantic
+  selection/inspector surface;
+- selected body/generated-reference status, generated-reference actions,
+  body/reference measurements, and unsupported, missing, stale, consumed, and
+  non-commandable diagnostics are shown in the Selection/inspector/modeling
+  surfaces, not over the canvas;
+- the viewport remains a derived visual/picking surface with camera controls and
+  selected body/object highlighting. Raw mesh, OCCT, cache, and future
+  selection-buffer identifiers stay out of visible text and stable public IDs;
 - this slice remains query-only/derived. It does not add exact face/edge/vertex
   picking, persistent hover/selection state, new modeling commands, storage
   migration, WebGPU, or `web-cad.project.v17`.

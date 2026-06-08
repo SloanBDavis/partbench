@@ -386,10 +386,11 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     ids.circleBodyId
   );
 
-  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Details");
+  openTreePanel();
   const modelStructure = getElementByAriaLabel("Model structure");
   const modeling = getSectionByAriaLabel("Modeling context");
   clickButtonContaining(modelStructure, ids.circleBodyName);
+  openSelectionPanel();
 
   await waitForBodyCommandReady(
     ids.circleBodyId,
@@ -398,21 +399,23 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   pass(
     "circle-body-reference-contract",
     "feature tree circle body selection shows command-ready semantic reference state",
-    getViewportSelectionText()
+    getSelectionText()
   );
 
+  openTreePanel();
   clickButtonContaining(getElementByAriaLabel("Model structure"), ids.bodyName);
+  openSelectionPanel();
 
   await waitForBodyCommandReady(
     ids.bodyId,
     "body command-ready reference state"
   );
-  const viewportSummary = getElementByAriaLabel("Viewport interaction summary");
   pass(
     "body-reference-contract",
     "feature tree body selection shows command-ready semantic reference state",
-    getViewportSelectionText()
+    getSelectionText()
   );
+  assertViewportHasNoSelectionDetails();
 
   const modelingChecks = [
     assertIncludes(
@@ -433,36 +436,32 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     );
   }
 
-  const viewportReferences = getElementByAriaLabel(
-    "Viewport reference candidates"
+  const inspector = getElementByAriaLabel("Inspector");
+  const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+  const faceOption = [...referenceSelect.querySelectorAll("option")].find(
+    (option) => option.value.includes(":face:")
   );
-  const faceAction = [
-    ...viewportReferences.querySelectorAll(
-      'button[data-commandable="true"][data-reference-kind="face"]'
-    )
-  ][0];
 
-  if (!faceAction) {
+  if (!faceOption) {
     fail(
       "generated-reference-candidate",
-      "viewport exposes generated face reference candidate",
-      normalize(viewportReferences.textContent)
+      "selection tab exposes generated face reference candidate",
+      normalize(referenceSelect.textContent)
     );
   } else {
-    const selectedFaceLabel = normalize(
-      faceAction.querySelector("span")?.textContent
-    );
-    faceAction.click();
+    const selectedFaceLabel = normalize(faceOption.textContent);
+    setSelectByLabel(inspector, "Inspect reference", faceOption.value);
     await waitFor(
       () =>
-        viewportSummary.dataset.selectionKind === "generatedReference" &&
-        includesText(viewportSummary, "Command-ready") &&
-        includesText(getElementByAriaLabel("Inspector"), "Selected reference"),
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          "Selected reference"
+        ) && includesText(getElementByAriaLabel("Inspector"), "Command-ready"),
       "selected generated reference"
     );
     pass(
       "generated-reference-selection",
-      "selected generated face through viewport/status reference candidates",
+      "selected generated face through selection-tab reference candidates",
       selectedFaceLabel
     );
 
@@ -498,6 +497,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       ids.namedReference
     );
 
+    openTreePanel();
     const namedReferenceButton = getButtonContaining(
       modelStructure,
       ids.namedReference
@@ -511,19 +511,21 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     } else {
       namedReferenceButton.click();
       await waitFor(
+        () => isTreePanelOpen(),
+        "named reference selection keeps preferred tree tab"
+      );
+      openSelectionPanel();
+      await waitFor(
         () =>
-          viewportSummary.dataset.selectionKind === "generatedReference" &&
-          includesText(viewportSummary, "Command-ready") &&
           includesText(getElementByAriaLabel("Inspector"), ids.namedReference),
         "reselected named reference"
       );
       pass(
         "named-reference-route",
-        "named reference routes to command-ready generated reference"
+        "named reference routes to command-ready generated reference without forcing the Selection tab"
       );
     }
 
-    const inspector = getElementByAriaLabel("Inspector");
     setFieldByLabel(inspector, "Sketch name", ids.attachedSketchName);
     setInputByDetailsSummary(
       inspector,
@@ -633,11 +635,12 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       ids.cutBodyId
     );
 
-    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Details");
+    openTreePanel();
     clickButtonContaining(
       getElementByAriaLabel("Model structure"),
       ids.bodyName
     );
+    openSelectionPanel();
     await waitForConsumedDiagnostic();
     pass(
       "consumed-body-diagnostic",
@@ -750,8 +753,9 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     compactText(getElementByAriaLabel("Model structure").textContent)
   );
 
-  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Details");
+  openTreePanel();
   clickButtonContaining(getElementByAriaLabel("Model structure"), ids.bodyName);
+  openSelectionPanel();
   await waitForConsumedDiagnostic();
   pass(
     "project-json-roundtrip-diagnostic",
@@ -828,14 +832,10 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
 
   async function waitForBodyCommandReady(bodyId, label) {
     await waitFor(() => {
-      const currentViewportSummary = getElementByAriaLabel(
-        "Viewport interaction summary"
-      );
       const currentInspector = getElementByAriaLabel("Inspector");
       const currentModeling = getSectionByAriaLabel("Modeling context");
       const ready =
-        currentViewportSummary.dataset.selectionKind === "body" &&
-        includesText(currentViewportSummary, "Command-ready") &&
+        isSelectionPanelOpen() &&
         includesText(currentInspector, bodyId) &&
         includesText(currentInspector, "Command-ready reference") &&
         includesText(currentModeling, "Reference contract") &&
@@ -844,8 +844,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       if (!ready) {
         throw new Error(
           [
-            `viewportKind=${currentViewportSummary.dataset.selectionKind ?? ""}`,
-            `viewport=${normalize(currentViewportSummary.textContent).slice(0, 180)}`,
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
             `inspector=${normalize(currentInspector.textContent).slice(0, 180)}`,
             `modeling=${normalize(currentModeling.textContent).slice(0, 180)}`
           ].join("; ")
@@ -858,17 +857,10 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
 
   async function waitForConsumedDiagnostic() {
     await waitFor(() => {
-      const viewportDiagnostics = getElementByAriaLabel(
-        "Viewport selection diagnostics"
-      );
-      const consumedDiagnostic = viewportDiagnostics.querySelector(
-        '[data-diagnostic-code="CONSUMED_SELECTION_BODY"][data-diagnostic-status="consumed"]'
-      );
       const inspector = getElementByAriaLabel("Inspector");
       const modelingContext = getSectionByAriaLabel("Modeling context");
       const ready =
-        Boolean(consumedDiagnostic) &&
-        includesText(viewportDiagnostics, ids.cutFeatureId) &&
+        isSelectionPanelOpen() &&
         includesText(inspector, "Selection body consumed") &&
         includesText(inspector, ids.cutFeatureId) &&
         includesText(modelingContext, "Selection body consumed");
@@ -876,7 +868,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       if (!ready) {
         throw new Error(
           [
-            `diagnostics=${normalize(viewportDiagnostics.textContent).slice(0, 180)}`,
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
             `inspector=${normalize(inspector.textContent).slice(0, 180)}`,
             `modeling=${normalize(modelingContext.textContent).slice(0, 180)}`
           ].join("; ")
@@ -885,6 +877,32 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
 
       return true;
     }, "consumed body structured diagnostics");
+  }
+
+  function assertViewportHasNoSelectionDetails() {
+    const viewport = getElementByAriaLabel("3D viewport");
+    const obsoleteDetailSurface = viewport.querySelector(
+      [
+        '[aria-label="Viewport interaction summary"]',
+        '[aria-label="Viewport reference candidates"]',
+        '[aria-label="Viewport selection diagnostics"]',
+        ".viewport-interaction-surface"
+      ].join(",")
+    );
+
+    if (obsoleteDetailSurface) {
+      fail(
+        "viewport-unobstructed-selection-layout",
+        "selection details stay out of the viewport",
+        normalize(obsoleteDetailSurface.textContent)
+      );
+      return;
+    }
+
+    pass(
+      "viewport-unobstructed-selection-layout",
+      "selection details live in the left Selection tab, not over the viewport"
+    );
   }
 
   async function waitForRoundTripModelStructure() {
@@ -971,10 +989,31 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     });
   }
 
-  function getViewportSelectionText() {
-    return compactText(
-      getElementByAriaLabel("Viewport interaction summary").textContent
+  function openTreePanel() {
+    clickButtonContaining(getElementByAriaLabel("Model browser tabs"), "Tree");
+  }
+
+  function openSelectionPanel() {
+    clickButtonContaining(
+      getElementByAriaLabel("Model browser tabs"),
+      "Selection"
     );
+  }
+
+  function isSelectionPanelOpen() {
+    return (
+      document.getElementById("model-browser-panel-selection")?.hidden === false
+    );
+  }
+
+  function isTreePanelOpen() {
+    return (
+      document.getElementById("model-browser-panel-tree")?.hidden === false
+    );
+  }
+
+  function getSelectionText() {
+    return compactText(getElementByAriaLabel("Inspector").textContent, 520);
   }
 
   function getExportReadinessText() {
@@ -985,10 +1024,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   }
 
   function getDiagnosticText() {
-    return compactText(
-      getElementByAriaLabel("Viewport selection diagnostics").textContent,
-      360
-    );
+    return compactText(getElementByAriaLabel("Inspector").textContent, 360);
   }
 
   function getProjectJsonEditorValue(projectPanel) {

@@ -72,6 +72,7 @@ describe("V7 browser workflow smoke summary", () => {
       expect.arrayContaining([
         "create-circle-extrude",
         "circle-body-reference-contract",
+        "viewport-unobstructed-selection-layout",
         "attached-sketch-create",
         "consumed-body-diagnostic",
         "project-json-load-preview",

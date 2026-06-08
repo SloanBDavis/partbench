@@ -124,7 +124,7 @@ export function StructurePanel({
   );
 
   return (
-    <aside className="object-tree model-browser" aria-label="Model structure">
+    <div className="object-tree model-browser" aria-label="Model structure">
       <div className="model-browser-header">
         <div>
           <h2>Model</h2>
@@ -267,7 +267,7 @@ export function StructurePanel({
           </UtilitySection>
         )}
       </div>
-    </aside>
+    </div>
   );
 }
 

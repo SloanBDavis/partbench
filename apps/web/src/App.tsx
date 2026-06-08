@@ -141,7 +141,6 @@ import {
   formatBodyTopologyError
 } from "./sceneObjectDisplay";
 import { createRenderSceneInputs } from "./renderScene";
-import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import {
   createGeneratedFaceReferenceKey,
   createSketchDisplayState
@@ -159,17 +158,7 @@ import {
   type GeneratedReferenceSelectionState,
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
-import {
-  resolveViewportPickIntent,
-  type ViewportPickIntent
-} from "./viewportPickIntent";
-import {
-  resolveViewportHoverIntent,
-  type ViewportHoverState
-} from "./viewportHoverIntent";
-import { createViewportInteractionSurface } from "./viewportInteractionSurface";
-import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
-import { createViewportReferenceActions } from "./viewportReferenceActions";
+import { resolveViewportPickIntent } from "./viewportPickIntent";
 import {
   deriveModelingActions,
   type ModelingSelectionContext
@@ -288,13 +277,9 @@ const initialBatchForm: BatchOperationForm = {
   unitUpdateMode: "metadataOnly"
 };
 
-type UtilityPanelId =
-  | "details"
-  | "sketches"
-  | "history"
-  | "batch"
-  | "project"
-  | "geometry";
+type UtilityPanelId = "sketches" | "history" | "batch" | "project" | "geometry";
+
+type ModelBrowserPanelId = "tree" | "selection";
 
 function formatSchemaBadge(schemaVersion: string): string {
   return schemaVersion.replace("web-cad.project.", "").toUpperCase();
@@ -896,12 +881,6 @@ export function App() {
     engine.getDocument()
   );
   const [selectedId, setSelectedId] = useState<string | undefined>();
-  const [viewportPickIntent, setViewportPickIntent] = useState<
-    ViewportPickIntent | undefined
-  >();
-  const [viewportHoverState, setViewportHoverState] = useState<
-    ViewportHoverState | undefined
-  >();
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
   >();
@@ -916,7 +895,9 @@ export function App() {
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
   const [activeUtilityPanel, setActiveUtilityPanel] =
-    useState<UtilityPanelId>("details");
+    useState<UtilityPanelId>("sketches");
+  const [activeModelBrowserPanel, setActiveModelBrowserPanel] =
+    useState<ModelBrowserPanelId>("tree");
   const [focusedSketchId, setFocusedSketchId] = useState<string | undefined>();
   const [selectedSketchContext, setSelectedSketchContext] = useState<
     SketchPanelSelectionContext | undefined
@@ -1031,13 +1012,6 @@ export function App() {
   const selectedBody = selectedId
     ? projectStructure.bodies.find((body) => body.id === selectedId)
     : undefined;
-  const selectedViewportBody =
-    selectedBody ??
-    (selectedObject
-      ? projectStructure.bodies.find(
-          (body) => body.objectId === selectedObject.id
-        )
-      : undefined);
   const addTargetBodyOptions = useMemo(
     () =>
       createAddTargetBodyOptions(
@@ -1083,12 +1057,6 @@ export function App() {
   const selectedBodyMeasurements = selectedBody
     ? readBodyMeasurements(selectedBody.id)
     : {};
-  const selectedViewportBodyMeasurements =
-    selectedViewportBody?.id === selectedBody?.id
-      ? selectedBodyMeasurements
-      : selectedViewportBody
-        ? readBodyMeasurements(selectedViewportBody.id)
-        : {};
   const selectedBodyTopology =
     selectedBody !== undefined
       ? readBodyTopology(selectedBody.id, derivedExactMetadata)
@@ -1100,14 +1068,6 @@ export function App() {
         bodyId: selectedBody.id
       })
     : undefined;
-  const selectedViewportBodyReferenceCandidates =
-    selectedBodyReferenceCandidates ??
-    (selectedViewportBody
-      ? readSelectionReferenceCandidates({
-          type: "body",
-          bodyId: selectedViewportBody.id
-        })
-      : undefined);
   const referenceCandidatesByStableId =
     readSelectionReferenceCandidatesByStableId(
       selectedBodyGeneratedReferences.references
@@ -1138,9 +1098,6 @@ export function App() {
       : undefined;
   const selectedSelectionReferenceCandidates =
     selectedGeneratedReferenceCandidates ?? selectedBodyReferenceCandidates;
-  const viewportSelectionReferenceCandidates =
-    selectedGeneratedReferenceCandidates ??
-    selectedViewportBodyReferenceCandidates;
   const modelingSelectionContext = createModelingSelectionContext({
     focusedSketchId,
     namedReferences,
@@ -1202,36 +1159,11 @@ export function App() {
       ),
     [derivedGeometry]
   );
-  const selectedGeometryEntry = selectedId
-    ? derivedGeometryBySourceId.get(selectedId)
-    : undefined;
-  const viewportSelectionDisplay = createViewportSelectionDisplay({
-    derivedGeometryEnabled,
-    selectedBody: selectedViewportBody,
-    selectedGeneratedReferenceState,
-    selectedGeometryEntry,
-    selectedObject,
-    selectionReferenceCandidates: viewportSelectionReferenceCandidates,
-    viewportPickIntent
-  });
-  const viewportMeasurementOverlay = createViewportMeasurementOverlay({
-    body: selectedViewportBody,
-    bodyMeasurements: selectedViewportBodyMeasurements.measurements,
-    bodyMeasurementsError: selectedViewportBodyMeasurements.error,
-    selectedGeneratedReferenceState,
-    units: document.units
-  });
-  const viewportReferenceActions = createViewportReferenceActions({
-    references: selectedBodyGeneratedReferences.references,
-    candidatesByStableId: referenceCandidatesByStableId,
-    selectedGeneratedReference
-  });
-  const viewportInteractionSurface = createViewportInteractionSurface({
-    selectionDisplay: viewportSelectionDisplay,
-    hoverState: viewportHoverState,
-    measurementOverlay: viewportMeasurementOverlay,
-    referenceActions: viewportReferenceActions
-  });
+  const selectedViewportRenderId =
+    selectedGeneratedReferenceState.status === "selected" ||
+    selectedGeneratedReferenceState.status === "stale"
+      ? selectedGeneratedReferenceState.selection.bodyId
+      : (selectedObject?.id ?? selectedBody?.id ?? selectedId);
   const renderScene = useMemo(
     () =>
       createRenderSceneInputs(
@@ -1276,7 +1208,6 @@ export function App() {
     readonly label: string;
     readonly count?: number | string;
   }[] = [
-    { id: "details", label: "Details" },
     { id: "sketches", label: "Sketches", count: sketches.length },
     { id: "history", label: "Log", count: transactionHistory.length },
     { id: "batch", label: "Batch", count: queuedOps.length },
@@ -1325,8 +1256,6 @@ export function App() {
     const nextDocument = engine.getDocument();
     const nextStructure = readProjectStructure();
     reconcileDerivedGeometry(nextDocument, nextStructure);
-    setViewportPickIntent(undefined);
-    setViewportHoverState(undefined);
     setDocument(nextDocument);
     setSelectedId(
       nextSelectedId !== null &&
@@ -1342,8 +1271,6 @@ export function App() {
   }
 
   function selectObject(objectId: string | undefined) {
-    setViewportPickIntent(undefined);
-    setViewportHoverState(undefined);
     setSelectedId(objectId);
     setSelectedGeneratedReference(undefined);
   }
@@ -1356,21 +1283,8 @@ export function App() {
       readReferenceCandidates: readSelectionReferenceCandidates
     });
 
-    setViewportPickIntent(intent.kind === "empty" ? undefined : intent);
-    setViewportHoverState(undefined);
     setSelectedId(intent.selectedId);
     setSelectedGeneratedReference(undefined);
-  }
-
-  function hoverViewportTarget(hoveredRenderId: string | undefined) {
-    const hoverState = resolveViewportHoverIntent({
-      hoveredRenderId,
-      bodies: projectStructure.bodies,
-      objects: sceneObjects,
-      readReferenceCandidates: readSelectionReferenceCandidates
-    });
-
-    setViewportHoverState(hoverState.kind === "empty" ? undefined : hoverState);
   }
 
   function reconcileDerivedGeometry(
@@ -1619,8 +1533,6 @@ export function App() {
   }
 
   function focusSketch(sketchId: string, entityId?: string) {
-    setViewportPickIntent(undefined);
-    setViewportHoverState(undefined);
     setSelectedId(undefined);
     setSelectedGeneratedReference(undefined);
     setFocusedSketchId(sketchId);
@@ -1865,8 +1777,6 @@ export function App() {
     }
 
     setCommandError(undefined);
-    setViewportPickIntent(undefined);
-    setViewportHoverState(undefined);
     setSelectedId(response.reference.bodyId);
     setSelectedGeneratedReference(
       createSelectedGeneratedReference(response.reference)
@@ -1874,8 +1784,6 @@ export function App() {
   }
 
   function selectGeneratedReference(reference: CadGeneratedReference) {
-    setViewportPickIntent(undefined);
-    setViewportHoverState(undefined);
     setSelectedId(reference.bodyId);
     setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
   }
@@ -2232,38 +2140,134 @@ export function App() {
       </header>
 
       <section className="workspace" aria-label="CAD workspace">
-        <StructurePanel
-          bodies={projectStructure.bodies}
-          features={projectStructure.features}
-          focusedSketchId={focusedSketchId}
-          generatedReferences={selectedBodyGeneratedReferences.references}
-          geometryStatuses={
-            derivedGeometryEnabled ? geometryStatusBySourceId : undefined
-          }
-          health={projectHealth}
-          namedReferences={namedReferences}
-          namedReferenceCandidatesByName={namedReferenceCandidatesByName}
-          objects={sceneObjects}
-          parts={projectStructure.parts}
-          referenceCandidatesByStableId={referenceCandidatesByStableId}
-          selectedId={selectedId}
-          selectedGeneratedReference={selectedGeneratedReference}
-          sketches={sketches}
-          units={document.units}
-          onFocusSketch={focusSketch}
-          onInspectNamedReference={inspectNamedReference}
-          onSelect={selectObject}
-          onSelectGeneratedReference={selectGeneratedReference}
-        />
+        <aside className="model-browser-shell" aria-label="Model browser">
+          <div
+            className="model-browser-tabs"
+            role="tablist"
+            aria-label="Model browser tabs"
+          >
+            <button
+              id="model-browser-tab-tree"
+              type="button"
+              role="tab"
+              aria-controls="model-browser-panel-tree"
+              aria-selected={activeModelBrowserPanel === "tree"}
+              className={activeModelBrowserPanel === "tree" ? "active" : ""}
+              onClick={() => setActiveModelBrowserPanel("tree")}
+            >
+              <span>Tree</span>
+            </button>
+            <button
+              id="model-browser-tab-selection"
+              type="button"
+              role="tab"
+              aria-controls="model-browser-panel-selection"
+              aria-selected={activeModelBrowserPanel === "selection"}
+              className={
+                activeModelBrowserPanel === "selection" ? "active" : ""
+              }
+              onClick={() => setActiveModelBrowserPanel("selection")}
+            >
+              <span>Selection</span>
+            </button>
+          </div>
+
+          <div
+            id="model-browser-panel-tree"
+            role="tabpanel"
+            aria-labelledby="model-browser-tab-tree"
+            className="model-browser-panel"
+            hidden={activeModelBrowserPanel !== "tree"}
+          >
+            <StructurePanel
+              bodies={projectStructure.bodies}
+              features={projectStructure.features}
+              focusedSketchId={focusedSketchId}
+              generatedReferences={selectedBodyGeneratedReferences.references}
+              geometryStatuses={
+                derivedGeometryEnabled ? geometryStatusBySourceId : undefined
+              }
+              health={projectHealth}
+              namedReferences={namedReferences}
+              namedReferenceCandidatesByName={namedReferenceCandidatesByName}
+              objects={sceneObjects}
+              parts={projectStructure.parts}
+              referenceCandidatesByStableId={referenceCandidatesByStableId}
+              selectedId={selectedId}
+              selectedGeneratedReference={selectedGeneratedReference}
+              sketches={sketches}
+              units={document.units}
+              onFocusSketch={focusSketch}
+              onInspectNamedReference={inspectNamedReference}
+              onSelect={selectObject}
+              onSelectGeneratedReference={selectGeneratedReference}
+            />
+          </div>
+
+          <div
+            id="model-browser-panel-selection"
+            role="tabpanel"
+            aria-labelledby="model-browser-tab-selection"
+            className="model-browser-panel selection-browser-panel"
+            hidden={activeModelBrowserPanel !== "selection"}
+          >
+            <Inspector
+              disabled={commandPending}
+              measurements={selectedMeasurements}
+              bodyMeasurements={selectedBodyMeasurements.measurements}
+              bodyMeasurementsError={selectedBodyMeasurements.error}
+              bodyTopology={selectedBodyTopology.topology}
+              bodyTopologyError={selectedBodyTopology.error}
+              bodyTopologyExactMetadataStatus={
+                selectedBodyTopology.exactMetadataStatus
+              }
+              body={selectedBody}
+              feature={selectedFeature}
+              generatedReferences={selectedBodyGeneratedReferences.references}
+              generatedReferencesError={selectedBodyGeneratedReferences.error}
+              generatedReferenceMeasurements={
+                selectedGeneratedReferenceMeasurements
+              }
+              namedReferences={namedReferences}
+              namedReferenceCandidatesByName={namedReferenceCandidatesByName}
+              object={selectedObject}
+              referenceCandidatesByStableId={referenceCandidatesByStableId}
+              selectedGeneratedReference={selectedGeneratedReference}
+              selectionReferenceCandidates={
+                selectedSelectionReferenceCandidates
+              }
+              units={document.units}
+              onApplyDimensions={(form) => void updateSelectedDimensions(form)}
+              onApplyName={(name) => void renameSelectedObject(name)}
+              onApplyTransform={(form) => void updateSelectedTransform(form)}
+              onDelete={() => void deleteSelectedObject()}
+              onDeleteFeature={(featureId) =>
+                void deleteAuthoredFeature(featureId)
+              }
+              onCreateSketchOnFace={(form) => void createSketchOnFace(form)}
+              onCreateEdgeFinish={(operation, form) =>
+                void createEdgeFinish(operation, form)
+              }
+              onDeleteNamedReference={(name) => void deleteNamedReference(name)}
+              onNameGeneratedReference={(name, target) =>
+                void nameGeneratedReference(name, target)
+              }
+              onInspectNamedReference={inspectNamedReference}
+              onSelectGeneratedReference={(selection) => {
+                setSelectedGeneratedReference(selection);
+              }}
+              onUpdateExtrude={(featureId, depth, side) =>
+                void updateAuthoredExtrude(featureId, depth, side)
+              }
+            />
+          </div>
+        </aside>
 
         <ViewportCanvas
           primitives={renderScene.primitives}
           meshes={renderScene.meshes}
-          selectedId={viewportSelectionDisplay.renderTargetId ?? selectedId}
-          interactionSurface={viewportInteractionSurface}
-          onHover={hoverViewportTarget}
+          selectedId={selectedViewportRenderId}
           onSelect={selectViewportPick}
-          onSelectGeneratedReference={selectGeneratedReference}
         />
 
         <div className="right-rail" aria-label="Context and advanced tools">
@@ -2322,7 +2326,7 @@ export function App() {
           <details className="advanced-tools-drawer">
             <summary>
               <span>Advanced tools</span>
-              <small>Details, file, batch, log</small>
+              <small>Sketches, file, batch, log, mesh</small>
             </summary>
 
             <section className="utility-dock" aria-label="Workspace tools">
@@ -2349,82 +2353,6 @@ export function App() {
               </div>
 
               <div className="utility-panels">
-                <div
-                  id="utility-panel-details"
-                  role="tabpanel"
-                  aria-labelledby="utility-tab-details"
-                  className="utility-panel"
-                  hidden={activeUtilityPanel !== "details"}
-                >
-                  <Inspector
-                    disabled={commandPending}
-                    measurements={selectedMeasurements}
-                    bodyMeasurements={selectedBodyMeasurements.measurements}
-                    bodyMeasurementsError={selectedBodyMeasurements.error}
-                    bodyTopology={selectedBodyTopology.topology}
-                    bodyTopologyError={selectedBodyTopology.error}
-                    bodyTopologyExactMetadataStatus={
-                      selectedBodyTopology.exactMetadataStatus
-                    }
-                    body={selectedBody}
-                    feature={selectedFeature}
-                    generatedReferences={
-                      selectedBodyGeneratedReferences.references
-                    }
-                    generatedReferencesError={
-                      selectedBodyGeneratedReferences.error
-                    }
-                    generatedReferenceMeasurements={
-                      selectedGeneratedReferenceMeasurements
-                    }
-                    namedReferences={namedReferences}
-                    namedReferenceCandidatesByName={
-                      namedReferenceCandidatesByName
-                    }
-                    object={selectedObject}
-                    referenceCandidatesByStableId={
-                      referenceCandidatesByStableId
-                    }
-                    selectedGeneratedReference={selectedGeneratedReference}
-                    selectionReferenceCandidates={
-                      selectedSelectionReferenceCandidates
-                    }
-                    units={document.units}
-                    onApplyDimensions={(form) =>
-                      void updateSelectedDimensions(form)
-                    }
-                    onApplyName={(name) => void renameSelectedObject(name)}
-                    onApplyTransform={(form) =>
-                      void updateSelectedTransform(form)
-                    }
-                    onDelete={() => void deleteSelectedObject()}
-                    onDeleteFeature={(featureId) =>
-                      void deleteAuthoredFeature(featureId)
-                    }
-                    onCreateSketchOnFace={(form) =>
-                      void createSketchOnFace(form)
-                    }
-                    onCreateEdgeFinish={(operation, form) =>
-                      void createEdgeFinish(operation, form)
-                    }
-                    onDeleteNamedReference={(name) =>
-                      void deleteNamedReference(name)
-                    }
-                    onNameGeneratedReference={(name, target) =>
-                      void nameGeneratedReference(name, target)
-                    }
-                    onInspectNamedReference={inspectNamedReference}
-                    onSelectGeneratedReference={(selection) => {
-                      setViewportPickIntent(undefined);
-                      setViewportHoverState(undefined);
-                      setSelectedGeneratedReference(selection);
-                    }}
-                    onUpdateExtrude={(featureId, depth, side) =>
-                      void updateAuthoredExtrude(featureId, depth, side)
-                    }
-                  />
-                </div>
-
                 <div
                   id="utility-panel-sketches"
                   role="tabpanel"
