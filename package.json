@@ -12,6 +12,7 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "smoke:v7-browser-workflow": "pnpm build && node scripts/smoke-v7-browser-workflow.mjs",
+    "smoke:v7-browser-workflow:derived": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && PARTBENCH_V7_BROWSER_WORKFLOW_REQUIRE_GLB=true node scripts/smoke-v7-browser-workflow.mjs",
     "smoke:v7-release-samples": "node scripts/smoke-v7-release-samples.mjs",
     "smoke:occt-browser": "pnpm build:geometry-worker && node scripts/smoke-occt-browser.mjs",
     "smoke:feature-delete-ui": "pnpm build && node scripts/smoke-feature-delete-ui.mjs",

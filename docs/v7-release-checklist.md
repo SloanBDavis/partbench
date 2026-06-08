@@ -11,6 +11,7 @@ For a V7 release-candidate pass, run:
 ```sh
 pnpm smoke:v7-release-samples
 pnpm smoke:v7-browser-workflow
+pnpm smoke:v7-browser-workflow:derived
 pnpm test
 pnpm typecheck
 pnpm lint
@@ -25,6 +26,9 @@ Notes:
 - `pnpm smoke:v7-browser-workflow` runs `pnpm build` internally, serves the
   built app, and drives the core browser workflow. Running `pnpm build`
   separately at the end is still the explicit build verification command.
+- `pnpm smoke:v7-browser-workflow:derived` builds the same production app with
+  `VITE_ENABLE_DERIVED_GEOMETRY=true`, runs the same browser workflow, and
+  requires `glb-download` to pass for the transient visualization GLB path.
 - For docs-only release-readiness edits, `pnpm format:check` is the minimum
   required check. Run the broader command set for release candidates or when a
   documentation audit exposes source, script, schema, or test changes.
@@ -105,14 +109,17 @@ verifies:
 The root script runs a normal production build, which keeps derived geometry
 disabled unless the build environment explicitly enables it. If the browser run
 does not expose a ready derived visualization mesh and enabled GLB download
-button, the smoke records the GLB download check as skipped with a reason. To
-exercise the optional GLB download path, build with derived geometry enabled and
-then run the smoke runner directly:
+button, the smoke records the GLB download check as skipped with a reason. For
+release-candidate GLB coverage, run the derived smoke:
 
 ```sh
-VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build
-node scripts/smoke-v7-browser-workflow.mjs
+pnpm smoke:v7-browser-workflow:derived
 ```
+
+The derived smoke builds with `VITE_ENABLE_DERIVED_GEOMETRY=true` and runs the
+same browser workflow with `glb-download` required. The direct runner also
+accepts `--require-glb-download` or
+`PARTBENCH_V7_BROWSER_WORKFLOW_REQUIRE_GLB=true` after a derived build.
 
 The browser smoke does not write screenshots, metrics, project JSON, derived
 meshes, topology caches, selection state, or export artifacts to tracked files.
@@ -136,12 +143,14 @@ coherence before a release:
 - Project JSON workflow beyond the deterministic round-trip: manually inspect
   downloaded JSON when needed, paste edited invalid/legacy drafts, and verify
   schema/source summary, validation, and replacement-impact messaging.
-- Visualization GLB: only when derived geometry is intentionally enabled and a
-  supported active rectangle or circle `newBody` extrude has a ready derived
-  mesh, open the Project/File panel and verify Mesh/GLB readiness plus
-  transient `partbench-visualization.glb` download behavior. Normal production
-  builds may skip this path when no ready derived visualization mesh is
-  available. STEP should remain honestly deferred.
+- Visualization GLB breadth beyond the deterministic smoke: when derived
+  geometry is intentionally enabled, try varied supported rectangle or circle
+  `newBody` extrudes and verify Mesh/GLB readiness messaging remains coherent.
+  The release-candidate command `pnpm smoke:v7-browser-workflow:derived`
+  already covers the deterministic transient `partbench-visualization.glb`
+  download path. Normal production builds may still skip this path when no
+  ready derived visualization mesh is available. STEP should remain honestly
+  deferred.
 
 ## Still Manual Or Deferred
 

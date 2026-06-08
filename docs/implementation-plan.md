@@ -32,7 +32,7 @@ These constraints remain active:
 8. OCCT/WASM, WebGPU, OPFS, STEP, exact topology, assemblies, and hosted
    collaboration are expanded only in scoped tranches.
 9. V2, V3, V4, V5, and V6 are complete. V7 is a broad major-release umbrella;
-   Tranches A through G6 are implemented, and later V7 work remains explicitly
+   Tranches A through G7 are implemented, and later V7 work remains explicitly
    scoped/deferred rather than one narrow milestone.
 10. V7 implementation tranches should stay independently testable and should not
     mix unrelated storage, renderer, topology, import/export, or agent-safety
@@ -99,6 +99,7 @@ pnpm lint
 pnpm format:check
 pnpm smoke:v7-release-samples
 pnpm smoke:v7-browser-workflow
+pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:feature-delete-ui
 ```
 
@@ -145,18 +146,21 @@ V7 browser workflow smoke:
 
 ```sh
 pnpm smoke:v7-browser-workflow
+pnpm smoke:v7-browser-workflow:derived
 ```
 
-The smoke follows the existing built-app/static-server/CDP pattern. It runs
-`pnpm build`, opens the built app in a Chromium-compatible browser, creates
+The default smoke follows the existing built-app/static-server/CDP pattern. It
+runs `pnpm build`, opens the built app in a Chromium-compatible browser, creates
 deterministic sketch/rectangle/circle/new-body extrudes, checks model-tree body
 selection, inspector/modeling `selection.referenceCandidates` status, viewport
 reference selection, named-reference routing, attached-sketch creation on a
 generated planar face, consumed-body structured diagnostics, and Project/File
 JSON export/load/import round-trip behavior, then reports required checks plus
 optional skipped GLB download readiness. Default production builds keep derived
-geometry disabled, so the GLB download check may be skipped unless the app was
-built with derived geometry enabled.
+geometry disabled, so the GLB download check may be skipped with a structured
+reason. The derived smoke builds with `VITE_ENABLE_DERIVED_GEOMETRY=true` and
+requires `glb-download` to pass, proving transient
+`partbench-visualization.glb` output from ready derived display meshes.
 
 ## Current Capabilities
 
@@ -235,7 +239,7 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes the implemented V7 Tranche A-G6 product surface on top of
+The repo now includes the implemented V7 Tranche A-G7 product surface on top of
 the completed V6 practical solid-modeling baseline. It is not yet a full CAD
 system.
 
@@ -367,7 +371,7 @@ Durable V6 decisions:
 ## V7 Real CAD Alpha Status And Roadmap
 
 V7 is a major release umbrella, not a single implementation milestone. The
-implemented A-G6 surface turns the V6 modeling baseline into an early usable
+implemented A-G7 surface turns the V6 modeling baseline into an early usable
 local CAD alpha while preserving the architecture in `docs/architecture.md`.
 
 The V7 release-readiness record lives in `docs/v7.md`. This implementation plan
@@ -389,7 +393,7 @@ V7 is organized around these pillars:
 
 ### Implemented Tranche Sequence And Remaining Order
 
-The implemented sequence through G6 is:
+The implemented sequence through G7 is:
 
 1. **Reference And Selection Contract** - implemented typed query/protocol
    support for
@@ -414,7 +418,8 @@ The implemented sequence through G6 is:
    MCP pass-through over the same CADOps/query paths.
 7. **Release Samples And Smokes** - implemented source/query release samples,
    release-sample smoke, browser workflow smoke, checklist/docs, G4 extended
-   acceptance samples, and G6 browser checklist automation expansion.
+   acceptance samples, G6 browser checklist automation expansion, and G7
+   derived-geometry GLB release smoke.
 
 ### Implemented Tranche A: Reference And Selection Contract
 
@@ -765,9 +770,10 @@ G2 checklist without adding broad E2E infrastructure:
   generated-reference selection from the viewport reference surface,
   named-reference routing, Project/File JSON workflow, storage capability
   status, STEP deferred status, and Mesh/GLB status;
-- GLB download is reported as a required pass only when the built app exposes a
-  ready derived visualization mesh and an enabled download button. Otherwise it
-  is recorded as an explicit skipped check with the observed readiness text;
+- GLB download is reported as a pass when the built app exposes a ready derived
+  visualization mesh and an enabled download button. Otherwise the default
+  smoke records it as an explicit skipped check with the observed readiness
+  text;
 - `scripts/v7-browser-workflow.mjs` exposes deterministic summary/result
   helpers covered by focused script tests.
 
@@ -837,6 +843,33 @@ STEP/IGES, WebGPU, assemblies, exact face/edge viewport picking, or
 `web-cad.project.v17`. Optional GLB download behavior remains skipped with an
 explicit reason when derived visualization geometry is unavailable.
 
+### Implemented Tranche G7: Derived Geometry GLB Release Smoke
+
+The seventh release-hardening slice turns the manual derived-geometry GLB caveat
+into an explicit opt-in release smoke while preserving the normal production
+smoke behavior:
+
+- `pnpm smoke:v7-browser-workflow` still runs a normal production build and may
+  report `glb-download` as skipped with the observed readiness reason when
+  derived visualization meshes are unavailable;
+- `pnpm smoke:v7-browser-workflow:derived` builds with
+  `VITE_ENABLE_DERIVED_GEOMETRY=true` and runs the same CDP/static-server
+  browser workflow with `glb-download` added to the required check list;
+- the smoke runner also accepts `--require-glb-download` or
+  `PARTBENCH_V7_BROWSER_WORKFLOW_REQUIRE_GLB=true` for direct runner use after
+  a derived build;
+- the required-GLB mode fails clearly if the GLB check is missing or skipped,
+  and passes only when the Project/File panel reports the transient
+  `partbench-visualization.glb` download result;
+- focused script tests cover default optional GLB behavior, required skipped
+  GLB failure, and required GLB success.
+
+G7 does not persist screenshots, downloads, metrics, project JSON, derived
+meshes, topology caches, selection state, GLB artifacts, or cache artifacts. The
+GLB remains app-derived display output from ready mesh DTOs and does not become
+source-of-truth data in `cad-core`, storage, CADOps schemas, or
+`web-cad.project.v17`.
+
 Future V7 tranche plans should continue to include these details:
 
 - exact CADOps/query shapes and response examples;
@@ -854,7 +887,8 @@ Future V7 tranche plans should continue to include these details:
   named-reference resolution, upstream edit stability, adapter/MCP pass-through,
   UI helpers, and source/derived separation;
 - manual browser scenarios for invalidating and repairing a supported face or
-  edge, and for GLB download when derived geometry is intentionally enabled.
+  edge, with the deterministic derived-geometry GLB path covered by
+  `pnpm smoke:v7-browser-workflow:derived`.
 
 Future topology/reference tranches should not jump straight to broad arbitrary
 topology naming. They should extend the smallest useful, defensible subset and

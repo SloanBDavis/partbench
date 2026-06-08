@@ -24,12 +24,29 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "project-json-roundtrip-diagnostic"
 ]);
 
+export const V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID = "glb-download";
+
+export function getV7BrowserWorkflowRequiredCheckIds({
+  requireGlbDownload = false
+} = {}) {
+  const requiredCheckIds = [...V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS];
+
+  if (
+    requireGlbDownload &&
+    !requiredCheckIds.includes(V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID)
+  ) {
+    requiredCheckIds.push(V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID);
+  }
+
+  return requiredCheckIds;
+}
+
 export function createV7BrowserWorkflowSmokeResult({
   checks = [],
   consoleErrors = [],
   exceptions = [],
   ids,
-  requiredCheckIds = V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS,
+  requiredCheckIds = getV7BrowserWorkflowRequiredCheckIds(),
   skipped = []
 }) {
   const failedChecks = checks.filter((check) => check.status === "fail");
@@ -72,7 +89,13 @@ export function formatV7BrowserWorkflowSmokeSummary(result) {
   }
 
   for (const missing of result.missingRequiredChecks) {
-    lines.push(`- missing ${missing}`);
+    const skipped = result.skipped.find((skip) => skip.id === missing);
+
+    if (skipped) {
+      lines.push(`- missing required ${missing}: skipped (${skipped.reason})`);
+    } else {
+      lines.push(`- missing required ${missing}`);
+    }
   }
 
   for (const skipped of result.skipped) {

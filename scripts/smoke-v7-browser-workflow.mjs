@@ -4,7 +4,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createV7BrowserWorkflowSmokeResult,
-  formatV7BrowserWorkflowSmokeSummary
+  formatV7BrowserWorkflowSmokeSummary,
+  getV7BrowserWorkflowRequiredCheckIds
 } from "./v7-browser-workflow.mjs";
 import {
   connectToBrowser,
@@ -19,6 +20,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
 const appHtmlPath = join(appDistDir, "index.html");
 const smokeTimeoutMs = 30_000;
+const smokeOptions = parseSmokeOptions(process.argv.slice(2), process.env);
 
 await assertAppBuildExists();
 
@@ -62,14 +64,15 @@ try {
   const result = await runV7BrowserWorkflowSmoke(
     client,
     appUrl,
-    smokeTimeoutMs
+    smokeTimeoutMs,
+    smokeOptions
   );
   console.log(formatV7BrowserWorkflowSmokeSummary(result));
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = result.ok ? 0 : 1;
 } finally {
-  await client?.close().catch(() => {});
-  browserProcess?.kill();
+  await closeCdpClient(client);
+  await stopBrowserProcess(browserProcess);
   appServer?.close();
   await rm(profileDir, { force: true, recursive: true }).catch(() => {});
 }
@@ -84,7 +87,86 @@ async function assertAppBuildExists() {
   }
 }
 
-async function runV7BrowserWorkflowSmoke(client, appUrl, timeoutMs) {
+function parseSmokeOptions(args, env) {
+  const requireGlbDownload =
+    isTruthy(env.PARTBENCH_V7_BROWSER_WORKFLOW_REQUIRE_GLB) ||
+    isTruthy(env.V7_BROWSER_WORKFLOW_REQUIRE_GLB);
+
+  for (const arg of args) {
+    if (arg === "--require-glb" || arg === "--require-glb-download") {
+      return { requireGlbDownload: true };
+    }
+
+    if (arg === "--no-require-glb" || arg === "--no-require-glb-download") {
+      return { requireGlbDownload: false };
+    }
+
+    throw new Error(`Unknown option ${arg}`);
+  }
+
+  return { requireGlbDownload };
+}
+
+function isTruthy(value) {
+  return value === "true" || value === "1";
+}
+
+async function closeCdpClient(clientToClose) {
+  if (!clientToClose) {
+    return;
+  }
+
+  await Promise.race([clientToClose.close(), waitForMilliseconds(1_000)]).catch(
+    () => {}
+  );
+}
+
+async function stopBrowserProcess(processToStop) {
+  if (!processToStop) {
+    return;
+  }
+
+  if (processToStop.exitCode !== null || processToStop.signalCode !== null) {
+    return;
+  }
+
+  processToStop.kill("SIGTERM");
+  const stopped = await waitForProcessExit(processToStop, 2_000);
+
+  if (!stopped) {
+    processToStop.kill("SIGKILL");
+    await waitForProcessExit(processToStop, 2_000);
+  }
+}
+
+function waitForProcessExit(processToStop, timeoutMs) {
+  return new Promise((resolvePromise) => {
+    const timeout = setTimeout(() => {
+      processToStop.off("exit", onExit);
+      resolvePromise(false);
+    }, timeoutMs);
+
+    function onExit() {
+      clearTimeout(timeout);
+      resolvePromise(true);
+    }
+
+    processToStop.once("exit", onExit);
+  });
+}
+
+function waitForMilliseconds(milliseconds) {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, milliseconds);
+  });
+}
+
+async function runV7BrowserWorkflowSmoke(
+  client,
+  appUrl,
+  timeoutMs,
+  { requireGlbDownload = false } = {}
+) {
   const target = await client.send("Target.createTarget", {
     url: "about:blank"
   });
@@ -134,6 +216,7 @@ async function runV7BrowserWorkflowSmoke(client, appUrl, timeoutMs) {
       awaitPromise: true,
       returnByValue: true,
       expression: `(${v7BrowserWorkflowSmoke.toString()})(${JSON.stringify({
+        requireGlbDownload,
         timeoutMs
       })})`
     },
@@ -158,12 +241,15 @@ async function runV7BrowserWorkflowSmoke(client, appUrl, timeoutMs) {
     checks: pageResult.checks,
     ids: pageResult.ids,
     skipped: pageResult.skipped,
+    requiredCheckIds: getV7BrowserWorkflowRequiredCheckIds({
+      requireGlbDownload
+    }),
     consoleErrors,
     exceptions
   });
 }
 
-async function v7BrowserWorkflowSmoke({ timeoutMs }) {
+async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   const ids = {
     attachedEntityId: "v7_smoke_attached_rect",
     attachedSketchId: "v7_smoke_attached_sketch",
@@ -674,6 +760,27 @@ async function v7BrowserWorkflowSmoke({ timeoutMs }) {
   );
 
   clickButtonContaining(getElementByAriaLabel("Tool tabs"), "File");
+
+  if (requireGlbDownload) {
+    await waitFor(() => {
+      const requiredGlbButton = getButtonByText(
+        projectPanel,
+        "Download visualization GLB"
+      );
+
+      if (!requiredGlbButton) {
+        throw new Error("Download visualization GLB button is not present.");
+      }
+
+      if (requiredGlbButton.disabled) {
+        throw new Error(
+          `Download visualization GLB is disabled: ${getExportReadinessText()}`
+        );
+      }
+
+      return true;
+    }, "required visualization GLB download readiness");
+  }
 
   const glbButton = getButtonByText(projectPanel, "Download visualization GLB");
   if (!glbButton) {
