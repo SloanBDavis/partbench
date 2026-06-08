@@ -14,12 +14,15 @@ import {
 } from "../projectStorageCapabilities";
 import {
   createProjectExportReadinessDisplay,
-  type ProjectExportReadinessRow
+  type ProjectExportReadinessRow,
+  type ProjectVisualizationExportDisplayStatus
 } from "../projectExportReadiness";
 
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
   readonly exportReadiness?: ProjectExportReadinessQueryResponse;
+  readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
+  readonly visualizationDownloadAvailable?: boolean;
   readonly projectJson: string;
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly workflow: ProjectJsonWorkflowState;
@@ -30,12 +33,15 @@ export interface ProjectJsonPanelProps {
   readonly onProjectFileError: (message: string) => void;
   readonly onExport: () => void;
   readonly onDownload: () => void;
+  readonly onDownloadVisualization?: () => void;
   readonly onImport: () => void;
 }
 
 export function ProjectJsonPanel({
   disabled,
   exportReadiness,
+  visualizationExport,
+  visualizationDownloadAvailable = true,
   projectJson,
   message,
   messageTone = "info",
@@ -45,6 +51,7 @@ export function ProjectJsonPanel({
   onProjectFileLoaded,
   onProjectFileError,
   onDownload,
+  onDownloadVisualization,
   onExport,
   onImport
 }: ProjectJsonPanelProps) {
@@ -83,7 +90,13 @@ export function ProjectJsonPanel({
       </section>
       <ProjectStorageStatus storageCapabilities={storageCapabilities} />
       {exportReadiness && (
-        <ProjectExportReadinessStatus exportReadiness={exportReadiness} />
+        <ProjectExportReadinessStatus
+          disabled={disabled}
+          exportReadiness={exportReadiness}
+          visualizationDownloadAvailable={visualizationDownloadAvailable}
+          visualizationExport={visualizationExport}
+          onDownloadVisualization={onDownloadVisualization}
+        />
       )}
       <div className="button-row">
         <button type="button" onClick={onExport} disabled={disabled}>
@@ -158,11 +171,22 @@ export function ProjectJsonPanel({
 }
 
 function ProjectExportReadinessStatus({
-  exportReadiness
+  disabled,
+  exportReadiness,
+  visualizationDownloadAvailable,
+  visualizationExport,
+  onDownloadVisualization
 }: {
+  readonly disabled: boolean;
   readonly exportReadiness: ProjectExportReadinessQueryResponse;
+  readonly visualizationDownloadAvailable: boolean;
+  readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
+  readonly onDownloadVisualization?: () => void;
 }) {
-  const display = createProjectExportReadinessDisplay(exportReadiness);
+  const display = createProjectExportReadinessDisplay(
+    exportReadiness,
+    visualizationExport
+  );
 
   return (
     <section className="project-workflow-section" aria-label="Export readiness">
@@ -179,7 +203,7 @@ function ProjectExportReadinessStatus({
         />
         <ProjectWorkflowRow
           label="Boundary"
-          value="Source only"
+          value={visualizationExport ? "Source + display" : "Source only"}
           detail={display.derivedDetail}
         />
       </dl>
@@ -188,6 +212,22 @@ function ProjectExportReadinessStatus({
           <ProjectExportReadinessRowView key={row.id} row={row} />
         ))}
       </dl>
+      {visualizationExport && (
+        <div className="button-row compact">
+          <button
+            type="button"
+            onClick={onDownloadVisualization}
+            disabled={
+              disabled ||
+              !visualizationExport.available ||
+              !visualizationDownloadAvailable ||
+              !onDownloadVisualization
+            }
+          >
+            Download visualization GLB
+          </button>
+        </div>
+      )}
       {display.bodyRows.length > 0 ? (
         <dl className="project-capability-list" aria-label="Export body status">
           {display.bodyRows.map((row) => (

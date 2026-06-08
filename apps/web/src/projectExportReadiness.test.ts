@@ -9,9 +9,7 @@ describe("projectExportReadiness", () => {
     );
 
     expect(display.statusLabel).toBe("Deferred");
-    expect(display.detail).toContain(
-      "STEP and GLB file export are not implemented yet"
-    );
+    expect(display.detail).toContain("STEP file export is not implemented yet");
     expect(display.bodySummary).toBe(
       "1 source supported, 2 deferred, 0 unavailable"
     );
@@ -33,12 +31,54 @@ describe("projectExportReadiness", () => {
       {
         id: "body_rect",
         status: "deferred",
-        detail: "Source body is supported; file writing remains deferred."
+        detail:
+          "Source body is supported; file availability depends on the format boundary."
       },
       {
         id: "body_hole",
         status: "deferred",
         detail: "Hole result-body export readiness is deferred."
+      }
+    ]);
+  });
+
+  it("overlays derived Mesh/GLB visualization availability without changing STEP", () => {
+    const display = createProjectExportReadinessDisplay(
+      createExportReadinessResponse(),
+      {
+        status: "supported",
+        available: true,
+        detail:
+          "GLB visualization export is available for ready derived display meshes.",
+        limitation:
+          "Ready derived visualization meshes can be written as a transient GLB artifact.",
+        nextStep:
+          "Download the GLB visualization artifact from the Project panel.",
+        exportableBodyCount: 1,
+        skippedBodyCount: 1,
+        vertexCount: 24,
+        triangleCount: 12
+      }
+    );
+
+    expect(display.statusLabel).toBe("Supported");
+    expect(display.detail).toContain("Mesh/GLB visualization export");
+    expect(display.detail).toContain("STEP remains unavailable");
+    expect(display.formatRows).toMatchObject([
+      {
+        id: "step",
+        label: "STEP",
+        status: "deferred",
+        detail: "STEP export files are not available yet."
+      },
+      {
+        id: "glb",
+        label: "Mesh/GLB visualization",
+        status: "supported",
+        detail:
+          "Mesh/GLB visualization export is available for 1 ready visualization body.",
+        limitation:
+          "24 vertices and 12 triangles will be written as display output. 1 body skipped: Ready derived visualization meshes can be written as a transient GLB artifact."
       }
     ]);
   });

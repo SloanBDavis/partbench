@@ -25,20 +25,44 @@ export interface ProjectExportReadinessRow {
   readonly nextStep: string;
 }
 
+export interface ProjectVisualizationExportDisplayStatus {
+  readonly status: CadExportReadinessStatus;
+  readonly available: boolean;
+  readonly detail: string;
+  readonly limitation: string;
+  readonly nextStep: string;
+  readonly exportableBodyCount: number;
+  readonly skippedBodyCount: number;
+  readonly vertexCount: number;
+  readonly triangleCount: number;
+}
+
 export function createProjectExportReadinessDisplay(
-  readiness: ProjectExportReadinessQueryResponse
+  readiness: ProjectExportReadinessQueryResponse,
+  visualizationExport?: ProjectVisualizationExportDisplayStatus
 ): ProjectExportReadinessDisplay {
   return {
-    statusLabel: getExportReadinessStatusLabel(readiness.status),
-    detail: readiness.canExportFiles
-      ? "File export is available for the listed supported formats."
-      : "STEP and GLB file export are not implemented yet; this status reports source readiness and blockers.",
+    statusLabel: getExportReadinessStatusLabel(
+      chooseDisplayStatus(readiness.status, visualizationExport?.status)
+    ),
+    detail: visualizationExport?.available
+      ? "Mesh/GLB visualization export is available from ready derived display meshes. STEP remains unavailable."
+      : readiness.canExportFiles
+        ? "File export is available for the listed supported formats."
+        : "STEP file export is not implemented yet. Mesh/GLB visualization depends on ready derived display meshes.",
     sourceDetail:
       "Candidate bodies come from authoritative project source, features, and document units.",
-    derivedDetail:
-      "Display output and temporary visualization state are not used as export authority.",
-    bodySummary: `${readiness.sourceSupportedBodyCount} source supported, ${readiness.deferredBodyCount} deferred, ${readiness.unavailableBodyCount} unavailable`,
-    formatRows: readiness.formats.map(createFormatRow),
+    derivedDetail: visualizationExport
+      ? `Visualization export can use ${visualizationExport.exportableBodyCount} ready derived display mesh${visualizationExport.exportableBodyCount === 1 ? "" : "es"} without making display output authoritative.`
+      : "Display output and temporary visualization state are not used as export authority.",
+    bodySummary: `${readiness.sourceSupportedBodyCount} source supported, ${readiness.deferredBodyCount} deferred, ${readiness.unavailableBodyCount} unavailable${
+      visualizationExport
+        ? `; ${visualizationExport.exportableBodyCount} visualization ready`
+        : ""
+    }`,
+    formatRows: readiness.formats.map((format) =>
+      createFormatRow(format, visualizationExport)
+    ),
     bodyRows: readiness.bodies.map(createBodyRow)
   };
 }
@@ -57,8 +81,29 @@ export function getExportReadinessStatusLabel(
 }
 
 function createFormatRow(
-  format: CadExportFormatReadiness
+  format: CadExportFormatReadiness,
+  visualizationExport: ProjectVisualizationExportDisplayStatus | undefined
 ): ProjectExportReadinessRow {
+  if (format.format === "glb" && visualizationExport) {
+    return {
+      id: format.format,
+      label: format.label,
+      status: visualizationExport.status,
+      statusLabel: getExportReadinessStatusLabel(visualizationExport.status),
+      detail: visualizationExport.available
+        ? `${format.label} export is available for ${visualizationExport.exportableBodyCount} ready visualization body${visualizationExport.exportableBodyCount === 1 ? "" : "ies"}.`
+        : visualizationExport.detail,
+      limitation: visualizationExport.available
+        ? `${visualizationExport.vertexCount} vertices and ${visualizationExport.triangleCount} triangles will be written as display output.${
+            visualizationExport.skippedBodyCount > 0
+              ? ` ${visualizationExport.skippedBodyCount} body${visualizationExport.skippedBodyCount === 1 ? "" : "ies"} skipped: ${visualizationExport.limitation}`
+              : ""
+          }`
+        : visualizationExport.limitation,
+      nextStep: visualizationExport.nextStep
+    };
+  }
+
   const writerDiagnostic = format.diagnostics.find(
     (diagnostic) => diagnostic.code === "EXPORT_WRITER_NOT_IMPLEMENTED"
   );
@@ -85,6 +130,17 @@ function createFormatRow(
   };
 }
 
+function chooseDisplayStatus(
+  sourceStatus: CadExportReadinessStatus,
+  visualizationStatus: CadExportReadinessStatus | undefined
+): CadExportReadinessStatus {
+  if (visualizationStatus === "supported") {
+    return "supported";
+  }
+
+  return sourceStatus;
+}
+
 function createBodyRow(
   body: CadExportBodyReadiness
 ): ProjectExportReadinessRow {
@@ -102,7 +158,7 @@ function createBodyRow(
     statusLabel: getExportReadinessStatusLabel(body.status),
     detail:
       body.sourceStatus === "supported"
-        ? "Source body is supported; file writing remains deferred."
+        ? "Source body is supported; file availability depends on the format boundary."
         : getBodySourceDetail(body),
     limitation:
       primaryDiagnostic?.message ?? "No body-specific blocker reported.",

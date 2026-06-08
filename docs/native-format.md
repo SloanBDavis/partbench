@@ -86,6 +86,13 @@ consumed bodies, primitive compatibility bodies, and deferred result bodies with
 structured diagnostics. This readiness/status output is query-derived, is not an
 export job, does not produce STEP or GLB files, and is not written into project
 JSON.
+In V7 Tranche E2, the web app can produce `partbench-visualization.glb` as a
+transient visualization artifact from existing ready derived display meshes for
+the supported active rectangle/circle `newBody` extrude subset. The GLB artifact
+is display output only: it is not source authority, is not stored in project
+JSON, does not create a persisted export job, and does not require
+`web-cad.project.v17`. STEP remains unavailable until an exact exchange writer
+binding exists.
 
 The current exported JSON shape is:
 

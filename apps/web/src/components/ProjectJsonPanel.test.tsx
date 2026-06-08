@@ -256,9 +256,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Deferred");
     expect(markup).toContain("STEP");
     expect(markup).toContain("Mesh/GLB visualization");
-    expect(markup).toContain(
-      "STEP and GLB file export are not implemented yet"
-    );
+    expect(markup).toContain("STEP file export is not implemented yet");
     expect(markup).toContain("Source body is supported");
     expect(markup).toContain(
       "Display output and temporary visualization state"
@@ -275,6 +273,102 @@ describe("ProjectJsonPanel", () => {
     expect(exportReadinessMarkup).not.toMatch(
       /OCCT|renderer|cache|selection-buffer/i
     );
+  });
+
+  it("renders available visualization GLB export separately from project JSON controls", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_export",
+        name: "Profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_export",
+        id: "rect_export",
+        center: [0, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_export",
+        bodyId: "body_export",
+        sketchId: "sketch_export",
+        entityId: "rect_export",
+        depth: 1
+      }
+    ]);
+
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        exportReadiness: readExportReadiness(engine),
+        visualizationDownloadAvailable: true,
+        visualizationExport: {
+          status: "supported",
+          available: true,
+          detail:
+            "GLB visualization export is available for ready derived display meshes.",
+          limitation:
+            "Ready derived visualization meshes can be written as a transient GLB artifact.",
+          nextStep:
+            "Download the GLB visualization artifact from the Project panel.",
+          exportableBodyCount: 1,
+          skippedBodyCount: 0,
+          vertexCount: 24,
+          triangleCount: 12
+        },
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onDownloadVisualization: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
+    const exportSectionEnd = markup.indexOf(
+      '<div class="button-row">',
+      exportSectionStart
+    );
+    const exportReadinessMarkup = markup.slice(
+      exportSectionStart,
+      exportSectionEnd
+    );
+
+    expect(exportReadinessMarkup).toContain("Supported");
+    expect(exportReadinessMarkup).toContain("STEP remains unavailable");
+    expect(exportReadinessMarkup).toContain(
+      "Mesh/GLB visualization export is available"
+    );
+    expect(exportReadinessMarkup).toContain("Download visualization GLB");
+    expect(exportReadinessMarkup).not.toMatch(
+      /<button type="button" disabled="">Download visualization GLB<\/button>/
+    );
+    const jsonButtonRowStart = markup.indexOf(
+      '<div class="button-row">',
+      exportSectionEnd
+    );
+    const jsonButtonRow = markup.slice(jsonButtonRowStart);
+
+    expect(jsonButtonRow).toContain("Generate export");
+    expect(jsonButtonRow).toContain("Download project");
+    expect(jsonButtonRow).not.toContain("Download visualization GLB");
   });
 
   it("renders primitive-only export readiness as unavailable", () => {

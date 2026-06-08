@@ -120,6 +120,10 @@ import {
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import {
+  createVisualizationMeshExportArtifact,
+  createVisualizationMeshExportStatus
+} from "./visualizationMeshExport";
+import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
   createProjectQueryDerivedExactMetadataSnapshots,
@@ -1255,6 +1259,17 @@ export function App() {
     () => createProjectStorageCapabilityStatus(window),
     []
   );
+  const visualizationMeshExportStatus = useMemo(
+    () =>
+      projectExportReadiness
+        ? createVisualizationMeshExportStatus({
+            exportReadiness: projectExportReadiness,
+            derivedGeometry,
+            derivedGeometrySources
+          })
+        : undefined,
+    [derivedGeometry, derivedGeometrySources, projectExportReadiness]
+  );
   const currentProjectSummary = projectJsonWorkflow.current.summary;
   const utilityPanels: readonly {
     readonly id: UtilityPanelId;
@@ -2016,6 +2031,56 @@ export function App() {
     setProjectMessageTone("info");
   }
 
+  function downloadVisualizationMeshExport() {
+    if (!projectStorageCapabilities.jsonDownloadAvailable) {
+      setProjectMessage(
+        "Visualization GLB download is unavailable in this browser runtime."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
+
+    if (!projectExportReadiness) {
+      setProjectMessage("Project export readiness is unavailable.");
+      setProjectMessageTone("error");
+      return;
+    }
+
+    const result = createVisualizationMeshExportArtifact({
+      exportReadiness: projectExportReadiness,
+      derivedGeometry,
+      derivedGeometrySources
+    });
+
+    if (!result.ok) {
+      const diagnostic = result.diagnostics[0];
+      setProjectMessage(
+        diagnostic
+          ? `${diagnostic.code}: ${diagnostic.message}`
+          : "Visualization GLB export is unavailable."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
+
+    const { artifact } = result;
+    const blob = new Blob([artifact.bytes], { type: artifact.mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = artifact.fileName;
+    window.document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setProjectMessage(
+      `Downloaded ${artifact.fileName}: ${artifact.metadata.bodyCount} visualization bod${
+        artifact.metadata.bodyCount === 1 ? "y" : "ies"
+      }, ${artifact.metadata.vertexCount} vertices, ${artifact.metadata.triangleCount} triangles.`
+    );
+    setProjectMessageTone("info");
+  }
+
   function loadProjectFile(projectJson: string, fileName: string) {
     setProjectJson(projectJson);
     setProjectJsonDraftSource({ kind: "loadedFile", fileName });
@@ -2479,6 +2544,10 @@ export function App() {
                   <ProjectJsonPanel
                     disabled={commandPending}
                     exportReadiness={projectExportReadiness}
+                    visualizationDownloadAvailable={
+                      projectStorageCapabilities.jsonDownloadAvailable
+                    }
+                    visualizationExport={visualizationMeshExportStatus}
                     projectJson={projectJson}
                     storageCapabilities={projectStorageCapabilities}
                     workflow={projectJsonWorkflow}
@@ -2498,6 +2567,7 @@ export function App() {
                     }}
                     onExport={exportProjectJson}
                     onDownload={downloadProjectJson}
+                    onDownloadVisualization={downloadVisualizationMeshExport}
                     onImport={importProjectJson}
                   />
                 </div>

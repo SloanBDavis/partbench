@@ -537,6 +537,37 @@ writer implementation:
   OPFS/File System Access flows, native package storage, new modeling commands,
   or `web-cad.project.v17`.
 
+### Implemented Tranche E2: Visualization Mesh/GLB Export Path
+
+The second export slice adds the smallest real product-facing artifact the
+current architecture can support:
+
+- `apps/web` can generate and download `partbench-visualization.glb` from
+  existing ready derived visualization meshes for active authored rectangle and
+  circle `newBody` extrude bodies;
+- the GLB writer is a small dependency-free browser/app helper over existing
+  app-level mesh DTOs. It writes glTF 2.0 binary output with deterministic
+  metadata for format, units, body count, vertex count, triangle count, JSON
+  chunk length, binary chunk length, and total byte length;
+- the Project panel keeps ordinary source JSON import/export controls separate
+  from visualization export. It shows Mesh/GLB visualization as available only
+  after the helper sees at least one current ready exportable mesh, then enables
+  a dedicated GLB download action and reports success/failure through structured
+  diagnostics;
+- unsupported states remain explicit: empty projects, consumed bodies,
+  primitive compatibility bodies, unsupported/deferred V6 result bodies,
+  missing/pending/stale/failed derived meshes, and invalid mesh buffers are
+  diagnosed without exposing renderer, OCCT, cache, selection-buffer, or
+  internal mesh IDs in public summaries;
+- `project.exportReadiness` remains the shared CADOps source-readiness status
+  contract for UI, agent, and MCP. The browser/app overlay combines it with
+  transient derived mesh availability before producing GLB artifacts, so derived
+  display output does not become source authority;
+- STEP export is still unavailable/deferred because no safe exact exchange
+  writer binding exists in the current OCCT/WASM boundary. This slice does not
+  add import paths, OPFS/File System Access handles, native package storage,
+  persisted export jobs, new modeling commands, or `web-cad.project.v17`.
+
 Future V7 tranche plans should continue to include these details:
 
 - exact CADOps/query shapes and response examples;
