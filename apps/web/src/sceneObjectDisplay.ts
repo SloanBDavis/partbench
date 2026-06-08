@@ -1,4 +1,5 @@
 import type {
+  BodyMeasurementsSnapshot,
   CadAxisAlignedBounds,
   CadBodyTopologySnapshot,
   SceneObject
@@ -81,6 +82,30 @@ export function formatVolume(value: number, units?: string): string {
 export function formatArea(value: number, units?: string): string {
   const suffix = units ? ` ${units}^2` : "";
   return `${formatNumber(value)}${suffix}`;
+}
+
+export interface MeasurementDisplayRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+export function createBodyMeasurementRows(
+  measurements: BodyMeasurementsSnapshot,
+  units?: string
+): readonly MeasurementDisplayRow[] {
+  return [
+    { label: "Volume", value: formatVolume(measurements.volume, units) },
+    {
+      label: "Surface area",
+      value: formatArea(measurements.surfaceArea, units)
+    },
+    {
+      label: "Local bounds",
+      value: formatBounds(measurements.localBounds, units)
+    },
+    { label: "Centroid", value: formatVector(measurements.centroid) },
+    { label: "Model", value: "Source analytic" }
+  ];
 }
 
 export function formatBodyMeasurementError(error: CadQueryError): string {

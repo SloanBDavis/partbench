@@ -81,12 +81,12 @@ import {
 } from "../generatedReferenceSelection";
 import {
   formatDimensions,
-  formatArea,
   formatBounds,
   formatBodyMeasurementConfidence,
   formatBodyTopologyCounts,
   formatBodyTopologyModel,
   formatBodyTopologyStatus,
+  createBodyMeasurementRows,
   getObjectDisplayName,
   formatObjectKind,
   formatVector,
@@ -604,26 +604,12 @@ function BodyMeasurementPanel({
       {error && <p className="error-text">{error}</p>}
       {measurements && (
         <dl>
-          <div>
-            <dt>Volume</dt>
-            <dd>{formatVolume(measurements.volume, units)}</dd>
-          </div>
-          <div>
-            <dt>Surface area</dt>
-            <dd>{formatArea(measurements.surfaceArea, units)}</dd>
-          </div>
-          <div>
-            <dt>Local bounds</dt>
-            <dd>{formatBounds(measurements.localBounds, units)}</dd>
-          </div>
-          <div>
-            <dt>Centroid</dt>
-            <dd>{formatVector(measurements.centroid)}</dd>
-          </div>
-          <div>
-            <dt>Model</dt>
-            <dd>Source analytic</dd>
-          </div>
+          {createBodyMeasurementRows(measurements, units).map((row) => (
+            <div key={row.label}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
         </dl>
       )}
     </section>

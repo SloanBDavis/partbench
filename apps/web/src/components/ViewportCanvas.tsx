@@ -9,16 +9,21 @@ import {
   type RenderPrimitive,
   zoomCamera
 } from "@web-cad/renderer";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import {
   fitCameraToRenderObject,
   fitCameraToRenderScene
 } from "../viewportCamera";
 import type { ViewportReferenceAction } from "../viewportReferenceActions";
 import type { ViewportSelectionDisplay } from "../viewportSelectionDisplay";
+import type { ViewportHoverState } from "../viewportHoverIntent";
+import type { ViewportMeasurementOverlay } from "../viewportMeasurementOverlay";
 
 export function ViewportCanvas({
+  hoverState,
+  measurementOverlay,
   meshes,
+  onHover,
   onSelectGeneratedReference,
   onSelect,
   primitives,
@@ -26,7 +31,10 @@ export function ViewportCanvas({
   selectedId,
   selectionDisplay
 }: {
+  readonly hoverState?: ViewportHoverState;
+  readonly measurementOverlay?: ViewportMeasurementOverlay;
   readonly meshes?: readonly RenderTriangleMesh[];
+  readonly onHover?: (id: string | undefined) => void;
   readonly onSelect: (id: string | undefined) => void;
   readonly onSelectGeneratedReference?: (
     reference: ViewportReferenceAction["reference"]
@@ -52,6 +60,7 @@ export function ViewportCanvas({
       }
     | undefined
   >(undefined);
+  const hoveredRenderIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
@@ -124,6 +133,26 @@ export function ViewportCanvas({
     setCamera((current) => zoomCamera(current, 220));
   }
 
+  function pickEventRenderId(
+    event: PointerEvent<HTMLCanvasElement>
+  ): string | undefined {
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    return pickRenderScene(primitives, meshes ?? [], camera, size, {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    });
+  }
+
+  function emitHover(renderId: string | undefined) {
+    if (hoveredRenderIdRef.current === renderId) {
+      return;
+    }
+
+    hoveredRenderIdRef.current = renderId;
+    onHover?.(renderId);
+  }
+
   return (
     <section className="viewport-panel" aria-label="3D viewport">
       <div
@@ -179,6 +208,53 @@ export function ViewportCanvas({
             <small>{selectionDisplay.geometryDetail}</small>
           )}
         </div>
+        {hoverState && hoverState.kind !== "empty" && (
+          <div
+            className={`viewport-hover-status viewport-hover-status-${hoverState.tone}`}
+            data-hover-kind={hoverState.kind}
+            data-reference-status={hoverState.referenceStatus}
+            aria-label="Viewport hover status"
+          >
+            <strong>{hoverState.title}</strong>
+            <span>{hoverState.detail}</span>
+            {hoverState.commandOperationLabels.length > 0 && (
+              <small>{hoverState.commandOperationLabels.join(", ")}</small>
+            )}
+            {hoverState.diagnostics[0] && (
+              <small className="viewport-hover-diagnostic">
+                {hoverState.diagnostics[0].message}
+              </small>
+            )}
+          </div>
+        )}
+        {measurementOverlay && (
+          <div
+            className={`viewport-measurement-overlay viewport-measurement-overlay-${measurementOverlay.tone}`}
+            aria-label="Viewport measurements"
+            data-measurement-kind={measurementOverlay.selectionKind}
+            data-measurement-source={measurementOverlay.source}
+          >
+            <div className="viewport-measurement-heading">
+              <strong>{measurementOverlay.title}</strong>
+              <span>{measurementOverlay.detail}</span>
+            </div>
+            {measurementOverlay.error && (
+              <small className="viewport-measurement-error">
+                {measurementOverlay.error}
+              </small>
+            )}
+            {measurementOverlay.rows.length > 0 && (
+              <dl>
+                {measurementOverlay.rows.map((row) => (
+                  <div key={row.label}>
+                    <dt>{row.label}</dt>
+                    <dd>{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        )}
         {referenceActions.length > 0 && (
           <div
             className="viewport-reference-actions"
@@ -232,6 +308,7 @@ export function ViewportCanvas({
           aria-label="3D scene viewport"
           tabIndex={0}
           onPointerDown={(event) => {
+            emitHover(undefined);
             event.currentTarget.setPointerCapture(event.pointerId);
             pointerRef.current = {
               id: event.pointerId,
@@ -248,6 +325,7 @@ export function ViewportCanvas({
             const pointer = pointerRef.current;
 
             if (!pointer || pointer.id !== event.pointerId) {
+              emitHover(pickEventRenderId(event));
               return;
             }
 
@@ -284,11 +362,7 @@ export function ViewportCanvas({
               return;
             }
 
-            const rect = event.currentTarget.getBoundingClientRect();
-            const id = pickRenderScene(primitives, meshes ?? [], camera, size, {
-              x: event.clientX - rect.left,
-              y: event.clientY - rect.top
-            });
+            const id = pickEventRenderId(event);
             onSelect(id);
           }}
           onPointerCancel={(event) => {
@@ -296,8 +370,10 @@ export function ViewportCanvas({
 
             if (pointer?.id === event.pointerId) {
               pointerRef.current = undefined;
+              emitHover(undefined);
             }
           }}
+          onPointerLeave={() => emitHover(undefined)}
           onWheel={(event) => {
             event.preventDefault();
             const deltaY =

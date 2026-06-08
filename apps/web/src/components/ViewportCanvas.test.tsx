@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { ViewportCanvas } from "./ViewportCanvas";
 import type { ViewportReferenceAction } from "../viewportReferenceActions";
 import type { ViewportSelectionDisplay } from "../viewportSelectionDisplay";
+import type { ViewportHoverState } from "../viewportHoverIntent";
+import type { ViewportMeasurementOverlay } from "../viewportMeasurementOverlay";
 
 describe("ViewportCanvas", () => {
   it("renders semantic selection and command-ready status beside the viewport", () => {
@@ -107,6 +109,100 @@ describe("ViewportCanvas", () => {
     );
   });
 
+  it("renders transient hover feedback without changing selected status", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        selectionDisplay: createSelectionDisplay({
+          title: "Base (Body)"
+        }),
+        hoverState: createHoverState({
+          title: "Hovered base (Body)",
+          detail: "4 command-ready operations",
+          commandOperationLabels: ["Name reference", "Inspect reference"]
+        }),
+        onSelect: () => undefined,
+        onHover: () => undefined
+      })
+    );
+
+    expect(markup).toContain('data-selection-kind="body"');
+    expect(markup).toContain('data-hover-kind="body"');
+    expect(markup).toContain("Hovered base (Body)");
+    expect(markup).toContain("Name reference, Inspect reference");
+  });
+
+  it("renders compact query-derived measurement overlays", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        selectionDisplay: createSelectionDisplay(),
+        measurementOverlay: createMeasurementOverlay({
+          title: "Face measurement",
+          detail: "Start cap",
+          rows: [
+            { label: "Area", value: "8 mm^2" },
+            { label: "Surface", value: "plane" }
+          ]
+        }),
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Viewport measurements");
+    expect(markup).toContain('data-measurement-kind="generatedReference"');
+    expect(markup).toContain(
+      'data-measurement-source="body.generatedReferenceMeasurements"'
+    );
+    expect(markup).toContain("Face measurement");
+    expect(markup).toContain("8 mm^2");
+  });
+
+  it("keeps raw internal IDs out of visible hover and measurement markup", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        selectionDisplay: createSelectionDisplay(),
+        hoverState: createHoverState({
+          diagnostics: [
+            {
+              code: "MISSING_SELECTION_TARGET",
+              status: "missing",
+              message:
+                "Viewport hover target did not resolve to a current CAD body or object."
+            }
+          ]
+        }),
+        measurementOverlay: createMeasurementOverlay({
+          error:
+            "Reference measurements unavailable: internal render target is missing or stale."
+        }),
+        referenceActions: [
+          createReferenceAction({
+            id: "face:body_rect:selection-buffer:face:17",
+            label: "Start cap",
+            kindLabel: "Face",
+            commandable: true,
+            selected: false,
+            stableId: "selection-buffer:face:17"
+          })
+        ],
+        onSelect: () => undefined,
+        onSelectGeneratedReference: () => undefined
+      })
+    );
+
+    expect(markup).not.toContain("selection-buffer");
+    expect(markup).not.toContain("mesh-triangle");
+    expect(markup).not.toContain("occt-shape");
+  });
+
   it("keeps raw generated-reference IDs out of visible viewport action markup", () => {
     const markup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
@@ -152,6 +248,41 @@ function createSelectionDisplay(
     commandOperations: [],
     commandOperationLabels: [],
     diagnostics: [],
+    ...overrides
+  };
+}
+
+function createHoverState(
+  overrides: Partial<
+    Extract<ViewportHoverState, { readonly kind: "body" }>
+  > = {}
+): ViewportHoverState {
+  return {
+    kind: "body",
+    title: "Base (Body)",
+    detail: "Command-ready reference",
+    tone: "ready",
+    bodyId: "body_rect",
+    renderTargetId: "body_rect",
+    semanticSelection: { type: "body", bodyId: "body_rect" },
+    referenceStatus: "resolved",
+    commandOperations: [],
+    commandOperationLabels: [],
+    diagnostics: [],
+    ...overrides
+  };
+}
+
+function createMeasurementOverlay(
+  overrides: Partial<ViewportMeasurementOverlay> = {}
+): ViewportMeasurementOverlay {
+  return {
+    selectionKind: "generatedReference",
+    title: "Face measurement",
+    detail: "Start cap",
+    source: "body.generatedReferenceMeasurements",
+    tone: "ready",
+    rows: [],
     ...overrides
   };
 }

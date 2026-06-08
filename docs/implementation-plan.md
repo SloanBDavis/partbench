@@ -163,6 +163,17 @@ Current Partbench can:
 - show compact viewport-adjacent generated-reference actions for the selected
   supported body, derived from `selection.referenceCandidates` candidate
   references, operation labels, commandability, and structured diagnostics;
+- show transient viewport hover status for current canvas body/object render IDs
+  by resolving them to the same semantic body/reference-candidate query
+  summaries used by viewport pick intent, while reporting sketch/unknown targets
+  as structured unsupported or missing hover diagnostics;
+- show a compact viewport measurement/inspection overlay for the selected
+  semantic body or generated reference using existing `body.measurements` and
+  `body.generatedReferenceMeasurements` query results already surfaced by the
+  inspector;
+- keep a lightweight deterministic V7 viewport baseline helper/check for a
+  rectangle extrude body with generated references and derived geometry status,
+  without exposing raw mesh, OCCT, cache, or selection-buffer identifiers;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
 - rebuild supported revolve, hole, and rectangle-edge chamfer/fillet result
@@ -209,6 +220,10 @@ Current limitations:
   and query-derived generated-reference selection only through explicit
   viewport-adjacent candidate actions. Exact face/edge/vertex picking, exact
   reference highlighting, and selection-buffer mapping are not implemented yet.
+- The C3 hover, status, reference-action, and measurement surfaces are compact
+  and intentionally layered rather than a final unified CAD interaction model.
+  A later viewport interaction coherence pass should consolidate their placement,
+  priority, and visual language.
 - There is no authoritative B-rep topology persisted in the document model.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
@@ -440,6 +455,33 @@ the renderer derived:
 - this slice remains query-only/derived and does not add exact face/edge/vertex
   picking, persistent selection state, new modeling commands, storage
   migration, WebGPU, or `web-cad.project.v17`.
+
+### Implemented Tranche C3: Viewport Hover And Measurement Overlay
+
+The third viewport slice makes current canvas interaction more inspectable
+without broadening renderer authority:
+
+- `apps/web` resolves transient hover render IDs through a typed app-layer
+  hover helper that mirrors viewport pick semantics for body/object targets and
+  emits structured unsupported or missing diagnostics for sketch/unknown targets;
+- hover display shows body/object titles, commandability summaries, supported
+  operation labels, and first structured diagnostics from
+  `selection.referenceCandidates`, but does not mutate selection or select
+  generated references;
+- the viewport renders a compact selected-target measurement overlay sourced
+  from existing `body.measurements` and
+  `body.generatedReferenceMeasurements` query results, including structured
+  unsupported, missing, or stale measurement text where those queries report it;
+- a small deterministic viewport baseline helper/check covers a rectangle
+  extrude body with generated references and ready derived geometry status while
+  excluding raw mesh, OCCT, cache, and selection-buffer IDs from visible helper
+  output;
+- this slice remains query-only/derived. It does not add exact face/edge/vertex
+  picking, persistent hover/selection state, new modeling commands, storage
+  migration, WebGPU, or `web-cad.project.v17`;
+- the hover/status/reference-action/measurement UI is intentionally minimal.
+  A follow-up viewport interaction coherence pass should unify these surfaces
+  into one product interaction model.
 
 Future V7 tranche plans should continue to include these details:
 
