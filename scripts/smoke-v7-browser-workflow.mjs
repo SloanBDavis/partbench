@@ -14,7 +14,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global DataTransfer, document, Event, File, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
+/* global clearTimeout, DataTransfer, document, Event, File, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
