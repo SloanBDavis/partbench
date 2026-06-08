@@ -51,6 +51,7 @@ import type {
   DocumentUnits,
   ObjectMeasurementsSnapshot,
   ProjectExtentsWarning,
+  ProjectSummaryQueryResponse,
   ObjectId,
   PartId,
   SemanticDiff,
@@ -197,6 +198,18 @@ export type {
   CadPartSnapshot,
   CadPrimitiveFeatureSource,
   CadPrimitiveFeatureSummary,
+  CadProjectSummaryExportFormatSummary,
+  CadProjectSummaryExportSummary,
+  CadProjectSummaryHealthSummary,
+  CadProjectSummaryNamedReferenceStatusCounts,
+  CadProjectSummaryReferenceKindCounts,
+  CadProjectSummaryReferenceOperationCounts,
+  CadProjectSummaryReferenceStatusCounts,
+  CadProjectSummaryReferenceSummary,
+  CadProjectSummaryStructureCounts,
+  CadProjectSummaryWorkflowHint,
+  CadProjectSummaryWorkflowHintCode,
+  CadProjectSummaryWorkflowHintLevel,
   CadQueryRequest,
   CadQueryError,
   CadQueryResponse,
@@ -885,18 +898,11 @@ export class CadEngine {
       }
 
       case "project.summary": {
-        const objects = [...this.#document.objects.values()].map(
-          createCadObjectSnapshot
+        return createProjectSummary(
+          this.#document,
+          this.#history.map((entry) => entry.transaction),
+          request.version
         );
-
-        return {
-          ok: true,
-          query: request.query.query,
-          cadOpsVersion: request.version,
-          units: this.#document.units,
-          objectCount: objects.length,
-          objects
-        };
       }
 
       case "project.features": {
@@ -9186,6 +9192,318 @@ interface CadProjectStructureSnapshot {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly objectSources: readonly CadObjectModelSource[];
+}
+
+const SUMMARY_REFERENCE_OPERATIONS = [
+  "reference.nameGenerated",
+  "feature.attachSketchPlane",
+  "feature.chamfer",
+  "feature.fillet",
+  "feature.measureReference",
+  "feature.selectReference"
+] satisfies readonly CadSelectionReferenceOperation[];
+
+const SUMMARY_REFERENCE_STATUSES = [
+  "resolved",
+  "missing",
+  "stale",
+  "unsupported",
+  "ambiguous",
+  "consumed",
+  "non-commandable"
+] satisfies readonly CadSelectionReferenceStatus[];
+
+const SUMMARY_REFERENCE_KINDS = [
+  "body",
+  "face",
+  "edge",
+  "vertex"
+] satisfies readonly CadGeneratedEntityKind[];
+
+function createProjectSummary(
+  document: CadDocument,
+  transactions: readonly Transaction[],
+  cadOpsVersion: ProjectSummaryQueryResponse["cadOpsVersion"]
+): ProjectSummaryQueryResponse {
+  const objects = [...document.objects.values()].map(createCadObjectSnapshot);
+  const structure = createProjectStructure(document, transactions);
+  const bodyExists = (bodyId: BodyId) =>
+    structure.bodies.some((body) => body.id === bodyId);
+  const health = createProjectHealth({
+    document,
+    cadOpsVersion,
+    ownerPartId: DEFAULT_PART_ID,
+    units: document.units,
+    derivedExactMetadata: [],
+    bodyExists
+  });
+  const exportReadiness = createProjectExportReadiness({
+    document,
+    cadOpsVersion,
+    bodies: structure.bodies
+  });
+  const structureSummary: ProjectSummaryQueryResponse["structure"] = {
+    partCount: structure.parts.length,
+    sketchCount: document.sketches.size,
+    sketchEntityCount: [...document.sketches.values()].reduce(
+      (count, sketch) => count + sketch.entities.size,
+      0
+    ),
+    featureCount: structure.features.length,
+    bodyCount: structure.bodies.length,
+    activeBodyCount: structure.bodies.filter(
+      (body) => !body.consumedByFeatureId
+    ).length,
+    consumedBodyCount: structure.bodies.filter(
+      (body) => body.consumedByFeatureId
+    ).length,
+    primitiveCompatibilityBodyCount: structure.bodies.filter(
+      (body) => body.source.type === "primitiveFeature"
+    ).length,
+    authoredBodyFeatureCount: document.features.size
+  };
+  const referenceSummary = createProjectSummaryReferenceSummary(
+    document,
+    structure,
+    transactions
+  );
+  const exportSummary: ProjectSummaryQueryResponse["exportReadiness"] = {
+    status: exportReadiness.status,
+    canExportFiles: exportReadiness.canExportFiles,
+    sourceBoundaryNote: exportReadiness.sourceBoundaryNote,
+    derivedBoundaryNote: exportReadiness.derivedBoundaryNote,
+    formatCount: exportReadiness.formatCount,
+    formats: exportReadiness.formats.map((format) => ({
+      format: format.format,
+      status: format.status,
+      available: format.available,
+      candidateBodyCount: format.candidateBodyCount,
+      sourceSupportedBodyCount: format.sourceSupportedBodyCount,
+      deferredBodyCount: format.deferredBodyCount,
+      unavailableBodyCount: format.unavailableBodyCount
+    })),
+    bodyCount: exportReadiness.bodyCount,
+    sourceSupportedBodyCount: exportReadiness.sourceSupportedBodyCount,
+    deferredBodyCount: exportReadiness.deferredBodyCount,
+    unavailableBodyCount: exportReadiness.unavailableBodyCount,
+    diagnosticCount: exportReadiness.diagnosticCount
+  };
+
+  return {
+    ok: true,
+    query: "project.summary",
+    cadOpsVersion,
+    units: document.units,
+    objectCount: objects.length,
+    objects,
+    structure: structureSummary,
+    health: {
+      status: health.status,
+      issueCount: health.issueCount
+    },
+    references: referenceSummary,
+    exportReadiness: exportSummary,
+    workflowHints: createProjectSummaryWorkflowHints(
+      structureSummary,
+      { status: health.status, issueCount: health.issueCount },
+      referenceSummary,
+      exportSummary
+    )
+  };
+}
+
+function createProjectSummaryReferenceSummary(
+  document: CadDocument,
+  structure: CadProjectStructureSnapshot,
+  transactions: readonly Transaction[]
+): ProjectSummaryQueryResponse["references"] {
+  const namedReferenceStatusCounts = {
+    resolved: 0,
+    stale: 0
+  };
+  const semanticBodySelectionStatusCounts = createZeroReferenceStatusCounts();
+  const referenceKindCounts = createZeroReferenceKindCounts();
+  const operationCounts = createZeroReferenceOperationCounts();
+  let generatedReferenceBodyCount = 0;
+  let generatedReferenceCount = 0;
+  let commandableReferenceCount = 0;
+
+  for (const reference of document.namedReferences.values()) {
+    const entry = createNamedReferenceEntry(document, reference, transactions);
+    namedReferenceStatusCounts[entry.status] += 1;
+  }
+
+  for (const body of structure.bodies) {
+    const bodySelection = createSelectionReferenceCandidates(
+      document,
+      structure,
+      transactions,
+      { type: "body", bodyId: body.id },
+      undefined
+    );
+    semanticBodySelectionStatusCounts[bodySelection.status] += 1;
+
+    if (body.consumedByFeatureId) {
+      continue;
+    }
+
+    const references = createBodyGeneratedReferences(
+      document,
+      body.id,
+      body.partId
+    );
+
+    if (!references) {
+      continue;
+    }
+
+    generatedReferenceBodyCount += 1;
+
+    for (const reference of listGeneratedReferences(references)) {
+      const operations: readonly CadSelectionReferenceOperation[] = [
+        "reference.nameGenerated",
+        ...reference.eligibleOperations
+      ];
+
+      generatedReferenceCount += 1;
+      referenceKindCounts[reference.kind] += 1;
+
+      for (const operation of operations) {
+        operationCounts[operation] += 1;
+      }
+
+      if (operations.length > 0) {
+        commandableReferenceCount += 1;
+      }
+    }
+  }
+
+  return {
+    namedReferenceCount: document.namedReferences.size,
+    namedReferenceStatusCounts,
+    semanticBodySelectionCount: structure.bodies.length,
+    semanticBodySelectionStatusCounts,
+    generatedReferenceBodyCount,
+    generatedReferenceCount,
+    commandableReferenceCount,
+    referenceKindCounts,
+    operationCounts
+  };
+}
+
+function listGeneratedReferences(
+  references: ReturnType<typeof createBodyGeneratedReferences>
+): readonly CadGeneratedReference[] {
+  if (!references) {
+    return [];
+  }
+
+  return [
+    references.body,
+    ...references.faces,
+    ...references.edges,
+    ...references.vertices
+  ];
+}
+
+function createZeroReferenceKindCounts(): Record<
+  CadGeneratedEntityKind,
+  number
+> {
+  return Object.fromEntries(
+    SUMMARY_REFERENCE_KINDS.map((kind) => [kind, 0])
+  ) as Record<CadGeneratedEntityKind, number>;
+}
+
+function createZeroReferenceOperationCounts(): Record<
+  CadSelectionReferenceOperation,
+  number
+> {
+  return Object.fromEntries(
+    SUMMARY_REFERENCE_OPERATIONS.map((operation) => [operation, 0])
+  ) as Record<CadSelectionReferenceOperation, number>;
+}
+
+function createZeroReferenceStatusCounts(): Record<
+  CadSelectionReferenceStatus,
+  number
+> {
+  return Object.fromEntries(
+    SUMMARY_REFERENCE_STATUSES.map((status) => [status, 0])
+  ) as Record<CadSelectionReferenceStatus, number>;
+}
+
+function createProjectSummaryWorkflowHints(
+  structure: ProjectSummaryQueryResponse["structure"],
+  health: ProjectSummaryQueryResponse["health"],
+  references: ProjectSummaryQueryResponse["references"],
+  exportReadiness: ProjectSummaryQueryResponse["exportReadiness"]
+): ProjectSummaryQueryResponse["workflowHints"] {
+  const hints: ProjectSummaryQueryResponse["workflowHints"][number][] = [];
+
+  if (structure.bodyCount === 0) {
+    hints.push({
+      code: "PROJECT_EMPTY",
+      level: "blocker",
+      message:
+        "Create an authored body before checking semantic references or file export readiness."
+    });
+  }
+
+  if (health.issueCount > 0) {
+    hints.push({
+      code: "PROJECT_HEALTH_ISSUES",
+      level: "warning",
+      message: `Project health is ${health.status} with ${health.issueCount} issue(s) to review.`
+    });
+  }
+
+  if (
+    structure.bodyCount > 0 &&
+    structure.authoredBodyFeatureCount === 0 &&
+    structure.primitiveCompatibilityBodyCount > 0
+  ) {
+    hints.push({
+      code: "NO_AUTHORED_BODY_FEATURES",
+      level: "warning",
+      message:
+        "Primitive compatibility bodies are present; authored sketch feature bodies are needed for V7 references and CAD export readiness."
+    });
+  }
+
+  if (structure.bodyCount > 0 && references.commandableReferenceCount === 0) {
+    hints.push({
+      code: "NO_COMMANDABLE_REFERENCES",
+      level: "warning",
+      message:
+        "No active source body exposes command-ready semantic references yet."
+    });
+  }
+
+  if (exportReadiness.canExportFiles) {
+    hints.push({
+      code: "EXPORT_READY",
+      level: "info",
+      message:
+        "At least one file export path is available for the current source model."
+    });
+  } else if (exportReadiness.status === "deferred") {
+    hints.push({
+      code: "EXPORT_DEFERRED",
+      level: "warning",
+      message:
+        "Source bodies are present, but file writers are still deferred by the shared export-readiness contract."
+    });
+  } else if (exportReadiness.status === "unavailable") {
+    hints.push({
+      code: "EXPORT_UNAVAILABLE",
+      level: "warning",
+      message:
+        "File export is unavailable for the current source model; review authored body support and export diagnostics."
+    });
+  }
+
+  return hints;
 }
 
 function createProjectStructure(

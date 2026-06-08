@@ -112,7 +112,23 @@ describe("mcp stdio server", () => {
         structuredContent: {
           ok: true,
           objectCount: 1,
-          objects: [{ id: "stdio_box", kind: "box" }]
+          objects: [{ id: "stdio_box", kind: "box" }],
+          structure: {
+            partCount: 1,
+            featureCount: 1,
+            bodyCount: 1,
+            primitiveCompatibilityBodyCount: 1,
+            authoredBodyFeatureCount: 0
+          },
+          references: {
+            semanticBodySelectionCount: 1,
+            generatedReferenceCount: 0
+          },
+          exportReadiness: {
+            status: "unavailable",
+            canExportFiles: false,
+            bodyCount: 1
+          }
         }
       }
     });

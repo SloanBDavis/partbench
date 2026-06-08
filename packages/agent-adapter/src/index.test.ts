@@ -1345,7 +1345,7 @@ describe("agent-adapter", () => {
       }
     });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: true,
       requestId: "agent_query_1",
       adapterVersion: "web-cad.agent-adapter.v1",
@@ -1374,6 +1374,32 @@ describe("agent-adapter", () => {
             scale: [1, 1, 1]
           }
         }
+      ],
+      structure: {
+        partCount: 1,
+        featureCount: 2,
+        bodyCount: 2,
+        primitiveCompatibilityBodyCount: 2,
+        authoredBodyFeatureCount: 0
+      },
+      references: {
+        semanticBodySelectionCount: 2,
+        generatedReferenceCount: 0,
+        semanticBodySelectionStatusCounts: {
+          unsupported: 2
+        }
+      },
+      exportReadiness: {
+        status: "unavailable",
+        canExportFiles: false,
+        formatCount: 2,
+        bodyCount: 2,
+        unavailableBodyCount: 2
+      },
+      workflowHints: [
+        expect.objectContaining({ code: "NO_AUTHORED_BODY_FEATURES" }),
+        expect.objectContaining({ code: "NO_COMMANDABLE_REFERENCES" }),
+        expect.objectContaining({ code: "EXPORT_UNAVAILABLE" })
       ]
     });
   });

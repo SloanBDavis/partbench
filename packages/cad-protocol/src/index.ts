@@ -1997,6 +1997,93 @@ export type CadSelectionReferenceStatus =
   | "consumed"
   | "non-commandable";
 
+export interface CadProjectSummaryStructureCounts {
+  readonly partCount: number;
+  readonly sketchCount: number;
+  readonly sketchEntityCount: number;
+  readonly featureCount: number;
+  readonly bodyCount: number;
+  readonly activeBodyCount: number;
+  readonly consumedBodyCount: number;
+  readonly primitiveCompatibilityBodyCount: number;
+  readonly authoredBodyFeatureCount: number;
+}
+
+export interface CadProjectSummaryHealthSummary {
+  readonly status: CadDependencyHealthStatus;
+  readonly issueCount: number;
+}
+
+export type CadProjectSummaryReferenceKindCounts = {
+  readonly [kind in CadGeneratedEntityKind]: number;
+};
+
+export type CadProjectSummaryReferenceOperationCounts = {
+  readonly [operation in CadSelectionReferenceOperation]: number;
+};
+
+export type CadProjectSummaryReferenceStatusCounts = {
+  readonly [status in CadSelectionReferenceStatus]: number;
+};
+
+export interface CadProjectSummaryNamedReferenceStatusCounts {
+  readonly resolved: number;
+  readonly stale: number;
+}
+
+export interface CadProjectSummaryReferenceSummary {
+  readonly namedReferenceCount: number;
+  readonly namedReferenceStatusCounts: CadProjectSummaryNamedReferenceStatusCounts;
+  readonly semanticBodySelectionCount: number;
+  readonly semanticBodySelectionStatusCounts: CadProjectSummaryReferenceStatusCounts;
+  readonly generatedReferenceBodyCount: number;
+  readonly generatedReferenceCount: number;
+  readonly commandableReferenceCount: number;
+  readonly referenceKindCounts: CadProjectSummaryReferenceKindCounts;
+  readonly operationCounts: CadProjectSummaryReferenceOperationCounts;
+}
+
+export interface CadProjectSummaryExportFormatSummary {
+  readonly format: CadExportFormatId;
+  readonly status: CadExportReadinessStatus;
+  readonly available: boolean;
+  readonly candidateBodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+}
+
+export interface CadProjectSummaryExportSummary {
+  readonly status: CadExportReadinessStatus;
+  readonly canExportFiles: boolean;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly formatCount: number;
+  readonly formats: readonly CadProjectSummaryExportFormatSummary[];
+  readonly bodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly diagnosticCount: number;
+}
+
+export type CadProjectSummaryWorkflowHintLevel = "info" | "warning" | "blocker";
+
+export type CadProjectSummaryWorkflowHintCode =
+  | "PROJECT_EMPTY"
+  | "PROJECT_HEALTH_ISSUES"
+  | "NO_AUTHORED_BODY_FEATURES"
+  | "NO_COMMANDABLE_REFERENCES"
+  | "EXPORT_READY"
+  | "EXPORT_DEFERRED"
+  | "EXPORT_UNAVAILABLE";
+
+export interface CadProjectSummaryWorkflowHint {
+  readonly code: CadProjectSummaryWorkflowHintCode;
+  readonly level: CadProjectSummaryWorkflowHintLevel;
+  readonly message: string;
+}
+
 export type CadSelectionReferenceIssueCode =
   | "MISSING_SELECTION_TARGET"
   | "STALE_SELECTION_REFERENCE"
@@ -2611,6 +2698,11 @@ export interface ProjectSummaryQueryResponse {
   readonly units: DocumentUnits;
   readonly objectCount: number;
   readonly objects: readonly CadObjectSnapshot[];
+  readonly structure: CadProjectSummaryStructureCounts;
+  readonly health: CadProjectSummaryHealthSummary;
+  readonly references: CadProjectSummaryReferenceSummary;
+  readonly exportReadiness: CadProjectSummaryExportSummary;
+  readonly workflowHints: readonly CadProjectSummaryWorkflowHint[];
 }
 
 export interface ProjectFeaturesQueryResponse {

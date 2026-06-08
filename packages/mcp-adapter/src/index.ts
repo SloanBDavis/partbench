@@ -951,7 +951,8 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   },
   {
     name: "cad.project_summary",
-    description: "Returns a structured summary of the current CAD document.",
+    description:
+      "Returns a compact V7 release summary with legacy objects plus source-derived structure, health, reference capability, export readiness, and workflow hints.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

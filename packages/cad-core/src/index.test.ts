@@ -4,6 +4,7 @@ import type {
   CadBatch,
   CadQueryRequest,
   ProjectExportReadinessQueryResponse,
+  ProjectSummaryQueryResponse,
   SketchConstraintSnapshot,
   SketchDimensionSnapshot,
   SketchEntitySnapshot
@@ -107,6 +108,19 @@ function readProjectExportReadiness(
 
   if (!response.ok || response.query !== "project.exportReadiness") {
     throw new Error("Expected project.exportReadiness response.");
+  }
+
+  return response;
+}
+
+function readProjectSummary(engine: CadEngine): ProjectSummaryQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.summary" }
+  });
+
+  if (!response.ok || response.query !== "project.summary") {
+    throw new Error("Expected project.summary response.");
   }
 
   return response;
@@ -3128,12 +3142,9 @@ describe("cad-core", () => {
       dimensions: { radius: 2, height: 8 }
     });
 
-    const response = engine.executeQuery({
-      version: "cadops.v1",
-      query: { query: "project.summary" }
-    });
+    const response = readProjectSummary(engine);
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: true,
       query: "project.summary",
       cadOpsVersion: "cadops.v1",
@@ -3240,6 +3251,221 @@ describe("cad-core", () => {
         }
       ]
     });
+  });
+
+  it("returns an empty V7 release project summary without persisted query state", () => {
+    const engine = new CadEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const summary = readProjectSummary(engine);
+
+    expect(summary).toMatchObject({
+      ok: true,
+      query: "project.summary",
+      units: "mm",
+      objectCount: 0,
+      objects: [],
+      structure: {
+        partCount: 1,
+        sketchCount: 0,
+        sketchEntityCount: 0,
+        featureCount: 0,
+        bodyCount: 0,
+        activeBodyCount: 0,
+        consumedBodyCount: 0,
+        primitiveCompatibilityBodyCount: 0,
+        authoredBodyFeatureCount: 0
+      },
+      health: {
+        status: "healthy",
+        issueCount: 0
+      },
+      references: {
+        namedReferenceCount: 0,
+        namedReferenceStatusCounts: {
+          resolved: 0,
+          stale: 0
+        },
+        semanticBodySelectionCount: 0,
+        generatedReferenceBodyCount: 0,
+        generatedReferenceCount: 0,
+        commandableReferenceCount: 0
+      },
+      exportReadiness: {
+        status: "unavailable",
+        canExportFiles: false,
+        formatCount: 2,
+        bodyCount: 0,
+        sourceSupportedBodyCount: 0,
+        deferredBodyCount: 0,
+        unavailableBodyCount: 0
+      }
+    });
+    expect(summary.workflowHints.map((hint) => hint.code)).toEqual([
+      "PROJECT_EMPTY",
+      "EXPORT_UNAVAILABLE"
+    ]);
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(beforeJson).not.toContain("web-cad.project.v17");
+    expect(beforeJson).not.toContain("project.summary");
+    expect(beforeJson).not.toContain("workflowHints");
+  });
+
+  it("summarizes supported authored extrudes with reference and export readiness counts", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+
+    const summary = readProjectSummary(engine);
+
+    expect(summary.structure).toEqual({
+      partCount: 1,
+      sketchCount: 1,
+      sketchEntityCount: 1,
+      featureCount: 1,
+      bodyCount: 1,
+      activeBodyCount: 1,
+      consumedBodyCount: 0,
+      primitiveCompatibilityBodyCount: 0,
+      authoredBodyFeatureCount: 1
+    });
+    expect(summary.health.status).toBe("under-defined");
+    expect(summary.health.issueCount).toBeGreaterThan(0);
+    expect(summary.references).toEqual({
+      namedReferenceCount: 1,
+      namedReferenceStatusCounts: {
+        resolved: 1,
+        stale: 0
+      },
+      semanticBodySelectionCount: 1,
+      semanticBodySelectionStatusCounts: {
+        resolved: 1,
+        missing: 0,
+        stale: 0,
+        unsupported: 0,
+        ambiguous: 0,
+        consumed: 0,
+        "non-commandable": 0
+      },
+      generatedReferenceBodyCount: 1,
+      generatedReferenceCount: 27,
+      commandableReferenceCount: 27,
+      referenceKindCounts: {
+        body: 1,
+        face: 6,
+        edge: 12,
+        vertex: 8
+      },
+      operationCounts: {
+        "reference.nameGenerated": 27,
+        "feature.attachSketchPlane": 6,
+        "feature.chamfer": 12,
+        "feature.fillet": 12,
+        "feature.measureReference": 27,
+        "feature.selectReference": 27
+      }
+    });
+    expect(summary.exportReadiness).toMatchObject({
+      status: "deferred",
+      canExportFiles: false,
+      formatCount: 2,
+      bodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 0,
+      formats: [
+        expect.objectContaining({
+          format: "step",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 1
+        }),
+        expect.objectContaining({
+          format: "glb",
+          status: "deferred",
+          available: false,
+          sourceSupportedBodyCount: 1
+        })
+      ]
+    });
+    expect(summary.workflowHints.map((hint) => hint.code)).toEqual([
+      "PROJECT_HEALTH_ISSUES",
+      "EXPORT_DEFERRED"
+    ]);
+  });
+
+  it("summarizes consumed and result bodies without claiming commandable references", () => {
+    const summary = readProjectSummary(createRectangleHoleEngine());
+
+    expect(summary.structure).toMatchObject({
+      partCount: 1,
+      sketchCount: 2,
+      sketchEntityCount: 2,
+      featureCount: 2,
+      bodyCount: 2,
+      activeBodyCount: 1,
+      consumedBodyCount: 1,
+      primitiveCompatibilityBodyCount: 0,
+      authoredBodyFeatureCount: 2
+    });
+    expect(summary.references).toMatchObject({
+      semanticBodySelectionCount: 2,
+      generatedReferenceBodyCount: 0,
+      generatedReferenceCount: 0,
+      commandableReferenceCount: 0,
+      semanticBodySelectionStatusCounts: {
+        ambiguous: 1,
+        consumed: 1
+      }
+    });
+    expect(summary.exportReadiness).toMatchObject({
+      status: "deferred",
+      canExportFiles: false,
+      bodyCount: 2,
+      sourceSupportedBodyCount: 0,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 1
+    });
+    expect(summary.workflowHints.map((hint) => hint.code)).toEqual([
+      "PROJECT_HEALTH_ISSUES",
+      "NO_COMMANDABLE_REFERENCES",
+      "EXPORT_DEFERRED"
+    ]);
+  });
+
+  it("keeps public project summary text free of derived IDs and out of project JSON", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const summary = readProjectSummary(engine);
+    const publicSummaryText = [
+      summary.exportReadiness.sourceBoundaryNote,
+      summary.exportReadiness.derivedBoundaryNote,
+      ...summary.workflowHints.map((hint) => hint.message)
+    ].join(" ");
+
+    expect(JSON.stringify(summary.references)).not.toMatch(
+      /generated:|mesh|occt|renderer|selection-buffer/i
+    );
+    expect(publicSummaryText).not.toMatch(
+      /generated:|body_rect_1|mesh|occt|renderer|selection-buffer/i
+    );
+    expect(summary.exportReadiness.formats).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          format: "glb",
+          status: "deferred",
+          available: false
+        })
+      ])
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(beforeJson).not.toContain("web-cad.project.v17");
+    expect(beforeJson).not.toContain("project.summary");
+    expect(beforeJson).not.toContain("exportReadiness");
   });
 
   it("returns a derived default part, primitive features, bodies, and object mappings", () => {

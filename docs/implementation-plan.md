@@ -568,6 +568,29 @@ current architecture can support:
   add import paths, OPFS/File System Access handles, native package storage,
   persisted export jobs, new modeling commands, or `web-cad.project.v17`.
 
+### Implemented Tranche F1: Agent/MCP Release Project Summary
+
+The first agent/MCP release-surface slice enriches the existing summary query
+without adding source data:
+
+- `project.summary` keeps the legacy `units`, `objectCount`, and `objects`
+  fields, then adds compact blocks for structure counts, project health,
+  semantic reference capabilities, export readiness, and workflow hints;
+- all new fields are derived from authoritative cad-core document state plus
+  existing structure, health, generated-reference, selection, and export
+  readiness helpers;
+- `cad.project_summary` remains a thin MCP wrapper over the agent-adapter/CADOps
+  query path and returns the same deterministic summary shape;
+- reference information is aggregate-only. The summary does not expose raw
+  generated-reference stable IDs, renderer IDs, OCCT/cache IDs, mesh IDs, or
+  selection-buffer IDs;
+- browser/app-derived GLB artifact availability stays out of cad-core. The
+  summary reports only the shared source export-readiness contract, including
+  deferred STEP and Mesh/GLB writer status;
+- no saved project schema change is introduced. Summary results, workflow hints,
+  export readiness, and reference capability counts are query-derived and not
+  persisted.
+
 Future V7 tranche plans should continue to include these details:
 
 - exact CADOps/query shapes and response examples;

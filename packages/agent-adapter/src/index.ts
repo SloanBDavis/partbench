@@ -40,6 +40,11 @@ import type {
   CadOpsVersion,
   CadParameterSnapshot,
   CadPartSnapshot,
+  CadProjectSummaryExportSummary,
+  CadProjectSummaryHealthSummary,
+  CadProjectSummaryReferenceSummary,
+  CadProjectSummaryStructureCounts,
+  CadProjectSummaryWorkflowHint,
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
@@ -249,6 +254,11 @@ export interface CadOpsAgentProjectSummaryQueryResponse {
   readonly units: DocumentUnits;
   readonly objectCount: number;
   readonly objects: readonly CadObjectSnapshot[];
+  readonly structure: CadProjectSummaryStructureCounts;
+  readonly health: CadProjectSummaryHealthSummary;
+  readonly references: CadProjectSummaryReferenceSummary;
+  readonly exportReadiness: CadProjectSummaryExportSummary;
+  readonly workflowHints: readonly CadProjectSummaryWorkflowHint[];
 }
 
 export interface CadOpsAgentProjectFeaturesQueryResponse {
@@ -898,7 +908,12 @@ function toAgentQueryResponse(
       query: response.query,
       units: response.units,
       objectCount: response.objectCount,
-      objects: response.objects
+      objects: response.objects,
+      structure: response.structure,
+      health: response.health,
+      references: response.references,
+      exportReadiness: response.exportReadiness,
+      workflowHints: response.workflowHints
     };
   }
 

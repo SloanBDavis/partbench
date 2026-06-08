@@ -4,8 +4,9 @@ import { CadMcpServer, createCadMcpServer } from "./index";
 describe("mcp-adapter", () => {
   it("lists only the supported CAD tools", () => {
     const server = createCadMcpServer();
+    const tools = server.listTools().tools;
 
-    expect(server.listTools().tools.map((tool) => tool.name)).toEqual([
+    expect(tools.map((tool) => tool.name)).toEqual([
       "cad.parameter_list",
       "cad.parameter_get",
       "cad.project_summary",
@@ -31,6 +32,9 @@ describe("mcp-adapter", () => {
       "cad.transaction_history",
       "cad.batch"
     ]);
+    expect(
+      tools.find((tool) => tool.name === "cad.project_summary")?.description
+    ).toContain("V7 release summary");
   });
 
   it("runs cad.batch dry-run without mutating the document", () => {
@@ -76,7 +80,25 @@ describe("mcp-adapter", () => {
       requestId: "mcp_req_summary",
       query: "project.summary",
       objectCount: 0,
-      objects: []
+      objects: [],
+      structure: {
+        partCount: 1,
+        bodyCount: 0,
+        authoredBodyFeatureCount: 0
+      },
+      references: {
+        semanticBodySelectionCount: 0,
+        generatedReferenceCount: 0
+      },
+      exportReadiness: {
+        status: "unavailable",
+        canExportFiles: false,
+        formatCount: 2
+      },
+      workflowHints: [
+        expect.objectContaining({ code: "PROJECT_EMPTY" }),
+        expect.objectContaining({ code: "EXPORT_UNAVAILABLE" })
+      ]
     });
   });
 
@@ -133,7 +155,27 @@ describe("mcp-adapter", () => {
           kind: "cylinder",
           dimensions: { radius: 2, height: 8 }
         }
-      ]
+      ],
+      structure: {
+        partCount: 1,
+        featureCount: 1,
+        bodyCount: 1,
+        primitiveCompatibilityBodyCount: 1,
+        authoredBodyFeatureCount: 0
+      },
+      references: {
+        semanticBodySelectionCount: 1,
+        generatedReferenceCount: 0,
+        semanticBodySelectionStatusCounts: {
+          unsupported: 1
+        }
+      },
+      exportReadiness: {
+        status: "unavailable",
+        canExportFiles: false,
+        bodyCount: 1,
+        unavailableBodyCount: 1
+      }
     });
   });
 

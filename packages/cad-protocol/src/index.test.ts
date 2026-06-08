@@ -21,6 +21,7 @@ import type {
   HoleFeatureSnapshot,
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
+  ProjectSummaryQueryResponse,
   SketchEvaluationQueryResponse,
   NamedGeneratedReferenceEntry,
   SketchSnapshot
@@ -904,6 +905,128 @@ describe("cad-protocol", () => {
 
     expect(evaluation.status).toBe("under-defined");
     expect(health.sketchEvaluations[0]?.status).toBe("under-defined");
+  });
+
+  it("types V7 project summary fields while preserving legacy object fields", () => {
+    const summary: ProjectSummaryQueryResponse = {
+      ok: true,
+      query: "project.summary",
+      cadOpsVersion: "cadops.v1",
+      units: "mm",
+      objectCount: 1,
+      objects: [
+        {
+          id: "legacy_box",
+          kind: "box",
+          dimensions: { width: 1, height: 2, depth: 3 },
+          transform: {
+            translation: [0, 0, 0],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1]
+          }
+        }
+      ],
+      structure: {
+        partCount: 1,
+        sketchCount: 1,
+        sketchEntityCount: 1,
+        featureCount: 1,
+        bodyCount: 1,
+        activeBodyCount: 1,
+        consumedBodyCount: 0,
+        primitiveCompatibilityBodyCount: 0,
+        authoredBodyFeatureCount: 1
+      },
+      health: {
+        status: "healthy",
+        issueCount: 0
+      },
+      references: {
+        namedReferenceCount: 0,
+        namedReferenceStatusCounts: {
+          resolved: 0,
+          stale: 0
+        },
+        semanticBodySelectionCount: 1,
+        semanticBodySelectionStatusCounts: {
+          resolved: 1,
+          missing: 0,
+          stale: 0,
+          unsupported: 0,
+          ambiguous: 0,
+          consumed: 0,
+          "non-commandable": 0
+        },
+        generatedReferenceBodyCount: 1,
+        generatedReferenceCount: 1,
+        commandableReferenceCount: 1,
+        referenceKindCounts: {
+          body: 1,
+          face: 0,
+          edge: 0,
+          vertex: 0
+        },
+        operationCounts: {
+          "reference.nameGenerated": 1,
+          "feature.attachSketchPlane": 0,
+          "feature.chamfer": 0,
+          "feature.fillet": 0,
+          "feature.measureReference": 1,
+          "feature.selectReference": 1
+        }
+      },
+      exportReadiness: {
+        status: "deferred",
+        canExportFiles: false,
+        sourceBoundaryNote:
+          "Classified from authoritative project bodies, features, sketches, and document units.",
+        derivedBoundaryNote:
+          "No derived display output, visualization cache, or export job state is read or persisted.",
+        formatCount: 2,
+        formats: [
+          {
+            format: "step",
+            status: "deferred",
+            available: false,
+            candidateBodyCount: 1,
+            sourceSupportedBodyCount: 1,
+            deferredBodyCount: 1,
+            unavailableBodyCount: 0
+          },
+          {
+            format: "glb",
+            status: "deferred",
+            available: false,
+            candidateBodyCount: 1,
+            sourceSupportedBodyCount: 1,
+            deferredBodyCount: 1,
+            unavailableBodyCount: 0
+          }
+        ],
+        bodyCount: 1,
+        sourceSupportedBodyCount: 1,
+        deferredBodyCount: 1,
+        unavailableBodyCount: 0,
+        diagnosticCount: 2
+      },
+      workflowHints: [
+        {
+          code: "EXPORT_DEFERRED",
+          level: "warning",
+          message:
+            "Source bodies are present, but file writers are still deferred by the shared export-readiness contract."
+        }
+      ]
+    };
+
+    expect(summary.objectCount).toBe(1);
+    expect(summary.structure.authoredBodyFeatureCount).toBe(1);
+    expect(summary.references.operationCounts["reference.nameGenerated"]).toBe(
+      1
+    );
+    expect(
+      summary.exportReadiness.formats.map((format) => format.format)
+    ).toEqual(["step", "glb"]);
   });
 
   it("types generated body face and edge references", () => {
