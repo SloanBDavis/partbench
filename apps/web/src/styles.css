@@ -1270,7 +1270,8 @@ button.model-story-row:hover,
 }
 
 .viewport-status strong,
-.viewport-status span {
+.viewport-status span,
+.viewport-status small {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1287,6 +1288,38 @@ button.model-story-row:hover,
   font-weight: 900;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.viewport-status small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.viewport-status-ready {
+  border-color: rgba(70, 134, 94, 0.56);
+}
+
+.viewport-status-ready span {
+  color: var(--success);
+}
+
+.viewport-status-warning {
+  border-color: rgba(180, 124, 49, 0.62);
+}
+
+.viewport-status-warning span,
+.viewport-status-warning .viewport-status-diagnostic {
+  color: var(--amber);
+}
+
+.viewport-status-blocked {
+  border-color: rgba(173, 68, 68, 0.58);
+}
+
+.viewport-status-blocked span,
+.viewport-status-blocked .viewport-status-diagnostic {
+  color: var(--danger);
 }
 
 canvas {

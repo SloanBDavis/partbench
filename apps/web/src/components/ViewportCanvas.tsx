@@ -14,21 +14,20 @@ import {
   fitCameraToRenderObject,
   fitCameraToRenderScene
 } from "../viewportCamera";
+import type { ViewportSelectionDisplay } from "../viewportSelectionDisplay";
 
 export function ViewportCanvas({
   meshes,
   onSelect,
   primitives,
   selectedId,
-  statusDetail,
-  statusTitle
+  selectionDisplay
 }: {
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly onSelect: (id: string | undefined) => void;
   readonly primitives: readonly RenderPrimitive[];
+  readonly selectionDisplay: ViewportSelectionDisplay;
   readonly selectedId?: string;
-  readonly statusDetail: string;
-  readonly statusTitle: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -149,9 +148,29 @@ export function ViewportCanvas({
             </button>
           </div>
         </div>
-        <div className="viewport-status" aria-live="polite">
-          <strong>{statusTitle}</strong>
-          <span>{statusDetail}</span>
+        <div
+          className={`viewport-status viewport-status-${selectionDisplay.tone}`}
+          aria-live="polite"
+          data-selection-kind={selectionDisplay.selectionKind}
+          data-geometry-status={selectionDisplay.geometryStatus}
+        >
+          <strong>{selectionDisplay.title}</strong>
+          <span>{selectionDisplay.detail}</span>
+          {selectionDisplay.referenceSummary &&
+            selectionDisplay.referenceSummary !== selectionDisplay.title && (
+              <small>{selectionDisplay.referenceSummary}</small>
+            )}
+          {selectionDisplay.commandOperationLabels.length > 0 && (
+            <small>{selectionDisplay.commandOperationLabels.join(", ")}</small>
+          )}
+          {selectionDisplay.diagnostics[0] && (
+            <small className="viewport-status-diagnostic">
+              {selectionDisplay.diagnostics[0].message}
+            </small>
+          )}
+          {selectionDisplay.geometryDetail && (
+            <small>{selectionDisplay.geometryDetail}</small>
+          )}
         </div>
         <canvas
           ref={canvasRef}

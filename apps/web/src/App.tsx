@@ -133,11 +133,10 @@ import {
 } from "./derivedGeometrySources";
 import {
   formatBodyMeasurementError,
-  formatBodyTopologyError,
-  getObjectDisplayName,
-  formatObjectKind
+  formatBodyTopologyError
 } from "./sceneObjectDisplay";
 import { createRenderSceneInputs } from "./renderScene";
+import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import {
   createGeneratedFaceReferenceKey,
   createSketchDisplayState
@@ -1142,19 +1141,14 @@ export function App() {
   const selectedGeometryEntry = selectedId
     ? derivedGeometryBySourceId.get(selectedId)
     : undefined;
-  const viewportStatusTitle = selectedObject
-    ? `${getObjectDisplayName(selectedObject)} (${formatObjectKind(selectedObject.kind)})`
-    : selectedBody
-      ? `${selectedBody.name ?? selectedBody.id} (Body)`
-      : "No selection";
-  const viewportStatusDetail =
-    selectedObject || selectedBody
-      ? derivedGeometryEnabled
-        ? getDerivedGeometryStatusLabel(selectedGeometryEntry)
-        : "Primitive fallback"
-      : derivedGeometryEnabled
-        ? "Select an object"
-        : "Primitive fallback mode";
+  const viewportSelectionDisplay = createViewportSelectionDisplay({
+    derivedGeometryEnabled,
+    selectedBody,
+    selectedGeneratedReferenceState,
+    selectedGeometryEntry,
+    selectedObject,
+    selectionReferenceCandidates: selectedSelectionReferenceCandidates
+  });
   const renderScene = useMemo(
     () =>
       createRenderSceneInputs(
@@ -2066,9 +2060,8 @@ export function App() {
         <ViewportCanvas
           primitives={renderScene.primitives}
           meshes={renderScene.meshes}
-          selectedId={selectedId}
-          statusDetail={viewportStatusDetail}
-          statusTitle={viewportStatusTitle}
+          selectedId={viewportSelectionDisplay.renderTargetId ?? selectedId}
+          selectionDisplay={viewportSelectionDisplay}
           onSelect={selectObject}
         />
 

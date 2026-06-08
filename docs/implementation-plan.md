@@ -153,6 +153,10 @@ Current Partbench can:
   inspector, and modeling workflow, including command-ready summaries,
   supported command operations, and structured diagnostics for blocked
   reference-consuming affordances;
+- surface the same V7 selection/reference candidate state in the viewport
+  status overlay for selected bodies, generated references, and named
+  references after they resolve to generated references, while keeping
+  viewport highlighting derived from source/query state;
 - perform narrow rectangle-tool add/cut boolean workflows for supported target
   bodies;
 - rebuild supported revolve, hole, and rectangle-edge chamfer/fillet result
@@ -193,9 +197,10 @@ Current limitations:
   V6 revolve, hole, chamfer, and fillet result bodies also keep generated
   references unsupported unless a future stable topological naming design is
   explicitly implemented.
-- Feature tree, inspector, and modeling workflow integration currently consumes
-  semantic selections that the UI already exposes. Viewport picking and
-  selection-buffer mapping are not implemented yet.
+- Feature tree, inspector, modeling workflow, and viewport status integration
+  currently consume semantic selections that the UI already exposes. Viewport
+  picking, exact face/edge highlighting, and selection-buffer mapping are not
+  implemented yet.
 - There is no authoritative B-rep topology persisted in the document model.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
@@ -378,6 +383,25 @@ modeling workflow to the selection/reference contract:
 - the integration is derived/query-only and does not introduce
   `web-cad.project.v17`, persisted selection state, viewport picking, WebGPU,
   STEP, OPFS, `.wcad`, assemblies, or new modeling commands.
+
+### Implemented Tranche C1: Viewport Semantic Selection Readiness
+
+The first viewport-readiness slice connects viewport-adjacent selection status
+to the same semantic contract without adding viewport picking:
+
+- the app derives a typed viewport selection display from selected semantic body
+  and generated-reference state plus the current `selection.referenceCandidates`
+  response;
+- named references participate after the existing UI resolves them to generated
+  references;
+- the viewport status overlay shows command-ready summaries, supported
+  operations, structured diagnostics, consumed-body state, and derived geometry
+  ready/pending/failed/fallback state;
+- current viewport highlighting remains source body/object ID based. Renderer,
+  mesh, OCCT, and future selection-buffer identifiers are not promoted to public
+  stable IDs;
+- this slice does not add viewport picking, persistent selection state, new
+  modeling commands, storage migration, WebGPU, or `web-cad.project.v17`.
 
 Future V7 tranche plans should continue to include these details:
 
