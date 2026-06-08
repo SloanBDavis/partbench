@@ -176,13 +176,15 @@ describe("ViewportCanvas", () => {
       })
     );
 
-    expect(markup).toContain("Viewport measurements");
+    expect(markup).toContain(
+      "Viewport measurements: Face measurement, Start cap"
+    );
     expect(markup).toContain(
       'data-measurement-source="body.generatedReferenceMeasurements"'
     );
-    expect(markup).toContain("Measurements");
-    expect(markup).toContain("Face measurement");
     expect(markup).toContain("8 mm^2");
+    expect(markup).not.toContain("<dl>");
+    expect(markup).not.toContain("<dt>");
   });
 
   it("renders capped reference actions and attached measurements in one compact surface", () => {
@@ -228,6 +230,71 @@ describe("ViewportCanvas", () => {
     expect(markup).toContain("Area");
     expect(markup).toContain("Start cap");
     expect(markup).not.toContain("End cap");
+  });
+
+  it("keeps viewport reference actions compact by default", () => {
+    const referenceActions = [
+      createReferenceAction({
+        id: "face-a",
+        label: "A cap",
+        kindLabel: "Face",
+        commandable: true,
+        selected: false
+      }),
+      createReferenceAction({
+        id: "face-b",
+        label: "B cap",
+        kindLabel: "Face",
+        commandable: true,
+        selected: false
+      }),
+      createReferenceAction({
+        id: "face-c",
+        label: "C cap",
+        kindLabel: "Face",
+        commandable: true,
+        selected: false
+      }),
+      createReferenceAction({
+        id: "face-d",
+        label: "D cap",
+        kindLabel: "Face",
+        commandable: true,
+        selected: false
+      }),
+      createReferenceAction({
+        id: "face-e",
+        label: "E cap",
+        kindLabel: "Face",
+        commandable: true,
+        selected: false
+      })
+    ];
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        interactionSurface: createViewportInteractionSurface({
+          selectionDisplay: createSelectionDisplay(),
+          referenceActions
+        }),
+        onSelect: () => undefined,
+        onSelectGeneratedReference: () => undefined
+      })
+    );
+
+    expect(
+      markup.match(/<button type="button" class="viewport-reference-action/g)
+        ?.length
+    ).toBe(3);
+    expect(markup).toContain("A cap");
+    expect(markup).toContain("B cap");
+    expect(markup).toContain("C cap");
+    expect(markup).not.toContain("D cap");
+    expect(markup).not.toContain("E cap");
+    expect(markup).toContain("2 more references in inspector");
+    expect(markup).not.toContain("viewport-reference-group");
   });
 
   it("keeps raw internal IDs out of visible hover and measurement markup", () => {

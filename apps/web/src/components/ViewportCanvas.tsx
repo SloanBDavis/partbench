@@ -39,6 +39,22 @@ export function ViewportCanvas({
   readonly selectedId?: string;
 }) {
   const { hover, referenceSection, selection } = interactionSurface;
+  const selectionMetaItems = createSelectionMetaItems(selection);
+  const selectionDiagnostics = selection.diagnostics.slice(0, 1);
+  const hiddenSelectionDiagnosticCount = Math.max(
+    0,
+    selection.diagnostics.length - selectionDiagnostics.length
+  );
+  const referenceActions =
+    referenceSection?.groups.flatMap((group) => group.actions).slice(0, 3) ??
+    [];
+  const hiddenReferenceActionCount = referenceSection
+    ? Math.max(0, referenceSection.totalCount - referenceActions.length)
+    : 0;
+  const hoverDiagnostics = hover?.diagnostics.slice(0, 1) ?? [];
+  const hiddenHoverDiagnosticCount = hover
+    ? Math.max(0, hover.diagnostics.length - hoverDiagnostics.length)
+    : 0;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [camera, setCamera] = useState<RenderCamera>(() =>
@@ -194,24 +210,19 @@ export function ViewportCanvas({
               <strong>{selection.title}</strong>
               <span>{selection.detail}</span>
             </div>
-            <div className="viewport-selection-meta">
-              {selection.referenceSummary &&
-                selection.referenceSummary !== selection.title && (
-                  <small>{selection.referenceSummary}</small>
-                )}
-              {selection.commandOperationLabels.length > 0 && (
-                <small>{selection.commandOperationLabels.join(", ")}</small>
-              )}
-              {selection.geometryDetail && (
-                <small>{selection.geometryDetail}</small>
-              )}
-            </div>
-            {selection.diagnostics.length > 0 && (
+            {selectionMetaItems.length > 0 && (
+              <div className="viewport-selection-meta">
+                {selectionMetaItems.map((item) => (
+                  <small key={item}>{item}</small>
+                ))}
+              </div>
+            )}
+            {selectionDiagnostics.length > 0 && (
               <div
                 className="viewport-selection-diagnostics"
                 aria-label="Viewport selection diagnostics"
               >
-                {selection.diagnostics.map((diagnostic) => (
+                {selectionDiagnostics.map((diagnostic) => (
                   <small
                     key={`${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`}
                     className="viewport-selection-diagnostic"
@@ -221,39 +232,34 @@ export function ViewportCanvas({
                     {diagnostic.message}
                   </small>
                 ))}
-              </div>
-            )}
-            {selection.measurement && (
-              <section
-                className={`viewport-measurement-section viewport-measurement-section-${selection.measurement.tone}`}
-                aria-label="Viewport measurements"
-                data-measurement-source={selection.measurement.source}
-              >
-                <div className="viewport-section-heading">
-                  <strong>Measurements</strong>
-                  <small>{selection.measurement.title}</small>
-                </div>
-                <span className="viewport-section-detail">
-                  {selection.measurement.detail}
-                </span>
-                {selection.measurement.error && (
-                  <small className="viewport-measurement-error">
-                    {selection.measurement.error}
+                {hiddenSelectionDiagnosticCount > 0 && (
+                  <small className="viewport-overflow-note">
+                    {hiddenSelectionDiagnosticCount} more diagnostics in
+                    inspector
                   </small>
                 )}
-                {selection.measurement.rows.length > 0 && (
-                  <dl>
-                    {selection.measurement.rows.map((row) => (
-                      <div key={row.label}>
-                        <dt>{row.label}</dt>
-                        <dd>{row.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+              </div>
+            )}
+            {selection.measurement && selection.measurement.rows.length > 0 && (
+              <section
+                className={`viewport-measurement-section viewport-measurement-section-${selection.measurement.tone}`}
+                aria-label={`Viewport measurements: ${selection.measurement.title}, ${selection.measurement.detail}`}
+                data-measurement-source={selection.measurement.source}
+              >
+                {selection.measurement.rows[0] && (
+                  <small className="viewport-measurement-chip">
+                    {selection.measurement.rows[0].label}:{" "}
+                    {selection.measurement.rows[0].value}
+                  </small>
                 )}
-                {selection.measurement.overflowCount > 0 && (
+                {selection.measurement.rows.length +
+                  selection.measurement.overflowCount >
+                  1 && (
                   <small className="viewport-overflow-note">
-                    {selection.measurement.overflowCount} more measurements
+                    {selection.measurement.rows.length -
+                      1 +
+                      selection.measurement.overflowCount}{" "}
+                    more measurements in inspector
                   </small>
                 )}
               </section>
@@ -275,71 +281,47 @@ export function ViewportCanvas({
                   <small>{referenceSection.blockedCount} blocked</small>
                 )}
               </div>
-              <div className="viewport-reference-groups">
-                {referenceSection.groups.map((group) => (
-                  <div
-                    key={group.kindLabel}
-                    className="viewport-reference-group"
-                    data-reference-group={group.kindLabel}
+              <div className="viewport-reference-actions-row">
+                {referenceActions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    className={
+                      action.selected
+                        ? "viewport-reference-action selected"
+                        : action.commandable
+                          ? "viewport-reference-action"
+                          : "viewport-reference-action blocked"
+                    }
+                    aria-pressed={action.selected}
+                    data-commandable={action.commandable ? "true" : "false"}
+                    data-reference-kind={action.reference.kind}
+                    data-reference-group={action.kindLabel}
+                    aria-label={formatReferenceActionLabel(action)}
+                    title={formatReferenceActionLabel(action)}
+                    onClick={() =>
+                      onSelectGeneratedReference?.(action.reference)
+                    }
                   >
-                    <div className="viewport-reference-group-heading">
-                      <strong>{group.kindLabel}</strong>
-                      <small>
-                        {group.visibleCount} of {group.totalCount}
+                    <span>{action.label}</span>
+                    <strong>
+                      {action.commandable ? "Command-ready" : "Blocked"}
+                    </strong>
+                    {action.diagnostic && (
+                      <small
+                        className="viewport-reference-diagnostic"
+                        data-diagnostic-code={action.diagnostic.code}
+                        data-diagnostic-status={action.diagnostic.status}
+                      >
+                        {action.diagnostic.message}
                       </small>
-                    </div>
-                    <ul>
-                      {group.actions.map((action) => (
-                        <li key={action.id}>
-                          <button
-                            type="button"
-                            className={
-                              action.selected
-                                ? "viewport-reference-action selected"
-                                : action.commandable
-                                  ? "viewport-reference-action"
-                                  : "viewport-reference-action blocked"
-                            }
-                            aria-pressed={action.selected}
-                            data-commandable={
-                              action.commandable ? "true" : "false"
-                            }
-                            data-reference-kind={action.reference.kind}
-                            onClick={() =>
-                              onSelectGeneratedReference?.(action.reference)
-                            }
-                          >
-                            <span>{action.label}</span>
-                            <strong>
-                              {action.commandable ? "Command-ready" : "Blocked"}
-                            </strong>
-                            {action.commandOperationLabels.length > 0 && (
-                              <small>
-                                {action.commandOperationLabels.join(", ")}
-                              </small>
-                            )}
-                            {action.diagnostic && (
-                              <small
-                                className="viewport-reference-diagnostic"
-                                data-diagnostic-code={action.diagnostic.code}
-                                data-diagnostic-status={
-                                  action.diagnostic.status
-                                }
-                              >
-                                {action.diagnostic.message}
-                              </small>
-                            )}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                    )}
+                  </button>
                 ))}
               </div>
-              {referenceSection.overflowCount > 0 && (
+              {hiddenReferenceActionCount > 0 && (
                 <small className="viewport-overflow-note">
-                  {referenceSection.overflowCount} more references available in
-                  the inspector
+                  {hiddenReferenceActionCount} more references in inspector
                 </small>
               )}
             </section>
@@ -360,9 +342,9 @@ export function ViewportCanvas({
               {hover.commandOperationLabels.length > 0 && (
                 <small>{hover.commandOperationLabels.join(", ")}</small>
               )}
-              {hover.diagnostics.length > 0 && (
+              {hoverDiagnostics.length > 0 && (
                 <div className="viewport-hover-diagnostics">
-                  {hover.diagnostics.map((diagnostic) => (
+                  {hoverDiagnostics.map((diagnostic) => (
                     <small
                       key={`${diagnostic.code}:${diagnostic.status}:${diagnostic.message}`}
                       className="viewport-hover-diagnostic"
@@ -372,6 +354,11 @@ export function ViewportCanvas({
                       {diagnostic.message}
                     </small>
                   ))}
+                  {hiddenHoverDiagnosticCount > 0 && (
+                    <small className="viewport-overflow-note">
+                      {hiddenHoverDiagnosticCount} more diagnostics in inspector
+                    </small>
+                  )}
                 </div>
               )}
             </section>
@@ -476,4 +463,47 @@ export function ViewportCanvas({
       </div>
     </section>
   );
+}
+
+function createSelectionMetaItems(
+  selection: ViewportInteractionSurface["selection"]
+): readonly string[] {
+  const items: string[] = [];
+
+  if (
+    selection.referenceSummary &&
+    selection.referenceSummary !== selection.title
+  ) {
+    items.push(selection.referenceSummary);
+  }
+
+  if (selection.commandOperationLabels.length > 0) {
+    const visibleOperations = selection.commandOperationLabels.slice(0, 2);
+    const hiddenOperationCount =
+      selection.commandOperationLabels.length - visibleOperations.length;
+    items.push(
+      hiddenOperationCount > 0
+        ? `${visibleOperations.join(", ")} +${hiddenOperationCount}`
+        : visibleOperations.join(", ")
+    );
+  }
+
+  if (selection.geometryDetail) {
+    items.push(selection.geometryDetail);
+  }
+
+  return items;
+}
+
+function formatReferenceActionLabel(
+  action: ViewportInteractionReferenceAction
+): string {
+  return [
+    `${action.kindLabel}: ${action.label}`,
+    action.commandable ? "Command-ready" : "Blocked",
+    action.commandOperationLabels.join(", "),
+    action.diagnostic?.message
+  ]
+    .filter((part) => part && part.length > 0)
+    .join(" / ");
 }
