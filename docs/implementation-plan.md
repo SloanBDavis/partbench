@@ -100,7 +100,6 @@ pnpm format:check
 pnpm smoke:v7-release-samples
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
-pnpm smoke:feature-delete-ui
 ```
 
 Derived geometry is enabled by default for local Vite serve:
@@ -158,7 +157,10 @@ generated planar face, consumed-body structured diagnostics, and Project/File
 JSON export/load/import round-trip behavior, then reports required checks plus
 optional skipped GLB download readiness. Default production builds keep derived
 geometry disabled, so the GLB download check may be skipped with a structured
-reason. The derived smoke builds with `VITE_ENABLE_DERIVED_GEOMETRY=true` and
+reason. The smoke also verifies the reduced Advanced tools surface no longer
+exposes Batch or Mesh tabs and can scroll overflowing panel content. The derived
+smoke builds with
+`VITE_ENABLE_DERIVED_GEOMETRY=true` and
 requires `glb-download` to pass, proving transient
 `partbench-visualization.glb` output from ready derived display meshes.
 
@@ -389,7 +391,7 @@ V7 is organized around these pillars:
 
 ### Implemented Tranche Sequence And Remaining Order
 
-The implemented sequence through G7 is:
+The implemented sequence through H1 is:
 
 1. **Reference And Selection Contract** - implemented typed query/protocol
    support for
@@ -417,6 +419,10 @@ The implemented sequence through G7 is:
    release-sample smoke, browser workflow smoke, checklist/docs, G4 extended
    acceptance samples, G6 browser checklist automation expansion, and G7
    derived-geometry GLB release smoke.
+8. **Cleanup H1** - removed the visible Advanced tools Batch and Mesh debug tabs
+   and the stale feature-delete browser smoke, while preserving CADOps batch
+   behavior, agent/MCP pass-through, derived geometry, and Project/File
+   visualization export readiness.
 
 Numbering note: there is intentionally no separate implemented G5 tranche in the
 release-hardening record. The remaining checklist-automation work that could
@@ -860,7 +866,9 @@ smoke behavior:
 
 - `pnpm smoke:v7-browser-workflow` still runs a normal production build and may
   report `glb-download` as skipped with the observed readiness reason when
-  derived visualization meshes are unavailable;
+  derived visualization meshes are unavailable. It also verifies the reduced
+  Advanced tools surface no longer exposes Batch or Mesh tabs and can scroll
+  overflowing panel content;
 - `pnpm smoke:v7-browser-workflow:derived` builds with
   `VITE_ENABLE_DERIVED_GEOMETRY=true` and runs the same CDP/static-server
   browser workflow with `glb-download` added to the required check list;
@@ -879,9 +887,31 @@ GLB remains app-derived display output from ready mesh DTOs and does not become
 source-of-truth data in `cad-core`, storage, CADOps schemas, or
 `web-cad.project.v17`.
 
+### Implemented Tranche H1: Advanced Tools Batch/Mesh Cleanup
+
+The first V7 cleanup slice removes product UI that was not part of the
+architecture-backed workflow:
+
+- the bottom-right Advanced tools drawer no longer exposes the manual Batch tab
+  or the Mesh derived-geometry debug tab;
+- app-local batch form/queue UI state and UI-only command form conversion were
+  removed. `cad.batch`, `buildBatch`, command transactions, semantic diffs, and
+  agent/MCP batch review remain intact;
+- derived geometry, render-scene mesh use, Project/File export readiness, and
+  optional transient Mesh/GLB visualization export remain intact, but mesh debug
+  refresh/status is no longer a primary product panel;
+- the stale `smoke:feature-delete-ui` script was removed because current V7
+  browser coverage lives in the release workflow smoke and no longer preserves
+  obsolete viewport-status UI.
+
+H1 does not remove Sketch, File/Project JSON import/export, transaction history,
+derived geometry services, GLB visualization export, CADOps batch support,
+agent/MCP adapters, storage schemas, WebGPU deferrals, STEP deferrals, or
+`web-cad.project.v17` constraints.
+
 ### V7 Release Completion Gate Semantics
 
-For implementation accounting, V7 is complete through the implemented A-G7
+For implementation accounting, V7 is complete through the implemented A-H1
 tranche scope described above. For a release-candidate pass, the required
 automated gates are the commands listed in `docs/v7-release-checklist.md`,
 including the default browser workflow smoke and the opt-in derived GLB smoke.

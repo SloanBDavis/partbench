@@ -71,6 +71,8 @@ describe("V7 browser workflow smoke summary", () => {
     expect(V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS).toEqual(
       expect.arrayContaining([
         "create-circle-extrude",
+        "advanced-tools-cleanup",
+        "advanced-tools-scrollability",
         "circle-body-reference-contract",
         "viewport-unobstructed-selection-layout",
         "attached-sketch-create",

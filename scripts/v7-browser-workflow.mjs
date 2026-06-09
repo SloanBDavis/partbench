@@ -5,6 +5,8 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "create-extrude",
   "create-circle",
   "create-circle-extrude",
+  "advanced-tools-cleanup",
+  "advanced-tools-scrollability",
   "circle-body-reference-contract",
   "body-reference-contract",
   "viewport-unobstructed-selection-layout",

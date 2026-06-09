@@ -14,7 +14,6 @@ import {
 } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
-  CadBatchMode,
   CadBatchResponse,
   CadGeneratedFaceReference,
   CadGeneratedReference,
@@ -69,7 +68,6 @@ import {
   buildFeatureRevolveOp,
   buildFeatureUpdateExtrudeOp,
   buildNameGeneratedReferenceOp,
-  buildOperationFromBatchForm,
   buildParameterEditOps,
   buildRenameObjectOp,
   buildRenameSketchOp,
@@ -84,7 +82,6 @@ import {
   buildUpdateUnitsOp,
   buildUpdateTransformOp,
   WEB_UI_ACTOR,
-  type BatchOperationForm,
   type DimensionCommandForm,
   type FeatureEdgeFinishForm,
   type FeatureExtrudeForm,
@@ -102,8 +99,6 @@ import {
 } from "./cadCommands";
 import type { EdgeFinishOperation } from "./edgeFinishUi";
 import { BrowserCadCommandWorker } from "./browserCadCommandWorker";
-import { BatchPanel } from "./components/BatchPanel";
-import { GeometryPanel } from "./components/GeometryPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { Inspector } from "./components/Inspector";
 import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
@@ -253,31 +248,7 @@ const quickTorusForm: PrimitiveCommandForm = {
   translationZ: 0
 };
 
-const initialBatchForm: BatchOperationForm = {
-  op: "scene.createBox",
-  id: "",
-  targetId: "",
-  width: 2,
-  height: 2,
-  depth: 2,
-  radius: 1,
-  majorRadius: 1.4,
-  minorRadius: 0.35,
-  translationX: 0,
-  translationY: 0,
-  translationZ: 1,
-  rotationX: 0,
-  rotationY: 0,
-  rotationZ: 0,
-  scaleX: 1,
-  scaleY: 1,
-  scaleZ: 1,
-  name: "",
-  units: "mm",
-  unitUpdateMode: "metadataOnly"
-};
-
-type UtilityPanelId = "sketches" | "history" | "batch" | "project" | "geometry";
+type UtilityPanelId = "sketches" | "history" | "project";
 
 type ModelBrowserPanelId = "tree" | "selection";
 
@@ -884,13 +855,6 @@ export function App() {
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
   >();
-  const [batchForm, setBatchForm] =
-    useState<BatchOperationForm>(initialBatchForm);
-  const [queuedOps, setQueuedOps] = useState<readonly CadOp[]>([]);
-  const [batchResponse, setBatchResponse] = useState<
-    CadBatchResponse | undefined
-  >();
-  const [batchError, setBatchError] = useState<string | undefined>();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
@@ -1210,21 +1174,11 @@ export function App() {
   }[] = [
     { id: "sketches", label: "Sketches", count: sketches.length },
     { id: "history", label: "Log", count: transactionHistory.length },
-    { id: "batch", label: "Batch", count: queuedOps.length },
     {
       id: "project",
       label: "File",
       count: formatSchemaBadge(currentProjectSummary.schemaVersion)
-    },
-    ...(derivedGeometryEnabled
-      ? [
-          {
-            id: "geometry" as const,
-            label: "Mesh",
-            count: derivedGeometry.readyCount
-          }
-        ]
-      : [])
+    }
   ];
 
   useEffect(() => {
@@ -1309,15 +1263,6 @@ export function App() {
     );
     getDerivedGeometryService().reconcile(nextDerivedGeometrySources);
     getDerivedExactMetadataService().reconcile(nextDerivedGeometrySources);
-  }
-
-  function refreshDerivedGeometry() {
-    if (!derivedGeometryEnabled) {
-      return;
-    }
-
-    getDerivedGeometryService().refresh(derivedGeometrySources);
-    getDerivedExactMetadataService().refresh(derivedGeometrySources);
   }
 
   async function commitOps(
@@ -1863,43 +1808,6 @@ export function App() {
     }
   }
 
-  function addBatchOperation() {
-    try {
-      const op = buildOperationFromBatchForm(batchForm);
-      setQueuedOps((ops) => [...ops, op]);
-      setBatchResponse(undefined);
-      setBatchError(undefined);
-    } catch (error) {
-      setBatchError(
-        error instanceof Error ? error.message : "Invalid command."
-      );
-    }
-  }
-
-  async function runBatch(mode: CadBatchMode) {
-    setCommandPending(true);
-
-    try {
-      const response = await commandExecutor.executeBatch(
-        buildBatch(mode, queuedOps, WEB_UI_ACTOR)
-      );
-      setBatchResponse(response);
-      setBatchError(undefined);
-
-      if (response.ok && mode === "commit") {
-        syncDocument(response.createdIds[0] ?? selectedId);
-      }
-    } finally {
-      setCommandPending(false);
-    }
-  }
-
-  function clearBatch() {
-    setQueuedOps([]);
-    setBatchResponse(undefined);
-    setBatchError(undefined);
-  }
-
   function exportProjectJson() {
     setProjectJson(exportCadProjectJson(engine));
     setProjectJsonDraftSource({ kind: "generatedExport" });
@@ -2010,9 +1918,6 @@ export function App() {
     }
 
     engine.loadProject(preview.project);
-    setQueuedOps([]);
-    setBatchResponse(undefined);
-    setBatchError(undefined);
     setCommandError(undefined);
     setSelectedGeneratedReference(undefined);
     setProjectMessage(`Imported ${formatProjectJsonSummary(preview.summary)}.`);
@@ -2326,7 +2231,7 @@ export function App() {
           <details className="advanced-tools-drawer">
             <summary>
               <span>Advanced tools</span>
-              <small>Sketches, file, batch, log, mesh</small>
+              <small>Sketches, file, log</small>
             </summary>
 
             <section className="utility-dock" aria-label="Workspace tools">
@@ -2441,28 +2346,6 @@ export function App() {
                 </div>
 
                 <div
-                  id="utility-panel-batch"
-                  role="tabpanel"
-                  aria-labelledby="utility-tab-batch"
-                  className="utility-panel"
-                  hidden={activeUtilityPanel !== "batch"}
-                >
-                  <BatchPanel
-                    disabled={commandPending}
-                    form={batchForm}
-                    onChange={setBatchForm}
-                    units={document.units}
-                    queuedOps={queuedOps}
-                    response={batchResponse}
-                    error={batchError}
-                    onAddOperation={addBatchOperation}
-                    onDryRun={() => void runBatch("dryRun")}
-                    onCommit={() => void runBatch("commit")}
-                    onClear={clearBatch}
-                  />
-                </div>
-
-                <div
                   id="utility-panel-project"
                   role="tabpanel"
                   aria-labelledby="utility-tab-project"
@@ -2499,22 +2382,6 @@ export function App() {
                     onImport={importProjectJson}
                   />
                 </div>
-
-                {derivedGeometryEnabled && (
-                  <div
-                    id="utility-panel-geometry"
-                    role="tabpanel"
-                    aria-labelledby="utility-tab-geometry"
-                    className="utility-panel"
-                    hidden={activeUtilityPanel !== "geometry"}
-                  >
-                    <GeometryPanel
-                      disabled={commandPending}
-                      snapshot={derivedGeometry}
-                      onRefresh={refreshDerivedGeometry}
-                    />
-                  </div>
-                )}
               </div>
             </section>
           </details>

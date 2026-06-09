@@ -108,6 +108,8 @@ verifies:
   vague blocked text;
 - viewport semantic selection/status updates for the selected body/reference
   without claiming exact face/edge viewport picking;
+- reduced Advanced tools surface, confirming Batch and Mesh tabs are not exposed
+  and overflowing panel content can scroll;
 - Project/File JSON workflow status, generated export preview, synthetic
   file-load preview, import, round-tripped feature tree/named-reference
   preservation, selection/reference diagnostics after import, JSON

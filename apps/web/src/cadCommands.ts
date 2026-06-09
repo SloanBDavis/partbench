@@ -77,22 +77,6 @@ export const WEB_UI_ACTOR: CadActorMetadata = {
   name: "Web UI"
 };
 
-export type BatchOperationKind =
-  | "document.updateUnits"
-  | "scene.createBox"
-  | "scene.createCylinder"
-  | "scene.createSphere"
-  | "scene.createCone"
-  | "scene.createTorus"
-  | "scene.updateTransform"
-  | "scene.updateBoxDimensions"
-  | "scene.updateCylinderDimensions"
-  | "scene.updateSphereDimensions"
-  | "scene.updateConeDimensions"
-  | "scene.updateTorusDimensions"
-  | "scene.renameObject"
-  | "scene.deleteObject";
-
 export interface DimensionCommandForm {
   readonly width: number;
   readonly height: number;
@@ -119,15 +103,6 @@ export interface TransformCommandForm {
   readonly scaleX: number;
   readonly scaleY: number;
   readonly scaleZ: number;
-}
-
-export interface BatchOperationForm
-  extends PrimitiveCommandForm, TransformCommandForm {
-  readonly op: BatchOperationKind;
-  readonly targetId: string;
-  readonly name: string;
-  readonly units: DocumentUnits;
-  readonly unitUpdateMode?: DocumentUnitUpdateMode;
 }
 
 export interface SketchCreateForm {
@@ -929,45 +904,6 @@ export function buildBatch(
   };
 }
 
-export function buildOperationFromBatchForm(form: BatchOperationForm): CadOp {
-  switch (form.op) {
-    case "document.updateUnits":
-      return buildUpdateUnitsOp(form.units, form.unitUpdateMode);
-    case "scene.createBox":
-      return buildCreateBoxOp(form);
-    case "scene.createCylinder":
-      return buildCreateCylinderOp(form);
-    case "scene.createSphere":
-      return buildCreateSphereOp(form);
-    case "scene.createCone":
-      return buildCreateConeOp(form);
-    case "scene.createTorus":
-      return buildCreateTorusOp(form);
-    case "scene.updateTransform":
-      return buildUpdateTransformOp(requireTargetId(form.targetId), form);
-    case "scene.updateBoxDimensions":
-      return buildUpdateBoxDimensionsOp(requireTargetId(form.targetId), form);
-    case "scene.updateCylinderDimensions":
-      return buildUpdateCylinderDimensionsOp(
-        requireTargetId(form.targetId),
-        form
-      );
-    case "scene.updateSphereDimensions":
-      return buildUpdateSphereDimensionsOp(
-        requireTargetId(form.targetId),
-        form
-      );
-    case "scene.updateConeDimensions":
-      return buildUpdateConeDimensionsOp(requireTargetId(form.targetId), form);
-    case "scene.updateTorusDimensions":
-      return buildUpdateTorusDimensionsOp(requireTargetId(form.targetId), form);
-    case "scene.renameObject":
-      return buildRenameObjectOp(requireTargetId(form.targetId), form.name);
-    case "scene.deleteObject":
-      return buildDeleteObjectOp(requireTargetId(form.targetId));
-  }
-}
-
 export function boxDimensionsToForm(input: {
   readonly width: number;
   readonly height: number;
@@ -1180,14 +1116,4 @@ function buildSketchDimensionValueInput(
   return form.valueSourceType === "parameter"
     ? { parameterId: form.parameterId.trim() }
     : { value: form.value };
-}
-
-function requireTargetId(id: string): string {
-  const normalized = id.trim();
-
-  if (normalized.length === 0) {
-    throw new Error("Target object ID is required.");
-  }
-
-  return normalized;
 }

@@ -1234,18 +1234,15 @@ button.model-story-row:hover,
   color: var(--danger);
 }
 
-.mesh-status.geometry-ready,
-.geometry-status-list li.geometry-ready {
+.mesh-status.geometry-ready {
   color: var(--success);
 }
 
-.mesh-status.geometry-pending,
-.geometry-status-list li.geometry-pending {
+.mesh-status.geometry-pending {
   color: var(--amber);
 }
 
-.mesh-status.geometry-error,
-.geometry-status-list li.geometry-error {
+.mesh-status.geometry-error {
   color: var(--danger);
 }
 
@@ -1813,11 +1810,13 @@ canvas:active {
   min-height: 0;
   border-top: 1px solid var(--line-strong);
   background: var(--panel-soft);
+  overflow: hidden;
 }
 
 .advanced-tools-drawer[open] {
   display: grid;
   height: min(54dvh, 520px);
+  max-height: min(54dvh, 520px);
   grid-template-rows: auto minmax(0, 1fr);
 }
 
@@ -1847,11 +1846,14 @@ canvas:active {
 }
 
 .advanced-tools-drawer .utility-dock {
+  height: 100%;
+  min-height: 0;
   max-height: none;
 }
 
 .utility-dock {
   display: grid;
+  height: 100%;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
   border-top: 1px solid var(--line-strong);
@@ -1910,6 +1912,7 @@ canvas:active {
 }
 
 .utility-panels {
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -1917,18 +1920,19 @@ canvas:active {
 .utility-panel {
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .utility-panel[hidden] {
   display: none;
 }
 
-.batch-panel,
 .project-panel,
-.geometry-panel,
 .history-panel,
 .sketch-panel,
 .command-card {
@@ -1941,9 +1945,7 @@ canvas:active {
   background: #ffffff;
 }
 
-.utility-panel > .batch-panel,
 .utility-panel > .project-panel,
-.utility-panel > .geometry-panel,
 .utility-panel > .history-panel,
 .utility-panel > .sketch-panel {
   min-height: 100%;
@@ -1967,8 +1969,7 @@ canvas:active {
 
 .command-card-heading,
 .history-card-heading,
-.reference-heading,
-.geometry-status-heading {
+.reference-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -2245,8 +2246,7 @@ button.dimension-status-row {
 
 .compact-list,
 .entity-list,
-.reference-list,
-.geometry-status-list {
+.reference-list {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -2322,8 +2322,7 @@ button.dimension-status-row {
 .reference-list li,
 .entity-summary,
 .sketch-attachment,
-.history-card,
-.geometry-status-list li {
+.history-card {
   display: grid;
   gap: 7px;
   padding: 9px;
@@ -2585,49 +2584,6 @@ button.dimension-status-row {
   font-weight: 800;
 }
 
-.batch-list {
-  display: grid;
-  gap: 6px;
-  max-height: 118px;
-  margin: 0;
-  padding-left: 20px;
-  overflow: auto;
-}
-
-.batch-list:empty {
-  display: none;
-}
-
-.batch-list code,
-.batch-response code {
-  font-size: 0.76rem;
-}
-
-.batch-response {
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid #bfd5c5;
-  border-radius: 7px;
-  background: var(--success-soft);
-}
-
-.batch-response.error-response {
-  border-color: #e0b8b5;
-  background: var(--danger-soft);
-}
-
-.batch-response p {
-  color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.4;
-}
-
-.batch-response span {
-  color: var(--ink);
-  font-weight: 800;
-}
-
 .project-message,
 .project-import-status,
 .empty-state,
@@ -2815,8 +2771,6 @@ button.dimension-status-row {
 .project-summary-grid dt,
 .project-workflow-grid dt,
 .inspector dt,
-.metrics-list dt,
-.geometry-error dt,
 .project-validation code {
   color: var(--quiet);
   font-size: 0.66rem;
@@ -2856,65 +2810,6 @@ button.dimension-status-row {
   font-size: 0.76rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
-}
-
-.geometry-status-list p,
-.metrics-list,
-.geometry-error {
-  color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.4;
-}
-
-.geometry-status-heading span {
-  min-width: 0;
-  color: var(--ink);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.78rem;
-  overflow-wrap: anywhere;
-}
-
-.geometry-status-heading strong {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.metrics-list,
-.geometry-error {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-}
-
-.geometry-error {
-  padding: 10px;
-  border: 1px solid #e0b8b5;
-  border-radius: 7px;
-  background: var(--danger-soft);
-}
-
-.metrics-list div,
-.geometry-error div {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.metrics-list dd,
-.geometry-error dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--ink);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.78rem;
-  overflow-wrap: anywhere;
-  text-align: right;
 }
 
 .inspector dl {
@@ -3034,18 +2929,12 @@ button.dimension-status-row {
   }
 
   .inspector,
-  .modeling-actions-panel,
-  .utility-dock,
-  .utility-panel {
+  .modeling-actions-panel {
     overflow: visible;
   }
 
   .modeling-actions-panel {
     max-height: none;
-  }
-
-  .utility-panel {
-    height: auto;
   }
 }
 
@@ -3138,9 +3027,7 @@ button.dimension-status-row {
 
   .inspector,
   .modeling-actions-panel,
-  .utility-panel > .batch-panel,
   .utility-panel > .project-panel,
-  .utility-panel > .geometry-panel,
   .utility-panel > .history-panel,
   .utility-panel > .sketch-panel {
     padding: 12px;

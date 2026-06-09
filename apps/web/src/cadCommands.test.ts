@@ -4,6 +4,7 @@ import {
   buildBatch,
   buildCreateBoxOp,
   buildCreateConeOp,
+  buildCreateCylinderOp,
   buildCreateParameterOp,
   buildCreateSketchConstraintOp,
   buildCreateSphereOp,
@@ -31,7 +32,6 @@ import {
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
   buildDeleteSketchOp,
-  buildOperationFromBatchForm,
   buildRenameObjectOp,
   buildRenameParameterOp,
   buildRenameSketchConstraintOp,
@@ -991,10 +991,8 @@ describe("cad command builders", () => {
 
   it("builds a CadBatch from queued operations", () => {
     const ops = [
-      buildOperationFromBatchForm({
-        op: "scene.createCylinder",
+      buildCreateCylinderOp({
         id: "cylinder_1",
-        targetId: "",
         width: 1,
         height: 8,
         depth: 1,
@@ -1003,15 +1001,7 @@ describe("cad command builders", () => {
         minorRadius: 0.5,
         translationX: 0,
         translationY: 1,
-        translationZ: 2,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "mm"
+        translationZ: 2
       })
     ];
 
@@ -1026,212 +1016,6 @@ describe("cad command builders", () => {
       mode: "commit",
       ops,
       actor: WEB_UI_ACTOR
-    });
-  });
-
-  it("builds dimension update operations from batch form values", () => {
-    expect(
-      buildOperationFromBatchForm({
-        op: "scene.updateBoxDimensions",
-        id: "",
-        targetId: "box_1",
-        width: 4,
-        height: 5,
-        depth: 6,
-        radius: 1,
-        majorRadius: 2,
-        minorRadius: 0.5,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "mm"
-      })
-    ).toEqual({
-      op: "scene.updateBoxDimensions",
-      id: "box_1",
-      dimensions: { width: 4, height: 5, depth: 6 }
-    });
-
-    expect(
-      buildOperationFromBatchForm({
-        op: "scene.updateCylinderDimensions",
-        id: "",
-        targetId: "cylinder_1",
-        width: 1,
-        height: 8,
-        depth: 1,
-        radius: 2,
-        majorRadius: 2,
-        minorRadius: 0.5,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "mm"
-      })
-    ).toEqual({
-      op: "scene.updateCylinderDimensions",
-      id: "cylinder_1",
-      dimensions: { radius: 2, height: 8 }
-    });
-
-    expect(
-      buildOperationFromBatchForm({
-        op: "scene.updateSphereDimensions",
-        id: "",
-        targetId: "sphere_1",
-        width: 1,
-        height: 1,
-        depth: 1,
-        radius: 3,
-        majorRadius: 2,
-        minorRadius: 0.5,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "mm"
-      })
-    ).toEqual({
-      op: "scene.updateSphereDimensions",
-      id: "sphere_1",
-      dimensions: { radius: 3 }
-    });
-
-    expect(
-      buildOperationFromBatchForm({
-        op: "scene.updateConeDimensions",
-        id: "",
-        targetId: "cone_1",
-        width: 1,
-        height: 4,
-        depth: 1,
-        radius: 2,
-        majorRadius: 2,
-        minorRadius: 0.5,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "mm"
-      })
-    ).toEqual({
-      op: "scene.updateConeDimensions",
-      id: "cone_1",
-      dimensions: { radius: 2, height: 4 }
-    });
-
-    expect(
-      buildOperationFromBatchForm({
-        op: "scene.updateTorusDimensions",
-        id: "",
-        targetId: "torus_1",
-        width: 1,
-        height: 1,
-        depth: 1,
-        radius: 1,
-        majorRadius: 3,
-        minorRadius: 0.75,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "mm"
-      })
-    ).toEqual({
-      op: "scene.updateTorusDimensions",
-      id: "torus_1",
-      dimensions: { majorRadius: 3, minorRadius: 0.75 }
-    });
-
-    expect(
-      buildOperationFromBatchForm({
-        op: "scene.renameObject",
-        id: "",
-        targetId: "box_1",
-        width: 1,
-        height: 1,
-        depth: 1,
-        radius: 1,
-        majorRadius: 2,
-        minorRadius: 0.5,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "Panel",
-        units: "mm"
-      })
-    ).toEqual({
-      op: "scene.renameObject",
-      id: "box_1",
-      name: "Panel"
-    });
-
-    expect(
-      buildOperationFromBatchForm({
-        op: "document.updateUnits",
-        id: "",
-        targetId: "",
-        width: 1,
-        height: 1,
-        depth: 1,
-        radius: 1,
-        majorRadius: 2,
-        minorRadius: 0.5,
-        translationX: 0,
-        translationY: 0,
-        translationZ: 0,
-        rotationX: 0,
-        rotationY: 0,
-        rotationZ: 0,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        name: "",
-        units: "cm",
-        unitUpdateMode: "preservePhysicalSize"
-      })
-    ).toEqual({
-      op: "document.updateUnits",
-      units: "cm",
-      mode: "preservePhysicalSize"
     });
   });
 

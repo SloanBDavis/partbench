@@ -14,7 +14,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global clearTimeout, DataTransfer, document, Event, File, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
+/* global clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
@@ -283,7 +283,59 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     "advanced tools drawer"
   );
   openDetailsBySummary(document.body, "Advanced tools");
-  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+  const advancedToolTabs = getElementByAriaLabel("Tool tabs");
+  const advancedToolText = normalize(advancedToolTabs.textContent);
+  const expectedToolTabs = ["Sketches", "File", "Log"];
+  const removedToolTabs = ["Batch", "Mesh"];
+  const missingExpectedToolTabs = expectedToolTabs.filter(
+    (label) => !includesText(advancedToolTabs, label)
+  );
+  const visibleRemovedToolTabs = removedToolTabs.filter((label) =>
+    includesText(advancedToolTabs, label)
+  );
+
+  if (missingExpectedToolTabs.length > 0 || visibleRemovedToolTabs.length > 0) {
+    fail(
+      "advanced-tools-cleanup",
+      "Advanced tools exposes only Sketches, File, and Log",
+      [
+        missingExpectedToolTabs.length > 0
+          ? `missing=${missingExpectedToolTabs.join(", ")}`
+          : undefined,
+        visibleRemovedToolTabs.length > 0
+          ? `removed-visible=${visibleRemovedToolTabs.join(", ")}`
+          : undefined,
+        `tabs=${advancedToolText}`
+      ]
+        .filter(Boolean)
+        .join("; ")
+    );
+  } else {
+    pass(
+      "advanced-tools-cleanup",
+      "Advanced tools hides Batch and Mesh cleanup targets",
+      advancedToolText
+    );
+  }
+
+  const scrollability = probeUtilityPanelScrollability(
+    "utility-panel-sketches"
+  );
+  if (scrollability.ok) {
+    pass(
+      "advanced-tools-scrollability",
+      "Advanced tools panel content scrolls when it overflows",
+      scrollability.detail
+    );
+  } else {
+    fail(
+      "advanced-tools-scrollability",
+      "Advanced tools panel content scrolls when it overflows",
+      scrollability.detail
+    );
+  }
+
+  clickButtonContaining(advancedToolTabs, "Sketches");
 
   const sketches = getSectionByAriaLabel("Sketches");
   setInputByDetailsSummary(sketches, "Advanced sketch options", ids.sketchId);
@@ -1240,6 +1292,40 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
 
   function includesText(scope, text) {
     return normalize(scope.textContent).includes(text);
+  }
+
+  function probeUtilityPanelScrollability(panelId) {
+    const panel = document.getElementById(panelId);
+
+    if (!panel) {
+      return { ok: false, detail: `${panelId} was not found.` };
+    }
+
+    const { clientHeight, scrollHeight } = panel;
+    const maxScrollTop = scrollHeight - clientHeight;
+    const overflowY = getComputedStyle(panel).overflowY;
+
+    if (maxScrollTop <= 4) {
+      return {
+        ok: true,
+        detail: `${panelId} did not overflow in this viewport; overflow-y=${overflowY}, clientHeight=${clientHeight}, scrollHeight=${scrollHeight}.`
+      };
+    }
+
+    const initialScrollTop = panel.scrollTop;
+    panel.scrollTop = Math.min(maxScrollTop, initialScrollTop + 96);
+    const nextScrollTop = panel.scrollTop;
+    panel.scrollTop = initialScrollTop;
+
+    return nextScrollTop > initialScrollTop
+      ? {
+          ok: true,
+          detail: `${panelId} scrolled from ${initialScrollTop} to ${nextScrollTop}; overflow-y=${overflowY}, clientHeight=${clientHeight}, scrollHeight=${scrollHeight}.`
+        }
+      : {
+          ok: false,
+          detail: `${panelId} overflowed but did not scroll; overflow-y=${overflowY}, clientHeight=${clientHeight}, scrollHeight=${scrollHeight}.`
+        };
   }
 
   function getDirectLabelText(label) {
