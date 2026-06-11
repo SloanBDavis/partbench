@@ -4,15 +4,14 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-08.
+Last updated: 2026-06-11.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
-archived V4 constrained sketch solving milestone, `docs/archive/v5.md` for the
-archived V5 exact geometry/topology foundation milestone, `docs/v6.md` for the
-completed V6 practical solid-modeling baseline, `docs/v7.md` for the V7
-release-readiness record and remaining roadmap, `docs/native-format.md` for
-project-format direction, and
+archived V4 constrained sketch solving milestone, `docs/v7.md` for the
+completed V7 real CAD alpha release-readiness record, `docs/v8.md` for the
+active local CAD foundation and exact interop release plan,
+`docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
@@ -31,12 +30,14 @@ These constraints remain active:
 7. MCP wraps CADOps. MCP does not define the internal API.
 8. OCCT/WASM, WebGPU, OPFS, STEP, exact topology, assemblies, and hosted
    collaboration are expanded only in scoped tranches.
-9. V2, V3, V4, V5, and V6 are complete. V7 is a broad major-release umbrella;
-   Tranches A through G7 are implemented, and later V7 work remains explicitly
-   scoped/deferred rather than one narrow milestone.
-10. V7 implementation tranches should stay independently testable and should not
-    mix unrelated storage, renderer, topology, import/export, or agent-safety
-    risks without explicit approval.
+9. V2, V3, V4, V5, and V6 are complete. V7 is complete through the documented
+   A-H1 real CAD alpha/release-readiness scope.
+10. V8 is the active broad major-release plan. Its center is native `.wcad`
+    package storage, File System Access local workflow, OPFS-derived cache, and
+    exact STEP export for supported bodies.
+11. V8 implementation tranches should stay independently testable and should
+    not mix unrelated storage, renderer, topology, sketch-solver, assembly, or
+    agent-safety risks without explicit approval.
 
 ## Current Repo State
 
@@ -82,8 +83,9 @@ Compatibility identifiers retained during the Partbench rename:
 - `web-cad.project.v1` through `web-cad.project.v16` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.project.v7` is an older saved-project schema version, not the V7
-  release. If the V7 release adds new source-of-truth data, the next saved
-  schema should be `web-cad.project.v17`.
+  release. `web-cad.project.v8` is also an older saved-project schema version,
+  not the V8 release. If V8 adds new source-of-truth document data, the next
+  saved schema should be `web-cad.project.v17`.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Current Scripts
@@ -236,9 +238,8 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes the implemented V7 Tranche A-G7 product surface on top of
-the completed V6 practical solid-modeling baseline. It is not yet a full CAD
-system.
+The repo now includes the completed V7 real CAD alpha surface on top of the
+practical solid-modeling baseline. It is not yet a full CAD system.
 
 Current limitations:
 
@@ -276,7 +277,7 @@ Current limitations:
   patterns, direct edits, general booleans, STEP import/export, OPFS-backed
   storage, File System Access open/save flows, WebGPU, assemblies, hosted
   collaboration, production MCP auth, and natural-language command entry remain
-  unimplemented unless scoped into V7. The web app may report File System
+  unimplemented unless scoped into V8. The web app may report File System
   Access API availability, but it does not call picker APIs or request
   file-handle permissions in D2.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
@@ -334,26 +335,26 @@ project JSON through `web-cad.project.v13`.
 
 ### V5 Exact Geometry And Topology Foundation
 
-V5 is archived in `docs/archive/v5.md`. It completed the derived exact
-geometry/topology foundation for supported authored bodies. It added the
-read-only `body.topology` query, structured topology statuses, source identity
-and cache-key rules, exact/measurement confidence semantics, source-analytic
-simple extrude topology, honest ambiguous topology for current boolean results,
-project health/extents integration, UI status display, and agent/MCP
-pass-through. V5 did not add new source data and therefore did not introduce a
-new saved-project schema.
+V5 completed the derived exact geometry/topology foundation for supported
+authored bodies. It added the read-only `body.topology` query, structured
+topology statuses, source identity and cache-key rules, exact/measurement
+confidence semantics, source-analytic simple extrude topology, honest ambiguous
+topology for current boolean results, project health/extents integration, UI
+status display, and agent/MCP pass-through. V5 did not add new source data and
+therefore did not introduce a new saved-project schema. The full milestone doc
+has been removed; this summary plus `docs/native-format.md` preserve the
+durable implementation decisions.
 
 ### V6 Practical Solid Modeling On Exact Geometry
 
-V6 is complete and remains the immediate implementation baseline. Its detailed
-scope and completion notes live in `docs/v6.md`.
-
-V6 added practical solid-modeling capability: derived exact-kernel metadata,
-authored `feature.revolve`, circular `feature.hole`, command-first
-`feature.chamfer` and `feature.fillet`, target-consuming result-body behavior,
-derived mesh paths through OCCT for supported V6 result bodies, project
-structure/health/topology/extents integration, compact UI workflows, and
-agent/MCP pass-through.
+V6 completed practical solid-modeling capability on exact geometry. It added
+derived exact-kernel metadata, authored `feature.revolve`, circular
+`feature.hole`, command-first `feature.chamfer` and `feature.fillet`,
+target-consuming result-body behavior, derived mesh paths through OCCT for
+supported V6 result bodies, project structure/health/topology/extents
+integration, compact UI workflows, and agent/MCP pass-through. The full
+milestone doc has been removed; this summary plus `docs/native-format.md`
+preserve the durable implementation decisions.
 
 Durable V6 decisions:
 
@@ -366,7 +367,7 @@ Durable V6 decisions:
 - generated references for V6 result bodies remain unsupported unless a future
   stable topological naming design is explicitly implemented.
 
-## V7 Real CAD Alpha Status And Roadmap
+## V7 Real CAD Alpha Completion Record
 
 V7 is a major release umbrella, not a single implementation milestone. The
 implemented A-G7 surface turns the V6 modeling baseline into an early usable
@@ -921,46 +922,114 @@ implementation tranches and do not imply that deferred items such as STEP,
 WebGPU, native storage, assemblies, broad topology naming, or broad sketch
 solving are implemented.
 
-Future V7 tranche plans should continue to include these details:
+## V8 Local CAD Foundation And Exact Interop Roadmap
 
-- exact CADOps/query shapes and response examples;
-- supported body/reference subset;
-- stale, ambiguous, missing, consumed, unsupported, and kernel-failed issue
-  shapes;
-- package touch list across `cad-protocol`, `cad-core`, app UI helpers,
-  adapter/MCP, geometry/worker if needed, and serialization if source data is
-  introduced;
-- feature tree, inspector, modeling panel, and viewport behavior;
-- migration impact. Query-only and derived data should not introduce a saved
-  project schema. New source-of-truth data should introduce
+V8 is the active major-release plan. Its detailed release document is
+`docs/v8.md`.
+
+V8 is intentionally broad, but it has one center: make Partbench a credible
+local CAD application by implementing native `.wcad` project storage, local
+open/save/save-as, rebuildable OPFS cache behavior, and exact STEP export for
+supported bodies.
+
+V8 should not try to finish WebGPU, broad topology naming, broad sketch solving,
+assemblies, hosted collaboration, production MCP auth, and natural-language
+command parsing at the same time. Those are separate architecture-risk clusters.
+
+### V8 Release Pillars
+
+V8 is organized around these pillars:
+
+- native `.wcad` package format v1;
+- File System Access local project workflow with upload/download fallback;
+- OPFS content-addressed derived cache;
+- exact STEP export for supported active bodies;
+- product UI that makes native project workflow primary and keeps JSON as
+  debug/interchange;
+- agent/MCP package and export summaries over the same CADOps/query/export
+  paths;
+- release samples, smokes, and docs for package/export confidence.
+
+### V8 Answered Decisions
+
+Use these decisions when writing V8 implementation prompts:
+
+- the user-visible native extension is `.wcad`;
+- the first package version is `partbench.wcad.v1`;
+- package version is separate from project schema version;
+- current document source remains `web-cad.project.v16` unless V8 adds new
+  source-of-truth document data;
+- if new source data is added, the next project schema is
   `web-cad.project.v17` with explicit migrations;
-- test matrix covering protocol validation, cad-core query behavior,
-  named-reference resolution, upstream edit stability, adapter/MCP pass-through,
-  UI helpers, and source/derived separation;
-- manual browser scenarios for invalidating and repairing a supported face or
-  edge, with the deterministic derived-geometry GLB path covered by
-  `pnpm smoke:v7-browser-workflow:derived`.
+- a V8 `.wcad` package is ZIP-compatible and directory-compatible;
+- required package source entries are `manifest.json`, `document.cbor`, and
+  `commands.cbor`;
+- CBOR is the native package encoding for document and command/history data;
+- JSON remains supported for explicit debug/interchange export/import;
+- File System Access handles are browser permissions and never source data;
+- OPFS stores rebuildable cache data only;
+- cache files, thumbnails, derived meshes, exact metadata snapshots, and export
+  intermediates must be load-optional and source-identity validated;
+- V8 does not persist B-rep checkpoints as source truth for the existing
+  authored feature subset unless a tranche explicitly adds source B-rep
+  checkpoint semantics;
+- V8 targets STEP export before STEP import;
+- the default exact export target is STEP AP242, with AP203/AP214 reported as
+  fallbacks only if the available OCCT writer binding requires them;
+- STEP export must use exact geometry through the geometry-kernel/worker
+  boundary and must not fake exact CAD interchange from visualization meshes;
+- STEP import is deferred because it requires imported-body source records,
+  healing, metadata, possible B-rep source/checkpoint decisions, and broader
+  topology/reference work;
+- agent/MCP wrappers remain thin over shared package/readiness/export contracts;
+- V8 UI must not reintroduce the removed Advanced tools Batch/Mesh bloat or
+  block the viewport with storage/export detail.
 
-Future topology/reference tranches should not jump straight to broad arbitrary
-topology naming. They should extend the smallest useful, defensible subset and
-make all unsupported cases explicit.
+### V8 Proposed Tranche Sequence
 
-### V7 Scope Guardrails
+1. **Storage Protocol And Package Contract** - add manifest/package types,
+   validation issue shapes, source identity helpers, package readiness/query
+   shapes, and tests proving package version/project schema separation.
+2. **`.wcad` Package Read/Write** - implement minimal package writer/reader
+   for `manifest.json`, `document.cbor`, and `commands.cbor`, with deterministic
+   current-project round-trip and corruption diagnostics.
+3. **File System Access Project Workflow** - make Open, Save, and Save As use
+   `.wcad` through File System Access where available, with upload/download
+   fallback and permission diagnostics.
+4. **OPFS Derived Cache** - add source-identity-keyed rebuildable cache support
+   for a narrow derived artifact subset, plus cache status/clear behavior.
+5. **STEP Export For Supported Exact Bodies** - add exact export through the
+   geometry boundary, update `project.exportReadiness`, and expose UI/agent/MCP
+   export actions with structured unsupported/writer-unavailable diagnostics.
+6. **Agent/MCP Package And Export Surface** - expose package readiness,
+   validation, source identity, export readiness, and safe export request
+   behavior through thin adapter/MCP pass-throughs.
+7. **Release Samples, Smokes, And Migration Hardening** - add package/export
+   fixtures, package round-trip smoke, fallback workflow coverage, and STEP
+   export smoke when the writer capability exists.
+8. **Product Cleanup** - make native project workflow primary, demote raw JSON
+   to debug/interchange, remove duplicate storage/export status surfaces, and
+   verify normal use does not crowd the viewport.
 
-Do not combine these in a single V7 tranche unless explicitly approved:
+### V8 Scope Guardrails
 
-- WebGPU renderer replacement and topology/reference model changes;
-- native package storage and STEP import/export;
-- broad sketch solver expansion and general feature-graph expansion;
-- assembly/LOD architecture and local project format migration;
+Do not combine these in a single V8 tranche unless explicitly approved:
+
+- package read/write, File System Access, OPFS cache, and STEP export all at
+  once;
+- WebGPU renderer replacement and storage/package work;
+- broad topology/reference model changes and STEP import;
+- broad sketch solver expansion and native package migration;
+- assemblies/LOD architecture and local project format migration;
 - natural-language command parsing and production MCP auth.
 
-Do not introduce another saved project format unless source-of-truth data
-requires it. Query results, topology summaries, derived exact metadata,
-selection state, storage capability/status state, thumbnails, mesh caches, and
-renderer display state should stay rebuildable by default.
+Do not introduce another saved project format unless source-of-truth document
+data requires it. Query results, topology summaries, derived exact metadata,
+selection state, storage capability/status state, file handles, thumbnails, mesh
+caches, export artifacts, OPFS paths, and renderer display state should stay
+rebuildable by default.
 
-## Deferred Unless Explicitly Scoped Into V7
+## Deferred Unless Explicitly Scoped Into V8
 
 - Full arbitrary topological naming for every OCCT result shape.
 - Full general sketch solving beyond the current V4 constrained-sketch scope.
@@ -971,12 +1040,14 @@ renderer display state should stay rebuildable by default.
 - General boolean trees beyond current add/cut plus scoped V6 hole behavior.
 - Shell, patterns, lofts, sweeps, mirror, direct edits, and broad feature
   editing beyond scoped V6 revolve/hole/chamfer/fillet workflows.
-- Persistent exact B-rep checkpoints as source truth.
-- Broad STEP import with healing and assembly reconstruction.
-- OPFS cache implementation and File System Access open/save unless scoped.
-- Native `.wcad` package implementation unless scoped.
-- Local launcher with cross-origin isolation headers unless scoped.
-- WebGPU production renderer unless scoped.
+- Persistent exact B-rep checkpoints as source truth unless a V8 source
+  checkpoint tranche explicitly adds them.
+- STEP import with healing, metadata, and assembly reconstruction.
+- IGES import/export.
+- Proprietary CAD import/export.
+- Local launcher with cross-origin isolation headers.
+- WebGPU production renderer.
+- Exact face/edge/vertex viewport picking and selection buffer.
 - Assemblies, mates, large-model LOD, and instancing.
 - Hosted collaboration.
 - Production MCP auth/permission system.

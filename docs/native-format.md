@@ -24,10 +24,11 @@ feature records for `feature.chamfer` and `feature.fillet`. Current exports use
 through explicit migration. The
 `web-cad.project.*` names are retained as compatibility schema
 identifiers after the Partbench product rename; changing them would require a
-deliberate project-format migration. Future storage work should use this
-document to evolve toward a native package without prematurely introducing
-OPFS, File System Access API, STEP import/export, persisted exact topology, or a
-final `.wcad` implementation.
+deliberate project-format migration. V8 now scopes the first native package
+release in `docs/v8.md`: `.wcad` package v1, File System Access local workflow,
+OPFS-derived cache, and exact STEP export for supported bodies. This document
+continues to define the project-format and source/derived rules that V8 storage
+work must preserve.
 
 ## Current Format
 
@@ -1362,10 +1363,36 @@ silently accepting ambiguous shapes. A migration should:
 
 Do not add more migration branches before another real format exists.
 
-## Future Native Package Direction
+## V8 Native Package Direction
+
+The active V8 plan chooses the first native package direction that was
+previously deferred:
+
+- user-visible extension: `.wcad`;
+- package format version: `partbench.wcad.v1`;
+- physical representation: ZIP-compatible package file with a
+  directory-compatible internal layout;
+- required authoritative package entries: `manifest.json`, `document.cbor`,
+  and `commands.cbor`;
+- current document schema: still `web-cad.project.v16` unless V8 adds new
+  source-of-truth document data;
+- next document schema if new source data is added: `web-cad.project.v17`;
+- JSON remains explicit debug/interchange, not the primary native package
+  encoding;
+- OPFS entries, thumbnails, meshes, exact metadata snapshots, and export
+  intermediates remain rebuildable cache unless a tranche explicitly promotes
+  a file to source data.
+
+This V8 package decision does not by itself add STEP import, persistent exact
+B-rep checkpoints as source truth, assemblies, broad topology naming, WebGPU,
+or production MCP auth.
+
+## Long-Term Native Package Direction
 
 The long-term architecture still points toward a documented native package
-format, likely a directory or ZIP-like package. This is not implemented yet.
+format. V8 implements the first `.wcad` package version; later releases can
+expand the same logical layout with parts, assemblies, source B-rep checkpoints,
+drawings, and richer metadata when those systems become real source data.
 
 Likely shape:
 

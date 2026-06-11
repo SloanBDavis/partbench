@@ -110,9 +110,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/implementation-plan.md` - current implementation source of truth and
   roadmap.
 - `docs/archive/v4.md` - archived V4 constrained sketch solving milestone.
-- `docs/archive/v5.md` - archived V5 exact geometry/topology foundation.
-- `docs/v6.md` - completed V6 practical solid-modeling baseline.
-- `docs/v7.md` - active V7 major-release draft.
+- `docs/v7.md` - completed V7 real CAD alpha release-readiness record.
+- `docs/v8.md` - active V8 local CAD foundation and exact interop release plan.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -158,9 +157,9 @@ protocol/package migration.
   constraints, and V6 feature intent are source-of-truth data, but there is no
   general sketch solver, automatic profile recognition, broad feature editing,
   or full topology naming yet.
-- V7 planning is focused on turning the V6 baseline into a real CAD alpha:
-  stable references/selection, product workflow hardening, local project
-  workflow, interop, agent/MCP productization, and release hardening.
+- V8 planning is focused on turning the V7 real CAD alpha into a local CAD
+  foundation: native `.wcad` package workflow, File System Access open/save,
+  OPFS-derived cache, and exact STEP export for supported bodies.
 - No broad stable topology, STEP import/export, OPFS persistence, WebGPU
   renderer, assemblies, hosted collaboration, production MCP auth, or
-  natural-language command parsing is implemented unless scoped into V7.
+  natural-language command parsing is implemented unless scoped into V8.

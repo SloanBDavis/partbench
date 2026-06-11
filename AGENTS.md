@@ -13,9 +13,8 @@ The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
 - `docs/archive/v4.md` — archived V4 constrained sketch solving milestone
-- `docs/archive/v5.md` — archived V5 exact geometry/topology foundation
-- `docs/v6.md` — completed V6 practical solid-modeling baseline
-- `docs/v7.md` — active V7 major-release draft
+- `docs/v7.md` — completed V7 real CAD alpha release-readiness record
+- `docs/v8.md` — active V8 local CAD foundation and exact interop release plan
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 
