@@ -19,14 +19,25 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   HoleFeatureSnapshot,
+  ProjectPackageReadinessQueryResponse,
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   ProjectSummaryQueryResponse,
   SketchEvaluationQueryResponse,
+  WcadManifestV1,
+  WcadPackageValidationIssue,
   NamedGeneratedReferenceEntry,
   SketchSnapshot
 } from "./index";
-import { protocolPackage } from "./index";
+import {
+  WCAD_COMMANDS_ENTRY_PATH,
+  WCAD_DOCUMENT_ENTRY_PATH,
+  WCAD_MANIFEST_ENTRY_PATH,
+  WCAD_PACKAGE_EXTENSION,
+  WCAD_PACKAGE_VERSION,
+  WCAD_SOURCE_IDENTITY_ALGORITHM,
+  protocolPackage
+} from "./index";
 
 describe("cad-protocol", () => {
   it("exports package status", () => {
@@ -124,6 +135,139 @@ describe("cad-protocol", () => {
       formats: [{ format: "step", available: false }],
       bodies: [{ sourceStatus: "supported", status: "deferred" }]
     });
+  });
+
+  it("types the V8 package readiness and manifest contracts", () => {
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: { query: "project.packageReadiness" }
+    };
+    const response: ProjectPackageReadinessQueryResponse = {
+      ok: true,
+      query: "project.packageReadiness",
+      cadOpsVersion: "cadops.v1",
+      status: "deferred",
+      packageVersion: WCAD_PACKAGE_VERSION,
+      fileExtension: WCAD_PACKAGE_EXTENSION,
+      sourceIdentityAlgorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+      documentSchemaVersion: "web-cad.project.v16",
+      canRepresentCurrentSource: true,
+      requiresProjectSchemaMigration: false,
+      sourceBoundaryNote: "Authoritative source entries only.",
+      derivedBoundaryNote: "Cache and browser state are excluded.",
+      requiredEntryCount: 3,
+      requiredEntries: [
+        { role: "manifest", path: WCAD_MANIFEST_ENTRY_PATH, source: true },
+        { role: "document", path: WCAD_DOCUMENT_ENTRY_PATH, source: true },
+        { role: "commands", path: WCAD_COMMANDS_ENTRY_PATH, source: true }
+      ],
+      optionalCacheEntryCount: 1,
+      optionalCacheEntries: [
+        {
+          role: "metadata",
+          path: "metadata/cache-index.json",
+          source: false
+        }
+      ],
+      capabilityCount: 2,
+      capabilities: [
+        {
+          capability: "packageContract",
+          label: "Package contract",
+          status: "supported",
+          available: true,
+          sourceBoundaryNote: "Authoritative source entries only.",
+          derivedBoundaryNote: "Cache and browser state are excluded.",
+          diagnostics: [
+            {
+              code: "WCAD_PACKAGE_CONTRACT_READY",
+              status: "supported",
+              message: "Package contract is typed."
+            }
+          ]
+        },
+        {
+          capability: "packageReadWrite",
+          label: "Package writer",
+          status: "deferred",
+          available: false,
+          sourceBoundaryNote: "Authoritative source entries only.",
+          derivedBoundaryNote: "Cache and browser state are excluded.",
+          diagnostics: [
+            {
+              code: "WCAD_PACKAGE_READ_WRITE_DEFERRED",
+              status: "deferred",
+              message: "ZIP read/write is deferred."
+            }
+          ]
+        }
+      ],
+      diagnosticCount: 2,
+      diagnostics: [
+        {
+          code: "WCAD_PACKAGE_CONTRACT_READY",
+          status: "supported",
+          message: "Package contract is typed."
+        },
+        {
+          code: "WCAD_PACKAGE_READ_WRITE_DEFERRED",
+          status: "deferred",
+          message: "ZIP read/write is deferred."
+        }
+      ]
+    };
+    const manifest: WcadManifestV1 = {
+      packageVersion: WCAD_PACKAGE_VERSION,
+      product: "Partbench",
+      createdBy: { app: "partbench" },
+      createdAt: "2026-06-11T00:00:00.000Z",
+      modifiedAt: "2026-06-11T00:00:00.000Z",
+      units: "mm",
+      document: {
+        path: WCAD_DOCUMENT_ENTRY_PATH,
+        schemaVersion: "web-cad.project.v16",
+        byteLength: 12,
+        sha256:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      commands: {
+        path: WCAD_COMMANDS_ENTRY_PATH,
+        byteLength: 8,
+        sha256:
+          "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      },
+      sourceIdentity: {
+        algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+        sha256:
+          "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      cache: {
+        entriesPath: "metadata/cache-index.json",
+        policy: "optional-rebuildable"
+      }
+    };
+    const issue: WcadPackageValidationIssue = {
+      code: "WCAD_STALE_CACHE_ENTRY",
+      severity: "warning",
+      message: "Cache entry is stale.",
+      entryPath: "meshes/body.bin",
+      entryRole: "cache",
+      expected: "current-source",
+      received: "old-source"
+    };
+
+    expect(request.query.query).toBe("project.packageReadiness");
+    expect(response.requiredEntries.map((entry) => entry.path)).toEqual([
+      WCAD_MANIFEST_ENTRY_PATH,
+      WCAD_DOCUMENT_ENTRY_PATH,
+      WCAD_COMMANDS_ENTRY_PATH
+    ]);
+    expect(
+      response.capabilities.map((capability) => capability.status)
+    ).toEqual(["supported", "deferred"]);
+    expect(manifest.packageVersion).toBe(WCAD_PACKAGE_VERSION);
+    expect(manifest.cache?.policy).toBe("optional-rebuildable");
+    expect(issue.code).toBe("WCAD_STALE_CACHE_ENTRY");
   });
 
   it("types supported scene commands", () => {
@@ -656,6 +800,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "project.packageReadiness" }
+      },
+      {
+        version: "cadops.v1",
         query: {
           query: "project.health",
           derivedExactMetadata: [
@@ -788,6 +936,7 @@ describe("cad-protocol", () => {
       "project.features",
       "project.structure",
       "project.health",
+      "project.packageReadiness",
       "project.health",
       "project.sketches",
       "object.get",

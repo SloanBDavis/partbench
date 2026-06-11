@@ -25,6 +25,7 @@ export type CadMcpToolName =
   | "cad.project_structure"
   | "cad.project_health"
   | "cad.project_export_readiness"
+  | "cad.project_package_readiness"
   | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.body_topology"
@@ -159,6 +160,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_export_readiness") {
       return this.#callProjectExportReadiness(request);
+    }
+
+    if (request.name === "cad.project_package_readiness") {
+      return this.#callProjectPackageReadiness(request);
     }
 
     if (request.name === "cad.project_sketches") {
@@ -441,6 +446,30 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.exportReadiness" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectPackageReadiness(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_package_readiness does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.packageReadiness" }
         }
       })
     );
@@ -993,6 +1022,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_export_readiness",
     description:
       "Returns read-only export readiness for current source bodies and deferred STEP/GLB writer status.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.project_package_readiness",
+    description:
+      "Returns read-only V8 .wcad package contract readiness, required source entries, cache/source boundary notes, and deferred storage/export implementation status.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

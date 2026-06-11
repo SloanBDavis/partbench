@@ -2040,6 +2040,59 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns V8 package readiness through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_package_readiness",
+      entityId: "rect_package_readiness",
+      featureId: "feat_package_readiness",
+      bodyId: "body_package_readiness"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_package_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.packageReadiness" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_package_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.packageReadiness",
+      status: "deferred",
+      packageVersion: "partbench.wcad.v1",
+      fileExtension: ".wcad",
+      sourceIdentityAlgorithm: "partbench-source-v1",
+      documentSchemaVersion: "web-cad.project.v16",
+      canRepresentCurrentSource: true,
+      requiresProjectSchemaMigration: false,
+      requiredEntries: [
+        { role: "manifest", path: "manifest.json", source: true },
+        { role: "document", path: "document.cbor", source: true },
+        { role: "commands", path: "commands.cbor", source: true }
+      ],
+      capabilities: expect.arrayContaining([
+        expect.objectContaining({
+          capability: "packageContract",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          capability: "fileSystemAccess",
+          status: "deferred"
+        })
+      ])
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
   it("returns derived body topology status through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

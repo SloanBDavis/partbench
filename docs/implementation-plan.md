@@ -38,6 +38,11 @@ These constraints remain active:
 11. V8 implementation tranches should stay independently testable and should
     not mix unrelated storage, renderer, topology, sketch-solver, assembly, or
     agent-safety risks without explicit approval.
+12. V8 Tranche A is implemented as a protocol and pure-helper slice only:
+    `partbench.wcad.v1` manifest/source-identity types, structured package
+    validation diagnostics, `project.packageReadiness`, and thin agent/MCP
+    pass-through. It does not implement ZIP read/write, File System Access,
+    OPFS writes, STEP export, CBOR encoding, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -987,9 +992,10 @@ Use these decisions when writing V8 implementation prompts:
 
 ### V8 Proposed Tranche Sequence
 
-1. **Storage Protocol And Package Contract** - add manifest/package types,
-   validation issue shapes, source identity helpers, package readiness/query
-   shapes, and tests proving package version/project schema separation.
+1. **Storage Protocol And Package Contract** - completed as a narrow typed
+   contract slice: manifest/package types, validation issue shapes, source
+   identity helpers, `project.packageReadiness`, thin agent/MCP pass-through,
+   and tests proving package version/project schema separation.
 2. **`.wcad` Package Read/Write** - implement minimal package writer/reader
    for `manifest.json`, `document.cbor`, and `commands.cbor`, with deterministic
    current-project round-trip and corruption diagnostics.

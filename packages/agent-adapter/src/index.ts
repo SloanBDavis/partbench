@@ -40,6 +40,7 @@ import type {
   CadOpsVersion,
   CadParameterSnapshot,
   CadPartSnapshot,
+  ProjectPackageReadinessQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
   CadProjectSummaryReferenceSummary,
@@ -306,6 +307,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectStructureQueryResponse
   | CadOpsAgentProjectHealthQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
+  | CadOpsAgentProjectPackageReadinessQueryResponse
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
@@ -435,6 +437,15 @@ export interface CadOpsAgentProjectExportReadinessQueryResponse {
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadOpsAgentProjectPackageReadinessQueryResponse extends Omit<
+  ProjectPackageReadinessQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
 }
 
 export interface CadOpsAgentProjectSketchesQueryResponse {
@@ -647,6 +658,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.structure"
     | "project.health"
     | "project.exportReadiness"
+    | "project.packageReadiness"
     | "project.sketches"
     | "object.get"
     | "object.measurements"
@@ -1865,6 +1877,36 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.packageReadiness") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      status: response.status,
+      packageVersion: response.packageVersion,
+      fileExtension: response.fileExtension,
+      sourceIdentityAlgorithm: response.sourceIdentityAlgorithm,
+      documentSchemaVersion: response.documentSchemaVersion,
+      canRepresentCurrentSource: response.canRepresentCurrentSource,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration,
+      ...(response.nextProjectSchemaVersion
+        ? { nextProjectSchemaVersion: response.nextProjectSchemaVersion }
+        : {}),
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiredEntryCount: response.requiredEntryCount,
+      requiredEntries: response.requiredEntries,
+      optionalCacheEntryCount: response.optionalCacheEntryCount,
+      optionalCacheEntries: response.optionalCacheEntries,
+      capabilityCount: response.capabilityCount,
+      capabilities: response.capabilities,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics
+    };
+  }
+
   if (response.query === "project.sketches") {
     return {
       ok: true,
@@ -2194,6 +2236,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportReadiness" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.packageReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.health" &&
         (Object.keys(value.query).length === 1 ||

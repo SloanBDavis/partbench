@@ -129,6 +129,16 @@ import {
   type SketchSolverDocument
 } from "./sketchSolver";
 import { createProjectExportReadiness } from "./projectExportReadiness";
+import { createProjectPackageReadiness } from "./projectPackageReadiness";
+
+export {
+  createProjectPackageReadiness,
+  createWcadSourceIdentity,
+  validateWcadManifest,
+  validateWcadManifestSourceIdentity,
+  validateWcadPackageCacheEntries,
+  validateWcadPackageEntryBytes
+} from "./projectPackageReadiness";
 
 export * from "./releaseSamples";
 
@@ -212,6 +222,7 @@ export type {
   CadProjectSummaryWorkflowHint,
   CadProjectSummaryWorkflowHintCode,
   CadProjectSummaryWorkflowHintLevel,
+  ProjectPackageReadinessQueryResponse,
   CadQueryRequest,
   CadQueryError,
   CadQueryResponse,
@@ -231,6 +242,10 @@ export type {
   CadTransactionHistoryEntry,
   CadTransactionStatus,
   CadTransactionAuditMetadata,
+  WcadManifestV1,
+  WcadPackageCacheEntryMetadata,
+  WcadPackageValidationIssue,
+  WcadSourceIdentity,
   NamedGeneratedReferenceEntry,
   CadNamedReferenceHealth,
   NamedGeneratedReferenceSnapshot,
@@ -969,6 +984,14 @@ export class CadEngine {
           document: this.#document,
           cadOpsVersion: request.version,
           bodies: structure.bodies
+        });
+      }
+
+      case "project.packageReadiness": {
+        return createProjectPackageReadiness({
+          cadOpsVersion: request.version,
+          documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+          units: this.#document.units
         });
       }
 
@@ -2908,6 +2931,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.structure":
     case "project.health":
     case "project.exportReadiness":
+    case "project.packageReadiness":
     case "project.sketches":
     case "object.get":
     case "object.measurements":
@@ -2942,6 +2966,7 @@ function isCadQuery(value: unknown): boolean {
     case "project.features":
     case "project.structure":
     case "project.exportReadiness":
+    case "project.packageReadiness":
     case "project.sketches":
     case "reference.listNamed":
     case "transaction.history":

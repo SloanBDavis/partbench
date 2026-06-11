@@ -14,6 +14,7 @@ describe("mcp-adapter", () => {
       "cad.project_structure",
       "cad.project_health",
       "cad.project_export_readiness",
+      "cad.project_package_readiness",
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
@@ -954,6 +955,84 @@ describe("mcp-adapter", () => {
         ]
       }
     });
+  });
+
+  it("returns V8 package readiness through cad.project_package_readiness", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_package_readiness_seed",
+      arguments: {
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_package_ready",
+              name: "Package ready sketch",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_package_ready",
+              id: "rect_package_ready",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_package_ready",
+              bodyId: "body_package_ready",
+              sketchId: "sketch_package_ready",
+              entityId: "rect_package_ready",
+              depth: 1.5
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.project_package_readiness",
+      requestId: "mcp_req_package_readiness"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_package_readiness",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_package_readiness",
+        query: "project.packageReadiness",
+        status: "deferred",
+        packageVersion: "partbench.wcad.v1",
+        fileExtension: ".wcad",
+        documentSchemaVersion: "web-cad.project.v16",
+        canRepresentCurrentSource: true,
+        requiredEntries: [
+          { role: "manifest", path: "manifest.json", source: true },
+          { role: "document", path: "document.cbor", source: true },
+          { role: "commands", path: "commands.cbor", source: true }
+        ],
+        capabilities: expect.arrayContaining([
+          expect.objectContaining({
+            capability: "packageContract",
+            status: "supported"
+          }),
+          expect.objectContaining({
+            capability: "opfsCache",
+            status: "deferred"
+          })
+        ])
+      }
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
   });
 
   it("commits sketch extrude batches through cad.batch", () => {
@@ -3061,6 +3140,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
           { name: "cad.project_export_readiness" },
+          { name: "cad.project_package_readiness" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },

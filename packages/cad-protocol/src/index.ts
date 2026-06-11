@@ -21,6 +21,42 @@ export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
 export type CadActorType = "human" | "agent" | "script" | "system";
 export type CadRequestIntent = CadBatchMode;
+export type WcadPackageVersion = "partbench.wcad.v1";
+export type WcadPackageExtension = ".wcad";
+export type WcadSourceIdentityAlgorithm = "partbench-source-v1";
+export type WcadDocumentSchemaVersion =
+  | "web-cad.project.v16"
+  | "web-cad.project.v17";
+export type WcadPackageEntryRole =
+  | "manifest"
+  | "document"
+  | "commands"
+  | "cache"
+  | "thumbnail"
+  | "export"
+  | "debug"
+  | "metadata";
+export type WcadReadinessStatus = "supported" | "deferred" | "unavailable";
+export type WcadPackageCapabilityId =
+  | "packageContract"
+  | "packageReadWrite"
+  | "fileSystemAccess"
+  | "opfsCache"
+  | "stepExport";
+export type WcadPackageCacheArtifactKind =
+  | "derivedMesh"
+  | "derivedExactMetadata"
+  | "thumbnail"
+  | "packageUnpack"
+  | "exportIntermediate";
+
+export const WCAD_PACKAGE_VERSION: WcadPackageVersion = "partbench.wcad.v1";
+export const WCAD_PACKAGE_EXTENSION: WcadPackageExtension = ".wcad";
+export const WCAD_SOURCE_IDENTITY_ALGORITHM: WcadSourceIdentityAlgorithm =
+  "partbench-source-v1";
+export const WCAD_MANIFEST_ENTRY_PATH = "manifest.json";
+export const WCAD_DOCUMENT_ENTRY_PATH = "document.cbor";
+export const WCAD_COMMANDS_ENTRY_PATH = "commands.cbor";
 
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
@@ -943,6 +979,7 @@ export type CadQueryKind =
   | "project.structure"
   | "project.health"
   | "project.exportReadiness"
+  | "project.packageReadiness"
   | "project.sketches"
   | "object.get"
   | "object.measurements"
@@ -969,6 +1006,7 @@ export type CadQuery =
   | ProjectStructureQuery
   | ProjectHealthQuery
   | ProjectExportReadinessQuery
+  | ProjectPackageReadinessQuery
   | ProjectSketchesQuery
   | ObjectGetQuery
   | ObjectMeasurementsQuery
@@ -1015,6 +1053,10 @@ export interface ProjectHealthQuery {
 
 export interface ProjectExportReadinessQuery {
   readonly query: "project.exportReadiness";
+}
+
+export interface ProjectPackageReadinessQuery {
+  readonly query: "project.packageReadiness";
 }
 
 export interface ProjectSketchesQuery {
@@ -2400,6 +2442,123 @@ export interface CadTransactionHistoryEntry {
   readonly diff: CadSemanticDiffSummary;
 }
 
+export interface WcadPackageEntryMetadata {
+  readonly path: string;
+  readonly byteLength: number;
+  readonly sha256: string;
+}
+
+export interface WcadManifestV1 {
+  readonly packageVersion: WcadPackageVersion;
+  readonly product: "Partbench";
+  readonly createdBy: {
+    readonly app: "partbench";
+    readonly version?: string;
+  };
+  readonly createdAt: string;
+  readonly modifiedAt: string;
+  readonly units: DocumentUnits;
+  readonly document: WcadPackageEntryMetadata & {
+    readonly schemaVersion: WcadDocumentSchemaVersion;
+  };
+  readonly commands: WcadPackageEntryMetadata;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly cache?: WcadPackageCacheManifestMetadata;
+  readonly thumbnail?: WcadPackageThumbnailMetadata;
+}
+
+export interface WcadSourceIdentity {
+  readonly sha256: string;
+  readonly algorithm: WcadSourceIdentityAlgorithm;
+}
+
+export interface WcadPackageCacheManifestMetadata {
+  readonly entriesPath?: "metadata/cache-index.json";
+  readonly policy: "optional-rebuildable";
+}
+
+export interface WcadPackageThumbnailMetadata extends WcadPackageEntryMetadata {
+  readonly mimeType: "image/png" | "image/webp";
+}
+
+export interface WcadPackageCacheEntryMetadata extends WcadPackageEntryMetadata {
+  readonly artifactKind: WcadPackageCacheArtifactKind;
+  readonly artifactVersion: string;
+  readonly sourceIdentity: WcadSourceIdentity;
+}
+
+export type WcadPackageValidationIssueCode =
+  | "WCAD_MISSING_MANIFEST"
+  | "WCAD_INVALID_MANIFEST"
+  | "WCAD_UNSUPPORTED_PACKAGE_VERSION"
+  | "WCAD_MISSING_DOCUMENT"
+  | "WCAD_MISSING_COMMANDS"
+  | "WCAD_INVALID_PACKAGE_PATH"
+  | "WCAD_BYTE_LENGTH_MISMATCH"
+  | "WCAD_HASH_MISMATCH"
+  | "WCAD_INVALID_DOCUMENT_CBOR"
+  | "WCAD_INVALID_COMMANDS_CBOR"
+  | "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA"
+  | "WCAD_SOURCE_IDENTITY_MISMATCH"
+  | "WCAD_STALE_CACHE_ENTRY"
+  | "WCAD_UNSUPPORTED_CACHE_ENTRY";
+
+export interface WcadPackageValidationIssue {
+  readonly code: WcadPackageValidationIssueCode;
+  readonly severity: "error" | "warning";
+  readonly message: string;
+  readonly path?: string;
+  readonly entryPath?: string;
+  readonly entryRole?: WcadPackageEntryRole;
+  readonly expected?: string | number;
+  readonly received?: string | number;
+}
+
+export type WcadPackageReadinessDiagnosticCode =
+  | "WCAD_PACKAGE_CONTRACT_READY"
+  | "WCAD_CURRENT_PROJECT_SCHEMA_SUPPORTED"
+  | "WCAD_PROJECT_SCHEMA_V17_NOT_REQUIRED"
+  | "WCAD_PACKAGE_READ_WRITE_DEFERRED"
+  | "WCAD_FILE_SYSTEM_ACCESS_DEFERRED"
+  | "WCAD_OPFS_CACHE_DEFERRED"
+  | "WCAD_STEP_EXPORT_DEFERRED";
+
+export interface WcadPackageReadinessDiagnostic {
+  readonly code: WcadPackageReadinessDiagnosticCode;
+  readonly status: WcadReadinessStatus;
+  readonly message: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface WcadPackageRequiredEntry {
+  readonly role: Extract<
+    WcadPackageEntryRole,
+    "manifest" | "document" | "commands"
+  >;
+  readonly path: string;
+  readonly source: true;
+}
+
+export interface WcadPackageOptionalCacheEntry {
+  readonly role: Extract<
+    WcadPackageEntryRole,
+    "cache" | "thumbnail" | "export" | "metadata"
+  >;
+  readonly path: string;
+  readonly source: false;
+}
+
+export interface WcadPackageCapabilityReadiness {
+  readonly capability: WcadPackageCapabilityId;
+  readonly label: string;
+  readonly status: WcadReadinessStatus;
+  readonly available: boolean;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly diagnostics: readonly WcadPackageReadinessDiagnostic[];
+}
+
 export type CadQueryErrorCode =
   | "INVALID_CADOPS_VERSION"
   | "INVALID_QUERY"
@@ -2657,6 +2816,7 @@ export type CadQueryResponse =
   | ProjectStructureQueryResponse
   | ProjectHealthQueryResponse
   | ProjectExportReadinessQueryResponse
+  | ProjectPackageReadinessQueryResponse
   | ProjectSketchesQueryResponse
   | ObjectGetQueryResponse
   | ObjectMeasurementsQueryResponse
@@ -2772,6 +2932,30 @@ export interface ProjectExportReadinessQueryResponse {
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface ProjectPackageReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "project.packageReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: WcadReadinessStatus;
+  readonly packageVersion: WcadPackageVersion;
+  readonly fileExtension: WcadPackageExtension;
+  readonly sourceIdentityAlgorithm: WcadSourceIdentityAlgorithm;
+  readonly documentSchemaVersion: WcadDocumentSchemaVersion;
+  readonly canRepresentCurrentSource: boolean;
+  readonly requiresProjectSchemaMigration: boolean;
+  readonly nextProjectSchemaVersion?: "web-cad.project.v17";
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiredEntryCount: number;
+  readonly requiredEntries: readonly WcadPackageRequiredEntry[];
+  readonly optionalCacheEntryCount: number;
+  readonly optionalCacheEntries: readonly WcadPackageOptionalCacheEntry[];
+  readonly capabilityCount: number;
+  readonly capabilities: readonly WcadPackageCapabilityReadiness[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly WcadPackageReadinessDiagnostic[];
 }
 
 export interface ProjectSketchesQueryResponse {

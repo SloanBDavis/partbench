@@ -1387,6 +1387,21 @@ This V8 package decision does not by itself add STEP import, persistent exact
 B-rep checkpoints as source truth, assemblies, broad topology naming, WebGPU,
 or production MCP auth.
 
+The first V8 implementation slice adds the typed package contract and
+readiness/validation helpers without changing project source format:
+
+- `project.packageReadiness` reports the target package version, current
+  document schema, required package entries, and deferred status for ZIP
+  read/write, File System Access, OPFS cache writes, and STEP export.
+- `partbench-source-v1` source identity is computed from encoded document and
+  command bytes plus schema/units metadata.
+- Source identity excludes filenames, browser file handles, OPFS paths,
+  viewport state, selection state, thumbnails, meshes, export artifacts, and
+  cache-only data.
+- Agent/MCP wrappers expose the same read-only query through thin pass-throughs;
+  they do not gain arbitrary file access.
+- This query-only contract does not introduce `web-cad.project.v17`.
+
 ## Long-Term Native Package Direction
 
 The long-term architecture still points toward a documented native package
