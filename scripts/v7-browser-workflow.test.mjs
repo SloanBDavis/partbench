@@ -67,7 +67,7 @@ describe("V7 browser workflow smoke summary", () => {
     );
   });
 
-  it("tracks the expanded G6 release checklist checks as required", () => {
+  it("tracks the expanded G6 release QA checks as required", () => {
     expect(V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS).toEqual(
       expect.arrayContaining([
         "create-circle-extrude",

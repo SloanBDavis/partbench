@@ -751,8 +751,8 @@ non-browser release smoke:
   `project.summary`, and public source/derived separation;
 - tests cover the success summary and a synthetic fixture-expectation failure
   path;
-- `docs/v7-release-checklist.md` seeds the manual V7 release checklist and
-  explicitly separates automated source/query smoke from browser verification.
+- `docs/v7.md` records the release QA boundary and explicitly separates
+  automated source/query smoke from browser verification.
 
 G2 does not add browser E2E automation, persistent metrics, static sample JSON,
 derived meshes, topology caches, app-derived GLB artifacts, OPFS/File System
@@ -912,14 +912,14 @@ agent/MCP adapters, storage schemas, WebGPU deferrals, STEP deferrals, or
 ### V7 Release Completion Gate Semantics
 
 For implementation accounting, V7 is complete through the implemented A-H1
-tranche scope described above. For a release-candidate pass, the required
-automated gates are the commands listed in `docs/v7-release-checklist.md`,
-including the default browser workflow smoke and the opt-in derived GLB smoke.
-Manual browser checks are a release QA pass for visual breadth, varied data, and
-workflow coherence beyond deterministic smokes. They can be recorded when
-performed, but they are not hidden implementation tranches and do not imply that
-deferred items such as STEP, WebGPU, native storage, assemblies, broad topology
-naming, or broad sketch solving are implemented.
+tranche scope described above. The 2026-06-11 release-candidate pass completed
+the required automated gates recorded in `docs/v7.md`, including the default
+browser workflow smoke and the opt-in derived GLB smoke. Manual browser checks
+were performed as release QA for visual breadth, varied data, and workflow
+coherence beyond deterministic smokes. They are not hidden
+implementation tranches and do not imply that deferred items such as STEP,
+WebGPU, native storage, assemblies, broad topology naming, or broad sketch
+solving are implemented.
 
 Future V7 tranche plans should continue to include these details:
 
