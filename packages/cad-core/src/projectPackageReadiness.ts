@@ -38,6 +38,11 @@ interface WcadPackageEntryBytesInput {
   readonly entryRole: WcadPackageEntryRole;
 }
 
+interface WcadPackageEntryMetadataInput {
+  readonly path: string;
+  readonly bytes: Uint8Array;
+}
+
 const SOURCE_BOUNDARY_NOTE =
   "Classified from the current authoritative project schema, units, and V8 package source entries.";
 const DERIVED_BOUNDARY_NOTE =
@@ -122,11 +127,11 @@ export function createProjectPackageReadiness({
         }
       ]
     },
-    createDeferredCapability(
+    createSupportedCapability(
       "packageReadWrite",
       "WCAD package read/write",
-      "WCAD_PACKAGE_READ_WRITE_DEFERRED",
-      "ZIP-compatible .wcad read/write is deferred to V8 Tranche B."
+      "WCAD_PACKAGE_READ_WRITE_READY",
+      "ZIP-compatible .wcad read/write helpers are available for the current project source."
     ),
     createDeferredCapability(
       "fileSystemAccess",
@@ -177,6 +182,32 @@ export function createProjectPackageReadiness({
     capabilities,
     diagnosticCount: diagnostics.length,
     diagnostics
+  };
+}
+
+function createSupportedCapability(
+  capability: Exclude<
+    ProjectPackageReadinessQueryResponse["capabilities"][number]["capability"],
+    "packageContract"
+  >,
+  label: string,
+  code: ProjectPackageReadinessQueryResponse["diagnostics"][number]["code"],
+  message: string
+): ProjectPackageReadinessQueryResponse["capabilities"][number] {
+  return {
+    capability,
+    label,
+    status: "supported",
+    available: true,
+    sourceBoundaryNote: SOURCE_BOUNDARY_NOTE,
+    derivedBoundaryNote: DERIVED_BOUNDARY_NOTE,
+    diagnostics: [
+      {
+        code,
+        status: "supported",
+        message
+      }
+    ]
   };
 }
 
@@ -449,6 +480,17 @@ export function validateWcadManifest(
   }
 
   return issues;
+}
+
+export async function createWcadPackageEntryMetadata({
+  path,
+  bytes
+}: WcadPackageEntryMetadataInput): Promise<WcadPackageEntryMetadata> {
+  return {
+    path,
+    byteLength: bytes.byteLength,
+    sha256: await sha256Hex(bytes)
+  };
 }
 
 export async function validateWcadPackageEntryBytes({

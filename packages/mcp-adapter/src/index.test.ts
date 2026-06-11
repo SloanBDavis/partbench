@@ -1024,6 +1024,10 @@ describe("mcp-adapter", () => {
             status: "supported"
           }),
           expect.objectContaining({
+            capability: "packageReadWrite",
+            status: "supported"
+          }),
+          expect.objectContaining({
             capability: "opfsCache",
             status: "deferred"
           })

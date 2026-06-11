@@ -2083,6 +2083,10 @@ describe("agent-adapter", () => {
           status: "supported"
         }),
         expect.objectContaining({
+          capability: "packageReadWrite",
+          status: "supported"
+        }),
+        expect.objectContaining({
           capability: "fileSystemAccess",
           status: "deferred"
         })

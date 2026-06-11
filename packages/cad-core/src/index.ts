@@ -1,3 +1,13 @@
+import {
+  WCAD_COMMANDS_ENTRY_PATH,
+  WCAD_DOCUMENT_ENTRY_PATH,
+  WCAD_MANIFEST_ENTRY_PATH,
+  WCAD_PACKAGE_VERSION,
+  type WcadManifestV1,
+  type WcadPackageValidationIssue,
+  type WcadSourceIdentity,
+  type WcadPackageEntryRole
+} from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
   BoxDimensions,
@@ -102,6 +112,11 @@ import type {
 } from "@web-cad/cad-protocol";
 
 import {
+  CanonicalCborDecodeError,
+  decodeCanonicalCbor,
+  encodeCanonicalCbor
+} from "./canonicalCbor";
+import {
   createTransactionHistoryEntries,
   parseTransactionNumber,
   sortTransactions
@@ -129,10 +144,20 @@ import {
   type SketchSolverDocument
 } from "./sketchSolver";
 import { createProjectExportReadiness } from "./projectExportReadiness";
-import { createProjectPackageReadiness } from "./projectPackageReadiness";
+import {
+  createProjectPackageReadiness,
+  createWcadPackageEntryMetadata,
+  createWcadSourceIdentity,
+  validateWcadManifest,
+  validateWcadManifestSourceIdentity,
+  validateWcadPackageCacheEntries,
+  validateWcadPackageEntryBytes
+} from "./projectPackageReadiness";
+import { readZipStore, writeZipStore } from "./wcadZip";
 
 export {
   createProjectPackageReadiness,
+  createWcadPackageEntryMetadata,
   createWcadSourceIdentity,
   validateWcadManifest,
   validateWcadManifestSourceIdentity,
@@ -609,6 +634,43 @@ export interface CadProject {
   readonly document: CadDocumentSnapshot;
   readonly history: readonly Transaction[];
   readonly redoStack: readonly Transaction[];
+}
+
+export interface ExportCadProjectWcadOptions {
+  readonly createdAt?: string;
+  readonly modifiedAt?: string;
+  readonly appVersion?: string;
+}
+
+export interface WcadPackageExportResult {
+  readonly bytes: Uint8Array;
+  readonly manifest: WcadManifestV1;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly documentBytes: Uint8Array;
+  readonly commandsBytes: Uint8Array;
+}
+
+export type WcadPackageReadResult =
+  | {
+      readonly ok: true;
+      readonly project: CadProject;
+      readonly manifest: WcadManifestV1;
+      readonly sourceIdentity: WcadSourceIdentity;
+      readonly diagnostics: readonly WcadPackageValidationIssue[];
+    }
+  | {
+      readonly ok: false;
+      readonly issues: readonly WcadPackageValidationIssue[];
+    };
+
+export class WcadPackageImportError extends Error {
+  readonly issues: readonly WcadPackageValidationIssue[];
+
+  constructor(issues: readonly WcadPackageValidationIssue[]) {
+    super(formatWcadPackageImportIssues(issues));
+    this.name = "WcadPackageImportError";
+    this.issues = issues;
+  }
 }
 
 interface TransactionEntry {
@@ -1741,6 +1803,537 @@ export function importCadProject(project: CadProject): CadEngine {
 
 export function importCadProjectJson(json: string): CadEngine {
   return importCadProject(parseCadProjectJson(json));
+}
+
+export async function exportCadProjectWcad(
+  engine: CadEngine,
+  options: ExportCadProjectWcadOptions = {}
+): Promise<WcadPackageExportResult> {
+  return exportCadProjectToWcad(exportCadProject(engine), options);
+}
+
+export async function exportCadProjectToWcad(
+  project: CadProject,
+  options: ExportCadProjectWcadOptions = {}
+): Promise<WcadPackageExportResult> {
+  if (project.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+    throw new WcadPackageImportError([
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
+        "error",
+        "WCAD writer only supports the current project schema.",
+        "$.schemaVersion",
+        CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        project.schemaVersion
+      )
+    ]);
+  }
+
+  const documentBytes = encodeCanonicalCbor(project.document);
+  const commandsBytes = encodeCanonicalCbor({
+    history: project.history,
+    redoStack: project.redoStack
+  });
+  const [documentEntry, commandsEntry, sourceIdentity] = await Promise.all([
+    createWcadPackageEntryMetadata({
+      path: WCAD_DOCUMENT_ENTRY_PATH,
+      bytes: documentBytes
+    }),
+    createWcadPackageEntryMetadata({
+      path: WCAD_COMMANDS_ENTRY_PATH,
+      bytes: commandsBytes
+    }),
+    createWcadSourceIdentity({
+      documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      units: project.document.units,
+      documentBytes,
+      commandsBytes
+    })
+  ]);
+  const timestamp = options.createdAt ?? "1970-01-01T00:00:00.000Z";
+  const manifest: WcadManifestV1 = {
+    packageVersion: WCAD_PACKAGE_VERSION,
+    product: "Partbench",
+    createdBy: {
+      app: "partbench",
+      ...(options.appVersion ? { version: options.appVersion } : {})
+    },
+    createdAt: timestamp,
+    modifiedAt: options.modifiedAt ?? timestamp,
+    units: project.document.units,
+    document: {
+      ...documentEntry,
+      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+    },
+    commands: commandsEntry,
+    sourceIdentity
+  };
+  const manifestBytes = encodeUtf8(`${JSON.stringify(manifest, null, 2)}\n`);
+
+  return {
+    bytes: writeZipStore([
+      { path: WCAD_MANIFEST_ENTRY_PATH, bytes: manifestBytes },
+      { path: WCAD_DOCUMENT_ENTRY_PATH, bytes: documentBytes },
+      { path: WCAD_COMMANDS_ENTRY_PATH, bytes: commandsBytes }
+    ]),
+    manifest,
+    sourceIdentity,
+    documentBytes,
+    commandsBytes
+  };
+}
+
+export async function readCadProjectWcad(
+  bytes: Uint8Array
+): Promise<WcadPackageReadResult> {
+  const zip = readZipStore(bytes);
+  const issues: WcadPackageValidationIssue[] = [...zip.issues];
+  const manifestBytes = zip.entries.get(WCAD_MANIFEST_ENTRY_PATH);
+
+  if (!manifestBytes) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_MISSING_MANIFEST",
+        "error",
+        "WCAD package is missing manifest.json.",
+        "$",
+        undefined,
+        undefined,
+        WCAD_MANIFEST_ENTRY_PATH,
+        "manifest"
+      )
+    );
+    return { ok: false, issues };
+  }
+
+  const manifestValue = decodeManifestJson(manifestBytes, issues);
+
+  if (!manifestValue) {
+    return { ok: false, issues };
+  }
+
+  issues.push(...validateWcadManifest(manifestValue));
+
+  if (hasError(issues) || !isWcadManifestV1(manifestValue)) {
+    return { ok: false, issues };
+  }
+
+  if (
+    manifestValue.document.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION
+  ) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
+        "error",
+        "WCAD reader only supports the current project schema.",
+        "$.document.schemaVersion",
+        CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        manifestValue.document.schemaVersion,
+        manifestValue.document.path,
+        "document"
+      )
+    );
+  }
+
+  const documentBytes = zip.entries.get(manifestValue.document.path);
+  const commandsBytes = zip.entries.get(manifestValue.commands.path);
+
+  if (!documentBytes) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_MISSING_DOCUMENT",
+        "error",
+        "WCAD package is missing document.cbor.",
+        "$.document.path",
+        manifestValue.document.path,
+        "missing",
+        manifestValue.document.path,
+        "document"
+      )
+    );
+  }
+
+  if (!commandsBytes) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_MISSING_COMMANDS",
+        "error",
+        "WCAD package is missing commands.cbor.",
+        "$.commands.path",
+        manifestValue.commands.path,
+        "missing",
+        manifestValue.commands.path,
+        "commands"
+      )
+    );
+  }
+
+  if (documentBytes) {
+    issues.push(
+      ...(await validateWcadPackageEntryBytes({
+        entry: manifestValue.document,
+        bytes: documentBytes,
+        entryRole: "document"
+      }))
+    );
+  }
+
+  if (commandsBytes) {
+    issues.push(
+      ...(await validateWcadPackageEntryBytes({
+        entry: manifestValue.commands,
+        bytes: commandsBytes,
+        entryRole: "commands"
+      }))
+    );
+  }
+
+  issues.push(...readOptionalCacheDiagnostics(zip.entries, manifestValue));
+
+  if (hasError(issues) || !documentBytes || !commandsBytes) {
+    return { ok: false, issues };
+  }
+
+  const documentPayload = decodePackageCborPayload(
+    documentBytes,
+    "document",
+    issues
+  );
+  const commandsPayload = decodePackageCborPayload(
+    commandsBytes,
+    "commands",
+    issues
+  );
+
+  if (hasError(issues)) {
+    return { ok: false, issues };
+  }
+
+  if (!isRecord(commandsPayload) || !Array.isArray(commandsPayload.history)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_COMMANDS_CBOR",
+        "error",
+        "commands.cbor must decode to an object with a history array.",
+        "$.history",
+        "array",
+        isRecord(commandsPayload)
+          ? typeof commandsPayload.history
+          : typeof commandsPayload,
+        WCAD_COMMANDS_ENTRY_PATH,
+        "commands"
+      )
+    );
+  }
+
+  if (!isRecord(commandsPayload) || !Array.isArray(commandsPayload.redoStack)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_COMMANDS_CBOR",
+        "error",
+        "commands.cbor must decode to an object with a redoStack array.",
+        "$.redoStack",
+        "array",
+        isRecord(commandsPayload)
+          ? typeof commandsPayload.redoStack
+          : typeof commandsPayload,
+        WCAD_COMMANDS_ENTRY_PATH,
+        "commands"
+      )
+    );
+  }
+
+  const sourceIdentity = await createWcadSourceIdentity({
+    documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+    units: manifestValue.units,
+    documentBytes,
+    commandsBytes
+  });
+  issues.push(
+    ...validateWcadManifestSourceIdentity(manifestValue, sourceIdentity)
+  );
+
+  if (hasError(issues) || !isRecord(commandsPayload)) {
+    return { ok: false, issues };
+  }
+
+  const candidateProject = {
+    schemaVersion: manifestValue.document.schemaVersion,
+    document: documentPayload,
+    history: commandsPayload.history,
+    redoStack: commandsPayload.redoStack
+  };
+
+  try {
+    const project = parseCadProject(candidateProject);
+
+    return {
+      ok: true,
+      project,
+      manifest: manifestValue,
+      sourceIdentity,
+      diagnostics: issues
+    };
+  } catch (error) {
+    if (error instanceof CadProjectImportError) {
+      issues.push(...mapProjectImportIssuesToWcadIssues(error.issues));
+      return { ok: false, issues };
+    }
+
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_DOCUMENT_CBOR",
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Decoded WCAD source could not be imported.",
+        "$",
+        undefined,
+        undefined,
+        WCAD_DOCUMENT_ENTRY_PATH,
+        "document"
+      )
+    );
+    return { ok: false, issues };
+  }
+}
+
+export async function parseCadProjectWcad(
+  bytes: Uint8Array
+): Promise<CadProject> {
+  const result = await readCadProjectWcad(bytes);
+
+  if (!result.ok) {
+    throw new WcadPackageImportError(result.issues);
+  }
+
+  return result.project;
+}
+
+export async function importCadProjectWcad(
+  bytes: Uint8Array
+): Promise<CadEngine> {
+  return importCadProject(await parseCadProjectWcad(bytes));
+}
+
+export function formatWcadPackageImportError(error: unknown): string {
+  if (error instanceof WcadPackageImportError) {
+    return error.message;
+  }
+
+  return error instanceof Error ? error.message : "Invalid WCAD package.";
+}
+
+function formatWcadPackageImportIssues(
+  issues: readonly WcadPackageValidationIssue[]
+): string {
+  if (issues.length === 0) {
+    return "Invalid WCAD package.";
+  }
+
+  return issues
+    .map((issue) => {
+      const location = issue.path ?? issue.entryPath ?? "$";
+      return `${issue.code} at ${location}: ${issue.message}`;
+    })
+    .join("\n");
+}
+
+function decodeManifestJson(
+  bytes: Uint8Array,
+  issues: WcadPackageValidationIssue[]
+): unknown | undefined {
+  try {
+    return JSON.parse(decodeUtf8(bytes));
+  } catch (error) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_MANIFEST",
+        "error",
+        error instanceof Error
+          ? `manifest.json could not be parsed: ${error.message}`
+          : "manifest.json could not be parsed.",
+        "$",
+        "UTF-8 JSON object",
+        "invalid",
+        WCAD_MANIFEST_ENTRY_PATH,
+        "manifest"
+      )
+    );
+    return undefined;
+  }
+}
+
+function decodePackageCborPayload(
+  bytes: Uint8Array,
+  entryRole: Extract<WcadPackageEntryRole, "document" | "commands">,
+  issues: WcadPackageValidationIssue[]
+): unknown | undefined {
+  try {
+    return decodeCanonicalCbor(bytes);
+  } catch (error) {
+    const entryPath =
+      entryRole === "document"
+        ? WCAD_DOCUMENT_ENTRY_PATH
+        : WCAD_COMMANDS_ENTRY_PATH;
+
+    issues.push(
+      createWcadPackageIssue(
+        entryRole === "document"
+          ? "WCAD_INVALID_DOCUMENT_CBOR"
+          : "WCAD_INVALID_COMMANDS_CBOR",
+        "error",
+        error instanceof Error
+          ? `${entryPath} could not be decoded: ${error.message}`
+          : `${entryPath} could not be decoded.`,
+        "$",
+        "canonical CBOR source payload",
+        error instanceof CanonicalCborDecodeError ? error.message : "invalid",
+        entryPath,
+        entryRole
+      )
+    );
+    return undefined;
+  }
+}
+
+function readOptionalCacheDiagnostics(
+  entries: ReadonlyMap<string, Uint8Array>,
+  manifest: WcadManifestV1
+): readonly WcadPackageValidationIssue[] {
+  if (!manifest.cache?.entriesPath) {
+    return [];
+  }
+
+  const cacheBytes = entries.get(manifest.cache.entriesPath);
+
+  if (!cacheBytes) {
+    return [
+      createWcadPackageIssue(
+        "WCAD_STALE_CACHE_ENTRY",
+        "warning",
+        "WCAD package manifest references a cache index that is not present; cache data is rebuildable and ignored.",
+        "$.cache.entriesPath",
+        manifest.cache.entriesPath,
+        "missing",
+        manifest.cache.entriesPath,
+        "metadata"
+      )
+    ];
+  }
+
+  let cacheValue: unknown;
+
+  try {
+    cacheValue = JSON.parse(decodeUtf8(cacheBytes));
+  } catch (error) {
+    return [
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CACHE_ENTRY",
+        "warning",
+        error instanceof Error
+          ? `WCAD cache index could not be parsed and was ignored: ${error.message}`
+          : "WCAD cache index could not be parsed and was ignored.",
+        "$.cache.entriesPath",
+        "JSON cache index",
+        "invalid",
+        manifest.cache.entriesPath,
+        "metadata"
+      )
+    ];
+  }
+
+  const cacheEntries =
+    isRecord(cacheValue) && Array.isArray(cacheValue.entries)
+      ? cacheValue.entries
+      : undefined;
+
+  if (!cacheEntries) {
+    return [
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CACHE_ENTRY",
+        "warning",
+        "WCAD cache index must contain an entries array; cache data was ignored.",
+        "$.entries",
+        "array",
+        typeof cacheValue,
+        manifest.cache.entriesPath,
+        "metadata"
+      )
+    ];
+  }
+
+  return validateWcadPackageCacheEntries(cacheEntries, manifest.sourceIdentity);
+}
+
+function mapProjectImportIssuesToWcadIssues(
+  issues: readonly CadProjectImportIssue[]
+): readonly WcadPackageValidationIssue[] {
+  return issues.map((issue) => {
+    const isCommandIssue =
+      issue.path.startsWith("$.history") ||
+      issue.path.startsWith("$.redoStack");
+    return createWcadPackageIssue(
+      isCommandIssue
+        ? "WCAD_INVALID_COMMANDS_CBOR"
+        : "WCAD_INVALID_DOCUMENT_CBOR",
+      "error",
+      `Decoded WCAD source failed project validation: ${issue.message}`,
+      issue.path,
+      undefined,
+      undefined,
+      isCommandIssue ? WCAD_COMMANDS_ENTRY_PATH : WCAD_DOCUMENT_ENTRY_PATH,
+      isCommandIssue ? "commands" : "document"
+    );
+  });
+}
+
+function isWcadManifestV1(value: unknown): value is WcadManifestV1 {
+  return (
+    isRecord(value) &&
+    value.packageVersion === WCAD_PACKAGE_VERSION &&
+    value.product === "Partbench" &&
+    isRecord(value.document) &&
+    value.document.path === WCAD_DOCUMENT_ENTRY_PATH &&
+    typeof value.document.schemaVersion === "string" &&
+    isRecord(value.commands) &&
+    value.commands.path === WCAD_COMMANDS_ENTRY_PATH &&
+    isRecord(value.sourceIdentity)
+  );
+}
+
+function createWcadPackageIssue(
+  code: WcadPackageValidationIssue["code"],
+  severity: WcadPackageValidationIssue["severity"],
+  message: string,
+  path?: string,
+  expected?: string | number,
+  received?: string | number,
+  entryPath?: string,
+  entryRole?: WcadPackageEntryRole
+): WcadPackageValidationIssue {
+  return {
+    code,
+    severity,
+    message,
+    ...(path ? { path } : {}),
+    ...(entryPath ? { entryPath } : {}),
+    ...(entryRole ? { entryRole } : {}),
+    ...(expected !== undefined ? { expected } : {}),
+    ...(received !== undefined ? { received } : {})
+  };
+}
+
+function hasError(issues: readonly WcadPackageValidationIssue[]): boolean {
+  return issues.some((issue) => issue.severity === "error");
+}
+
+function encodeUtf8(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
+function decodeUtf8(bytes: Uint8Array): string {
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
 export function formatCadProjectImportError(error: unknown): string {

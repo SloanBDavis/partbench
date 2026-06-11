@@ -189,15 +189,15 @@ describe("cad-protocol", () => {
         {
           capability: "packageReadWrite",
           label: "Package writer",
-          status: "deferred",
-          available: false,
+          status: "supported",
+          available: true,
           sourceBoundaryNote: "Authoritative source entries only.",
           derivedBoundaryNote: "Cache and browser state are excluded.",
           diagnostics: [
             {
-              code: "WCAD_PACKAGE_READ_WRITE_DEFERRED",
-              status: "deferred",
-              message: "ZIP read/write is deferred."
+              code: "WCAD_PACKAGE_READ_WRITE_READY",
+              status: "supported",
+              message: "ZIP read/write helpers are available."
             }
           ]
         }
@@ -210,9 +210,9 @@ describe("cad-protocol", () => {
           message: "Package contract is typed."
         },
         {
-          code: "WCAD_PACKAGE_READ_WRITE_DEFERRED",
-          status: "deferred",
-          message: "ZIP read/write is deferred."
+          code: "WCAD_PACKAGE_READ_WRITE_READY",
+          status: "supported",
+          message: "ZIP read/write helpers are available."
         }
       ]
     };
@@ -264,7 +264,7 @@ describe("cad-protocol", () => {
     ]);
     expect(
       response.capabilities.map((capability) => capability.status)
-    ).toEqual(["supported", "deferred"]);
+    ).toEqual(["supported", "supported"]);
     expect(manifest.packageVersion).toBe(WCAD_PACKAGE_VERSION);
     expect(manifest.cache?.policy).toBe("optional-rebuildable");
     expect(issue.code).toBe("WCAD_STALE_CACHE_ENTRY");

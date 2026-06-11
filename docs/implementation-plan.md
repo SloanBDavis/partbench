@@ -43,6 +43,13 @@ These constraints remain active:
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
     pass-through. It does not implement ZIP read/write, File System Access,
     OPFS writes, STEP export, CBOR encoding, or `web-cad.project.v17`.
+13. V8 Tranche B is implemented in `cad-core` as deterministic `.wcad` package
+    bytes: ZIP-compatible `manifest.json`, `document.cbor`, and
+    `commands.cbor`; canonical CBOR source encoding; manifest hash/length and
+    source-identity validation; structured package diagnostics; and import
+    through the existing current project importer. It does not add browser File
+    System Access UI, upload/download fallback UI, OPFS writes, STEP export, or
+    `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -996,9 +1003,10 @@ Use these decisions when writing V8 implementation prompts:
    contract slice: manifest/package types, validation issue shapes, source
    identity helpers, `project.packageReadiness`, thin agent/MCP pass-through,
    and tests proving package version/project schema separation.
-2. **`.wcad` Package Read/Write** - implement minimal package writer/reader
-   for `manifest.json`, `document.cbor`, and `commands.cbor`, with deterministic
-   current-project round-trip and corruption diagnostics.
+2. **`.wcad` Package Read/Write** - completed in `cad-core`: minimal
+   ZIP-compatible package writer/reader for `manifest.json`, `document.cbor`,
+   and `commands.cbor`, with deterministic current-project round-trip and
+   corruption diagnostics.
 3. **File System Access Project Workflow** - make Open, Save, and Save As use
    `.wcad` through File System Access where available, with upload/download
    fallback and permission diagnostics.

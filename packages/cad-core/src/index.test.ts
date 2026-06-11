@@ -26,19 +26,25 @@ import {
   CadProjectImportError,
   DEFAULT_PART_ID,
   createCadDocument,
+  createWcadPackageEntryMetadata,
   createWcadSourceIdentity,
   MockCadCommandWorker,
   corePackage,
   exportCadProjectJson,
+  exportCadProjectWcad,
+  exportCadProjectToWcad,
   importCadProject,
   importCadProjectJson,
+  importCadProjectWcad,
   parseCadProjectJson,
+  readCadProjectWcad,
   validateWcadManifest,
   validateWcadManifestSourceIdentity,
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./index";
 import { validateGeneratedReference } from "./generatedReferences";
+import { writeZipStore } from "./wcadZip";
 
 function getExtrudeFeature(
   engine: CadEngine,
@@ -132,6 +138,54 @@ function readProjectPackageReadiness(
   }
 
   return response;
+}
+
+function encodeTestManifest(manifest: unknown): Uint8Array {
+  return new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+function writeTestWcadPackage({
+  manifest,
+  documentBytes,
+  commandsBytes,
+  extraEntries = [],
+  omitCommands = false
+}: {
+  readonly manifest: unknown;
+  readonly documentBytes: Uint8Array;
+  readonly commandsBytes: Uint8Array;
+  readonly extraEntries?: readonly {
+    readonly path: string;
+    readonly bytes: Uint8Array;
+  }[];
+  readonly omitCommands?: boolean;
+}): Uint8Array {
+  return writeZipStore([
+    { path: "manifest.json", bytes: encodeTestManifest(manifest) },
+    { path: "document.cbor", bytes: documentBytes },
+    ...(omitCommands ? [] : [{ path: "commands.cbor", bytes: commandsBytes }]),
+    ...extraEntries
+  ]);
+}
+
+function corruptFirstMatchingByte(
+  bytes: Uint8Array,
+  needle: Uint8Array
+): Uint8Array {
+  const copy = new Uint8Array(bytes);
+
+  for (
+    let index = 0;
+    index <= copy.byteLength - needle.byteLength;
+    index += 1
+  ) {
+    if (needle.every((byte, offset) => copy[index + offset] === byte)) {
+      copy[index] = copy[index] ^ 0xff;
+      return copy;
+    }
+  }
+
+  throw new Error("Expected byte sequence in package.");
 }
 
 function readProjectSummary(engine: CadEngine): ProjectSummaryQueryResponse {
@@ -20329,8 +20383,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "packageReadWrite",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "fileSystemAccess",
@@ -20354,8 +20408,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "supported"
         }),
         expect.objectContaining({
-          code: "WCAD_PACKAGE_READ_WRITE_DEFERRED",
-          status: "deferred"
+          code: "WCAD_PACKAGE_READ_WRITE_READY",
+          status: "supported"
         }),
         expect.objectContaining({
           code: "WCAD_PROJECT_SCHEMA_V17_NOT_REQUIRED",
@@ -20571,6 +20625,429 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     );
+  });
+
+  it("writes deterministic ZIP-compatible WCAD packages for the same project source", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const first = await exportCadProjectWcad(engine);
+    const second = await exportCadProjectWcad(engine);
+
+    expect([...first.bytes]).toEqual([...second.bytes]);
+    expect([...first.bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    expect(first.manifest).toMatchObject({
+      packageVersion: "partbench.wcad.v1",
+      product: "Partbench",
+      createdBy: { app: "partbench" },
+      createdAt: "1970-01-01T00:00:00.000Z",
+      modifiedAt: "1970-01-01T00:00:00.000Z",
+      units: "mm",
+      document: {
+        path: "document.cbor",
+        schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        byteLength: first.documentBytes.byteLength
+      },
+      commands: {
+        path: "commands.cbor",
+        byteLength: first.commandsBytes.byteLength
+      },
+      sourceIdentity: {
+        algorithm: "partbench-source-v1"
+      }
+    });
+    expect(first.manifest.document.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.manifest.commands.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.sourceIdentity.sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(first.manifest)).not.toContain("web-cad.project.v17");
+  });
+
+  it("round-trips rectangle and circle extrude projects through WCAD package bytes", async () => {
+    for (const engine of [
+      createRectangleExtrudeEngine(),
+      createCircleExtrudeEngine()
+    ]) {
+      const beforeJson = exportCadProjectJson(engine);
+      const exported = await exportCadProjectWcad(engine);
+      const read = await readCadProjectWcad(exported.bytes);
+
+      expect(read).toMatchObject({
+        ok: true,
+        manifest: {
+          packageVersion: "partbench.wcad.v1",
+          document: {
+            schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+          }
+        },
+        sourceIdentity: exported.sourceIdentity,
+        diagnostics: []
+      });
+
+      if (!read.ok) {
+        throw new Error("Expected WCAD package read to succeed.");
+      }
+
+      expect(read.project.schemaVersion).toBe(
+        CURRENT_CAD_PROJECT_FORMAT_VERSION
+      );
+      expect(read.project.history).toEqual(
+        parseCadProjectJson(beforeJson).history
+      );
+
+      const imported = await importCadProjectWcad(exported.bytes);
+      expect(parseCadProjectJson(exportCadProjectJson(imported))).toEqual(
+        parseCadProjectJson(beforeJson)
+      );
+      expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    }
+  });
+
+  it("preserves committed command history and redo stack through WCAD packages", async () => {
+    const engine = new CadEngine();
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" }
+      ]
+    });
+    engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.addRectangle",
+          sketchId: "sketch_1",
+          id: "rect_1",
+          center: [0, 0],
+          width: 4,
+          height: 2
+        },
+        {
+          op: "feature.extrude",
+          id: "feat_rect_1",
+          bodyId: "body_rect_1",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          depth: 3
+        }
+      ]
+    });
+    engine.undo();
+    expect(engine.getTransactions()).toHaveLength(1);
+    expect(engine.getRedoStack()).toHaveLength(1);
+
+    const exported = await exportCadProjectWcad(engine);
+    const read = await readCadProjectWcad(exported.bytes);
+
+    if (!read.ok) {
+      throw new Error("Expected WCAD package read to succeed.");
+    }
+
+    const normalizedProject = parseCadProjectJson(exportCadProjectJson(engine));
+
+    expect(read.project.history).toEqual(normalizedProject.history);
+    expect(read.project.redoStack).toEqual(normalizedProject.redoStack);
+
+    const imported = await importCadProjectWcad(exported.bytes);
+    expect(parseCadProjectJson(exportCadProjectJson(imported)).history).toEqual(
+      normalizedProject.history
+    );
+    expect(
+      parseCadProjectJson(exportCadProjectJson(imported)).redoStack
+    ).toEqual(normalizedProject.redoStack);
+  });
+
+  it("returns structured WCAD diagnostics for corrupt package entries", async () => {
+    const exported = await exportCadProjectWcad(createRectangleExtrudeEngine());
+    const corruptedDocument = await readCadProjectWcad(
+      corruptFirstMatchingByte(exported.bytes, exported.documentBytes)
+    );
+    const missingCommands = await readCadProjectWcad(
+      writeTestWcadPackage({
+        manifest: exported.manifest,
+        documentBytes: exported.documentBytes,
+        commandsBytes: exported.commandsBytes,
+        omitCommands: true
+      })
+    );
+    const badByteLength = await readCadProjectWcad(
+      writeTestWcadPackage({
+        manifest: {
+          ...exported.manifest,
+          document: {
+            ...exported.manifest.document,
+            byteLength: exported.manifest.document.byteLength + 1
+          }
+        },
+        documentBytes: exported.documentBytes,
+        commandsBytes: exported.commandsBytes
+      })
+    );
+    const badHash = await readCadProjectWcad(
+      writeTestWcadPackage({
+        manifest: {
+          ...exported.manifest,
+          document: {
+            ...exported.manifest.document,
+            sha256:
+              "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        },
+        documentBytes: exported.documentBytes,
+        commandsBytes: exported.commandsBytes
+      })
+    );
+    const badSourceIdentity = await readCadProjectWcad(
+      writeTestWcadPackage({
+        manifest: {
+          ...exported.manifest,
+          sourceIdentity: {
+            algorithm: "partbench-source-v1",
+            sha256:
+              "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        },
+        documentBytes: exported.documentBytes,
+        commandsBytes: exported.commandsBytes
+      })
+    );
+    const invalidZip = await readCadProjectWcad(new Uint8Array([1, 2, 3]));
+
+    expect(corruptedDocument).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_INVALID_PACKAGE",
+          entryPath: "document.cbor"
+        })
+      ])
+    });
+    expect(missingCommands).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_MISSING_COMMANDS",
+          severity: "error"
+        })
+      ])
+    });
+    expect(badByteLength).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_BYTE_LENGTH_MISMATCH",
+          entryRole: "document"
+        })
+      ])
+    });
+    expect(badHash).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_HASH_MISMATCH",
+          entryRole: "document"
+        })
+      ])
+    });
+    expect(badSourceIdentity).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_SOURCE_IDENTITY_MISMATCH",
+          severity: "error"
+        })
+      ])
+    });
+    expect(invalidZip).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_INVALID_PACKAGE",
+          severity: "error"
+        }),
+        expect.objectContaining({
+          code: "WCAD_MISSING_MANIFEST",
+          severity: "error"
+        })
+      ])
+    });
+  });
+
+  it("reports invalid document and commands CBOR as structured package diagnostics", async () => {
+    const exported = await exportCadProjectWcad(createRectangleExtrudeEngine());
+    const invalidDocumentBytes = new Uint8Array([0xff]);
+    const invalidCommandsBytes = new Uint8Array([0xff]);
+    const validDocumentEntry = await createWcadPackageEntryMetadata({
+      path: "document.cbor",
+      bytes: invalidDocumentBytes
+    });
+    const validCommandsEntry = await createWcadPackageEntryMetadata({
+      path: "commands.cbor",
+      bytes: invalidCommandsBytes
+    });
+    const invalidDocumentIdentity = await createWcadSourceIdentity({
+      documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      units: "mm",
+      documentBytes: invalidDocumentBytes,
+      commandsBytes: exported.commandsBytes
+    });
+    const invalidCommandsIdentity = await createWcadSourceIdentity({
+      documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      units: "mm",
+      documentBytes: exported.documentBytes,
+      commandsBytes: invalidCommandsBytes
+    });
+
+    const invalidDocument = await readCadProjectWcad(
+      writeTestWcadPackage({
+        manifest: {
+          ...exported.manifest,
+          document: {
+            ...validDocumentEntry,
+            schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+          },
+          sourceIdentity: invalidDocumentIdentity
+        },
+        documentBytes: invalidDocumentBytes,
+        commandsBytes: exported.commandsBytes
+      })
+    );
+    const invalidCommands = await readCadProjectWcad(
+      writeTestWcadPackage({
+        manifest: {
+          ...exported.manifest,
+          commands: validCommandsEntry,
+          sourceIdentity: invalidCommandsIdentity
+        },
+        documentBytes: exported.documentBytes,
+        commandsBytes: invalidCommandsBytes
+      })
+    );
+
+    expect(invalidDocument).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_INVALID_DOCUMENT_CBOR",
+          entryPath: "document.cbor"
+        })
+      ])
+    });
+    expect(invalidCommands).toMatchObject({
+      ok: false,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_INVALID_COMMANDS_CBOR",
+          entryPath: "commands.cbor"
+        })
+      ])
+    });
+  });
+
+  it("loads WCAD source while ignoring stale unsupported cache entries", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const exported = await exportCadProjectWcad(engine);
+    const manifest = {
+      ...exported.manifest,
+      cache: {
+        entriesPath: "metadata/cache-index.json",
+        policy: "optional-rebuildable"
+      }
+    };
+    const packageBytes = writeTestWcadPackage({
+      manifest,
+      documentBytes: exported.documentBytes,
+      commandsBytes: exported.commandsBytes,
+      extraEntries: [
+        {
+          path: "metadata/cache-index.json",
+          bytes: new TextEncoder().encode(
+            JSON.stringify({
+              entries: [
+                {
+                  path: "meshes/body.bin",
+                  byteLength: 12,
+                  sha256:
+                    "3333333333333333333333333333333333333333333333333333333333333333",
+                  artifactKind: "selectionBuffer",
+                  artifactVersion: "v1",
+                  sourceIdentity: {
+                    algorithm: "partbench-source-v1",
+                    sha256:
+                      "4444444444444444444444444444444444444444444444444444444444444444"
+                  }
+                }
+              ]
+            })
+          )
+        },
+        {
+          path: "meshes/body.bin",
+          bytes: new Uint8Array([1, 2, 3])
+        }
+      ]
+    });
+    const read = await readCadProjectWcad(packageBytes);
+
+    expect(read).toMatchObject({
+      ok: true,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CACHE_ENTRY",
+          severity: "warning"
+        }),
+        expect.objectContaining({
+          code: "WCAD_STALE_CACHE_ENTRY",
+          severity: "warning"
+        })
+      ])
+    });
+
+    if (!read.ok) {
+      throw new Error(
+        "Expected WCAD package read to succeed with cache warnings."
+      );
+    }
+
+    expect(importCadProject(read.project).createSnapshot()).toEqual(
+      engine.createSnapshot()
+    );
+    expect(JSON.stringify(read.sourceIdentity)).not.toMatch(
+      /fileName|fileHandle|opfsPath|viewport|selection|thumbnail|mesh|exportArtifact|cache/i
+    );
+  });
+
+  it("does not introduce web-cad.project.v17 or implementation IDs in WCAD source outputs", async () => {
+    const exported = await exportCadProjectWcad(createRectangleExtrudeEngine());
+    const imported = await importCadProjectWcad(exported.bytes);
+    const publicText = JSON.stringify({
+      manifest: exported.manifest,
+      sourceIdentity: exported.sourceIdentity,
+      project: parseCadProjectJson(exportCadProjectJson(imported))
+    });
+
+    expect(publicText).toContain(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+    expect(publicText).not.toContain("web-cad.project.v17");
+    expect(publicText).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("rejects package writes for non-current project schema snapshots", async () => {
+    const project = parseCadProjectJson(
+      exportCadProjectJson(createRectangleExtrudeEngine())
+    );
+    await expect(
+      exportCadProjectToWcad({
+        ...project,
+        schemaVersion: CAD_PROJECT_FORMAT_VERSION_V10
+      })
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA"
+        })
+      ])
+    });
   });
 
   it("reports empty project export readiness without creating export state", () => {

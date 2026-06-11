@@ -1387,14 +1387,22 @@ This V8 package decision does not by itself add STEP import, persistent exact
 B-rep checkpoints as source truth, assemblies, broad topology naming, WebGPU,
 or production MCP auth.
 
-The first V8 implementation slice adds the typed package contract and
-readiness/validation helpers without changing project source format:
+The first V8 implementation slices add the typed package contract and minimal
+package read/write helpers without changing project source format:
 
 - `project.packageReadiness` reports the target package version, current
-  document schema, required package entries, and deferred status for ZIP
-  read/write, File System Access, OPFS cache writes, and STEP export.
+  document schema, required package entries, supported package read/write
+  helpers, and deferred status for File System Access, OPFS cache writes, and
+  STEP export.
 - `partbench-source-v1` source identity is computed from encoded document and
   command bytes plus schema/units metadata.
+- `.wcad` package helpers write ZIP-compatible package bytes containing
+  `manifest.json`, `document.cbor`, and `commands.cbor`.
+- `document.cbor` stores the current authoritative document snapshot, while
+  `commands.cbor` stores current command history and redo stack data.
+- Package reads validate manifest metadata, entry byte lengths, hashes, source
+  identity, CBOR payloads, and the reconstructed project through the existing
+  cad-core importer.
 - Source identity excludes filenames, browser file handles, OPFS paths,
   viewport state, selection state, thumbnails, meshes, export artifacts, and
   cache-only data.
