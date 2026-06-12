@@ -114,6 +114,7 @@ pnpm format:check
 pnpm smoke:v7-release-samples
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
+pnpm smoke:v8-wcad-workflow
 ```
 
 Derived geometry is enabled by default for local Vite serve:
@@ -160,6 +161,7 @@ V7 browser workflow smoke:
 ```sh
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
+pnpm smoke:v8-wcad-workflow
 ```
 
 The default smoke follows the existing built-app/static-server/CDP pattern. It
@@ -177,6 +179,10 @@ smoke builds with
 `VITE_ENABLE_DERIVED_GEOMETRY=true` and
 requires `glb-download` to pass, proving transient
 `partbench-visualization.glb` output from ready derived display meshes.
+The V8-named `pnpm smoke:v8-wcad-workflow` script aliases the current browser
+workflow smoke and verifies fallback Save As `.wcad`, upload-open of the saved
+package, `.wcad` model round-trip, and viewport usability in addition to the
+existing workflow checks.
 
 ## Current Capabilities
 
@@ -287,11 +293,12 @@ Current limitations:
   and `project.health`, not through persisted source data.
 - Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
   patterns, direct edits, general booleans, STEP import/export, OPFS-backed
-  storage, File System Access open/save flows, WebGPU, assemblies, hosted
-  collaboration, production MCP auth, and natural-language command entry remain
-  unimplemented unless scoped into V8. The web app may report File System
-  Access API availability, but it does not call picker APIs or request
-  file-handle permissions in D2.
+  storage, WebGPU, assemblies, hosted collaboration, production MCP auth, and
+  natural-language command entry remain unimplemented unless scoped into V8.
+  V8 Tranche C makes `.wcad` the app-level project workflow: File System Access
+  browsers can open/save/save-as through app-only handles, and other browsers
+  use upload/download fallback. File handles are not written into cad-core,
+  JSON, `.wcad`, agents, or MCP.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
   build findings are documented separately and should not block V7 modeling,
   topology, storage, or export planning.
@@ -787,8 +794,9 @@ G2 checklist without adding broad E2E infrastructure:
 - required checks verify app load, authored `newBody` modeling, model-tree/body
   selection, inspector/modeling `selection.referenceCandidates` status,
   generated-reference selection from the viewport reference surface,
-  named-reference routing, Project/File JSON workflow, storage capability
-  status, STEP deferred status, and Mesh/GLB status;
+  named-reference routing, Project/File `.wcad` workflow, Project/File JSON
+  workflow, storage capability status, STEP deferred status, and Mesh/GLB
+  status;
 - GLB download is reported as a pass when the built app exposes a ready derived
   visualization mesh and an enabled download button. Otherwise the default
   smoke records it as an explicit skipped check with the observed readiness

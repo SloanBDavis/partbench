@@ -2088,7 +2088,7 @@ describe("agent-adapter", () => {
         }),
         expect.objectContaining({
           capability: "fileSystemAccess",
-          status: "deferred"
+          status: "supported"
         })
       ])
     });

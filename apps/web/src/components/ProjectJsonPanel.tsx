@@ -13,6 +13,17 @@ import {
   type ProjectStorageCapabilityStatus
 } from "../projectStorageCapabilities";
 import {
+  createInitialProjectFileWorkflowState,
+  formatSourceIdentityDetail,
+  formatWcadValidationIssue,
+  getProjectFileDirectSaveLabel,
+  getProjectFileDirtyLabel,
+  getProjectFileNameLabel,
+  getProjectFileStorageModeLabel,
+  summarizeWcadDiagnostics,
+  type ProjectFileWorkflowState
+} from "../projectWcadWorkflow";
+import {
   createProjectExportReadinessDisplay,
   type ProjectExportReadinessRow,
   type ProjectVisualizationExportDisplayStatus
@@ -24,13 +35,18 @@ export interface ProjectJsonPanelProps {
   readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
   readonly visualizationDownloadAvailable?: boolean;
   readonly projectJson: string;
+  readonly projectFile?: ProjectFileWorkflowState;
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly workflow: ProjectJsonWorkflowState;
   readonly message?: string;
   readonly messageTone?: "info" | "error";
+  readonly onOpenWcad?: () => Promise<boolean>;
+  readonly onOpenWcadFileLoaded?: (bytes: Uint8Array, fileName: string) => void;
   readonly onProjectJsonChange: (projectJson: string) => void;
   readonly onProjectFileLoaded: (projectJson: string, fileName: string) => void;
   readonly onProjectFileError: (message: string) => void;
+  readonly onSaveWcad?: () => void;
+  readonly onSaveAsWcad?: () => void;
   readonly onExport: () => void;
   readonly onDownload: () => void;
   readonly onDownloadVisualization?: () => void;
@@ -43,21 +59,27 @@ export function ProjectJsonPanel({
   visualizationExport,
   visualizationDownloadAvailable = true,
   projectJson,
+  projectFile = createInitialProjectFileWorkflowState(),
   message,
   messageTone = "info",
   storageCapabilities,
   workflow,
+  onOpenWcad = async () => true,
+  onOpenWcadFileLoaded = () => undefined,
   onProjectJsonChange,
   onProjectFileLoaded,
   onProjectFileError,
+  onSaveWcad = () => undefined,
+  onSaveAsWcad = () => undefined,
   onDownload,
   onDownloadVisualization,
   onExport,
   onImport
 }: ProjectJsonPanelProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const jsonFileInputRef = useRef<HTMLInputElement | null>(null);
+  const wcadFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  async function loadProjectFile(file: File | undefined): Promise<void> {
+  async function loadProjectJsonFile(file: File | undefined): Promise<void> {
     if (!file) {
       return;
     }
@@ -69,12 +91,87 @@ export function ProjectJsonPanel({
     }
   }
 
+  async function loadProjectWcadFile(file: File | undefined): Promise<void> {
+    if (!file) {
+      return;
+    }
+
+    try {
+      onOpenWcadFileLoaded(new Uint8Array(await file.arrayBuffer()), file.name);
+    } catch {
+      onProjectFileError(`Could not read ${file.name}.`);
+    }
+  }
+
+  async function openWcad() {
+    if (storageCapabilities.fileSystemAccessAvailable) {
+      const handled = await onOpenWcad();
+
+      if (handled) {
+        return;
+      }
+    }
+
+    wcadFileInputRef.current?.click();
+  }
+
   return (
     <section className="project-panel" aria-label="Project">
       <div className="section-heading">
         <h2>Project</h2>
-        <span>JSON</span>
+        <span>.wcad</span>
       </div>
+      <ProjectFileStatus
+        projectFile={projectFile}
+        storageCapabilities={storageCapabilities}
+      />
+      <div className="button-row">
+        <button
+          type="button"
+          onClick={() => void openWcad()}
+          disabled={
+            disabled ||
+            (!storageCapabilities.fileSystemAccessAvailable &&
+              !storageCapabilities.wcadUploadAvailable)
+          }
+        >
+          Open .wcad
+        </button>
+        <button
+          type="button"
+          onClick={onSaveWcad}
+          disabled={
+            disabled ||
+            (projectFile.mode !== "wcadHandle" &&
+              !storageCapabilities.fileSystemAccessAvailable &&
+              !storageCapabilities.wcadDownloadAvailable)
+          }
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={onSaveAsWcad}
+          disabled={
+            disabled ||
+            (!storageCapabilities.fileSystemAccessAvailable &&
+              !storageCapabilities.wcadDownloadAvailable)
+          }
+        >
+          Save As
+        </button>
+      </div>
+      <input
+        ref={wcadFileInputRef}
+        className="hidden-file-input"
+        type="file"
+        accept="application/vnd.partbench.wcad,application/zip,.wcad"
+        disabled={disabled || !storageCapabilities.wcadUploadAvailable}
+        onChange={(event) => {
+          void loadProjectWcadFile(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
       <section className="project-workflow-section" aria-label="Current JSON">
         <div className="project-workflow-heading">
           <h3>Current source</h3>
@@ -98,50 +195,17 @@ export function ProjectJsonPanel({
           onDownloadVisualization={onDownloadVisualization}
         />
       )}
-      <div className="button-row">
-        <button type="button" onClick={onExport} disabled={disabled}>
-          Generate export
-        </button>
-        <button
-          type="button"
-          onClick={onDownload}
-          disabled={disabled || !storageCapabilities.jsonDownloadAvailable}
-        >
-          Download project
-        </button>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || !storageCapabilities.jsonUploadAvailable}
-        >
-          Load file
-        </button>
-        <button
-          type="button"
-          onClick={onImport}
-          disabled={disabled || workflow.draft.preview.status !== "valid"}
-        >
-          Import project
-        </button>
-      </div>
       <input
-        ref={fileInputRef}
+        ref={jsonFileInputRef}
         className="hidden-file-input"
         type="file"
         accept="application/json,.json"
         disabled={disabled || !storageCapabilities.jsonUploadAvailable}
         onChange={(event) => {
-          void loadProjectFile(event.currentTarget.files?.[0]);
+          void loadProjectJsonFile(event.currentTarget.files?.[0]);
           event.currentTarget.value = "";
         }}
       />
-      <p className="project-import-status">
-        {getProjectImportStatusText(
-          workflow.draft.preview,
-          workflow.draft.impact
-        )}
-      </p>
-      <ProjectDraftWorkflow draft={workflow.draft} />
       <details
         className="advanced-options project-json-editor"
         open={
@@ -149,7 +213,40 @@ export function ProjectJsonPanel({
           workflow.draft.source.kind === "edited"
         }
       >
-        <summary>JSON editor</summary>
+        <summary>JSON interchange</summary>
+        <div className="button-row compact">
+          <button type="button" onClick={onExport} disabled={disabled}>
+            Export JSON
+          </button>
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={disabled || !storageCapabilities.jsonDownloadAvailable}
+          >
+            Download JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => jsonFileInputRef.current?.click()}
+            disabled={disabled || !storageCapabilities.jsonUploadAvailable}
+          >
+            Load JSON
+          </button>
+          <button
+            type="button"
+            onClick={onImport}
+            disabled={disabled || workflow.draft.preview.status !== "valid"}
+          >
+            Import JSON
+          </button>
+        </div>
+        <p className="project-import-status">
+          {getProjectImportStatusText(
+            workflow.draft.preview,
+            workflow.draft.impact
+          )}
+        </p>
+        <ProjectDraftWorkflow draft={workflow.draft} />
         <textarea
           value={projectJson}
           onChange={(event) => onProjectJsonChange(event.currentTarget.value)}
@@ -165,6 +262,80 @@ export function ProjectJsonPanel({
         >
           {message}
         </p>
+      )}
+    </section>
+  );
+}
+
+function ProjectFileStatus({
+  projectFile,
+  storageCapabilities
+}: {
+  readonly projectFile: ProjectFileWorkflowState;
+  readonly storageCapabilities: ProjectStorageCapabilityStatus;
+}) {
+  const diagnosticsSummary = summarizeWcadDiagnostics(
+    projectFile.diagnostics,
+    "No package diagnostics."
+  );
+
+  return (
+    <section className="project-workflow-section" aria-label="Project file">
+      <div className="project-workflow-heading">
+        <h3>{getProjectFileNameLabel(projectFile)}</h3>
+        <span>{getProjectFileDirtyLabel(projectFile.dirty)}</span>
+      </div>
+      <dl className="project-workflow-grid">
+        <ProjectWorkflowRow
+          label="Storage"
+          value={getProjectFileStorageModeLabel(projectFile.mode)}
+          detail={
+            projectFile.lastResult?.message ??
+            "Open or Save As to create a .wcad project file."
+          }
+        />
+        <ProjectWorkflowRow
+          label="Direct save"
+          value={getProjectFileDirectSaveLabel(
+            projectFile,
+            storageCapabilities.fileSystemAccessAvailable
+          )}
+          detail={
+            storageCapabilities.fileSystemAccessAvailable
+              ? "Browser file handles are app-only permission state."
+              : "Open/save uses .wcad upload and download fallback."
+          }
+        />
+        <ProjectWorkflowRow
+          label="Package"
+          value={projectFile.packageVersion ?? "No package"}
+          detail={
+            projectFile.documentSchemaVersion
+              ? `Document ${projectFile.documentSchemaVersion}`
+              : "No .wcad package has been opened or saved yet."
+          }
+        />
+        <ProjectWorkflowRow
+          label="Source"
+          value={
+            projectFile.sourceIdentity
+              ? formatSourceIdentityDetail(projectFile.sourceIdentity)
+              : "No identity"
+          }
+          detail={diagnosticsSummary}
+        />
+      </dl>
+      {projectFile.diagnostics.length > 0 && (
+        <details className="advanced-options compact">
+          <summary>Package diagnostics</summary>
+          <ul className="compact-list">
+            {projectFile.diagnostics.map((issue, index) => (
+              <li key={`${issue.code}-${issue.entryPath ?? index}`}>
+                {formatWcadValidationIssue(issue)}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );
@@ -270,10 +441,11 @@ function ProjectStorageStatus({
     <section className="project-workflow-section" aria-label="Save/open status">
       <div className="project-workflow-heading">
         <h3>Save/open status</h3>
-        <span>{storageCapabilities.jsonImportExport.label}</span>
+        <span>{storageCapabilities.wcadPackage.label}</span>
       </div>
       <p className="project-workflow-detail">
-        Active storage mode is ordinary JSON import/export.
+        Active storage mode is .wcad package workflow; JSON remains
+        interchange/debug.
       </p>
       <dl className="project-capability-list">
         {storageCapabilities.entries.map((entry) => (

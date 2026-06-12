@@ -72,14 +72,15 @@ preview, and show current source truth, draft source, schema/version, migration
 status, object count, transaction count, redo count, replacement impact,
 same-document-source detection, and structured validation issues before import.
 The preview uses the same importability checks as load, including transaction
-replay, so malformed history is blocked before the user imports it. This remains
-ordinary JSON import/export and does not use OPFS or the File System Access API.
-In V7 Tranche D2, the Project panel also reports local storage capability status
-as app-layer derived state: JSON import/export is the active mode, browser
-download/upload primitives and File System Access picker presence are detected
-without invoking picker APIs, and OPFS, thumbnails, cache storage, and native
-`.wcad` packages are shown as deferred. That capability/status state is not
-written into project JSON and does not require a schema change.
+replay, so malformed history is blocked before the user imports it. JSON remains
+available as an explicit interchange/debug path.
+In V8 Tranche C, the Project panel makes `.wcad` the primary app-level project
+workflow. It reports local storage capability status, calls File System Access
+open/save/save-as picker APIs only from user gestures when available, and falls
+back to `.wcad` upload/download when direct handles are unavailable or denied.
+File handles remain app-only browser permission state and are not written into
+project JSON, `.wcad`, cad-core, agents, or MCP. OPFS, thumbnails, cache storage,
+and STEP export remain deferred.
 In V7 Tranche E1, `project.exportReadiness` reports STEP and Mesh/GLB
 visualization readiness from authoritative project structure before any file
 writer exists. It distinguishes empty projects, active authored bodies,
@@ -1454,9 +1455,10 @@ The current JSON format is the source-of-truth interchange format for the V4/V13
 foundation. It is not the final storage backend and does not imply OPFS or File
 System Access API behavior.
 
-JSON export/import remains the deliberate debuggable interchange path and
-`.wcad` remains a documented direction rather than a runtime storage feature.
-Reporting that a browser exposes File System Access or OPFS APIs does not make
-those APIs part of the saved project format. Until a scoped native storage
-tranche implements package/cache behavior, no file handles, OPFS directories,
-thumbnails, mesh caches, or native package artifacts are persisted.
+JSON export/import remains the deliberate debuggable interchange path. `.wcad`
+is now the runtime project-file workflow for current supported projects, using
+File System Access handles where available and upload/download fallback
+elsewhere. Reporting that a browser exposes File System Access or OPFS APIs does
+not make those APIs part of the saved project format. File handles, OPFS
+directories, thumbnails, mesh caches, and export artifacts are not persisted as
+authoritative source data.

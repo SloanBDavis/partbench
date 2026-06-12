@@ -3,18 +3,27 @@ import { describe, expect, it, vi } from "vitest";
 import { createProjectStorageCapabilityStatus } from "./projectStorageCapabilities";
 
 describe("project storage capability helpers", () => {
-  it("reports the JSON download/upload fallback as the active default mode", () => {
+  it("reports .wcad upload/download fallback as the active default mode", () => {
     const status = createProjectStorageCapabilityStatus(
       createJsonFallbackTarget()
     );
 
-    expect(status.activeMode).toBe("jsonImportExport");
+    expect(status.activeMode).toBe("wcadPackage");
     expect(status.jsonDownloadAvailable).toBe(true);
     expect(status.jsonUploadAvailable).toBe(true);
     expect(status.jsonFallbackAvailable).toBe(true);
+    expect(status.wcadDownloadAvailable).toBe(true);
+    expect(status.wcadUploadAvailable).toBe(true);
+    expect(status.wcadFallbackAvailable).toBe(true);
+    expect(status.wcadPackage).toMatchObject({
+      mode: "wcadPackage",
+      availability: "active",
+      available: true,
+      label: "Native .wcad package"
+    });
     expect(status.jsonImportExport).toMatchObject({
       mode: "jsonImportExport",
-      availability: "active",
+      availability: "available",
       available: true,
       label: "JSON import/export"
     });
@@ -35,7 +44,7 @@ describe("project storage capability helpers", () => {
       available: true
     });
     expect(status.fileSystemAccess.limitation).toContain(
-      "does not call picker APIs"
+      "app-only browser state"
     );
   });
 
@@ -73,18 +82,33 @@ describe("project storage capability helpers", () => {
     expect(status.opfs.limitation).toContain("No recovery store");
   });
 
-  it("keeps native .wcad packages deferred", () => {
-    const status = createProjectStorageCapabilityStatus(
-      createJsonFallbackTarget()
-    );
+  it("reports native .wcad packages as unavailable without direct or fallback file primitives", () => {
+    const status = createProjectStorageCapabilityStatus({});
 
+    expect(status.activeMode).toBe("jsonImportExport");
     expect(status.wcadPackage).toMatchObject({
       mode: "wcadPackage",
-      availability: "deferred",
+      availability: "unavailable",
       available: false,
       label: "Native .wcad package"
     });
-    expect(status.wcadPackage.detail).toContain("intentionally deferred");
+    expect(status.wcadPackage.detail).toContain("missing both direct file");
+  });
+
+  it("keeps native .wcad package active when direct file handles are available", () => {
+    const status = createProjectStorageCapabilityStatus({
+      showOpenFilePicker: () => undefined,
+      showSaveFilePicker: () => undefined
+    });
+
+    expect(status.activeMode).toBe("wcadPackage");
+    expect(status.wcadPackage).toMatchObject({
+      mode: "wcadPackage",
+      availability: "active",
+      available: true,
+      label: "Native .wcad package"
+    });
+    expect(status.wcadPackage.nextStep).toContain("direct .wcad");
   });
 
   it("does not invoke browser APIs while evaluating capabilities", () => {
@@ -148,7 +172,12 @@ describe("project storage capability helpers", () => {
       unknown
     >;
 
-    expect(status.entries).toHaveLength(4);
+    expect(status.entries.map((entry) => entry.mode)).toEqual([
+      "wcadPackage",
+      "fileSystemAccess",
+      "jsonImportExport",
+      "opfs"
+    ]);
     expect(exported).not.toHaveProperty("storageCapabilities");
     expect(exported).not.toHaveProperty("storageCapabilityStatus");
     expect(exported).not.toHaveProperty("activeStorageMode");

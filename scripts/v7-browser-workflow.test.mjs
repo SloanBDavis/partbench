@@ -77,6 +77,10 @@ describe("V7 browser workflow smoke summary", () => {
         "viewport-unobstructed-selection-layout",
         "attached-sketch-create",
         "consumed-body-diagnostic",
+        "project-wcad-save-as-download",
+        "project-wcad-open-upload",
+        "project-wcad-roundtrip-model",
+        "project-wcad-viewport-usable",
         "project-json-load-preview",
         "project-json-roundtrip-diagnostic"
       ])

@@ -124,7 +124,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("INVALID_JSON");
     expect(markup).toContain("Project JSON could not be parsed.");
     expect(markup).toMatch(
-      /<button type="button" disabled="">Import project<\/button>/
+      /<button type="button" disabled="">Import JSON<\/button>/
     );
   });
 
@@ -154,11 +154,11 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("No schema");
     expect(markup).toContain("No import preview");
     expect(markup).toMatch(
-      /<button type="button" disabled="">Import project<\/button>/
+      /<button type="button" disabled="">Import JSON<\/button>/
     );
   });
 
-  it("renders JSON fallback as active and native storage capabilities as deferred", () => {
+  it("renders .wcad workflow status with JSON as interchange fallback", () => {
     const engine = new CadEngine();
     const markup = renderToStaticMarkup(
       createElement(ProjectJsonPanel, {
@@ -188,18 +188,22 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
+    expect(markup).toContain("Open .wcad");
+    expect(markup).toContain("Save As");
+    expect(markup).toContain("Saved");
+    expect(markup).toContain("No project file has been saved yet");
     expect(markup).toContain("Save/open status");
-    expect(markup).toContain("Active storage mode is ordinary JSON");
+    expect(markup).toContain("Active storage mode is .wcad package workflow");
     expect(markup).toContain("JSON import/export");
-    expect(markup).toContain("Active");
+    expect(markup).toContain("Available");
     expect(markup).toContain("Direct browser file handles");
     expect(markup).toContain("Available");
-    expect(markup).toContain("does not call picker APIs");
+    expect(markup).toContain("app-only browser state");
     expect(markup).toContain("OPFS browser cache");
     expect(markup).toContain("Native .wcad package");
-    expect(markup).toContain("Deferred");
+    expect(markup).toContain("Active");
     expect(markup).toContain("No recovery store");
-    expect(markup).toContain("No manifest");
+    expect(markup).toContain("partbench.wcad.v1");
   });
 
   it("renders export readiness without internal display-state identifiers", () => {
@@ -360,14 +364,13 @@ describe("ProjectJsonPanel", () => {
     expect(exportReadinessMarkup).not.toMatch(
       /<button type="button" disabled="">Download visualization GLB<\/button>/
     );
-    const jsonButtonRowStart = markup.indexOf(
-      '<div class="button-row">',
-      exportSectionEnd
+    const jsonInterchangeStart = markup.indexOf(
+      "<summary>JSON interchange</summary>"
     );
-    const jsonButtonRow = markup.slice(jsonButtonRowStart);
+    const jsonButtonRow = markup.slice(jsonInterchangeStart);
 
-    expect(jsonButtonRow).toContain("Generate export");
-    expect(jsonButtonRow).toContain("Download project");
+    expect(jsonButtonRow).toContain("Export JSON");
+    expect(jsonButtonRow).toContain("Download JSON");
     expect(jsonButtonRow).not.toContain("Download visualization GLB");
   });
 
@@ -423,7 +426,7 @@ describe("ProjectJsonPanel", () => {
     );
   });
 
-  it("disables file-specific controls when JSON fallback primitives are unavailable", () => {
+  it("disables file-specific controls when .wcad and JSON fallback primitives are unavailable", () => {
     const engine = new CadEngine();
     const markup = renderToStaticMarkup(
       createElement(ProjectJsonPanel, {
@@ -444,12 +447,19 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    expect(markup).toMatch(/<button type="button">Generate export<\/button>/);
     expect(markup).toMatch(
-      /<button type="button" disabled="">Download project<\/button>/
+      /<button type="button" disabled="">Open \.wcad<\/button>/
+    );
+    expect(markup).toMatch(/<button type="button" disabled="">Save<\/button>/);
+    expect(markup).toMatch(
+      /<button type="button" disabled="">Save As<\/button>/
+    );
+    expect(markup).toMatch(/<button type="button">Export JSON<\/button>/);
+    expect(markup).toMatch(
+      /<button type="button" disabled="">Download JSON<\/button>/
     );
     expect(markup).toMatch(
-      /<button type="button" disabled="">Load file<\/button>/
+      /<button type="button" disabled="">Load JSON<\/button>/
     );
   });
 });

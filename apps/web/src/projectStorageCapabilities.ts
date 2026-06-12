@@ -25,6 +25,9 @@ export interface ProjectStorageCapabilityStatus {
   readonly jsonDownloadAvailable: boolean;
   readonly jsonUploadAvailable: boolean;
   readonly jsonFallbackAvailable: boolean;
+  readonly wcadDownloadAvailable: boolean;
+  readonly wcadUploadAvailable: boolean;
+  readonly wcadFallbackAvailable: boolean;
   readonly fileSystemAccessAvailable: boolean;
   readonly opfsApiDetected: boolean;
   readonly entries: readonly ProjectStorageCapabilityEntry[];
@@ -63,6 +66,9 @@ export function createProjectStorageCapabilityStatus(
     typeof target.document?.createElement === "function";
   const jsonUploadAvailable = hasFileText(target.File);
   const jsonFallbackAvailable = jsonDownloadAvailable && jsonUploadAvailable;
+  const wcadDownloadAvailable = jsonDownloadAvailable;
+  const wcadUploadAvailable = jsonUploadAvailable;
+  const wcadFallbackAvailable = wcadDownloadAvailable && wcadUploadAvailable;
   const fileSystemAccessAvailable =
     typeof target.showOpenFilePicker === "function" &&
     typeof target.showSaveFilePicker === "function";
@@ -71,17 +77,17 @@ export function createProjectStorageCapabilityStatus(
 
   const jsonImportExport: ProjectStorageCapabilityEntry = {
     mode: "jsonImportExport",
-    availability: jsonFallbackAvailable ? "active" : "unavailable",
+    availability: jsonFallbackAvailable ? "available" : "unavailable",
     available: jsonFallbackAvailable,
     label: "JSON import/export",
     detail: jsonFallbackAvailable
-      ? "Active mode: browser download and file-input load for web-cad.project.v16 JSON."
-      : "Active mode is JSON import/export, but this runtime is missing download or upload primitives.",
+      ? "Browser download and file-input load are available for web-cad.project.v16 JSON."
+      : "JSON import/export is missing download or upload primitives in this runtime.",
     limitation: jsonFallbackAvailable
-      ? "This is an interchange workflow, not direct file-handle save/open."
+      ? "JSON remains an interchange/debug workflow, not the primary project-file workflow."
       : "Download and load controls should remain disabled until browser file primitives are available.",
     nextStep: jsonFallbackAvailable
-      ? "Use Generate export, Download project, Load file, and Import project."
+      ? "Use explicit Export JSON and Import JSON controls when text interchange is needed."
       : "Use a browser with Blob URL download and File.text upload support."
   };
 
@@ -91,12 +97,14 @@ export function createProjectStorageCapabilityStatus(
     available: fileSystemAccessAvailable,
     label: "Direct browser file handles",
     detail: fileSystemAccessAvailable
-      ? "showOpenFilePicker and showSaveFilePicker are present."
+      ? "showOpenFilePicker and showSaveFilePicker are present for direct .wcad open/save/save-as."
       : "This browser/runtime does not expose both direct file picker APIs.",
-    limitation:
-      "D2 only reports this capability; it does not call picker APIs or request permissions.",
-    nextStep:
-      "A later storage tranche can wire direct open/save/save-as after the permission flow is scoped."
+    limitation: fileSystemAccessAvailable
+      ? "File handles stay in app-only browser state and are never written into project source."
+      : "The app will fall back to .wcad upload/download without retaining a file handle.",
+    nextStep: fileSystemAccessAvailable
+      ? "Use Open .wcad, Save, and Save As from the Project/File panel."
+      : "Use Open .wcad upload and Save As .wcad download fallback."
   };
 
   const opfs: ProjectStorageCapabilityEntry = {
@@ -115,25 +123,36 @@ export function createProjectStorageCapabilityStatus(
 
   const wcadPackage: ProjectStorageCapabilityEntry = {
     mode: "wcadPackage",
-    availability: "deferred",
-    available: false,
+    availability:
+      fileSystemAccessAvailable || wcadFallbackAvailable
+        ? "active"
+        : "unavailable",
+    available: fileSystemAccessAvailable || wcadFallbackAvailable,
     label: "Native .wcad package",
     detail:
-      "Native package read/write is intentionally deferred in this tranche.",
+      fileSystemAccessAvailable || wcadFallbackAvailable
+        ? "Partbench can write and read partbench.wcad.v1 packages for supported projects."
+        : "This runtime is missing both direct file handles and upload/download fallback primitives.",
     limitation:
-      "No manifest, document.cbor, commands.cbor, thumbnails, or cache artifacts are created.",
-    nextStep:
-      "Introduce package storage only with format tests, migrations, and source/cache separation checks."
+      "OPFS cache, thumbnails, mesh caches, STEP export, and file-handle persistence remain out of scope.",
+    nextStep: fileSystemAccessAvailable
+      ? "Use direct .wcad file handles for open/save/save-as."
+      : wcadFallbackAvailable
+        ? "Use upload for Open .wcad and download for Save As .wcad."
+        : "Use a browser with File System Access or Blob/File fallback support."
   };
 
   return {
-    activeMode: "jsonImportExport",
+    activeMode: wcadPackage.available ? "wcadPackage" : "jsonImportExport",
     jsonDownloadAvailable,
     jsonUploadAvailable,
     jsonFallbackAvailable,
+    wcadDownloadAvailable,
+    wcadUploadAvailable,
+    wcadFallbackAvailable,
     fileSystemAccessAvailable,
     opfsApiDetected,
-    entries: [jsonImportExport, fileSystemAccess, opfs, wcadPackage],
+    entries: [wcadPackage, fileSystemAccess, jsonImportExport, opfs],
     jsonImportExport,
     fileSystemAccess,
     opfs,

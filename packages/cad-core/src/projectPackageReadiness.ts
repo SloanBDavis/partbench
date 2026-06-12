@@ -133,11 +133,11 @@ export function createProjectPackageReadiness({
       "WCAD_PACKAGE_READ_WRITE_READY",
       "ZIP-compatible .wcad read/write helpers are available for the current project source."
     ),
-    createDeferredCapability(
+    createSupportedCapability(
       "fileSystemAccess",
       "File System Access open/save",
-      "WCAD_FILE_SYSTEM_ACCESS_DEFERRED",
-      "File System Access picker calls are deferred to V8 Tranche C."
+      "WCAD_FILE_SYSTEM_ACCESS_READY",
+      "The web app can route .wcad open/save/save-as through File System Access when the browser provides picker APIs, with upload/download fallback otherwise."
     ),
     createDeferredCapability(
       "opfsCache",

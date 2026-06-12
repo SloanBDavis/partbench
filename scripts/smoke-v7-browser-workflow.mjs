@@ -14,7 +14,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
+/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
@@ -267,6 +267,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     featureId: "v7_smoke_feature",
     namedReference: "v7_smoke_top_face",
     projectFileName: "v7-browser-workflow-roundtrip.json",
+    wcadFileName: "v8-browser-workflow-roundtrip.wcad",
     sketchId: "v7_smoke_sketch"
   };
   const checks = [];
@@ -712,6 +713,8 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   );
   const projectChecks = [
     assertIncludes(projectPanel, "web-cad.project.v16", "current-json-schema"),
+    assertIncludes(projectPanel, "Open .wcad", "wcad-open-action"),
+    assertIncludes(projectPanel, "Save As", "wcad-save-as-action"),
     assertIncludes(projectPanel, "Save/open status", "storage-status"),
     assertIncludes(projectPanel, "JSON import/export", "json-storage-mode"),
     assertIncludes(
@@ -736,11 +739,74 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   if (projectChecks.every(Boolean)) {
     pass(
       "project-file-panel",
-      "Project/File panel reports JSON, storage capability, and export readiness"
+      "Project/File panel reports .wcad workflow, JSON interchange, storage capability, and export readiness"
     );
   }
 
-  clickButton(projectPanel, "Generate export");
+  const downloadCapture = createDownloadCapture();
+  downloadCapture.install();
+  clickButton(projectPanel, "Save As");
+  await waitFor(() => {
+    if (downloadCapture.blobs.length === 0) {
+      throw new Error("No .wcad blob download was captured.");
+    }
+
+    if (!includesText(projectPanel, "Downloaded .wcad package")) {
+      throw new Error(compactText(projectPanel.textContent, 520));
+    }
+
+    return true;
+  }, "downloaded .wcad package through fallback Save As");
+  const wcadBytes = await downloadCapture.readFirstBytes();
+  downloadCapture.restore();
+  pass(
+    "project-wcad-save-as-download",
+    "Save As .wcad produced a package through fallback download",
+    `${wcadBytes.byteLength} bytes`
+  );
+
+  loadProjectWcadFileIntoInput(projectPanel, wcadBytes, ids.wcadFileName);
+  await waitFor(
+    () =>
+      includesText(projectPanel, `Opened ${ids.wcadFileName}`) &&
+      includesText(projectPanel, "Uploaded .wcad") &&
+      includesText(projectPanel, "partbench.wcad.v1"),
+    "opened uploaded .wcad package"
+  );
+  pass(
+    "project-wcad-open-upload",
+    "opened the saved .wcad package through upload fallback",
+    ids.wcadFileName
+  );
+
+  await waitForRoundTripModelStructure();
+  pass(
+    "project-wcad-roundtrip-model",
+    ".wcad round-trip preserves feature tree, attached sketch, and named reference",
+    compactText(getElementByAriaLabel("Model structure").textContent)
+  );
+
+  const wcadViewport = getElementByAriaLabel("3D viewport");
+  const wcadViewportRect = wcadViewport.getBoundingClientRect();
+  if (wcadViewportRect.width > 120 && wcadViewportRect.height > 120) {
+    pass(
+      "project-wcad-viewport-usable",
+      ".wcad round-trip leaves viewport visible and usable",
+      `viewport=${Math.round(wcadViewportRect.width)}x${Math.round(
+        wcadViewportRect.height
+      )}`
+    );
+  } else {
+    fail(
+      "project-wcad-viewport-usable",
+      ".wcad round-trip leaves viewport visible and usable",
+      `viewport=${Math.round(wcadViewportRect.width)}x${Math.round(
+        wcadViewportRect.height
+      )}`
+    );
+  }
+
+  clickButton(projectPanel, "Export JSON");
   await waitFor(() => {
     const projectText = compactText(projectPanel.textContent, 520);
     const projectJson = getProjectJsonEditorValue(projectPanel);
@@ -767,7 +833,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   );
 
   const exportedProjectJson = getProjectJsonEditorValue(projectPanel);
-  loadProjectFileIntoInput(
+  loadProjectJsonFileIntoInput(
     projectPanel,
     exportedProjectJson,
     ids.projectFileName
@@ -786,7 +852,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     ids.projectFileName
   );
 
-  clickButton(projectPanel, "Import project");
+  clickButton(projectPanel, "Import JSON");
   await waitFor(
     () =>
       includesText(projectPanel, "Imported web-cad.project.v16") &&
@@ -1082,7 +1148,7 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
   function getProjectJsonEditorValue(projectPanel) {
     const editor = getDetailsBySummary(
       projectPanel,
-      "JSON editor"
+      "JSON interchange"
     ).querySelector("textarea");
 
     if (!(editor instanceof HTMLTextAreaElement)) {
@@ -1092,11 +1158,13 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     return editor.value;
   }
 
-  function loadProjectFileIntoInput(projectPanel, projectJson, fileName) {
-    const input = projectPanel.querySelector('input[type="file"]');
+  function loadProjectJsonFileIntoInput(projectPanel, projectJson, fileName) {
+    const input = projectPanel.querySelector(
+      'input[type="file"][accept="application/json,.json"]'
+    );
 
     if (!(input instanceof HTMLInputElement)) {
-      throw new Error("Project file input was not found.");
+      throw new Error("Project JSON file input was not found.");
     }
 
     const dataTransfer = new DataTransfer();
@@ -1108,6 +1176,60 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       value: dataTransfer.files
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function loadProjectWcadFileIntoInput(projectPanel, bytes, fileName) {
+    const input = projectPanel.querySelector(
+      'input[type="file"][accept*=".wcad"]'
+    );
+
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Project .wcad file input was not found.");
+    }
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(
+      new File([bytes], fileName, {
+        type: "application/vnd.partbench.wcad"
+      })
+    );
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: dataTransfer.files
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function createDownloadCapture() {
+    const blobs = [];
+    const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
+    const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
+
+    return {
+      blobs,
+      install() {
+        URL.createObjectURL = (value) => {
+          if (value instanceof Blob) {
+            blobs.push(value);
+          }
+
+          return originalCreateObjectUrl(value);
+        };
+      },
+      restore() {
+        URL.createObjectURL = originalCreateObjectUrl;
+        URL.revokeObjectURL = originalRevokeObjectUrl;
+      },
+      async readFirstBytes() {
+        const blob = blobs[0];
+
+        if (!(blob instanceof Blob)) {
+          throw new Error("No captured download blob is available.");
+        }
+
+        return new Uint8Array(await blob.arrayBuffer());
+      }
+    };
   }
 
   async function waitForSectionByAriaLabel(label, waitLabel) {

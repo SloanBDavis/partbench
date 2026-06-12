@@ -20388,8 +20388,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "fileSystemAccess",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "opfsCache",
@@ -20409,6 +20409,10 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           code: "WCAD_PACKAGE_READ_WRITE_READY",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          code: "WCAD_FILE_SYSTEM_ACCESS_READY",
           status: "supported"
         }),
         expect.objectContaining({

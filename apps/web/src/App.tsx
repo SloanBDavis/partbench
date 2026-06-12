@@ -3,6 +3,8 @@ import {
   CadEngine,
   exportCadProject,
   exportCadProjectJson,
+  exportCadProjectWcad,
+  readCadProjectWcad,
   type CadBodySnapshot,
   type CadBodyTopologySnapshot,
   type CadDocument,
@@ -166,6 +168,26 @@ import {
   type ProjectJsonDraftSource
 } from "./projectJson";
 import { createProjectStorageCapabilityStatus } from "./projectStorageCapabilities";
+import {
+  createInitialProjectFileWorkflowState,
+  createJsonFallbackProjectFileState,
+  createProjectFileCancelledState,
+  createProjectFileFailureState,
+  createProjectFileStateFromExport,
+  createProjectFileStateFromRead,
+  DEFAULT_WCAD_PROJECT_FILE_NAME,
+  ensureWcadFileExtension,
+  isFilePickerAbort,
+  pickWcadOpenFile,
+  pickWcadSaveFile,
+  readBytesFromWcadFile,
+  WCAD_MIME_TYPE,
+  writeBytesToWcadHandle,
+  markProjectFileDirty,
+  type ProjectFileWorkflowState,
+  type WcadFileHandleLike,
+  type WcadFilePickerTargetLike
+} from "./projectWcadWorkflow";
 import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
@@ -871,6 +893,12 @@ export function App() {
   const [projectJson, setProjectJson] = useState("");
   const [projectJsonDraftSource, setProjectJsonDraftSource] =
     useState<ProjectJsonDraftSource>({ kind: "empty" });
+  const [projectFile, setProjectFile] = useState<ProjectFileWorkflowState>(() =>
+    createInitialProjectFileWorkflowState()
+  );
+  const [projectFileHandle, setProjectFileHandle] = useState<
+    WcadFileHandleLike | undefined
+  >();
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
   const [projectMessageTone, setProjectMessageTone] = useState<
     "info" | "error"
@@ -1284,6 +1312,7 @@ export function App() {
       }
 
       syncDocument(getNextSelectedId(response));
+      setProjectFile((current) => markProjectFileDirty(current));
       return response;
     } finally {
       setCommandPending(false);
@@ -1796,6 +1825,7 @@ export function App() {
     const result = engine.undo();
     syncDocument();
     if (result) {
+      setProjectFile((current) => markProjectFileDirty(current));
       setCommandNotice("Undo applied.");
     }
   }
@@ -1804,6 +1834,7 @@ export function App() {
     const result = engine.redo();
     syncDocument(result?.transaction.diff.created[0]?.id ?? selectedId);
     if (result) {
+      setProjectFile((current) => markProjectFileDirty(current));
       setCommandNotice("Redo applied.");
     }
   }
@@ -1897,6 +1928,266 @@ export function App() {
     setProjectMessageTone("info");
   }
 
+  async function openProjectWcad(): Promise<boolean> {
+    try {
+      const handle = await pickWcadOpenFile(
+        window as unknown as WcadFilePickerTargetLike
+      );
+      const file = await handle.getFile();
+      await importProjectWcadBytes(
+        await readBytesFromWcadFile(file),
+        file.name ?? handle.name ?? DEFAULT_WCAD_PROJECT_FILE_NAME,
+        "wcadHandle",
+        handle
+      );
+
+      return true;
+    } catch (error) {
+      if (isFilePickerAbort(error)) {
+        setProjectFile((current) =>
+          createProjectFileCancelledState(current, "open")
+        );
+        setProjectMessage("Open .wcad was cancelled.");
+        setProjectMessageTone("info");
+        return true;
+      }
+
+      if (projectStorageCapabilities.wcadUploadAvailable) {
+        setProjectFile((current) =>
+          createProjectFileFailureState(current, {
+            operation: "open",
+            message: "Direct open failed; use upload fallback.",
+            detail: error instanceof Error ? error.message : "Open failed."
+          })
+        );
+        setProjectMessage("Direct open failed; choose a .wcad file to upload.");
+        setProjectMessageTone("error");
+        return false;
+      }
+
+      setProjectFile((current) =>
+        createProjectFileFailureState(current, {
+          operation: "open",
+          message: "Could not open .wcad package.",
+          detail: error instanceof Error ? error.message : "Open failed."
+        })
+      );
+      setProjectMessage(
+        error instanceof Error ? error.message : "Could not open .wcad package."
+      );
+      setProjectMessageTone("error");
+      return true;
+    }
+  }
+
+  async function importProjectWcadBytes(
+    bytes: Uint8Array,
+    fileName: string,
+    mode: "wcadHandle" | "uploadedFallback",
+    handle?: WcadFileHandleLike
+  ) {
+    const result = await readCadProjectWcad(bytes);
+
+    setProjectFile((current) =>
+      createProjectFileStateFromRead(result, {
+        current,
+        mode,
+        fileName
+      })
+    );
+
+    if (!result.ok) {
+      setProjectMessage("Could not open .wcad package.");
+      setProjectMessageTone("error");
+      return;
+    }
+
+    engine.loadProject(result.project);
+    setProjectFileHandle(handle);
+    setCommandError(undefined);
+    setSelectedGeneratedReference(undefined);
+    setProjectJson("");
+    setProjectJsonDraftSource({ kind: "empty" });
+    setProjectMessage(`Opened ${fileName}.`);
+    setProjectMessageTone("info");
+    syncDocument(undefined);
+  }
+
+  async function saveProjectWcad() {
+    if (projectFileHandle && projectFile.mode === "wcadHandle") {
+      await saveProjectWcadToHandle(projectFileHandle, "save");
+      return;
+    }
+
+    await saveProjectWcadAs();
+  }
+
+  async function saveProjectWcadAs() {
+    try {
+      const exported = await exportCadProjectWcad(engine, {
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString()
+      });
+
+      if (projectStorageCapabilities.fileSystemAccessAvailable) {
+        try {
+          const handle = await pickWcadSaveFile(
+            window as unknown as WcadFilePickerTargetLike,
+            ensureWcadFileExtension(projectFile.fileName ?? "")
+          );
+          await writeBytesToWcadHandle(handle, exported.bytes);
+          setProjectFileHandle(handle);
+          setProjectFile(
+            createProjectFileStateFromExport(exported, {
+              mode: "wcadHandle",
+              fileName: handle.name ?? DEFAULT_WCAD_PROJECT_FILE_NAME,
+              operation: "saveAs"
+            })
+          );
+          setProjectMessage(`Saved ${handle.name ?? "project.wcad"}.`);
+          setProjectMessageTone("info");
+          return;
+        } catch (error) {
+          if (isFilePickerAbort(error)) {
+            setProjectFile((current) =>
+              createProjectFileCancelledState(current, "saveAs")
+            );
+            setProjectMessage("Save As .wcad was cancelled.");
+            setProjectMessageTone("info");
+            return;
+          }
+
+          if (!projectStorageCapabilities.wcadDownloadAvailable) {
+            throw error;
+          }
+
+          downloadWcadPackage(exported.bytes, DEFAULT_WCAD_PROJECT_FILE_NAME);
+          setProjectFileHandle(undefined);
+          setProjectFile(
+            createProjectFileStateFromExport(exported, {
+              mode: "downloadedFallback",
+              fileName: DEFAULT_WCAD_PROJECT_FILE_NAME,
+              operation: "saveAs"
+            })
+          );
+          setProjectMessage(
+            "Direct Save As failed; downloaded .wcad fallback."
+          );
+          setProjectMessageTone("error");
+          return;
+        }
+      }
+
+      if (!projectStorageCapabilities.wcadDownloadAvailable) {
+        setProjectFile((current) =>
+          createProjectFileFailureState(current, {
+            operation: "saveAs",
+            message: "Could not save .wcad package.",
+            detail:
+              "This browser runtime is missing direct save and download fallback."
+          })
+        );
+        setProjectMessage("WCAD download is unavailable in this browser.");
+        setProjectMessageTone("error");
+        return;
+      }
+
+      downloadWcadPackage(exported.bytes, DEFAULT_WCAD_PROJECT_FILE_NAME);
+      setProjectFileHandle(undefined);
+      setProjectFile(
+        createProjectFileStateFromExport(exported, {
+          mode: "downloadedFallback",
+          fileName: DEFAULT_WCAD_PROJECT_FILE_NAME,
+          operation: "saveAs"
+        })
+      );
+      setProjectMessage("Downloaded .wcad package.");
+      setProjectMessageTone("info");
+    } catch (error) {
+      setProjectFile((current) =>
+        createProjectFileFailureState(current, {
+          operation: "saveAs",
+          message: "Could not save .wcad package.",
+          detail: error instanceof Error ? error.message : "Save failed."
+        })
+      );
+      setProjectMessage(
+        error instanceof Error ? error.message : "Could not save .wcad package."
+      );
+      setProjectMessageTone("error");
+    }
+  }
+
+  async function saveProjectWcadToHandle(
+    handle: WcadFileHandleLike,
+    operation: "save" | "saveAs"
+  ) {
+    try {
+      const exported = await exportCadProjectWcad(engine, {
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString()
+      });
+      await writeBytesToWcadHandle(handle, exported.bytes);
+      setProjectFile(
+        createProjectFileStateFromExport(exported, {
+          mode: "wcadHandle",
+          fileName: handle.name ?? projectFile.fileName,
+          operation
+        })
+      );
+      setProjectMessage(`Saved ${handle.name ?? "project.wcad"}.`);
+      setProjectMessageTone("info");
+    } catch (error) {
+      if (projectStorageCapabilities.wcadDownloadAvailable) {
+        try {
+          const exported = await exportCadProjectWcad(engine, {
+            createdAt: new Date().toISOString(),
+            modifiedAt: new Date().toISOString()
+          });
+          downloadWcadPackage(exported.bytes, DEFAULT_WCAD_PROJECT_FILE_NAME);
+          setProjectFileHandle(undefined);
+          setProjectFile(
+            createProjectFileStateFromExport(exported, {
+              mode: "downloadedFallback",
+              fileName: DEFAULT_WCAD_PROJECT_FILE_NAME,
+              operation
+            })
+          );
+          setProjectMessage("Direct save failed; downloaded .wcad fallback.");
+          setProjectMessageTone("error");
+          return;
+        } catch {
+          // Fall through to the original direct-save error below.
+        }
+      }
+
+      setProjectFile((current) =>
+        createProjectFileFailureState(current, {
+          operation,
+          message: "Could not save .wcad package.",
+          detail: error instanceof Error ? error.message : "Save failed."
+        })
+      );
+      setProjectMessage(
+        error instanceof Error ? error.message : "Could not save .wcad package."
+      );
+      setProjectMessageTone("error");
+    }
+  }
+
+  function downloadWcadPackage(bytes: Uint8Array, fileName: string) {
+    const packageBytes = new Uint8Array(bytes);
+    const blob = new Blob([packageBytes.buffer], { type: WCAD_MIME_TYPE });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = ensureWcadFileExtension(fileName);
+    window.document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function loadProjectFile(projectJson: string, fileName: string) {
     setProjectJson(projectJson);
     setProjectJsonDraftSource({ kind: "loadedFile", fileName });
@@ -1918,6 +2209,14 @@ export function App() {
     }
 
     engine.loadProject(preview.project);
+    setProjectFileHandle(undefined);
+    setProjectFile(
+      createJsonFallbackProjectFileState(
+        "fileName" in projectJsonDraftSource
+          ? projectJsonDraftSource.fileName
+          : undefined
+      )
+    );
     setCommandError(undefined);
     setSelectedGeneratedReference(undefined);
     setProjectMessage(`Imported ${formatProjectJsonSummary(preview.summary)}.`);
@@ -2360,10 +2659,19 @@ export function App() {
                     }
                     visualizationExport={visualizationMeshExportStatus}
                     projectJson={projectJson}
+                    projectFile={projectFile}
                     storageCapabilities={projectStorageCapabilities}
                     workflow={projectJsonWorkflow}
                     message={projectMessage}
                     messageTone={projectMessageTone}
+                    onOpenWcad={openProjectWcad}
+                    onOpenWcadFileLoaded={(bytes, fileName) =>
+                      void importProjectWcadBytes(
+                        bytes,
+                        fileName,
+                        "uploadedFallback"
+                      )
+                    }
                     onProjectJsonChange={(value) => {
                       setProjectJson(value);
                       setProjectJsonDraftSource(
@@ -2376,6 +2684,8 @@ export function App() {
                       setProjectMessage(message);
                       setProjectMessageTone("error");
                     }}
+                    onSaveWcad={() => void saveProjectWcad()}
+                    onSaveAsWcad={() => void saveProjectWcadAs()}
                     onExport={exportProjectJson}
                     onDownload={downloadProjectJson}
                     onDownloadVisualization={downloadVisualizationMeshExport}
