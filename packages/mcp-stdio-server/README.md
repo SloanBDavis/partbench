@@ -11,6 +11,10 @@ Only these existing tools are exposed:
 - `cad.project_features`
 - `cad.project_structure`
 - `cad.project_health`
+- `cad.project_export_readiness`
+- `cad.project_export_exact`
+- `cad.project_package_readiness`
+- `cad.v8_project_surface`
 - `cad.project_sketches`
 - `cad.parameter_list`
 - `cad.parameter_get`
@@ -108,6 +112,11 @@ features/bodies, authored sketch-extrude features/bodies, and source mappings
 for the current model.
 `cad.project_health` returns read-only dependency health for authored extrudes,
 attached sketches, sketch dimensions, sketch constraints, and named references.
+`cad.project_export_readiness`, `cad.project_export_exact`,
+`cad.project_package_readiness`, and `cad.v8_project_surface` expose V8 package,
+cache, exact STEP export, unsupported body diagnostic, and file-writing boundary
+state through the same agent adapter surface. They do not write files or return
+artifact bytes.
 `cad.parameter_list` and `cad.parameter_get` return source-of-truth document
 parameters.
 `cad.project_sketches` and `cad.sketch_get` return source-of-truth sketch

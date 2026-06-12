@@ -244,7 +244,7 @@ describe("cad-protocol", () => {
       ok: true,
       query: "project.packageReadiness",
       cadOpsVersion: "cadops.v1",
-      status: "deferred",
+      status: "supported",
       packageVersion: WCAD_PACKAGE_VERSION,
       fileExtension: WCAD_PACKAGE_EXTENSION,
       sourceIdentityAlgorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,

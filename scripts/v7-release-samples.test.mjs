@@ -36,7 +36,7 @@ describe("V7 release sample smoke runner", () => {
             queryCount: 4
           },
           exportFormats: [
-            { available: false, format: "step", status: "deferred" },
+            { available: true, format: "step", status: "supported" },
             { available: false, format: "glb", status: "deferred" }
           ]
         })
@@ -48,8 +48,8 @@ describe("V7 release sample smoke runner", () => {
       [
         "V7 release sample smoke passed",
         "samples: 6 passed, 0 failed, 6 total",
-        "- pass v7-rectangle-extrude-reference | V7 rectangle extrude reference sample | health under-defined/1 | 4 selections, 4 candidates, 4 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
-        "- pass v7-circle-extrude-export | V7 circle extrude export-readiness sample | health under-defined/1 | 5 selections, 5 candidates, 4 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
+        "- pass v7-rectangle-extrude-reference | V7 rectangle extrude reference sample | health under-defined/1 | 4 selections, 4 candidates, 4 commandable | exports step:supported:available, glb:deferred:unavailable",
+        "- pass v7-circle-extrude-export | V7 circle extrude export-readiness sample | health under-defined/1 | 5 selections, 5 candidates, 4 commandable | exports step:supported:available, glb:deferred:unavailable",
         "- pass v7-consumed-body-diagnostics | V7 consumed body diagnostics sample | health under-defined/1 | 4 selections, 3 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-revolve-source-diagnostics | V7 revolve source diagnostics sample | health under-defined/1 | 2 selections, 0 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",
         "- pass v7-hole-source-diagnostics | V7 hole source diagnostics sample | health under-defined/2 | 3 selections, 2 candidates, 0 commandable | exports step:deferred:unavailable, glb:deferred:unavailable",

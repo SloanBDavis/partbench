@@ -14,11 +14,13 @@ const cadCorePath = pathToFileURL(
 const args = new Set(process.argv.slice(2));
 
 if (args.has("--help")) {
-  console.log(`Usage: node scripts/smoke-v7-release-samples.mjs [--json]
+  console.log(`Usage: node scripts/smoke-v8-release-samples.mjs [--json]
 
-Legacy alias for the V8 release package/export smoke against cad-core release
-fixtures. The default output is a deterministic human-readable summary. Use
---json for the same structured result on stdout.`);
+Runs the V8 release package/export smoke against cad-core release fixtures.
+The smoke verifies JSON compatibility, WCAD package round-trips, corrupted
+package diagnostics, exact STEP success/unsupported coverage, and source versus
+derived/cache/file-handle separation. The default output is a deterministic
+human-readable summary. Use --json for the same structured result on stdout.`);
   process.exitCode = 0;
 } else {
   register(loaderPath, import.meta.url);

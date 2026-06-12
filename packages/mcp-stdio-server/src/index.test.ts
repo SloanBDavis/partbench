@@ -28,6 +28,7 @@ describe("mcp stdio server", () => {
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
+          { name: "cad.v8_project_surface" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },

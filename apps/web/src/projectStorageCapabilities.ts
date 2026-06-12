@@ -118,7 +118,7 @@ export function createProjectStorageCapabilityStatus(
     limitation:
       "No project source, recovery store, thumbnail, export artifact, or package source is stored in OPFS.",
     nextStep:
-      "Use Project/File cache status and Clear cache; future tranches can populate rebuildable artifacts."
+      "Use Project/File cache status and Clear cache; supported derived mesh artifacts are rebuildable and source-identity keyed."
   };
 
   const wcadPackage: ProjectStorageCapabilityEntry = {
@@ -134,7 +134,7 @@ export function createProjectStorageCapabilityStatus(
         ? "Partbench can write and read partbench.wcad.v1 packages for supported projects."
         : "This runtime is missing both direct file handles and upload/download fallback primitives.",
     limitation:
-      "Thumbnails, package-unpack cache, STEP writer output, and file-handle persistence remain out of scope.",
+      "Thumbnails, package-unpack cache, persisted STEP artifacts, and file-handle persistence remain out of scope.",
     nextStep: fileSystemAccessAvailable
       ? "Use direct .wcad file handles for open/save/save-as."
       : wcadFallbackAvailable

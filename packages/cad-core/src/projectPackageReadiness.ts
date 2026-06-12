@@ -139,17 +139,17 @@ export function createProjectPackageReadiness({
       "WCAD_FILE_SYSTEM_ACCESS_READY",
       "The web app can route .wcad open/save/save-as through File System Access when the browser provides picker APIs, with upload/download fallback otherwise."
     ),
-    createDeferredCapability(
+    createSupportedCapability(
       "opfsCache",
       "OPFS derived cache",
-      "WCAD_OPFS_CACHE_DEFERRED",
-      "App-layer OPFS cache status and clear are available, while derived artifact population remains deferred."
+      "WCAD_OPFS_CACHE_READY",
+      "App-layer OPFS cache status, clear, and source-identity-keyed derived visualization mesh artifact population are available as optional rebuildable cache."
     ),
-    createDeferredCapability(
+    createSupportedCapability(
       "stepExport",
       "STEP exact export",
-      "WCAD_STEP_EXPORT_CONTRACT_READY",
-      "STEP exact export contract/readiness is available; file writing remains deferred until a geometry-boundary writer exists."
+      "WCAD_STEP_EXPORT_READY",
+      "STEP exact export readiness and minimal geometry-boundary STEP writing are available for supported active rectangle/circle newBody extrude source bodies."
     )
   ];
   const diagnostics = capabilities.flatMap(
@@ -205,32 +205,6 @@ function createSupportedCapability(
       {
         code,
         status: "supported",
-        message
-      }
-    ]
-  };
-}
-
-function createDeferredCapability(
-  capability: Exclude<
-    ProjectPackageReadinessQueryResponse["capabilities"][number]["capability"],
-    "packageContract"
-  >,
-  label: string,
-  code: ProjectPackageReadinessQueryResponse["diagnostics"][number]["code"],
-  message: string
-): ProjectPackageReadinessQueryResponse["capabilities"][number] {
-  return {
-    capability,
-    label,
-    status: "deferred",
-    available: false,
-    sourceBoundaryNote: SOURCE_BOUNDARY_NOTE,
-    derivedBoundaryNote: DERIVED_BOUNDARY_NOTE,
-    diagnostics: [
-      {
-        code,
-        status: "deferred",
         message
       }
     ]

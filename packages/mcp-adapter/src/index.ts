@@ -3,9 +3,11 @@ import {
   createCadOpsAgentAdapter,
   parseCadOpsAgentQueryRequest,
   parseCadOpsAgentRequest,
+  parseCadOpsAgentV8ProjectSurfaceRequest,
   type AgentAdapterVersion,
   type CadOpsAgentQueryResponse,
-  type CadOpsAgentResponse
+  type CadOpsAgentResponse,
+  type CadOpsAgentV8ProjectSurfaceResponse
 } from "@web-cad/agent-adapter";
 import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
@@ -28,6 +30,7 @@ export type CadMcpToolName =
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
+  | "cad.v8_project_surface"
   | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.body_topology"
@@ -67,6 +70,7 @@ export interface McpTextContent {
 export type CadMcpStructuredContent =
   | CadOpsAgentQueryResponse
   | CadOpsAgentResponse
+  | CadOpsAgentV8ProjectSurfaceResponse
   | CadMcpToolErrorResponse;
 
 export interface CadMcpToolCallResult {
@@ -170,6 +174,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_package_readiness") {
       return this.#callProjectPackageReadiness(request);
+    }
+
+    if (request.name === "cad.v8_project_surface") {
+      return this.#callV8ProjectSurface(request);
     }
 
     if (request.name === "cad.project_sketches") {
@@ -510,6 +518,27 @@ export class CadMcpServer {
           version: "cadops.v1",
           query: { query: "project.packageReadiness" }
         }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callV8ProjectSurface(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    const args = request.arguments;
+
+    if (!isV8ProjectSurfaceToolArguments(args)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.v8_project_surface expects optional arguments shaped as { exactExport?: { format: 'step', bodyIds?: string[], sourceIdentity?: { algorithm: 'partbench-source-v1', sha256: string } } }. It does not accept local paths, browser file handles, OPFS paths, writeFile, or artifact return arguments."
+      );
+    }
+
+    const response = this.#adapter.inspectV8ProjectSurface(
+      parseCadOpsAgentV8ProjectSurfaceRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        ...(args?.exactExport ? { exactExport: args.exactExport } : {})
       })
     );
 
@@ -1070,7 +1099,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_export_exact",
     description:
-      "Attempts exact CAD export for supported source bodies. E1 returns structured STEP writer-unavailable diagnostics until the geometry writer exists.",
+      "Returns exact STEP export contract data for supported source bodies, including exportable source payloads and structured diagnostics. File bytes are produced by the app geometry boundary, not MCP.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1104,6 +1133,41 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       type: "object",
       additionalProperties: false,
       properties: {}
+    }
+  },
+  {
+    name: "cad.v8_project_surface",
+    description:
+      "Returns a compact V8 Agent/MCP surface summary for .wcad package readiness, OPFS cache contract status, exact STEP readiness/export availability, unsupported body diagnostics, and file-writing boundaries.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        exactExport: {
+          type: "object",
+          additionalProperties: false,
+          required: ["format"],
+          properties: {
+            format: { type: "string", enum: ["step"] },
+            bodyIds: {
+              type: "array",
+              items: { type: "string" }
+            },
+            sourceIdentity: {
+              type: "object",
+              additionalProperties: false,
+              required: ["algorithm", "sha256"],
+              properties: {
+                algorithm: {
+                  type: "string",
+                  enum: [WCAD_SOURCE_IDENTITY_ALGORITHM]
+                },
+                sha256: { type: "string" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   {
@@ -1554,6 +1618,27 @@ function isProjectExportExactToolArguments(value: unknown): value is {
         value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
     (value.sourceIdentity === undefined ||
       isWcadSourceIdentityToolArgument(value.sourceIdentity))
+  );
+}
+
+function isV8ProjectSurfaceToolArguments(value: unknown): value is
+  | {
+      readonly exactExport?: {
+        readonly format: "step";
+        readonly bodyIds?: readonly string[];
+        readonly sourceIdentity?: {
+          readonly algorithm: "partbench-source-v1";
+          readonly sha256: string;
+        };
+      };
+    }
+  | undefined {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      Object.keys(value).every((key) => key === "exactExport") &&
+      (value.exactExport === undefined ||
+        isProjectExportExactToolArguments(value.exactExport)))
   );
 }
 

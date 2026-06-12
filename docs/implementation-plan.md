@@ -1062,21 +1062,37 @@ Use these decisions when writing V8 implementation prompts:
 6. **STEP Export Contract And Exact Export Readiness** - completed as E1:
    protocol/core `project.exportExact` for STEP, exact-vs-visualization
    readiness, geometry-boundary writer capability probes, Project/File status,
-   and thin agent/MCP pass-through with structured unsupported and
-   writer-unavailable diagnostics. No STEP bytes are produced yet.
-7. **STEP Writer For Supported Exact Bodies** - add real STEP writer execution
-   through the geometry boundary for the E1-supported exact source subset, then
-   update `project.exportReadiness`, Project/File actions, agent/MCP export
-   results, and smokes for non-empty STEP artifacts.
-8. **Agent/MCP Package And Export Surface** - expose package readiness,
-   validation, source identity, export readiness, and safe export request
-   behavior through thin adapter/MCP pass-throughs.
-9. **Release Samples, Smokes, And Migration Hardening** - add package/export
-   fixtures, package round-trip smoke, fallback workflow coverage, and STEP
-   export smoke when the writer capability exists.
+   and thin agent/MCP pass-through with structured unsupported diagnostics.
+7. **STEP Writer For Supported Exact Bodies** - completed as E2: OCCT/WASM
+   writer capability is proven through the isolated geometry boundary,
+   geometry-kernel/worker can produce AP242 STEP bytes for supported active
+   rectangle/circle `newBody` extrude source bodies, Project/File exposes
+   `Download STEP`, and browser smoke verifies a non-empty STEP artifact.
+8. **Agent/MCP Package And Export Surface** - completed as F: compact
+   `inspectV8ProjectSurface` and `cad.v8_project_surface` wrappers expose
+   `.wcad`, OPFS cache, exact STEP readiness/export availability, unsupported
+   body diagnostics, and file-writing boundaries without returning artifact
+   bytes or browser/cache/renderer internals.
+9. **Release Samples, Smokes, And Migration Hardening** - completed as G:
+   `pnpm smoke:v8-release-samples` owns V8 package/export acceptance coverage
+   over the historical release fixture catalog, including `.wcad` round-trip,
+   JSON-to-WCAD compatibility, corruption diagnostics, STEP supported and
+   unsupported paths, and source/derived/file-handle separation checks.
 10. **Product Cleanup** - make native project workflow primary, demote raw JSON
    to debug/interchange, remove duplicate storage/export status surfaces, and
    verify normal use does not crowd the viewport.
+
+Review follow-ups before declaring V8 release-ready:
+
+- The public body topology source identity still exposes a field named
+  `cacheKey`; rename or hide that value before release so agent/MCP callers do
+  not treat topology/cache implementation details as stable CAD IDs.
+- `project.exportExact` records caller-provided source identity as
+  `providedUnchecked`; add stale-source validation before using that identity for
+  any future non-UI artifact transport.
+- Preserve a writer-unavailable exact STEP test seam even while the current
+  OCCT/WASM writer is available, so future dependency regressions stay
+  structured.
 
 ### V8 Scope Guardrails
 

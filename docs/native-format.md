@@ -1411,8 +1411,8 @@ package read/write helpers without changing project source format:
 - `project.packageReadiness` reports the target package version, current
   document schema, required package entries, supported package read/write
   helpers, supported File System Access app workflow, app-layer OPFS
-  status/clear foundation, and deferred status for OPFS artifact population and
-  STEP export.
+  status/clear plus derived mesh artifact population, and exact STEP export
+  readiness for the supported source subset.
 - `partbench-source-v1` source identity is computed from encoded document and
   command bytes plus schema/units metadata.
 - `.wcad` package helpers write ZIP-compatible package bytes containing
@@ -1425,8 +1425,13 @@ package read/write helpers without changing project source format:
 - Source identity excludes filenames, browser file handles, OPFS paths,
   viewport state, selection state, thumbnails, meshes, export artifacts, and
   cache-only data.
-- Agent/MCP wrappers expose the same read-only query through thin pass-throughs;
-  they do not gain arbitrary file access.
+- Agent/MCP wrappers expose package, cache, and exact STEP readiness through
+  thin pass-throughs, including the compact V8 project surface. They do not gain
+  arbitrary file access or return artifact bytes.
+- `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
+  JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
+  supported/unsupported paths, and source/derived/file-handle separation over
+  the historical release fixture catalog.
 - This query-only contract does not introduce `web-cad.project.v17`.
 
 ## Long-Term Native Package Direction

@@ -2152,7 +2152,7 @@ describe("agent-adapter", () => {
       adapterVersion: "web-cad.agent-adapter.v1",
       cadOpsVersion: "cadops.v1",
       query: "project.packageReadiness",
-      status: "deferred",
+      status: "supported",
       packageVersion: "partbench.wcad.v1",
       fileExtension: ".wcad",
       sourceIdentityAlgorithm: "partbench-source-v1",
@@ -2176,11 +2176,162 @@ describe("agent-adapter", () => {
         expect.objectContaining({
           capability: "fileSystemAccess",
           status: "supported"
+        }),
+        expect.objectContaining({
+          capability: "opfsCache",
+          status: "supported",
+          available: true
+        }),
+        expect.objectContaining({
+          capability: "stepExport",
+          status: "supported",
+          available: true
         })
       ])
     });
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("returns a compact V8 Agent/MCP package and export surface", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_surface_primitive",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "scene.createBox",
+            id: "surface_box",
+            dimensions: { width: 1, height: 1, depth: 1 }
+          }
+        ]
+      }
+    });
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_surface_export",
+      entityId: "rect_surface_export",
+      featureId: "feat_surface_export",
+      bodyId: "body_surface_export"
+    });
+
+    const response = adapter.inspectV8ProjectSurface({
+      requestId: "agent_v8_surface",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      exactExport: {
+        format: "step",
+        bodyIds: ["body_surface_export"]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_v8_surface",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      surface: "v8.agent_mcp_package_export",
+      project: {
+        units: "mm",
+        objectCount: 1,
+        bodyCount: 2,
+        authoredBodyFeatureCount: 1,
+        primitiveCompatibilityBodyCount: 1
+      },
+      package: {
+        packageVersion: "partbench.wcad.v1",
+        fileExtension: ".wcad",
+        documentSchemaVersion: "web-cad.project.v16",
+        sourceIdentityAlgorithm: "partbench-source-v1",
+        canRepresentCurrentSource: true,
+        capabilities: expect.arrayContaining([
+          expect.objectContaining({
+            capability: "packageReadWrite",
+            status: "supported"
+          }),
+          expect.objectContaining({
+            capability: "opfsCache"
+          })
+        ])
+      },
+      cache: {
+        cachePolicy: "optional-rebuildable",
+        opfsLocationsExposed: false,
+        clearMutatesSource: false,
+        sourceIdentityIncludesCache: false
+      },
+      exportReadiness: {
+        status: "supported",
+        canExportFiles: true,
+        bodyCount: 2,
+        sourceSupportedBodyCount: 1,
+        unsupportedBodyCount: 1,
+        unsupportedBodies: [
+          expect.objectContaining({
+            bodyId: "body:surface_box",
+            sourceKind: "primitiveCompatibility",
+            diagnostics: expect.arrayContaining([
+              expect.objectContaining({
+                code: "EXPORT_PRIMITIVE_SOURCE_UNAVAILABLE"
+              })
+            ])
+          })
+        ]
+      },
+      exactExport: {
+        format: "step",
+        status: "supported",
+        available: true,
+        canExportFile: true,
+        requestedBodyIds: ["body_surface_export"],
+        exportableBodyCount: 1,
+        exportSourceCount: 1,
+        diagnosticCount: expect.any(Number),
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "EXPORT_BODY_SOURCE_SUPPORTED",
+            bodyId: "body_surface_export"
+          })
+        ]),
+        artifactPolicy: {
+          artifactBytesReturned: false,
+          fileWritesPerformed: false,
+          localLocationsAccepted: false,
+          browserHandlesAccepted: false,
+          requiresExplicitArtifactCapability: true,
+          delivery: "caller-or-browser-ui"
+        }
+      },
+      fileWriting: {
+        defaultBehavior: "readiness-only",
+        adapterWritesUserVisibleFiles: false,
+        mcpWritesUserVisibleFiles: false,
+        artifactBytesReturned: false,
+        localLocationsAccepted: false,
+        browserHandlesAccepted: false,
+        opfsLocationsAccepted: false,
+        futureFileWritesRequireExplicitCapability: true
+      },
+      boundaries: {
+        browserHandlesExposed: false,
+        localLocationsExposed: false,
+        opfsLocationsExposed: false,
+        rendererInternalsExposed: false,
+        meshInternalsExposed: false,
+        occtInternalsExposed: false,
+        viewportStateExposed: false,
+        selectionBufferInternalsExposed: false,
+        packageBinaryReturned: false,
+        stepBytesReturned: false,
+        jsonImportExportPreserved: true
+      }
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|bytesBase64|localPath/i
     );
   });
 

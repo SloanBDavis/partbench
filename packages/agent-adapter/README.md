@@ -194,6 +194,31 @@ of the existing `cad-core` transaction model:
 }
 ```
 
+V8 package/export inspection can be consumed either through the raw read-only
+queries (`project.packageReadiness`, `project.exportReadiness`, and
+`project.exportExact`) or through the compact `inspectV8ProjectSurface` helper.
+That helper composes the same CADOps query/export contracts into a single
+Agent/MCP response covering `.wcad` package readiness, optional rebuildable cache
+status, exact STEP availability, unsupported body diagnostics, and file-writing
+boundaries:
+
+```json
+{
+  "requestId": "agent_v8_surface_001",
+  "adapterVersion": "web-cad.agent-adapter.v1",
+  "exactExport": {
+    "format": "step",
+    "bodyIds": ["body_1"]
+  }
+}
+```
+
+The V8 surface does not return artifact bytes, package bytes, browser handles,
+local filesystem locations, OPFS locations, renderer internals, mesh internals,
+OCCT internals, viewport state, or selection-buffer internals. User-visible file
+writes stay in browser UI or a future explicitly-permissioned artifact
+transport.
+
 The adapter delegates batches directly to `CadEngine.executeBatch()` and queries
 directly to `CadEngine.executeQuery()`. CADOps remains the internal API; MCP,
 SDKs, scripts, and future agent tools should wrap this adapter rather than define
@@ -281,6 +306,9 @@ import { CadOpsAgentAdapter } from "@web-cad/agent-adapter";
 
 const adapter = new CadOpsAgentAdapter();
 const summaryJson = adapter.queryJson(JSON.stringify(summaryRequest));
+const v8SurfaceJson = adapter.inspectV8ProjectSurfaceJson(
+  JSON.stringify(v8SurfaceRequest)
+);
 const previewJson = adapter.executeJson(JSON.stringify(dryRunBatchRequest));
 const commitJson = adapter.executeJson(JSON.stringify(commitBatchRequest));
 ```

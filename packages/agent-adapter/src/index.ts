@@ -42,6 +42,7 @@ import type {
   CadParameterSnapshot,
   CadPartSnapshot,
   ProjectExactExportQueryResponse,
+  ProjectExportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
@@ -85,7 +86,8 @@ import type {
   ObjectId,
   ProjectExtentsWarning,
   Transform,
-  Vec3
+  Vec3,
+  WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 
 export type AgentAdapterVersion = "web-cad.agent-adapter.v1";
@@ -112,6 +114,18 @@ export interface CadOpsAgentQueryRequest {
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
   readonly query: CadQueryRequest;
+}
+
+export interface CadOpsAgentV8ProjectSurfaceRequest {
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly exactExport?: CadOpsAgentV8ExactExportRequest;
+}
+
+export interface CadOpsAgentV8ExactExportRequest {
+  readonly format: "step";
+  readonly bodyIds?: readonly string[];
+  readonly sourceIdentity?: WcadSourceIdentity;
 }
 
 export type CadOpsAgentResponse =
@@ -444,11 +458,12 @@ export interface CadOpsAgentProjectExportReadinessQueryResponse {
 
 export interface CadOpsAgentProjectExactExportQueryResponse extends Omit<
   ProjectExactExportQueryResponse,
-  "ok"
+  "ok" | "artifact"
 > {
   readonly ok: true;
   readonly requestId: string;
   readonly adapterVersion: AgentAdapterVersion;
+  readonly artifactPolicy: CadOpsAgentExportArtifactPolicy;
 }
 
 export interface CadOpsAgentProjectPackageReadinessQueryResponse extends Omit<
@@ -692,6 +707,167 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly error: CadQueryError;
 }
 
+export interface CadOpsAgentExportArtifactPolicy {
+  readonly artifactBytesReturned: false;
+  readonly fileWritesPerformed: false;
+  readonly localLocationsAccepted: false;
+  readonly browserHandlesAccepted: false;
+  readonly requiresExplicitArtifactCapability: true;
+  readonly delivery: "caller-or-browser-ui";
+  readonly message: string;
+}
+
+export interface CadOpsAgentV8ProjectSurfaceResponse {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly surface: "v8.agent_mcp_package_export";
+  readonly project: CadOpsAgentV8ProjectSurfaceProjectSummary;
+  readonly package: CadOpsAgentV8ProjectSurfacePackageSummary;
+  readonly cache: CadOpsAgentV8ProjectSurfaceCacheSummary;
+  readonly exportReadiness: CadOpsAgentV8ProjectSurfaceExportSummary;
+  readonly exactExport?: CadOpsAgentV8ProjectSurfaceExactExportSummary;
+  readonly fileWriting: CadOpsAgentV8ProjectSurfaceFileWritingBoundary;
+  readonly boundaries: CadOpsAgentV8ProjectSurfaceBoundarySummary;
+}
+
+export interface CadOpsAgentV8ProjectSurfaceProjectSummary {
+  readonly units: DocumentUnits;
+  readonly objectCount: number;
+  readonly bodyCount: number;
+  readonly authoredBodyFeatureCount: number;
+  readonly primitiveCompatibilityBodyCount: number;
+}
+
+export interface CadOpsAgentV8ProjectSurfacePackageSummary {
+  readonly status: ProjectPackageReadinessQueryResponse["status"];
+  readonly packageVersion: ProjectPackageReadinessQueryResponse["packageVersion"];
+  readonly fileExtension: ProjectPackageReadinessQueryResponse["fileExtension"];
+  readonly documentSchemaVersion: ProjectPackageReadinessQueryResponse["documentSchemaVersion"];
+  readonly sourceIdentityAlgorithm: ProjectPackageReadinessQueryResponse["sourceIdentityAlgorithm"];
+  readonly canRepresentCurrentSource: boolean;
+  readonly requiresProjectSchemaMigration: boolean;
+  readonly requiredEntryCount: number;
+  readonly requiredEntries: ProjectPackageReadinessQueryResponse["requiredEntries"];
+  readonly optionalCacheEntryCount: number;
+  readonly optionalCacheEntries: ProjectPackageReadinessQueryResponse["optionalCacheEntries"];
+  readonly capabilityCount: number;
+  readonly capabilities: readonly CadOpsAgentV8ProjectSurfaceCapabilitySummary[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: ProjectPackageReadinessQueryResponse["diagnostics"];
+}
+
+export interface CadOpsAgentV8ProjectSurfaceCapabilitySummary {
+  readonly capability: ProjectPackageReadinessQueryResponse["capabilities"][number]["capability"];
+  readonly label: string;
+  readonly status: ProjectPackageReadinessQueryResponse["capabilities"][number]["status"];
+  readonly available: boolean;
+  readonly diagnosticCount: number;
+  readonly diagnosticCodes: readonly string[];
+}
+
+export interface CadOpsAgentV8ProjectSurfaceCacheSummary {
+  readonly cachePolicy: "optional-rebuildable";
+  readonly opfsCapabilityStatus?: ProjectPackageReadinessQueryResponse["capabilities"][number]["status"];
+  readonly opfsCapabilityAvailable?: boolean;
+  readonly opfsLocationsExposed: false;
+  readonly clearMutatesSource: false;
+  readonly sourceIdentityIncludesCache: false;
+  readonly diagnosticCount: number;
+  readonly diagnostics: ProjectPackageReadinessQueryResponse["diagnostics"];
+}
+
+export interface CadOpsAgentV8ProjectSurfaceExportSummary {
+  readonly status: CadExportReadinessStatus;
+  readonly canExportFiles: boolean;
+  readonly units: DocumentUnits;
+  readonly formatCount: number;
+  readonly formats: readonly CadOpsAgentV8ProjectSurfaceFormatSummary[];
+  readonly bodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly unsupportedBodyCount: number;
+  readonly unsupportedBodies: readonly CadOpsAgentV8ProjectSurfaceUnsupportedBodySummary[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadOpsAgentV8ProjectSurfaceFormatSummary {
+  readonly format: CadExportFormatReadiness["format"];
+  readonly label: string;
+  readonly exportKind: CadExportFormatReadiness["exportKind"];
+  readonly status: CadExportReadinessStatus;
+  readonly available: boolean;
+  readonly writerStatus: CadExportFormatReadiness["writerStatus"];
+  readonly fileExtensions: readonly string[];
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly diagnosticCount: number;
+  readonly diagnosticCodes: readonly string[];
+}
+
+export interface CadOpsAgentV8ProjectSurfaceUnsupportedBodySummary {
+  readonly bodyId: string;
+  readonly bodyName?: string;
+  readonly bodyKind: CadExportBodyReadiness["bodyKind"];
+  readonly featureId: string;
+  readonly sourceKind: CadExportBodyReadiness["sourceKind"];
+  readonly status: CadExportReadinessStatus;
+  readonly consumedByFeatureId?: string;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadOpsAgentV8ProjectSurfaceExactExportSummary {
+  readonly format: "step";
+  readonly status: CadExportReadinessStatus;
+  readonly available: boolean;
+  readonly canExportFile: boolean;
+  readonly writerStatus: ProjectExactExportQueryResponse["writerStatus"];
+  readonly requestedBodyIds: readonly string[];
+  readonly bodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly exportableBodyCount: number;
+  readonly exportSourceCount: number;
+  readonly exportSources: ProjectExactExportQueryResponse["exportSources"];
+  readonly unsupportedBodyCount: number;
+  readonly unsupportedBodies: readonly CadOpsAgentV8ProjectSurfaceUnsupportedBodySummary[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
+  readonly artifactPolicy: CadOpsAgentExportArtifactPolicy;
+}
+
+export interface CadOpsAgentV8ProjectSurfaceFileWritingBoundary {
+  readonly defaultBehavior: "readiness-only";
+  readonly adapterWritesUserVisibleFiles: false;
+  readonly mcpWritesUserVisibleFiles: false;
+  readonly artifactBytesReturned: false;
+  readonly localLocationsAccepted: false;
+  readonly browserHandlesAccepted: false;
+  readonly opfsLocationsAccepted: false;
+  readonly futureFileWritesRequireExplicitCapability: true;
+  readonly message: string;
+}
+
+export interface CadOpsAgentV8ProjectSurfaceBoundarySummary {
+  readonly browserHandlesExposed: false;
+  readonly localLocationsExposed: false;
+  readonly opfsLocationsExposed: false;
+  readonly rendererInternalsExposed: false;
+  readonly meshInternalsExposed: false;
+  readonly occtInternalsExposed: false;
+  readonly viewportStateExposed: false;
+  readonly selectionBufferInternalsExposed: false;
+  readonly packageBinaryReturned: false;
+  readonly stepBytesReturned: false;
+  readonly jsonImportExportPreserved: true;
+}
+
 export class CadOpsAgentAdapter {
   constructor(private readonly engine: CadEngine = new CadEngine()) {}
 
@@ -719,6 +895,12 @@ export class CadOpsAgentAdapter {
     );
   }
 
+  inspectV8ProjectSurface(
+    request: CadOpsAgentV8ProjectSurfaceRequest
+  ): CadOpsAgentV8ProjectSurfaceResponse {
+    return createV8ProjectSurfaceResponse(request, this.engine);
+  }
+
   executeJson(json: string): string {
     return JSON.stringify(
       this.execute(parseCadOpsAgentRequestJson(json)),
@@ -730,6 +912,16 @@ export class CadOpsAgentAdapter {
   queryJson(json: string): string {
     return JSON.stringify(
       this.query(parseCadOpsAgentQueryRequestJson(json)),
+      null,
+      2
+    );
+  }
+
+  inspectV8ProjectSurfaceJson(json: string): string {
+    return JSON.stringify(
+      this.inspectV8ProjectSurface(
+        parseCadOpsAgentV8ProjectSurfaceRequestJson(json)
+      ),
       null,
       2
     );
@@ -760,6 +952,13 @@ export function executeCadOpsAgentQueryRequest(
   return new CadOpsAgentAdapter(engine).query(request);
 }
 
+export function inspectCadOpsAgentV8ProjectSurface(
+  engine: CadEngine,
+  request: CadOpsAgentV8ProjectSurfaceRequest
+): CadOpsAgentV8ProjectSurfaceResponse {
+  return new CadOpsAgentAdapter(engine).inspectV8ProjectSurface(request);
+}
+
 export function parseCadOpsAgentRequestJson(json: string): CadOpsAgentRequest {
   return parseCadOpsAgentRequest(JSON.parse(json));
 }
@@ -768,6 +967,12 @@ export function parseCadOpsAgentQueryRequestJson(
   json: string
 ): CadOpsAgentQueryRequest {
   return parseCadOpsAgentQueryRequest(JSON.parse(json));
+}
+
+export function parseCadOpsAgentV8ProjectSurfaceRequestJson(
+  json: string
+): CadOpsAgentV8ProjectSurfaceRequest {
+  return parseCadOpsAgentV8ProjectSurfaceRequest(JSON.parse(json));
 }
 
 export function parseCadOpsAgentRequest(value: unknown): CadOpsAgentRequest {
@@ -783,6 +988,16 @@ export function parseCadOpsAgentQueryRequest(
 ): CadOpsAgentQueryRequest {
   if (!isCadOpsAgentQueryRequest(value)) {
     throw new Error("Invalid CADOps agent adapter query request.");
+  }
+
+  return value;
+}
+
+export function parseCadOpsAgentV8ProjectSurfaceRequest(
+  value: unknown
+): CadOpsAgentV8ProjectSurfaceRequest {
+  if (!isCadOpsAgentV8ProjectSurfaceRequest(value)) {
+    throw new Error("Invalid CADOps agent V8 project surface request.");
   }
 
   return value;
@@ -1891,12 +2106,7 @@ function toAgentQueryResponse(
   }
 
   if (response.query === "project.exportExact") {
-    return {
-      ...response,
-      ok: true,
-      requestId: request.requestId,
-      adapterVersion: request.adapterVersion
-    };
+    return toAgentExactExportResponse(request, response);
   }
 
   if (response.query === "project.packageReadiness") {
@@ -2161,6 +2371,273 @@ function toAgentQueryResponse(
   };
 }
 
+function createV8ProjectSurfaceResponse(
+  request: CadOpsAgentV8ProjectSurfaceRequest,
+  engine: CadEngine
+): CadOpsAgentV8ProjectSurfaceResponse {
+  const summary = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.summary" }
+  });
+  const packageReadiness = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.packageReadiness" }
+  });
+  const exportReadiness = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.exportReadiness" }
+  });
+  const exactExport = request.exactExport
+    ? engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          ...(request.exactExport.bodyIds
+            ? { bodyIds: request.exactExport.bodyIds }
+            : {}),
+          ...(request.exactExport.sourceIdentity
+            ? { sourceIdentity: request.exactExport.sourceIdentity }
+            : {})
+        }
+      })
+    : undefined;
+
+  if (
+    !summary.ok ||
+    summary.query !== "project.summary" ||
+    !packageReadiness.ok ||
+    packageReadiness.query !== "project.packageReadiness" ||
+    !exportReadiness.ok ||
+    exportReadiness.query !== "project.exportReadiness" ||
+    (exactExport !== undefined &&
+      (!exactExport.ok || exactExport.query !== "project.exportExact"))
+  ) {
+    throw new Error("Unable to build V8 project surface from CADOps queries.");
+  }
+
+  return {
+    ok: true,
+    requestId: request.requestId,
+    adapterVersion: request.adapterVersion,
+    cadOpsVersion: summary.cadOpsVersion,
+    surface: "v8.agent_mcp_package_export",
+    project: {
+      units: summary.units,
+      objectCount: summary.objectCount,
+      bodyCount: summary.structure.bodyCount,
+      authoredBodyFeatureCount: summary.structure.authoredBodyFeatureCount,
+      primitiveCompatibilityBodyCount:
+        summary.structure.primitiveCompatibilityBodyCount
+    },
+    package: createV8PackageSurfaceSummary(packageReadiness),
+    cache: createV8CacheSurfaceSummary(packageReadiness),
+    exportReadiness: createV8ExportSurfaceSummary(exportReadiness),
+    ...(exactExport
+      ? { exactExport: createV8ExactExportSurfaceSummary(exactExport) }
+      : {}),
+    fileWriting: createV8FileWritingBoundary(),
+    boundaries: createV8BoundarySummary()
+  };
+}
+
+function toAgentExactExportResponse(
+  request: CadOpsAgentQueryRequest,
+  response: ProjectExactExportQueryResponse
+): CadOpsAgentProjectExactExportQueryResponse {
+  const { artifact, ...safeResponse } = response;
+  void artifact;
+
+  return {
+    ...safeResponse,
+    ok: true,
+    requestId: request.requestId,
+    adapterVersion: request.adapterVersion,
+    artifactPolicy: createExportArtifactPolicy()
+  };
+}
+
+function createV8PackageSurfaceSummary(
+  response: ProjectPackageReadinessQueryResponse
+): CadOpsAgentV8ProjectSurfacePackageSummary {
+  return {
+    status: response.status,
+    packageVersion: response.packageVersion,
+    fileExtension: response.fileExtension,
+    documentSchemaVersion: response.documentSchemaVersion,
+    sourceIdentityAlgorithm: response.sourceIdentityAlgorithm,
+    canRepresentCurrentSource: response.canRepresentCurrentSource,
+    requiresProjectSchemaMigration: response.requiresProjectSchemaMigration,
+    requiredEntryCount: response.requiredEntryCount,
+    requiredEntries: response.requiredEntries,
+    optionalCacheEntryCount: response.optionalCacheEntryCount,
+    optionalCacheEntries: response.optionalCacheEntries,
+    capabilityCount: response.capabilityCount,
+    capabilities: response.capabilities.map((capability) => ({
+      capability: capability.capability,
+      label: capability.label,
+      status: capability.status,
+      available: capability.available,
+      diagnosticCount: capability.diagnostics.length,
+      diagnosticCodes: capability.diagnostics.map(
+        (diagnostic) => diagnostic.code
+      )
+    })),
+    diagnosticCount: response.diagnosticCount,
+    diagnostics: response.diagnostics
+  };
+}
+
+function createV8CacheSurfaceSummary(
+  response: ProjectPackageReadinessQueryResponse
+): CadOpsAgentV8ProjectSurfaceCacheSummary {
+  const opfsCapability = response.capabilities.find(
+    (capability) => capability.capability === "opfsCache"
+  );
+  const diagnostics = opfsCapability?.diagnostics ?? [];
+
+  return {
+    cachePolicy: "optional-rebuildable",
+    ...(opfsCapability
+      ? {
+          opfsCapabilityStatus: opfsCapability.status,
+          opfsCapabilityAvailable: opfsCapability.available
+        }
+      : {}),
+    opfsLocationsExposed: false,
+    clearMutatesSource: false,
+    sourceIdentityIncludesCache: false,
+    diagnosticCount: diagnostics.length,
+    diagnostics
+  };
+}
+
+function createV8ExportSurfaceSummary(
+  response: ProjectExportReadinessQueryResponse
+): CadOpsAgentV8ProjectSurfaceExportSummary {
+  const unsupportedBodies = createUnsupportedBodySummaries(response.bodies);
+
+  return {
+    status: response.status,
+    canExportFiles: response.canExportFiles,
+    units: response.units,
+    formatCount: response.formatCount,
+    formats: response.formats.map((format) => ({
+      format: format.format,
+      label: format.label,
+      exportKind: format.exportKind,
+      status: format.status,
+      available: format.available,
+      writerStatus: format.writerStatus,
+      fileExtensions: format.fileExtensions,
+      sourceSupportedBodyCount: format.sourceSupportedBodyCount,
+      deferredBodyCount: format.deferredBodyCount,
+      unavailableBodyCount: format.unavailableBodyCount,
+      diagnosticCount: format.diagnostics.length,
+      diagnosticCodes: format.diagnostics.map((diagnostic) => diagnostic.code)
+    })),
+    bodyCount: response.bodyCount,
+    sourceSupportedBodyCount: response.sourceSupportedBodyCount,
+    deferredBodyCount: response.deferredBodyCount,
+    unavailableBodyCount: response.unavailableBodyCount,
+    unsupportedBodyCount: unsupportedBodies.length,
+    unsupportedBodies,
+    diagnosticCount: response.diagnosticCount,
+    diagnostics: response.diagnostics
+  };
+}
+
+function createV8ExactExportSurfaceSummary(
+  response: ProjectExactExportQueryResponse
+): CadOpsAgentV8ProjectSurfaceExactExportSummary {
+  const unsupportedBodies = createUnsupportedBodySummaries(response.bodies);
+
+  return {
+    format: response.format,
+    status: response.status,
+    available: response.available,
+    canExportFile: response.canExportFile,
+    writerStatus: response.writerStatus,
+    requestedBodyIds: response.requestedBodyIds,
+    bodyCount: response.bodyCount,
+    sourceSupportedBodyCount: response.sourceSupportedBodyCount,
+    deferredBodyCount: response.deferredBodyCount,
+    unavailableBodyCount: response.unavailableBodyCount,
+    exportableBodyCount: response.exportableBodyCount,
+    exportSourceCount: response.exportSources.length,
+    exportSources: response.exportSources,
+    unsupportedBodyCount: unsupportedBodies.length,
+    unsupportedBodies,
+    diagnosticCount: response.diagnosticCount,
+    diagnostics: response.diagnostics,
+    artifactPolicy: createExportArtifactPolicy()
+  };
+}
+
+function createUnsupportedBodySummaries(
+  bodies: readonly CadExportBodyReadiness[]
+): readonly CadOpsAgentV8ProjectSurfaceUnsupportedBodySummary[] {
+  return bodies
+    .filter((body) => body.sourceStatus !== "supported")
+    .map((body) => ({
+      bodyId: body.bodyId,
+      ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+      bodyKind: body.bodyKind,
+      featureId: body.featureId,
+      sourceKind: body.sourceKind,
+      status: body.status,
+      ...(body.consumedByFeatureId
+        ? { consumedByFeatureId: body.consumedByFeatureId }
+        : {}),
+      diagnosticCount: body.diagnostics.length,
+      diagnostics: body.diagnostics
+    }));
+}
+
+function createExportArtifactPolicy(): CadOpsAgentExportArtifactPolicy {
+  return {
+    artifactBytesReturned: false,
+    fileWritesPerformed: false,
+    localLocationsAccepted: false,
+    browserHandlesAccepted: false,
+    requiresExplicitArtifactCapability: true,
+    delivery: "caller-or-browser-ui",
+    message:
+      "Agent/MCP export calls return readiness and exact source contracts only; caller-owned transport or the browser UI must perform artifact delivery."
+  };
+}
+
+function createV8FileWritingBoundary(): CadOpsAgentV8ProjectSurfaceFileWritingBoundary {
+  return {
+    defaultBehavior: "readiness-only",
+    adapterWritesUserVisibleFiles: false,
+    mcpWritesUserVisibleFiles: false,
+    artifactBytesReturned: false,
+    localLocationsAccepted: false,
+    browserHandlesAccepted: false,
+    opfsLocationsAccepted: false,
+    futureFileWritesRequireExplicitCapability: true,
+    message:
+      "This adapter does not accept local paths, browser handles, OPFS paths, or write files. User-visible file writes stay in the browser UI or a future explicitly-permissioned artifact transport."
+  };
+}
+
+function createV8BoundarySummary(): CadOpsAgentV8ProjectSurfaceBoundarySummary {
+  return {
+    browserHandlesExposed: false,
+    localLocationsExposed: false,
+    opfsLocationsExposed: false,
+    rendererInternalsExposed: false,
+    meshInternalsExposed: false,
+    occtInternalsExposed: false,
+    viewportStateExposed: false,
+    selectionBufferInternalsExposed: false,
+    packageBinaryReturned: false,
+    stepBytesReturned: false,
+    jsonImportExportPreserved: true
+  };
+}
+
 function isCadOpsAgentRequest(value: unknown): value is CadOpsAgentRequest {
   return (
     isRecord(value) &&
@@ -2184,6 +2661,36 @@ function isCadOpsAgentQueryRequest(
     typeof value.requestId === "string" &&
     value.adapterVersion === "web-cad.agent-adapter.v1" &&
     isCadQueryRequest(value.query)
+  );
+}
+
+function isCadOpsAgentV8ProjectSurfaceRequest(
+  value: unknown
+): value is CadOpsAgentV8ProjectSurfaceRequest {
+  return (
+    isRecord(value) &&
+    value.requestId !== "" &&
+    typeof value.requestId === "string" &&
+    value.adapterVersion === "web-cad.agent-adapter.v1" &&
+    (value.exactExport === undefined ||
+      isCadOpsAgentV8ExactExportRequest(value.exactExport))
+  );
+}
+
+function isCadOpsAgentV8ExactExportRequest(
+  value: unknown
+): value is CadOpsAgentV8ExactExportRequest {
+  return (
+    isRecord(value) &&
+    value.format === "step" &&
+    Object.keys(value).every((key) =>
+      ["format", "bodyIds", "sourceIdentity"].includes(key)
+    ) &&
+    (value.bodyIds === undefined ||
+      (Array.isArray(value.bodyIds) &&
+        value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
+    (value.sourceIdentity === undefined ||
+      isWcadSourceIdentityInput(value.sourceIdentity))
   );
 }
 

@@ -10,6 +10,10 @@ It exposes these MCP-style tools:
 - `cad.project_features`
 - `cad.project_structure`
 - `cad.project_health`
+- `cad.project_export_readiness`
+- `cad.project_export_exact`
+- `cad.project_package_readiness`
+- `cad.v8_project_surface`
 - `cad.project_sketches`
 - `cad.parameter_list`
 - `cad.parameter_get`
@@ -176,6 +180,31 @@ Call `cad.transaction_history`:
   }
 }
 ```
+
+Call `cad.v8_project_surface` to inspect the V8 package/export surface in one
+compact response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "cad.v8_project_surface",
+    "arguments": {
+      "exactExport": {
+        "format": "step",
+        "bodyIds": ["body_1"]
+      }
+    }
+  }
+}
+```
+
+The V8 surface is read-only. It reports `.wcad` package readiness, optional
+rebuildable cache status, exact STEP readiness/export availability, unsupported
+body diagnostics, and file-writing boundaries through the agent adapter. It does
+not accept local write targets or return artifact bytes.
 
 Call `cad.batch` in dry-run mode:
 

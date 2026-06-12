@@ -20392,7 +20392,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(readiness).toMatchObject({
       ok: true,
       query: "project.packageReadiness",
-      status: "deferred",
+      status: "supported",
       packageVersion: "partbench.wcad.v1",
       fileExtension: ".wcad",
       sourceIdentityAlgorithm: "partbench-source-v1",
@@ -20423,13 +20423,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "opfsCache",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "stepExport",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         })
       ]),
       diagnostics: expect.arrayContaining([
@@ -20446,8 +20446,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "supported"
         }),
         expect.objectContaining({
-          code: "WCAD_STEP_EXPORT_CONTRACT_READY",
-          status: "deferred"
+          code: "WCAD_OPFS_CACHE_READY",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          code: "WCAD_STEP_EXPORT_READY",
+          status: "supported"
         }),
         expect.objectContaining({
           code: "WCAD_PROJECT_SCHEMA_V17_NOT_REQUIRED",

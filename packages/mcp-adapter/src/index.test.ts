@@ -16,6 +16,7 @@ describe("mcp-adapter", () => {
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
+      "cad.v8_project_surface",
       "cad.project_sketches",
       "cad.object_measurements",
       "cad.body_measurements",
@@ -1100,7 +1101,7 @@ describe("mcp-adapter", () => {
         ok: true,
         requestId: "mcp_req_package_readiness",
         query: "project.packageReadiness",
-        status: "deferred",
+        status: "supported",
         packageVersion: "partbench.wcad.v1",
         fileExtension: ".wcad",
         documentSchemaVersion: "web-cad.project.v16",
@@ -1121,7 +1122,13 @@ describe("mcp-adapter", () => {
           }),
           expect.objectContaining({
             capability: "opfsCache",
-            status: "deferred"
+            status: "supported",
+            available: true
+          }),
+          expect.objectContaining({
+            capability: "stepExport",
+            status: "supported",
+            available: true
           })
         ])
       }
@@ -1129,6 +1136,157 @@ describe("mcp-adapter", () => {
     expect(JSON.stringify(result.structuredContent)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );
+  });
+
+  it("returns compact V8 package, cache, export, and file boundary surface through cad.v8_project_surface", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v8_surface_seed_primitive",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "scene.createBox",
+              id: "mcp_surface_box",
+              dimensions: { width: 1, height: 1, depth: 1 }
+            }
+          ]
+        }
+      }
+    });
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_v8_surface_seed_body",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_mcp_surface",
+              name: "MCP surface profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_mcp_surface",
+              id: "rect_mcp_surface",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_mcp_surface",
+              bodyId: "body_mcp_surface",
+              sketchId: "sketch_mcp_surface",
+              entityId: "rect_mcp_surface",
+              depth: 1.5
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.v8_project_surface",
+      requestId: "mcp_req_v8_surface",
+      arguments: {
+        exactExport: {
+          format: "step",
+          bodyIds: ["body_mcp_surface"]
+        }
+      }
+    });
+    const invalidWrite = server.callTool({
+      name: "cad.v8_project_surface",
+      requestId: "mcp_req_v8_surface_write",
+      arguments: {
+        writeFile: true,
+        localPath: "/tmp/part.step"
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.v8_project_surface",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_v8_surface",
+        surface: "v8.agent_mcp_package_export",
+        package: {
+          packageVersion: "partbench.wcad.v1",
+          fileExtension: ".wcad",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "WCAD_PACKAGE_CONTRACT_READY" })
+          ])
+        },
+        cache: {
+          cachePolicy: "optional-rebuildable",
+          opfsLocationsExposed: false,
+          clearMutatesSource: false
+        },
+        exportReadiness: {
+          status: "supported",
+          canExportFiles: true,
+          unsupportedBodies: [
+            expect.objectContaining({
+              bodyId: "body:mcp_surface_box",
+              sourceKind: "primitiveCompatibility"
+            })
+          ]
+        },
+        exactExport: {
+          format: "step",
+          available: true,
+          canExportFile: true,
+          requestedBodyIds: ["body_mcp_surface"],
+          exportSourceCount: 1,
+          artifactPolicy: {
+            artifactBytesReturned: false,
+            fileWritesPerformed: false,
+            localLocationsAccepted: false,
+            browserHandlesAccepted: false
+          }
+        },
+        fileWriting: {
+          defaultBehavior: "readiness-only",
+          adapterWritesUserVisibleFiles: false,
+          mcpWritesUserVisibleFiles: false,
+          localLocationsAccepted: false,
+          browserHandlesAccepted: false,
+          opfsLocationsAccepted: false
+        },
+        boundaries: {
+          browserHandlesExposed: false,
+          localLocationsExposed: false,
+          opfsLocationsExposed: false,
+          packageBinaryReturned: false,
+          stepBytesReturned: false,
+          jsonImportExportPreserved: true
+        }
+      }
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|bytesBase64|localPath/i
+    );
+    expect(invalidWrite).toMatchObject({
+      toolName: "cad.v8_project_surface",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: {
+          code: "INVALID_ARGUMENTS"
+        }
+      }
+    });
   });
 
   it("commits sketch extrude batches through cad.batch", () => {
@@ -3238,6 +3396,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
+          { name: "cad.v8_project_surface" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },
