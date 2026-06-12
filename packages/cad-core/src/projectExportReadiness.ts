@@ -1,14 +1,19 @@
+import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
   CadBodySnapshot,
   CadExportBodyFormatReadiness,
   CadExportBodyReadiness,
   CadExportBodySourceKind,
   CadExportDiagnostic,
+  CadExportKind,
   CadExportFormatId,
   CadExportFormatReadiness,
   CadExportReadinessStatus,
   CadOpsVersion,
-  ProjectExportReadinessQueryResponse
+  ProjectExactExportQuery,
+  ProjectExactExportQueryResponse,
+  ProjectExportReadinessQueryResponse,
+  WcadDocumentSchemaVersion
 } from "@web-cad/cad-protocol";
 import type { CadDocument } from "./index";
 
@@ -18,9 +23,15 @@ interface ProjectExportReadinessInput {
   readonly bodies: readonly CadBodySnapshot[];
 }
 
+interface ProjectExactExportInput extends ProjectExportReadinessInput {
+  readonly query: ProjectExactExportQuery;
+  readonly documentSchemaVersion: WcadDocumentSchemaVersion;
+}
+
 interface ExportFormatDefinition {
   readonly format: CadExportFormatId;
   readonly label: string;
+  readonly exportKind: CadExportKind;
   readonly fileExtensions: readonly string[];
   readonly sourceBoundaryNote: string;
   readonly derivedBoundaryNote: string;
@@ -41,6 +52,7 @@ const EXPORT_FORMATS: readonly ExportFormatDefinition[] = [
   {
     format: "step",
     label: "STEP",
+    exportKind: "exact",
     fileExtensions: [".step", ".stp"],
     sourceBoundaryNote:
       "STEP requires an exact body writer from authoritative CAD source; E1 reports readiness only.",
@@ -50,6 +62,7 @@ const EXPORT_FORMATS: readonly ExportFormatDefinition[] = [
   {
     format: "glb",
     label: "Mesh/GLB visualization",
+    exportKind: "visualization",
     fileExtensions: [".glb"],
     sourceBoundaryNote:
       "GLB would be visualization output derived from authoritative bodies, not project source.",
@@ -110,6 +123,86 @@ export function createProjectExportReadiness({
   };
 }
 
+export function createProjectExactExport({
+  document,
+  cadOpsVersion,
+  bodies,
+  query,
+  documentSchemaVersion
+}: ProjectExactExportInput): ProjectExactExportQueryResponse {
+  const readiness = createProjectExportReadiness({
+    document,
+    cadOpsVersion,
+    bodies
+  });
+  const bodyById = new Map(
+    readiness.bodies.map((body) => [body.bodyId, body] as const)
+  );
+  const requestedBodyIds = query.bodyIds ?? [];
+  const selectedBodies =
+    requestedBodyIds.length === 0
+      ? readiness.bodies
+      : requestedBodyIds.flatMap((bodyId) => {
+          const body = bodyById.get(bodyId);
+
+          return body ? [body] : [];
+        });
+  const stepBodies = selectedBodies.map((body) => ({
+    ...body,
+    formats: body.formats.filter((format) => format.format === "step")
+  }));
+  const missingDiagnostics = requestedBodyIds
+    .filter((bodyId) => !bodyById.has(bodyId))
+    .map((bodyId) => createMissingExactBodyDiagnostic(bodyId));
+  const unsupportedDiagnostics = stepBodies
+    .filter((body) => body.sourceStatus !== "supported")
+    .map((body) => createUnsupportedExactBodyDiagnostic(body));
+  const writerDiagnostic = createExactWriterUnavailableDiagnostic();
+  const diagnostics = [
+    writerDiagnostic,
+    ...missingDiagnostics,
+    ...unsupportedDiagnostics,
+    ...stepBodies.flatMap((body) => body.diagnostics)
+  ];
+
+  return {
+    ok: true,
+    query: "project.exportExact",
+    cadOpsVersion,
+    format: "step",
+    label: "STEP",
+    exportKind: "exact",
+    status: "unavailable",
+    available: false,
+    canExportFile: false,
+    writerStatus: "unavailable",
+    units: document.units,
+    fileExtensions: [".step", ".stp"],
+    documentSchemaVersion,
+    sourceIdentityAlgorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+    ...(query.sourceIdentity
+      ? { requestedSourceIdentity: query.sourceIdentity }
+      : {}),
+    sourceIdentityStatus: query.sourceIdentity
+      ? "providedUnchecked"
+      : "notProvided",
+    requestedBodyIds,
+    bodyCount: stepBodies.length,
+    sourceSupportedBodyCount: stepBodies.filter(
+      (body) => body.sourceStatus === "supported"
+    ).length,
+    deferredBodyCount: stepBodies.filter((body) => body.status === "deferred")
+      .length,
+    unavailableBodyCount: stepBodies.filter(
+      (body) => body.status === "unavailable"
+    ).length,
+    exportableBodyCount: 0,
+    bodies: stepBodies,
+    diagnosticCount: diagnostics.length,
+    diagnostics
+  };
+}
+
 function createFormatReadiness(
   units: ProjectExportReadinessQueryResponse["units"],
   format: ExportFormatDefinition,
@@ -131,8 +224,10 @@ function createFormatReadiness(
   return {
     format: format.format,
     label: format.label,
+    exportKind: format.exportKind,
     status: viableBodyCount === 0 ? "unavailable" : "deferred",
     available: false,
+    writerStatus: "unavailable",
     fileExtensions: format.fileExtensions,
     units,
     sourceBoundaryNote: format.sourceBoundaryNote,
@@ -189,7 +284,9 @@ function createBodyFormatReadiness(
     return {
       format: format.format,
       label: format.label,
+      exportKind: format.exportKind,
       status: "unavailable",
+      writerStatus: "unavailable",
       diagnostics: source.diagnostics
     };
   }
@@ -197,7 +294,9 @@ function createBodyFormatReadiness(
   return {
     format: format.format,
     label: format.label,
+    exportKind: format.exportKind,
     status: "deferred",
+    writerStatus: "unavailable",
     diagnostics: [
       ...(source.sourceStatus === "deferred" ? source.diagnostics : []),
       createWriterDiagnostic(format, body, source.sourceKind)
@@ -390,6 +489,28 @@ function createWriterDiagnostic(
   body?: CadBodySnapshot,
   sourceKind?: CadExportBodySourceKind
 ): CadExportDiagnostic {
+  if (format.exportKind === "exact") {
+    return {
+      code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+      status: "unavailable",
+      message:
+        "STEP exact export writer is unavailable through the geometry boundary; this query reports readiness and blockers only.",
+      format: format.format,
+      ...(body
+        ? {
+            bodyId: body.id,
+            ...(body.name ? { bodyName: body.name } : {}),
+            bodyKind: body.kind,
+            featureId: body.featureId,
+            ...(body.objectId ? { objectId: body.objectId } : {})
+          }
+        : {}),
+      ...(sourceKind ? { sourceKind } : {}),
+      expected: "geometry-worker STEP writer capability",
+      received: "writer unavailable"
+    };
+  }
+
   return {
     code: "EXPORT_WRITER_NOT_IMPLEMENTED",
     status: "deferred",
@@ -407,6 +528,52 @@ function createWriterDiagnostic(
     ...(sourceKind ? { sourceKind } : {}),
     expected: "file writer",
     received: "readiness contract only"
+  };
+}
+
+function createExactWriterUnavailableDiagnostic(): CadExportDiagnostic {
+  return {
+    code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+    status: "unavailable",
+    format: "step",
+    message:
+      "STEP exact export writer is unavailable through the geometry boundary; no STEP bytes were produced.",
+    expected: "geometry-worker STEP writer capability",
+    received: "writer unavailable"
+  };
+}
+
+function createMissingExactBodyDiagnostic(bodyId: string): CadExportDiagnostic {
+  return {
+    code: "EXPORT_BODY_SOURCE_UNRESOLVED",
+    status: "unavailable",
+    format: "step",
+    bodyId,
+    message: `Requested body ${bodyId} does not exist in the current authoritative project structure.`,
+    expected: "current body id",
+    received: "missing body id"
+  };
+}
+
+function createUnsupportedExactBodyDiagnostic(
+  body: CadExportBodyReadiness
+): CadExportDiagnostic {
+  return {
+    code: "EXPORT_EXACT_BODY_UNSUPPORTED",
+    status: body.sourceStatus,
+    format: "step",
+    bodyId: body.bodyId,
+    ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+    bodyKind: body.bodyKind,
+    featureId: body.featureId,
+    sourceKind: body.sourceKind,
+    ...(body.objectId ? { objectId: body.objectId } : {}),
+    ...(body.consumedByFeatureId
+      ? { consumedByFeatureId: body.consumedByFeatureId }
+      : {}),
+    message: `Body ${body.bodyId} is not in the supported exact STEP source subset for this tranche.`,
+    expected: "supported authored rectangle/circle newBody extrude",
+    received: body.sourceKind
   };
 }
 

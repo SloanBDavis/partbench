@@ -46,10 +46,10 @@ export function createProjectExportReadinessDisplay(
       chooseDisplayStatus(readiness.status, visualizationExport?.status)
     ),
     detail: visualizationExport?.available
-      ? "Mesh/GLB visualization export is available from ready derived display meshes. STEP remains unavailable."
+      ? "Mesh/GLB visualization export is available from ready derived display meshes. STEP exact export writer remains unavailable."
       : readiness.canExportFiles
         ? "File export is available for the listed supported formats."
-        : "STEP file export is not implemented yet. Mesh/GLB visualization depends on ready derived display meshes.",
+        : "STEP exact export writer is unavailable. Mesh/GLB visualization depends on ready derived display meshes.",
     sourceDetail:
       "Candidate bodies come from authoritative project source, features, and document units.",
     derivedDetail: visualizationExport
@@ -105,7 +105,9 @@ function createFormatRow(
   }
 
   const writerDiagnostic = format.diagnostics.find(
-    (diagnostic) => diagnostic.code === "EXPORT_WRITER_NOT_IMPLEMENTED"
+    (diagnostic) =>
+      diagnostic.code === "EXPORT_EXACT_WRITER_UNAVAILABLE" ||
+      diagnostic.code === "EXPORT_WRITER_NOT_IMPLEMENTED"
   );
   const emptyDiagnostic = format.diagnostics.find(
     (diagnostic) => diagnostic.code === "EXPORT_PROJECT_EMPTY"
@@ -118,7 +120,9 @@ function createFormatRow(
     statusLabel: getExportReadinessStatusLabel(format.status),
     detail: format.available
       ? `${format.label} export is available for current source bodies.`
-      : `${format.label} export files are not available yet.`,
+      : format.exportKind === "exact"
+        ? `${format.label} exact export writer is unavailable.`
+        : `${format.label} export files are not available yet.`,
     limitation:
       emptyDiagnostic?.message ??
       writerDiagnostic?.message ??
@@ -126,7 +130,9 @@ function createFormatRow(
     nextStep:
       format.status === "unavailable"
         ? "Create an authored body before exporting."
-        : "Implement the file writer before enabling downloads."
+        : format.exportKind === "exact"
+          ? "Expose a STEP writer through the geometry boundary before enabling downloads."
+          : "Implement the file writer before enabling downloads."
   };
 }
 
@@ -158,7 +164,7 @@ function createBodyRow(
     statusLabel: getExportReadinessStatusLabel(body.status),
     detail:
       body.sourceStatus === "supported"
-        ? "Source body is supported; file availability depends on the format boundary."
+        ? "Source body is supported; exact file availability depends on the STEP writer boundary."
         : getBodySourceDetail(body),
     limitation:
       primaryDiagnostic?.message ?? "No body-specific blocker reported.",

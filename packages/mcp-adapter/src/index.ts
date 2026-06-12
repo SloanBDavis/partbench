@@ -7,6 +7,7 @@ import {
   type CadOpsAgentQueryResponse,
   type CadOpsAgentResponse
 } from "@web-cad/agent-adapter";
+import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
   CadBatch,
@@ -25,6 +26,7 @@ export type CadMcpToolName =
   | "cad.project_structure"
   | "cad.project_health"
   | "cad.project_export_readiness"
+  | "cad.project_export_exact"
   | "cad.project_package_readiness"
   | "cad.project_sketches"
   | "cad.object_measurements"
@@ -160,6 +162,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_export_readiness") {
       return this.#callProjectExportReadiness(request);
+    }
+
+    if (request.name === "cad.project_export_exact") {
+      return this.#callProjectExportExact(request);
     }
 
     if (request.name === "cad.project_package_readiness") {
@@ -446,6 +452,39 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.exportReadiness" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectExportExact(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isProjectExportExactToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_export_exact expects arguments shaped as { format: 'step', bodyIds?: string[], sourceIdentity?: { algorithm: 'partbench-source-v1', sha256: string } }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "project.exportExact",
+            format: "step",
+            ...(request.arguments.bodyIds
+              ? { bodyIds: request.arguments.bodyIds }
+              : {}),
+            ...(request.arguments.sourceIdentity
+              ? { sourceIdentity: request.arguments.sourceIdentity }
+              : {})
+          }
         }
       })
     );
@@ -1021,11 +1060,40 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_export_readiness",
     description:
-      "Returns read-only export readiness for current source bodies and deferred STEP/GLB writer status.",
+      "Returns read-only export readiness for current source bodies, exact STEP status, and Mesh/GLB visualization status.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {}
+    }
+  },
+  {
+    name: "cad.project_export_exact",
+    description:
+      "Attempts exact CAD export for supported source bodies. E1 returns structured STEP writer-unavailable diagnostics until the geometry writer exists.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["format"],
+      properties: {
+        format: { type: "string", enum: ["step"] },
+        bodyIds: {
+          type: "array",
+          items: { type: "string" }
+        },
+        sourceIdentity: {
+          type: "object",
+          additionalProperties: false,
+          required: ["algorithm", "sha256"],
+          properties: {
+            algorithm: {
+              type: "string",
+              enum: [WCAD_SOURCE_IDENTITY_ALGORITHM]
+            },
+            sha256: { type: "string" }
+          }
+        }
+      }
     }
   },
   {
@@ -1466,6 +1534,37 @@ function isProjectExactMetadataToolArguments(
 }
 
 const isProjectExtentsToolArguments = isProjectExactMetadataToolArguments;
+
+function isProjectExportExactToolArguments(value: unknown): value is {
+  readonly format: "step";
+  readonly bodyIds?: readonly string[];
+  readonly sourceIdentity?: {
+    readonly algorithm: "partbench-source-v1";
+    readonly sha256: string;
+  };
+} {
+  return (
+    isRecord(value) &&
+    value.format === "step" &&
+    Object.keys(value).every((key) =>
+      ["format", "bodyIds", "sourceIdentity"].includes(key)
+    ) &&
+    (value.bodyIds === undefined ||
+      (Array.isArray(value.bodyIds) &&
+        value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
+    (value.sourceIdentity === undefined ||
+      isWcadSourceIdentityToolArgument(value.sourceIdentity))
+  );
+}
+
+function isWcadSourceIdentityToolArgument(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 2 &&
+    value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
+    typeof value.sha256 === "string"
+  );
+}
 
 function isSketchGetToolArguments(
   value: unknown

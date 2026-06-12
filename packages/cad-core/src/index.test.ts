@@ -3,6 +3,7 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBatch,
   CadQueryRequest,
+  ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectSummaryQueryResponse,
@@ -120,6 +121,35 @@ function readProjectExportReadiness(
 
   if (!response.ok || response.query !== "project.exportReadiness") {
     throw new Error("Expected project.exportReadiness response.");
+  }
+
+  return response;
+}
+
+function readProjectExactExport(
+  engine: CadEngine,
+  options: {
+    readonly bodyIds?: readonly string[];
+    readonly sourceIdentity?: {
+      readonly algorithm: "partbench-source-v1";
+      readonly sha256: string;
+    };
+  } = {}
+): ProjectExactExportQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "project.exportExact",
+      format: "step",
+      ...(options.bodyIds ? { bodyIds: options.bodyIds } : {}),
+      ...(options.sourceIdentity
+        ? { sourceIdentity: options.sourceIdentity }
+        : {})
+    }
+  });
+
+  if (!response.ok || response.query !== "project.exportExact") {
+    throw new Error("Expected project.exportExact response.");
   }
 
   return response;
@@ -20416,6 +20446,10 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "supported"
         }),
         expect.objectContaining({
+          code: "WCAD_STEP_EXPORT_CONTRACT_READY",
+          status: "deferred"
+        }),
+        expect.objectContaining({
           code: "WCAD_PROJECT_SCHEMA_V17_NOT_REQUIRED",
           status: "supported"
         })
@@ -21078,8 +21112,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           candidateBodyCount: 0,
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              code: "EXPORT_WRITER_NOT_IMPLEMENTED",
-              status: "deferred"
+              code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+              status: "unavailable"
             }),
             expect.objectContaining({
               code: "EXPORT_PROJECT_EMPTY",
@@ -21143,14 +21177,16 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       formats: [
         expect.objectContaining({
           format: "step",
+          exportKind: "exact",
           status: "deferred",
+          writerStatus: "unavailable",
           sourceSupportedBodyCount: 2,
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              code: "EXPORT_WRITER_NOT_IMPLEMENTED",
-              status: "deferred",
-              expected: "file writer",
-              received: "readiness contract only"
+              code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+              status: "unavailable",
+              expected: "geometry-worker STEP writer capability",
+              received: "writer unavailable"
             })
           ])
         }),
@@ -21169,10 +21205,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           formats: expect.arrayContaining([
             expect.objectContaining({
               format: "step",
+              exportKind: "exact",
               status: "deferred",
+              writerStatus: "unavailable",
               diagnostics: expect.arrayContaining([
                 expect.objectContaining({
-                  code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+                  code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
                   format: "step"
                 })
               ])
@@ -21196,6 +21234,104 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
               status: "supported"
             })
           ])
+        })
+      ])
+    });
+  });
+
+  it("reports exact STEP export as writer-unavailable without producing fake bytes", () => {
+    const engine = createRectangleExtrudeEngine();
+    const exactExport = readProjectExactExport(engine, {
+      bodyIds: ["body_rect_1"],
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    });
+
+    expect(exactExport).toMatchObject({
+      ok: true,
+      query: "project.exportExact",
+      format: "step",
+      exportKind: "exact",
+      status: "unavailable",
+      canExportFile: false,
+      writerStatus: "unavailable",
+      documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      sourceIdentityAlgorithm: "partbench-source-v1",
+      sourceIdentityStatus: "providedUnchecked",
+      requestedBodyIds: ["body_rect_1"],
+      bodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      exportableBodyCount: 0,
+      bodies: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "supported",
+          formats: [
+            expect.objectContaining({
+              format: "step",
+              exportKind: "exact",
+              writerStatus: "unavailable"
+            })
+          ]
+        })
+      ],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+          status: "unavailable",
+          format: "step"
+        }),
+        expect.objectContaining({
+          code: "EXPORT_BODY_SOURCE_SUPPORTED",
+          status: "supported"
+        })
+      ])
+    });
+    expect(exactExport.artifact).toBeUndefined();
+    expect(JSON.stringify(exactExport)).not.toContain("mesh");
+    expect(JSON.stringify(exactExport)).not.toContain("opfs");
+    expect(JSON.stringify(exactExport)).not.toContain("selection-buffer");
+  });
+
+  it("returns structured exact STEP diagnostics for missing and unsupported bodies", () => {
+    const engine = new CadEngine();
+
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_exact_export",
+      name: "Reference box",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const exactExport = readProjectExactExport(engine, {
+      bodyIds: ["body:box_exact_export", "body_missing"]
+    });
+
+    expect(exactExport).toMatchObject({
+      status: "unavailable",
+      canExportFile: false,
+      bodyCount: 1,
+      sourceSupportedBodyCount: 0,
+      unavailableBodyCount: 1,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+          status: "unavailable"
+        }),
+        expect.objectContaining({
+          code: "EXPORT_EXACT_BODY_UNSUPPORTED",
+          status: "unavailable",
+          bodyId: "body:box_exact_export",
+          sourceKind: "primitiveCompatibility"
+        }),
+        expect.objectContaining({
+          code: "EXPORT_BODY_SOURCE_UNRESOLVED",
+          status: "unavailable",
+          bodyId: "body_missing"
         })
       ])
     });
@@ -21316,7 +21452,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const afterJson = exportCadProjectJson(engine);
     expect(afterJson).toBe(beforeJson);
     expect(afterJson).not.toContain("project.exportReadiness");
+    expect(afterJson).not.toContain("project.exportExact");
     expect(afterJson).not.toContain("exportReadiness");
     expect(afterJson).not.toContain("EXPORT_WRITER_NOT_IMPLEMENTED");
+    expect(afterJson).not.toContain("EXPORT_EXACT_WRITER_UNAVAILABLE");
   });
 });

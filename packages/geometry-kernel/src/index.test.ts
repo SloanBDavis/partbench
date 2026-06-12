@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   executeGeometryKernelRequest,
+  getGeometryKernelExactExportCapabilities,
   getGeometryResponseTransferables
 } from "./index";
 import {
@@ -11,6 +12,20 @@ import {
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
 describe("geometry-kernel facade", () => {
+  it("reports STEP exact export writer capability as unavailable", () => {
+    expect(getGeometryKernelExactExportCapabilities()).toEqual([
+      {
+        format: "step",
+        label: "STEP",
+        status: "unavailable",
+        writerAvailable: false,
+        boundary: "geometry-kernel",
+        reason:
+          "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
+      }
+    ]);
+  });
+
   it(
     "tessellates a box through the isolated OCCT WASM adapter",
     async () => {

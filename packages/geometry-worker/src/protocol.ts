@@ -9,6 +9,7 @@ import type {
   GeometryKernelResponse,
   GeometryKernelBooleanOperation,
   GeometryKernelExtrudeSide,
+  GeometryKernelExactExportFormat,
   HoleRequest,
   HoleToolSource,
   GeometryKernelSketchPlane,
@@ -21,7 +22,10 @@ import type {
   TessellateTorusRequest
 } from "@web-cad/geometry-kernel";
 
-export type { GeometryKernelExactBodyMetadata } from "@web-cad/geometry-kernel";
+export type {
+  GeometryKernelExactBodyMetadata,
+  GeometryKernelExactExportFormat
+} from "@web-cad/geometry-kernel";
 
 export type GeometryWorkerVersion = "geometry-worker.v1";
 export type GeometryWorkerRequestKind =
@@ -99,6 +103,31 @@ export interface GeometryWorker {
 
 export interface GeometryWorkerOptions {
   readonly delayMs?: number;
+}
+
+export interface GeometryWorkerExactExportCapability {
+  readonly format: GeometryKernelExactExportFormat;
+  readonly label: "STEP";
+  readonly status: "unavailable";
+  readonly writerAvailable: false;
+  readonly boundary: "geometry-worker";
+  readonly kernelBoundary: "geometry-kernel";
+  readonly reason: string;
+}
+
+export function getGeometryWorkerExactExportCapabilities(): readonly GeometryWorkerExactExportCapability[] {
+  return [
+    {
+      format: "step",
+      label: "STEP",
+      status: "unavailable",
+      writerAvailable: false,
+      boundary: "geometry-worker",
+      kernelBoundary: "geometry-kernel",
+      reason:
+        "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
+    }
+  ];
 }
 
 export function createGeometryWorkerResponse(

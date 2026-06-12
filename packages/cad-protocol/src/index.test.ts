@@ -53,17 +53,19 @@ describe("cad-protocol", () => {
       query: { query: "project.exportReadiness" }
     };
     const writerDiagnostic: CadExportDiagnostic = {
-      code: "EXPORT_WRITER_NOT_IMPLEMENTED",
-      status: "deferred",
+      code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+      status: "unavailable",
       format: "step",
       message:
-        "STEP file export is not implemented yet; this query reports readiness and blockers only."
+        "STEP exact export writer is unavailable through the geometry boundary; this query reports readiness and blockers only."
     };
     const format: CadExportFormatReadiness = {
       format: "step",
       label: "STEP",
+      exportKind: "exact",
       status: "deferred",
       available: false,
+      writerStatus: "unavailable",
       fileExtensions: [".step", ".stp"],
       units: "mm",
       sourceBoundaryNote: "Authoritative document state.",
@@ -104,7 +106,9 @@ describe("cad-protocol", () => {
             {
               format: "step",
               label: "STEP",
+              exportKind: "exact",
               status: "deferred",
+              writerStatus: "unavailable",
               diagnostics: [writerDiagnostic]
             }
           ],
@@ -135,6 +139,94 @@ describe("cad-protocol", () => {
       formats: [{ format: "step", available: false }],
       bodies: [{ sourceStatus: "supported", status: "deferred" }]
     });
+  });
+
+  it("types the exact STEP export query contract", () => {
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "project.exportExact",
+        format: "step",
+        bodyIds: ["body_1"],
+        sourceIdentity: {
+          algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+          sha256:
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      }
+    };
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "project.exportExact",
+      cadOpsVersion: "cadops.v1",
+      format: "step",
+      label: "STEP",
+      exportKind: "exact",
+      status: "unavailable",
+      available: false,
+      canExportFile: false,
+      writerStatus: "unavailable",
+      units: "mm",
+      fileExtensions: [".step", ".stp"],
+      documentSchemaVersion: "web-cad.project.v16",
+      sourceIdentityAlgorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+      requestedSourceIdentity: {
+        algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+        sha256:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      sourceIdentityStatus: "providedUnchecked",
+      requestedBodyIds: ["body_1"],
+      bodyCount: 1,
+      sourceSupportedBodyCount: 1,
+      deferredBodyCount: 1,
+      unavailableBodyCount: 0,
+      exportableBodyCount: 0,
+      bodies: [
+        {
+          bodyId: "body_1",
+          bodyKind: "solid",
+          featureId: "feat_1",
+          partId: "part_default",
+          sourceKind: "authoredExtrude",
+          sourceStatus: "supported",
+          status: "deferred",
+          sourceBoundaryNote: "Authoritative document state.",
+          derivedBoundaryNote: "No derived display state.",
+          formats: [
+            {
+              format: "step",
+              label: "STEP",
+              exportKind: "exact",
+              status: "deferred",
+              writerStatus: "unavailable",
+              diagnostics: []
+            }
+          ],
+          diagnostics: []
+        }
+      ],
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+          status: "unavailable",
+          format: "step",
+          message:
+            "STEP exact export writer is unavailable through the geometry boundary."
+        }
+      ]
+    };
+
+    expect(request.query.query).toBe("project.exportExact");
+    expect(response).toMatchObject({
+      ok: true,
+      query: "project.exportExact",
+      format: "step",
+      writerStatus: "unavailable",
+      canExportFile: false
+    });
+    expect("artifact" in response).toBe(false);
   });
 
   it("types the V8 package readiness and manifest contracts", () => {

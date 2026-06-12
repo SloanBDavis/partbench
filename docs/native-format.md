@@ -87,8 +87,13 @@ mesh artifacts for clean saved/opened source identities. OPFS remains
 rebuildable cache only: project load does not require it, and clearing cache
 does not mutate document source, command history, `.wcad` bytes, JSON, file
 handles, selection, or viewport state. Thumbnail, package-unpack, and
-export-intermediate cache population remains deferred. STEP export also remains
-deferred.
+export-intermediate cache population remains deferred.
+In V8 Tranche E1, `project.exportReadiness` distinguishes exact STEP readiness
+from Mesh/GLB visualization readiness, and `project.exportExact` accepts a
+typed STEP request for current authoritative source bodies. Because no exact
+STEP writer is exposed through the geometry boundary yet, E1 returns structured
+`EXPORT_EXACT_WRITER_UNAVAILABLE` diagnostics and does not produce placeholder
+or fake STEP bytes.
 In V7 Tranche E1, `project.exportReadiness` reports STEP and Mesh/GLB
 visualization readiness from authoritative project structure before any file
 writer exists. It distinguishes empty projects, active authored bodies,

@@ -2024,7 +2024,7 @@ describe("agent-adapter", () => {
           available: false,
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              code: "EXPORT_WRITER_NOT_IMPLEMENTED"
+              code: "EXPORT_EXACT_WRITER_UNAVAILABLE"
             })
           ])
         })
@@ -2038,6 +2038,78 @@ describe("agent-adapter", () => {
         })
       ]
     });
+  });
+
+  it("passes exact STEP export writer-unavailable results through CADOps", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    adapter.execute({
+      requestId: "agent_create_export_body",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "sketch_exact_export",
+            name: "Profile",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addRectangle",
+            sketchId: "sketch_exact_export",
+            id: "rect_exact_export",
+            center: [0, 0],
+            width: 4,
+            height: 2
+          },
+          {
+            op: "feature.extrude",
+            id: "feat_exact_export",
+            bodyId: "body_exact_export",
+            sketchId: "sketch_exact_export",
+            entityId: "rect_exact_export",
+            depth: 3
+          }
+        ]
+      }
+    });
+
+    const response = adapter.query({
+      requestId: "agent_exact_export",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "project.exportExact",
+          format: "step",
+          bodyIds: ["body_exact_export"]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_exact_export",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.exportExact",
+      format: "step",
+      canExportFile: false,
+      writerStatus: "unavailable",
+      requestedBodyIds: ["body_exact_export"],
+      sourceSupportedBodyCount: 1,
+      exportableBodyCount: 0,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+          status: "unavailable"
+        })
+      ])
+    });
+    expect(response.ok && "artifact" in response).toBe(false);
   });
 
   it("returns V8 package readiness through adapter queries", () => {

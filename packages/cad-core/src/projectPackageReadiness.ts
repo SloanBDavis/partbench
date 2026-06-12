@@ -148,8 +148,8 @@ export function createProjectPackageReadiness({
     createDeferredCapability(
       "stepExport",
       "STEP exact export",
-      "WCAD_STEP_EXPORT_DEFERRED",
-      "STEP file writing is deferred to V8 Tranche E and must use exact geometry."
+      "WCAD_STEP_EXPORT_CONTRACT_READY",
+      "STEP exact export contract/readiness is available; file writing remains deferred until a geometry-boundary writer exists."
     )
   ];
   const diagnostics = capabilities.flatMap(

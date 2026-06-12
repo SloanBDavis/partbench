@@ -9,7 +9,7 @@ describe("projectExportReadiness", () => {
     );
 
     expect(display.statusLabel).toBe("Deferred");
-    expect(display.detail).toContain("STEP file export is not implemented yet");
+    expect(display.detail).toContain("STEP exact export writer is unavailable");
     expect(display.bodySummary).toBe(
       "1 source supported, 2 deferred, 0 unavailable"
     );
@@ -18,7 +18,7 @@ describe("projectExportReadiness", () => {
         id: "step",
         label: "STEP",
         status: "deferred",
-        detail: "STEP export files are not available yet."
+        detail: "STEP exact export writer is unavailable."
       },
       {
         id: "glb",
@@ -32,7 +32,7 @@ describe("projectExportReadiness", () => {
         id: "body_rect",
         status: "deferred",
         detail:
-          "Source body is supported; file availability depends on the format boundary."
+          "Source body is supported; exact file availability depends on the STEP writer boundary."
       },
       {
         id: "body_hole",
@@ -63,13 +63,15 @@ describe("projectExportReadiness", () => {
 
     expect(display.statusLabel).toBe("Supported");
     expect(display.detail).toContain("Mesh/GLB visualization export");
-    expect(display.detail).toContain("STEP remains unavailable");
+    expect(display.detail).toContain(
+      "STEP exact export writer remains unavailable"
+    );
     expect(display.formatRows).toMatchObject([
       {
         id: "step",
         label: "STEP",
         status: "deferred",
-        detail: "STEP export files are not available yet."
+        detail: "STEP exact export writer is unavailable."
       },
       {
         id: "glb",
@@ -112,8 +114,10 @@ function createExportReadinessResponse(): ProjectExportReadinessQueryResponse {
       {
         format: "step",
         label: "STEP",
+        exportKind: "exact",
         status: "deferred",
         available: false,
+        writerStatus: "unavailable",
         fileExtensions: [".step", ".stp"],
         units: "mm",
         sourceBoundaryNote:
@@ -126,19 +130,21 @@ function createExportReadinessResponse(): ProjectExportReadinessQueryResponse {
         unavailableBodyCount: 0,
         diagnostics: [
           {
-            code: "EXPORT_WRITER_NOT_IMPLEMENTED",
-            status: "deferred",
+            code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+            status: "unavailable",
             format: "step",
             message:
-              "STEP file export is not implemented yet; this query reports readiness and blockers only."
+              "STEP exact export writer is unavailable through the geometry boundary; this query reports readiness and blockers only."
           }
         ]
       },
       {
         format: "glb",
         label: "Mesh/GLB visualization",
+        exportKind: "visualization",
         status: "deferred",
         available: false,
+        writerStatus: "unavailable",
         fileExtensions: [".glb"],
         units: "mm",
         sourceBoundaryNote:

@@ -14,6 +14,7 @@ describe("mcp-adapter", () => {
       "cad.project_structure",
       "cad.project_health",
       "cad.project_export_readiness",
+      "cad.project_export_exact",
       "cad.project_package_readiness",
       "cad.project_sketches",
       "cad.object_measurements",
@@ -955,6 +956,81 @@ describe("mcp-adapter", () => {
         ]
       }
     });
+  });
+
+  it("returns exact STEP writer-unavailable diagnostics through cad.project_export_exact", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_exact_export_setup",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_exact_export",
+              name: "Exact export profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_exact_export",
+              id: "rect_exact_export",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_exact_export",
+              bodyId: "body_exact_export",
+              sketchId: "sketch_exact_export",
+              entityId: "rect_exact_export",
+              depth: 1.5
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.project_export_exact",
+      requestId: "mcp_req_exact_export",
+      arguments: {
+        format: "step",
+        bodyIds: ["body_exact_export"]
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_export_exact",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_exact_export",
+        query: "project.exportExact",
+        format: "step",
+        canExportFile: false,
+        writerStatus: "unavailable",
+        requestedBodyIds: ["body_exact_export"],
+        sourceSupportedBodyCount: 1,
+        exportableBodyCount: 0,
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+            status: "unavailable"
+          })
+        ])
+      }
+    });
+    expect(
+      "artifact" in
+        (result.structuredContent as unknown as Record<string, unknown>)
+    ).toBe(false);
   });
 
   it("returns V8 package readiness through cad.project_package_readiness", () => {
@@ -3144,6 +3220,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
           { name: "cad.project_export_readiness" },
+          { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
           { name: "cad.project_sketches" },
           { name: "cad.object_measurements" },

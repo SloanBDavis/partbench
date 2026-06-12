@@ -1,4 +1,5 @@
 import { CadEngine } from "@web-cad/cad-core";
+import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
   CadActorMetadata,
   CadBatch,
@@ -40,6 +41,7 @@ import type {
   CadOpsVersion,
   CadParameterSnapshot,
   CadPartSnapshot,
+  ProjectExactExportQueryResponse,
   ProjectPackageReadinessQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
@@ -307,6 +309,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectStructureQueryResponse
   | CadOpsAgentProjectHealthQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
+  | CadOpsAgentProjectExactExportQueryResponse
   | CadOpsAgentProjectPackageReadinessQueryResponse
   | CadOpsAgentProjectSketchesQueryResponse
   | CadOpsAgentObjectGetQueryResponse
@@ -437,6 +440,15 @@ export interface CadOpsAgentProjectExportReadinessQueryResponse {
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadOpsAgentProjectExactExportQueryResponse extends Omit<
+  ProjectExactExportQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
 }
 
 export interface CadOpsAgentProjectPackageReadinessQueryResponse extends Omit<
@@ -658,6 +670,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.structure"
     | "project.health"
     | "project.exportReadiness"
+    | "project.exportExact"
     | "project.packageReadiness"
     | "project.sketches"
     | "object.get"
@@ -1877,6 +1890,15 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.exportExact") {
+    return {
+      ...response,
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion
+    };
+  }
+
   if (response.query === "project.packageReadiness") {
     return {
       ok: true,
@@ -2237,6 +2259,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportReadiness" &&
         Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.exportExact" &&
+        isProjectExactExportQuery(value.query)) ||
       (value.query.query === "project.packageReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.health" &&
@@ -2293,6 +2317,30 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
           isCadSelectionReferenceOperation(value.query.requiredOperation))) ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
+  );
+}
+
+function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
+  const allowedKeys = ["query", "format", "bodyIds", "sourceIdentity"];
+
+  return (
+    value.query === "project.exportExact" &&
+    value.format === "step" &&
+    Object.keys(value).every((key) => allowedKeys.includes(key)) &&
+    (value.bodyIds === undefined ||
+      (Array.isArray(value.bodyIds) &&
+        value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
+    (value.sourceIdentity === undefined ||
+      isWcadSourceIdentityInput(value.sourceIdentity))
+  );
+}
+
+function isWcadSourceIdentityInput(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 2 &&
+    value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
+    typeof value.sha256 === "string"
   );
 }
 

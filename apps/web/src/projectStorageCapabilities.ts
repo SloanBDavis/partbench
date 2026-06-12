@@ -134,7 +134,7 @@ export function createProjectStorageCapabilityStatus(
         ? "Partbench can write and read partbench.wcad.v1 packages for supported projects."
         : "This runtime is missing both direct file handles and upload/download fallback primitives.",
     limitation:
-      "OPFS artifact population, thumbnails, mesh caches, STEP export, and file-handle persistence remain out of scope.",
+      "Thumbnails, package-unpack cache, STEP writer output, and file-handle persistence remain out of scope.",
     nextStep: fileSystemAccessAvailable
       ? "Use direct .wcad file handles for open/save/save-as."
       : wcadFallbackAvailable

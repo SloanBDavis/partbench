@@ -12,12 +12,28 @@ import {
   createRevolveProfileWorkerRequest,
   createSphereTessellationWorkerRequest,
   createTorusTessellationWorkerRequest,
+  getGeometryWorkerExactExportCapabilities,
   createWorkerErrorDiagnostics,
   createWorkerSuccessDiagnostics,
   createGeometryKernelWorker
 } from "./index";
 
 describe("geometry-worker", () => {
+  it("reports STEP exact export writer capability through the worker boundary", () => {
+    expect(getGeometryWorkerExactExportCapabilities()).toEqual([
+      {
+        format: "step",
+        label: "STEP",
+        status: "unavailable",
+        writerAvailable: false,
+        boundary: "geometry-worker",
+        kernelBoundary: "geometry-kernel",
+        reason:
+          "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
+      }
+    ]);
+  });
+
   it("creates a typed box tessellation worker request", () => {
     const request = createBoxTessellationWorkerRequest({
       id: "worker_req_1",

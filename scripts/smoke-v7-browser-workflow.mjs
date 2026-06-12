@@ -769,7 +769,7 @@ async function v7BrowserWorkflowSmoke({
     assertIncludes(projectPanel, "STEP", "step-export-status"),
     assertIncludes(
       projectPanel,
-      "STEP file export is not implemented yet",
+      "STEP exact export writer is unavailable",
       "step-deferred-limitation"
     ),
     assertIncludes(projectPanel, "Mesh/GLB visualization", "mesh-glb-status")

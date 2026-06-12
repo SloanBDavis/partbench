@@ -3,6 +3,7 @@ import {
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_MANIFEST_ENTRY_PATH,
   WCAD_PACKAGE_VERSION,
+  WCAD_SOURCE_IDENTITY_ALGORITHM,
   type WcadManifestV1,
   type WcadPackageValidationIssue,
   type WcadSourceIdentity,
@@ -143,7 +144,10 @@ import {
   type SketchSolverApplyIssue,
   type SketchSolverDocument
 } from "./sketchSolver";
-import { createProjectExportReadiness } from "./projectExportReadiness";
+import {
+  createProjectExactExport,
+  createProjectExportReadiness
+} from "./projectExportReadiness";
 import {
   createProjectPackageReadiness,
   createWcadPackageEntryMetadata,
@@ -195,6 +199,11 @@ export type {
   CadExportBodyReadiness,
   CadExportBodyFormatReadiness,
   CadExportBodySourceKind,
+  CadExactExportArtifact,
+  CadExactExportFormatId,
+  CadExactExportSourceIdentityStatus,
+  CadExactExportWriterStatus,
+  CadExportKind,
   CadExportDiagnostic,
   CadExportDiagnosticCode,
   CadExportFormatId,
@@ -247,6 +256,7 @@ export type {
   CadProjectSummaryWorkflowHint,
   CadProjectSummaryWorkflowHintCode,
   CadProjectSummaryWorkflowHintLevel,
+  ProjectExactExportQueryResponse,
   ProjectPackageReadinessQueryResponse,
   CadQueryRequest,
   CadQueryError,
@@ -1046,6 +1056,21 @@ export class CadEngine {
           document: this.#document,
           cadOpsVersion: request.version,
           bodies: structure.bodies
+        });
+      }
+
+      case "project.exportExact": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createProjectExactExport({
+          document: this.#document,
+          cadOpsVersion: request.version,
+          bodies: structure.bodies,
+          query: request.query,
+          documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
         });
       }
 
@@ -3524,6 +3549,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.structure":
     case "project.health":
     case "project.exportReadiness":
+    case "project.exportExact":
     case "project.packageReadiness":
     case "project.sketches":
     case "object.get":
@@ -3564,6 +3590,8 @@ function isCadQuery(value: unknown): boolean {
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.exportExact":
+      return isProjectExactExportQuery(value);
     case "project.health":
       return (
         Object.keys(value).length === 1 ||
@@ -3616,6 +3644,32 @@ function isCadQuery(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
+  const allowedKeys = ["query", "format", "bodyIds", "sourceIdentity"];
+
+  return (
+    value.query === "project.exportExact" &&
+    value.format === "step" &&
+    Object.keys(value).every((key) => allowedKeys.includes(key)) &&
+    (value.bodyIds === undefined ||
+      (Array.isArray(value.bodyIds) &&
+        value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
+    (value.sourceIdentity === undefined ||
+      isWcadSourceIdentityInput(value.sourceIdentity))
+  );
+}
+
+function isWcadSourceIdentityInput(
+  value: unknown
+): value is WcadSourceIdentity {
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 2 &&
+    value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
+    typeof value.sha256 === "string"
+  );
 }
 
 function isCadSelectionReferenceInput(

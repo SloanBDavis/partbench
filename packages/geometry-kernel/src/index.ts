@@ -12,6 +12,7 @@ import {
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
+  getGeometryKernelExactExportCapabilities,
   getGeometryResponseTransferables,
   type BooleanExtrudeSource,
   type BooleanExtrudesRequest,
@@ -34,6 +35,9 @@ import {
   type GeometryKernelEdgeFinishMeshFactory,
   type GeometryKernelEdgeFinishMeshFactoryInput,
   type GeometryKernelEdgeFinishOperation,
+  type GeometryKernelExactExportCapability,
+  type GeometryKernelExactExportCapabilityStatus,
+  type GeometryKernelExactExportFormat,
   type GeometryKernelExactBodyMetadata,
   type GeometryKernelExactBodyMetadataSuccessResponse,
   type GeometryKernelExactMetadataDiagnostic,
@@ -101,6 +105,9 @@ export type {
   GeometryKernelEdgeFinishMeshFactory,
   GeometryKernelEdgeFinishMeshFactoryInput,
   GeometryKernelEdgeFinishOperation,
+  GeometryKernelExactExportCapability,
+  GeometryKernelExactExportCapabilityStatus,
+  GeometryKernelExactExportFormat,
   GeometryKernelExactBodyMetadata,
   GeometryKernelExactBodyMetadataSuccessResponse,
   GeometryKernelExactMetadataDiagnostic,
@@ -145,7 +152,10 @@ export type {
   TorusGeometryDimensions,
   TessellationOptions
 };
-export { getGeometryResponseTransferables };
+export {
+  getGeometryKernelExactExportCapabilities,
+  getGeometryResponseTransferables
+};
 
 export async function executeGeometryKernelRequest<
   T extends GeometryKernelRequest

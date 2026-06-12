@@ -979,6 +979,7 @@ export type CadQueryKind =
   | "project.structure"
   | "project.health"
   | "project.exportReadiness"
+  | "project.exportExact"
   | "project.packageReadiness"
   | "project.sketches"
   | "object.get"
@@ -1006,6 +1007,7 @@ export type CadQuery =
   | ProjectStructureQuery
   | ProjectHealthQuery
   | ProjectExportReadinessQuery
+  | ProjectExactExportQuery
   | ProjectPackageReadinessQuery
   | ProjectSketchesQuery
   | ObjectGetQuery
@@ -1053,6 +1055,13 @@ export interface ProjectHealthQuery {
 
 export interface ProjectExportReadinessQuery {
   readonly query: "project.exportReadiness";
+}
+
+export interface ProjectExactExportQuery {
+  readonly query: "project.exportExact";
+  readonly format: CadExactExportFormatId;
+  readonly bodyIds?: readonly BodyId[];
+  readonly sourceIdentity?: WcadSourceIdentity;
 }
 
 export interface ProjectPackageReadinessQuery {
@@ -2525,7 +2534,8 @@ export type WcadPackageReadinessDiagnosticCode =
   | "WCAD_FILE_SYSTEM_ACCESS_READY"
   | "WCAD_FILE_SYSTEM_ACCESS_DEFERRED"
   | "WCAD_OPFS_CACHE_DEFERRED"
-  | "WCAD_STEP_EXPORT_DEFERRED";
+  | "WCAD_STEP_EXPORT_DEFERRED"
+  | "WCAD_STEP_EXPORT_CONTRACT_READY";
 
 export interface WcadPackageReadinessDiagnostic {
   readonly code: WcadPackageReadinessDiagnosticCode;
@@ -2734,6 +2744,16 @@ export interface CadBodyTopologySnapshot {
 
 export type CadExportFormatId = "step" | "glb";
 
+export type CadExportKind = "exact" | "visualization";
+
+export type CadExactExportFormatId = "step";
+
+export type CadExactExportWriterStatus = "available" | "unavailable";
+
+export type CadExactExportSourceIdentityStatus =
+  | "notProvided"
+  | "providedUnchecked";
+
 export type CadExportReadinessStatus = "supported" | "deferred" | "unavailable";
 
 export type CadExportBodySourceKind =
@@ -2747,6 +2767,9 @@ export type CadExportBodySourceKind =
 
 export type CadExportDiagnosticCode =
   | "EXPORT_WRITER_NOT_IMPLEMENTED"
+  | "EXPORT_EXACT_WRITER_UNAVAILABLE"
+  | "EXPORT_EXACT_FORMAT_UNSUPPORTED"
+  | "EXPORT_EXACT_BODY_UNSUPPORTED"
   | "EXPORT_PROJECT_EMPTY"
   | "EXPORT_BODY_SOURCE_SUPPORTED"
   | "EXPORT_BODY_CONSUMED"
@@ -2774,8 +2797,10 @@ export interface CadExportDiagnostic {
 export interface CadExportFormatReadiness {
   readonly format: CadExportFormatId;
   readonly label: string;
+  readonly exportKind: CadExportKind;
   readonly status: CadExportReadinessStatus;
   readonly available: boolean;
+  readonly writerStatus: CadExactExportWriterStatus;
   readonly fileExtensions: readonly string[];
   readonly units: DocumentUnits;
   readonly sourceBoundaryNote: string;
@@ -2790,8 +2815,19 @@ export interface CadExportFormatReadiness {
 export interface CadExportBodyFormatReadiness {
   readonly format: CadExportFormatId;
   readonly label: string;
+  readonly exportKind: CadExportKind;
   readonly status: CadExportReadinessStatus;
+  readonly writerStatus: CadExactExportWriterStatus;
   readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface CadExactExportArtifact {
+  readonly format: CadExactExportFormatId;
+  readonly fileName: string;
+  readonly mimeType: "model/step" | "application/step";
+  readonly byteLength: number;
+  readonly sha256: string;
+  readonly bytesBase64: string;
 }
 
 export interface CadExportBodyReadiness {
@@ -2820,6 +2856,7 @@ export type CadQueryResponse =
   | ProjectStructureQueryResponse
   | ProjectHealthQueryResponse
   | ProjectExportReadinessQueryResponse
+  | ProjectExactExportQueryResponse
   | ProjectPackageReadinessQueryResponse
   | ProjectSketchesQueryResponse
   | ObjectGetQueryResponse
@@ -2936,6 +2973,35 @@ export interface ProjectExportReadinessQueryResponse {
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];
+}
+
+export interface ProjectExactExportQueryResponse {
+  readonly ok: true;
+  readonly query: "project.exportExact";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly format: CadExactExportFormatId;
+  readonly label: "STEP";
+  readonly exportKind: "exact";
+  readonly status: CadExportReadinessStatus;
+  readonly available: boolean;
+  readonly canExportFile: boolean;
+  readonly writerStatus: CadExactExportWriterStatus;
+  readonly units: DocumentUnits;
+  readonly fileExtensions: readonly [".step", ".stp"];
+  readonly documentSchemaVersion: WcadDocumentSchemaVersion;
+  readonly sourceIdentityAlgorithm: WcadSourceIdentityAlgorithm;
+  readonly requestedSourceIdentity?: WcadSourceIdentity;
+  readonly sourceIdentityStatus: CadExactExportSourceIdentityStatus;
+  readonly requestedBodyIds: readonly BodyId[];
+  readonly bodyCount: number;
+  readonly sourceSupportedBodyCount: number;
+  readonly deferredBodyCount: number;
+  readonly unavailableBodyCount: number;
+  readonly exportableBodyCount: number;
+  readonly bodies: readonly CadExportBodyReadiness[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadExportDiagnostic[];
+  readonly artifact?: CadExactExportArtifact;
 }
 
 export interface ProjectPackageReadinessQueryResponse {

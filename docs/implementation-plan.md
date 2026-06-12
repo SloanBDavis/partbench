@@ -34,7 +34,8 @@ These constraints remain active:
    A-H1 real CAD alpha/release-readiness scope.
 10. V8 is the active broad major-release plan. Its center is native `.wcad`
     package storage, File System Access local workflow, OPFS-derived cache, and
-    exact STEP export for supported bodies.
+    exact STEP export contract/readiness for supported bodies, with real STEP
+    bytes deferred until a geometry-boundary writer exists.
 11. V8 implementation tranches should stay independently testable and should
     not mix unrelated storage, renderer, topology, sketch-solver, assembly, or
     agent-safety risks without explicit approval.
@@ -66,6 +67,12 @@ These constraints remain active:
     writes are app-layer, optional, and fail open to existing derived generation.
     It does not cache thumbnails, package-unpack data, export intermediates, or
     project source, and it does not introduce `web-cad.project.v17`.
+17. V8 Tranche E1 is implemented as the exact STEP export contract/readiness
+    slice: protocol/core `project.exportExact` for `step`,
+    exact-vs-visualization `project.exportReadiness`, geometry-kernel/worker
+    STEP writer capability probes, Project/File status, and thin agent/MCP
+    pass-through. It reports structured writer-unavailable diagnostics and does
+    not produce placeholder STEP bytes or introduce `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -979,7 +986,8 @@ V8 is organized around these pillars:
 - native `.wcad` package format v1;
 - File System Access local project workflow with upload/download fallback;
 - OPFS content-addressed derived cache;
-- exact STEP export for supported active bodies;
+- exact STEP export contract/readiness for supported active bodies, followed by
+  real STEP bytes only when the geometry writer tranche lands;
 - product UI that makes native project workflow primary and keeps JSON as
   debug/interchange;
 - agent/MCP package and export summaries over the same CADOps/query/export
@@ -1043,16 +1051,22 @@ Use these decisions when writing V8 implementation prompts:
    visualization mesh artifacts for current supported derived geometry, with
    fail-open generation fallback, status refresh, and source/cache separation
    tests.
-6. **STEP Export For Supported Exact Bodies** - add exact export through the
-   geometry boundary, update `project.exportReadiness`, and expose UI/agent/MCP
-   export actions with structured unsupported/writer-unavailable diagnostics.
-7. **Agent/MCP Package And Export Surface** - expose package readiness,
+6. **STEP Export Contract And Exact Export Readiness** - completed as E1:
+   protocol/core `project.exportExact` for STEP, exact-vs-visualization
+   readiness, geometry-boundary writer capability probes, Project/File status,
+   and thin agent/MCP pass-through with structured unsupported and
+   writer-unavailable diagnostics. No STEP bytes are produced yet.
+7. **STEP Writer For Supported Exact Bodies** - add real STEP writer execution
+   through the geometry boundary for the E1-supported exact source subset, then
+   update `project.exportReadiness`, Project/File actions, agent/MCP export
+   results, and smokes for non-empty STEP artifacts.
+8. **Agent/MCP Package And Export Surface** - expose package readiness,
    validation, source identity, export readiness, and safe export request
    behavior through thin adapter/MCP pass-throughs.
-8. **Release Samples, Smokes, And Migration Hardening** - add package/export
+9. **Release Samples, Smokes, And Migration Hardening** - add package/export
    fixtures, package round-trip smoke, fallback workflow coverage, and STEP
    export smoke when the writer capability exists.
-9. **Product Cleanup** - make native project workflow primary, demote raw JSON
+10. **Product Cleanup** - make native project workflow primary, demote raw JSON
    to debug/interchange, remove duplicate storage/export status surfaces, and
    verify normal use does not crowd the viewport.
 

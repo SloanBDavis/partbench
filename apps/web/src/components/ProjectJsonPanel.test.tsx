@@ -321,7 +321,7 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Deferred");
     expect(markup).toContain("STEP");
     expect(markup).toContain("Mesh/GLB visualization");
-    expect(markup).toContain("STEP file export is not implemented yet");
+    expect(markup).toContain("STEP exact export writer is unavailable");
     expect(markup).toContain("Source body is supported");
     expect(markup).toContain(
       "Display output and temporary visualization state"
@@ -417,7 +417,9 @@ describe("ProjectJsonPanel", () => {
     );
 
     expect(exportReadinessMarkup).toContain("Supported");
-    expect(exportReadinessMarkup).toContain("STEP remains unavailable");
+    expect(exportReadinessMarkup).toContain(
+      "STEP exact export writer remains unavailable"
+    );
     expect(exportReadinessMarkup).toContain(
       "Mesh/GLB visualization export is available"
     );

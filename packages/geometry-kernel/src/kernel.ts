@@ -1,4 +1,16 @@
 export type GeometryKernelVersion = "geometry-kernel.v1";
+export type GeometryKernelExactExportFormat = "step";
+export type GeometryKernelExactExportCapabilityStatus = "unavailable";
+
+export interface GeometryKernelExactExportCapability {
+  readonly format: GeometryKernelExactExportFormat;
+  readonly label: "STEP";
+  readonly status: GeometryKernelExactExportCapabilityStatus;
+  readonly writerAvailable: false;
+  readonly boundary: "geometry-kernel";
+  readonly reason: string;
+}
+
 export type GeometryKernelOp =
   | "geometry.tessellateBox"
   | "geometry.tessellateCylinder"
@@ -476,6 +488,20 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
         | GeometryKernelExactBodyMetadataSuccessResponse
         | GeometryKernelErrorResponse
     : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+
+export function getGeometryKernelExactExportCapabilities(): readonly GeometryKernelExactExportCapability[] {
+  return [
+    {
+      format: "step",
+      label: "STEP",
+      status: "unavailable",
+      writerAvailable: false,
+      boundary: "geometry-kernel",
+      reason:
+        "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
+    }
+  ];
+}
 
 export async function executeGeometryKernelRequestWithMeshFactory<
   T extends GeometryKernelRequest
