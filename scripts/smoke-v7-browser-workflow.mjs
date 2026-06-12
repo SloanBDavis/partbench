@@ -91,20 +91,41 @@ function parseSmokeOptions(args, env) {
   const requireGlbDownload =
     isTruthy(env.PARTBENCH_V7_BROWSER_WORKFLOW_REQUIRE_GLB) ||
     isTruthy(env.V7_BROWSER_WORKFLOW_REQUIRE_GLB);
+  const requireDerivedMeshCache = isTruthy(
+    env.PARTBENCH_V8_WCAD_WORKFLOW_REQUIRE_DERIVED_CACHE
+  );
+
+  let nextRequireGlbDownload = requireGlbDownload;
+  let nextRequireDerivedMeshCache = requireDerivedMeshCache;
 
   for (const arg of args) {
     if (arg === "--require-glb" || arg === "--require-glb-download") {
-      return { requireGlbDownload: true };
+      nextRequireGlbDownload = true;
+      continue;
     }
 
     if (arg === "--no-require-glb" || arg === "--no-require-glb-download") {
-      return { requireGlbDownload: false };
+      nextRequireGlbDownload = false;
+      continue;
+    }
+
+    if (arg === "--require-derived-mesh-cache") {
+      nextRequireDerivedMeshCache = true;
+      continue;
+    }
+
+    if (arg === "--no-require-derived-mesh-cache") {
+      nextRequireDerivedMeshCache = false;
+      continue;
     }
 
     throw new Error(`Unknown option ${arg}`);
   }
 
-  return { requireGlbDownload };
+  return {
+    requireGlbDownload: nextRequireGlbDownload,
+    requireDerivedMeshCache: nextRequireDerivedMeshCache
+  };
 }
 
 function isTruthy(value) {
@@ -165,7 +186,7 @@ async function runV7BrowserWorkflowSmoke(
   client,
   appUrl,
   timeoutMs,
-  { requireGlbDownload = false } = {}
+  { requireGlbDownload = false, requireDerivedMeshCache = false } = {}
 ) {
   const target = await client.send("Target.createTarget", {
     url: "about:blank"
@@ -216,6 +237,7 @@ async function runV7BrowserWorkflowSmoke(
       awaitPromise: true,
       returnByValue: true,
       expression: `(${v7BrowserWorkflowSmoke.toString()})(${JSON.stringify({
+        requireDerivedMeshCache,
         requireGlbDownload,
         timeoutMs
       })})`
@@ -242,6 +264,7 @@ async function runV7BrowserWorkflowSmoke(
     ids: pageResult.ids,
     skipped: pageResult.skipped,
     requiredCheckIds: getV7BrowserWorkflowRequiredCheckIds({
+      requireDerivedMeshCache,
       requireGlbDownload
     }),
     consoleErrors,
@@ -249,7 +272,11 @@ async function runV7BrowserWorkflowSmoke(
   });
 }
 
-async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
+async function v7BrowserWorkflowSmoke({
+  requireDerivedMeshCache,
+  requireGlbDownload,
+  timeoutMs
+}) {
   const ids = {
     attachedEntityId: "v7_smoke_attached_rect",
     attachedSketchId: "v7_smoke_attached_sketch",
@@ -815,6 +842,49 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
     ".wcad round-trip preserves feature tree, attached sketch, and named reference",
     compactText(getElementByAriaLabel("Model structure").textContent)
   );
+
+  const derivedMeshCacheObserved = () => {
+    const text = normalize(projectPanel.textContent);
+    return /Health:\s*[1-9]\d*\s+valid/.test(text);
+  };
+
+  if (derivedMeshCacheObserved()) {
+    pass(
+      "project-opfs-derived-mesh-cache",
+      "Project/File panel reports a derived visualization mesh cache entry",
+      compactText(projectPanel.textContent, 260)
+    );
+  } else if (requireDerivedMeshCache) {
+    try {
+      await waitFor(() => {
+        if (!derivedMeshCacheObserved()) {
+          throw new Error(compactText(projectPanel.textContent, 520));
+        }
+
+        return true;
+      }, "derived mesh OPFS cache entry");
+      pass(
+        "project-opfs-derived-mesh-cache",
+        "Project/File panel reports a derived visualization mesh cache entry",
+        compactText(projectPanel.textContent, 260)
+      );
+    } catch (error) {
+      fail(
+        "project-opfs-derived-mesh-cache",
+        "Project/File panel reports a derived visualization mesh cache entry",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  } else {
+    skipped.push({
+      id: "project-opfs-derived-mesh-cache",
+      reason:
+        includesText(projectPanel, "StorageUnavailable") ||
+        includesText(projectPanel, "OPFS is unavailable")
+          ? "OPFS is unavailable in this browser runtime."
+          : "No derived mesh cache entry was observed during the optional smoke path."
+    });
+  }
 
   const wcadViewport = getElementByAriaLabel("3D viewport");
   const wcadViewportRect = wcadViewport.getBoundingClientRect();

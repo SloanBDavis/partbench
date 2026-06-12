@@ -180,9 +180,28 @@ export interface DerivedGeometrySnapshot {
   readonly errorCount: number;
 }
 
+export interface DerivedGeometryMeshCacheReadInput {
+  readonly source: DerivedGeometrySource;
+  readonly sourceKey: string;
+}
+
+export interface DerivedGeometryMeshCacheWriteInput {
+  readonly source: DerivedGeometrySource;
+  readonly sourceKey: string;
+  readonly result: DerivedGeometryResult;
+}
+
+export interface DerivedGeometryMeshCache {
+  readonly read: (
+    input: DerivedGeometryMeshCacheReadInput
+  ) => Promise<DerivedGeometryResult | undefined>;
+  readonly write: (input: DerivedGeometryMeshCacheWriteInput) => Promise<void>;
+}
+
 export interface DerivedGeometryServiceOptions {
   readonly runtime: DerivedGeometryRuntime;
   readonly onChange: (snapshot: DerivedGeometrySnapshot) => void;
+  readonly meshCache?: DerivedGeometryMeshCache;
 }
 
 type SupportedDerivedGeometryObject =
@@ -208,6 +227,7 @@ interface ActiveDerivedGeometryRequest {
 export class DerivedGeometryService {
   readonly #runtime: DerivedGeometryRuntime;
   readonly #onChange: (snapshot: DerivedGeometrySnapshot) => void;
+  readonly #meshCache?: DerivedGeometryMeshCache;
   readonly #entries = new Map<string, DerivedGeometryEntry>();
   readonly #requestVersions = new Map<string, number>();
   #sourceOrder: readonly string[] = [];
@@ -217,6 +237,7 @@ export class DerivedGeometryService {
   constructor(options: DerivedGeometryServiceOptions) {
     this.#runtime = options.runtime;
     this.#onChange = options.onChange;
+    this.#meshCache = options.meshCache;
   }
 
   getSnapshot(): DerivedGeometrySnapshot {
@@ -320,11 +341,65 @@ export class DerivedGeometryService {
     request: ActiveDerivedGeometryRequest
   ): Promise<void> {
     try {
+      const cached = this.#meshCache
+        ? await this.#readCachedSource(source, request)
+        : undefined;
+
+      if (cached) {
+        this.#applyReadyResult(source, request, cached);
+        return;
+      }
+
       const result = await deriveSourceMesh(this.#runtime, source);
 
+      if (!this.#canApplyResult(request)) {
+        return;
+      }
+
       this.#applyReadyResult(source, request, result);
+      void this.#writeCachedSource(source, request, result);
     } catch (error) {
       this.#applyErrorResult(source, request, error);
+    }
+  }
+
+  async #readCachedSource(
+    source: SupportedDerivedGeometrySource,
+    request: ActiveDerivedGeometryRequest
+  ): Promise<DerivedGeometryResult | undefined> {
+    if (!this.#meshCache) {
+      return undefined;
+    }
+
+    try {
+      const result = await this.#meshCache.read({
+        source,
+        sourceKey: request.cacheKey
+      });
+
+      return result && this.#canApplyResult(request) ? result : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #writeCachedSource(
+    source: SupportedDerivedGeometrySource,
+    request: ActiveDerivedGeometryRequest,
+    result: DerivedGeometryResult
+  ): Promise<void> {
+    if (!this.#meshCache) {
+      return;
+    }
+
+    try {
+      await this.#meshCache.write({
+        source,
+        sourceKey: request.cacheKey,
+        result
+      });
+    } catch {
+      // Cache writes are rebuildable app state and must not affect rendering.
     }
   }
 

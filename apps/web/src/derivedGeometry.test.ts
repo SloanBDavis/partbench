@@ -3378,6 +3378,152 @@ describe("derivedGeometry", () => {
     expect(snapshot.meshes).toEqual([]);
   });
 
+  it("uses derived mesh cache hits without requesting the runtime", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const source = createBoxObject("box_1", 2);
+    const readInputs: {
+      readonly objectId: string;
+      readonly sourceKey: string;
+    }[] = [];
+    const writeInputs: string[] = [];
+    const runtime = createRuntime(async () => {
+      throw new Error("Runtime should not be called for cache hits.");
+    });
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot),
+      meshCache: {
+        read: async (input) => {
+          readInputs.push({
+            objectId: input.source.id,
+            sourceKey: input.sourceKey
+          });
+          return createResult("box_1", createMesh("cached_box_1"));
+        },
+        write: async (input) => {
+          writeInputs.push(input.sourceKey);
+        }
+      }
+    });
+
+    service.reconcile([source]);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([]);
+    expect(readInputs).toEqual([
+      {
+        objectId: "box_1",
+        sourceKey: createDerivedGeometryCacheKey(source)
+      }
+    ]);
+    expect(writeInputs).toEqual([]);
+    expect(snapshots.at(-1)?.entries[0]).toMatchObject({
+      objectId: "box_1",
+      status: "ready",
+      cacheKey: createDerivedGeometryCacheKey(source)
+    });
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "cached_box_1"
+    ]);
+  });
+
+  it("falls back to runtime generation and writes cache misses", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const source = createBoxObject("box_1", 2);
+    const writeInputs: {
+      readonly sourceKey: string;
+      readonly meshId: string;
+    }[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh("generated_box_1"))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot),
+      meshCache: {
+        read: async () => undefined,
+        write: async (input) => {
+          writeInputs.push({
+            sourceKey: input.sourceKey,
+            meshId: input.result.mesh.id
+          });
+        }
+      }
+    });
+
+    service.reconcile([source]);
+    await flushPromises();
+
+    expect(runtime.inputs.map((input) => input.id)).toEqual(["box_1"]);
+    expect(writeInputs).toEqual([
+      {
+        sourceKey: createDerivedGeometryCacheKey(source),
+        meshId: "generated_box_1"
+      }
+    ]);
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "generated_box_1"
+    ]);
+  });
+
+  it("falls back to runtime generation when cache reads fail", async () => {
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot),
+      meshCache: {
+        read: async () => {
+          throw new Error("cache read failed");
+        },
+        write: async () => {}
+      }
+    });
+
+    service.reconcile([createBoxObject("box_1", 2)]);
+    await flushPromises();
+
+    expect(runtime.inputs.map((input) => input.id)).toEqual(["box_1"]);
+    expect(snapshots.at(-1)?.entries[0]?.status).toBe("ready");
+  });
+
+  it("ignores stale cache read results after cache-key invalidation", async () => {
+    const firstRead = createDeferred<DerivedGeometryResult | undefined>();
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    let readCount = 0;
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh("generated_box_1"))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot),
+      meshCache: {
+        read: async () => {
+          readCount += 1;
+          return readCount === 1 ? firstRead.promise : undefined;
+        },
+        write: async () => {}
+      }
+    });
+
+    service.reconcile([createBoxObject("box_1", 2)]);
+    service.reconcile([createBoxObject("box_1", 4)]);
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "generated_box_1"
+    ]);
+
+    firstRead.resolve(createResult("box_1", createMesh("stale_cached_box_1")));
+    await flushPromises();
+
+    expect(snapshots.at(-1)?.meshes.map((mesh) => mesh.id)).toEqual([
+      "generated_box_1"
+    ]);
+  });
+
   it("ignores stale worker results after extrude body deletion", async () => {
     const pending = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];

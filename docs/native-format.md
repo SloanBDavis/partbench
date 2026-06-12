@@ -81,12 +81,14 @@ back to `.wcad` upload/download when direct handles are unavailable or denied.
 File handles remain app-only browser permission state and are not written into
 project JSON, `.wcad`, cad-core, agents, or MCP.
 In V8 Tranche D1, the Project panel reports OPFS cache status and supports
-clearing the browser-private `partbench.opfs-cache.v1` cache index/root. OPFS
-remains rebuildable cache only: project load does not require it, and clearing
-cache does not mutate document source, command history, `.wcad` bytes, JSON,
-file handles, selection, or viewport state. Derived mesh, thumbnail,
-package-unpack, and export-intermediate cache population remains deferred. STEP
-export also remains deferred.
+clearing the browser-private `partbench.opfs-cache.v1` cache index/root. In V8
+Tranche D2, OPFS can store `partbench-derived-mesh.v1` derived visualization
+mesh artifacts for clean saved/opened source identities. OPFS remains
+rebuildable cache only: project load does not require it, and clearing cache
+does not mutate document source, command history, `.wcad` bytes, JSON, file
+handles, selection, or viewport state. Thumbnail, package-unpack, and
+export-intermediate cache population remains deferred. STEP export also remains
+deferred.
 In V7 Tranche E1, `project.exportReadiness` reports STEP and Mesh/GLB
 visualization readiness from authoritative project structure before any file
 writer exists. It distinguishes empty projects, active authored bodies,
@@ -1468,5 +1470,6 @@ File System Access handles where available and upload/download fallback
 elsewhere. Reporting that a browser exposes File System Access or OPFS APIs does
 not make those APIs part of the saved project format. File handles, OPFS
 directories, thumbnails, mesh caches, and export artifacts are not persisted as
-authoritative source data. The current OPFS implementation is limited to
-cache status, diagnostics, an index contract, and clear behavior.
+authoritative source data. The current OPFS implementation is limited to cache
+status, diagnostics, an index contract, clear behavior, and the narrow
+`partbench-derived-mesh.v1` visualization mesh artifact cache.

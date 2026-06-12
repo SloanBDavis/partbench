@@ -57,8 +57,15 @@ These constraints remain active:
 15. V8 Tranche D1 is implemented as an app-layer OPFS cache foundation:
     `partbench.opfs-cache.v1` status/index helpers, structured diagnostics,
     Project/File cache status/refresh/clear, and source/cache separation tests.
-    It does not populate derived mesh, thumbnail, package-unpack, or export
-    intermediate artifacts yet.
+    D1 itself did not populate derived mesh, thumbnail, package-unpack, or
+    export intermediate artifacts.
+16. V8 Tranche D2 is implemented as the first narrow OPFS artifact population
+    slice: `partbench-derived-mesh.v1` derived visualization mesh artifacts are
+    keyed by source identity, document schema, units, derived-geometry source
+    key, kernel/worker versions, and tessellation settings; cache reads and
+    writes are app-layer, optional, and fail open to existing derived generation.
+    It does not cache thumbnails, package-unpack data, export intermediates, or
+    project source, and it does not introduce `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -1031,8 +1038,11 @@ Use these decisions when writing V8 implementation prompts:
    availability detection, `partbench.opfs-cache.v1` index helpers, structured
    diagnostics, Project/File status/refresh/clear UI, and tests proving cache
    state stays rebuildable and non-source.
-5. **OPFS Derived Artifact Population** - add source-identity-keyed rebuildable
-   cache support for a narrow derived artifact subset.
+5. **OPFS Derived Artifact Population** - completed as D2:
+   source-identity-keyed OPFS read/write for `partbench-derived-mesh.v1`
+   visualization mesh artifacts for current supported derived geometry, with
+   fail-open generation fallback, status refresh, and source/cache separation
+   tests.
 6. **STEP Export For Supported Exact Bodies** - add exact export through the
    geometry boundary, update `project.exportReadiness`, and expose UI/agent/MCP
    export actions with structured unsupported/writer-unavailable diagnostics.

@@ -30,6 +30,10 @@ export type ProjectOpfsCacheDiagnosticCode =
   | "OPFS_UNSUPPORTED_ARTIFACT_VERSION"
   | "OPFS_BYTE_LENGTH_MISMATCH"
   | "OPFS_HASH_MISMATCH"
+  | "OPFS_ARTIFACT_MISSING"
+  | "OPFS_ARTIFACT_INVALID"
+  | "OPFS_ARTIFACT_READ_FAILED"
+  | "OPFS_ARTIFACT_WRITE_FAILED"
   | "OPFS_CLEAR_FAILED"
   | "OPFS_CACHE_IGNORED";
 
@@ -46,6 +50,7 @@ export interface ProjectOpfsCacheKeyInput {
   readonly sourceIdentity: WcadSourceIdentity;
   readonly artifactKind: WcadPackageCacheArtifactKind;
   readonly artifactVersion: string;
+  readonly artifactSourceKey?: string;
   readonly documentSchemaVersion?: WcadDocumentSchemaVersion;
   readonly units?: DocumentUnits;
   readonly kernelVersion?: string;
@@ -123,6 +128,7 @@ export interface ProjectOpfsCacheFileHandleLike {
 
 export interface ProjectOpfsCacheFileLike {
   readonly text: () => Promise<string>;
+  readonly arrayBuffer?: () => Promise<ArrayBuffer>;
 }
 
 export interface ProjectOpfsCacheWritableLike {
@@ -138,6 +144,13 @@ export interface ProjectOpfsCacheTargetLike {
   };
 }
 
+export type ProjectOpfsCacheRootResult =
+  | { readonly ok: true; readonly root: ProjectOpfsCacheDirectoryHandleLike }
+  | {
+      readonly ok: false;
+      readonly diagnostic: ProjectOpfsCacheDiagnostic;
+    };
+
 export function createProjectOpfsCacheKey(
   input: ProjectOpfsCacheKeyInput
 ): string {
@@ -149,6 +162,7 @@ export function createProjectOpfsCacheKey(
     input.units ?? "units:none",
     input.artifactKind,
     input.artifactVersion,
+    input.artifactSourceKey ?? "artifact-source:none",
     input.kernelVersion ?? "kernel:none",
     input.workerVersion ?? "worker:none",
     input.settingsKey ?? "settings:none"
@@ -539,7 +553,7 @@ function createProjectOpfsCacheStatus({
   };
 }
 
-function createProjectOpfsCacheDiagnostic(
+export function createProjectOpfsCacheDiagnostic(
   code: ProjectOpfsCacheDiagnosticCode,
   severity: ProjectOpfsCacheDiagnosticSeverity,
   detail?: string,
@@ -560,12 +574,9 @@ function createCacheIgnoredDiagnostic(): ProjectOpfsCacheDiagnostic {
   return createProjectOpfsCacheDiagnostic("OPFS_CACHE_IGNORED", "info");
 }
 
-async function getProjectOpfsCacheRoot(
+export async function getProjectOpfsCacheRoot(
   target: ProjectOpfsCacheTargetLike
-): Promise<
-  | { readonly ok: true; readonly root: ProjectOpfsCacheDirectoryHandleLike }
-  | { readonly ok: false; readonly diagnostic: ProjectOpfsCacheDiagnostic }
-> {
+): Promise<ProjectOpfsCacheRootResult> {
   const storage = target.navigator?.storage;
   const directory = storage?.getDirectory;
 
@@ -596,6 +607,24 @@ async function getProjectOpfsCacheRoot(
       )
     };
   }
+}
+
+export async function createProjectOpfsCacheSha256Hex(
+  bytes: Uint8Array
+): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+
+  if (!subtle) {
+    throw new Error("SHA-256 hashing is unavailable in this runtime.");
+  }
+
+  const digestInput = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(digestInput).set(bytes);
+  const digest = await subtle.digest("SHA-256", digestInput);
+
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function parseProjectOpfsCacheIndexEntry(
@@ -647,6 +676,10 @@ function parseProjectOpfsCacheIndexEntry(
       sourceIdentity,
       artifactKind: value.artifactKind,
       artifactVersion: value.artifactVersion,
+      artifactSourceKey:
+        typeof value.artifactSourceKey === "string"
+          ? value.artifactSourceKey
+          : undefined,
       documentSchemaVersion: isDocumentSchemaVersion(
         value.documentSchemaVersion
       )
@@ -794,6 +827,14 @@ function getDiagnosticMessage(code: ProjectOpfsCacheDiagnosticCode): string {
       return "OPFS cache entry byte length does not match artifact metadata.";
     case "OPFS_HASH_MISMATCH":
       return "OPFS cache entry hash does not match artifact metadata.";
+    case "OPFS_ARTIFACT_MISSING":
+      return "OPFS cache artifact is missing.";
+    case "OPFS_ARTIFACT_INVALID":
+      return "OPFS cache artifact is invalid.";
+    case "OPFS_ARTIFACT_READ_FAILED":
+      return "OPFS cache artifact read failed.";
+    case "OPFS_ARTIFACT_WRITE_FAILED":
+      return "OPFS cache artifact write failed.";
     case "OPFS_CLEAR_FAILED":
       return "OPFS cache clear failed.";
     case "OPFS_CACHE_IGNORED":

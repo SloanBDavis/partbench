@@ -116,7 +116,7 @@ export function createProjectStorageCapabilityStatus(
       ? "OPFS API is detected for browser-private rebuildable cache status and clear."
       : "This browser/runtime does not expose navigator.storage.getDirectory.",
     limitation:
-      "No project source, recovery store, thumbnail, mesh artifact, or package source is stored in OPFS.",
+      "No project source, recovery store, thumbnail, export artifact, or package source is stored in OPFS.",
     nextStep:
       "Use Project/File cache status and Clear cache; future tranches can populate rebuildable artifacts."
   };

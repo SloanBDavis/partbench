@@ -117,6 +117,11 @@ import {
   type DerivedGeometrySnapshot
 } from "./derivedGeometry";
 import {
+  createDerivedMeshOpfsCache,
+  DERIVED_MESH_CACHE_ARTIFACT_VERSION,
+  type DerivedMeshCacheContext
+} from "./derivedMeshOpfsCache";
+import {
   createVisualizationMeshExportArtifact,
   createVisualizationMeshExportStatus
 } from "./visualizationMeshExport";
@@ -210,6 +215,9 @@ const commandExecutor = new AsyncCadCommandExecutor(
   new BrowserCadCommandWorker()
 );
 const derivedGeometryEnabled = __PARTBENCH_DERIVED_GEOMETRY_ENABLED__;
+const supportedOpfsCacheArtifactVersions = [
+  DERIVED_MESH_CACHE_ARTIFACT_VERSION
+] as const;
 
 const quickBoxForm: PrimitiveCommandForm = {
   id: "",
@@ -873,6 +881,9 @@ export function App() {
   const derivedGeometryServiceRef = useRef<DerivedGeometryService | undefined>(
     undefined
   );
+  const derivedMeshCacheContextRef = useRef<
+    DerivedMeshCacheContext | undefined
+  >(undefined);
   const derivedExactMetadataServiceRef = useRef<
     DerivedExactMetadataService | undefined
   >(undefined);
@@ -915,23 +926,55 @@ export function App() {
   const [projectMessageTone, setProjectMessageTone] = useState<
     "info" | "error"
   >("info");
-  const refreshProjectOpfsCache = useCallback(async (announce = false) => {
-    const status = await readProjectOpfsCacheStatus(
-      typeof window !== "undefined"
-        ? (window as unknown as ProjectOpfsCacheTargetLike)
-        : {}
-    );
-    setProjectOpfsCacheStatus(status);
-
-    if (announce) {
-      setProjectMessage(status.lastResult ?? "OPFS cache status refreshed.");
-      setProjectMessageTone(
-        status.diagnostics.some((diagnostic) => diagnostic.severity === "error")
-          ? "error"
-          : "info"
-      );
+  const derivedMeshCacheContext = useMemo<
+    DerivedMeshCacheContext | undefined
+  >(() => {
+    if (
+      projectFile.dirty ||
+      !projectFile.sourceIdentity ||
+      !projectFile.documentSchemaVersion
+    ) {
+      return undefined;
     }
-  }, []);
+
+    return {
+      sourceIdentity: projectFile.sourceIdentity,
+      documentSchemaVersion: projectFile.documentSchemaVersion,
+      units: document.units
+    };
+  }, [
+    document.units,
+    projectFile.dirty,
+    projectFile.documentSchemaVersion,
+    projectFile.sourceIdentity
+  ]);
+  derivedMeshCacheContextRef.current = derivedMeshCacheContext;
+  const refreshProjectOpfsCache = useCallback(
+    async (announce = false) => {
+      const status = await readProjectOpfsCacheStatus(
+        typeof window !== "undefined"
+          ? (window as unknown as ProjectOpfsCacheTargetLike)
+          : {},
+        {
+          currentSourceIdentity: derivedMeshCacheContext?.sourceIdentity,
+          supportedArtifactVersions: supportedOpfsCacheArtifactVersions
+        }
+      );
+      setProjectOpfsCacheStatus(status);
+
+      if (announce) {
+        setProjectMessage(status.lastResult ?? "OPFS cache status refreshed.");
+        setProjectMessageTone(
+          status.diagnostics.some(
+            (diagnostic) => diagnostic.severity === "error"
+          )
+            ? "error"
+            : "info"
+        );
+      }
+    },
+    [derivedMeshCacheContext?.sourceIdentity]
+  );
   const clearProjectOpfsCache = useCallback(async () => {
     const status = await clearProjectOpfsCacheStorage(
       typeof window !== "undefined"
@@ -961,7 +1004,15 @@ export function App() {
     if (!derivedGeometryServiceRef.current) {
       derivedGeometryServiceRef.current = new DerivedGeometryService({
         runtime: getDerivedGeometryRuntime(),
-        onChange: setDerivedGeometry
+        onChange: setDerivedGeometry,
+        meshCache: createDerivedMeshOpfsCache({
+          target:
+            typeof window !== "undefined"
+              ? (window as unknown as ProjectOpfsCacheTargetLike)
+              : {},
+          getContext: () => derivedMeshCacheContextRef.current,
+          onStatus: setProjectOpfsCacheStatus
+        })
       });
     }
 
@@ -1272,6 +1323,18 @@ export function App() {
   }, [
     derivedGeometrySources,
     getDerivedExactMetadataService,
+    getDerivedGeometryService
+  ]);
+
+  useEffect(() => {
+    if (!derivedGeometryEnabled || !derivedMeshCacheContext) {
+      return;
+    }
+
+    getDerivedGeometryService().refresh(derivedGeometrySources);
+  }, [
+    derivedGeometrySources,
+    derivedMeshCacheContext,
     getDerivedGeometryService
   ]);
 

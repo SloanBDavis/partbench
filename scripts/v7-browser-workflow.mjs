@@ -34,9 +34,12 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
 ]);
 
 export const V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID = "glb-download";
+export const V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID =
+  "project-opfs-derived-mesh-cache";
 
 export function getV7BrowserWorkflowRequiredCheckIds({
-  requireGlbDownload = false
+  requireGlbDownload = false,
+  requireDerivedMeshCache = false
 } = {}) {
   const requiredCheckIds = [...V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS];
 
@@ -45,6 +48,13 @@ export function getV7BrowserWorkflowRequiredCheckIds({
     !requiredCheckIds.includes(V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID)
   ) {
     requiredCheckIds.push(V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID);
+  }
+
+  if (
+    requireDerivedMeshCache &&
+    !requiredCheckIds.includes(V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID)
+  ) {
+    requiredCheckIds.push(V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID);
   }
 
   return requiredCheckIds;

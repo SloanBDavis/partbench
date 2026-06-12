@@ -3,6 +3,7 @@ import {
   createV7BrowserWorkflowSmokeResult,
   formatV7BrowserWorkflowSmokeSummary,
   getV7BrowserWorkflowRequiredCheckIds,
+  V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID,
   V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID,
   V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS
 } from "./v7-browser-workflow.mjs";
@@ -111,6 +112,17 @@ describe("V7 browser workflow smoke summary", () => {
       getV7BrowserWorkflowRequiredCheckIds({ requireGlbDownload: true })
     ).toEqual(
       expect.arrayContaining([V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID])
+    );
+  });
+
+  it("keeps the V8 derived mesh cache check optional unless required", () => {
+    expect(getV7BrowserWorkflowRequiredCheckIds()).not.toContain(
+      V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID
+    );
+    expect(
+      getV7BrowserWorkflowRequiredCheckIds({ requireDerivedMeshCache: true })
+    ).toEqual(
+      expect.arrayContaining([V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID])
     );
   });
 
