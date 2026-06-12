@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-11.
+Last updated: 2026-06-12.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
@@ -50,6 +50,15 @@ These constraints remain active:
     through the existing current project importer. It does not add browser File
     System Access UI, upload/download fallback UI, OPFS writes, STEP export, or
     `web-cad.project.v17`.
+14. V8 Tranche C is implemented in the web app as the `.wcad` project workflow:
+    Open, Save, and Save As use File System Access where available, fall back to
+    `.wcad` upload/download, keep JSON as explicit interchange/debug, and keep
+    file handles out of cad-core, project source, `.wcad`, agents, and MCP.
+15. V8 Tranche D1 is implemented as an app-layer OPFS cache foundation:
+    `partbench.opfs-cache.v1` status/index helpers, structured diagnostics,
+    Project/File cache status/refresh/clear, and source/cache separation tests.
+    It does not populate derived mesh, thumbnail, package-unpack, or export
+    intermediate artifacts yet.
 
 ## Current Repo State
 
@@ -1015,21 +1024,25 @@ Use these decisions when writing V8 implementation prompts:
    ZIP-compatible package writer/reader for `manifest.json`, `document.cbor`,
    and `commands.cbor`, with deterministic current-project round-trip and
    corruption diagnostics.
-3. **File System Access Project Workflow** - make Open, Save, and Save As use
-   `.wcad` through File System Access where available, with upload/download
-   fallback and permission diagnostics.
-4. **OPFS Derived Cache** - add source-identity-keyed rebuildable cache support
-   for a narrow derived artifact subset, plus cache status/clear behavior.
-5. **STEP Export For Supported Exact Bodies** - add exact export through the
+3. **File System Access Project Workflow** - completed in the web app: Open,
+   Save, and Save As use `.wcad` through File System Access where available,
+   with upload/download fallback and permission diagnostics.
+4. **OPFS Cache Contract, Status, And Clear** - completed as D1: app-layer OPFS
+   availability detection, `partbench.opfs-cache.v1` index helpers, structured
+   diagnostics, Project/File status/refresh/clear UI, and tests proving cache
+   state stays rebuildable and non-source.
+5. **OPFS Derived Artifact Population** - add source-identity-keyed rebuildable
+   cache support for a narrow derived artifact subset.
+6. **STEP Export For Supported Exact Bodies** - add exact export through the
    geometry boundary, update `project.exportReadiness`, and expose UI/agent/MCP
    export actions with structured unsupported/writer-unavailable diagnostics.
-6. **Agent/MCP Package And Export Surface** - expose package readiness,
+7. **Agent/MCP Package And Export Surface** - expose package readiness,
    validation, source identity, export readiness, and safe export request
    behavior through thin adapter/MCP pass-throughs.
-7. **Release Samples, Smokes, And Migration Hardening** - add package/export
+8. **Release Samples, Smokes, And Migration Hardening** - add package/export
    fixtures, package round-trip smoke, fallback workflow coverage, and STEP
    export smoke when the writer capability exists.
-8. **Product Cleanup** - make native project workflow primary, demote raw JSON
+9. **Product Cleanup** - make native project workflow primary, demote raw JSON
    to debug/interchange, remove duplicate storage/export status surfaces, and
    verify normal use does not crowd the viewport.
 

@@ -28,6 +28,13 @@ import {
   type ProjectExportReadinessRow,
   type ProjectVisualizationExportDisplayStatus
 } from "../projectExportReadiness";
+import {
+  createInitialProjectOpfsCacheStatus,
+  formatProjectOpfsCacheDiagnostic,
+  getProjectOpfsCacheHealthLabel,
+  getProjectOpfsCacheStatusLabel,
+  type ProjectOpfsCacheStatus
+} from "../projectOpfsCache";
 
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
@@ -36,6 +43,7 @@ export interface ProjectJsonPanelProps {
   readonly visualizationDownloadAvailable?: boolean;
   readonly projectJson: string;
   readonly projectFile?: ProjectFileWorkflowState;
+  readonly opfsCacheStatus?: ProjectOpfsCacheStatus;
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
   readonly workflow: ProjectJsonWorkflowState;
   readonly message?: string;
@@ -45,6 +53,8 @@ export interface ProjectJsonPanelProps {
   readonly onProjectJsonChange: (projectJson: string) => void;
   readonly onProjectFileLoaded: (projectJson: string, fileName: string) => void;
   readonly onProjectFileError: (message: string) => void;
+  readonly onRefreshOpfsCache?: () => void;
+  readonly onClearOpfsCache?: () => void;
   readonly onSaveWcad?: () => void;
   readonly onSaveAsWcad?: () => void;
   readonly onExport: () => void;
@@ -60,6 +70,7 @@ export function ProjectJsonPanel({
   visualizationDownloadAvailable = true,
   projectJson,
   projectFile = createInitialProjectFileWorkflowState(),
+  opfsCacheStatus,
   message,
   messageTone = "info",
   storageCapabilities,
@@ -69,6 +80,8 @@ export function ProjectJsonPanel({
   onProjectJsonChange,
   onProjectFileLoaded,
   onProjectFileError,
+  onRefreshOpfsCache = () => undefined,
+  onClearOpfsCache = () => undefined,
   onSaveWcad = () => undefined,
   onSaveAsWcad = () => undefined,
   onDownload,
@@ -78,6 +91,9 @@ export function ProjectJsonPanel({
 }: ProjectJsonPanelProps) {
   const jsonFileInputRef = useRef<HTMLInputElement | null>(null);
   const wcadFileInputRef = useRef<HTMLInputElement | null>(null);
+  const resolvedOpfsCacheStatus =
+    opfsCacheStatus ??
+    createInitialProjectOpfsCacheStatus(storageCapabilities.opfsApiDetected);
 
   async function loadProjectJsonFile(file: File | undefined): Promise<void> {
     if (!file) {
@@ -186,6 +202,12 @@ export function ProjectJsonPanel({
         />
       </section>
       <ProjectStorageStatus storageCapabilities={storageCapabilities} />
+      <ProjectOpfsCacheStatusView
+        disabled={disabled}
+        status={resolvedOpfsCacheStatus}
+        onClear={onClearOpfsCache}
+        onRefresh={onRefreshOpfsCache}
+      />
       {exportReadiness && (
         <ProjectExportReadinessStatus
           disabled={disabled}
@@ -332,6 +354,96 @@ function ProjectFileStatus({
             {projectFile.diagnostics.map((issue, index) => (
               <li key={`${issue.code}-${issue.entryPath ?? index}`}>
                 {formatWcadValidationIssue(issue)}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function ProjectOpfsCacheStatusView({
+  disabled,
+  status,
+  onClear,
+  onRefresh
+}: {
+  readonly disabled: boolean;
+  readonly status: ProjectOpfsCacheStatus;
+  readonly onClear: () => void;
+  readonly onRefresh: () => void;
+}) {
+  const diagnosticsSummary =
+    status.diagnostics.length > 0
+      ? `${status.diagnostics.length} cache diagnostic${
+          status.diagnostics.length === 1 ? "" : "s"
+        }.`
+      : "No cache diagnostics.";
+
+  return (
+    <section
+      id="project-opfs-cache-status"
+      className="project-workflow-section"
+      aria-label="OPFS cache status"
+    >
+      <div className="project-workflow-heading">
+        <h3>OPFS cache</h3>
+        <span>{getProjectOpfsCacheStatusLabel(status)}</span>
+      </div>
+      <p className="project-workflow-detail">
+        Browser-private rebuildable cache only; project load does not depend on
+        OPFS.
+      </p>
+      <dl className="project-workflow-grid">
+        <ProjectWorkflowRow
+          label="Storage"
+          value={status.available ? "Available" : "Unavailable"}
+          detail={
+            status.lastResult ??
+            "Cache status has not been refreshed in this session."
+          }
+        />
+        <ProjectWorkflowRow
+          label="Entries"
+          value={`${status.entryCount}`}
+          detail={`Health: ${getProjectOpfsCacheHealthLabel(status)}.`}
+        />
+        <ProjectWorkflowRow
+          label="Index"
+          value={status.indexVersion}
+          detail={diagnosticsSummary}
+        />
+        <ProjectWorkflowRow
+          label="Boundary"
+          value=".wcad unchanged"
+          detail="Clearing cache does not mutate source, history, file handles, selection, or viewport state."
+        />
+      </dl>
+      <div className="button-row compact">
+        <button
+          type="button"
+          onClick={() => void onRefresh()}
+          disabled={disabled}
+        >
+          Refresh cache
+        </button>
+        <button
+          id="project-opfs-cache-clear"
+          type="button"
+          onClick={() => void onClear()}
+          disabled={disabled}
+        >
+          Clear cache
+        </button>
+      </div>
+      {status.diagnostics.length > 0 && (
+        <details className="advanced-options compact">
+          <summary>Cache diagnostics</summary>
+          <ul className="compact-list">
+            {status.diagnostics.map((diagnostic, index) => (
+              <li key={`${diagnostic.code}-${diagnostic.cacheKey ?? index}`}>
+                {formatProjectOpfsCacheDiagnostic(diagnostic)}
               </li>
             ))}
           </ul>

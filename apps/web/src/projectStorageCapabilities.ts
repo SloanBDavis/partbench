@@ -109,16 +109,16 @@ export function createProjectStorageCapabilityStatus(
 
   const opfs: ProjectStorageCapabilityEntry = {
     mode: "opfs",
-    availability: "deferred",
-    available: false,
+    availability: opfsApiDetected ? "available" : "unavailable",
+    available: opfsApiDetected,
     label: "OPFS browser cache",
     detail: opfsApiDetected
-      ? "OPFS API was detected, but Partbench does not use OPFS in this tranche."
-      : "OPFS is intentionally not used in this tranche.",
+      ? "OPFS API is detected for browser-private rebuildable cache status and clear."
+      : "This browser/runtime does not expose navigator.storage.getDirectory.",
     limitation:
-      "No recovery store, thumbnail store, mesh cache, or package cache is written.",
+      "No project source, recovery store, thumbnail, mesh artifact, or package source is stored in OPFS.",
     nextStep:
-      "A future storage tranche must define source/cache separation before enabling OPFS."
+      "Use Project/File cache status and Clear cache; future tranches can populate rebuildable artifacts."
   };
 
   const wcadPackage: ProjectStorageCapabilityEntry = {
@@ -134,7 +134,7 @@ export function createProjectStorageCapabilityStatus(
         ? "Partbench can write and read partbench.wcad.v1 packages for supported projects."
         : "This runtime is missing both direct file handles and upload/download fallback primitives.",
     limitation:
-      "OPFS cache, thumbnails, mesh caches, STEP export, and file-handle persistence remain out of scope.",
+      "OPFS artifact population, thumbnails, mesh caches, STEP export, and file-handle persistence remain out of scope.",
     nextStep: fileSystemAccessAvailable
       ? "Use direct .wcad file handles for open/save/save-as."
       : wcadFallbackAvailable

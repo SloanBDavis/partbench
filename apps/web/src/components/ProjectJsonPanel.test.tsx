@@ -200,10 +200,71 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Available");
     expect(markup).toContain("app-only browser state");
     expect(markup).toContain("OPFS browser cache");
+    expect(markup).toContain("OPFS cache");
+    expect(markup).toContain("Clear cache");
+    expect(markup).toContain("partbench.opfs-cache.v1");
+    expect(markup).toContain("Browser-private rebuildable cache only");
     expect(markup).toContain("Native .wcad package");
     expect(markup).toContain("Active");
-    expect(markup).toContain("No recovery store");
+    expect(markup).toContain("No project source");
     expect(markup).toContain("partbench.wcad.v1");
+  });
+
+  it("renders OPFS cache diagnostics without exposing implementation handles", () => {
+    const engine = new CadEngine();
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        projectJson: "",
+        opfsCacheStatus: {
+          state: "invalid",
+          available: true,
+          indexVersion: "partbench.opfs-cache.v1",
+          entryCount: 1,
+          validEntryCount: 0,
+          staleEntryCount: 1,
+          unsupportedEntryCount: 0,
+          corruptEntryCount: 0,
+          diagnostics: [
+            {
+              code: "OPFS_STALE_SOURCE_IDENTITY",
+              severity: "warning",
+              message: "OPFS cache entry belongs to a stale source identity.",
+              cacheKey: "semantic-cache-key",
+              artifactKind: "derivedMesh"
+            }
+          ],
+          lastResult: "OPFS cache index read."
+        },
+        storageCapabilities: createProjectStorageCapabilityStatus({
+          ...createJsonFallbackTarget(),
+          navigator: {
+            storage: {
+              getDirectory: () => undefined
+            }
+          }
+        }),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    expect(markup).toContain("OPFS cache");
+    expect(markup).toContain("Invalid");
+    expect(markup).toContain("OPFS_STALE_SOURCE_IDENTITY");
+    expect(markup).toContain(".wcad unchanged");
+    expect(markup).not.toMatch(
+      /fileHandle|opfsPath|rendererId|meshId|occtId|selectionBufferId/i
+    );
   });
 
   it("renders export readiness without internal display-state identifiers", () => {
@@ -453,6 +514,9 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toMatch(/<button type="button" disabled="">Save<\/button>/);
     expect(markup).toMatch(
       /<button type="button" disabled="">Save As<\/button>/
+    );
+    expect(markup).toMatch(
+      /<button id="project-opfs-cache-clear" type="button">Clear cache<\/button>/
     );
     expect(markup).toMatch(/<button type="button">Export JSON<\/button>/);
     expect(markup).toMatch(

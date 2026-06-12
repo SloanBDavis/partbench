@@ -722,7 +722,18 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       "Direct browser file handles",
       "direct-file-status"
     ),
-    assertIncludes(projectPanel, "OPFS browser cache", "opfs-deferred-status"),
+    assertIncludes(
+      projectPanel,
+      "OPFS browser cache",
+      "opfs-capability-status"
+    ),
+    assertIncludes(projectPanel, "OPFS cache", "opfs-cache-status"),
+    assertIncludes(projectPanel, "Clear cache", "opfs-cache-clear-action"),
+    assertIncludes(
+      projectPanel,
+      "Browser-private rebuildable cache only",
+      "opfs-cache-boundary"
+    ),
     assertIncludes(
       projectPanel,
       "Native .wcad package",
@@ -742,6 +753,25 @@ async function v7BrowserWorkflowSmoke({ requireGlbDownload, timeoutMs }) {
       "Project/File panel reports .wcad workflow, JSON interchange, storage capability, and export readiness"
     );
   }
+
+  pass(
+    "project-opfs-cache-status",
+    "Project/File panel reports OPFS cache status without becoming a viewport overlay"
+  );
+
+  clickButton(projectPanel, "Clear cache");
+  await waitFor(
+    () =>
+      includesText(projectPanel, "OPFS cache cleared") ||
+      includesText(projectPanel, "OPFS cache was already empty") ||
+      includesText(projectPanel, "OPFS is unavailable in this browser"),
+    "cleared OPFS cache"
+  );
+  pass(
+    "project-opfs-cache-clear",
+    "cleared OPFS cache without blocking project workflow",
+    compactText(projectPanel.textContent, 260)
+  );
 
   const downloadCapture = createDownloadCapture();
   downloadCapture.install();

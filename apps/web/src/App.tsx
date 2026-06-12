@@ -189,6 +189,12 @@ import {
   type WcadFilePickerTargetLike
 } from "./projectWcadWorkflow";
 import {
+  clearProjectOpfsCache as clearProjectOpfsCacheStorage,
+  createInitialProjectOpfsCacheStatus,
+  readProjectOpfsCacheStatus,
+  type ProjectOpfsCacheTargetLike
+} from "./projectOpfsCache";
+import {
   createAddTargetBodyOptions,
   createCutTargetBodyOptions,
   createHoleTargetBodyOptions,
@@ -899,10 +905,43 @@ export function App() {
   const [projectFileHandle, setProjectFileHandle] = useState<
     WcadFileHandleLike | undefined
   >();
+  const [projectOpfsCacheStatus, setProjectOpfsCacheStatus] = useState(() =>
+    createInitialProjectOpfsCacheStatus(
+      typeof window !== "undefined" &&
+        typeof window.navigator?.storage?.getDirectory === "function"
+    )
+  );
   const [projectMessage, setProjectMessage] = useState<string | undefined>();
   const [projectMessageTone, setProjectMessageTone] = useState<
     "info" | "error"
   >("info");
+  const refreshProjectOpfsCache = useCallback(async (announce = false) => {
+    const status = await readProjectOpfsCacheStatus(
+      typeof window !== "undefined"
+        ? (window as unknown as ProjectOpfsCacheTargetLike)
+        : {}
+    );
+    setProjectOpfsCacheStatus(status);
+
+    if (announce) {
+      setProjectMessage(status.lastResult ?? "OPFS cache status refreshed.");
+      setProjectMessageTone(
+        status.diagnostics.some((diagnostic) => diagnostic.severity === "error")
+          ? "error"
+          : "info"
+      );
+    }
+  }, []);
+  const clearProjectOpfsCache = useCallback(async () => {
+    const status = await clearProjectOpfsCacheStorage(
+      typeof window !== "undefined"
+        ? (window as unknown as ProjectOpfsCacheTargetLike)
+        : {}
+    );
+    setProjectOpfsCacheStatus(status);
+    setProjectMessage(status.lastResult ?? "OPFS cache clear finished.");
+    setProjectMessageTone(status.state === "error" ? "error" : "info");
+  }, []);
   const [derivedGeometry, setDerivedGeometry] =
     useState<DerivedGeometrySnapshot>(() =>
       createEmptyDerivedGeometrySnapshot()
@@ -1218,6 +1257,10 @@ export function App() {
       derivedGeometryRuntimeRef.current = undefined;
     };
   }, []);
+
+  useEffect(() => {
+    void refreshProjectOpfsCache();
+  }, [refreshProjectOpfsCache]);
 
   useEffect(() => {
     if (!derivedGeometryEnabled) {
@@ -2660,6 +2703,7 @@ export function App() {
                     visualizationExport={visualizationMeshExportStatus}
                     projectJson={projectJson}
                     projectFile={projectFile}
+                    opfsCacheStatus={projectOpfsCacheStatus}
                     storageCapabilities={projectStorageCapabilities}
                     workflow={projectJsonWorkflow}
                     message={projectMessage}
@@ -2684,6 +2728,10 @@ export function App() {
                       setProjectMessage(message);
                       setProjectMessageTone("error");
                     }}
+                    onRefreshOpfsCache={() =>
+                      void refreshProjectOpfsCache(true)
+                    }
+                    onClearOpfsCache={() => void clearProjectOpfsCache()}
                     onSaveWcad={() => void saveProjectWcad()}
                     onSaveAsWcad={() => void saveProjectWcadAs()}
                     onExport={exportProjectJson}

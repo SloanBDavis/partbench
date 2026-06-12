@@ -143,7 +143,7 @@ export function createProjectPackageReadiness({
       "opfsCache",
       "OPFS derived cache",
       "WCAD_OPFS_CACHE_DEFERRED",
-      "OPFS cache writes and reads are deferred to V8 Tranche D."
+      "App-layer OPFS cache status and clear are available, while derived artifact population remains deferred."
     ),
     createDeferredCapability(
       "stepExport",

@@ -79,8 +79,14 @@ workflow. It reports local storage capability status, calls File System Access
 open/save/save-as picker APIs only from user gestures when available, and falls
 back to `.wcad` upload/download when direct handles are unavailable or denied.
 File handles remain app-only browser permission state and are not written into
-project JSON, `.wcad`, cad-core, agents, or MCP. OPFS, thumbnails, cache storage,
-and STEP export remain deferred.
+project JSON, `.wcad`, cad-core, agents, or MCP.
+In V8 Tranche D1, the Project panel reports OPFS cache status and supports
+clearing the browser-private `partbench.opfs-cache.v1` cache index/root. OPFS
+remains rebuildable cache only: project load does not require it, and clearing
+cache does not mutate document source, command history, `.wcad` bytes, JSON,
+file handles, selection, or viewport state. Derived mesh, thumbnail,
+package-unpack, and export-intermediate cache population remains deferred. STEP
+export also remains deferred.
 In V7 Tranche E1, `project.exportReadiness` reports STEP and Mesh/GLB
 visualization readiness from authoritative project structure before any file
 writer exists. It distinguishes empty projects, active authored bodies,
@@ -1393,7 +1399,8 @@ package read/write helpers without changing project source format:
 
 - `project.packageReadiness` reports the target package version, current
   document schema, required package entries, supported package read/write
-  helpers, and deferred status for File System Access, OPFS cache writes, and
+  helpers, supported File System Access app workflow, app-layer OPFS
+  status/clear foundation, and deferred status for OPFS artifact population and
   STEP export.
 - `partbench-source-v1` source identity is computed from encoded document and
   command bytes plus schema/units metadata.
@@ -1461,4 +1468,5 @@ File System Access handles where available and upload/download fallback
 elsewhere. Reporting that a browser exposes File System Access or OPFS APIs does
 not make those APIs part of the saved project format. File handles, OPFS
 directories, thumbnails, mesh caches, and export artifacts are not persisted as
-authoritative source data.
+authoritative source data. The current OPFS implementation is limited to
+cache status, diagnostics, an index contract, and clear behavior.

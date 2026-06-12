@@ -62,7 +62,7 @@ describe("project storage capability helpers", () => {
     });
   });
 
-  it("keeps OPFS deferred even when the browser API is detected", () => {
+  it("reports OPFS cache status and clear support when the browser API is detected", () => {
     const status = createProjectStorageCapabilityStatus({
       ...createJsonFallbackTarget(),
       navigator: {
@@ -75,11 +75,11 @@ describe("project storage capability helpers", () => {
     expect(status.opfsApiDetected).toBe(true);
     expect(status.opfs).toMatchObject({
       mode: "opfs",
-      availability: "deferred",
-      available: false
+      availability: "available",
+      available: true
     });
-    expect(status.opfs.detail).toContain("OPFS API was detected");
-    expect(status.opfs.limitation).toContain("No recovery store");
+    expect(status.opfs.detail).toContain("cache status and clear");
+    expect(status.opfs.limitation).toContain("No project source");
   });
 
   it("reports native .wcad packages as unavailable without direct or fallback file primitives", () => {
