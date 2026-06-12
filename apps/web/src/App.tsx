@@ -26,6 +26,7 @@ import type {
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
+  ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
@@ -37,6 +38,7 @@ import type {
   SketchEntitySnapshot,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
+import { createGeometryKernelBrowserWorker } from "@web-cad/geometry-worker/browser";
 import { createDerivedGeometryRuntime } from "@web-cad/derived-geometry-runtime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -125,6 +127,7 @@ import {
   createVisualizationMeshExportArtifact,
   createVisualizationMeshExportStatus
 } from "./visualizationMeshExport";
+import { executeProjectExactStepExport } from "./projectExactStepExport";
 import {
   createBodyTopologyDerivedExactMetadataSnapshot,
   createEmptyDerivedExactMetadataSnapshot,
@@ -379,6 +382,19 @@ function readProjectExportReadiness():
     : undefined;
 }
 
+function readProjectExactStepExport():
+  | ProjectExactExportQueryResponse
+  | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.exportExact", format: "step" }
+  });
+
+  return response.ok && response.query === "project.exportExact"
+    ? response
+    : undefined;
+}
+
 function createDerivedExactMetadataSnapshotsForProjectQuery(
   exactMetadata: DerivedExactMetadataSnapshot
 ) {
@@ -406,6 +422,24 @@ function createDerivedExactMetadataSnapshotsForProjectQuery(
     exactMetadata,
     sourceIdentityCacheKeysByBodyId
   );
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+
+  return copy.buffer;
 }
 
 function readBodyGeneratedReferences(bodyId: string | undefined): {
@@ -2034,6 +2068,68 @@ export function App() {
     setProjectMessageTone("info");
   }
 
+  async function downloadExactStepExport() {
+    if (!projectStorageCapabilities.jsonDownloadAvailable) {
+      setProjectMessage(
+        "STEP download is unavailable in this browser runtime."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
+
+    const exactExport = readProjectExactStepExport();
+
+    if (!exactExport?.available) {
+      const diagnostic = exactExport?.diagnostics.find(
+        (entry) => entry.status !== "supported"
+      );
+      setProjectMessage(
+        diagnostic
+          ? `${diagnostic.code}: ${diagnostic.message}`
+          : "STEP export needs a supported active authored body."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
+
+    const result = await executeProjectExactStepExport({
+      exactExport,
+      worker: createGeometryKernelBrowserWorker()
+    });
+
+    if (!result.artifact) {
+      const diagnostic = result.diagnostics.find(
+        (entry) => entry.status !== "supported"
+      );
+      setProjectMessage(
+        diagnostic
+          ? `${diagnostic.code}: ${diagnostic.message}`
+          : "STEP export did not produce an artifact."
+      );
+      setProjectMessageTone("error");
+      return;
+    }
+
+    const bytes = base64ToBytes(result.artifact.bytesBase64);
+    const blob = new Blob([copyBytesToArrayBuffer(bytes)], {
+      type: result.artifact.mimeType
+    });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = result.artifact.fileName;
+    window.document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setProjectMessage(
+      `Downloaded ${result.artifact.fileName}: ${result.exportableBodyCount} exact bod${
+        result.exportableBodyCount === 1 ? "y" : "ies"
+      }, ${result.artifact.byteLength} bytes.`
+    );
+    setProjectMessageTone("info");
+  }
+
   async function openProjectWcad(): Promise<boolean> {
     try {
       const handle = await pickWcadOpenFile(
@@ -2799,6 +2895,7 @@ export function App() {
                     onSaveAsWcad={() => void saveProjectWcadAs()}
                     onExport={exportProjectJson}
                     onDownload={downloadProjectJson}
+                    onDownloadStep={() => void downloadExactStepExport()}
                     onDownloadVisualization={downloadVisualizationMeshExport}
                     onImport={importProjectJson}
                   />

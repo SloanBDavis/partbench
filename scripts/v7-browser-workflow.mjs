@@ -20,6 +20,7 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "attached-cut-create",
   "consumed-body-diagnostic",
   "project-file-panel",
+  "step-download",
   "project-opfs-cache-status",
   "project-opfs-cache-clear",
   "project-wcad-save-as-download",

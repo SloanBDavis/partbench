@@ -252,19 +252,19 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       commandableReferenceCount: 27
     },
     expectedExportReadiness: {
-      status: "deferred",
-      canExportFiles: false,
+      status: "supported",
+      canExportFiles: true,
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 1,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
       formats: [
         {
           format: "step",
-          status: "deferred",
-          available: false,
+          status: "supported",
+          available: true,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 1,
+          deferredBodyCount: 0,
           unavailableBodyCount: 0
         },
         {
@@ -272,7 +272,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           status: "deferred",
           available: false,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 1,
+          deferredBodyCount: 0,
           unavailableBodyCount: 0
         }
       ]
@@ -429,19 +429,19 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       commandableReferenceCount: 6
     },
     expectedExportReadiness: {
-      status: "deferred",
-      canExportFiles: false,
+      status: "supported",
+      canExportFiles: true,
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 1,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
       formats: [
         {
           format: "step",
-          status: "deferred",
-          available: false,
+          status: "supported",
+          available: true,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 1,
+          deferredBodyCount: 0,
           unavailableBodyCount: 0
         },
         {
@@ -449,7 +449,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           status: "deferred",
           available: false,
           sourceSupportedBodyCount: 1,
-          deferredBodyCount: 1,
+          deferredBodyCount: 0,
           unavailableBodyCount: 0
         }
       ]

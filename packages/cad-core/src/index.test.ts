@@ -3475,18 +3475,18 @@ describe("cad-core", () => {
       }
     });
     expect(summary.exportReadiness).toMatchObject({
-      status: "deferred",
-      canExportFiles: false,
+      status: "supported",
+      canExportFiles: true,
       formatCount: 2,
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 1,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
       formats: [
         expect.objectContaining({
           format: "step",
-          status: "deferred",
-          available: false,
+          status: "supported",
+          available: true,
           sourceSupportedBodyCount: 1
         }),
         expect.objectContaining({
@@ -3499,7 +3499,7 @@ describe("cad-core", () => {
     });
     expect(summary.workflowHints.map((hint) => hint.code)).toEqual([
       "PROJECT_HEALTH_ISSUES",
-      "EXPORT_DEFERRED"
+      "EXPORT_READY"
     ]);
   });
 
@@ -21112,10 +21112,6 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           candidateBodyCount: 0,
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
-              code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-              status: "unavailable"
-            }),
-            expect.objectContaining({
               code: "EXPORT_PROJECT_EMPTY",
               status: "unavailable"
             })
@@ -21138,7 +21134,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
-  it("reports rectangle and circle newBody extrudes as source-supported but file-export deferred", () => {
+  it("reports rectangle and circle newBody extrudes as exact STEP exportable", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -21168,27 +21164,21 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const readiness = readProjectExportReadiness(engine);
 
     expect(readiness).toMatchObject({
-      status: "deferred",
-      canExportFiles: false,
+      status: "supported",
+      canExportFiles: true,
       bodyCount: 2,
       sourceSupportedBodyCount: 2,
-      deferredBodyCount: 2,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
       formats: [
         expect.objectContaining({
           format: "step",
           exportKind: "exact",
-          status: "deferred",
-          writerStatus: "unavailable",
+          status: "supported",
+          available: true,
+          writerStatus: "available",
           sourceSupportedBodyCount: 2,
-          diagnostics: expect.arrayContaining([
-            expect.objectContaining({
-              code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-              status: "unavailable",
-              expected: "geometry-worker STEP writer capability",
-              received: "writer unavailable"
-            })
-          ])
+          diagnostics: []
         }),
         expect.objectContaining({
           format: "glb",
@@ -21201,19 +21191,14 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           bodyId: "body_rect_1",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "deferred",
+          status: "supported",
           formats: expect.arrayContaining([
             expect.objectContaining({
               format: "step",
               exportKind: "exact",
-              status: "deferred",
-              writerStatus: "unavailable",
-              diagnostics: expect.arrayContaining([
-                expect.objectContaining({
-                  code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-                  format: "step"
-                })
-              ])
+              status: "supported",
+              writerStatus: "available",
+              diagnostics: []
             })
           ]),
           diagnostics: expect.arrayContaining([
@@ -21227,7 +21212,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           bodyId: "body_circle_export",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "deferred",
+          status: "supported",
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
               code: "EXPORT_BODY_SOURCE_SUPPORTED",
@@ -21239,7 +21224,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
-  it("reports exact STEP export as writer-unavailable without producing fake bytes", () => {
+  it("reports exact STEP export sources without producing bytes in cad-core", () => {
     const engine = createRectangleExtrudeEngine();
     const exactExport = readProjectExactExport(engine, {
       bodyIds: ["body_rect_1"],
@@ -21255,16 +21240,28 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       query: "project.exportExact",
       format: "step",
       exportKind: "exact",
-      status: "unavailable",
-      canExportFile: false,
-      writerStatus: "unavailable",
+      status: "supported",
+      canExportFile: true,
+      writerStatus: "available",
       documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       sourceIdentityAlgorithm: "partbench-source-v1",
       sourceIdentityStatus: "providedUnchecked",
       requestedBodyIds: ["body_rect_1"],
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      exportableBodyCount: 0,
+      exportableBodyCount: 1,
+      exportSources: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          sourceKind: "authoredExtrude",
+          featureId: "feat_rect_1",
+          sketchPlane: "XY",
+          profile: expect.objectContaining({
+            kind: "rectangle"
+          }),
+          side: "positive"
+        })
+      ],
       bodies: [
         expect.objectContaining({
           bodyId: "body_rect_1",
@@ -21274,17 +21271,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
             expect.objectContaining({
               format: "step",
               exportKind: "exact",
-              writerStatus: "unavailable"
+              writerStatus: "available"
             })
           ]
         })
       ],
       diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-          status: "unavailable",
-          format: "step"
-        }),
         expect.objectContaining({
           code: "EXPORT_BODY_SOURCE_SUPPORTED",
           status: "supported"
@@ -21318,10 +21310,6 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       sourceSupportedBodyCount: 0,
       unavailableBodyCount: 1,
       diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-          status: "unavailable"
-        }),
         expect.objectContaining({
           code: "EXPORT_EXACT_BODY_UNSUPPORTED",
           status: "unavailable",

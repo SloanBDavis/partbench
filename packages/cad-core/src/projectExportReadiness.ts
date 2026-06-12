@@ -1,6 +1,7 @@
 import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 import type {
   CadBodySnapshot,
+  CadExactExportBodySource,
   CadExportBodyFormatReadiness,
   CadExportBodyReadiness,
   CadExportBodySourceKind,
@@ -15,7 +16,8 @@ import type {
   ProjectExportReadinessQueryResponse,
   WcadDocumentSchemaVersion
 } from "@web-cad/cad-protocol";
-import type { CadDocument } from "./index";
+import type { CadDocument, ExtrudeFeature, SketchEntity } from "./index";
+import { createSourceMeasurementFrame } from "./sourceMeasurementGeometry";
 
 interface ProjectExportReadinessInput {
   readonly document: CadDocument;
@@ -55,7 +57,7 @@ const EXPORT_FORMATS: readonly ExportFormatDefinition[] = [
     exportKind: "exact",
     fileExtensions: [".step", ".stp"],
     sourceBoundaryNote:
-      "STEP requires an exact body writer from authoritative CAD source; E1 reports readiness only.",
+      "STEP uses exact body sources derived from authoritative CAD document state.",
     derivedBoundaryNote:
       "STEP readiness does not use derived visualization output."
   },
@@ -101,7 +103,9 @@ export function createProjectExportReadiness({
     query: "project.exportReadiness",
     cadOpsVersion,
     status: chooseProjectStatus(bodyReadiness),
-    canExportFiles: false,
+    canExportFiles: bodyReadiness.some(
+      (body) => body.sourceStatus === "supported"
+    ),
     units: document.units,
     sourceBoundaryNote: SOURCE_BOUNDARY_NOTE,
     derivedBoundaryNote: DERIVED_BOUNDARY_NOTE,
@@ -139,14 +143,14 @@ export function createProjectExactExport({
     readiness.bodies.map((body) => [body.bodyId, body] as const)
   );
   const requestedBodyIds = query.bodyIds ?? [];
-  const selectedBodies =
-    requestedBodyIds.length === 0
-      ? readiness.bodies
-      : requestedBodyIds.flatMap((bodyId) => {
-          const body = bodyById.get(bodyId);
+  const hasRequestedBodyFilter = requestedBodyIds.length > 0;
+  const selectedBodies = !hasRequestedBodyFilter
+    ? readiness.bodies
+    : requestedBodyIds.flatMap((bodyId) => {
+        const body = bodyById.get(bodyId);
 
-          return body ? [body] : [];
-        });
+        return body ? [body] : [];
+      });
   const stepBodies = selectedBodies.map((body) => ({
     ...body,
     formats: body.formats.filter((format) => format.format === "step")
@@ -157,13 +161,44 @@ export function createProjectExactExport({
   const unsupportedDiagnostics = stepBodies
     .filter((body) => body.sourceStatus !== "supported")
     .map((body) => createUnsupportedExactBodyDiagnostic(body));
-  const writerDiagnostic = createExactWriterUnavailableDiagnostic();
+  const blockingUnsupportedDiagnostics = hasRequestedBodyFilter
+    ? unsupportedDiagnostics
+    : [];
+  const exportSources = stepBodies
+    .filter((body) => body.sourceStatus === "supported")
+    .map((body) => createExactExportBodySource(document, body))
+    .filter(
+      (source): source is CadExactExportBodySource => source !== undefined
+    );
+  const supportedStepBodies = stepBodies.filter(
+    (body) => body.sourceStatus === "supported"
+  );
+  const sourceDiagnostics =
+    exportSources.length === supportedStepBodies.length
+      ? []
+      : supportedStepBodies
+          .filter(
+            (body) =>
+              !exportSources.some((source) => source.bodyId === body.bodyId)
+          )
+          .map((body) => createUnsupportedExactBodyDiagnostic(body));
   const diagnostics = [
-    writerDiagnostic,
     ...missingDiagnostics,
     ...unsupportedDiagnostics,
+    ...sourceDiagnostics,
     ...stepBodies.flatMap((body) => body.diagnostics)
   ];
+  const exportableBodyCount =
+    missingDiagnostics.length === 0 &&
+    blockingUnsupportedDiagnostics.length === 0
+      ? exportSources.length
+      : 0;
+  const status: CadExportReadinessStatus =
+    exportableBodyCount > 0
+      ? "supported"
+      : stepBodies.every((body) => body.status === "unavailable")
+        ? "unavailable"
+        : "deferred";
 
   return {
     ok: true,
@@ -172,10 +207,10 @@ export function createProjectExactExport({
     format: "step",
     label: "STEP",
     exportKind: "exact",
-    status: "unavailable",
-    available: false,
-    canExportFile: false,
-    writerStatus: "unavailable",
+    status,
+    available: exportableBodyCount > 0,
+    canExportFile: exportableBodyCount > 0,
+    writerStatus: "available",
     units: document.units,
     fileExtensions: [".step", ".stp"],
     documentSchemaVersion,
@@ -196,7 +231,12 @@ export function createProjectExactExport({
     unavailableBodyCount: stepBodies.filter(
       (body) => body.status === "unavailable"
     ).length,
-    exportableBodyCount: 0,
+    exportableBodyCount,
+    exportSources:
+      missingDiagnostics.length === 0 &&
+      blockingUnsupportedDiagnostics.length === 0
+        ? exportSources
+        : [],
     bodies: stepBodies,
     diagnosticCount: diagnostics.length,
     diagnostics
@@ -211,6 +251,11 @@ function createFormatReadiness(
   const viableBodyCount = bodies.filter(
     (body) => body.status !== "unavailable"
   ).length;
+  const sourceSupportedBodyCount = bodies.filter(
+    (body) => body.sourceStatus === "supported"
+  ).length;
+  const stepAvailable =
+    format.format === "step" && sourceSupportedBodyCount > 0;
   const emptyDiagnostics =
     bodies.length === 0
       ? [
@@ -219,23 +264,28 @@ function createFormatReadiness(
           )
         ]
       : [];
-  const diagnostics = [createWriterDiagnostic(format), ...emptyDiagnostics];
+  const diagnostics =
+    format.format === "step"
+      ? emptyDiagnostics
+      : [createWriterDiagnostic(format), ...emptyDiagnostics];
 
   return {
     format: format.format,
     label: format.label,
     exportKind: format.exportKind,
-    status: viableBodyCount === 0 ? "unavailable" : "deferred",
-    available: false,
-    writerStatus: "unavailable",
+    status: stepAvailable
+      ? "supported"
+      : viableBodyCount === 0
+        ? "unavailable"
+        : "deferred",
+    available: stepAvailable,
+    writerStatus: format.format === "step" ? "available" : "unavailable",
     fileExtensions: format.fileExtensions,
     units,
     sourceBoundaryNote: format.sourceBoundaryNote,
     derivedBoundaryNote: format.derivedBoundaryNote,
     candidateBodyCount: bodies.length,
-    sourceSupportedBodyCount: bodies.filter(
-      (body) => body.sourceStatus === "supported"
-    ).length,
+    sourceSupportedBodyCount,
     deferredBodyCount: bodies.filter((body) => body.status === "deferred")
       .length,
     unavailableBodyCount: bodies.filter((body) => body.status === "unavailable")
@@ -287,6 +337,28 @@ function createBodyFormatReadiness(
       exportKind: format.exportKind,
       status: "unavailable",
       writerStatus: "unavailable",
+      diagnostics: source.diagnostics
+    };
+  }
+
+  if (format.format === "step" && source.sourceStatus === "supported") {
+    return {
+      format: format.format,
+      label: format.label,
+      exportKind: format.exportKind,
+      status: "supported",
+      writerStatus: "available",
+      diagnostics: []
+    };
+  }
+
+  if (format.format === "step") {
+    return {
+      format: format.format,
+      label: format.label,
+      exportKind: format.exportKind,
+      status: "deferred",
+      writerStatus: "available",
       diagnostics: source.diagnostics
     };
   }
@@ -452,6 +524,10 @@ function chooseProjectStatus(
     return "unavailable";
   }
 
+  if (bodies.some((body) => body.status === "supported")) {
+    return "supported";
+  }
+
   return "deferred";
 }
 
@@ -462,7 +538,7 @@ function chooseBodyStatus(
     return "unavailable";
   }
 
-  return "deferred";
+  return sourceStatus;
 }
 
 function getBodyExportSourceKind(
@@ -491,10 +567,10 @@ function createWriterDiagnostic(
 ): CadExportDiagnostic {
   if (format.exportKind === "exact") {
     return {
-      code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-      status: "unavailable",
+      code: "EXPORT_BODY_SOURCE_SUPPORTED",
+      status: "supported",
       message:
-        "STEP exact export writer is unavailable through the geometry boundary; this query reports readiness and blockers only.",
+        "STEP exact export writer is available through the geometry boundary for supported source bodies.",
       format: format.format,
       ...(body
         ? {
@@ -507,7 +583,7 @@ function createWriterDiagnostic(
         : {}),
       ...(sourceKind ? { sourceKind } : {}),
       expected: "geometry-worker STEP writer capability",
-      received: "writer unavailable"
+      received: "writer available"
     };
   }
 
@@ -531,18 +607,6 @@ function createWriterDiagnostic(
   };
 }
 
-function createExactWriterUnavailableDiagnostic(): CadExportDiagnostic {
-  return {
-    code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-    status: "unavailable",
-    format: "step",
-    message:
-      "STEP exact export writer is unavailable through the geometry boundary; no STEP bytes were produced.",
-    expected: "geometry-worker STEP writer capability",
-    received: "writer unavailable"
-  };
-}
-
 function createMissingExactBodyDiagnostic(bodyId: string): CadExportDiagnostic {
   return {
     code: "EXPORT_BODY_SOURCE_UNRESOLVED",
@@ -553,6 +617,78 @@ function createMissingExactBodyDiagnostic(bodyId: string): CadExportDiagnostic {
     expected: "current body id",
     received: "missing body id"
   };
+}
+
+function createExactExportBodySource(
+  document: CadDocument,
+  body: CadExportBodyReadiness
+): CadExactExportBodySource | undefined {
+  const feature = document.features.get(body.featureId);
+
+  if (!feature || feature.kind !== "extrude") {
+    return undefined;
+  }
+
+  if (feature.operationMode !== "newBody") {
+    return undefined;
+  }
+
+  const sketch = document.sketches.get(feature.sketchId);
+  const entity = sketch?.entities.get(feature.entityId);
+
+  if (!sketch || !entity || !isExactExportExtrudeEntity(feature, entity)) {
+    return undefined;
+  }
+
+  const frame = createSourceMeasurementFrame(document, sketch, body.partId);
+
+  if (!frame) {
+    return undefined;
+  }
+
+  return {
+    bodyId: body.bodyId,
+    ...(body.bodyName ? { bodyName: body.bodyName } : {}),
+    sourceKind: "authoredExtrude",
+    featureId: feature.id,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.entityId,
+    sketchPlane: sketch.plane,
+    profile:
+      entity.kind === "rectangle"
+        ? {
+            kind: entity.kind,
+            center: entity.center,
+            width: entity.width,
+            height: entity.height
+          }
+        : {
+            kind: entity.kind,
+            center: entity.center,
+            radius: entity.radius
+          },
+    depth: feature.depth,
+    side: feature.side,
+    ...(sketch.attachment
+      ? {
+          placementFrame: {
+            origin: frame.origin,
+            uAxis: frame.uAxis,
+            vAxis: frame.vAxis
+          }
+        }
+      : {})
+  };
+}
+
+function isExactExportExtrudeEntity(
+  feature: ExtrudeFeature,
+  entity: SketchEntity
+): entity is Extract<SketchEntity, { readonly kind: "rectangle" | "circle" }> {
+  return (
+    (feature.profileKind === "rectangle" && entity.kind === "rectangle") ||
+    (feature.profileKind === "circle" && entity.kind === "circle")
+  );
 }
 
 function createUnsupportedExactBodyDiagnostic(

@@ -14,7 +14,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node */
+/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node, TextDecoder */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
@@ -767,11 +767,7 @@ async function v7BrowserWorkflowSmoke({
       "wcad-deferred-status"
     ),
     assertIncludes(projectPanel, "STEP", "step-export-status"),
-    assertIncludes(
-      projectPanel,
-      "STEP exact export writer is unavailable",
-      "step-deferred-limitation"
-    ),
+    assertIncludes(projectPanel, "Download STEP", "step-download-action"),
     assertIncludes(projectPanel, "Mesh/GLB visualization", "mesh-glb-status")
   ];
   if (projectChecks.every(Boolean)) {
@@ -780,6 +776,34 @@ async function v7BrowserWorkflowSmoke({
       "Project/File panel reports .wcad workflow, JSON interchange, storage capability, and export readiness"
     );
   }
+
+  const stepDownloadCapture = createDownloadCapture();
+  stepDownloadCapture.install();
+  clickButton(projectPanel, "Download STEP");
+  await waitFor(() => {
+    if (stepDownloadCapture.blobs.length === 0) {
+      throw new Error("No STEP blob download was captured.");
+    }
+
+    if (!includesText(projectPanel, "Downloaded partbench-export.step")) {
+      throw new Error(compactText(projectPanel.textContent, 520));
+    }
+
+    return true;
+  }, "downloaded exact STEP artifact");
+  const stepBytes = await stepDownloadCapture.readFirstBytes();
+  stepDownloadCapture.restore();
+  const stepText = new TextDecoder().decode(stepBytes.slice(0, 160));
+
+  if (!stepText.includes("ISO-10303-21")) {
+    throw new Error("Downloaded STEP artifact does not contain ISO-10303-21.");
+  }
+
+  pass(
+    "step-download",
+    "Download STEP produced a real exact STEP artifact through the geometry boundary",
+    `${stepBytes.byteLength} bytes`
+  );
 
   pass(
     "project-opfs-cache-status",

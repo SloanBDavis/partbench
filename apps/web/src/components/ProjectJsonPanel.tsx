@@ -59,6 +59,7 @@ export interface ProjectJsonPanelProps {
   readonly onSaveAsWcad?: () => void;
   readonly onExport: () => void;
   readonly onDownload: () => void;
+  readonly onDownloadStep?: () => void;
   readonly onDownloadVisualization?: () => void;
   readonly onImport: () => void;
 }
@@ -85,6 +86,7 @@ export function ProjectJsonPanel({
   onSaveWcad = () => undefined,
   onSaveAsWcad = () => undefined,
   onDownload,
+  onDownloadStep,
   onDownloadVisualization,
   onExport,
   onImport
@@ -214,6 +216,7 @@ export function ProjectJsonPanel({
           exportReadiness={exportReadiness}
           visualizationDownloadAvailable={visualizationDownloadAvailable}
           visualizationExport={visualizationExport}
+          onDownloadStep={onDownloadStep}
           onDownloadVisualization={onDownloadVisualization}
         />
       )}
@@ -458,17 +461,22 @@ function ProjectExportReadinessStatus({
   exportReadiness,
   visualizationDownloadAvailable,
   visualizationExport,
+  onDownloadStep,
   onDownloadVisualization
 }: {
   readonly disabled: boolean;
   readonly exportReadiness: ProjectExportReadinessQueryResponse;
   readonly visualizationDownloadAvailable: boolean;
   readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
+  readonly onDownloadStep?: () => void;
   readonly onDownloadVisualization?: () => void;
 }) {
   const display = createProjectExportReadinessDisplay(
     exportReadiness,
     visualizationExport
+  );
+  const stepFormat = exportReadiness.formats.find(
+    (format) => format.format === "step"
   );
 
   return (
@@ -495,20 +503,36 @@ function ProjectExportReadinessStatus({
           <ProjectExportReadinessRowView key={row.id} row={row} />
         ))}
       </dl>
-      {visualizationExport && (
+      {(stepFormat?.available || visualizationExport) && (
         <div className="button-row compact">
-          <button
-            type="button"
-            onClick={onDownloadVisualization}
-            disabled={
-              disabled ||
-              !visualizationExport.available ||
-              !visualizationDownloadAvailable ||
-              !onDownloadVisualization
-            }
-          >
-            Download visualization GLB
-          </button>
+          {stepFormat?.available && (
+            <button
+              type="button"
+              onClick={onDownloadStep}
+              disabled={
+                disabled ||
+                !stepFormat.available ||
+                !visualizationDownloadAvailable ||
+                !onDownloadStep
+              }
+            >
+              Download STEP
+            </button>
+          )}
+          {visualizationExport && (
+            <button
+              type="button"
+              onClick={onDownloadVisualization}
+              disabled={
+                disabled ||
+                !visualizationExport.available ||
+                !visualizationDownloadAvailable ||
+                !onDownloadVisualization
+              }
+            >
+              Download visualization GLB
+            </button>
+          )}
         </div>
       )}
       {display.bodyRows.length > 0 ? (

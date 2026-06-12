@@ -2011,8 +2011,8 @@ describe("agent-adapter", () => {
       adapterVersion: "web-cad.agent-adapter.v1",
       cadOpsVersion: "cadops.v1",
       query: "project.exportReadiness",
-      status: "deferred",
-      canExportFiles: false,
+      status: "supported",
+      canExportFiles: true,
       units: "mm",
       formatCount: 2,
       bodyCount: 1,
@@ -2020,13 +2020,10 @@ describe("agent-adapter", () => {
       formats: expect.arrayContaining([
         expect.objectContaining({
           format: "step",
-          status: "deferred",
-          available: false,
-          diagnostics: expect.arrayContaining([
-            expect.objectContaining({
-              code: "EXPORT_EXACT_WRITER_UNAVAILABLE"
-            })
-          ])
+          status: "supported",
+          available: true,
+          writerStatus: "available",
+          diagnostics: []
         })
       ]),
       bodies: [
@@ -2034,13 +2031,13 @@ describe("agent-adapter", () => {
           bodyId: "body_export_readiness",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "deferred"
+          status: "supported"
         })
       ]
     });
   });
 
-  it("passes exact STEP export writer-unavailable results through CADOps", () => {
+  it("passes exact STEP export source requests through CADOps", () => {
     const adapter = new CadOpsAgentAdapter();
 
     adapter.execute({
@@ -2097,17 +2094,35 @@ describe("agent-adapter", () => {
       cadOpsVersion: "cadops.v1",
       query: "project.exportExact",
       format: "step",
-      canExportFile: false,
-      writerStatus: "unavailable",
+      status: "supported",
+      available: true,
+      canExportFile: true,
+      writerStatus: "available",
       requestedBodyIds: ["body_exact_export"],
       sourceSupportedBodyCount: 1,
-      exportableBodyCount: 0,
+      exportableBodyCount: 1,
       diagnostics: expect.arrayContaining([
         expect.objectContaining({
-          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-          status: "unavailable"
+          code: "EXPORT_BODY_SOURCE_SUPPORTED",
+          status: "supported",
+          bodyId: "body_exact_export"
         })
-      ])
+      ]),
+      exportSources: [
+        expect.objectContaining({
+          bodyId: "body_exact_export",
+          sourceKind: "authoredExtrude",
+          featureId: "feat_exact_export",
+          sourceSketchId: "sketch_exact_export",
+          sourceSketchEntityId: "rect_exact_export",
+          profile: expect.objectContaining({
+            kind: "rectangle",
+            width: 4,
+            height: 2
+          }),
+          depth: 3
+        })
+      ]
     });
     expect(response.ok && "artifact" in response).toBe(false);
   });

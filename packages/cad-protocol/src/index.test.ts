@@ -52,36 +52,42 @@ describe("cad-protocol", () => {
       version: "cadops.v1",
       query: { query: "project.exportReadiness" }
     };
-    const writerDiagnostic: CadExportDiagnostic = {
-      code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-      status: "unavailable",
+    const glbDiagnostic: CadExportDiagnostic = {
+      code: "EXPORT_WRITER_NOT_IMPLEMENTED",
+      status: "deferred",
+      format: "glb",
+      message: "Mesh/GLB visualization file export is not implemented yet."
+    };
+    const sourceDiagnostic: CadExportDiagnostic = {
+      code: "EXPORT_BODY_SOURCE_SUPPORTED",
+      status: "supported",
       format: "step",
       message:
-        "STEP exact export writer is unavailable through the geometry boundary; this query reports readiness and blockers only."
+        "Authored rectangle newBody extrude body has supported source semantics."
     };
     const format: CadExportFormatReadiness = {
       format: "step",
       label: "STEP",
       exportKind: "exact",
-      status: "deferred",
-      available: false,
-      writerStatus: "unavailable",
+      status: "supported",
+      available: true,
+      writerStatus: "available",
       fileExtensions: [".step", ".stp"],
       units: "mm",
       sourceBoundaryNote: "Authoritative document state.",
       derivedBoundaryNote: "No derived display state.",
       candidateBodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 1,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
-      diagnostics: [writerDiagnostic]
+      diagnostics: []
     };
     const response: CadQueryResponse = {
       ok: true,
       query: "project.exportReadiness",
       cadOpsVersion: "cadops.v1",
-      status: "deferred",
-      canExportFiles: false,
+      status: "supported",
+      canExportFiles: true,
       units: "mm",
       sourceBoundaryNote: "Authoritative document state.",
       derivedBoundaryNote: "No derived display state.",
@@ -89,7 +95,7 @@ describe("cad-protocol", () => {
       formats: [format],
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 1,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
       bodies: [
         {
@@ -99,7 +105,7 @@ describe("cad-protocol", () => {
           partId: "part_default",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "deferred",
+          status: "supported",
           sourceBoundaryNote: "Authoritative document state.",
           derivedBoundaryNote: "No derived display state.",
           formats: [
@@ -107,38 +113,28 @@ describe("cad-protocol", () => {
               format: "step",
               label: "STEP",
               exportKind: "exact",
-              status: "deferred",
-              writerStatus: "unavailable",
-              diagnostics: [writerDiagnostic]
+              status: "supported",
+              writerStatus: "available",
+              diagnostics: []
             }
           ],
-          diagnostics: [
-            {
-              code: "EXPORT_BODY_SOURCE_SUPPORTED",
-              status: "supported",
-              message:
-                "Authored rectangle newBody extrude body has supported source semantics.",
-              bodyId: "body_1",
-              bodyKind: "solid",
-              sourceKind: "authoredExtrude",
-              featureId: "feat_1"
-            }
-          ]
+          diagnostics: [sourceDiagnostic]
         }
       ],
       diagnosticCount: 1,
-      diagnostics: [writerDiagnostic]
+      diagnostics: [sourceDiagnostic]
     };
 
     expect(request.query.query).toBe("project.exportReadiness");
     expect(response).toMatchObject({
       ok: true,
       query: "project.exportReadiness",
-      status: "deferred",
-      canExportFiles: false,
-      formats: [{ format: "step", available: false }],
-      bodies: [{ sourceStatus: "supported", status: "deferred" }]
+      status: "supported",
+      canExportFiles: true,
+      formats: [{ format: "step", available: true }],
+      bodies: [{ sourceStatus: "supported", status: "supported" }]
     });
+    expect(glbDiagnostic.code).toBe("EXPORT_WRITER_NOT_IMPLEMENTED");
   });
 
   it("types the exact STEP export query contract", () => {
@@ -162,10 +158,10 @@ describe("cad-protocol", () => {
       format: "step",
       label: "STEP",
       exportKind: "exact",
-      status: "unavailable",
-      available: false,
-      canExportFile: false,
-      writerStatus: "unavailable",
+      status: "supported",
+      available: true,
+      canExportFile: true,
+      writerStatus: "available",
       units: "mm",
       fileExtensions: [".step", ".stp"],
       documentSchemaVersion: "web-cad.project.v16",
@@ -179,9 +175,27 @@ describe("cad-protocol", () => {
       requestedBodyIds: ["body_1"],
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
-      deferredBodyCount: 1,
+      deferredBodyCount: 0,
       unavailableBodyCount: 0,
-      exportableBodyCount: 0,
+      exportableBodyCount: 1,
+      exportSources: [
+        {
+          bodyId: "body_1",
+          sourceKind: "authoredExtrude",
+          featureId: "feat_1",
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "rect_1",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3,
+          side: "positive"
+        }
+      ],
       bodies: [
         {
           bodyId: "body_1",
@@ -190,7 +204,7 @@ describe("cad-protocol", () => {
           partId: "part_default",
           sourceKind: "authoredExtrude",
           sourceStatus: "supported",
-          status: "deferred",
+          status: "supported",
           sourceBoundaryNote: "Authoritative document state.",
           derivedBoundaryNote: "No derived display state.",
           formats: [
@@ -198,24 +212,16 @@ describe("cad-protocol", () => {
               format: "step",
               label: "STEP",
               exportKind: "exact",
-              status: "deferred",
-              writerStatus: "unavailable",
+              status: "supported",
+              writerStatus: "available",
               diagnostics: []
             }
           ],
           diagnostics: []
         }
       ],
-      diagnosticCount: 1,
-      diagnostics: [
-        {
-          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-          status: "unavailable",
-          format: "step",
-          message:
-            "STEP exact export writer is unavailable through the geometry boundary."
-        }
-      ]
+      diagnosticCount: 0,
+      diagnostics: []
     };
 
     expect(request.query.query).toBe("project.exportExact");
@@ -223,8 +229,8 @@ describe("cad-protocol", () => {
       ok: true,
       query: "project.exportExact",
       format: "step",
-      writerStatus: "unavailable",
-      canExportFile: false
+      writerStatus: "available",
+      canExportFile: true
     });
     expect("artifact" in response).toBe(false);
   });

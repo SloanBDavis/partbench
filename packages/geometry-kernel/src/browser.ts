@@ -9,7 +9,8 @@ import {
   createOcctEdgeFinishMeshWithInstance,
   createOcctHoleMeshWithInstance,
   createOcctRevolveProfileMeshWithInstance,
-  createOcctExactBodyMetadataWithInstance
+  createOcctExactBodyMetadataWithInstance,
+  createOcctStepExportWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -26,8 +27,11 @@ import {
   type ExactEdgeFinishMetadataSource,
   type ExactExtrudeMetadataSource,
   type ExactHoleMetadataSource,
+  type ExactStepExportBodySource,
+  type ExactStepExportRequest,
   type GeometryKernelBounds,
   type GeometryKernelBooleanOperation,
+  type GeometryKernelDocumentUnit,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
   type GeometryKernelEdgeFinishEdgeRole,
@@ -36,6 +40,9 @@ import {
   type GeometryKernelEdgeFinishOperation,
   type GeometryKernelExactBodyMetadata,
   type GeometryKernelExactBodyMetadataSuccessResponse,
+  type GeometryKernelExactStepExportArtifact,
+  type GeometryKernelExactStepExportFactory,
+  type GeometryKernelExactStepExportSuccessResponse,
   type GeometryKernelExactMetadataDiagnostic,
   type GeometryKernelHoleDepthMode,
   type GeometryKernelHoleDirection,
@@ -92,8 +99,11 @@ export type {
   ExactEdgeFinishMetadataSource,
   ExactExtrudeMetadataSource,
   ExactHoleMetadataSource,
+  ExactStepExportBodySource,
+  ExactStepExportRequest,
   GeometryKernelBounds,
   GeometryKernelBooleanOperation,
+  GeometryKernelDocumentUnit,
   GeometryKernelError,
   GeometryKernelErrorCode,
   GeometryKernelEdgeFinishEdgeRole,
@@ -102,6 +112,9 @@ export type {
   GeometryKernelEdgeFinishOperation,
   GeometryKernelExactBodyMetadata,
   GeometryKernelExactBodyMetadataSuccessResponse,
+  GeometryKernelExactStepExportArtifact,
+  GeometryKernelExactStepExportFactory,
+  GeometryKernelExactStepExportSuccessResponse,
   GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeProfileKind,
   GeometryKernelHoleDepthMode,
@@ -185,7 +198,8 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createEdgeFinishMesh: createEdgeFinishMeshWithBrowserOcct,
       createHoleMesh: createHoleMeshWithBrowserOcct,
       createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
-      createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct
+      createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct,
+      createExactStepExport: createExactStepExportWithBrowserOcct
     },
     request
   );
@@ -365,6 +379,34 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctExactBodyMetadataWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createExactStepExportWithBrowserOcct(
+    input: Omit<ExactStepExportRequest, "id" | "version" | "op">
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctStepExportWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;

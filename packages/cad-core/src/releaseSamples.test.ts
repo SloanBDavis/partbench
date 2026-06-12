@@ -165,7 +165,10 @@ describe("V7 release sample fixtures", () => {
               fixture.expectedExportReadiness.formats.find(
                 (format) => format.format === "step"
               )?.status ?? "unavailable",
-            available: false
+            available:
+              fixture.expectedExportReadiness.formats.find(
+                (format) => format.format === "step"
+              )?.available ?? false
           }),
           expect.objectContaining({
             format: "glb",

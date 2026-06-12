@@ -90,10 +90,14 @@ handles, selection, or viewport state. Thumbnail, package-unpack, and
 export-intermediate cache population remains deferred.
 In V8 Tranche E1, `project.exportReadiness` distinguishes exact STEP readiness
 from Mesh/GLB visualization readiness, and `project.exportExact` accepts a
-typed STEP request for current authoritative source bodies. Because no exact
-STEP writer is exposed through the geometry boundary yet, E1 returns structured
-`EXPORT_EXACT_WRITER_UNAVAILABLE` diagnostics and does not produce placeholder
-or fake STEP bytes.
+typed STEP request for current authoritative source bodies. In V8 Tranche E2,
+the isolated OCCT/WASM geometry boundary proves STEP writer availability and
+can produce AP242 STEP bytes for supported active rectangle/circle `newBody`
+extrude source bodies. Cad-core, agents, and MCP expose the export contract and
+source body data; the web app asks the geometry worker for the transient STEP
+artifact. STEP bytes are not placeholder text, are not source authority, and are
+not written into project JSON, `.wcad`, OPFS, command history, source identity,
+or `web-cad.project.v17`.
 In V7 Tranche E1, `project.exportReadiness` reports STEP and Mesh/GLB
 visualization readiness from authoritative project structure before any file
 writer exists. It distinguishes empty projects, active authored bodies,

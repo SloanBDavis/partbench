@@ -928,16 +928,17 @@ describe("mcp-adapter", () => {
         ok: true,
         requestId: "mcp_req_export_readiness",
         query: "project.exportReadiness",
-        status: "deferred",
-        canExportFiles: false,
+        status: "supported",
+        canExportFiles: true,
         bodyCount: 1,
         sourceSupportedBodyCount: 1,
         formats: expect.arrayContaining([
           expect.objectContaining({
             format: "step",
             label: "STEP",
-            status: "deferred",
-            available: false
+            status: "supported",
+            available: true,
+            writerStatus: "available"
           }),
           expect.objectContaining({
             format: "glb",
@@ -951,14 +952,14 @@ describe("mcp-adapter", () => {
             bodyId: "body_export_ready",
             sourceKind: "authoredExtrude",
             sourceStatus: "supported",
-            status: "deferred"
+            status: "supported"
           })
         ]
       }
     });
   });
 
-  it("returns exact STEP writer-unavailable diagnostics through cad.project_export_exact", () => {
+  it("returns exact STEP source requests through cad.project_export_exact", () => {
     const server = new CadMcpServer();
 
     server.callTool({
@@ -1014,17 +1015,32 @@ describe("mcp-adapter", () => {
         requestId: "mcp_req_exact_export",
         query: "project.exportExact",
         format: "step",
-        canExportFile: false,
-        writerStatus: "unavailable",
+        status: "supported",
+        available: true,
+        canExportFile: true,
+        writerStatus: "available",
         requestedBodyIds: ["body_exact_export"],
         sourceSupportedBodyCount: 1,
-        exportableBodyCount: 0,
+        exportableBodyCount: 1,
         diagnostics: expect.arrayContaining([
           expect.objectContaining({
-            code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-            status: "unavailable"
+            code: "EXPORT_BODY_SOURCE_SUPPORTED",
+            status: "supported",
+            bodyId: "body_exact_export"
           })
-        ])
+        ]),
+        exportSources: [
+          expect.objectContaining({
+            bodyId: "body_exact_export",
+            sourceKind: "authoredExtrude",
+            featureId: "feat_exact_export",
+            sourceSketchId: "sketch_exact_export",
+            sourceSketchEntityId: "rect_exact_export",
+            profile: expect.objectContaining({
+              kind: "rectangle"
+            })
+          })
+        ]
       }
     });
     expect(

@@ -6,6 +6,7 @@ import {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactStepExportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
   createHoleWorkerRequest,
@@ -21,17 +22,56 @@ import {
 describe("geometry-worker", () => {
   it("reports STEP exact export writer capability through the worker boundary", () => {
     expect(getGeometryWorkerExactExportCapabilities()).toEqual([
-      {
+      expect.objectContaining({
         format: "step",
         label: "STEP",
-        status: "unavailable",
-        writerAvailable: false,
+        status: "available",
+        writerAvailable: true,
         boundary: "geometry-worker",
         kernelBoundary: "geometry-kernel",
-        reason:
-          "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
-      }
+        writerBoundary: "occt-wasm",
+        missingBindings: []
+      })
     ]);
+  });
+
+  it("creates a typed exact STEP export worker request", () => {
+    const request = createExactStepExportWorkerRequest({
+      id: "worker_req_step_export",
+      units: "mm",
+      bodies: [
+        {
+          bodyId: "body_step_rect",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3,
+          side: "positive"
+        }
+      ]
+    });
+
+    expect(request).toMatchObject({
+      id: "worker_req_step_export",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactExport",
+      payload: {
+        id: "worker_req_step_export:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [
+          expect.objectContaining({
+            bodyId: "body_step_rect",
+            depth: 3
+          })
+        ]
+      }
+    });
   });
 
   it("creates a typed box tessellation worker request", () => {
@@ -1124,6 +1164,56 @@ describe("geometry-worker", () => {
     expect(response.response.metadata.volume).toBeCloseTo(60, 6);
     expect(response.response.metadata.surfaceArea).toBeCloseTo(94, 6);
     expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
+
+  it("returns exact STEP bytes through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactStepExportWorkerRequest({
+        id: "worker_req_step_export_execute",
+        payloadId: "geometry_req_step_export_execute",
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_rect",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        ]
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_step_export_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactExport",
+      payloadId: "geometry_req_step_export_execute",
+      response: {
+        ok: true,
+        id: "geometry_req_step_export_execute",
+        op: "geometry.exportStep",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.artifact.byteLength).toBeGreaterThan(1000);
+    expect(
+      new TextDecoder().decode(response.response.artifact.bytes)
+    ).toContain("ISO-10303-21");
+    expect(response.transferables).toEqual([
+      response.response.artifact.bytes.buffer
+    ]);
   }, 120_000);
 
   it("returns revolve exact body metadata through the geometry kernel facade", async () => {

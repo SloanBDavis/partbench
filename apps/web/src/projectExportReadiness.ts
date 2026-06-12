@@ -46,10 +46,12 @@ export function createProjectExportReadinessDisplay(
       chooseDisplayStatus(readiness.status, visualizationExport?.status)
     ),
     detail: visualizationExport?.available
-      ? "Mesh/GLB visualization export is available from ready derived display meshes. STEP exact export writer remains unavailable."
+      ? readiness.canExportFiles
+        ? "Exact STEP and Mesh/GLB visualization export are available for supported current bodies."
+        : "Mesh/GLB visualization export is available from ready derived display meshes. STEP exact export depends on supported source bodies."
       : readiness.canExportFiles
-        ? "File export is available for the listed supported formats."
-        : "STEP exact export writer is unavailable. Mesh/GLB visualization depends on ready derived display meshes.",
+        ? "Exact STEP export is available for supported current source bodies."
+        : "Exact STEP export requires supported source bodies. Mesh/GLB visualization depends on ready derived display meshes.",
     sourceDetail:
       "Candidate bodies come from authoritative project source, features, and document units.",
     derivedDetail: visualizationExport
@@ -121,7 +123,7 @@ function createFormatRow(
     detail: format.available
       ? `${format.label} export is available for current source bodies.`
       : format.exportKind === "exact"
-        ? `${format.label} exact export writer is unavailable.`
+        ? `${format.label} exact export needs at least one supported source body.`
         : `${format.label} export files are not available yet.`,
     limitation:
       emptyDiagnostic?.message ??
@@ -131,7 +133,7 @@ function createFormatRow(
       format.status === "unavailable"
         ? "Create an authored body before exporting."
         : format.exportKind === "exact"
-          ? "Expose a STEP writer through the geometry boundary before enabling downloads."
+          ? "Use the STEP download action from Project/File."
           : "Implement the file writer before enabling downloads."
   };
 }
@@ -164,14 +166,14 @@ function createBodyRow(
     statusLabel: getExportReadinessStatusLabel(body.status),
     detail:
       body.sourceStatus === "supported"
-        ? "Source body is supported; exact file availability depends on the STEP writer boundary."
+        ? "Source body is supported for exact STEP export."
         : getBodySourceDetail(body),
     limitation:
       primaryDiagnostic?.message ?? "No body-specific blocker reported.",
     nextStep:
       body.status === "unavailable"
         ? "Use an active authored body with supported source semantics."
-        : "Wait for the corresponding export writer boundary."
+        : "Use a supported active authored body for exact export."
   };
 }
 

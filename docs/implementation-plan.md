@@ -34,8 +34,8 @@ These constraints remain active:
    A-H1 real CAD alpha/release-readiness scope.
 10. V8 is the active broad major-release plan. Its center is native `.wcad`
     package storage, File System Access local workflow, OPFS-derived cache, and
-    exact STEP export contract/readiness for supported bodies, with real STEP
-    bytes deferred until a geometry-boundary writer exists.
+    exact STEP export for supported authored source bodies through the geometry
+    boundary.
 11. V8 implementation tranches should stay independently testable and should
     not mix unrelated storage, renderer, topology, sketch-solver, assembly, or
     agent-safety risks without explicit approval.
@@ -73,6 +73,14 @@ These constraints remain active:
     STEP writer capability probes, Project/File status, and thin agent/MCP
     pass-through. It reports structured writer-unavailable diagnostics and does
     not produce placeholder STEP bytes or introduce `web-cad.project.v17`.
+18. V8 Tranche E2 is implemented as the first real exact STEP writer path:
+    OCCT/WASM writer capability is proven at the isolated geometry boundary,
+    geometry-kernel/worker can produce AP242 STEP bytes for supported active
+    rectangle/circle `newBody` extrude source bodies, Project/File exposes a
+    restrained STEP download action, and cad-core/agent/MCP continue to return
+    source/export contract data rather than owning OCCT or browser file APIs.
+    STEP artifacts are transient export outputs and are not stored in `.wcad`,
+    JSON, OPFS, command history, source identity, or `web-cad.project.v17`.
 
 ## Current Repo State
 

@@ -2768,6 +2768,7 @@ export type CadExportBodySourceKind =
 export type CadExportDiagnosticCode =
   | "EXPORT_WRITER_NOT_IMPLEMENTED"
   | "EXPORT_EXACT_WRITER_UNAVAILABLE"
+  | "EXPORT_EXACT_WRITER_FAILED"
   | "EXPORT_EXACT_FORMAT_UNSUPPORTED"
   | "EXPORT_EXACT_BODY_UNSUPPORTED"
   | "EXPORT_PROJECT_EMPTY"
@@ -2793,6 +2794,37 @@ export interface CadExportDiagnostic {
   readonly expected?: string;
   readonly received?: string;
 }
+
+export interface CadExactExportExtrudeBodySource {
+  readonly bodyId: BodyId;
+  readonly bodyName?: string;
+  readonly sourceKind: "authoredExtrude";
+  readonly featureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly sketchPlane: SketchPlane;
+  readonly profile:
+    | {
+        readonly kind: "rectangle";
+        readonly center: Vec2;
+        readonly width: number;
+        readonly height: number;
+      }
+    | {
+        readonly kind: "circle";
+        readonly center: Vec2;
+        readonly radius: number;
+      };
+  readonly depth: number;
+  readonly side: FeatureExtrudeSide;
+  readonly placementFrame?: {
+    readonly origin: Vec3;
+    readonly uAxis: Vec3;
+    readonly vAxis: Vec3;
+  };
+}
+
+export type CadExactExportBodySource = CadExactExportExtrudeBodySource;
 
 export interface CadExportFormatReadiness {
   readonly format: CadExportFormatId;
@@ -2998,6 +3030,7 @@ export interface ProjectExactExportQueryResponse {
   readonly deferredBodyCount: number;
   readonly unavailableBodyCount: number;
   readonly exportableBodyCount: number;
+  readonly exportSources: readonly CadExactExportBodySource[];
   readonly bodies: readonly CadExportBodyReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadExportDiagnostic[];

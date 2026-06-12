@@ -8,12 +8,69 @@ import {
   createOcctExactBodyMetadata,
   createOcctRevolveProfileMesh,
   createOcctSphereMesh,
+  createOcctStepExport,
+  getOcctStepWriterCapability,
   createOcctTorusMesh
 } from "./index";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
 describe("occt-wasm", () => {
+  it(
+    "reports STEP writer bindings as available through the isolated boundary",
+    async () => {
+      const capability = await getOcctStepWriterCapability();
+
+      expect(capability).toMatchObject({
+        format: "step",
+        status: "available",
+        writerAvailable: true,
+        boundary: "occt-wasm",
+        packageName: "opencascade.js"
+      });
+      expect(capability.missingBindings).toEqual([]);
+      expect(capability.availableBindings).toContain("STEPControl_Writer_1");
+      expect(capability.availableBindings).toContain("FS.readFile");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "exports a rectangle extrude as real STEP bytes through Open CASCADE WASM",
+    async () => {
+      const artifact = await createOcctStepExport({
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_rect",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        ]
+      });
+      const text = new TextDecoder().decode(artifact.bytes);
+
+      expect(artifact).toMatchObject({
+        format: "step",
+        schema: "AP242DIS",
+        units: "mm",
+        bodyCount: 1
+      });
+      expect(artifact.byteLength).toBeGreaterThan(1000);
+      expect(text).toContain("ISO-10303-21");
+      expect(text).toContain("SI_UNIT(.MILLI.,.METRE.)");
+      expect(text).not.toContain("mesh");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
   it(
     "creates and tessellates a box through Open CASCADE WASM",
     async () => {

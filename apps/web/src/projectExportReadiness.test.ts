@@ -3,22 +3,22 @@ import type { ProjectExportReadinessQueryResponse } from "@web-cad/cad-protocol"
 import { createProjectExportReadinessDisplay } from "./projectExportReadiness";
 
 describe("projectExportReadiness", () => {
-  it("formats deferred format writers and source-supported body state", () => {
+  it("formats available STEP and deferred visualization state", () => {
     const display = createProjectExportReadinessDisplay(
       createExportReadinessResponse()
     );
 
-    expect(display.statusLabel).toBe("Deferred");
-    expect(display.detail).toContain("STEP exact export writer is unavailable");
+    expect(display.statusLabel).toBe("Supported");
+    expect(display.detail).toContain("Exact STEP export is available");
     expect(display.bodySummary).toBe(
-      "1 source supported, 2 deferred, 0 unavailable"
+      "1 source supported, 1 deferred, 0 unavailable"
     );
     expect(display.formatRows).toMatchObject([
       {
         id: "step",
         label: "STEP",
-        status: "deferred",
-        detail: "STEP exact export writer is unavailable."
+        status: "supported",
+        detail: "STEP export is available for current source bodies."
       },
       {
         id: "glb",
@@ -30,9 +30,8 @@ describe("projectExportReadiness", () => {
     expect(display.bodyRows).toMatchObject([
       {
         id: "body_rect",
-        status: "deferred",
-        detail:
-          "Source body is supported; exact file availability depends on the STEP writer boundary."
+        status: "supported",
+        detail: "Source body is supported for exact STEP export."
       },
       {
         id: "body_hole",
@@ -62,16 +61,13 @@ describe("projectExportReadiness", () => {
     );
 
     expect(display.statusLabel).toBe("Supported");
-    expect(display.detail).toContain("Mesh/GLB visualization export");
-    expect(display.detail).toContain(
-      "STEP exact export writer remains unavailable"
-    );
+    expect(display.detail).toContain("Exact STEP and Mesh/GLB visualization");
     expect(display.formatRows).toMatchObject([
       {
         id: "step",
         label: "STEP",
-        status: "deferred",
-        detail: "STEP exact export writer is unavailable."
+        status: "supported",
+        detail: "STEP export is available for current source bodies."
       },
       {
         id: "glb",
@@ -102,8 +98,8 @@ function createExportReadinessResponse(): ProjectExportReadinessQueryResponse {
     ok: true,
     query: "project.exportReadiness",
     cadOpsVersion: "cadops.v1",
-    status: "deferred",
-    canExportFiles: false,
+    status: "supported",
+    canExportFiles: true,
     units: "mm",
     sourceBoundaryNote:
       "Classified from authoritative project bodies, features, sketches, and document units.",
@@ -115,28 +111,20 @@ function createExportReadinessResponse(): ProjectExportReadinessQueryResponse {
         format: "step",
         label: "STEP",
         exportKind: "exact",
-        status: "deferred",
-        available: false,
-        writerStatus: "unavailable",
+        status: "supported",
+        available: true,
+        writerStatus: "available",
         fileExtensions: [".step", ".stp"],
         units: "mm",
         sourceBoundaryNote:
-          "STEP requires an exact body writer from authoritative CAD source.",
+          "STEP uses exact body sources derived from authoritative CAD document state.",
         derivedBoundaryNote:
           "STEP readiness does not use derived visualization output.",
         candidateBodyCount: 2,
         sourceSupportedBodyCount: 1,
-        deferredBodyCount: 2,
+        deferredBodyCount: 1,
         unavailableBodyCount: 0,
-        diagnostics: [
-          {
-            code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
-            status: "unavailable",
-            format: "step",
-            message:
-              "STEP exact export writer is unavailable through the geometry boundary; this query reports readiness and blockers only."
-          }
-        ]
+        diagnostics: []
       },
       {
         format: "glb",
@@ -167,7 +155,7 @@ function createExportReadinessResponse(): ProjectExportReadinessQueryResponse {
     ],
     bodyCount: 2,
     sourceSupportedBodyCount: 1,
-    deferredBodyCount: 2,
+    deferredBodyCount: 1,
     unavailableBodyCount: 0,
     bodies: [
       {
@@ -177,7 +165,7 @@ function createExportReadinessResponse(): ProjectExportReadinessQueryResponse {
         partId: "part:default",
         sourceKind: "authoredExtrude",
         sourceStatus: "supported",
-        status: "deferred",
+        status: "supported",
         sourceBoundaryNote: "Authoritative project source.",
         derivedBoundaryNote: "No display output.",
         formats: [],

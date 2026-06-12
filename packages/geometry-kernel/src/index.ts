@@ -8,7 +8,8 @@ import {
   createOcctEdgeFinishMesh,
   createOcctHoleMesh,
   createOcctRevolveProfileMesh,
-  createOcctExactBodyMetadata
+  createOcctExactBodyMetadata,
+  createOcctStepExport
 } from "@web-cad/occt-wasm";
 import {
   executeGeometryKernelRequestWithMeshFactory,
@@ -27,8 +28,11 @@ import {
   type ExactExtrudeMetadataSource,
   type ExactHoleMetadataSource,
   type ExactRevolveMetadataSource,
+  type ExactStepExportBodySource,
+  type ExactStepExportRequest,
   type GeometryKernelBounds,
   type GeometryKernelBooleanOperation,
+  type GeometryKernelDocumentUnit,
   type GeometryKernelError,
   type GeometryKernelErrorCode,
   type GeometryKernelEdgeFinishEdgeRole,
@@ -40,6 +44,9 @@ import {
   type GeometryKernelExactExportFormat,
   type GeometryKernelExactBodyMetadata,
   type GeometryKernelExactBodyMetadataSuccessResponse,
+  type GeometryKernelExactStepExportArtifact,
+  type GeometryKernelExactStepExportFactory,
+  type GeometryKernelExactStepExportSuccessResponse,
   type GeometryKernelExactMetadataDiagnostic,
   type GeometryKernelExtrudeSide,
   type GeometryKernelExtrudeProfileKind,
@@ -97,8 +104,11 @@ export type {
   ExactExtrudeMetadataSource,
   ExactHoleMetadataSource,
   ExactRevolveMetadataSource,
+  ExactStepExportBodySource,
+  ExactStepExportRequest,
   GeometryKernelBounds,
   GeometryKernelBooleanOperation,
+  GeometryKernelDocumentUnit,
   GeometryKernelError,
   GeometryKernelErrorCode,
   GeometryKernelEdgeFinishEdgeRole,
@@ -110,6 +120,9 @@ export type {
   GeometryKernelExactExportFormat,
   GeometryKernelExactBodyMetadata,
   GeometryKernelExactBodyMetadataSuccessResponse,
+  GeometryKernelExactStepExportArtifact,
+  GeometryKernelExactStepExportFactory,
+  GeometryKernelExactStepExportSuccessResponse,
   GeometryKernelExactMetadataDiagnostic,
   GeometryKernelExtrudeSide,
   GeometryKernelExtrudeProfileKind,
@@ -171,7 +184,8 @@ export async function executeGeometryKernelRequest<
       createEdgeFinishMesh: createOcctEdgeFinishMesh,
       createHoleMesh: createOcctHoleMesh,
       createRevolveProfileMesh: createOcctRevolveProfileMesh,
-      createExactBodyMetadata: createOcctExactBodyMetadata
+      createExactBodyMetadata: createOcctExactBodyMetadata,
+      createExactStepExport: createOcctStepExport
     },
     request
   );

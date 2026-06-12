@@ -3,11 +3,14 @@ import type {
   BooleanExtrudesRequest,
   EdgeFinishRequest,
   ExactBodyMetadataRequest,
+  ExactStepExportBodySource,
+  ExactStepExportRequest,
   GeometryKernelErrorResponse,
   GeometryKernelRequest,
   GeometryKernelResponseForRequest,
   GeometryKernelResponse,
   GeometryKernelBooleanOperation,
+  GeometryKernelDocumentUnit,
   GeometryKernelExtrudeSide,
   GeometryKernelExactExportFormat,
   HoleRequest,
@@ -24,7 +27,8 @@ import type {
 
 export type {
   GeometryKernelExactBodyMetadata,
-  GeometryKernelExactExportFormat
+  GeometryKernelExactExportFormat,
+  GeometryKernelExactStepExportArtifact
 } from "@web-cad/geometry-kernel";
 
 export type GeometryWorkerVersion = "geometry-worker.v1";
@@ -33,7 +37,8 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.tessellateFeature"
   | "geometry-worker.booleanFeature"
   | "geometry-worker.edgeFinishFeature"
-  | "geometry-worker.exactMetadata";
+  | "geometry-worker.exactMetadata"
+  | "geometry-worker.exactExport";
 
 export interface GeometryWorkerRequest<
   TPayload extends GeometryKernelRequest = GeometryKernelRequest
@@ -108,10 +113,16 @@ export interface GeometryWorkerOptions {
 export interface GeometryWorkerExactExportCapability {
   readonly format: GeometryKernelExactExportFormat;
   readonly label: "STEP";
-  readonly status: "unavailable";
-  readonly writerAvailable: false;
+  readonly status: "available" | "unavailable";
+  readonly writerAvailable: boolean;
   readonly boundary: "geometry-worker";
   readonly kernelBoundary: "geometry-kernel";
+  readonly writerBoundary: "occt-wasm";
+  readonly packageName: "opencascade.js";
+  readonly packageVersion: string;
+  readonly checkedBindings: readonly string[];
+  readonly availableBindings: readonly string[];
+  readonly missingBindings: readonly string[];
   readonly reason: string;
 }
 
@@ -120,12 +131,38 @@ export function getGeometryWorkerExactExportCapabilities(): readonly GeometryWor
     {
       format: "step",
       label: "STEP",
-      status: "unavailable",
-      writerAvailable: false,
+      status: "available",
+      writerAvailable: true,
       boundary: "geometry-worker",
       kernelBoundary: "geometry-kernel",
+      writerBoundary: "occt-wasm",
+      packageName: "opencascade.js",
+      packageVersion: "2.0.0-beta.b5ff984",
+      checkedBindings: [
+        "STEPControl_Writer_1",
+        "STEPControl_StepModelType.STEPControl_AsIs",
+        "IFSelect_ReturnStatus.IFSelect_RetDone",
+        "Interface_Static.SetCVal",
+        "Message_ProgressRange_1",
+        "FS.readFile",
+        "FS.unlink",
+        "BRepPrimAPI_MakeBox_5",
+        "BRepPrimAPI_MakeCylinder_3"
+      ],
+      availableBindings: [
+        "STEPControl_Writer_1",
+        "STEPControl_StepModelType.STEPControl_AsIs",
+        "IFSelect_ReturnStatus.IFSelect_RetDone",
+        "Interface_Static.SetCVal",
+        "Message_ProgressRange_1",
+        "FS.readFile",
+        "FS.unlink",
+        "BRepPrimAPI_MakeBox_5",
+        "BRepPrimAPI_MakeCylinder_3"
+      ],
+      missingBindings: [],
       reason:
-        "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
+        "The geometry worker can execute minimal exact STEP export through the geometry kernel and isolated OpenCascade.js writer boundary."
     }
   ];
 }
@@ -505,6 +542,26 @@ export function createExactBodyMetadataWorkerRequest(input: {
       version: "geometry-kernel.v1",
       op: "geometry.exactBodyMetadata",
       source: input.source
+    }
+  };
+}
+
+export function createExactStepExportWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly units: GeometryKernelDocumentUnit;
+  readonly bodies: readonly ExactStepExportBodySource[];
+}): GeometryWorkerRequest<ExactStepExportRequest> {
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.exactExport",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.exportStep",
+      units: input.units,
+      bodies: input.bodies
     }
   };
 }

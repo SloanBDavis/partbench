@@ -12,19 +12,58 @@ import {
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
 
 describe("geometry-kernel facade", () => {
-  it("reports STEP exact export writer capability as unavailable", () => {
+  it("reports STEP exact export writer capability as available", () => {
     expect(getGeometryKernelExactExportCapabilities()).toEqual([
-      {
+      expect.objectContaining({
         format: "step",
         label: "STEP",
-        status: "unavailable",
-        writerAvailable: false,
+        status: "available",
+        writerAvailable: true,
         boundary: "geometry-kernel",
-        reason:
-          "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
-      }
+        writerBoundary: "occt-wasm",
+        missingBindings: []
+      })
     ]);
   });
+
+  it(
+    "exports a rectangle extrude as STEP bytes through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_step_export",
+        version: "geometry-kernel.v1",
+        op: "geometry.exportStep",
+        units: "mm",
+        bodies: [
+          {
+            bodyId: "body_step_rect",
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            depth: 3,
+            side: "positive"
+          }
+        ]
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      const text = new TextDecoder().decode(response.artifact.bytes);
+
+      expect(response.artifact.byteLength).toBeGreaterThan(1000);
+      expect(text).toContain("ISO-10303-21");
+      expect(getGeometryResponseTransferables(response)).toHaveLength(1);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
 
   it(
     "tessellates a box through the isolated OCCT WASM adapter",

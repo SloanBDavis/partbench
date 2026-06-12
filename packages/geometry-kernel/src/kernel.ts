@@ -1,13 +1,21 @@
 export type GeometryKernelVersion = "geometry-kernel.v1";
 export type GeometryKernelExactExportFormat = "step";
-export type GeometryKernelExactExportCapabilityStatus = "unavailable";
+export type GeometryKernelExactExportCapabilityStatus =
+  | "available"
+  | "unavailable";
 
 export interface GeometryKernelExactExportCapability {
   readonly format: GeometryKernelExactExportFormat;
   readonly label: "STEP";
   readonly status: GeometryKernelExactExportCapabilityStatus;
-  readonly writerAvailable: false;
+  readonly writerAvailable: boolean;
   readonly boundary: "geometry-kernel";
+  readonly writerBoundary: "occt-wasm";
+  readonly packageName: "opencascade.js";
+  readonly packageVersion: string;
+  readonly checkedBindings: readonly string[];
+  readonly availableBindings: readonly string[];
+  readonly missingBindings: readonly string[];
   readonly reason: string;
 }
 
@@ -22,7 +30,8 @@ export type GeometryKernelOp =
   | "geometry.booleanExtrudes"
   | "geometry.hole"
   | "geometry.edgeFinish"
-  | "geometry.exactBodyMetadata";
+  | "geometry.exactBodyMetadata"
+  | "geometry.exportStep";
 export type GeometryKernelPrimitive =
   | "box"
   | "cylinder"
@@ -37,6 +46,7 @@ export type GeometryKernelPrimitive =
 export type GeometryKernelSketchPlane = "XY" | "XZ" | "YZ";
 export type GeometryKernelExtrudeProfileKind = "rectangle" | "circle";
 export type GeometryKernelExtrudeSide = "positive" | "negative" | "symmetric";
+export type GeometryKernelDocumentUnit = "mm" | "cm" | "m" | "in";
 export type GeometryKernelBooleanOperation = "add" | "cut";
 export type GeometryKernelHoleDepthMode = "blind" | "throughAll";
 export type GeometryKernelHoleDirection = "positive" | "negative";
@@ -303,6 +313,19 @@ export interface ExactBodyMetadataRequest {
   readonly source: ExactBodyMetadataSource;
 }
 
+export interface ExactStepExportBodySource extends BooleanExtrudeSource {
+  readonly bodyId: string;
+  readonly bodyName?: string;
+}
+
+export interface ExactStepExportRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.exportStep";
+  readonly units: GeometryKernelDocumentUnit;
+  readonly bodies: readonly ExactStepExportBodySource[];
+}
+
 export type GeometryKernelRequest =
   | TessellateBoxRequest
   | TessellateCylinderRequest
@@ -314,11 +337,12 @@ export type GeometryKernelRequest =
   | BooleanExtrudesRequest
   | HoleRequest
   | EdgeFinishRequest
-  | ExactBodyMetadataRequest;
+  | ExactBodyMetadataRequest
+  | ExactStepExportRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
   GeometryKernelRequest,
-  ExactBodyMetadataRequest
+  ExactBodyMetadataRequest | ExactStepExportRequest
 >;
 
 export interface SerializableMeshData {
@@ -336,7 +360,8 @@ export type GeometryKernelResponse =
 
 export type GeometryKernelSuccessResponse =
   | GeometryKernelMeshSuccessResponse
-  | GeometryKernelExactBodyMetadataSuccessResponse;
+  | GeometryKernelExactBodyMetadataSuccessResponse
+  | GeometryKernelExactStepExportSuccessResponse;
 
 export interface GeometryKernelMeshSuccessResponse {
   readonly ok: true;
@@ -351,6 +376,23 @@ export interface GeometryKernelExactBodyMetadataSuccessResponse {
   readonly id: string;
   readonly op: "geometry.exactBodyMetadata";
   readonly metadata: GeometryKernelExactBodyMetadata;
+  readonly warnings: readonly string[];
+}
+
+export interface GeometryKernelExactStepExportArtifact {
+  readonly format: GeometryKernelExactExportFormat;
+  readonly schema: "AP242DIS";
+  readonly units: GeometryKernelDocumentUnit;
+  readonly bodyCount: number;
+  readonly byteLength: number;
+  readonly bytes: Uint8Array;
+}
+
+export interface GeometryKernelExactStepExportSuccessResponse {
+  readonly ok: true;
+  readonly id: string;
+  readonly op: "geometry.exportStep";
+  readonly artifact: GeometryKernelExactStepExportArtifact;
   readonly warnings: readonly string[];
 }
 
@@ -469,6 +511,10 @@ export type GeometryKernelExactBodyMetadataFactory = (
   input: Omit<ExactBodyMetadataRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactBodyMetadata>;
 
+export type GeometryKernelExactStepExportFactory = (
+  input: Omit<ExactStepExportRequest, "id" | "version" | "op">
+) => Promise<GeometryKernelExactStepExportArtifact>;
+
 export interface GeometryKernelMeshFactories {
   readonly createBoxMesh: GeometryKernelBoxMeshFactory;
   readonly createCylinderMesh: GeometryKernelCylinderMeshFactory;
@@ -480,6 +526,7 @@ export interface GeometryKernelMeshFactories {
   readonly createEdgeFinishMesh?: GeometryKernelEdgeFinishMeshFactory;
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
+  readonly createExactStepExport?: GeometryKernelExactStepExportFactory;
 }
 
 export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
@@ -487,18 +534,48 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
     ?
         | GeometryKernelExactBodyMetadataSuccessResponse
         | GeometryKernelErrorResponse
-    : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+    : T extends ExactStepExportRequest
+      ?
+          | GeometryKernelExactStepExportSuccessResponse
+          | GeometryKernelErrorResponse
+      : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
 
 export function getGeometryKernelExactExportCapabilities(): readonly GeometryKernelExactExportCapability[] {
   return [
     {
       format: "step",
       label: "STEP",
-      status: "unavailable",
-      writerAvailable: false,
+      status: "available",
+      writerAvailable: true,
       boundary: "geometry-kernel",
+      writerBoundary: "occt-wasm",
+      packageName: "opencascade.js",
+      packageVersion: "2.0.0-beta.b5ff984",
+      checkedBindings: [
+        "STEPControl_Writer_1",
+        "STEPControl_StepModelType.STEPControl_AsIs",
+        "IFSelect_ReturnStatus.IFSelect_RetDone",
+        "Interface_Static.SetCVal",
+        "Message_ProgressRange_1",
+        "FS.readFile",
+        "FS.unlink",
+        "BRepPrimAPI_MakeBox_5",
+        "BRepPrimAPI_MakeCylinder_3"
+      ],
+      availableBindings: [
+        "STEPControl_Writer_1",
+        "STEPControl_StepModelType.STEPControl_AsIs",
+        "IFSelect_ReturnStatus.IFSelect_RetDone",
+        "Interface_Static.SetCVal",
+        "Message_ProgressRange_1",
+        "FS.readFile",
+        "FS.unlink",
+        "BRepPrimAPI_MakeBox_5",
+        "BRepPrimAPI_MakeCylinder_3"
+      ],
+      missingBindings: [],
       reason:
-        "No STEP exchange writer binding is exposed through the geometry kernel boundary yet."
+        "The geometry kernel can route minimal exact STEP export requests to the isolated OpenCascade.js writer boundary."
     }
   ];
 }
@@ -519,6 +596,36 @@ export async function executeGeometryKernelRequestWithMeshFactory<
   }
 
   try {
+    if (request.op === "geometry.exportStep") {
+      const artifact = await createExactStepExport(factories, request);
+
+      if (artifact.byteLength <= 0 || artifact.bytes.byteLength <= 0) {
+        return errorResponse(request, {
+          code: "EMPTY_RESULT",
+          message: "The geometry kernel returned an empty STEP artifact."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+
+      if (
+        artifact.format !== "step" ||
+        artifact.byteLength !== artifact.bytes.byteLength
+      ) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned STEP artifact metadata that did not match the exported bytes."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+
+      return {
+        ok: true,
+        id: request.id,
+        op: request.op,
+        artifact,
+        warnings: []
+      } as unknown as GeometryKernelResponseForRequest<T>;
+    }
+
     if (request.op === "geometry.exactBodyMetadata") {
       const metadata = await createExactBodyMetadata(factories, request);
 
@@ -581,14 +688,22 @@ export async function executeGeometryKernelRequestWithMeshFactory<
 export function getGeometryResponseTransferables(
   response: GeometryKernelResponse
 ): readonly ArrayBuffer[] {
-  if (!response.ok || !("mesh" in response)) {
+  if (!response.ok) {
     return [];
   }
 
-  return [
-    response.mesh.positions.buffer as ArrayBuffer,
-    response.mesh.indices.buffer as ArrayBuffer
-  ];
+  if ("mesh" in response) {
+    return [
+      response.mesh.positions.buffer as ArrayBuffer,
+      response.mesh.indices.buffer as ArrayBuffer
+    ];
+  }
+
+  if ("artifact" in response) {
+    return [response.artifact.bytes.buffer as ArrayBuffer];
+  }
+
+  return [];
 }
 
 function validateRequest(
@@ -700,6 +815,23 @@ function validateRequest(
 
     if (metadataSourceError) {
       return metadataSourceError;
+    }
+  } else if (request.op === "geometry.exportStep") {
+    if (request.bodies.length === 0) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message: "STEP export requests require at least one exact body source."
+      };
+    }
+
+    for (const body of request.bodies) {
+      if (!body.bodyId || !isValidBooleanExtrudeSource(body)) {
+        return {
+          code: "INVALID_DIMENSIONS",
+          message:
+            "STEP export currently supports active rectangle/circle newBody extrude sources with finite positive dimensions."
+        };
+      }
     }
   } else if (
     !isPositiveFiniteNumber(request.dimensions.majorRadius) ||
@@ -872,6 +1004,24 @@ function createExactBodyMetadata(
   });
 }
 
+function createExactStepExport(
+  factories: GeometryKernelMeshFactories,
+  request: ExactStepExportRequest
+): Promise<GeometryKernelExactStepExportArtifact> {
+  if (!factories.createExactStepExport) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Exact STEP export requires an OCCT STEP writer factory through the geometry boundary."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createExactStepExport({
+    units: request.units,
+    bodies: request.bodies
+  });
+}
+
 async function createExtrudeMesh(
   factories: GeometryKernelMeshFactories,
   request: TessellateExtrudeRequest
@@ -1020,6 +1170,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Edge finish";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
+    case "geometry.exportStep":
+      return "STEP export";
   }
 }
 

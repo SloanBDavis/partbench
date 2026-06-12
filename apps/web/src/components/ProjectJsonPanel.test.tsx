@@ -318,23 +318,24 @@ describe("ProjectJsonPanel", () => {
     );
 
     expect(markup).toContain("Export readiness");
-    expect(markup).toContain("Deferred");
+    expect(markup).toContain("Supported");
     expect(markup).toContain("STEP");
     expect(markup).toContain("Mesh/GLB visualization");
-    expect(markup).toContain("STEP exact export writer is unavailable");
+    expect(markup).toContain("Exact STEP export is available");
     expect(markup).toContain("Source body is supported");
     expect(markup).toContain(
       "Display output and temporary visualization state"
     );
     const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
     const exportSectionEnd = markup.indexOf(
-      '<div class="button-row"',
+      '<dl class="project-capability-list" aria-label="Export body status"',
       exportSectionStart
     );
     const exportReadinessMarkup = markup.slice(
       exportSectionStart,
       exportSectionEnd
     );
+    expect(exportReadinessMarkup).toContain("Download STEP");
     expect(exportReadinessMarkup).not.toMatch(
       /OCCT|renderer|cache|selection-buffer/i
     );
@@ -401,6 +402,7 @@ describe("ProjectJsonPanel", () => {
         onProjectFileError: () => undefined,
         onExport: () => undefined,
         onDownload: () => undefined,
+        onDownloadStep: () => undefined,
         onDownloadVisualization: () => undefined,
         onImport: () => undefined
       })
@@ -408,7 +410,7 @@ describe("ProjectJsonPanel", () => {
 
     const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
     const exportSectionEnd = markup.indexOf(
-      '<div class="button-row">',
+      '<dl class="project-capability-list" aria-label="Export body status"',
       exportSectionStart
     );
     const exportReadinessMarkup = markup.slice(
@@ -418,11 +420,12 @@ describe("ProjectJsonPanel", () => {
 
     expect(exportReadinessMarkup).toContain("Supported");
     expect(exportReadinessMarkup).toContain(
-      "STEP exact export writer remains unavailable"
+      "Exact STEP and Mesh/GLB visualization"
     );
     expect(exportReadinessMarkup).toContain(
       "Mesh/GLB visualization export is available"
     );
+    expect(exportReadinessMarkup).toContain("Download STEP");
     expect(exportReadinessMarkup).toContain("Download visualization GLB");
     expect(exportReadinessMarkup).not.toMatch(
       /<button type="button" disabled="">Download visualization GLB<\/button>/
@@ -434,6 +437,7 @@ describe("ProjectJsonPanel", () => {
 
     expect(jsonButtonRow).toContain("Export JSON");
     expect(jsonButtonRow).toContain("Download JSON");
+    expect(jsonButtonRow).not.toContain("Download STEP");
     expect(jsonButtonRow).not.toContain("Download visualization GLB");
   });
 

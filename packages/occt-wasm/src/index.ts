@@ -54,6 +54,18 @@ import {
   createOcctRevolveProfileMeshWithLoader,
   type OcctRevolveProfileInput
 } from "./revolveProfile";
+import {
+  createOcctStepExportWithInstance,
+  createOcctStepExportWithLoader,
+  getOcctStepWriterCapabilityWithInstance,
+  getOcctStepWriterCapabilityWithLoader,
+  type OcctStepExportArtifact,
+  type OcctStepExportBodySource,
+  type OcctStepExportInput,
+  type OcctStepExportSchema,
+  type OcctStepExportUnit,
+  type OcctStepWriterCapability
+} from "./exactStepExport";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -69,6 +81,12 @@ export type {
   OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
   OcctRevolveProfileInput,
+  OcctStepExportArtifact,
+  OcctStepExportBodySource,
+  OcctStepExportInput,
+  OcctStepExportSchema,
+  OcctStepExportUnit,
+  OcctStepWriterCapability,
   OcctMeshData
 };
 export {
@@ -91,7 +109,11 @@ export {
   createOcctRevolveProfileMeshWithInstance,
   createOcctRevolveProfileMeshWithLoader,
   createOcctExactBodyMetadataWithInstance,
-  createOcctExactBodyMetadataWithLoader
+  createOcctExactBodyMetadataWithLoader,
+  createOcctStepExportWithInstance,
+  createOcctStepExportWithLoader,
+  getOcctStepWriterCapabilityWithInstance,
+  getOcctStepWriterCapabilityWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -159,4 +181,14 @@ export async function createOcctExactBodyMetadata(
   input: OcctExactBodyMetadataInput
 ): Promise<OcctExactBodyMetadata> {
   return createOcctExactBodyMetadataWithLoader(loadOcct, input);
+}
+
+export async function createOcctStepExport(
+  input: OcctStepExportInput
+): Promise<OcctStepExportArtifact> {
+  return createOcctStepExportWithLoader(loadOcct, input);
+}
+
+export async function getOcctStepWriterCapability(): Promise<OcctStepWriterCapability> {
+  return getOcctStepWriterCapabilityWithLoader(loadOcct);
 }
