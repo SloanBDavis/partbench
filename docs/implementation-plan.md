@@ -4,13 +4,14 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-12.
+Last updated: 2026-06-13.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
 archived V4 constrained sketch solving milestone, `docs/v7.md` for the
 completed V7 real CAD alpha release-readiness record, `docs/v8.md` for the
-active local CAD foundation and exact interop release plan,
+completed local CAD foundation and exact interop release record, `docs/v9.md`
+for the active viewport-native CAD interaction release plan,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
@@ -32,48 +33,57 @@ These constraints remain active:
    collaboration are expanded only in scoped tranches.
 9. V2, V3, V4, V5, and V6 are complete. V7 is complete through the documented
    A-H1 real CAD alpha/release-readiness scope.
-10. V8 is the active broad major-release plan. Its center is native `.wcad`
-    package storage, File System Access local workflow, OPFS-derived cache, and
-    exact STEP export for supported authored source bodies through the geometry
-    boundary.
-11. V8 implementation tranches should stay independently testable and should
+10. V8 is complete through the documented release-candidate scope. Its center is
+    native `.wcad` package storage, File System Access local workflow,
+    OPFS-derived cache, and exact STEP export for supported authored source
+    bodies through the geometry boundary.
+11. V9 is the active broad major-release plan. Its center is viewport-native CAD
+    interaction: renderer-agnostic hit candidates, semantic selection
+    resolution, command-ready viewport selections, compact contextual tools,
+    exact/semantic inspect and measure workflows, and release-grade browser
+    interaction smokes.
+12. V9 implementation tranches should stay independently testable and should
+    not mix renderer replacement, assemblies, STEP import, broad topology,
+    broad sketch solving, new modeling commands, or persisted UI state without
+    explicit approval.
+13. V8 implementation tranches should stay independently testable and should
     not mix unrelated storage, renderer, topology, sketch-solver, assembly, or
     agent-safety risks without explicit approval.
-12. V8 Tranche A is implemented as a protocol and pure-helper slice only:
+14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
     pass-through. It does not implement ZIP read/write, File System Access,
     OPFS writes, STEP export, CBOR encoding, or `web-cad.project.v17`.
-13. V8 Tranche B is implemented in `cad-core` as deterministic `.wcad` package
+15. V8 Tranche B is implemented in `cad-core` as deterministic `.wcad` package
     bytes: ZIP-compatible `manifest.json`, `document.cbor`, and
     `commands.cbor`; canonical CBOR source encoding; manifest hash/length and
     source-identity validation; structured package diagnostics; and import
     through the existing current project importer. It does not add browser File
     System Access UI, upload/download fallback UI, OPFS writes, STEP export, or
     `web-cad.project.v17`.
-14. V8 Tranche C is implemented in the web app as the `.wcad` project workflow:
+16. V8 Tranche C is implemented in the web app as the `.wcad` project workflow:
     Open, Save, and Save As use File System Access where available, fall back to
     `.wcad` upload/download, keep JSON as explicit interchange/debug, and keep
     file handles out of cad-core, project source, `.wcad`, agents, and MCP.
-15. V8 Tranche D1 is implemented as an app-layer OPFS cache foundation:
+17. V8 Tranche D1 is implemented as an app-layer OPFS cache foundation:
     `partbench.opfs-cache.v1` status/index helpers, structured diagnostics,
     Project/File cache status/refresh/clear, and source/cache separation tests.
     D1 itself did not populate derived mesh, thumbnail, package-unpack, or
     export intermediate artifacts.
-16. V8 Tranche D2 is implemented as the first narrow OPFS artifact population
+18. V8 Tranche D2 is implemented as the first narrow OPFS artifact population
     slice: `partbench-derived-mesh.v1` derived visualization mesh artifacts are
     keyed by source identity, document schema, units, derived-geometry source
     key, kernel/worker versions, and tessellation settings; cache reads and
     writes are app-layer, optional, and fail open to existing derived generation.
     It does not cache thumbnails, package-unpack data, export intermediates, or
     project source, and it does not introduce `web-cad.project.v17`.
-17. V8 Tranche E1 is implemented as the exact STEP export contract/readiness
+19. V8 Tranche E1 is implemented as the exact STEP export contract/readiness
     slice: protocol/core `project.exportExact` for `step`,
     exact-vs-visualization `project.exportReadiness`, geometry-kernel/worker
     STEP writer capability probes, Project/File status, and thin agent/MCP
     pass-through. It reports structured writer-unavailable diagnostics and does
     not produce placeholder STEP bytes or introduce `web-cad.project.v17`.
-18. V8 Tranche E2 is implemented as the first real exact STEP writer path:
+20. V8 Tranche E2 is implemented as the first real exact STEP writer path:
     OCCT/WASM writer capability is proven at the isolated geometry boundary,
     geometry-kernel/worker can produce AP242 STEP bytes for supported active
     rectangle/circle `newBody` extrude source bodies, Project/File exposes a
@@ -81,7 +91,7 @@ These constraints remain active:
     source/export contract data rather than owning OCCT or browser file APIs.
     STEP artifacts are transient export outputs and are not stored in `.wcad`,
     JSON, OPFS, command history, source identity, or `web-cad.project.v17`.
-19. V8 release-candidate hardening has addressed the cross-tranche review
+21. V8 release-candidate hardening has addressed the cross-tranche review
     issues: public topology source identity now exposes an opaque `signature`,
     `project.exportExact` validates caller-provided source identity against the
     current source before reporting it matched, writer-unavailable STEP seams
@@ -135,8 +145,8 @@ Compatibility identifiers retained during the Partbench rename:
   identifiers. Renaming them would be a storage migration.
 - `web-cad.project.v7` is an older saved-project schema version, not the V7
   release. `web-cad.project.v8` is also an older saved-project schema version,
-  not the V8 release. If V8 adds new source-of-truth document data, the next
-  saved schema should be `web-cad.project.v17`.
+  not the V8 release. If a future release adds new source-of-truth document
+  data, the next saved schema should be `web-cad.project.v17`.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Current Scripts
@@ -289,8 +299,9 @@ Current Partbench can:
 - save/load current `web-cad.project.v16` JSON with migrations from older
   accepted schemas, while the Project panel shows draft source, schema/
   migration status, structured validation issues, replacement/history impact,
-  same-document-source detection before import, and app-layer save/open
-  capability status for the active JSON fallback versus deferred native storage;
+  same-document-source detection before import, native `.wcad` project-file
+  state, app-layer save/open capability status, and JSON debug/interchange
+  fallback;
 - expose current commands and queries through agent/MCP wrappers over CADOps.
 
 ## Current Limitations
@@ -331,13 +342,13 @@ Current limitations:
   through derived exact metadata snapshots on `body.topology`, `project.extents`,
   and `project.health`, not through persisted source data.
 - Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
-  patterns, direct edits, general booleans, STEP import/export, OPFS-backed
-  storage, WebGPU, assemblies, hosted collaboration, production MCP auth, and
-  natural-language command entry remain unimplemented unless scoped into V8.
-  V8 Tranche C makes `.wcad` the app-level project workflow: File System Access
-  browsers can open/save/save-as through app-only handles, and other browsers
-  use upload/download fallback. File handles are not written into cad-core,
-  JSON, `.wcad`, agents, or MCP.
+  patterns, direct edits, general booleans, STEP import, production WebGPU,
+  assemblies, hosted collaboration, production MCP auth, and natural-language
+  command entry remain unimplemented unless scoped into V9 or a later release.
+  V8 made `.wcad` the app-level project workflow: File System Access browsers
+  can open/save/save-as through app-only handles, and other browsers use
+  upload/download fallback. File handles are not written into cad-core, JSON,
+  `.wcad`, agents, or MCP.
 - OCCT currently uses the full OpenCascade.js WASM in the main path. Custom
   build findings are documented separately and should not block V7 modeling,
   topology, storage, or export planning.
@@ -981,17 +992,16 @@ implementation tranches and do not imply that deferred items such as STEP,
 WebGPU, native storage, assemblies, broad topology naming, or broad sketch
 solving are implemented.
 
-## V8 Local CAD Foundation And Exact Interop Roadmap
+## V8 Local CAD Foundation And Exact Interop Record
 
-V8 is the active major-release plan. Its detailed release document is
-`docs/v8.md`.
+V8 is complete through the release-candidate scope documented in `docs/v8.md`.
 
-V8 is intentionally broad, but it has one center: make Partbench a credible
+V8 was intentionally broad, but it had one center: make Partbench a credible
 local CAD application by implementing native `.wcad` project storage, local
 open/save/save-as, rebuildable OPFS cache behavior, and exact STEP export for
 supported bodies.
 
-V8 should not try to finish WebGPU, broad topology naming, broad sketch solving,
+V8 did not try to finish WebGPU, broad topology naming, broad sketch solving,
 assemblies, hosted collaboration, production MCP auth, and natural-language
 command parsing at the same time. Those are separate architecture-risk clusters.
 
@@ -1012,13 +1022,13 @@ V8 is organized around these pillars:
 
 ### V8 Answered Decisions
 
-Use these decisions when writing V8 implementation prompts:
+Use these decisions when maintaining V8 behavior:
 
 - the user-visible native extension is `.wcad`;
 - the first package version is `partbench.wcad.v1`;
 - package version is separate from project schema version;
-- current document source remains `web-cad.project.v16` unless V8 adds new
-  source-of-truth document data;
+- current document source remains `web-cad.project.v16` unless a future release
+  adds new source-of-truth document data;
 - if new source data is added, the next project schema is
   `web-cad.project.v17` with explicit migrations;
 - a V8 `.wcad` package is ZIP-compatible and directory-compatible;
@@ -1108,7 +1118,7 @@ Release-candidate hardening incorporated before declaring V8 release-ready:
   cache, GLB, and JSON debug/interchange controls remain inspectable without
   crowding the viewport.
 
-### V8 Scope Guardrails
+### V8 Scope Guardrails Preserved For Maintenance
 
 Do not combine these in a single V8 tranche unless explicitly approved:
 
@@ -1126,7 +1136,120 @@ selection state, storage capability/status state, file handles, thumbnails, mesh
 caches, export artifacts, OPFS paths, and renderer display state should stay
 rebuildable by default.
 
-## Deferred Unless Explicitly Scoped Into V8
+## V9 Viewport-Native CAD Interaction Roadmap
+
+V9 is the active major-release plan. Its detailed release document is
+`docs/v9.md`.
+
+V9 is intentionally a large UI/interaction release, but it has one center: make
+the viewport the primary CAD interaction surface without coupling the product to
+today's canvas renderer. The core architecture move is renderer-agnostic
+interaction contracts:
+
+```text
+screen input -> renderer hit candidates -> semantic selection resolver ->
+selection.referenceCandidates -> command-ready actions and measurements
+```
+
+This lets the current canvas renderer, a future WebGPU renderer, and future
+assembly rendering all implement the same picking/display contract. The
+renderer can identify private hit candidates and render highlight layers, but
+`cad-core` remains the authority for commandability, diagnostics, and stable
+semantic references.
+
+### V9 Release Pillars
+
+V9 is organized around these pillars:
+
+- renderer-agnostic viewport interaction protocol shapes;
+- body, generated face, generated edge, and named-reference picking for the
+  current defensible V7/V8 semantic reference subset;
+- hover, preselection, selected, command-target, warning, pending, and failed
+  viewport visual states;
+- compact contextual actions derived from cad-core query/command readiness;
+- viewport-native inspect and measure tools that declare exact/semantic/display
+  authority;
+- camera, navigation, fit-to-selection, and active-tool ergonomics;
+- browser smokes and visual QA for direct viewport workflows.
+
+### V9 Answered Decisions
+
+Use these decisions when writing V9 implementation prompts:
+
+- V9 does not replace the renderer with WebGPU, but it must define contracts a
+  future WebGPU renderer can implement without product rewrite;
+- renderer hit candidates are private and non-authoritative;
+- public command-ready references still come from cad-core query behavior,
+  especially `selection.referenceCandidates`;
+- React may hold transient hover, selection, active tool, and gesture state, but
+  that state is not source-of-truth data;
+- V9 should not introduce `web-cad.project.v17` unless a tranche explicitly
+  adds new saved document source data;
+- no mesh triangle ID, OCCT topology index, GPU buffer offset, selection-buffer
+  color, renderer object ID, or pixel ID may become a public stable CAD ID;
+- current supported picks are active authored rectangle/circle `newBody`
+  extrude bodies, already-defensible generated faces/edges, and named
+  references resolving to those generated references;
+- boolean, revolve, hole, chamfer, and fillet result bodies remain diagnostic or
+  unsupported unless existing source semantics prove stable references safely;
+- measurements must report whether they are semantic document values,
+  source-analytic exact values, OCCT exact metadata, display approximations, or
+  unsupported;
+- contextual viewport commands must be derived from command-ready query results,
+  not hardcoded UI guesses;
+- selection details and diagnostics belong in compact selection/inspector
+  surfaces, not large viewport overlays;
+- future assemblies are reserved through optional instance-path context, but V9
+  does not implement assembly document source.
+
+### V9 Proposed Tranche Sequence
+
+1. **Viewport Interaction Contract** - define typed hit-candidate,
+   pointer-intent, hover, selection, command-target, and measurement-target
+   shapes plus helpers proving renderer/source/session separation.
+2. **Body Picking And Selection Routing** - let users select supported visible
+   bodies directly in the viewport and route them through the same semantic
+   Selection tab, inspector, modeling, and query paths as tree selection.
+3. **Generated Face/Edge Picking** - support generated planar face and generated
+   edge picking for defensible current references, including named-reference
+   routing and structured unsupported/ambiguous/consumed/stale diagnostics.
+4. **Viewport Visual State System** - add restrained hover, selected,
+   command-target, warning, pending, and failed highlight states as semantic
+   renderer display inputs.
+5. **Contextual Command Tools** - expose compact viewport actions for existing
+   supported commands such as create sketch on planar face, name generated
+   reference, and edge-finish target workflows where command-ready.
+6. **Measure And Inspect Tool** - add viewport-native measurements for supported
+   body/face/edge/reference combinations with exact/semantic/display authority
+   labels and structured diagnostics.
+7. **Navigation, Camera, And Tool Ergonomics** - improve orbit/pan/zoom, fit
+   all, fit selection, standard views, active tool visibility, cancel behavior,
+   and keyboard/mouse basics without persisting view state.
+8. **Release Smokes, UX QA, And Hardening** - add browser smokes for direct
+   viewport body/face/edge selection, contextual commands, measurements,
+   diagnostics, `.wcad` round-trip, export availability, and unobstructed
+   viewport checks.
+
+### V9 Scope Guardrails
+
+Do not combine these in a single V9 tranche unless explicitly approved:
+
+- production WebGPU renderer replacement and viewport picking;
+- broad topology/reference model changes and generated face/edge picking;
+- STEP import and viewport interaction;
+- assemblies/LOD/instancing and viewport interaction;
+- broad sketch solver expansion and viewport tool ergonomics;
+- new modeling commands and contextual command UI;
+- persisted view/selection state and interaction contracts.
+
+Do not introduce another saved project format or `web-cad.project.v17` unless
+source-of-truth document data requires it. Query results, viewport hit
+candidates, hover state, selection state, tool state, camera state, topology
+summaries, derived exact metadata, storage capability/status state, file
+handles, thumbnails, mesh caches, export artifacts, OPFS paths, and renderer
+display state should stay rebuildable or session-only by default.
+
+## Deferred Unless Explicitly Scoped Into V9 Or Later
 
 - Full arbitrary topological naming for every OCCT result shape.
 - Full general sketch solving beyond the current V4 constrained-sketch scope.
@@ -1137,14 +1260,15 @@ rebuildable by default.
 - General boolean trees beyond current add/cut plus scoped V6 hole behavior.
 - Shell, patterns, lofts, sweeps, mirror, direct edits, and broad feature
   editing beyond scoped V6 revolve/hole/chamfer/fillet workflows.
-- Persistent exact B-rep checkpoints as source truth unless a V8 source
+- Persistent exact B-rep checkpoints as source truth unless a future source
   checkpoint tranche explicitly adds them.
 - STEP import with healing, metadata, and assembly reconstruction.
 - IGES import/export.
 - Proprietary CAD import/export.
 - Local launcher with cross-origin isolation headers.
 - WebGPU production renderer.
-- Exact face/edge/vertex viewport picking and selection buffer.
+- Production WebGPU selection buffer and broad arbitrary face/edge/vertex
+  picking beyond the V9 supported semantic subset.
 - Assemblies, mates, large-model LOD, and instancing.
 - Hosted collaboration.
 - Production MCP auth/permission system.

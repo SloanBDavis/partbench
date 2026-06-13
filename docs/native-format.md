@@ -1383,8 +1383,8 @@ Do not add more migration branches before another real format exists.
 
 ## V8 Native Package Direction
 
-The active V8 plan chooses the first native package direction that was
-previously deferred:
+The completed V8 plan chose the first native package direction that was
+previously deferred, and V9 keeps that storage direction unchanged:
 
 - user-visible extension: `.wcad`;
 - package format version: `partbench.wcad.v1`;
@@ -1392,8 +1392,8 @@ previously deferred:
   directory-compatible internal layout;
 - required authoritative package entries: `manifest.json`, `document.cbor`,
   and `commands.cbor`;
-- current document schema: still `web-cad.project.v16` unless V8 adds new
-  source-of-truth document data;
+- current document schema: still `web-cad.project.v16` unless a future release
+  adds new source-of-truth document data;
 - next document schema if new source data is added: `web-cad.project.v17`;
 - JSON remains explicit debug/interchange, not the primary native package
   encoding;

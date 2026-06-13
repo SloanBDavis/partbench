@@ -111,7 +111,9 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   roadmap.
 - `docs/archive/v4.md` - archived V4 constrained sketch solving milestone.
 - `docs/v7.md` - completed V7 real CAD alpha release-readiness record.
-- `docs/v8.md` - active V8 local CAD foundation and exact interop release plan.
+- `docs/v8.md` - completed V8 local CAD foundation and exact interop release
+  record.
+- `docs/v9.md` - active V9 viewport-native CAD interaction release plan.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -157,9 +159,12 @@ protocol/package migration.
   constraints, and V6 feature intent are source-of-truth data, but there is no
   general sketch solver, automatic profile recognition, broad feature editing,
   or full topology naming yet.
-- V8 planning is focused on turning the V7 real CAD alpha into a local CAD
-  foundation: native `.wcad` package workflow, File System Access open/save,
-  OPFS-derived cache, and exact STEP export for supported bodies.
-- No broad stable topology, STEP import/export, OPFS persistence, WebGPU
-  renderer, assemblies, hosted collaboration, production MCP auth, or
-  natural-language command parsing is implemented unless scoped into V8.
+- V8 completed the local CAD foundation: native `.wcad` package workflow, File
+  System Access open/save, OPFS-derived mesh cache, and exact STEP export for
+  supported bodies.
+- V9 planning is focused on viewport-native CAD interaction: renderer-agnostic
+  hit candidates, semantic selection resolution, command-ready viewport
+  selections, contextual tools, and inspect/measure workflows.
+- No broad stable topology, STEP import, production WebGPU renderer,
+  assemblies, hosted collaboration, production MCP auth, or natural-language
+  command parsing is implemented unless scoped into V9 or a later release.
