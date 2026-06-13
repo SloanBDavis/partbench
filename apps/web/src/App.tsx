@@ -18,6 +18,7 @@ import {
 import type {
   BodyGeneratedReferencesQueryResponse,
   CadBatchResponse,
+  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadSelectionReferenceInput,
@@ -169,6 +170,7 @@ import {
 } from "./generatedReferenceSelection";
 import { resolveViewportPickIntent } from "./viewportPickIntent";
 import { createViewportGeneratedPlanarFaceHitCandidate } from "./viewportGeneratedFacePicking";
+import { createViewportGeneratedEdgeHitCandidate } from "./viewportGeneratedEdgePicking";
 import {
   deriveModelingActions,
   type ModelingSelectionContext
@@ -766,6 +768,22 @@ function readGeneratedFaceReferencesByKey(
   return facesByKey;
 }
 
+function readGeneratedEdgeReferencesByKey(
+  bodies: readonly CadBodySnapshot[]
+): ReadonlyMap<string, CadGeneratedEdgeReference> {
+  const edgesByKey = new Map<string, CadGeneratedEdgeReference>();
+
+  for (const body of bodies) {
+    const response = readBodyGeneratedReferences(body.id);
+
+    for (const edge of response.references?.edges ?? []) {
+      edgesByKey.set(`${edge.bodyId}\n${edge.stableId}`, edge);
+    }
+  }
+
+  return edgesByKey;
+}
+
 function createModelingSelectionContext({
   focusedSketchId,
   namedReferences,
@@ -1117,6 +1135,10 @@ export function App() {
     () => readGeneratedFaceReferencesByKey(sketchExtrudeBodies),
     [sketchExtrudeBodies]
   );
+  const generatedEdgesByKey = useMemo(
+    () => readGeneratedEdgeReferencesByKey(sketchExtrudeBodies),
+    [sketchExtrudeBodies]
+  );
   const sketchDisplayState = useMemo(
     () => createSketchDisplayState(sketches, generatedFacesByKey),
     [generatedFacesByKey, sketches]
@@ -1425,6 +1447,15 @@ export function App() {
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
+    const generatedEdgeHitCandidate = createViewportGeneratedEdgeHitCandidate({
+      camera: pick.camera,
+      edges: [...generatedEdgesByKey.values()],
+      pickedRenderId: pick.pickedRenderId,
+      point: pick.point,
+      preferredBodyId: selectedBody?.id,
+      size: pick.size,
+      sketchDisplayFrames: sketchDisplayState.frames
+    });
     const generatedFaceHitCandidate =
       createViewportGeneratedPlanarFaceHitCandidate({
         camera: pick.camera,
@@ -1436,7 +1467,7 @@ export function App() {
         sketchDisplayFrames: sketchDisplayState.frames
       });
     const intent = resolveViewportPickIntent({
-      hitCandidate: generatedFaceHitCandidate,
+      hitCandidate: generatedEdgeHitCandidate ?? generatedFaceHitCandidate,
       pickedRenderId: pick.pickedRenderId,
       bodies: projectStructure.bodies,
       objects: sceneObjects,

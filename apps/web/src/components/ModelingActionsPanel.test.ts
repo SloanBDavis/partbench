@@ -542,9 +542,12 @@ describe("ModelingActionsPanel", () => {
     const reference = createEdge({
       label: "Start uMin edge"
     });
+    const selectionReferenceCandidates =
+      createSelectionReferenceCandidates(reference);
     const context = {
       selectionKind: "generatedReference",
-      reference
+      reference,
+      selectionReferenceCandidates
     } as const;
     const actions = deriveModelingActions({ context });
     const markup = renderToStaticMarkup(
@@ -555,6 +558,8 @@ describe("ModelingActionsPanel", () => {
     );
 
     expect(markup).toContain("Name reference");
+    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Edge finish");
     expect(markup).toContain("Chamfer");
     expect(markup).toContain("Fillet");

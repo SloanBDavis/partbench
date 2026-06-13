@@ -77,6 +77,7 @@ describe("V7 browser workflow smoke summary", () => {
         "circle-body-reference-contract",
         "viewport-body-pick-selection-routing",
         "viewport-generated-face-pick-selection-routing",
+        "viewport-generated-edge-pick-selection-routing",
         "viewport-unobstructed-selection-layout",
         "attached-sketch-create",
         "consumed-body-diagnostic",

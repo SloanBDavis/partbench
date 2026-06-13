@@ -124,6 +124,17 @@ These constraints remain active:
     generated edge/vertex picking, exact face-level visual highlighting,
     WebGPU, assemblies, persisted viewport/session state, or
     `web-cad.project.v17`.
+25. V9 Tranche C2 is implemented as a narrow generated edge
+    picking/reference-routing slice: when a supported rectangle/circle
+    `newBody` extrude body is already selected, the current canvas/app path can
+    refine a viewport body hit into a private generated edge hit candidate for
+    rectangle cap/longitudinal edges and circle start/end circular edges,
+    resolve it through the V9 helper path and
+    `selection.referenceCandidates`, and update the existing generated-edge
+    selection, inspector, and modeling workflow state. It does not implement
+    generated vertex picking, exact edge-level visual highlighting, arbitrary
+    result-body edge topology, WebGPU, assemblies, persisted viewport/session
+    state, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -297,6 +308,10 @@ Current Partbench can:
 - route current canvas body/object clicks through a typed viewport pick-intent
   helper so body-backed renderables consume `selection.referenceCandidates`
   status and diagnostics instead of treating renderer IDs as command authority;
+- route supported current canvas generated edge clicks through private hit
+  candidates and the same generated-reference `selection.referenceCandidates`
+  path, preserving body-level visual selection while updating semantic
+  generated-edge selection for inspector/modeling actions;
 - keep generated-reference actions, operation labels, commandability, structured
   diagnostics, and selected-target measurements in the inspector/modeling
   surfaces rather than floating them over the viewport;

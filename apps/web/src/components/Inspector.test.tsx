@@ -109,6 +109,51 @@ describe("Inspector", () => {
     expect(markup).toContain("Body body_rect was consumed by feat_cut.");
   });
 
+  it("plumbs selected generated edges into inspector edge-finish affordances", () => {
+    const face = createFace();
+    const edge = createEdge();
+    const edgeCandidates = createSelectionReferenceCandidates(edge);
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, edge),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [edge.stableId, edgeCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_rect",
+          stableId: edge.stableId,
+          kind: "edge"
+        },
+        selectionReferenceCandidates: edgeCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Selected reference");
+    expect(markup).toContain("Start uMin edge");
+    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Command-ready reference");
+    expect(markup).toContain("Edge finish");
+    expect(markup).toContain("Fillet");
+    expect(markup).toContain("Create chamfer");
+  });
+
   it("offers feature delete for non-extrude authored bodies", () => {
     const markup = renderToStaticMarkup(
       createElement(Inspector, {

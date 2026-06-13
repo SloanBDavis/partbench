@@ -517,6 +517,23 @@ async function v7BrowserWorkflowSmoke({
   );
 
   openTreePanel();
+  clickViewportWorldPoint([1, 0, 0]);
+  await waitFor(
+    () => isTreePanelOpen(),
+    "viewport generated edge pick preserved preferred tree tab"
+  );
+  openSelectionPanel();
+  await waitForGeneratedEdgeReferenceCommandReady(
+    ids.bodyId,
+    "viewport generated edge pick command-ready reference state"
+  );
+  pass(
+    "viewport-generated-edge-pick-selection-routing",
+    "viewport generated edge pick routes through semantic selection without forcing the Selection tab",
+    getSelectionText()
+  );
+
+  openTreePanel();
   clickButtonContaining(getElementByAriaLabel("Model structure"), ids.bodyName);
   openSelectionPanel();
 
@@ -1145,6 +1162,35 @@ async function v7BrowserWorkflowSmoke({
     }, label);
   }
 
+  async function waitForGeneratedEdgeReferenceCommandReady(bodyId, label) {
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        isSelectionPanelOpen() &&
+        includesText(currentInspector, bodyId) &&
+        includesText(currentInspector, "Selected reference") &&
+        includesText(currentInspector, "Command-ready") &&
+        includesText(currentModeling, "Reference contract") &&
+        includesText(currentModeling, "Command-ready reference") &&
+        includesText(currentModeling, "Edge finish") &&
+        includesText(currentModeling, "Chamfer") &&
+        includesText(currentModeling, "Fillet");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `inspector=${normalize(currentInspector.textContent).slice(0, 180)}`,
+            `modeling=${normalize(currentModeling.textContent).slice(0, 180)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, label);
+  }
+
   async function waitForConsumedDiagnostic() {
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
@@ -1322,6 +1368,27 @@ async function v7BrowserWorkflowSmoke({
     const rect = canvas.getBoundingClientRect();
     const clientX = rect.left + rect.width * xRatio;
     const clientY = rect.top + rect.height * yRatio;
+
+    clickViewportClientPoint(clientX, clientY);
+  }
+
+  function clickViewportWorldPoint(point) {
+    const canvas = getElementByAriaLabel("3D scene viewport");
+    const rect = canvas.getBoundingClientRect();
+    const projected = projectDefaultCameraPoint(point, {
+      width: rect.width,
+      height: rect.height
+    });
+
+    if (!projected) {
+      throw new Error(`Could not project viewport point ${point.join(",")}.`);
+    }
+
+    clickViewportClientPoint(rect.left + projected.x, rect.top + projected.y);
+  }
+
+  function clickViewportClientPoint(clientX, clientY) {
+    const canvas = getElementByAriaLabel("3D scene viewport");
     const pointerId = 9001;
 
     canvas.dispatchEvent(
@@ -1356,6 +1423,74 @@ async function v7BrowserWorkflowSmoke({
     return typeof PointerEvent === "function"
       ? new PointerEvent(type, options)
       : new MouseEvent(type, options);
+  }
+
+  function projectDefaultCameraPoint(point, size) {
+    const focalLength = 700;
+    const camera = {
+      target: [0, 0, 0],
+      yaw: Math.PI / 4,
+      pitch: -Math.PI / 6,
+      distance: 18
+    };
+    const cameraPosition = getDefaultCameraPosition(camera);
+    const viewPoint = worldToDefaultCamera(point, camera, cameraPosition);
+    const depth = -viewPoint[2];
+
+    if (depth <= 0.1) {
+      return undefined;
+    }
+
+    return {
+      x: size.width / 2 + (viewPoint[0] * focalLength) / depth,
+      y: size.height / 2 - (viewPoint[1] * focalLength) / depth
+    };
+  }
+
+  function getDefaultCameraPosition(camera) {
+    return [
+      camera.target[0] +
+        camera.distance * Math.cos(camera.pitch) * Math.sin(camera.yaw),
+      camera.target[1] -
+        camera.distance * Math.cos(camera.pitch) * Math.cos(camera.yaw),
+      camera.target[2] + camera.distance * Math.sin(camera.pitch)
+    ];
+  }
+
+  function worldToDefaultCamera(point, camera, cameraPosition) {
+    const forward = normalizeVec3(subtractVec3(camera.target, cameraPosition));
+    const right = normalizeVec3(crossVec3(forward, [0, 0, 1]));
+    const up = normalizeVec3(crossVec3(right, forward));
+    const relative = subtractVec3(point, cameraPosition);
+
+    return [
+      dotVec3(relative, right),
+      dotVec3(relative, up),
+      -dotVec3(relative, forward)
+    ];
+  }
+
+  function subtractVec3(left, right) {
+    return [left[0] - right[0], left[1] - right[1], left[2] - right[2]];
+  }
+
+  function dotVec3(left, right) {
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+  }
+
+  function crossVec3(left, right) {
+    return [
+      left[1] * right[2] - left[2] * right[1],
+      left[2] * right[0] - left[0] * right[2],
+      left[0] * right[1] - left[1] * right[0]
+    ];
+  }
+
+  function normalizeVec3(vector) {
+    const length = Math.hypot(vector[0], vector[1], vector[2]);
+    return length === 0
+      ? [0, 0, 0]
+      : [vector[0] / length, vector[1] / length, vector[2] / length];
   }
 
   function getProjectJsonEditorValue(projectPanel) {

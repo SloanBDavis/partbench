@@ -1,7 +1,9 @@
 import type { SceneObject } from "@web-cad/cad-core";
 import type {
   CadBodySnapshot,
+  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadGeneratedReference,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
   SelectionReferenceCandidatesQueryResponse
@@ -157,6 +159,65 @@ describe("viewport pick intent", () => {
         bodyId: "body_rect",
         stableId: "generated:face:body_rect:startCap",
         expectedKind: "face"
+      },
+      referenceCandidates: response,
+      issues: [],
+      interactionDiagnostics: []
+    });
+    expect(JSON.stringify(intent)).not.toContain("renderer-hit");
+  });
+
+  it("routes generated edge hit candidates to semantic generated-reference selection", () => {
+    const body = createExtrudeBody("body_rect");
+    const edge = createEdgeReference(body.id);
+    const response = createCandidateResponse({
+      selection: {
+        type: "generatedReference",
+        bodyId: body.id,
+        stableId: edge.stableId,
+        expectedKind: "edge"
+      },
+      bodyId: body.id,
+      reference: edge,
+      status: "resolved"
+    });
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: body.id,
+      hitCandidate: {
+        displayEntityKind: "edge",
+        rendererHitId: "renderer-hit:generated-edge:body_rect:42",
+        semanticHint: {
+          type: "generatedReference",
+          bodyId: body.id,
+          stableId: edge.stableId,
+          expectedKind: "edge"
+        }
+      },
+      bodies: [body],
+      objects: [],
+      readReferenceCandidates: (selection) => {
+        expect(selection).toEqual({
+          type: "generatedReference",
+          bodyId: body.id,
+          stableId: edge.stableId,
+          expectedKind: "edge"
+        });
+        return response;
+      }
+    });
+
+    expect(intent).toMatchObject({
+      kind: "generatedReference",
+      selectedId: "body_rect",
+      bodyId: "body_rect",
+      stableId: "generated:edge:body_rect:start:uMin",
+      expectedKind: "edge",
+      renderTargetId: "body_rect",
+      semanticSelection: {
+        type: "generatedReference",
+        bodyId: "body_rect",
+        stableId: "generated:edge:body_rect:start:uMin",
+        expectedKind: "edge"
       },
       referenceCandidates: response,
       issues: [],
@@ -361,7 +422,7 @@ function createCandidateResponse({
 }: {
   readonly bodyId: string;
   readonly issue?: CadSelectionReferenceIssue;
-  readonly reference?: CadGeneratedFaceReference;
+  readonly reference?: CadGeneratedReference;
   readonly selection?: CadSelectionReferenceInput;
   readonly status: SelectionReferenceCandidatesQueryResponse["status"];
 }): SelectionReferenceCandidatesQueryResponse {
@@ -419,6 +480,33 @@ function createFaceReference(bodyId: string): CadGeneratedFaceReference {
       extrudeSide: "positive",
       depth: 2,
       surfaceType: "plane"
+    }
+  };
+}
+
+function createEdgeReference(bodyId: string): CadGeneratedEdgeReference {
+  return {
+    kind: "edge",
+    stableId: `generated:edge:${bodyId}:start:uMin`,
+    label: "Start uMin edge",
+    bodyId,
+    ownerPartId: "part:default",
+    sourceFeatureId: "feat_rect",
+    sourceSketchId: "sketch_1",
+    sourceSketchEntityId: "rect_1",
+    role: "start:uMin",
+    adjacentFaceRoles: ["startCap", "side:uMin"],
+    eligibleOperations: [
+      "feature.chamfer",
+      "feature.fillet",
+      "feature.selectReference"
+    ],
+    geometricSignature: {
+      profileKind: "rectangle",
+      sketchPlane: "XY",
+      extrudeSide: "positive",
+      depth: 2,
+      curveType: "line"
     }
   };
 }
