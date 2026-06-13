@@ -515,6 +515,15 @@ async function v7BrowserWorkflowSmoke({
     "viewport generated planar face pick routes through semantic selection without forcing the Selection tab",
     getSelectionText()
   );
+  await waitForViewportContextualCommands(
+    ["Create sketch", "Name", "Measure", "Inspect"],
+    "viewport generated face contextual commands"
+  );
+  pass(
+    "viewport-generated-face-contextual-actions",
+    "viewport generated planar face exposes compact command-ready contextual actions",
+    getViewportContextualCommandText()
+  );
 
   openTreePanel();
   clickViewportWorldPoint([1, 0, 0]);
@@ -531,6 +540,15 @@ async function v7BrowserWorkflowSmoke({
     "viewport-generated-edge-pick-selection-routing",
     "viewport generated edge pick routes through semantic selection without forcing the Selection tab",
     getSelectionText()
+  );
+  await waitForViewportContextualCommands(
+    ["Name", "Chamfer", "Fillet", "Measure", "Inspect"],
+    "viewport generated edge contextual commands"
+  );
+  pass(
+    "viewport-generated-edge-contextual-actions",
+    "viewport generated edge exposes compact command-ready contextual actions",
+    getViewportContextualCommandText()
   );
 
   openTreePanel();
@@ -1239,6 +1257,57 @@ async function v7BrowserWorkflowSmoke({
       "viewport-unobstructed-selection-layout",
       "selection details live in the left Selection tab, not over the viewport"
     );
+  }
+
+  async function waitForViewportContextualCommands(labels, label) {
+    await waitFor(() => {
+      const viewport = getElementByAriaLabel("3D viewport");
+      const surface = getViewportContextualCommandSurface(viewport);
+      const text = normalize(surface.textContent);
+      const missingLabels = labels.filter(
+        (requiredLabel) => !text.includes(requiredLabel)
+      );
+      const viewportRect = viewport.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      const viewportArea = Math.max(
+        1,
+        viewportRect.width * viewportRect.height
+      );
+      const surfaceAreaRatio =
+        (surfaceRect.width * surfaceRect.height) / viewportArea;
+
+      if (missingLabels.length > 0 || surfaceAreaRatio > 0.22) {
+        throw new Error(
+          [
+            `missing=${missingLabels.join(",") || "none"}`,
+            `surfaceAreaRatio=${surfaceAreaRatio.toFixed(3)}`,
+            `surface=${compactText(surface.textContent, 260)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, label);
+  }
+
+  function getViewportContextualCommandText() {
+    return compactText(
+      getViewportContextualCommandSurface(getElementByAriaLabel("3D viewport"))
+        .textContent,
+      360
+    );
+  }
+
+  function getViewportContextualCommandSurface(viewport) {
+    const surface = viewport.querySelector(
+      '[aria-label="Viewport contextual commands"]'
+    );
+
+    if (!surface) {
+      throw new Error("Could not find viewport contextual commands.");
+    }
+
+    return surface;
   }
 
   async function waitForRoundTripModelStructure() {

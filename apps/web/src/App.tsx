@@ -111,6 +111,7 @@ import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
 import { StructurePanel } from "./components/StructurePanel";
+import { ViewportContextualCommandSurface } from "./components/ViewportContextualCommandSurface";
 import {
   ViewportCanvas,
   type ViewportCanvasPick
@@ -169,6 +170,11 @@ import {
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
 import {
+  createViewportContextualCommandSurface,
+  runViewportContextualCommandAction,
+  type ViewportContextualCommandAction
+} from "./viewportContextualCommands";
+import {
   resolveViewportPickIntent,
   type ViewportPickIntent
 } from "./viewportPickIntent";
@@ -177,6 +183,9 @@ import { createViewportGeneratedEdgeHitCandidate } from "./viewportGeneratedEdge
 import { resolveViewportHoverIntent } from "./viewportHoverIntent";
 import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import { createViewportVisualStateModel } from "./viewportVisualState";
+import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
+import { createViewportReferenceActions } from "./viewportReferenceActions";
+import { createViewportInteractionSurface } from "./viewportInteractionSurface";
 import {
   deriveModelingActions,
   type ModelingSelectionContext
@@ -1349,6 +1358,33 @@ export function App() {
     selectionDisplay: viewportSelectionDisplay,
     selectedGeneratedReferenceState
   });
+  const viewportMeasurementOverlay = createViewportMeasurementOverlay({
+    body: selectedBody,
+    bodyMeasurements: selectedBodyMeasurements.measurements,
+    bodyMeasurementsError: selectedBodyMeasurements.error,
+    selectedGeneratedReferenceState,
+    units: document.units
+  });
+  const viewportReferenceActions = createViewportReferenceActions({
+    candidatesByStableId: referenceCandidatesByStableId,
+    references: selectedBodyGeneratedReferences.references,
+    selectedGeneratedReference
+  });
+  const viewportInteractionSurface = createViewportInteractionSurface({
+    selectionDisplay: viewportSelectionDisplay,
+    hoverState: viewportHoverState,
+    measurementOverlay: viewportMeasurementOverlay,
+    referenceActions: viewportReferenceActions,
+    maxMeasurementRows: 3,
+    maxReferenceActions: 4
+  });
+  const viewportContextualCommandSurface =
+    createViewportContextualCommandSurface({
+      modelingActions,
+      selectionDisplay: viewportSelectionDisplay,
+      selectedGeneratedReferenceState,
+      selectionReferenceCandidates: selectedSelectionReferenceCandidates
+    });
   const geometryStatusBySourceId = useMemo(
     () =>
       new Map(
@@ -2028,6 +2064,39 @@ export function App() {
     setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
     setViewportPickIntent(undefined);
     setViewportHoverPick(undefined);
+  }
+
+  function runViewportContextualCommand(
+    action: ViewportContextualCommandAction
+  ) {
+    const routed = runViewportContextualCommandAction({
+      action,
+      body: selectedBody,
+      disabled: commandPending,
+      namedReferences,
+      selectedGeneratedReferenceState,
+      onContinueInModeling: (modelingAction) => {
+        setCommandNotice(
+          modelingAction.id === "sketch.createOnFace"
+            ? "Continue in Modeling to choose the target face."
+            : "Continue in Modeling for the full command inputs."
+        );
+      },
+      onCreateEdgeFinish: (operation, form) =>
+        void createEdgeFinish(operation, form),
+      onCreateSketchOnFace: (form) => void createSketchOnFace(form)
+    });
+
+    if (!routed && action.route === "command") {
+      setCommandNotice("This contextual command needs the Modeling panel.");
+    }
+  }
+
+  function nameViewportContextualReference(
+    name: string,
+    target: SelectedGeneratedReference
+  ) {
+    void nameGeneratedReference(name, target);
   }
 
   function getFeatureTargetBodyId(
@@ -2803,6 +2872,17 @@ export function App() {
           selectedId={selectedViewportRenderId}
           visualStates={viewportVisualState.rendererVisualStates}
           status={viewportVisualState.status}
+          contextualSurface={
+            <ViewportContextualCommandSurface
+              disabled={commandPending}
+              surface={viewportContextualCommandSurface}
+              interactionSurface={viewportInteractionSurface}
+              onContinueInModeling={runViewportContextualCommand}
+              onNameReference={nameViewportContextualReference}
+              onRunCommand={runViewportContextualCommand}
+              onSelectReference={selectGeneratedReference}
+            />
+          }
           onHover={hoverViewportPick}
           onSelect={selectViewportPick}
         />

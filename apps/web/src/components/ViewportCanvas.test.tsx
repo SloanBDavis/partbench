@@ -62,6 +62,28 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("viewport-interaction-surface");
   });
 
+  it("hosts compact contextual controls in a viewport-adjacent slot", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        contextualSurface: createElement(
+          "section",
+          { "aria-label": "Viewport contextual commands" },
+          "Create sketch"
+        ),
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain("viewport-contextual-slot");
+    expect(markup).toContain('aria-label="Viewport contextual commands"');
+    expect(markup).toContain("Create sketch");
+    expect(markup).not.toContain("Viewport reference candidates");
+    expect(markup).not.toContain("Viewport selection diagnostics");
+  });
+
   it("disables fit selected until a render target is selected", () => {
     const emptyMarkup = renderToStaticMarkup(
       createElement(ViewportCanvas, {

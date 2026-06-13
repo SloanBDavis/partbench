@@ -145,6 +145,17 @@ These constraints remain active:
     exact face/edge canvas highlighting, WebGPU, persisted viewport state, new
     modeling commands, OPFS/file/project schema changes, agent/MCP changes, or
     `web-cad.project.v17`.
+27. V9 Tranche E1 is implemented as the compact contextual command-surface
+    slice: viewport selections now derive a restrained adjacent action surface
+    from `selection.referenceCandidates`, `deriveModelingActions`, and existing
+    reference/measurement helpers. Supported generated planar faces can launch
+    create-sketch-on-face, supported generated rectangle edges can launch
+    chamfer/fillet through existing edge-finish defaults, generated references
+    can be named through the existing naming command, and measure/inspect
+    affordances use existing query-backed display helpers. It does not add new
+    modeling commands, persisted viewport/tool state, Tree/Selection tab
+    auto-switching, renderer command authority, WebGPU, OPFS/file/project schema
+    changes, agent/MCP changes, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -153,8 +164,9 @@ and focused packages:
 
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
   derived-geometry orchestration, project panel, batch panel, current canvas
-  viewport with V9 body picking/hover routing, first feature tree, improved
-  modeling workflow, and focused UI helpers.
+  viewport with V9 body/face/edge picking, visual-state routing, compact
+  contextual command surface, first feature tree, improved modeling workflow,
+  and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,

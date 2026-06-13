@@ -1,0 +1,569 @@
+import type {
+  CadBodySnapshot,
+  CadGeneratedReference,
+  CadSelectionReferenceOperation,
+  NamedGeneratedReferenceEntry,
+  SelectionReferenceCandidatesQueryResponse
+} from "@web-cad/cad-protocol";
+import type {
+  FeatureEdgeFinishForm,
+  SketchCreateOnFaceForm
+} from "./cadCommands";
+import {
+  buildEdgeFinishForm,
+  createEdgeFinishReferenceOptions,
+  SELECTED_EDGE_FINISH_REFERENCE_VALUE,
+  selectEdgeFinishReferenceOption,
+  type EdgeFinishOperation
+} from "./edgeFinishUi";
+import {
+  buildSketchOnFaceForm,
+  createSketchOnFaceDefaultName,
+  formatGeneratedReferenceKind
+} from "./generatedReferenceUi";
+import {
+  formatSelectionReferenceOperationLabel,
+  getPrimarySelectionReferenceCandidate,
+  getSelectionReferenceOperationStatus,
+  type GeneratedReferenceSelectionState,
+  type SelectedGeneratedReference
+} from "./generatedReferenceSelection";
+import type {
+  ModelingActionDescriptor,
+  ModelingActionId
+} from "./modelingActions";
+import type {
+  ViewportSelectionDisplay,
+  ViewportSelectionTone
+} from "./viewportSelectionDisplay";
+
+const DEFAULT_EDGE_FINISH_SCALAR = 0.2;
+
+export type ViewportContextualCommandActionId =
+  | "body.measureTopology"
+  | "body.references.inspect"
+  | "feature.chamfer"
+  | "feature.fillet"
+  | "feature.measureReference"
+  | "feature.selectReference"
+  | "reference.name"
+  | "sketch.createOnFace";
+
+export type ViewportContextualCommandActionRoute =
+  | "command"
+  | "inspect"
+  | "measure"
+  | "modeling"
+  | "name"
+  | "references";
+
+export interface ViewportContextualCommandAction {
+  readonly id: ViewportContextualCommandActionId;
+  readonly label: string;
+  readonly route: ViewportContextualCommandActionRoute;
+  readonly disabled: boolean;
+  readonly reason?: string;
+  readonly operation?: CadSelectionReferenceOperation;
+  readonly modelingActionId?: ModelingActionId;
+  readonly target?: SelectedGeneratedReference;
+}
+
+export interface ViewportContextualCommandSurfaceModel {
+  readonly visible: boolean;
+  readonly selectionKey: string;
+  readonly title: string;
+  readonly detail: string;
+  readonly tone: ViewportSelectionTone;
+  readonly actions: readonly ViewportContextualCommandAction[];
+  readonly diagnostic?: string;
+}
+
+export interface CreateViewportContextualCommandSurfaceInput {
+  readonly modelingActions: readonly ModelingActionDescriptor[];
+  readonly selectionDisplay: ViewportSelectionDisplay;
+  readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
+}
+
+export interface RunViewportContextualCommandActionInput {
+  readonly action: ViewportContextualCommandAction;
+  readonly body?: CadBodySnapshot;
+  readonly disabled?: boolean;
+  readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
+  readonly onContinueInModeling?: (
+    action: ViewportContextualCommandAction
+  ) => void;
+  readonly onCreateEdgeFinish?: (
+    operation: EdgeFinishOperation,
+    form: FeatureEdgeFinishForm
+  ) => void;
+  readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+}
+
+export function createViewportContextualCommandSurface({
+  modelingActions,
+  selectionDisplay,
+  selectedGeneratedReferenceState,
+  selectionReferenceCandidates
+}: CreateViewportContextualCommandSurfaceInput): ViewportContextualCommandSurfaceModel {
+  const actions = dedupeActions([
+    ...createActionsFromModeling(modelingActions, selectionDisplay),
+    ...createActionsFromReferenceOperations(
+      selectionDisplay,
+      selectionReferenceCandidates
+    )
+  ]);
+  const diagnostic = selectionDisplay.diagnostics[0]?.message;
+  const visible =
+    actions.length > 0 ||
+    selectionDisplay.tone !== "idle" ||
+    selectionDisplay.diagnostics.length > 0;
+
+  return {
+    visible,
+    selectionKey: createSelectionKey(
+      selectionDisplay,
+      selectedGeneratedReferenceState
+    ),
+    title: selectionDisplay.title,
+    detail: selectionDisplay.detail,
+    tone: selectionDisplay.tone,
+    actions,
+    ...(diagnostic ? { diagnostic } : {})
+  };
+}
+
+export function createViewportContextualSketchOnFaceForm(
+  selectedGeneratedReferenceState: GeneratedReferenceSelectionState
+): SketchCreateOnFaceForm | undefined {
+  if (
+    selectedGeneratedReferenceState.status !== "selected" ||
+    selectedGeneratedReferenceState.reference.kind !== "face"
+  ) {
+    return undefined;
+  }
+
+  const face = selectedGeneratedReferenceState.reference;
+
+  return buildSketchOnFaceForm(face.bodyId, face, {
+    id: "",
+    name: createSketchOnFaceDefaultName(face)
+  });
+}
+
+export function createViewportContextualEdgeFinishForm({
+  body,
+  namedReferences = [],
+  operation,
+  selectedGeneratedReferenceState
+}: {
+  readonly body?: CadBodySnapshot;
+  readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly operation: EdgeFinishOperation;
+  readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
+}): FeatureEdgeFinishForm | undefined {
+  if (
+    selectedGeneratedReferenceState.status !== "selected" ||
+    selectedGeneratedReferenceState.reference.kind !== "edge"
+  ) {
+    return undefined;
+  }
+
+  const referenceOptions = createEdgeFinishReferenceOptions(
+    selectedGeneratedReferenceState,
+    namedReferences
+  );
+  const referenceOption = selectEdgeFinishReferenceOption(
+    referenceOptions,
+    SELECTED_EDGE_FINISH_REFERENCE_VALUE
+  );
+
+  return buildEdgeFinishForm({
+    draft: {
+      id: "",
+      bodyId: "",
+      name: "",
+      distance: DEFAULT_EDGE_FINISH_SCALAR,
+      radius: DEFAULT_EDGE_FINISH_SCALAR
+    },
+    operation,
+    referenceOption,
+    targetBodyId: body?.id ?? selectedGeneratedReferenceState.reference.bodyId
+  });
+}
+
+export function runViewportContextualCommandAction({
+  action,
+  body,
+  disabled = false,
+  namedReferences,
+  onContinueInModeling,
+  onCreateEdgeFinish,
+  onCreateSketchOnFace,
+  selectedGeneratedReferenceState
+}: RunViewportContextualCommandActionInput): boolean {
+  if (disabled || action.disabled) {
+    return false;
+  }
+
+  if (action.route === "modeling") {
+    onContinueInModeling?.(action);
+    return Boolean(onContinueInModeling);
+  }
+
+  if (action.id === "sketch.createOnFace") {
+    const form = createViewportContextualSketchOnFaceForm(
+      selectedGeneratedReferenceState
+    );
+
+    if (!form) {
+      return false;
+    }
+
+    onCreateSketchOnFace?.(form);
+    return Boolean(onCreateSketchOnFace);
+  }
+
+  if (action.id === "feature.chamfer" || action.id === "feature.fillet") {
+    const operation = action.id === "feature.chamfer" ? "chamfer" : "fillet";
+    const form = createViewportContextualEdgeFinishForm({
+      body,
+      namedReferences,
+      operation,
+      selectedGeneratedReferenceState
+    });
+
+    if (!form) {
+      return false;
+    }
+
+    onCreateEdgeFinish?.(operation, form);
+    return Boolean(onCreateEdgeFinish);
+  }
+
+  return false;
+}
+
+function createActionsFromModeling(
+  actions: readonly ModelingActionDescriptor[],
+  selectionDisplay: ViewportSelectionDisplay
+): readonly ViewportContextualCommandAction[] {
+  return actions.flatMap((action) => {
+    switch (action.id) {
+      case "body.measureTopology":
+        return [
+          createActionFromModeling(action, {
+            label: "Measure",
+            route: "measure"
+          })
+        ];
+      case "body.references.inspect":
+        return [
+          createActionFromModeling(action, {
+            label: "Refs",
+            route: "references"
+          })
+        ];
+      case "feature.chamfer":
+        return [
+          createActionFromModeling(action, {
+            label: "Chamfer",
+            route: "command"
+          })
+        ];
+      case "feature.fillet":
+        return [
+          createActionFromModeling(action, {
+            label: "Fillet",
+            route: "command"
+          })
+        ];
+      case "reference.name":
+        return [
+          createActionFromModeling(action, {
+            label: "Name",
+            route: "name"
+          })
+        ];
+      case "sketch.createOnFace":
+        return [
+          createActionFromModeling(action, {
+            label:
+              selectionDisplay.selectionKind === "body"
+                ? "Choose face"
+                : "Create sketch",
+            route:
+              selectionDisplay.selectionKind === "body" ? "modeling" : "command"
+          })
+        ];
+      default:
+        return [];
+    }
+  });
+}
+
+function createActionFromModeling(
+  action: ModelingActionDescriptor,
+  override: {
+    readonly label: string;
+    readonly route: ViewportContextualCommandActionRoute;
+  }
+): ViewportContextualCommandAction {
+  const target = createActionTargetFromModeling(action);
+  const missingNameTarget = override.route === "name" && !target;
+  const disabled = !action.available || missingNameTarget;
+
+  return {
+    id: action.id as ViewportContextualCommandActionId,
+    label: override.label,
+    route: override.route,
+    disabled,
+    ...(action.reason || missingNameTarget
+      ? {
+          reason:
+            action.reason ?? "Select a generated reference before naming it."
+        }
+      : {}),
+    modelingActionId: action.id,
+    ...(target ? { target } : {})
+  };
+}
+
+function createActionsFromReferenceOperations(
+  selectionDisplay: ViewportSelectionDisplay,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
+): readonly ViewportContextualCommandAction[] {
+  if (selectionDisplay.selectionKind === "body") {
+    return [];
+  }
+
+  const operations = getSelectionCommandOperations(
+    selectionDisplay,
+    selectionReferenceCandidates
+  );
+  const actions: ViewportContextualCommandAction[] = [];
+
+  for (const operation of operations) {
+    if (operation === "feature.measureReference") {
+      actions.push(
+        createActionFromOperation(
+          operation,
+          "Measure",
+          "measure",
+          selectionReferenceCandidates
+        )
+      );
+    }
+
+    if (operation === "feature.selectReference") {
+      actions.push(
+        createActionFromOperation(
+          operation,
+          "Inspect",
+          "inspect",
+          selectionReferenceCandidates
+        )
+      );
+    }
+
+    if (operation === "reference.nameGenerated") {
+      actions.push(
+        createActionFromOperation(
+          operation,
+          "Name",
+          "name",
+          selectionReferenceCandidates
+        )
+      );
+    }
+  }
+
+  return actions;
+}
+
+function createActionFromOperation(
+  operation: CadSelectionReferenceOperation,
+  label: string,
+  route: ViewportContextualCommandActionRoute,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
+): ViewportContextualCommandAction {
+  const status = getSelectionReferenceOperationStatus(
+    selectionReferenceCandidates,
+    operation
+  );
+  const target =
+    operation === "reference.nameGenerated"
+      ? createActionTargetFromReference(
+          selectionReferenceCandidates
+            ? getPrimarySelectionReferenceCandidate(
+                selectionReferenceCandidates
+              )?.reference
+            : undefined
+        )
+      : undefined;
+  const disabled =
+    !status.available || (operation === "reference.nameGenerated" && !target);
+
+  return {
+    id: actionIdFromOperation(operation),
+    label,
+    route,
+    disabled,
+    operation,
+    ...(disabled
+      ? {
+          reason:
+            status.message ??
+            `${formatSelectionReferenceOperationLabel(operation)} is unavailable.`
+        }
+      : {}),
+    ...(target ? { target } : {})
+  };
+}
+
+function getSelectionCommandOperations(
+  selectionDisplay: ViewportSelectionDisplay,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
+): readonly CadSelectionReferenceOperation[] {
+  const primary = selectionReferenceCandidates
+    ? getPrimarySelectionReferenceCandidate(selectionReferenceCandidates)
+    : undefined;
+
+  return primary?.commandOperations ?? selectionDisplay.commandOperations;
+}
+
+function actionIdFromOperation(
+  operation: CadSelectionReferenceOperation
+): ViewportContextualCommandActionId {
+  switch (operation) {
+    case "feature.attachSketchPlane":
+      return "sketch.createOnFace";
+    case "feature.chamfer":
+      return "feature.chamfer";
+    case "feature.fillet":
+      return "feature.fillet";
+    case "feature.measureReference":
+      return "feature.measureReference";
+    case "feature.selectReference":
+      return "feature.selectReference";
+    case "reference.nameGenerated":
+      return "reference.name";
+  }
+}
+
+function createActionTargetFromModeling(
+  action: ModelingActionDescriptor
+): SelectedGeneratedReference | undefined {
+  return action.selection?.context === "generatedReference"
+    ? {
+        bodyId: action.selection.bodyId,
+        stableId: action.selection.stableId,
+        kind: action.selection.referenceKind
+      }
+    : undefined;
+}
+
+function createActionTargetFromReference(
+  reference: CadGeneratedReference | undefined
+): SelectedGeneratedReference | undefined {
+  return reference
+    ? {
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        kind: reference.kind
+      }
+    : undefined;
+}
+
+function createSelectionKey(
+  selectionDisplay: ViewportSelectionDisplay,
+  selectedGeneratedReferenceState: GeneratedReferenceSelectionState
+): string {
+  if (selectedGeneratedReferenceState.status === "selected") {
+    return [
+      "generated",
+      selectedGeneratedReferenceState.selection.bodyId,
+      selectedGeneratedReferenceState.selection.kind,
+      selectedGeneratedReferenceState.selection.stableId
+    ].join(":");
+  }
+
+  if (selectedGeneratedReferenceState.status === "stale") {
+    return [
+      "stale",
+      selectedGeneratedReferenceState.selection.bodyId,
+      selectedGeneratedReferenceState.selection.kind,
+      selectedGeneratedReferenceState.selection.stableId
+    ].join(":");
+  }
+
+  return [
+    selectionDisplay.selectionKind,
+    selectionDisplay.renderTargetId ?? "none",
+    selectionDisplay.referenceStatus ?? "none",
+    selectionDisplay.title
+  ].join(":");
+}
+
+function dedupeActions(
+  actions: readonly ViewportContextualCommandAction[]
+): readonly ViewportContextualCommandAction[] {
+  const deduped: ViewportContextualCommandAction[] = [];
+  const seen = new Set<ViewportContextualCommandActionId>();
+
+  for (const action of actions) {
+    const previousIndex = deduped.findIndex(
+      (candidate) => candidate.id === action.id
+    );
+
+    if (previousIndex >= 0) {
+      const previous = deduped[previousIndex];
+      deduped[previousIndex] =
+        previous.disabled && !action.disabled ? action : previous;
+      continue;
+    }
+
+    if (!seen.has(action.id)) {
+      deduped.push(action);
+      seen.add(action.id);
+    }
+  }
+
+  return deduped.sort(
+    (left, right) => getActionRank(left.id) - getActionRank(right.id)
+  );
+}
+
+function getActionRank(id: ViewportContextualCommandActionId): number {
+  switch (id) {
+    case "sketch.createOnFace":
+      return 0;
+    case "reference.name":
+      return 1;
+    case "feature.chamfer":
+      return 2;
+    case "feature.fillet":
+      return 3;
+    case "feature.measureReference":
+    case "body.measureTopology":
+      return 4;
+    case "feature.selectReference":
+    case "body.references.inspect":
+      return 5;
+  }
+}
+
+export function formatViewportContextualTarget(
+  reference: CadGeneratedReference | undefined
+): string {
+  return reference
+    ? `${formatGeneratedReferenceKind(reference.kind)}: ${reference.label}`
+    : "Selected reference";
+}

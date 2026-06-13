@@ -12,7 +12,13 @@ import {
   type ViewportSize,
   zoomCamera
 } from "@web-cad/renderer";
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode
+} from "react";
 import {
   fitCameraToRenderObject,
   fitCameraToRenderScene
@@ -32,6 +38,7 @@ export interface ViewportCanvasStatus {
 }
 
 export function ViewportCanvas({
+  contextualSurface,
   meshes,
   onHover,
   onSelect,
@@ -40,6 +47,7 @@ export function ViewportCanvas({
   status,
   visualStates
 }: {
+  readonly contextualSurface?: ReactNode;
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
@@ -181,6 +189,9 @@ export function ViewportCanvas({
             </button>
           </div>
         </div>
+        {contextualSurface ? (
+          <div className="viewport-contextual-slot">{contextualSurface}</div>
+        ) : null}
         {status ? (
           <div
             className={`viewport-status viewport-status-${status.tone}`}
