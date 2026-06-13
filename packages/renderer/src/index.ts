@@ -108,6 +108,29 @@ export interface ProjectedPoint {
   readonly depth: number;
 }
 
+export type RenderVisualEntityKind =
+  | "body"
+  | "face"
+  | "edge"
+  | "vertex"
+  | "object"
+  | "sketchEntity";
+
+export type RenderVisualStateKind =
+  | "hover"
+  | "preselection"
+  | "selected"
+  | "commandTarget"
+  | "warning"
+  | "pending"
+  | "failed";
+
+export interface RenderVisualStateInput {
+  readonly targetId: string;
+  readonly targetKind: RenderVisualEntityKind;
+  readonly state: RenderVisualStateKind;
+}
+
 export interface RenderSceneOptions {
   readonly primitives: readonly RenderPrimitive[];
   readonly meshes?: readonly RenderTriangleMesh[];
@@ -115,6 +138,7 @@ export interface RenderSceneOptions {
   readonly size: ViewportSize;
   readonly selectedId?: string;
   readonly hoveredId?: string;
+  readonly visualStates?: readonly RenderVisualStateInput[];
 }
 
 export const rendererPackage: PackageInfo = {
@@ -242,8 +266,9 @@ export function renderCanvasScene(
   context: CanvasRenderingContext2D,
   options: RenderSceneOptions
 ): void {
-  const { camera, hoveredId, primitives, selectedId, size } = options;
+  const { camera, primitives, size } = options;
   const meshes = options.meshes ?? [];
+  const visualStates = createRenderVisualStateMap(options);
   context.clearRect(0, 0, size.width, size.height);
   drawGrid(context, camera, size);
 
@@ -255,40 +280,106 @@ export function renderCanvasScene(
     .sort((left, right) => right.depth - left.depth);
 
   for (const { primitive } of sorted.filter(
-    (entry) =>
-      entry.primitive.id !== selectedId && entry.primitive.id !== hoveredId
+    (entry) => !visualStates.has(entry.primitive.id)
   )) {
-    drawPrimitive(context, primitive, camera, size, false, false);
+    drawPrimitive(context, primitive, camera, size, createEmptyVisualStyle());
   }
 
-  for (const mesh of meshes.filter(
-    (mesh) => mesh.id !== selectedId && mesh.id !== hoveredId
-  )) {
-    drawTriangleMesh(context, mesh, camera, size, false, false);
+  for (const mesh of meshes.filter((mesh) => !visualStates.has(mesh.id))) {
+    drawTriangleMesh(context, mesh, camera, size, createEmptyVisualStyle());
   }
 
-  for (const { primitive } of sorted.filter(
-    (entry) =>
-      entry.primitive.id === hoveredId && entry.primitive.id !== selectedId
+  for (const { primitive } of sorted.filter((entry) =>
+    visualStates.has(entry.primitive.id)
   )) {
-    drawPrimitive(context, primitive, camera, size, false, true);
+    drawPrimitive(
+      context,
+      primitive,
+      camera,
+      size,
+      visualStates.get(primitive.id) ?? createEmptyVisualStyle()
+    );
   }
 
-  for (const mesh of meshes.filter(
-    (mesh) => mesh.id === hoveredId && mesh.id !== selectedId
-  )) {
-    drawTriangleMesh(context, mesh, camera, size, false, true);
+  for (const mesh of meshes.filter((mesh) => visualStates.has(mesh.id))) {
+    drawTriangleMesh(
+      context,
+      mesh,
+      camera,
+      size,
+      visualStates.get(mesh.id) ?? createEmptyVisualStyle()
+    );
+  }
+}
+
+export interface RenderVisualStyle {
+  readonly hover: boolean;
+  readonly selected: boolean;
+  readonly commandTarget: boolean;
+  readonly warning: boolean;
+  readonly pending: boolean;
+  readonly failed: boolean;
+}
+
+export function createRenderVisualStateMap({
+  hoveredId,
+  selectedId,
+  visualStates = []
+}: Pick<
+  RenderSceneOptions,
+  "hoveredId" | "selectedId" | "visualStates"
+>): ReadonlyMap<string, RenderVisualStyle> {
+  const statesByTarget = new Map<string, RenderVisualStyle>();
+
+  if (hoveredId) {
+    addRenderVisualState(statesByTarget, hoveredId, "hover");
   }
 
-  for (const { primitive } of sorted.filter(
-    (entry) => entry.primitive.id === selectedId
-  )) {
-    drawPrimitive(context, primitive, camera, size, true, false);
+  if (selectedId) {
+    addRenderVisualState(statesByTarget, selectedId, "selected");
   }
 
-  for (const mesh of meshes.filter((mesh) => mesh.id === selectedId)) {
-    drawTriangleMesh(context, mesh, camera, size, true, false);
+  for (const visualState of visualStates) {
+    addRenderVisualState(
+      statesByTarget,
+      visualState.targetId,
+      visualState.state
+    );
   }
+
+  return statesByTarget;
+}
+
+function addRenderVisualState(
+  statesByTarget: Map<string, RenderVisualStyle>,
+  targetId: string,
+  state: RenderVisualStateKind
+): void {
+  if (!targetId) {
+    return;
+  }
+
+  const existing = statesByTarget.get(targetId) ?? createEmptyVisualStyle();
+
+  statesByTarget.set(targetId, {
+    hover: existing.hover || state === "hover" || state === "preselection",
+    selected: existing.selected || state === "selected",
+    commandTarget: existing.commandTarget || state === "commandTarget",
+    warning: existing.warning || state === "warning",
+    pending: existing.pending || state === "pending",
+    failed: existing.failed || state === "failed"
+  });
+}
+
+function createEmptyVisualStyle(): RenderVisualStyle {
+  return {
+    hover: false,
+    selected: false,
+    commandTarget: false,
+    warning: false,
+    pending: false,
+    failed: false
+  };
 }
 
 function drawPrimitive(
@@ -296,19 +387,18 @@ function drawPrimitive(
   primitive: RenderPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   if (primitive.kind === "box") {
-    drawBox(context, primitive, camera, size, selected, hovered);
+    drawBox(context, primitive, camera, size, style);
   } else if (primitive.kind === "cylinder") {
-    drawCylinder(context, primitive, camera, size, selected, hovered);
+    drawCylinder(context, primitive, camera, size, style);
   } else if (primitive.kind === "sphere") {
-    drawSphere(context, primitive, camera, size, selected, hovered);
+    drawSphere(context, primitive, camera, size, style);
   } else if (primitive.kind === "cone") {
-    drawCone(context, primitive, camera, size, selected, hovered);
+    drawCone(context, primitive, camera, size, style);
   } else {
-    drawTorus(context, primitive, camera, size, selected, hovered);
+    drawTorus(context, primitive, camera, size, style);
   }
 }
 
@@ -337,8 +427,7 @@ function drawBox(
   primitive: RenderBoxPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   const vertices = getBoxVertices(primitive);
   const edges = [
@@ -357,13 +446,9 @@ function drawBox(
   ] as const;
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#2f6f97";
-  context.lineWidth = selected || hovered ? 3 : 2;
-  context.fillStyle = selected
-    ? "rgb(242 165 65 / 14%)"
-    : hovered
-      ? "rgb(24 139 191 / 12%)"
-      : "rgb(47 111 151 / 10%)";
+  context.strokeStyle = getVisualStrokeColor(style, "#2f6f97");
+  context.lineWidth = getVisualLineWidth(style, 2);
+  context.fillStyle = getVisualFillColor(style, "rgb(47 111 151 / 10%)");
   fillProjectedFace(context, camera, size, [
     vertices[4],
     vertices[5],
@@ -383,14 +468,13 @@ function drawCylinder(
   primitive: RenderCylinderPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   const segments = getCylinderSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#6f8c3a";
-  context.lineWidth = selected || hovered ? 3 : 2;
+  context.strokeStyle = getVisualStrokeColor(style, "#6f8c3a");
+  context.lineWidth = getVisualLineWidth(style, 2);
 
   for (let index = 0; index < segments.top.length; index += 1) {
     const nextIndex = (index + 1) % segments.top.length;
@@ -428,14 +512,13 @@ function drawSphere(
   primitive: RenderSpherePrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   const rings = getSphereSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#8a4f9f";
-  context.lineWidth = selected || hovered ? 3 : 2;
+  context.strokeStyle = getVisualStrokeColor(style, "#8a4f9f");
+  context.lineWidth = getVisualLineWidth(style, 2);
 
   for (const ring of [rings.xy, rings.xz, rings.yz]) {
     for (let index = 0; index < ring.length; index += 1) {
@@ -457,14 +540,13 @@ function drawCone(
   primitive: RenderConePrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   const segments = getConeSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#a35f2a";
-  context.lineWidth = selected || hovered ? 3 : 2;
+  context.strokeStyle = getVisualStrokeColor(style, "#a35f2a");
+  context.lineWidth = getVisualLineWidth(style, 2);
 
   for (let index = 0; index < segments.base.length; index += 1) {
     const nextIndex = (index + 1) % segments.base.length;
@@ -495,14 +577,13 @@ function drawTorus(
   primitive: RenderTorusPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   const rings = getTorusSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#28756a";
-  context.lineWidth = selected || hovered ? 3 : 2;
+  context.strokeStyle = getVisualStrokeColor(style, "#28756a");
+  context.lineWidth = getVisualLineWidth(style, 2);
 
   for (const ring of [rings.center, rings.outer, rings.inner]) {
     for (let index = 0; index < ring.length; index += 1) {
@@ -536,8 +617,7 @@ function drawTriangleMesh(
   mesh: RenderTriangleMesh,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean,
-  hovered: boolean
+  style: RenderVisualStyle
 ): void {
   const vertices = mesh.vertices.map((vertex) =>
     transformPoint(vertex, mesh.transform)
@@ -549,40 +629,34 @@ function drawTriangleMesh(
   context.lineJoin = "round";
   context.lineCap = "round";
 
-  context.fillStyle = selected
-    ? "rgba(242, 165, 65, 0.18)"
-    : hovered
-      ? "rgba(24, 139, 191, 0.14)"
-      : "rgba(47, 111, 151, 0.08)";
+  context.fillStyle = getVisualFillColor(style, "rgba(47, 111, 151, 0.08)");
   drawMeshFaces(context, mesh.indices, vertices, camera, size);
 
-  context.strokeStyle = selected
-    ? "rgba(242, 165, 65, 0.28)"
-    : hovered
-      ? "rgba(24, 139, 191, 0.28)"
-      : "rgba(53, 75, 91, 0.22)";
-  context.lineWidth = selected || hovered ? 1.25 : 0.75;
+  context.strokeStyle = getVisualSoftStrokeColor(
+    style,
+    "rgba(53, 75, 91, 0.22)"
+  );
+  context.lineWidth = isVisualActive(style) ? 1.25 : 0.75;
 
   for (const [start, end] of edges) {
     strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
   }
 
-  if (selected && displayEdges.length > 0) {
-    context.strokeStyle = "rgba(242, 165, 65, 0.42)";
+  if (style.selected && displayEdges.length > 0) {
+    context.strokeStyle = getVisualSoftStrokeColor(
+      style,
+      "rgba(242, 165, 65, 0.42)"
+    );
     context.lineWidth = 7;
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
   }
 
   if (displayEdges.length > 0) {
-    context.strokeStyle = selected
-      ? "#f2a541"
-      : hovered
-        ? "#188bbf"
-        : "#235f86";
-    context.lineWidth = selected || hovered ? 3 : 2;
+    context.strokeStyle = getVisualStrokeColor(style, "#235f86");
+    context.lineWidth = getVisualLineWidth(style, 2);
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
-  } else if (selected || hovered) {
-    context.strokeStyle = selected ? "#f2a541" : "#188bbf";
+  } else if (isVisualActive(style)) {
+    context.strokeStyle = getVisualStrokeColor(style, "#235f86");
     context.lineWidth = 3;
 
     for (const [start, end] of edges) {
@@ -597,6 +671,117 @@ function drawTriangleMesh(
   }
 
   context.restore();
+}
+
+function getVisualStrokeColor(
+  style: RenderVisualStyle,
+  fallback: string
+): string {
+  if (style.failed) {
+    return "#b42318";
+  }
+
+  if (style.warning) {
+    return "#b7791f";
+  }
+
+  if (style.commandTarget) {
+    return "#2f855a";
+  }
+
+  if (style.selected) {
+    return "#f2a541";
+  }
+
+  if (style.pending) {
+    return "#8b6f2f";
+  }
+
+  if (style.hover) {
+    return "#188bbf";
+  }
+
+  return fallback;
+}
+
+function getVisualSoftStrokeColor(
+  style: RenderVisualStyle,
+  fallback: string
+): string {
+  if (style.failed) {
+    return "rgba(180, 35, 24, 0.32)";
+  }
+
+  if (style.warning) {
+    return "rgba(183, 121, 31, 0.32)";
+  }
+
+  if (style.commandTarget) {
+    return "rgba(47, 133, 90, 0.32)";
+  }
+
+  if (style.selected) {
+    return "rgba(242, 165, 65, 0.34)";
+  }
+
+  if (style.pending) {
+    return "rgba(139, 111, 47, 0.28)";
+  }
+
+  if (style.hover) {
+    return "rgba(24, 139, 191, 0.28)";
+  }
+
+  return fallback;
+}
+
+function getVisualFillColor(
+  style: RenderVisualStyle,
+  fallback: string
+): string {
+  if (style.failed) {
+    return "rgba(180, 35, 24, 0.14)";
+  }
+
+  if (style.warning) {
+    return "rgba(183, 121, 31, 0.14)";
+  }
+
+  if (style.commandTarget) {
+    return "rgba(47, 133, 90, 0.13)";
+  }
+
+  if (style.selected) {
+    return "rgba(242, 165, 65, 0.16)";
+  }
+
+  if (style.pending) {
+    return "rgba(139, 111, 47, 0.12)";
+  }
+
+  if (style.hover) {
+    return "rgba(24, 139, 191, 0.12)";
+  }
+
+  return fallback;
+}
+
+function getVisualLineWidth(
+  style: RenderVisualStyle,
+  fallback: number
+): number {
+  return isVisualActive(style) ? 3 : fallback;
+}
+
+function isVisualActive(style: RenderVisualStyle): boolean {
+  return (
+    style.hover ||
+    style.selected ||
+    style.commandTarget ||
+    style.warning ||
+    style.pending ||
+    style.failed
+  );
 }
 
 function drawMeshFaces(

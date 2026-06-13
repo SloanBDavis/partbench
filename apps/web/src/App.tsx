@@ -168,9 +168,15 @@ import {
   type GeneratedReferenceSelectionState,
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
-import { resolveViewportPickIntent } from "./viewportPickIntent";
+import {
+  resolveViewportPickIntent,
+  type ViewportPickIntent
+} from "./viewportPickIntent";
 import { createViewportGeneratedPlanarFaceHitCandidate } from "./viewportGeneratedFacePicking";
 import { createViewportGeneratedEdgeHitCandidate } from "./viewportGeneratedEdgePicking";
+import { resolveViewportHoverIntent } from "./viewportHoverIntent";
+import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
+import { createViewportVisualStateModel } from "./viewportVisualState";
 import {
   deriveModelingActions,
   type ModelingSelectionContext
@@ -961,6 +967,12 @@ export function App() {
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
   >();
+  const [viewportHoverPick, setViewportHoverPick] = useState<
+    ViewportCanvasPick | undefined
+  >();
+  const [viewportPickIntent, setViewportPickIntent] = useState<
+    ViewportPickIntent | undefined
+  >();
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
@@ -1307,6 +1319,36 @@ export function App() {
       ),
     [derivedGeometry]
   );
+  const selectedGeometryEntry = selectedBody
+    ? (derivedGeometryBySourceId.get(selectedBody.id) ??
+      (selectedBody.objectId
+        ? derivedGeometryBySourceId.get(selectedBody.objectId)
+        : undefined))
+    : selectedObject
+      ? derivedGeometryBySourceId.get(selectedObject.id)
+      : undefined;
+  const viewportSelectionDisplay = createViewportSelectionDisplay({
+    derivedGeometryEnabled,
+    selectedBody,
+    selectedGeneratedReferenceState,
+    selectedGeometryEntry,
+    selectedObject,
+    selectionReferenceCandidates: selectedSelectionReferenceCandidates,
+    viewportPickIntent
+  });
+  const viewportHoverState = viewportHoverPick
+    ? resolveViewportHoverIntent({
+        hoveredRenderId: viewportHoverPick.pickedRenderId,
+        bodies: projectStructure.bodies,
+        objects: sceneObjects,
+        readReferenceCandidates: readSelectionReferenceCandidates
+      })
+    : undefined;
+  const viewportVisualState = createViewportVisualStateModel({
+    hoverState: viewportHoverState,
+    selectionDisplay: viewportSelectionDisplay,
+    selectedGeneratedReferenceState
+  });
   const geometryStatusBySourceId = useMemo(
     () =>
       new Map(
@@ -1321,13 +1363,11 @@ export function App() {
     [derivedGeometry]
   );
   const selectedViewportRenderId =
-    selectedGeneratedReferenceState.status === "selected" ||
-    selectedGeneratedReferenceState.status === "stale"
-      ? selectedGeneratedReferenceState.selection.bodyId
-      : (selectedObject?.id ??
-        selectedBody?.objectId ??
-        selectedBody?.id ??
-        selectedId);
+    viewportVisualState.selectedRenderTargetId ??
+    selectedObject?.id ??
+    selectedBody?.objectId ??
+    selectedBody?.id ??
+    selectedId;
   const renderScene = useMemo(
     () =>
       createRenderSceneInputs(
@@ -1444,6 +1484,8 @@ export function App() {
   function selectObject(objectId: string | undefined) {
     setSelectedId(objectId);
     setSelectedGeneratedReference(undefined);
+    setViewportPickIntent(undefined);
+    setViewportHoverPick(undefined);
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
@@ -1474,6 +1516,7 @@ export function App() {
       readReferenceCandidates: readSelectionReferenceCandidates
     });
 
+    setViewportPickIntent(intent);
     setSelectedId(intent.selectedId);
     setSelectedGeneratedReference(
       intent.kind === "generatedReference"
@@ -1484,6 +1527,10 @@ export function App() {
           }
         : undefined
     );
+  }
+
+  function hoverViewportPick(pick: ViewportCanvasPick | undefined) {
+    setViewportHoverPick(pick);
   }
 
   function reconcileDerivedGeometry(
@@ -1972,11 +2019,15 @@ export function App() {
     setSelectedGeneratedReference(
       createSelectedGeneratedReference(response.reference)
     );
+    setViewportPickIntent(undefined);
+    setViewportHoverPick(undefined);
   }
 
   function selectGeneratedReference(reference: CadGeneratedReference) {
     setSelectedId(reference.bodyId);
     setSelectedGeneratedReference(createSelectedGeneratedReference(reference));
+    setViewportPickIntent(undefined);
+    setViewportHoverPick(undefined);
   }
 
   function getFeatureTargetBodyId(
@@ -2736,6 +2787,8 @@ export function App() {
               onInspectNamedReference={inspectNamedReference}
               onSelectGeneratedReference={(selection) => {
                 setSelectedGeneratedReference(selection);
+                setViewportPickIntent(undefined);
+                setViewportHoverPick(undefined);
               }}
               onUpdateExtrude={(featureId, depth, side) =>
                 void updateAuthoredExtrude(featureId, depth, side)
@@ -2748,6 +2801,9 @@ export function App() {
           primitives={renderScene.primitives}
           meshes={renderScene.meshes}
           selectedId={selectedViewportRenderId}
+          visualStates={viewportVisualState.rendererVisualStates}
+          status={viewportVisualState.status}
+          onHover={hoverViewportPick}
           onSelect={selectViewportPick}
         />
 

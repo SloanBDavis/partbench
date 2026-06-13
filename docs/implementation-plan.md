@@ -135,6 +135,16 @@ These constraints remain active:
     generated vertex picking, exact edge-level visual highlighting, arbitrary
     result-body edge topology, WebGPU, assemblies, persisted viewport/session
     state, or `web-cad.project.v17`.
+26. V9 Tranche D1 is implemented as the first semantic viewport visual-state
+    input slice: the app derives one restrained display vocabulary for
+    hover/preselection, selected, command-target, warning/blocked, pending, and
+    failed states; the renderer receives display-only target IDs, display
+    entity kinds, and state names; generated face/edge selections distinguish
+    status text while highlighting the owning body; and detailed diagnostics
+    stay in Selection, Inspector, and Modeling surfaces. It does not implement
+    exact face/edge canvas highlighting, WebGPU, persisted viewport state, new
+    modeling commands, OPFS/file/project schema changes, agent/MCP changes, or
+    `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -1256,13 +1266,15 @@ Use these decisions when writing V9 implementation prompts:
    selection without forcing the left panel to switch tabs.
 3. **Generated Face/Edge Picking** - C1 implemented generated planar face
    picking/reference routing for selected supported rectangle/circle `newBody`
-   extrudes. Remaining work is generated edge picking, exact face/edge visual
-   distinction, named-reference viewport routing, and structured
-   unsupported/ambiguous/consumed/stale diagnostics for the broader generated
-   reference target set.
-4. **Viewport Visual State System** - add restrained hover, selected,
-   command-target, warning, pending, and failed highlight states as semantic
-   renderer display inputs.
+   extrudes. C2 implemented generated edge picking/reference routing for the
+   current defensible rectangle and circle edge subset. Exact face/edge visual
+   distinction, generated vertex picking, arbitrary result-body topology, and
+   broader generated-reference diagnostics remain deferred.
+4. **Viewport Visual State System** - D1 implemented the first semantic
+   renderer display-input model for hover/preselection, selected,
+   command-target, warning/blocked, pending, and failed states. Generated
+   face/edge selections currently map to owning-body highlight with compact
+   status text; exact subentity highlighting remains deferred.
 5. **Contextual Command Tools** - expose compact viewport actions for existing
    supported commands such as create sketch on planar face, name generated
    reference, and edge-finish target workflows where command-ready.

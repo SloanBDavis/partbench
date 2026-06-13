@@ -7,6 +7,7 @@ import {
   type RenderCamera,
   type RenderTriangleMesh,
   type RenderPrimitive,
+  type RenderVisualStateInput,
   type ViewportPoint,
   type ViewportSize,
   zoomCamera
@@ -24,16 +25,28 @@ export interface ViewportCanvasPick {
   readonly size: ViewportSize;
 }
 
+export interface ViewportCanvasStatus {
+  readonly label: string;
+  readonly detail: string;
+  readonly tone: "idle" | "ready" | "warning" | "blocked" | "failed";
+}
+
 export function ViewportCanvas({
   meshes,
+  onHover,
   onSelect,
   primitives,
-  selectedId
+  selectedId,
+  status,
+  visualStates
 }: {
   readonly meshes?: readonly RenderTriangleMesh[];
+  readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
+  readonly status?: ViewportCanvasStatus;
+  readonly visualStates?: readonly RenderVisualStateInput[];
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -94,12 +107,13 @@ export function ViewportCanvas({
     renderCanvasScene(context, {
       primitives,
       camera,
-      hoveredId,
+      hoveredId: visualStates ? undefined : hoveredId,
       meshes,
       size,
-      selectedId
+      selectedId,
+      visualStates
     });
-  }, [camera, hoveredId, meshes, primitives, selectedId, size]);
+  }, [camera, hoveredId, meshes, primitives, selectedId, size, visualStates]);
 
   function fitView() {
     setCamera((current) =>
@@ -136,18 +150,6 @@ export function ViewportCanvas({
     };
   }
 
-  function pickEventRenderId(
-    event: PointerEvent<HTMLCanvasElement>
-  ): string | undefined {
-    return pickRenderScene(
-      primitives,
-      meshes ?? [],
-      camera,
-      size,
-      getEventViewportPoint(event)
-    );
-  }
-
   return (
     <section className="viewport-panel" aria-label="3D viewport">
       <div
@@ -179,6 +181,15 @@ export function ViewportCanvas({
             </button>
           </div>
         </div>
+        {status ? (
+          <div
+            className={`viewport-status viewport-status-${status.tone}`}
+            aria-label="Viewport status"
+          >
+            <strong>{status.label}</strong>
+            <span>{status.detail}</span>
+          </div>
+        ) : null}
         <canvas
           ref={canvasRef}
           aria-label="3D scene viewport"
@@ -186,6 +197,7 @@ export function ViewportCanvas({
           onPointerDown={(event) => {
             setCanvasPointerCapture(event.currentTarget, event.pointerId);
             setHoveredId(undefined);
+            onHover?.(undefined);
             pointerRef.current = {
               id: event.pointerId,
               x: event.clientX,
@@ -201,7 +213,21 @@ export function ViewportCanvas({
             const pointer = pointerRef.current;
 
             if (!pointer) {
-              setHoveredId(pickEventRenderId(event));
+              const point = getEventViewportPoint(event);
+              const id = pickRenderScene(
+                primitives,
+                meshes ?? [],
+                camera,
+                size,
+                point
+              );
+              setHoveredId(id);
+              onHover?.({
+                camera,
+                pickedRenderId: id,
+                point,
+                size
+              });
               return;
             }
 
@@ -268,6 +294,7 @@ export function ViewportCanvas({
           onPointerLeave={() => {
             if (!pointerRef.current) {
               setHoveredId(undefined);
+              onHover?.(undefined);
             }
           }}
           onWheel={(event) => {

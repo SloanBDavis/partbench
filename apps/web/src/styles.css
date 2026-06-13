@@ -1311,6 +1311,54 @@ button.model-story-row:hover,
   backdrop-filter: blur(10px);
 }
 
+.viewport-status {
+  position: absolute;
+  z-index: 2;
+  left: 10px;
+  bottom: 10px;
+  display: grid;
+  max-width: min(360px, calc(100% - 20px));
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid rgba(160, 172, 160, 0.68);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink);
+  pointer-events: none;
+  backdrop-filter: blur(10px);
+}
+
+.viewport-status strong,
+.viewport-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewport-status strong {
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.viewport-status span {
+  color: var(--quiet);
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
+
+.viewport-status-ready {
+  border-color: rgba(47, 133, 90, 0.4);
+}
+
+.viewport-status-warning {
+  border-color: rgba(183, 121, 31, 0.45);
+}
+
+.viewport-status-blocked,
+.viewport-status-failed {
+  border-color: rgba(180, 35, 24, 0.45);
+}
+
 canvas {
   display: block;
   width: 100%;

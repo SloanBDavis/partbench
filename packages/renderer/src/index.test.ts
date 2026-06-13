@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createRenderVisualStateMap,
   createDefaultCamera,
   orbitCamera,
   panCamera,
@@ -194,5 +195,42 @@ describe("renderer", () => {
     );
 
     expect(selectedId).toBe("mesh_1");
+  });
+
+  it("normalizes semantic display visual states without storing generated refs", () => {
+    const states = createRenderVisualStateMap({
+      selectedId: "body_rect",
+      hoveredId: "body_hover",
+      visualStates: [
+        {
+          targetId: "body_rect",
+          targetKind: "face",
+          state: "commandTarget"
+        },
+        {
+          targetId: "body_rect",
+          targetKind: "face",
+          state: "pending"
+        },
+        {
+          targetId: "body_warning",
+          targetKind: "body",
+          state: "warning"
+        }
+      ]
+    });
+
+    expect(states.get("body_rect")).toEqual({
+      hover: false,
+      selected: true,
+      commandTarget: true,
+      warning: false,
+      pending: true,
+      failed: false
+    });
+    expect(states.get("body_hover")?.hover).toBe(true);
+    expect(states.get("body_warning")?.warning).toBe(true);
+    expect(JSON.stringify([...states])).not.toContain("generated:face");
+    expect(JSON.stringify([...states])).not.toContain("selection-buffer");
   });
 });

@@ -29,6 +29,39 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("viewport-measurement");
   });
 
+  it("renders compact viewport status without obstructive detail panels", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        status: {
+          label: "Face selected",
+          detail:
+            "Owning body highlighted; exact subentity highlight deferred.",
+          tone: "ready"
+        },
+        visualStates: [
+          { targetId: "body_rect", targetKind: "face", state: "selected" },
+          {
+            targetId: "body_rect",
+            targetKind: "face",
+            state: "commandTarget"
+          }
+        ],
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain('aria-label="Viewport status"');
+    expect(markup).toContain("Face selected");
+    expect(markup).toContain("Owning body highlighted");
+    expect(markup).not.toContain("Viewport interaction summary");
+    expect(markup).not.toContain("Viewport reference candidates");
+    expect(markup).not.toContain("Viewport selection diagnostics");
+    expect(markup).not.toContain("viewport-interaction-surface");
+  });
+
   it("disables fit selected until a render target is selected", () => {
     const emptyMarkup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
@@ -84,6 +117,15 @@ describe("ViewportCanvas", () => {
           }
         ],
         selectedId: "selection-buffer:face:17",
+        status: {
+          label: "Face selected",
+          detail:
+            "Owning body highlighted; exact subentity highlight deferred.",
+          tone: "ready"
+        },
+        visualStates: [
+          { targetId: "box_1", targetKind: "face", state: "selected" }
+        ],
         onSelect: () => undefined
       })
     );
