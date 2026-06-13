@@ -57,6 +57,7 @@ export interface ProjectFileWorkflowState {
 export interface WcadWritableFileStreamLike {
   write(data: Uint8Array): Promise<void> | void;
   close(): Promise<void> | void;
+  abort?: () => Promise<void> | void;
 }
 
 export interface WcadFileHandleLike {
@@ -366,15 +367,23 @@ export async function writeBytesToWcadHandle(
   bytes: Uint8Array
 ): Promise<void> {
   const writable = await handle.createWritable();
-  let writeCompleted = false;
 
   try {
     await writable.write(bytes);
-    writeCompleted = true;
-  } finally {
-    if (writeCompleted) {
-      await writable.close();
-    }
+    await writable.close();
+  } catch (error) {
+    await abortWritableQuietly(writable);
+    throw error;
+  }
+}
+
+async function abortWritableQuietly(
+  writable: WcadWritableFileStreamLike
+): Promise<void> {
+  try {
+    await writable.abort?.();
+  } catch {
+    // Preserve the original write or close failure.
   }
 }
 

@@ -90,6 +90,8 @@ import type {
   WcadSourceIdentity
 } from "@web-cad/cad-protocol";
 
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+
 export type AgentAdapterVersion = "web-cad.agent-adapter.v1";
 
 export interface CadOpsAgentRequest {
@@ -2847,7 +2849,8 @@ function isWcadSourceIdentityInput(value: unknown): boolean {
     isRecord(value) &&
     Object.keys(value).length === 2 &&
     value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
-    typeof value.sha256 === "string"
+    typeof value.sha256 === "string" &&
+    SHA256_HEX_PATTERN.test(value.sha256)
   );
 }
 
@@ -2905,7 +2908,7 @@ function isCadBodyDerivedExactMetadataSnapshot(
   if (
     !isRecord(value) ||
     typeof value.bodyId !== "string" ||
-    typeof value.sourceIdentityCacheKey !== "string" ||
+    typeof value.sourceIdentitySignature !== "string" ||
     !isCadBodyDerivedExactMetadataStatus(value.status)
   ) {
     return false;

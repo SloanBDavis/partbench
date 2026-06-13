@@ -19,6 +19,16 @@ export interface GeometryKernelExactExportCapability {
   readonly reason: string;
 }
 
+export type GeometryKernelExactExportCapabilityInput = Pick<
+  GeometryKernelExactExportCapability,
+  | "status"
+  | "writerAvailable"
+  | "packageVersion"
+  | "checkedBindings"
+  | "availableBindings"
+  | "missingBindings"
+>;
+
 export type GeometryKernelOp =
   | "geometry.tessellateBox"
   | "geometry.tessellateCylinder"
@@ -540,42 +550,47 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
           | GeometryKernelErrorResponse
       : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
 
-export function getGeometryKernelExactExportCapabilities(): readonly GeometryKernelExactExportCapability[] {
+const STEP_WRITER_CHECKED_BINDINGS = [
+  "STEPControl_Writer_1",
+  "STEPControl_StepModelType.STEPControl_AsIs",
+  "IFSelect_ReturnStatus.IFSelect_RetDone",
+  "Interface_Static.SetCVal",
+  "Message_ProgressRange_1",
+  "FS.readFile",
+  "FS.unlink",
+  "BRepPrimAPI_MakeBox_5",
+  "BRepPrimAPI_MakeCylinder_3"
+] as const;
+
+const DEFAULT_STEP_WRITER_CAPABILITY: GeometryKernelExactExportCapabilityInput =
+  {
+    status: "available",
+    writerAvailable: true,
+    packageVersion: "2.0.0-beta.b5ff984",
+    checkedBindings: STEP_WRITER_CHECKED_BINDINGS,
+    availableBindings: STEP_WRITER_CHECKED_BINDINGS,
+    missingBindings: []
+  };
+
+export function getGeometryKernelExactExportCapabilities(
+  stepWriterCapability: GeometryKernelExactExportCapabilityInput = DEFAULT_STEP_WRITER_CAPABILITY
+): readonly GeometryKernelExactExportCapability[] {
   return [
     {
       format: "step",
       label: "STEP",
-      status: "available",
-      writerAvailable: true,
+      status: stepWriterCapability.status,
+      writerAvailable: stepWriterCapability.writerAvailable,
       boundary: "geometry-kernel",
       writerBoundary: "occt-wasm",
       packageName: "opencascade.js",
-      packageVersion: "2.0.0-beta.b5ff984",
-      checkedBindings: [
-        "STEPControl_Writer_1",
-        "STEPControl_StepModelType.STEPControl_AsIs",
-        "IFSelect_ReturnStatus.IFSelect_RetDone",
-        "Interface_Static.SetCVal",
-        "Message_ProgressRange_1",
-        "FS.readFile",
-        "FS.unlink",
-        "BRepPrimAPI_MakeBox_5",
-        "BRepPrimAPI_MakeCylinder_3"
-      ],
-      availableBindings: [
-        "STEPControl_Writer_1",
-        "STEPControl_StepModelType.STEPControl_AsIs",
-        "IFSelect_ReturnStatus.IFSelect_RetDone",
-        "Interface_Static.SetCVal",
-        "Message_ProgressRange_1",
-        "FS.readFile",
-        "FS.unlink",
-        "BRepPrimAPI_MakeBox_5",
-        "BRepPrimAPI_MakeCylinder_3"
-      ],
-      missingBindings: [],
-      reason:
-        "The geometry kernel can route minimal exact STEP export requests to the isolated OpenCascade.js writer boundary."
+      packageVersion: stepWriterCapability.packageVersion,
+      checkedBindings: stepWriterCapability.checkedBindings,
+      availableBindings: stepWriterCapability.availableBindings,
+      missingBindings: stepWriterCapability.missingBindings,
+      reason: stepWriterCapability.writerAvailable
+        ? "The geometry kernel can route minimal exact STEP export requests to the isolated OpenCascade.js writer boundary."
+        : "The geometry kernel cannot route exact STEP export until the isolated OpenCascade.js writer boundary exposes every required binding."
     }
   ];
 }

@@ -1,12 +1,13 @@
 import { CadEngine, exportCadProjectWcad } from "@web-cad/cad-core";
 import type { WcadSourceIdentity } from "@web-cad/cad-protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   clearProjectOpfsCache,
   createProjectOpfsCacheIndex,
   createProjectOpfsCacheKey,
   readProjectOpfsCacheStatus,
   validateProjectOpfsCacheIndex,
+  writeAndCloseProjectOpfsWritable,
   writeProjectOpfsCacheIndexForTest,
   type ProjectOpfsCacheDirectoryHandleLike,
   type ProjectOpfsCacheFileHandleLike,
@@ -39,6 +40,22 @@ describe("project OPFS cache helpers", () => {
     expect(first).not.toMatch(
       /fileHandle|localPath|opfsPath|rendererId|meshId|occtId|selectionBufferId/i
     );
+  });
+
+  it("aborts OPFS writable streams on write failure", async () => {
+    const abort = vi.fn();
+    const writable: ProjectOpfsCacheWritableLike = {
+      write: async () => {
+        throw new Error("quota exceeded");
+      },
+      close: vi.fn(),
+      abort
+    };
+
+    await expect(
+      writeAndCloseProjectOpfsWritable(writable, "payload")
+    ).rejects.toThrow("quota exceeded");
+    expect(abort).toHaveBeenCalledTimes(1);
   });
 
   it("reports OPFS unavailable without throwing", async () => {
@@ -154,6 +171,25 @@ describe("project OPFS cache helpers", () => {
         }),
         expect.objectContaining({ code: "OPFS_BYTE_LENGTH_MISMATCH" }),
         expect.objectContaining({ code: "OPFS_HASH_MISMATCH" })
+      ])
+    );
+  });
+
+  it("rejects malformed source identities in cache entries", () => {
+    const entry = createCacheEntry({
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256: "not-a-sha"
+      }
+    });
+    const validation = validateProjectOpfsCacheIndex(
+      createProjectOpfsCacheIndex([entry])
+    );
+
+    expect(validation.index.entries).toHaveLength(0);
+    expect(validation.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "OPFS_INDEX_INVALID" })
       ])
     );
   });

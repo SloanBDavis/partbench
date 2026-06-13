@@ -18,6 +18,7 @@ import {
   type GeneratedReferencesFeature
 } from "./generatedReferences";
 import { createBodyMeasurements } from "./bodyMeasurements";
+import { sha256Hex } from "./sha256";
 
 export interface BodyTopologyRequest {
   readonly document: GeneratedReferencesDocument;
@@ -118,7 +119,7 @@ function createAuthoredFeatureTopology(
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     bodyId,
     sourceKind: "authoredExtrude",
-    cacheKey: createTopologyCacheKey({
+    signature: createTopologySourceSignature({
       bodyId,
       sourceKind: "authoredExtrude",
       units,
@@ -203,7 +204,7 @@ function createUnsupportedAuthoredFeatureTopology(
           : feature.kind === "fillet"
             ? "authoredFillet"
             : "authoredExtrude";
-  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "cacheKey"> =
+  const sourceIdentityInput: Omit<CadBodyTopologySourceIdentity, "signature"> =
     feature.kind === "revolve"
       ? createRevolveSourceIdentityInput(document, bodyId, units, feature)
       : feature.kind === "hole"
@@ -220,7 +221,7 @@ function createUnsupportedAuthoredFeatureTopology(
               };
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     ...sourceIdentityInput,
-    cacheKey: createTopologyCacheKey(sourceIdentityInput)
+    signature: createTopologySourceSignature(sourceIdentityInput)
   };
 
   return createUnsupportedTopologySnapshot({
@@ -247,7 +248,7 @@ function createChamferSourceIdentityInput(
   bodyId: BodyId,
   units: DocumentUnits,
   feature: Extract<GeneratedReferencesFeature, { kind: "chamfer" }>
-): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+): Omit<CadBodyTopologySourceIdentity, "signature"> {
   return {
     bodyId,
     sourceKind: "authoredChamfer",
@@ -266,7 +267,7 @@ function createFilletSourceIdentityInput(
   bodyId: BodyId,
   units: DocumentUnits,
   feature: Extract<GeneratedReferencesFeature, { kind: "fillet" }>
-): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+): Omit<CadBodyTopologySourceIdentity, "signature"> {
   return {
     bodyId,
     sourceKind: "authoredFillet",
@@ -286,7 +287,7 @@ function createHoleSourceIdentityInput(
   bodyId: BodyId,
   units: DocumentUnits,
   feature: Extract<GeneratedReferencesFeature, { kind: "hole" }>
-): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+): Omit<CadBodyTopologySourceIdentity, "signature"> {
   return {
     bodyId,
     sourceKind: "authoredHole",
@@ -326,7 +327,7 @@ function createRevolveSourceIdentityInput(
   bodyId: BodyId,
   units: DocumentUnits,
   feature: Extract<GeneratedReferencesFeature, { kind: "revolve" }>
-): Omit<CadBodyTopologySourceIdentity, "cacheKey"> {
+): Omit<CadBodyTopologySourceIdentity, "signature"> {
   return {
     bodyId,
     sourceKind: "authoredRevolve",
@@ -395,7 +396,7 @@ function createUnsupportedPrimitiveCompatibilityTopology(
   const sourceIdentity: CadBodyTopologySourceIdentity = {
     bodyId,
     sourceKind: "primitiveCompatibility",
-    cacheKey: createTopologyCacheKey({
+    signature: createTopologySourceSignature({
       bodyId,
       sourceKind: "primitiveCompatibility",
       units
@@ -473,14 +474,14 @@ function applyDerivedExactMetadata(
     });
   }
 
-  if (metadata.sourceIdentityCacheKey !== topology.sourceIdentity.cacheKey) {
+  if (metadata.sourceIdentitySignature !== topology.sourceIdentity.signature) {
     return applyDerivedExactMetadataIssue(topology, {
       code: "STALE_BODY_TOPOLOGY",
       status: "stale",
       message:
         "Derived exact metadata is stale for the current body source identity.",
-      expected: topology.sourceIdentity.cacheKey,
-      received: metadata.sourceIdentityCacheKey
+      expected: topology.sourceIdentity.signature,
+      received: metadata.sourceIdentitySignature
     });
   }
 
@@ -589,8 +590,10 @@ function getDerivedExactMetadataIssueMessage(
   }
 }
 
-function createTopologyCacheKey(
-  identity: Omit<CadBodyTopologySourceIdentity, "cacheKey">
+function createTopologySourceSignature(
+  identity: Omit<CadBodyTopologySourceIdentity, "signature">
 ): string {
-  return `body-topology:v1:${JSON.stringify(identity)}`;
+  return `body-topology-source:v1:${sha256Hex(
+    new TextEncoder().encode(JSON.stringify(identity))
+  )}`;
 }

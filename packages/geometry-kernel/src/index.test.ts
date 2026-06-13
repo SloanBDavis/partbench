@@ -26,6 +26,26 @@ describe("geometry-kernel facade", () => {
     ]);
   });
 
+  it("reports STEP exact export writer capability as unavailable when bindings are absent", () => {
+    expect(
+      getGeometryKernelExactExportCapabilities({
+        status: "unavailable",
+        writerAvailable: false,
+        packageVersion: "2.0.0-test",
+        checkedBindings: ["STEPControl_Writer_1"],
+        availableBindings: [],
+        missingBindings: ["STEPControl_Writer_1"]
+      })
+    ).toEqual([
+      expect.objectContaining({
+        format: "step",
+        status: "unavailable",
+        writerAvailable: false,
+        missingBindings: ["STEPControl_Writer_1"]
+      })
+    ]);
+  });
+
   it(
     "exports a rectangle extrude as STEP bytes through the isolated OCCT WASM adapter",
     async () => {

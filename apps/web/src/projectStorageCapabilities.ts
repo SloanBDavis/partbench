@@ -81,7 +81,7 @@ export function createProjectStorageCapabilityStatus(
     available: jsonFallbackAvailable,
     label: "JSON import/export",
     detail: jsonFallbackAvailable
-      ? "Browser download and file-input load are available for web-cad.project.v16 JSON."
+      ? "JSON download and file load are available for interchange/debug."
       : "JSON import/export is missing download or upload primitives in this runtime.",
     limitation: jsonFallbackAvailable
       ? "JSON remains an interchange/debug workflow, not the primary project-file workflow."
@@ -95,12 +95,12 @@ export function createProjectStorageCapabilityStatus(
     mode: "fileSystemAccess",
     availability: fileSystemAccessAvailable ? "available" : "unavailable",
     available: fileSystemAccessAvailable,
-    label: "Direct browser file handles",
+    label: "Direct open/save",
     detail: fileSystemAccessAvailable
-      ? "showOpenFilePicker and showSaveFilePicker are present for direct .wcad open/save/save-as."
-      : "This browser/runtime does not expose both direct file picker APIs.",
+      ? "This browser can open and save .wcad project files directly."
+      : "This browser does not expose direct open/save file pickers.",
     limitation: fileSystemAccessAvailable
-      ? "File handles stay in app-only browser state and are never written into project source."
+      ? "Permission stays in this browser session and is never written into the project file."
       : "The app will fall back to .wcad upload/download without retaining a file handle.",
     nextStep: fileSystemAccessAvailable
       ? "Use Open .wcad, Save, and Save As from the Project/File panel."
@@ -111,14 +111,14 @@ export function createProjectStorageCapabilityStatus(
     mode: "opfs",
     availability: opfsApiDetected ? "available" : "unavailable",
     available: opfsApiDetected,
-    label: "OPFS browser cache",
+    label: "Local mesh cache",
     detail: opfsApiDetected
-      ? "OPFS API is detected for browser-private rebuildable cache status and clear."
-      : "This browser/runtime does not expose navigator.storage.getDirectory.",
+      ? "Browser-private rebuildable cache status and clear are available."
+      : "This browser does not expose local cache storage.",
     limitation:
       "No project source, recovery store, thumbnail, export artifact, or package source is stored in OPFS.",
     nextStep:
-      "Use Project/File cache status and Clear cache; supported derived mesh artifacts are rebuildable and source-identity keyed."
+      "Use Project/File cache status and Clear cache; supported mesh artifacts are rebuildable."
   };
 
   const wcadPackage: ProjectStorageCapabilityEntry = {
@@ -128,10 +128,10 @@ export function createProjectStorageCapabilityStatus(
         ? "active"
         : "unavailable",
     available: fileSystemAccessAvailable || wcadFallbackAvailable,
-    label: "Native .wcad package",
+    label: ".wcad project file",
     detail:
       fileSystemAccessAvailable || wcadFallbackAvailable
-        ? "Partbench can write and read partbench.wcad.v1 packages for supported projects."
+        ? "Partbench can open and save supported projects as .wcad files."
         : "This runtime is missing both direct file handles and upload/download fallback primitives.",
     limitation:
       "Thumbnails, package-unpack cache, persisted STEP artifacts, and file-handle persistence remain out of scope.",

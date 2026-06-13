@@ -11,6 +11,7 @@ import {
   type CadFeatureSummary,
   type CadPartSnapshot,
   type CadTransactionHistoryEntry,
+  type WcadPackageExportResult,
   type BodyMeasurementsSnapshot,
   type ObjectMeasurementsSnapshot
 } from "@web-cad/cad-core";
@@ -400,7 +401,7 @@ function createDerivedExactMetadataSnapshotsForProjectQuery(
     return [];
   }
 
-  const sourceIdentityCacheKeysByBodyId = new Map<string, string>();
+  const sourceIdentitySignaturesByBodyId = new Map<string, string>();
 
   for (const entry of exactMetadata.entries) {
     const response = engine.executeQuery({
@@ -409,17 +410,28 @@ function createDerivedExactMetadataSnapshotsForProjectQuery(
     });
 
     if (response.ok && response.query === "body.topology") {
-      sourceIdentityCacheKeysByBodyId.set(
+      sourceIdentitySignaturesByBodyId.set(
         entry.bodyId,
-        response.topology.sourceIdentity.cacheKey
+        response.topology.sourceIdentity.signature
       );
     }
   }
 
   return createProjectQueryDerivedExactMetadataSnapshots(
     exactMetadata,
-    sourceIdentityCacheKeysByBodyId
+    sourceIdentitySignaturesByBodyId
   );
+}
+
+function exportCadProjectForDocument(
+  engine: CadEngine,
+  documentSnapshot: CadDocument
+) {
+  // CadEngine is stable and mutates internally; documentSnapshot invalidates
+  // React memoization after command application.
+  void documentSnapshot;
+
+  return exportCadProject(engine);
 }
 
 function base64ToBytes(base64: string): Uint8Array {
@@ -700,7 +712,7 @@ function readBodyTopology(
   if (response.ok && response.query === "body.topology") {
     const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
       exactMetadataEntry,
-      response.topology.sourceIdentity.cacheKey
+      response.topology.sourceIdentity.signature
     );
 
     if (!derivedExactMetadata) {
@@ -916,6 +928,7 @@ export function App() {
   const derivedMeshCacheContextRef = useRef<
     DerivedMeshCacheContext | undefined
   >(undefined);
+  const derivedMeshCacheContextKeyRef = useRef<string | undefined>(undefined);
   const derivedExactMetadataServiceRef = useRef<
     DerivedExactMetadataService | undefined
   >(undefined);
@@ -980,6 +993,14 @@ export function App() {
     projectFile.documentSchemaVersion,
     projectFile.sourceIdentity
   ]);
+  const derivedMeshCacheContextKey = derivedMeshCacheContext
+    ? [
+        derivedMeshCacheContext.sourceIdentity.algorithm,
+        derivedMeshCacheContext.sourceIdentity.sha256,
+        derivedMeshCacheContext.documentSchemaVersion,
+        derivedMeshCacheContext.units
+      ].join(":")
+    : undefined;
   derivedMeshCacheContextRef.current = derivedMeshCacheContext;
   const refreshProjectOpfsCache = useCallback(
     async (announce = false) => {
@@ -1295,12 +1316,19 @@ export function App() {
       sketches
     ]
   );
-  const currentProject = exportCadProject(engine);
-  const projectJsonWorkflow = createProjectJsonWorkflowState({
-    currentProject,
-    draftJson: projectJson,
-    draftSource: projectJsonDraftSource
-  });
+  const currentProject = useMemo(
+    () => exportCadProjectForDocument(engine, document),
+    [document]
+  );
+  const projectJsonWorkflow = useMemo(
+    () =>
+      createProjectJsonWorkflowState({
+        currentProject,
+        draftJson: projectJson,
+        draftSource: projectJsonDraftSource
+      }),
+    [currentProject, projectJson, projectJsonDraftSource]
+  );
   const currentProjectSummary = projectJsonWorkflow.current.summary;
   const projectStorageCapabilities = useMemo(
     () => createProjectStorageCapabilityStatus(window),
@@ -1344,23 +1372,23 @@ export function App() {
       return;
     }
 
-    getDerivedGeometryService().reconcile(derivedGeometrySources);
+    const geometryService = getDerivedGeometryService();
+    const cacheContextChanged =
+      derivedMeshCacheContextKeyRef.current !== derivedMeshCacheContextKey;
+
+    derivedMeshCacheContextKeyRef.current = derivedMeshCacheContextKey;
+
+    if (cacheContextChanged && derivedMeshCacheContextKey) {
+      geometryService.refresh(derivedGeometrySources);
+    } else {
+      geometryService.reconcile(derivedGeometrySources);
+    }
+
     getDerivedExactMetadataService().reconcile(derivedGeometrySources);
   }, [
     derivedGeometrySources,
+    derivedMeshCacheContextKey,
     getDerivedExactMetadataService,
-    getDerivedGeometryService
-  ]);
-
-  useEffect(() => {
-    if (!derivedGeometryEnabled || !derivedMeshCacheContext) {
-      return;
-    }
-
-    getDerivedGeometryService().refresh(derivedGeometrySources);
-  }, [
-    derivedGeometrySources,
-    derivedMeshCacheContext,
     getDerivedGeometryService
   ]);
 
@@ -2316,8 +2344,10 @@ export function App() {
     handle: WcadFileHandleLike,
     operation: "save" | "saveAs"
   ) {
+    let exported: WcadPackageExportResult | undefined;
+
     try {
-      const exported = await exportCadProjectWcad(engine, {
+      exported = await exportCadProjectWcad(engine, {
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString()
       });
@@ -2332,12 +2362,8 @@ export function App() {
       setProjectMessage(`Saved ${handle.name ?? "project.wcad"}.`);
       setProjectMessageTone("info");
     } catch (error) {
-      if (projectStorageCapabilities.wcadDownloadAvailable) {
+      if (projectStorageCapabilities.wcadDownloadAvailable && exported) {
         try {
-          const exported = await exportCadProjectWcad(engine, {
-            createdAt: new Date().toISOString(),
-            modifiedAt: new Date().toISOString()
-          });
           downloadWcadPackage(exported.bytes, DEFAULT_WCAD_PROJECT_FILE_NAME);
           setProjectFileHandle(undefined);
           setProjectFile(

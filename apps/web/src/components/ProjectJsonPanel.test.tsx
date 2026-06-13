@@ -54,7 +54,7 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    expect(markup).toContain("Source snapshot");
+    expect(markup).toContain("Project contents");
     expect(markup).toContain("cad-core document");
     expect(markup).toContain("Loaded file");
     expect(markup).toContain("legacy-v1.json");
@@ -197,18 +197,17 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Storage availability");
     expect(markup).toContain("JSON import/export");
     expect(markup).toContain("Available");
-    expect(markup).toContain("Direct browser file handles");
+    expect(markup).toContain("Direct open/save");
     expect(markup).toContain("Available");
-    expect(markup).toContain("app-only browser state");
-    expect(markup).toContain("OPFS browser cache");
-    expect(markup).toContain("OPFS cache");
+    expect(markup).toContain("browser session");
+    expect(markup).toContain("Local mesh cache");
     expect(markup).toContain("Clear cache");
     expect(markup).toContain("partbench.opfs-cache.v1");
     expect(markup).toContain("Optional rebuildable cache");
-    expect(markup).toContain("Native .wcad package");
+    expect(markup).toContain(".wcad project file");
     expect(markup).toContain("Active");
     expect(markup).toContain("No project source");
-    expect(markup).toContain("partbench.wcad.v1");
+    expect(markup).toContain("No .wcad package has been opened or saved yet");
     expect(markup).not.toContain("partbench-project.wcad");
   });
 
@@ -260,7 +259,7 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    expect(markup).toContain("OPFS cache");
+    expect(markup).toContain("Local mesh cache");
     expect(markup).toContain("Invalid");
     expect(markup).toContain("OPFS_STALE_SOURCE_IDENTITY");
     expect(markup).toContain(".wcad unchanged");
@@ -323,11 +322,9 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("Supported");
     expect(markup).toContain("STEP");
     expect(markup).toContain("Mesh/GLB visualization");
-    expect(markup).toContain("Exact STEP export is available");
+    expect(markup).toContain("STEP export is available");
     expect(markup).toContain("Source body is supported");
-    expect(markup).toContain(
-      "Display output and temporary visualization state"
-    );
+    expect(markup).toContain("Display output is not used for STEP export");
     const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
     const exportSectionEnd = markup.indexOf(
       '<dl class="project-capability-list" aria-label="Export body status"',
@@ -422,7 +419,7 @@ describe("ProjectJsonPanel", () => {
 
     expect(exportReadinessMarkup).toContain("Supported");
     expect(exportReadinessMarkup).toContain(
-      "Exact STEP and Mesh/GLB visualization"
+      "STEP and Visualization GLB export"
     );
     expect(exportReadinessMarkup).toContain(
       "Mesh/GLB visualization export is available"
@@ -475,8 +472,7 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
-    const exportReadinessMarkup = markup.slice(exportSectionStart);
+    const exportReadinessMarkup = getExportReadinessMarkup(markup);
 
     expect(exportReadinessMarkup).toContain("Unavailable");
     expect(exportReadinessMarkup).toContain("Primitive object source");
@@ -542,6 +538,19 @@ function readExportReadiness(
   }
 
   return response;
+}
+
+function getExportReadinessMarkup(markup: string): string {
+  const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
+  const nextSectionStart = markup.indexOf(
+    'id="project-opfs-cache-status"',
+    exportSectionStart
+  );
+
+  return markup.slice(
+    exportSectionStart,
+    nextSectionStart === -1 ? undefined : nextSectionStart
+  );
 }
 
 function createJsonFallbackTarget() {

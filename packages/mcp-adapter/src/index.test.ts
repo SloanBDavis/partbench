@@ -569,7 +569,7 @@ describe("mcp-adapter", () => {
 
     const topologyContent = result.structuredContent as {
       readonly topology: {
-        readonly sourceIdentity: { readonly cacheKey: string };
+        readonly sourceIdentity: { readonly signature: string };
       };
     };
     const exactResult = server.callTool({
@@ -579,8 +579,8 @@ describe("mcp-adapter", () => {
         bodyId: "body_topology",
         derivedExactMetadata: {
           bodyId: "body_topology",
-          sourceIdentityCacheKey:
-            topologyContent.topology.sourceIdentity.cacheKey,
+          sourceIdentitySignature:
+            topologyContent.topology.sourceIdentity.signature,
           status: "ready",
           metadata: {
             source: "kernel-derived",
@@ -2954,7 +2954,7 @@ describe("mcp-adapter", () => {
     }
     const topologyContent = topology.structuredContent as {
       readonly topology: {
-        readonly sourceIdentity: { readonly cacheKey: string };
+        readonly sourceIdentity: { readonly signature: string };
       };
     };
 
@@ -2965,8 +2965,8 @@ describe("mcp-adapter", () => {
         derivedExactMetadata: [
           {
             bodyId: "mcp_body_health_revolve",
-            sourceIdentityCacheKey:
-              topologyContent.topology.sourceIdentity.cacheKey,
+            sourceIdentitySignature:
+              topologyContent.topology.sourceIdentity.signature,
             status: "ready",
             metadata: {
               source: "kernel-derived",
@@ -3195,7 +3195,7 @@ describe("mcp-adapter", () => {
     });
     const topologyContent = topology.structuredContent as {
       readonly topology: {
-        readonly sourceIdentity: { readonly cacheKey: string };
+        readonly sourceIdentity: { readonly signature: string };
       };
     };
     const result = server.callTool({
@@ -3205,8 +3205,8 @@ describe("mcp-adapter", () => {
         derivedExactMetadata: [
           {
             bodyId: "body_revolve",
-            sourceIdentityCacheKey:
-              topologyContent.topology.sourceIdentity.cacheKey,
+            sourceIdentitySignature:
+              topologyContent.topology.sourceIdentity.signature,
             status: "ready",
             metadata: {
               source: "kernel-derived",

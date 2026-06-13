@@ -2395,7 +2395,7 @@ describe("agent-adapter", () => {
           bodyId: "body_topology",
           derivedExactMetadata: {
             bodyId: "body_topology",
-            sourceIdentityCacheKey: response.topology.sourceIdentity.cacheKey,
+            sourceIdentitySignature: response.topology.sourceIdentity.signature,
             status: "ready",
             metadata: {
               source: "kernel-derived",
@@ -2677,8 +2677,8 @@ describe("agent-adapter", () => {
             derivedExactMetadata: [
               {
                 bodyId: "body_revolve",
-                sourceIdentityCacheKey:
-                  topology.topology.sourceIdentity.cacheKey,
+                sourceIdentitySignature:
+                  topology.topology.sourceIdentity.signature,
                 status: "ready",
                 metadata: {
                   source: "kernel-derived",
@@ -3300,7 +3300,8 @@ describe("agent-adapter", () => {
           derivedExactMetadata: [
             {
               bodyId: "body_health_revolve",
-              sourceIdentityCacheKey: topology.topology.sourceIdentity.cacheKey,
+              sourceIdentitySignature:
+                topology.topology.sourceIdentity.signature,
               status: "ready",
               metadata: {
                 source: "kernel-derived",

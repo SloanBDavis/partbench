@@ -47,16 +47,16 @@ export function createProjectExportReadinessDisplay(
     ),
     detail: visualizationExport?.available
       ? readiness.canExportFiles
-        ? "Exact STEP and Mesh/GLB visualization export are available for supported current bodies."
-        : "Mesh/GLB visualization export is available from ready derived display meshes. STEP exact export depends on supported source bodies."
+        ? "STEP and Visualization GLB export are available for supported bodies."
+        : "Visualization GLB export is available. STEP needs a supported source body."
       : readiness.canExportFiles
-        ? "Exact STEP export is available for supported current source bodies."
-        : "Exact STEP export requires supported source bodies. Mesh/GLB visualization depends on ready derived display meshes.",
+        ? "STEP export is available for supported bodies."
+        : "STEP export needs a supported body. Visualization GLB needs ready display geometry.",
     sourceDetail:
-      "Candidate bodies come from authoritative project source, features, and document units.",
+      "Candidate bodies come from the current project contents and units.",
     derivedDetail: visualizationExport
-      ? `Visualization export can use ${visualizationExport.exportableBodyCount} ready derived display mesh${visualizationExport.exportableBodyCount === 1 ? "" : "es"} without making display output authoritative.`
-      : "Display output and temporary visualization state are not used as export authority.",
+      ? `Visualization GLB can use ${visualizationExport.exportableBodyCount} ready display mesh${visualizationExport.exportableBodyCount === 1 ? "" : "es"}.`
+      : "Display output is not used for STEP export.",
     bodySummary: `${readiness.sourceSupportedBodyCount} source supported, ${readiness.deferredBodyCount} deferred, ${readiness.unavailableBodyCount} unavailable${
       visualizationExport
         ? `; ${visualizationExport.exportableBodyCount} visualization ready`

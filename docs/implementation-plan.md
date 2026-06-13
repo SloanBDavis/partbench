@@ -81,6 +81,14 @@ These constraints remain active:
     source/export contract data rather than owning OCCT or browser file APIs.
     STEP artifacts are transient export outputs and are not stored in `.wcad`,
     JSON, OPFS, command history, source identity, or `web-cad.project.v17`.
+19. V8 release-candidate hardening has addressed the cross-tranche review
+    issues: public topology source identity now exposes an opaque `signature`,
+    `project.exportExact` validates caller-provided source identity against the
+    current source before reporting it matched, writer-unavailable STEP seams
+    are covered even while the current writer is available, OPFS and `.wcad`
+    writes abort failed writable streams, OPFS source identities require
+    canonical SHA-256 hashes, and Project/File copy/layout stays focused on the
+    primary CAD workflow.
 
 ## Current Repo State
 
@@ -387,7 +395,7 @@ project JSON through `web-cad.project.v13`.
 
 V5 completed the derived exact geometry/topology foundation for supported
 authored bodies. It added the read-only `body.topology` query, structured
-topology statuses, source identity and cache-key rules, exact/measurement
+topology statuses, source identity and opaque-signature rules, exact/measurement
 confidence semantics, source-analytic simple extrude topology, honest ambiguous
 topology for current boolean results, project health/extents integration, UI
 status display, and agent/MCP pass-through. V5 did not add new source data and
@@ -1085,17 +1093,20 @@ Use these decisions when writing V8 implementation prompts:
    inspectable disclosures while keeping primary `.wcad`, cache, STEP, GLB, and
    JSON actions available.
 
-Review follow-ups before declaring V8 release-ready:
+Release-candidate hardening incorporated before declaring V8 release-ready:
 
-- The public body topology source identity still exposes a field named
-  `cacheKey`; rename or hide that value before release so agent/MCP callers do
-  not treat topology/cache implementation details as stable CAD IDs.
-- `project.exportExact` records caller-provided source identity as
-  `providedUnchecked`; add stale-source validation before using that identity for
-  any future non-UI artifact transport.
-- Preserve a writer-unavailable exact STEP test seam even while the current
-  OCCT/WASM writer is available, so future dependency regressions stay
-  structured.
+- public body topology source identity now exposes an opaque `signature` rather
+  than parseable cache-key terminology, so agent/MCP callers cannot treat
+  topology internals as stable CAD references;
+- `project.exportExact` validates caller-provided source identity against the
+  current project source and reports matched or mismatched state structurally;
+- automated writer-unavailable exact STEP seams remain covered even while the
+  current OCCT/WASM writer is available;
+- `.wcad` and OPFS writable streams are aborted after write failures, and OPFS
+  cache source identities require canonical SHA-256 hashes;
+- Project/File wording and layout have been tightened so native `.wcad`, STEP,
+  cache, GLB, and JSON debug/interchange controls remain inspectable without
+  crowding the viewport.
 
 ### V8 Scope Guardrails
 

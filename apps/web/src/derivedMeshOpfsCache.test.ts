@@ -40,6 +40,18 @@ describe("derived mesh OPFS cache", () => {
     expect(() =>
       decodeDerivedMeshCacheArtifact(new TextEncoder().encode('{"bad":true}'))
     ).toThrow("Derived mesh cache artifact has invalid metadata.");
+    expect(() =>
+      decodeDerivedMeshCacheArtifact(
+        encodeDerivedMeshCacheArtifact(
+          createArtifact({
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256: "not-a-sha"
+            }
+          })
+        )
+      )
+    ).toThrow("Derived mesh cache artifact has invalid metadata.");
   });
 
   it("writes and reads a valid derived visualization mesh artifact", async () => {

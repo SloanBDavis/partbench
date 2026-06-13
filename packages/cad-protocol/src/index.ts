@@ -1512,7 +1512,7 @@ export interface BodyExtentSnapshot {
     CadBodyTopologyMeasurementConfidence,
     "none"
   >;
-  readonly sourceIdentityCacheKey?: string;
+  readonly sourceIdentitySignature?: string;
   readonly sourceSketchId?: SketchId;
   readonly sourceSketchEntityId?: SketchEntityId;
   readonly profileKind?: FeatureExtrudeProfileKind;
@@ -2681,7 +2681,7 @@ export type CadBodyDerivedExactMetadataStatus =
 
 export interface CadBodyDerivedExactMetadataSnapshot {
   readonly bodyId: BodyId;
-  readonly sourceIdentityCacheKey: string;
+  readonly sourceIdentitySignature: string;
   readonly status: CadBodyDerivedExactMetadataStatus;
   readonly metadata?: Omit<CadBodyExactMetadataSnapshot, "status">;
   readonly error?: CadBodyExactMetadataDiagnostic;
@@ -2690,7 +2690,7 @@ export interface CadBodyDerivedExactMetadataSnapshot {
 export interface CadBodyTopologySourceIdentity {
   readonly bodyId: BodyId;
   readonly sourceKind: CadBodyTopologySourceKind;
-  readonly cacheKey: string;
+  readonly signature: string;
   readonly units: DocumentUnits;
   readonly featureId?: FeatureId;
   readonly operationMode?: FeatureExtrudeOperationMode;
@@ -2754,7 +2754,8 @@ export type CadExactExportWriterStatus = "available" | "unavailable";
 
 export type CadExactExportSourceIdentityStatus =
   | "notProvided"
-  | "providedUnchecked";
+  | "matchedCurrent"
+  | "mismatchedCurrent";
 
 export type CadExportReadinessStatus = "supported" | "deferred" | "unavailable";
 
@@ -2773,6 +2774,7 @@ export type CadExportDiagnosticCode =
   | "EXPORT_EXACT_WRITER_FAILED"
   | "EXPORT_EXACT_FORMAT_UNSUPPORTED"
   | "EXPORT_EXACT_BODY_UNSUPPORTED"
+  | "EXPORT_SOURCE_IDENTITY_MISMATCH"
   | "EXPORT_PROJECT_EMPTY"
   | "EXPORT_BODY_SOURCE_SUPPORTED"
   | "EXPORT_BODY_CONSUMED"

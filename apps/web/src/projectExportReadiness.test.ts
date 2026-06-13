@@ -9,7 +9,7 @@ describe("projectExportReadiness", () => {
     );
 
     expect(display.statusLabel).toBe("Supported");
-    expect(display.detail).toContain("Exact STEP export is available");
+    expect(display.detail).toContain("STEP export is available");
     expect(display.bodySummary).toBe(
       "1 source supported, 1 deferred, 0 unavailable"
     );
@@ -61,7 +61,7 @@ describe("projectExportReadiness", () => {
     );
 
     expect(display.statusLabel).toBe("Supported");
-    expect(display.detail).toContain("Exact STEP and Mesh/GLB visualization");
+    expect(display.detail).toContain("STEP and Visualization GLB export");
     expect(display.formatRows).toMatchObject([
       {
         id: "step",
@@ -87,8 +87,8 @@ describe("projectExportReadiness", () => {
     );
     const publicText = JSON.stringify(display);
 
-    expect(display.sourceDetail).toContain("authoritative project source");
-    expect(display.derivedDetail).toContain("not used as export authority");
+    expect(display.sourceDetail).toContain("current project contents");
+    expect(display.derivedDetail).toContain("not used for STEP export");
     expect(publicText).not.toMatch(/OCCT|renderer|cache|selection-buffer/i);
   });
 });

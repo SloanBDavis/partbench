@@ -12,6 +12,7 @@ import type {
   GeometryKernelBooleanOperation,
   GeometryKernelDocumentUnit,
   GeometryKernelExtrudeSide,
+  GeometryKernelExactExportCapability,
   GeometryKernelExactExportFormat,
   HoleRequest,
   HoleToolSource,
@@ -126,45 +127,57 @@ export interface GeometryWorkerExactExportCapability {
   readonly reason: string;
 }
 
-export function getGeometryWorkerExactExportCapabilities(): readonly GeometryWorkerExactExportCapability[] {
-  return [
+const GEOMETRY_WORKER_STEP_WRITER_CHECKED_BINDINGS = [
+  "STEPControl_Writer_1",
+  "STEPControl_StepModelType.STEPControl_AsIs",
+  "IFSelect_ReturnStatus.IFSelect_RetDone",
+  "Interface_Static.SetCVal",
+  "Message_ProgressRange_1",
+  "FS.readFile",
+  "FS.unlink",
+  "BRepPrimAPI_MakeBox_5",
+  "BRepPrimAPI_MakeCylinder_3"
+] as const;
+
+const DEFAULT_GEOMETRY_WORKER_KERNEL_CAPABILITIES: readonly GeometryKernelExactExportCapability[] =
+  [
     {
       format: "step",
       label: "STEP",
       status: "available",
       writerAvailable: true,
-      boundary: "geometry-worker",
-      kernelBoundary: "geometry-kernel",
+      boundary: "geometry-kernel",
       writerBoundary: "occt-wasm",
       packageName: "opencascade.js",
       packageVersion: "2.0.0-beta.b5ff984",
-      checkedBindings: [
-        "STEPControl_Writer_1",
-        "STEPControl_StepModelType.STEPControl_AsIs",
-        "IFSelect_ReturnStatus.IFSelect_RetDone",
-        "Interface_Static.SetCVal",
-        "Message_ProgressRange_1",
-        "FS.readFile",
-        "FS.unlink",
-        "BRepPrimAPI_MakeBox_5",
-        "BRepPrimAPI_MakeCylinder_3"
-      ],
-      availableBindings: [
-        "STEPControl_Writer_1",
-        "STEPControl_StepModelType.STEPControl_AsIs",
-        "IFSelect_ReturnStatus.IFSelect_RetDone",
-        "Interface_Static.SetCVal",
-        "Message_ProgressRange_1",
-        "FS.readFile",
-        "FS.unlink",
-        "BRepPrimAPI_MakeBox_5",
-        "BRepPrimAPI_MakeCylinder_3"
-      ],
+      checkedBindings: GEOMETRY_WORKER_STEP_WRITER_CHECKED_BINDINGS,
+      availableBindings: GEOMETRY_WORKER_STEP_WRITER_CHECKED_BINDINGS,
       missingBindings: [],
       reason:
-        "The geometry worker can execute minimal exact STEP export through the geometry kernel and isolated OpenCascade.js writer boundary."
+        "The geometry kernel can route minimal exact STEP export requests to the isolated OpenCascade.js writer boundary."
     }
   ];
+
+export function getGeometryWorkerExactExportCapabilities(
+  kernelCapabilities: readonly GeometryKernelExactExportCapability[] = DEFAULT_GEOMETRY_WORKER_KERNEL_CAPABILITIES
+): readonly GeometryWorkerExactExportCapability[] {
+  return kernelCapabilities.map((capability) => ({
+    format: capability.format,
+    label: capability.label,
+    status: capability.status,
+    writerAvailable: capability.writerAvailable,
+    boundary: "geometry-worker",
+    kernelBoundary: capability.boundary,
+    writerBoundary: capability.writerBoundary,
+    packageName: capability.packageName,
+    packageVersion: capability.packageVersion,
+    checkedBindings: capability.checkedBindings,
+    availableBindings: capability.availableBindings,
+    missingBindings: capability.missingBindings,
+    reason: capability.writerAvailable
+      ? "The geometry worker can execute minimal exact STEP export through the geometry kernel and isolated OpenCascade.js writer boundary."
+      : "The geometry worker cannot execute exact STEP export until the geometry kernel reports every required writer binding."
+  }));
 }
 
 export function createGeometryWorkerResponse(

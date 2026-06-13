@@ -6,6 +6,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
   SketchConstraintSnapshot,
   SketchDimensionSnapshot,
@@ -26,11 +27,13 @@ import {
   type ExtrudeFeature,
   CadProjectImportError,
   DEFAULT_PART_ID,
+  createCadProjectSourceIdentity,
   createCadDocument,
   createWcadPackageEntryMetadata,
   createWcadSourceIdentity,
   MockCadCommandWorker,
   corePackage,
+  exportCadProject,
   exportCadProjectJson,
   exportCadProjectWcad,
   exportCadProjectToWcad,
@@ -44,6 +47,10 @@ import {
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./index";
+import {
+  createProjectExactExport,
+  createProjectExportReadiness
+} from "./projectExportReadiness";
 import { validateGeneratedReference } from "./generatedReferences";
 import { writeZipStore } from "./wcadZip";
 
@@ -340,7 +347,7 @@ function createRectangleFilletEngine(): CadEngine {
   return engine;
 }
 
-function readBodyTopologySourceCacheKey(
+function readBodyTopologySourceSignature(
   engine: CadEngine,
   bodyId: string
 ): string {
@@ -353,12 +360,12 @@ function readBodyTopologySourceCacheKey(
     throw new Error(`Expected body topology response for ${bodyId}.`);
   }
 
-  return response.topology.sourceIdentity.cacheKey;
+  return response.topology.sourceIdentity.signature;
 }
 
 function createExactMetadataSnapshot(input: {
   readonly bodyId: string;
-  readonly sourceIdentityCacheKey: string;
+  readonly sourceIdentitySignature: string;
   readonly volume?: number;
   readonly faceCount?: number;
   readonly edgeCount?: number;
@@ -366,7 +373,7 @@ function createExactMetadataSnapshot(input: {
 }): CadBodyDerivedExactMetadataSnapshot {
   return {
     bodyId: input.bodyId,
-    sourceIdentityCacheKey: input.sourceIdentityCacheKey,
+    sourceIdentitySignature: input.sourceIdentitySignature,
     status: "ready",
     metadata: {
       source: "kernel-derived",
@@ -413,6 +420,21 @@ function validateEngineGeneratedReference(
     ownerPartId: DEFAULT_PART_ID,
     bodyExists: (bodyId) => structure.bodies.some((body) => body.id === bodyId)
   });
+}
+
+function readProjectStructure(
+  engine: CadEngine
+): ProjectStructureQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project.structure response.");
+  }
+
+  return response;
 }
 
 describe("cad-core", () => {
@@ -8511,8 +8533,11 @@ describe("cad-core", () => {
     });
 
     if (response.ok && response.query === "body.topology") {
-      expect(response.topology.sourceIdentity.cacheKey).toContain(
-        '"featureId":"feat_rect_1"'
+      expect(response.topology.sourceIdentity.signature).toMatch(
+        /^body-topology-source:v1:[a-f0-9]{64}$/
+      );
+      expect(response.topology.sourceIdentity.signature).not.toContain(
+        "feat_rect_1"
       );
     } else {
       throw new Error("Expected body topology response.");
@@ -8567,7 +8592,7 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_rect_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               rectangleEngine,
               "body_rect_1"
             )
@@ -8606,7 +8631,7 @@ describe("cad-core", () => {
           bodyId: "body_circle_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_circle_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               circleEngine,
               "body_circle_1"
             ),
@@ -8648,7 +8673,7 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_rect_1",
-            sourceIdentityCacheKey: "old-cache-key"
+            sourceIdentitySignature: "old-source-signature"
           })
         }
       })
@@ -8665,8 +8690,8 @@ describe("cad-core", () => {
           {
             code: "STALE_BODY_TOPOLOGY",
             bodyId: "body_rect_1",
-            expected: readBodyTopologySourceCacheKey(engine, "body_rect_1"),
-            received: "old-cache-key"
+            expected: readBodyTopologySourceSignature(engine, "body_rect_1"),
+            received: "old-source-signature"
           }
         ]
       }
@@ -8680,7 +8705,7 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           derivedExactMetadata: {
             bodyId: "body_rect_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               engine,
               "body_rect_1"
             ),
@@ -8718,7 +8743,7 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           derivedExactMetadata: {
             bodyId: "body_rect_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               engine,
               "body_rect_1"
             ),
@@ -8801,13 +8826,15 @@ describe("cad-core", () => {
     });
 
     if (updated.ok && updated.query === "body.topology") {
-      expect(updated.topology.sourceIdentity.cacheKey).not.toEqual(
-        initial.topology.sourceIdentity.cacheKey
+      expect(updated.topology.sourceIdentity.signature).not.toEqual(
+        initial.topology.sourceIdentity.signature
       );
-      expect(updated.topology.sourceIdentity.cacheKey).toContain(
-        '"side":"symmetric"'
+      expect(updated.topology.sourceIdentity.signature).toMatch(
+        /^body-topology-source:v1:[a-f0-9]{64}$/
       );
-      expect(updated.topology.sourceIdentity.cacheKey).toContain('"width":6');
+      expect(updated.topology.sourceIdentity.signature).not.toContain(
+        '"width":6'
+      );
     } else {
       throw new Error("Expected updated body topology response.");
     }
@@ -8924,7 +8951,7 @@ describe("cad-core", () => {
         bodyId: "body_add_1",
         derivedExactMetadata: createExactMetadataSnapshot({
           bodyId: "body_add_1",
-          sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+          sourceIdentitySignature: readBodyTopologySourceSignature(
             engine,
             "body_add_1"
           ),
@@ -8964,7 +8991,7 @@ describe("cad-core", () => {
 
   it("reports derived exact metadata for revolve bodies without generated topology references", () => {
     const engine = createRectangleRevolveEngine();
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       "body_revolve_1"
     );
@@ -9023,7 +9050,7 @@ describe("cad-core", () => {
         bodyId: "body_revolve_1",
         derivedExactMetadata: createExactMetadataSnapshot({
           bodyId: "body_revolve_1",
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           volume: 12 * Math.PI,
           faceCount: 6,
           edgeCount: 12,
@@ -9060,7 +9087,7 @@ describe("cad-core", () => {
 
   it("marks derived revolve exact metadata stale after profile or axis edits", () => {
     const engine = createRectangleRevolveEngine();
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       "body_revolve_1"
     );
@@ -9083,7 +9110,7 @@ describe("cad-core", () => {
         bodyId: "body_revolve_1",
         derivedExactMetadata: createExactMetadataSnapshot({
           bodyId: "body_revolve_1",
-          sourceIdentityCacheKey
+          sourceIdentitySignature
         })
       }
     });
@@ -9104,8 +9131,8 @@ describe("cad-core", () => {
           {
             code: "STALE_BODY_TOPOLOGY",
             bodyId: "body_revolve_1",
-            expected: readBodyTopologySourceCacheKey(engine, "body_revolve_1"),
-            received: sourceIdentityCacheKey
+            expected: readBodyTopologySourceSignature(engine, "body_revolve_1"),
+            received: sourceIdentitySignature
           }
         ]
       }
@@ -9114,7 +9141,7 @@ describe("cad-core", () => {
 
   it("reports derived exact metadata for hole bodies without generated topology references", () => {
     const engine = createRectangleHoleEngine();
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       "body_hole_1"
     );
@@ -9166,7 +9193,7 @@ describe("cad-core", () => {
         bodyId: "body_hole_1",
         derivedExactMetadata: createExactMetadataSnapshot({
           bodyId: "body_hole_1",
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           volume: 72 - Math.PI * 0.5,
           faceCount: 8,
           edgeCount: 18,
@@ -9203,7 +9230,7 @@ describe("cad-core", () => {
 
   it("reports stale, missing, and invalid derived hole exact metadata snapshots", () => {
     const engine = createRectangleHoleEngine();
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       "body_hole_1"
     );
@@ -9216,7 +9243,7 @@ describe("cad-core", () => {
           bodyId: "body_hole_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_hole_1",
-            sourceIdentityCacheKey: "old-hole-cache-key"
+            sourceIdentitySignature: "old-hole-source-signature"
           })
         }
       })
@@ -9237,8 +9264,8 @@ describe("cad-core", () => {
           {
             code: "STALE_BODY_TOPOLOGY",
             bodyId: "body_hole_1",
-            expected: sourceIdentityCacheKey,
-            received: "old-hole-cache-key"
+            expected: sourceIdentitySignature,
+            received: "old-hole-source-signature"
           }
         ]
       }
@@ -9252,7 +9279,7 @@ describe("cad-core", () => {
           bodyId: "body_hole_1",
           derivedExactMetadata: {
             bodyId: "body_hole_1",
-            sourceIdentityCacheKey,
+            sourceIdentitySignature,
             status: "ready"
           }
         }
@@ -9285,7 +9312,7 @@ describe("cad-core", () => {
           bodyId: "body_hole_1",
           derivedExactMetadata: {
             bodyId: "body_hole_1",
-            sourceIdentityCacheKey,
+            sourceIdentitySignature,
             status: "kernel-failed",
             error: {
               code: "EMPTY_RESULT",
@@ -9323,7 +9350,7 @@ describe("cad-core", () => {
           bodyId: "body_hole_1",
           derivedExactMetadata: {
             bodyId: "body_hole_1",
-            sourceIdentityCacheKey,
+            sourceIdentitySignature,
             status: "kernel-failed",
             error: {
               code: "INVALID_RESULT",
@@ -9383,7 +9410,7 @@ describe("cad-core", () => {
       }
     });
 
-    const primitiveCacheKey = readBodyTopologySourceCacheKey(
+    const primitiveSignature = readBodyTopologySourceSignature(
       engine,
       "body:box_1"
     );
@@ -9395,7 +9422,7 @@ describe("cad-core", () => {
           bodyId: "body:box_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body:box_1",
-            sourceIdentityCacheKey: primitiveCacheKey
+            sourceIdentitySignature: primitiveSignature
           })
         }
       })
@@ -9438,7 +9465,7 @@ describe("cad-core", () => {
           bodyId: "body_rect_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_rect_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               engine,
               "body_rect_1"
             )
@@ -9485,7 +9512,7 @@ describe("cad-core", () => {
           bodyId: "body_revolve_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_revolve_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               engine,
               "body_revolve_1"
             ),
@@ -9534,7 +9561,7 @@ describe("cad-core", () => {
           bodyId: "body_hole_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_hole_1",
-            sourceIdentityCacheKey: readBodyTopologySourceCacheKey(
+            sourceIdentitySignature: readBodyTopologySourceSignature(
               engine,
               "body_hole_1"
             ),
@@ -10475,7 +10502,7 @@ describe("cad-core", () => {
     for (const scenario of scenarios) {
       const engine = scenario.createEngine();
       const beforeJson = exportCadProjectJson(engine);
-      const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      const sourceIdentitySignature = readBodyTopologySourceSignature(
         engine,
         scenario.bodyId
       );
@@ -10486,7 +10513,7 @@ describe("cad-core", () => {
           derivedExactMetadata: [
             createExactMetadataSnapshot({
               bodyId: scenario.bodyId,
-              sourceIdentityCacheKey,
+              sourceIdentitySignature,
               volume: scenario.volume
             })
           ]
@@ -10505,7 +10532,7 @@ describe("cad-core", () => {
             sourceKind: scenario.sourceKind,
             extentSource: "kernel-derived",
             measurementConfidence: "kernel-derived",
-            sourceIdentityCacheKey,
+            sourceIdentitySignature,
             worldBounds: {
               min: [0, 0, 0],
               max: [4, 2, 3]
@@ -10541,7 +10568,7 @@ describe("cad-core", () => {
       operationMode: "cut"
     });
 
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       "body_cut"
     );
@@ -10552,7 +10579,7 @@ describe("cad-core", () => {
         derivedExactMetadata: [
           createExactMetadataSnapshot({
             bodyId: "body_cut",
-            sourceIdentityCacheKey,
+            sourceIdentitySignature,
             volume: 18
           })
         ]
@@ -10571,7 +10598,7 @@ describe("cad-core", () => {
           sourceKind: "authoredExtrude",
           extentSource: "kernel-derived",
           measurementConfidence: "kernel-derived",
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           volume: 18
         }
       ],
@@ -10592,11 +10619,11 @@ describe("cad-core", () => {
         description: "stale",
         metadata: (bodyId: string): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey: "stale-cache-key",
+          sourceIdentitySignature: "stale-source-signature",
           status: "ready",
           metadata: createExactMetadataSnapshot({
             bodyId,
-            sourceIdentityCacheKey: "stale-cache-key"
+            sourceIdentitySignature: "stale-source-signature"
           }).metadata
         }),
         code: "DERIVED_EXACT_METADATA_STALE",
@@ -10607,10 +10634,10 @@ describe("cad-core", () => {
         description: "unsupported",
         metadata: (
           bodyId: string,
-          sourceIdentityCacheKey: string
+          sourceIdentitySignature: string
         ): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           status: "unsupported",
           error: {
             code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
@@ -10625,10 +10652,10 @@ describe("cad-core", () => {
         description: "unavailable binding",
         metadata: (
           bodyId: string,
-          sourceIdentityCacheKey: string
+          sourceIdentitySignature: string
         ): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           status: "unavailable-binding",
           error: {
             code: "UNAVAILABLE_BINDING",
@@ -10643,10 +10670,10 @@ describe("cad-core", () => {
         description: "empty result",
         metadata: (
           bodyId: string,
-          sourceIdentityCacheKey: string
+          sourceIdentitySignature: string
         ): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           status: "kernel-failed",
           error: {
             code: "EMPTY_RESULT",
@@ -10661,10 +10688,10 @@ describe("cad-core", () => {
         description: "invalid result",
         metadata: (
           bodyId: string,
-          sourceIdentityCacheKey: string
+          sourceIdentitySignature: string
         ): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           status: "kernel-failed",
           error: {
             code: "INVALID_RESULT",
@@ -10679,10 +10706,10 @@ describe("cad-core", () => {
         description: "kernel failure",
         metadata: (
           bodyId: string,
-          sourceIdentityCacheKey: string
+          sourceIdentitySignature: string
         ): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           status: "kernel-failed",
           error: {
             code: "KERNEL_FAILED",
@@ -10697,10 +10724,10 @@ describe("cad-core", () => {
         description: "invalid ready metadata",
         metadata: (
           bodyId: string,
-          sourceIdentityCacheKey: string
+          sourceIdentitySignature: string
         ): CadBodyDerivedExactMetadataSnapshot => ({
           bodyId,
-          sourceIdentityCacheKey,
+          sourceIdentitySignature,
           status: "ready",
           metadata: {
             source: "kernel-derived",
@@ -10717,13 +10744,13 @@ describe("cad-core", () => {
     for (const expected of expectedWarnings) {
       const engine = createRectangleRevolveEngine();
       const bodyId = "body_revolve_1";
-      const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      const sourceIdentitySignature = readBodyTopologySourceSignature(
         engine,
         bodyId
       );
       const metadata =
         typeof expected.metadata === "function"
-          ? expected.metadata(bodyId, sourceIdentityCacheKey)
+          ? expected.metadata(bodyId, sourceIdentitySignature)
           : expected.metadata;
       const response = engine.executeQuery({
         version: "cadops.v1",
@@ -10755,13 +10782,13 @@ describe("cad-core", () => {
   it("keeps source-derived measurements unchanged while body topology carries exact measurement health", () => {
     const engine = createRectangleChamferEngine();
     const bodyId = "body_chamfer_1";
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       bodyId
     );
     const exactMetadata = createExactMetadataSnapshot({
       bodyId,
-      sourceIdentityCacheKey,
+      sourceIdentitySignature,
       volume: 22
     });
     const measurements = engine.executeQuery({
@@ -10828,7 +10855,7 @@ describe("cad-core", () => {
     for (const scenario of scenarios) {
       const engine = scenario.createEngine();
       const beforeJson = exportCadProjectJson(engine);
-      const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+      const sourceIdentitySignature = readBodyTopologySourceSignature(
         engine,
         scenario.bodyId
       );
@@ -10839,7 +10866,7 @@ describe("cad-core", () => {
           derivedExactMetadata: [
             createExactMetadataSnapshot({
               bodyId: scenario.bodyId,
-              sourceIdentityCacheKey,
+              sourceIdentitySignature,
               volume: scenario.volume
             })
           ]
@@ -10868,7 +10895,7 @@ describe("cad-core", () => {
   it("reports stale derived exact metadata through project health topology fields", () => {
     const engine = createRectangleRevolveEngine();
     const bodyId = "body_revolve_1";
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       bodyId
     );
@@ -10892,7 +10919,7 @@ describe("cad-core", () => {
           derivedExactMetadata: [
             createExactMetadataSnapshot({
               bodyId,
-              sourceIdentityCacheKey
+              sourceIdentitySignature
             })
           ]
         }
@@ -14625,11 +14652,11 @@ describe("edge finishing feature source models", () => {
 
     const chamferJson = exportCadProjectJson(chamferEngine);
     const filletJson = exportCadProjectJson(filletEngine);
-    const chamferCacheKey = readBodyTopologySourceCacheKey(
+    const chamferSignature = readBodyTopologySourceSignature(
       chamferEngine,
       "body_chamfer_1"
     );
-    const filletCacheKey = readBodyTopologySourceCacheKey(
+    const filletSignature = readBodyTopologySourceSignature(
       filletEngine,
       "body_fillet_1"
     );
@@ -14642,7 +14669,7 @@ describe("edge finishing feature source models", () => {
           bodyId: "body_chamfer_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_chamfer_1",
-            sourceIdentityCacheKey: chamferCacheKey,
+            sourceIdentitySignature: chamferSignature,
             volume: 23.5,
             faceCount: 7,
             edgeCount: 15,
@@ -14683,7 +14710,7 @@ describe("edge finishing feature source models", () => {
           bodyId: "body_fillet_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_fillet_1",
-            sourceIdentityCacheKey: filletCacheKey,
+            sourceIdentitySignature: filletSignature,
             volume: 23.8,
             faceCount: 8,
             edgeCount: 18,
@@ -14759,7 +14786,7 @@ describe("edge finishing feature source models", () => {
       distance: 0.25
     });
 
-    const sourceIdentityCacheKey = readBodyTopologySourceCacheKey(
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,
       "body_chamfer_1"
     );
@@ -14772,7 +14799,7 @@ describe("edge finishing feature source models", () => {
           bodyId: "body_chamfer_1",
           derivedExactMetadata: createExactMetadataSnapshot({
             bodyId: "body_chamfer_1",
-            sourceIdentityCacheKey: "old-edge-finish-cache-key"
+            sourceIdentitySignature: "old-edge-finish-source-signature"
           })
         }
       })
@@ -14791,8 +14818,8 @@ describe("edge finishing feature source models", () => {
           {
             code: "STALE_BODY_TOPOLOGY",
             bodyId: "body_chamfer_1",
-            expected: sourceIdentityCacheKey,
-            received: "old-edge-finish-cache-key"
+            expected: sourceIdentitySignature,
+            received: "old-edge-finish-source-signature"
           }
         ]
       }
@@ -14806,7 +14833,7 @@ describe("edge finishing feature source models", () => {
           bodyId: "body_chamfer_1",
           derivedExactMetadata: {
             bodyId: "body_chamfer_1",
-            sourceIdentityCacheKey,
+            sourceIdentitySignature,
             status: "ready"
           }
         }
@@ -21230,13 +21257,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
 
   it("reports exact STEP export sources without producing bytes in cad-core", () => {
     const engine = createRectangleExtrudeEngine();
+    const sourceIdentity = createCadProjectSourceIdentity(
+      exportCadProject(engine)
+    );
     const exactExport = readProjectExactExport(engine, {
       bodyIds: ["body_rect_1"],
-      sourceIdentity: {
-        algorithm: "partbench-source-v1",
-        sha256:
-          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      }
+      sourceIdentity
     });
 
     expect(exactExport).toMatchObject({
@@ -21249,7 +21275,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       writerStatus: "available",
       documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       sourceIdentityAlgorithm: "partbench-source-v1",
-      sourceIdentityStatus: "providedUnchecked",
+      requestedSourceIdentity: sourceIdentity,
+      sourceIdentityStatus: "matchedCurrent",
       requestedBodyIds: ["body_rect_1"],
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
@@ -21291,6 +21318,97 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(JSON.stringify(exactExport)).not.toContain("mesh");
     expect(JSON.stringify(exactExport)).not.toContain("opfs");
     expect(JSON.stringify(exactExport)).not.toContain("selection-buffer");
+  });
+
+  it("blocks exact STEP export sources for stale source identity requests", () => {
+    const engine = createRectangleExtrudeEngine();
+    const currentSourceIdentity = createCadProjectSourceIdentity(
+      exportCadProject(engine)
+    );
+    const staleSourceIdentity = {
+      algorithm: "partbench-source-v1" as const,
+      sha256:
+        currentSourceIdentity.sha256 === "0".repeat(64)
+          ? "1".repeat(64)
+          : "0".repeat(64)
+    };
+    const exactExport = readProjectExactExport(engine, {
+      bodyIds: ["body_rect_1"],
+      sourceIdentity: staleSourceIdentity
+    });
+
+    expect(exactExport).toMatchObject({
+      status: "unavailable",
+      available: false,
+      canExportFile: false,
+      sourceIdentityStatus: "mismatchedCurrent",
+      requestedSourceIdentity: staleSourceIdentity,
+      exportableBodyCount: 0,
+      exportSources: [],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPORT_SOURCE_IDENTITY_MISMATCH",
+          status: "unavailable",
+          expected: currentSourceIdentity.sha256,
+          received: staleSourceIdentity.sha256
+        })
+      ])
+    });
+  });
+
+  it("keeps a structured exact STEP writer-unavailable seam", () => {
+    const engine = createRectangleExtrudeEngine();
+    const structure = readProjectStructure(engine);
+    const readiness = createProjectExportReadiness({
+      document: engine.getDocument(),
+      cadOpsVersion: "cadops.v1",
+      bodies: structure.bodies,
+      exactStepWriterStatus: "unavailable"
+    });
+    const exactExport = createProjectExactExport({
+      document: engine.getDocument(),
+      cadOpsVersion: "cadops.v1",
+      bodies: structure.bodies,
+      query: { query: "project.exportExact", format: "step" },
+      documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      currentSourceIdentity: createCadProjectSourceIdentity(
+        exportCadProject(engine)
+      ),
+      exactStepWriterStatus: "unavailable"
+    });
+
+    expect(readiness).toMatchObject({
+      canExportFiles: false,
+      formats: expect.arrayContaining([
+        expect.objectContaining({
+          format: "step",
+          status: "unavailable",
+          available: false,
+          writerStatus: "unavailable",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+              status: "unavailable"
+            })
+          ])
+        })
+      ])
+    });
+    expect(exactExport).toMatchObject({
+      status: "unavailable",
+      available: false,
+      canExportFile: false,
+      writerStatus: "unavailable",
+      sourceIdentityStatus: "notProvided",
+      exportableBodyCount: 0,
+      exportSources: [],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "EXPORT_EXACT_WRITER_UNAVAILABLE",
+          status: "unavailable"
+        })
+      ])
+    });
   });
 
   it("returns structured exact STEP diagnostics for missing and unsupported bodies", () => {

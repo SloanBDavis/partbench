@@ -35,6 +35,36 @@ describe("geometry-worker", () => {
     ]);
   });
 
+  it("reports unavailable STEP exact export writer capability through the worker boundary", () => {
+    expect(
+      getGeometryWorkerExactExportCapabilities([
+        {
+          format: "step",
+          label: "STEP",
+          status: "unavailable",
+          writerAvailable: false,
+          boundary: "geometry-kernel",
+          writerBoundary: "occt-wasm",
+          packageName: "opencascade.js",
+          packageVersion: "2.0.0-test",
+          checkedBindings: ["STEPControl_Writer_1"],
+          availableBindings: [],
+          missingBindings: ["STEPControl_Writer_1"],
+          reason: "Missing test binding."
+        }
+      ])
+    ).toEqual([
+      expect.objectContaining({
+        format: "step",
+        status: "unavailable",
+        writerAvailable: false,
+        boundary: "geometry-worker",
+        kernelBoundary: "geometry-kernel",
+        missingBindings: ["STEPControl_Writer_1"]
+      })
+    ]);
+  });
+
   it("creates a typed exact STEP export worker request", () => {
     const request = createExactStepExportWorkerRequest({
       id: "worker_req_step_export",

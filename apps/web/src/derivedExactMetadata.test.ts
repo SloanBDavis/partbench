@@ -237,12 +237,13 @@ describe("derivedExactMetadata", () => {
 
     const snapshot = createBodyTopologyDerivedExactMetadataSnapshot(
       entry,
-      'body-topology:v1:{"bodyId":"body_rect_1"}'
+      "body-topology-source:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     );
 
     expect(snapshot).toEqual({
       bodyId: "body_rect_1",
-      sourceIdentityCacheKey: 'body-topology:v1:{"bodyId":"body_rect_1"}',
+      sourceIdentitySignature:
+        "body-topology-source:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       status: "ready",
       metadata: {
         source: "kernel-derived",
@@ -300,22 +301,33 @@ describe("derivedExactMetadata", () => {
         errorCount: 0
       },
       new Map([
-        ["body_revolve_1", "body-topology:v1:revolve"],
-        ["body_hole_1", "body-topology:v1:hole"],
-        ["body_chamfer_1", "body-topology:v1:chamfer"]
+        [
+          "body_revolve_1",
+          "body-topology-source:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        ],
+        [
+          "body_hole_1",
+          "body-topology-source:v1:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        ],
+        [
+          "body_chamfer_1",
+          "body-topology-source:v1:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        ]
       ])
     );
 
     expect(snapshots).toEqual([
       expect.objectContaining({
         bodyId: "body_revolve_1",
-        sourceIdentityCacheKey: "body-topology:v1:revolve",
+        sourceIdentitySignature:
+          "body-topology-source:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         status: "ready",
         metadata: expect.objectContaining({ volume: 64 })
       }),
       expect.objectContaining({
         bodyId: "body_hole_1",
-        sourceIdentityCacheKey: "body-topology:v1:hole",
+        sourceIdentitySignature:
+          "body-topology-source:v1:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         status: "unsupported",
         error: expect.objectContaining({
           code: "UNSUPPORTED_EXACT_METADATA_SOURCE"
@@ -332,9 +344,18 @@ describe("derivedExactMetadata", () => {
           errorCount: 0
         },
         new Map([
-          ["body_revolve_1", "body-topology:v1:revolve"],
-          ["body_hole_1", "body-topology:v1:hole"],
-          ["body_chamfer_1", "body-topology:v1:chamfer"]
+          [
+            "body_revolve_1",
+            "body-topology-source:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          [
+            "body_hole_1",
+            "body-topology-source:v1:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          ],
+          [
+            "body_chamfer_1",
+            "body-topology-source:v1:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          ]
         ])
       )
     ).toEqual(snapshots);
@@ -426,10 +447,10 @@ describe("derivedExactMetadata", () => {
     const engine = createExtrudedRectangleEngine();
     const bodyId = "body_rect_1";
     const beforeJson = exportCadProjectJson(engine);
-    const sourceIdentityCacheKey = readBodyTopologyCacheKey(engine, bodyId);
+    const sourceIdentitySignature = readBodyTopologySignature(engine, bodyId);
     const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
       createReadyExactMetadataEntry(bodyId, "extrude", 42),
-      sourceIdentityCacheKey
+      sourceIdentitySignature
     );
 
     if (!derivedExactMetadata) {
@@ -466,10 +487,10 @@ describe("derivedExactMetadata", () => {
   it("enriches authored revolve topology with derived exact metadata while generated references remain unsupported", () => {
     const engine = createRevolvedRectangleEngine();
     const bodyId = "body_revolve_1";
-    const sourceIdentityCacheKey = readBodyTopologyCacheKey(engine, bodyId);
+    const sourceIdentitySignature = readBodyTopologySignature(engine, bodyId);
     const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
       createReadyExactMetadataEntry(bodyId, "revolve", 64),
-      sourceIdentityCacheKey
+      sourceIdentitySignature
     );
 
     if (!derivedExactMetadata) {
@@ -516,10 +537,10 @@ describe("derivedExactMetadata", () => {
   it("enriches authored hole topology with derived exact metadata while generated references remain unsupported", () => {
     const engine = createHoleEngine();
     const bodyId = "body_hole_1";
-    const sourceIdentityCacheKey = readBodyTopologyCacheKey(engine, bodyId);
+    const sourceIdentitySignature = readBodyTopologySignature(engine, bodyId);
     const derivedExactMetadata = createBodyTopologyDerivedExactMetadataSnapshot(
       createReadyExactMetadataEntry(bodyId, "hole", 68),
-      sourceIdentityCacheKey
+      sourceIdentitySignature
     );
 
     if (!derivedExactMetadata) {
@@ -1510,7 +1531,7 @@ function createReadyExactMetadataEntry(
   };
 }
 
-function readBodyTopologyCacheKey(engine: CadEngine, bodyId: string): string {
+function readBodyTopologySignature(engine: CadEngine, bodyId: string): string {
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: { query: "body.topology", bodyId }
@@ -1520,7 +1541,7 @@ function readBodyTopologyCacheKey(engine: CadEngine, bodyId: string): string {
     throw new Error(`Expected topology response for ${bodyId}.`);
   }
 
-  return response.topology.sourceIdentity.cacheKey;
+  return response.topology.sourceIdentity.signature;
 }
 
 function createRuntime(

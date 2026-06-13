@@ -171,7 +171,7 @@ describe("cad-protocol", () => {
         sha256:
           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       },
-      sourceIdentityStatus: "providedUnchecked",
+      sourceIdentityStatus: "matchedCurrent",
       requestedBodyIds: ["body_1"],
       bodyCount: 1,
       sourceSupportedBodyCount: 1,
@@ -907,7 +907,8 @@ describe("cad-protocol", () => {
           derivedExactMetadata: [
             {
               bodyId: "body_hole_1",
-              sourceIdentityCacheKey: "body-topology:v1:hole",
+              sourceIdentitySignature:
+                "body-topology-source:v1:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
               status: "unsupported",
               error: {
                 code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
@@ -940,7 +941,8 @@ describe("cad-protocol", () => {
           derivedExactMetadata: [
             {
               bodyId: "body_revolve_1",
-              sourceIdentityCacheKey: "body-topology:v1:revolve",
+              sourceIdentitySignature:
+                "body-topology-source:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
               status: "ready",
               metadata: {
                 source: "kernel-derived",
@@ -1537,7 +1539,8 @@ describe("cad-protocol", () => {
         sourceIdentity: {
           bodyId: "body_1",
           sourceKind: "authoredExtrude",
-          cacheKey: "body-topology:v1:{}",
+          signature:
+            "body-topology-source:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           units: "mm",
           featureId: "feat_1",
           operationMode: "newBody",
@@ -1585,7 +1588,8 @@ describe("cad-protocol", () => {
         bodyId: "body_1",
         derivedExactMetadata: {
           bodyId: "body_1",
-          sourceIdentityCacheKey: "body-topology:v1:{}",
+          sourceIdentitySignature:
+            "body-topology-source:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           status: "ready",
           metadata: {
             source: "kernel-derived",
@@ -1623,7 +1627,8 @@ describe("cad-protocol", () => {
         sourceIdentity: {
           bodyId: "body_1",
           sourceKind: "authoredExtrude",
-          cacheKey: "body-topology:v1:{}",
+          signature:
+            "body-topology-source:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           units: "mm"
         },
         topologyModel: "semantic-source",
@@ -1919,7 +1924,8 @@ describe("cad-protocol", () => {
           sourceKind: "authoredRevolve",
           extentSource: "kernel-derived",
           measurementConfidence: "kernel-derived",
-          sourceIdentityCacheKey: "body-topology:v1:revolve",
+          sourceIdentitySignature:
+            "body-topology-source:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           worldBounds: {
             min: [-1, -1, 0],
             max: [1, 1, 2],
@@ -1950,8 +1956,10 @@ describe("cad-protocol", () => {
           bodyId: "body_revolve",
           featureId: "feat_revolve",
           status: "stale",
-          expected: "body-topology:v1:new",
-          received: "body-topology:v1:old"
+          expected:
+            "body-topology-source:v1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          received:
+            "body-topology-source:v1:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
         }
       ]
     };

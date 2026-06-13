@@ -733,7 +733,7 @@ async function v7BrowserWorkflowSmoke({
   const projectPanel = getSectionByAriaLabel("Project");
   await waitFor(
     () =>
-      includesText(projectPanel, "Source snapshot") &&
+      includesText(projectPanel, "Project contents") &&
       includesText(projectPanel, "Export readiness"),
     "project file panel"
   );
@@ -745,28 +745,16 @@ async function v7BrowserWorkflowSmoke({
     assertIncludes(projectPanel, "Save As", "wcad-save-as-action"),
     assertIncludes(projectPanel, "Storage availability", "storage-status"),
     assertIncludes(projectPanel, "JSON import/export", "json-storage-mode"),
-    assertIncludes(
-      projectPanel,
-      "Direct browser file handles",
-      "direct-file-status"
-    ),
-    assertIncludes(
-      projectPanel,
-      "OPFS browser cache",
-      "opfs-capability-status"
-    ),
-    assertIncludes(projectPanel, "OPFS cache", "opfs-cache-status"),
+    assertIncludes(projectPanel, "Direct open/save", "direct-file-status"),
+    assertIncludes(projectPanel, "Local mesh cache", "opfs-capability-status"),
+    assertIncludes(projectPanel, "Local mesh cache", "opfs-cache-status"),
     assertIncludes(projectPanel, "Clear cache", "opfs-cache-clear-action"),
     assertIncludes(
       projectPanel,
       "Optional rebuildable cache",
       "opfs-cache-boundary"
     ),
-    assertIncludes(
-      projectPanel,
-      "Native .wcad package",
-      "wcad-deferred-status"
-    ),
+    assertIncludes(projectPanel, ".wcad project file", "wcad-deferred-status"),
     assertIncludes(projectPanel, "STEP", "step-export-status"),
     assertIncludes(projectPanel, "Download STEP", "step-download-action"),
     assertIncludes(projectPanel, "Mesh/GLB visualization", "mesh-glb-status")

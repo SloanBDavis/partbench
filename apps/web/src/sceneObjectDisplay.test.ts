@@ -105,7 +105,7 @@ describe("scene object display helpers", () => {
       sourceIdentity: {
         bodyId: "body_1",
         sourceKind: "authoredExtrude",
-        cacheKey: "topology:key",
+        signature: "topology:signature",
         units: "mm"
       },
       topologyModel: "semantic-source",

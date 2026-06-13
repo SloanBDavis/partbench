@@ -19,7 +19,7 @@ describe("project storage capability helpers", () => {
       mode: "wcadPackage",
       availability: "active",
       available: true,
-      label: "Native .wcad package"
+      label: ".wcad project file"
     });
     expect(status.jsonImportExport).toMatchObject({
       mode: "jsonImportExport",
@@ -43,9 +43,7 @@ describe("project storage capability helpers", () => {
       availability: "available",
       available: true
     });
-    expect(status.fileSystemAccess.limitation).toContain(
-      "app-only browser state"
-    );
+    expect(status.fileSystemAccess.limitation).toContain("browser session");
   });
 
   it("reports File System Access as unavailable unless both picker APIs are present", () => {
@@ -90,7 +88,7 @@ describe("project storage capability helpers", () => {
       mode: "wcadPackage",
       availability: "unavailable",
       available: false,
-      label: "Native .wcad package"
+      label: ".wcad project file"
     });
     expect(status.wcadPackage.detail).toContain("missing both direct file");
   });
@@ -106,7 +104,7 @@ describe("project storage capability helpers", () => {
       mode: "wcadPackage",
       availability: "active",
       available: true,
-      label: "Native .wcad package"
+      label: ".wcad project file"
     });
     expect(status.wcadPackage.nextStep).toContain("direct .wcad");
   });

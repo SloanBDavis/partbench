@@ -152,17 +152,20 @@ import {
   createProjectPackageReadiness,
   createWcadPackageEntryMetadata,
   createWcadSourceIdentity,
+  createWcadSourceIdentitySync,
   validateWcadManifest,
   validateWcadManifestSourceIdentity,
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
+import { SHA256_HEX_PATTERN } from "./sha256";
 import { readZipStore, writeZipStore } from "./wcadZip";
 
 export {
   createProjectPackageReadiness,
   createWcadPackageEntryMetadata,
   createWcadSourceIdentity,
+  createWcadSourceIdentitySync,
   validateWcadManifest,
   validateWcadManifestSourceIdentity,
   validateWcadPackageCacheEntries,
@@ -1070,7 +1073,10 @@ export class CadEngine {
           cadOpsVersion: request.version,
           bodies: structure.bodies,
           query: request.query,
-          documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+          documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+          currentSourceIdentity: createCadProjectSourceIdentity(
+            exportCadProject(this)
+          )
         });
       }
 
@@ -1798,6 +1804,33 @@ export function exportCadProject(engine: CadEngine): CadProject {
     history: engine.getTransactions(),
     redoStack: engine.getRedoStack()
   };
+}
+
+export function createCadProjectSourceIdentity(
+  project: CadProject
+): WcadSourceIdentity {
+  if (project.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+    throw new WcadPackageImportError([
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
+        "error",
+        "WCAD source identity only supports the current project schema.",
+        "$.schemaVersion",
+        CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        project.schemaVersion
+      )
+    ]);
+  }
+
+  return createWcadSourceIdentitySync({
+    documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+    units: project.document.units,
+    documentBytes: encodeCanonicalCbor(project.document),
+    commandsBytes: encodeCanonicalCbor({
+      history: project.history,
+      redoStack: project.redoStack
+    })
+  });
 }
 
 export function exportCadProjectJson(engine: CadEngine): string {
@@ -3668,7 +3701,8 @@ function isWcadSourceIdentityInput(
     isRecord(value) &&
     Object.keys(value).length === 2 &&
     value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
-    typeof value.sha256 === "string"
+    typeof value.sha256 === "string" &&
+    SHA256_HEX_PATTERN.test(value.sha256)
   );
 }
 
@@ -3715,7 +3749,7 @@ function isCadBodyDerivedExactMetadataSnapshot(
   if (
     !isRecord(value) ||
     typeof value.bodyId !== "string" ||
-    typeof value.sourceIdentityCacheKey !== "string" ||
+    typeof value.sourceIdentitySignature !== "string" ||
     !isCadBodyDerivedExactMetadataStatus(value.status)
   ) {
     return false;
@@ -10839,14 +10873,14 @@ function createKernelDerivedBodyExtent(
         message: `Kernel-derived exact metadata is unavailable for body extents: ${topology.bodyId}`,
         bodyId: topology.bodyId,
         featureId,
-        expected: topology.sourceIdentity.cacheKey
+        expected: topology.sourceIdentity.signature
       }
     };
   }
 
   if (
     metadata.bodyId !== topology.bodyId ||
-    metadata.sourceIdentityCacheKey !== topology.sourceIdentity.cacheKey
+    metadata.sourceIdentitySignature !== topology.sourceIdentity.signature
   ) {
     return {
       ok: false,
@@ -10857,10 +10891,10 @@ function createKernelDerivedBodyExtent(
         bodyId: topology.bodyId,
         featureId,
         status: "stale",
-        expected: topology.sourceIdentity.cacheKey,
+        expected: topology.sourceIdentity.signature,
         received:
           metadata.bodyId === topology.bodyId
-            ? metadata.sourceIdentityCacheKey
+            ? metadata.sourceIdentitySignature
             : metadata.bodyId
       }
     };
@@ -10904,7 +10938,7 @@ function createKernelDerivedBodyExtent(
       sourceKind: topology.sourceKind,
       extentSource: "kernel-derived",
       measurementConfidence: "kernel-derived",
-      sourceIdentityCacheKey: topology.sourceIdentity.cacheKey,
+      sourceIdentitySignature: topology.sourceIdentity.signature,
       worldBounds: exactMetadata.bounds,
       volume: exactMetadata.volume,
       ...(topology.sourceIdentity.sourceSketchId
@@ -10960,8 +10994,8 @@ function createDerivedExactMetadataStatusWarning(
       message:
         metadata.error?.message ??
         `Kernel-derived exact metadata is stale for body extents: ${topology.bodyId}`,
-      expected: topology.sourceIdentity.cacheKey,
-      received: errorCode ?? metadata.sourceIdentityCacheKey
+      expected: topology.sourceIdentity.signature,
+      received: errorCode ?? metadata.sourceIdentitySignature
     };
   }
 

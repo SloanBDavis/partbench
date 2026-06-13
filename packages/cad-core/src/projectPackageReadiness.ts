@@ -18,6 +18,7 @@ import {
   type WcadReadinessStatus,
   type WcadSourceIdentity
 } from "@web-cad/cad-protocol";
+import { SHA256_HEX_PATTERN, sha256Hex } from "./sha256";
 
 interface ProjectPackageReadinessInput {
   readonly cadOpsVersion: CadOpsVersion;
@@ -60,8 +61,6 @@ const SUPPORTED_CACHE_ARTIFACT_KINDS = [
   "packageUnpack",
   "exportIntermediate"
 ] satisfies readonly WcadPackageCacheArtifactKind[];
-
-const HEX_SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 export function createProjectPackageReadiness({
   cadOpsVersion,
@@ -225,15 +224,15 @@ function chooseReadinessStatus(
   return "supported";
 }
 
-export async function createWcadSourceIdentity({
+export function createWcadSourceIdentitySync({
   documentSchemaVersion,
   units,
   documentBytes,
   commandsBytes
-}: WcadSourceIdentityInput): Promise<WcadSourceIdentity> {
+}: WcadSourceIdentityInput): WcadSourceIdentity {
   return {
     algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
-    sha256: await sha256Hex(
+    sha256: sha256Hex(
       joinByteParts([
         utf8(`${WCAD_SOURCE_IDENTITY_ALGORITHM}\n`),
         utf8(`packageVersion:${WCAD_PACKAGE_VERSION}\n`),
@@ -246,6 +245,12 @@ export async function createWcadSourceIdentity({
       ])
     )
   };
+}
+
+export async function createWcadSourceIdentity(
+  input: WcadSourceIdentityInput
+): Promise<WcadSourceIdentity> {
+  return createWcadSourceIdentitySync(input);
 }
 
 export function validateWcadManifest(
@@ -463,7 +468,7 @@ export async function createWcadPackageEntryMetadata({
   return {
     path,
     byteLength: bytes.byteLength,
-    sha256: await sha256Hex(bytes)
+    sha256: sha256Hex(bytes)
   };
 }
 
@@ -489,7 +494,7 @@ export async function validateWcadPackageEntryBytes({
     );
   }
 
-  const actualHash = await sha256Hex(bytes);
+  const actualHash = sha256Hex(bytes);
 
   if (entry.sha256 !== actualHash) {
     issues.push(
@@ -659,7 +664,7 @@ function validateEntryMetadata(
 
   if (
     typeof value.sha256 !== "string" ||
-    !HEX_SHA256_PATTERN.test(value.sha256)
+    !SHA256_HEX_PATTERN.test(value.sha256)
   ) {
     issues.push(
       createValidationIssue(
@@ -700,7 +705,7 @@ function validateSourceIdentityObject(
 
   if (
     typeof value.sha256 !== "string" ||
-    !HEX_SHA256_PATTERN.test(value.sha256)
+    !SHA256_HEX_PATTERN.test(value.sha256)
   ) {
     issues.push(
       createValidationIssue(
@@ -797,19 +802,4 @@ function joinByteParts(parts: readonly Uint8Array[]): Uint8Array {
   }
 
   return joined;
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const crypto = globalThis.crypto?.subtle;
-
-  if (!crypto) {
-    throw new Error("SHA-256 digest support is unavailable in this runtime.");
-  }
-
-  const digestInput = new Uint8Array(bytes);
-  const digest = await crypto.digest("SHA-256", digestInput.buffer);
-
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }

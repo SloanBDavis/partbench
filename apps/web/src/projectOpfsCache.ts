@@ -9,6 +9,8 @@ export const PROJECT_OPFS_CACHE_INDEX_VERSION = "partbench.opfs-cache.v1";
 export const PROJECT_OPFS_CACHE_ROOT_NAME = "partbench-v8-cache";
 export const PROJECT_OPFS_CACHE_INDEX_FILE_NAME = "cache-index.json";
 
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
+
 export type ProjectOpfsCacheIndexVersion =
   typeof PROJECT_OPFS_CACHE_INDEX_VERSION;
 
@@ -134,6 +136,7 @@ export interface ProjectOpfsCacheFileLike {
 export interface ProjectOpfsCacheWritableLike {
   readonly write: (data: string | Uint8Array) => Promise<void> | void;
   readonly close: () => Promise<void> | void;
+  readonly abort?: () => Promise<void> | void;
 }
 
 export interface ProjectOpfsCacheTargetLike {
@@ -352,8 +355,27 @@ export async function writeProjectOpfsCacheIndexForTest(
     throw new Error("OPFS file handle cannot create a writable stream.");
   }
 
-  await writable.write(JSON.stringify(index, null, 2));
-  await writable.close();
+  await writeAndCloseProjectOpfsWritable(
+    writable,
+    JSON.stringify(index, null, 2)
+  );
+}
+
+export async function writeAndCloseProjectOpfsWritable(
+  writable: ProjectOpfsCacheWritableLike,
+  data: string | Uint8Array
+): Promise<void> {
+  try {
+    await writable.write(data);
+    await writable.close();
+  } catch (error) {
+    try {
+      await writable.abort?.();
+    } catch {
+      // Preserve the original OPFS write or close failure.
+    }
+    throw error;
+  }
 }
 
 export function validateProjectOpfsCacheIndex(
@@ -748,7 +770,7 @@ function isSourceIdentity(value: unknown): value is WcadSourceIdentity {
     isRecord(value) &&
     value.algorithm === "partbench-source-v1" &&
     typeof value.sha256 === "string" &&
-    value.sha256.length > 0
+    SHA256_HEX_PATTERN.test(value.sha256)
   );
 }
 

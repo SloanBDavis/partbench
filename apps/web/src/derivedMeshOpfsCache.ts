@@ -22,6 +22,7 @@ import {
   getProjectOpfsCacheRoot,
   readProjectOpfsCacheStatus,
   validateProjectOpfsCacheIndex,
+  writeAndCloseProjectOpfsWritable,
   type ProjectOpfsCacheDiagnostic,
   type ProjectOpfsCacheDirectoryHandleLike,
   type ProjectOpfsCacheIndex,
@@ -80,6 +81,7 @@ export type DerivedMeshCacheReadResult =
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/;
 
 export function createDerivedMeshCacheKey(
   input: DerivedMeshCacheKeyInput
@@ -438,8 +440,10 @@ async function writeIndex(
     throw new Error("OPFS cache index handle cannot create a writable stream.");
   }
 
-  await writable.write(`${JSON.stringify(index, null, 2)}\n`);
-  await writable.close();
+  await writeAndCloseProjectOpfsWritable(
+    writable,
+    `${JSON.stringify(index, null, 2)}\n`
+  );
 }
 
 async function markEntryStatus(
@@ -506,8 +510,7 @@ async function writeArtifactBytes(
     throw new Error("OPFS artifact handle cannot create a writable stream.");
   }
 
-  await writable.write(bytes);
-  await writable.close();
+  await writeAndCloseProjectOpfsWritable(writable, bytes);
 }
 
 async function createArtifactFileName(cacheKey: string): Promise<string> {
@@ -663,7 +666,8 @@ function isSourceIdentity(value: unknown): value is WcadSourceIdentity {
   return (
     isRecord(value) &&
     value.algorithm === "partbench-source-v1" &&
-    typeof value.sha256 === "string"
+    typeof value.sha256 === "string" &&
+    SHA256_HEX_PATTERN.test(value.sha256)
   );
 }
 

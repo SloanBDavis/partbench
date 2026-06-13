@@ -479,8 +479,9 @@ code {
   min-height: 22px;
   align-items: center;
   justify-content: center;
+  padding: 0 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 7px;
   background: #ffffff;
   color: var(--muted);
   font-size: 0.72rem;
@@ -1325,7 +1326,7 @@ canvas:active {
 .right-rail {
   display: grid;
   height: 100%;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   border-left: 1px solid var(--line-strong);
   background: var(--panel);
   overflow: hidden;
@@ -1814,12 +1815,24 @@ canvas:active {
   overflow: hidden;
 }
 
+.project-file-drawer {
+  order: -1;
+}
+
 .project-file-drawer[open],
 .advanced-tools-drawer[open] {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.project-file-drawer[open] {
+  height: min(64dvh, 620px);
+  max-height: min(64dvh, 620px);
+}
+
+.advanced-tools-drawer[open] {
   height: min(54dvh, 520px);
   max-height: min(54dvh, 520px);
-  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .project-file-drawer > summary,
@@ -2944,6 +2957,13 @@ button.dimension-status-row {
     height: auto;
     grid-template-rows: auto auto auto;
     border-left: 0;
+    overflow: visible;
+  }
+
+  .project-file-drawer[open],
+  .project-file-drawer .project-panel {
+    height: auto;
+    max-height: none;
     overflow: visible;
   }
 

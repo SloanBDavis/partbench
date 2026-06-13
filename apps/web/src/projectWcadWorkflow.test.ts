@@ -156,6 +156,26 @@ describe("project WCAD workflow helpers", () => {
       readBytesFromWcadFile(await handle.getFile())
     ).resolves.toEqual(bytes);
 
+    const writeFailure = new Error("permission revoked");
+    const abort = vi.fn();
+    const failingHandle: WcadFileHandleLike = {
+      getFile: async () => ({
+        arrayBuffer: async () => new ArrayBuffer(0)
+      }),
+      createWritable: async () => ({
+        write: async () => {
+          throw writeFailure;
+        },
+        close: vi.fn(),
+        abort
+      })
+    };
+
+    await expect(writeBytesToWcadHandle(failingHandle, bytes)).rejects.toThrow(
+      "permission revoked"
+    );
+    expect(abort).toHaveBeenCalledTimes(1);
+
     const savedState = createProjectFileStateFromExport(
       await exportCadProjectWcad(createRectangleExtrudeEngine()),
       {

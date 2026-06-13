@@ -301,7 +301,7 @@ export function getDerivedExactMetadataEntryForBody(
 
 export function createBodyTopologyDerivedExactMetadataSnapshot(
   entry: DerivedExactMetadataEntry | undefined,
-  sourceIdentityCacheKey: string
+  sourceIdentitySignature: string
 ): CadBodyDerivedExactMetadataSnapshot | undefined {
   if (!entry || entry.status === "pending") {
     return undefined;
@@ -310,7 +310,7 @@ export function createBodyTopologyDerivedExactMetadataSnapshot(
   if (entry.status === "ready") {
     return {
       bodyId: entry.bodyId,
-      sourceIdentityCacheKey,
+      sourceIdentitySignature,
       status: "ready",
       metadata: createCadExactMetadata(entry.metadata)
     };
@@ -319,7 +319,7 @@ export function createBodyTopologyDerivedExactMetadataSnapshot(
   if (entry.status === "unsupported") {
     return {
       bodyId: entry.bodyId,
-      sourceIdentityCacheKey,
+      sourceIdentitySignature,
       status: "unsupported",
       error: {
         code: "UNSUPPORTED_EXACT_METADATA_SOURCE",
@@ -330,7 +330,7 @@ export function createBodyTopologyDerivedExactMetadataSnapshot(
 
   return {
     bodyId: entry.bodyId,
-    sourceIdentityCacheKey,
+    sourceIdentitySignature,
     status:
       entry.error.code === "UNAVAILABLE_BINDING"
         ? "unavailable-binding"
@@ -344,28 +344,28 @@ export function createBodyTopologyDerivedExactMetadataSnapshot(
 
 export function createProjectExtentsDerivedExactMetadataSnapshots(
   snapshot: DerivedExactMetadataSnapshot,
-  sourceIdentityCacheKeysByBodyId: ReadonlyMap<string, string>
+  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string>
 ): readonly CadBodyDerivedExactMetadataSnapshot[] {
   return createProjectQueryDerivedExactMetadataSnapshots(
     snapshot,
-    sourceIdentityCacheKeysByBodyId
+    sourceIdentitySignaturesByBodyId
   );
 }
 
 export function createProjectQueryDerivedExactMetadataSnapshots(
   snapshot: DerivedExactMetadataSnapshot,
-  sourceIdentityCacheKeysByBodyId: ReadonlyMap<string, string>
+  sourceIdentitySignaturesByBodyId: ReadonlyMap<string, string>
 ): readonly CadBodyDerivedExactMetadataSnapshot[] {
   return snapshot.entries
     .map((entry) => {
-      const sourceIdentityCacheKey = sourceIdentityCacheKeysByBodyId.get(
+      const sourceIdentitySignature = sourceIdentitySignaturesByBodyId.get(
         entry.bodyId
       );
 
-      return sourceIdentityCacheKey
+      return sourceIdentitySignature
         ? createBodyTopologyDerivedExactMetadataSnapshot(
             entry,
-            sourceIdentityCacheKey
+            sourceIdentitySignature
           )
         : undefined;
     })

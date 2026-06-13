@@ -20,6 +20,8 @@ import type {
   CadSelectionReferenceOperation
 } from "@web-cad/cad-protocol";
 
+const SHA256_HEX_PATTERN = "^[a-f0-9]{64}$";
+
 export type CadMcpToolName =
   | "cad.parameter_list"
   | "cad.parameter_get"
@@ -1119,7 +1121,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
               type: "string",
               enum: [WCAD_SOURCE_IDENTITY_ALGORITHM]
             },
-            sha256: { type: "string" }
+            sha256: { type: "string", pattern: SHA256_HEX_PATTERN }
           }
         }
       }
@@ -1162,7 +1164,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
                   type: "string",
                   enum: [WCAD_SOURCE_IDENTITY_ALGORITHM]
                 },
-                sha256: { type: "string" }
+                sha256: { type: "string", pattern: SHA256_HEX_PATTERN }
               }
             }
           }
@@ -1647,7 +1649,8 @@ function isWcadSourceIdentityToolArgument(value: unknown): boolean {
     isRecord(value) &&
     Object.keys(value).length === 2 &&
     value.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
-    typeof value.sha256 === "string"
+    typeof value.sha256 === "string" &&
+    new RegExp(SHA256_HEX_PATTERN).test(value.sha256)
   );
 }
 
@@ -1832,7 +1835,7 @@ function isCadBodyDerivedExactMetadataSnapshot(
   if (
     !isRecord(value) ||
     typeof value.bodyId !== "string" ||
-    typeof value.sourceIdentityCacheKey !== "string" ||
+    typeof value.sourceIdentitySignature !== "string" ||
     !isCadBodyDerivedExactMetadataStatus(value.status)
   ) {
     return false;

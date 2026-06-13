@@ -192,10 +192,10 @@ export function ProjectJsonPanel({
       />
       <section
         className="project-workflow-section"
-        aria-label="Project source snapshot"
+        aria-label="Project contents"
       >
         <div className="project-workflow-heading">
-          <h3>Source snapshot</h3>
+          <h3>Project contents</h3>
           <span>{workflow.current.sourceLabel}</span>
         </div>
         <p className="project-workflow-detail">
@@ -210,12 +210,6 @@ export function ProjectJsonPanel({
         <summary>Storage availability</summary>
         <ProjectStorageStatus storageCapabilities={storageCapabilities} />
       </details>
-      <ProjectOpfsCacheStatusView
-        disabled={disabled}
-        status={resolvedOpfsCacheStatus}
-        onClear={onClearOpfsCache}
-        onRefresh={onRefreshOpfsCache}
-      />
       {exportReadiness && (
         <ProjectExportReadinessStatus
           disabled={disabled}
@@ -226,6 +220,12 @@ export function ProjectJsonPanel({
           onDownloadVisualization={onDownloadVisualization}
         />
       )}
+      <ProjectOpfsCacheStatusView
+        disabled={disabled}
+        status={resolvedOpfsCacheStatus}
+        onClear={onClearOpfsCache}
+        onRefresh={onRefreshOpfsCache}
+      />
       <input
         ref={jsonFileInputRef}
         className="hidden-file-input"
@@ -333,7 +333,7 @@ function ProjectFileStatus({
           )}
           detail={
             storageCapabilities.fileSystemAccessAvailable
-              ? "Browser file handles are app-only permission state."
+              ? "Direct save is available for the current browser session."
               : "Open/save uses .wcad upload and download fallback."
           }
         />
@@ -396,10 +396,10 @@ function ProjectOpfsCacheStatusView({
     <section
       id="project-opfs-cache-status"
       className="project-workflow-section"
-      aria-label="OPFS cache status"
+      aria-label="Local mesh cache status"
     >
       <div className="project-workflow-heading">
-        <h3>OPFS cache</h3>
+        <h3>Local mesh cache</h3>
         <span>{getProjectOpfsCacheStatusLabel(status)}</span>
       </div>
       <p className="project-workflow-detail">
