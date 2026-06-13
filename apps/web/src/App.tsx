@@ -1298,7 +1298,10 @@ export function App() {
     selectedGeneratedReferenceState.status === "selected" ||
     selectedGeneratedReferenceState.status === "stale"
       ? selectedGeneratedReferenceState.selection.bodyId
-      : (selectedObject?.id ?? selectedBody?.id ?? selectedId);
+      : (selectedObject?.id ??
+        selectedBody?.objectId ??
+        selectedBody?.id ??
+        selectedId);
   const renderScene = useMemo(
     () =>
       createRenderSceneInputs(

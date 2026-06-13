@@ -75,6 +75,7 @@ describe("V7 browser workflow smoke summary", () => {
         "advanced-tools-cleanup",
         "advanced-tools-scrollability",
         "circle-body-reference-contract",
+        "viewport-body-pick-selection-routing",
         "viewport-unobstructed-selection-layout",
         "attached-sketch-create",
         "consumed-body-diagnostic",

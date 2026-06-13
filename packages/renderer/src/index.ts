@@ -114,6 +114,7 @@ export interface RenderSceneOptions {
   readonly camera: RenderCamera;
   readonly size: ViewportSize;
   readonly selectedId?: string;
+  readonly hoveredId?: string;
 }
 
 export const rendererPackage: PackageInfo = {
@@ -241,7 +242,7 @@ export function renderCanvasScene(
   context: CanvasRenderingContext2D,
   options: RenderSceneOptions
 ): void {
-  const { camera, primitives, selectedId, size } = options;
+  const { camera, hoveredId, primitives, selectedId, size } = options;
   const meshes = options.meshes ?? [];
   context.clearRect(0, 0, size.width, size.height);
   drawGrid(context, camera, size);
@@ -254,23 +255,39 @@ export function renderCanvasScene(
     .sort((left, right) => right.depth - left.depth);
 
   for (const { primitive } of sorted.filter(
-    (entry) => entry.primitive.id !== selectedId
+    (entry) =>
+      entry.primitive.id !== selectedId && entry.primitive.id !== hoveredId
   )) {
-    drawPrimitive(context, primitive, camera, size, false);
+    drawPrimitive(context, primitive, camera, size, false, false);
   }
 
-  for (const mesh of meshes.filter((mesh) => mesh.id !== selectedId)) {
-    drawTriangleMesh(context, mesh, camera, size, mesh.id === selectedId);
+  for (const mesh of meshes.filter(
+    (mesh) => mesh.id !== selectedId && mesh.id !== hoveredId
+  )) {
+    drawTriangleMesh(context, mesh, camera, size, false, false);
+  }
+
+  for (const { primitive } of sorted.filter(
+    (entry) =>
+      entry.primitive.id === hoveredId && entry.primitive.id !== selectedId
+  )) {
+    drawPrimitive(context, primitive, camera, size, false, true);
+  }
+
+  for (const mesh of meshes.filter(
+    (mesh) => mesh.id === hoveredId && mesh.id !== selectedId
+  )) {
+    drawTriangleMesh(context, mesh, camera, size, false, true);
   }
 
   for (const { primitive } of sorted.filter(
     (entry) => entry.primitive.id === selectedId
   )) {
-    drawPrimitive(context, primitive, camera, size, true);
+    drawPrimitive(context, primitive, camera, size, true, false);
   }
 
   for (const mesh of meshes.filter((mesh) => mesh.id === selectedId)) {
-    drawTriangleMesh(context, mesh, camera, size, true);
+    drawTriangleMesh(context, mesh, camera, size, true, false);
   }
 }
 
@@ -279,18 +296,19 @@ function drawPrimitive(
   primitive: RenderPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   if (primitive.kind === "box") {
-    drawBox(context, primitive, camera, size, selected);
+    drawBox(context, primitive, camera, size, selected, hovered);
   } else if (primitive.kind === "cylinder") {
-    drawCylinder(context, primitive, camera, size, selected);
+    drawCylinder(context, primitive, camera, size, selected, hovered);
   } else if (primitive.kind === "sphere") {
-    drawSphere(context, primitive, camera, size, selected);
+    drawSphere(context, primitive, camera, size, selected, hovered);
   } else if (primitive.kind === "cone") {
-    drawCone(context, primitive, camera, size, selected);
+    drawCone(context, primitive, camera, size, selected, hovered);
   } else {
-    drawTorus(context, primitive, camera, size, selected);
+    drawTorus(context, primitive, camera, size, selected, hovered);
   }
 }
 
@@ -319,7 +337,8 @@ function drawBox(
   primitive: RenderBoxPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   const vertices = getBoxVertices(primitive);
   const edges = [
@@ -338,11 +357,13 @@ function drawBox(
   ] as const;
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : "#2f6f97";
-  context.lineWidth = selected ? 3 : 2;
+  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#2f6f97";
+  context.lineWidth = selected || hovered ? 3 : 2;
   context.fillStyle = selected
     ? "rgb(242 165 65 / 14%)"
-    : "rgb(47 111 151 / 10%)";
+    : hovered
+      ? "rgb(24 139 191 / 12%)"
+      : "rgb(47 111 151 / 10%)";
   fillProjectedFace(context, camera, size, [
     vertices[4],
     vertices[5],
@@ -362,13 +383,14 @@ function drawCylinder(
   primitive: RenderCylinderPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   const segments = getCylinderSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : "#6f8c3a";
-  context.lineWidth = selected ? 3 : 2;
+  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#6f8c3a";
+  context.lineWidth = selected || hovered ? 3 : 2;
 
   for (let index = 0; index < segments.top.length; index += 1) {
     const nextIndex = (index + 1) % segments.top.length;
@@ -406,13 +428,14 @@ function drawSphere(
   primitive: RenderSpherePrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   const rings = getSphereSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : "#8a4f9f";
-  context.lineWidth = selected ? 3 : 2;
+  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#8a4f9f";
+  context.lineWidth = selected || hovered ? 3 : 2;
 
   for (const ring of [rings.xy, rings.xz, rings.yz]) {
     for (let index = 0; index < ring.length; index += 1) {
@@ -434,13 +457,14 @@ function drawCone(
   primitive: RenderConePrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   const segments = getConeSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : "#a35f2a";
-  context.lineWidth = selected ? 3 : 2;
+  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#a35f2a";
+  context.lineWidth = selected || hovered ? 3 : 2;
 
   for (let index = 0; index < segments.base.length; index += 1) {
     const nextIndex = (index + 1) % segments.base.length;
@@ -471,13 +495,14 @@ function drawTorus(
   primitive: RenderTorusPrimitive,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   const rings = getTorusSegments(primitive);
 
   context.save();
-  context.strokeStyle = selected ? "#f2a541" : "#28756a";
-  context.lineWidth = selected ? 3 : 2;
+  context.strokeStyle = selected ? "#f2a541" : hovered ? "#188bbf" : "#28756a";
+  context.lineWidth = selected || hovered ? 3 : 2;
 
   for (const ring of [rings.center, rings.outer, rings.inner]) {
     for (let index = 0; index < ring.length; index += 1) {
@@ -511,7 +536,8 @@ function drawTriangleMesh(
   mesh: RenderTriangleMesh,
   camera: RenderCamera,
   size: ViewportSize,
-  selected: boolean
+  selected: boolean,
+  hovered: boolean
 ): void {
   const vertices = mesh.vertices.map((vertex) =>
     transformPoint(vertex, mesh.transform)
@@ -525,13 +551,17 @@ function drawTriangleMesh(
 
   context.fillStyle = selected
     ? "rgba(242, 165, 65, 0.18)"
-    : "rgba(47, 111, 151, 0.08)";
+    : hovered
+      ? "rgba(24, 139, 191, 0.14)"
+      : "rgba(47, 111, 151, 0.08)";
   drawMeshFaces(context, mesh.indices, vertices, camera, size);
 
   context.strokeStyle = selected
     ? "rgba(242, 165, 65, 0.28)"
-    : "rgba(53, 75, 91, 0.22)";
-  context.lineWidth = selected ? 1.25 : 0.75;
+    : hovered
+      ? "rgba(24, 139, 191, 0.28)"
+      : "rgba(53, 75, 91, 0.22)";
+  context.lineWidth = selected || hovered ? 1.25 : 0.75;
 
   for (const [start, end] of edges) {
     strokeProjectedLine(context, camera, size, vertices[start], vertices[end]);
@@ -544,11 +574,15 @@ function drawTriangleMesh(
   }
 
   if (displayEdges.length > 0) {
-    context.strokeStyle = selected ? "#f2a541" : "#235f86";
-    context.lineWidth = selected ? 3 : 2;
+    context.strokeStyle = selected
+      ? "#f2a541"
+      : hovered
+        ? "#188bbf"
+        : "#235f86";
+    context.lineWidth = selected || hovered ? 3 : 2;
     strokeMeshEdgeSegments(context, mesh, displayEdges, camera, size);
-  } else if (selected) {
-    context.strokeStyle = "#f2a541";
+  } else if (selected || hovered) {
+    context.strokeStyle = selected ? "#f2a541" : "#188bbf";
     context.lineWidth = 3;
 
     for (const [start, end] of edges) {

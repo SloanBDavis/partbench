@@ -178,6 +178,14 @@ describe("viewportSelectionDisplay", () => {
             message:
               "Sketch display geometry is not selectable as a command-ready CAD body from the viewport."
           }
+        ],
+        interactionDiagnostics: [
+          {
+            code: "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY",
+            status: "unsupported",
+            message:
+              "Sketch display geometry is not selectable as a command-ready CAD body from the viewport."
+          }
         ]
       }
     });
@@ -193,6 +201,76 @@ describe("viewportSelectionDisplay", () => {
           status: "unsupported",
           message:
             "Sketch display geometry is not selectable as a command-ready CAD body from the viewport."
+        }
+      ]
+    });
+  });
+
+  it("surfaces renderer-only and ambiguous viewport pick diagnostics", () => {
+    const rendererOnlyDisplay = createViewportSelectionDisplay({
+      derivedGeometryEnabled: true,
+      selectedGeneratedReferenceState: { status: "none" },
+      viewportPickIntent: {
+        kind: "renderer-only",
+        issues: [
+          {
+            code: "UNSUPPORTED_SELECTION_TARGET",
+            status: "unsupported",
+            message: "Viewport hit target is renderer-private."
+          }
+        ],
+        interactionDiagnostics: [
+          {
+            code: "VIEWPORT_RENDERER_ONLY_TARGET",
+            status: "renderer-only",
+            message: "Viewport hit target is renderer-private."
+          }
+        ]
+      }
+    });
+    const ambiguousDisplay = createViewportSelectionDisplay({
+      derivedGeometryEnabled: true,
+      selectedGeneratedReferenceState: { status: "none" },
+      viewportPickIntent: {
+        kind: "ambiguous",
+        issues: [
+          {
+            code: "AMBIGUOUS_SELECTION_TOPOLOGY",
+            status: "ambiguous",
+            message: "Viewport object hit maps to multiple CAD bodies."
+          }
+        ],
+        interactionDiagnostics: [
+          {
+            code: "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE",
+            status: "ambiguous",
+            message: "Viewport object hit maps to multiple CAD bodies."
+          }
+        ]
+      }
+    });
+
+    expect(rendererOnlyDisplay).toMatchObject({
+      selectionKind: "none",
+      title: "Viewport pick unsupported",
+      detail: "Selection target unsupported",
+      tone: "blocked",
+      diagnostics: [
+        {
+          code: "UNSUPPORTED_SELECTION_TARGET",
+          status: "unsupported"
+        }
+      ]
+    });
+    expect(ambiguousDisplay).toMatchObject({
+      selectionKind: "none",
+      title: "Viewport pick unsupported",
+      detail: "Selection target ambiguous",
+      tone: "blocked",
+      diagnostics: [
+        {
+          code: "AMBIGUOUS_SELECTION_TOPOLOGY",
+          status: "ambiguous"
         }
       ]
     });

@@ -14,7 +14,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, Node, TextDecoder */
+/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, MouseEvent, Node, PointerEvent, TextDecoder */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
@@ -479,6 +479,23 @@ async function v7BrowserWorkflowSmoke({
   pass(
     "circle-body-reference-contract",
     "feature tree circle body selection shows command-ready semantic reference state",
+    getSelectionText()
+  );
+
+  openTreePanel();
+  clickViewportAtRatio(0.5, 0.5);
+  await waitFor(
+    () => isTreePanelOpen(),
+    "viewport body pick preserved preferred tree tab"
+  );
+  openSelectionPanel();
+  await waitForBodyCommandReady(
+    ids.bodyId,
+    "viewport body pick command-ready reference state"
+  );
+  pass(
+    "viewport-body-pick-selection-routing",
+    "viewport body pick routes through semantic selection without forcing the Selection tab",
     getSelectionText()
   );
 
@@ -1254,6 +1271,47 @@ async function v7BrowserWorkflowSmoke({
 
   function getDiagnosticText() {
     return compactText(getElementByAriaLabel("Inspector").textContent, 360);
+  }
+
+  function clickViewportAtRatio(xRatio, yRatio) {
+    const canvas = getElementByAriaLabel("3D scene viewport");
+    const rect = canvas.getBoundingClientRect();
+    const clientX = rect.left + rect.width * xRatio;
+    const clientY = rect.top + rect.height * yRatio;
+    const pointerId = 9001;
+
+    canvas.dispatchEvent(
+      createPointerEvent("pointerdown", {
+        button: 0,
+        buttons: 1,
+        clientX,
+        clientY,
+        pointerId
+      })
+    );
+    canvas.dispatchEvent(
+      createPointerEvent("pointerup", {
+        button: 0,
+        buttons: 0,
+        clientX,
+        clientY,
+        pointerId
+      })
+    );
+  }
+
+  function createPointerEvent(type, init) {
+    const options = {
+      bubbles: true,
+      cancelable: true,
+      pointerType: "mouse",
+      isPrimary: true,
+      ...init
+    };
+
+    return typeof PointerEvent === "function"
+      ? new PointerEvent(type, options)
+      : new MouseEvent(type, options);
   }
 
   function getProjectJsonEditorValue(projectPanel) {

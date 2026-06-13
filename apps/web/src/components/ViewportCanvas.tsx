@@ -32,6 +32,7 @@ export function ViewportCanvas({
     createDefaultCamera()
   );
   const [size, setSize] = useState({ width: 900, height: 600 });
+  const [hoveredId, setHoveredId] = useState<string | undefined>();
   const pointerRef = useRef<
     | {
         readonly id: number;
@@ -84,11 +85,12 @@ export function ViewportCanvas({
     renderCanvasScene(context, {
       primitives,
       camera,
+      hoveredId,
       meshes,
       size,
       selectedId
     });
-  }, [camera, meshes, primitives, selectedId, size]);
+  }, [camera, hoveredId, meshes, primitives, selectedId, size]);
 
   function fitView() {
     setCamera((current) =>
@@ -161,7 +163,8 @@ export function ViewportCanvas({
           aria-label="3D scene viewport"
           tabIndex={0}
           onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
+            setCanvasPointerCapture(event.currentTarget, event.pointerId);
+            setHoveredId(undefined);
             pointerRef.current = {
               id: event.pointerId,
               x: event.clientX,
@@ -176,7 +179,12 @@ export function ViewportCanvas({
           onPointerMove={(event) => {
             const pointer = pointerRef.current;
 
-            if (!pointer || pointer.id !== event.pointerId) {
+            if (!pointer) {
+              setHoveredId(pickEventRenderId(event));
+              return;
+            }
+
+            if (pointer.id !== event.pointerId) {
               return;
             }
 
@@ -206,7 +214,7 @@ export function ViewportCanvas({
               return;
             }
 
-            event.currentTarget.releasePointerCapture(event.pointerId);
+            releaseCanvasPointerCapture(event.currentTarget, event.pointerId);
             pointerRef.current = undefined;
 
             if (pointer.moved) {
@@ -214,6 +222,7 @@ export function ViewportCanvas({
             }
 
             const id = pickEventRenderId(event);
+            setHoveredId(id);
             onSelect(id);
           }}
           onPointerCancel={(event) => {
@@ -221,6 +230,11 @@ export function ViewportCanvas({
 
             if (pointer?.id === event.pointerId) {
               pointerRef.current = undefined;
+            }
+          }}
+          onPointerLeave={() => {
+            if (!pointerRef.current) {
+              setHoveredId(undefined);
             }
           }}
           onWheel={(event) => {
@@ -251,4 +265,28 @@ export function ViewportCanvas({
       </div>
     </section>
   );
+}
+
+function setCanvasPointerCapture(
+  canvas: HTMLCanvasElement,
+  pointerId: number
+): void {
+  try {
+    canvas.setPointerCapture(pointerId);
+  } catch {
+    // Synthetic smoke-test events are not always capturable; real pointer input is.
+  }
+}
+
+function releaseCanvasPointerCapture(
+  canvas: HTMLCanvasElement,
+  pointerId: number
+): void {
+  try {
+    if (canvas.hasPointerCapture(pointerId)) {
+      canvas.releasePointerCapture(pointerId);
+    }
+  } catch {
+    // Ignore non-capturable synthetic events.
+  }
 }

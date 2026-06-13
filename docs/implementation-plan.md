@@ -106,6 +106,14 @@ These constraints remain active:
     `selection.referenceCandidates`. It does not implement full viewport
     picking, WebGPU, assemblies, persisted viewport/session state, or
     `web-cad.project.v17`.
+23. V9 Tranche B is implemented as the first direct viewport-selection slice:
+    the current canvas/app body hit path creates private V9 hit candidates,
+    resolves supported body/object-backed body picks through
+    `selection.referenceCandidates`, updates the existing semantic selection
+    state, preserves the user's Tree/Selection tab preference, and adds body
+    hover/preselection visuals. It does not implement generated face/edge
+    picking, WebGPU, assemblies, persisted viewport/session state, or
+    `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -114,8 +122,8 @@ and focused packages:
 
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
   derived-geometry orchestration, project panel, batch panel, current canvas
-  viewport, first feature tree, improved modeling workflow, and focused UI
-  helpers.
+  viewport with V9 body picking/hover routing, first feature tree, improved
+  modeling workflow, and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
@@ -1216,9 +1224,11 @@ Use these decisions when writing V9 implementation prompts:
    command-target, and measurement-target shapes plus helpers proving
    renderer/source/session separation. Full body/face/edge picking remains in
    later tranches.
-2. **Body Picking And Selection Routing** - let users select supported visible
-   bodies directly in the viewport and route them through the same semantic
-   Selection tab, inspector, modeling, and query paths as tree selection.
+2. **Body Picking And Selection Routing** - implemented. Supported visible
+   bodies can be selected directly in the viewport, routed through private V9
+   hit candidates and `selection.referenceCandidates`, and reflected in the
+   same semantic Selection tab, inspector, modeling, and query paths as tree
+   selection without forcing the left panel to switch tabs.
 3. **Generated Face/Edge Picking** - support generated planar face and generated
    edge picking for defensible current references, including named-reference
    routing and structured unsupported/ambiguous/consumed/stale diagnostics.

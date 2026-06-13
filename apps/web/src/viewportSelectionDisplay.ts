@@ -169,11 +169,18 @@ export function createViewportSelectionDisplay({
     });
   }
 
-  if (viewportPickIntent?.kind === "unsupported") {
+  if (
+    viewportPickIntent?.kind === "unsupported" ||
+    viewportPickIntent?.kind === "renderer-only" ||
+    viewportPickIntent?.kind === "ambiguous"
+  ) {
     return createDisplay({
       selectionKind: "none",
       title: "Viewport pick unsupported",
-      detail: "Selection target unsupported",
+      detail:
+        viewportPickIntent.kind === "ambiguous"
+          ? "Selection target ambiguous"
+          : "Selection target unsupported",
       tone: "blocked",
       geometry,
       diagnostics: viewportPickIntent.issues
