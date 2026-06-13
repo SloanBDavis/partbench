@@ -136,8 +136,8 @@ export function ProjectJsonPanel({
   return (
     <section className="project-panel" aria-label="Project">
       <div className="section-heading">
-        <h2>Project</h2>
-        <span>.wcad</span>
+        <h2>Project/File</h2>
+        <span>Local .wcad</span>
       </div>
       <ProjectFileStatus
         projectFile={projectFile}
@@ -190,9 +190,12 @@ export function ProjectJsonPanel({
           event.currentTarget.value = "";
         }}
       />
-      <section className="project-workflow-section" aria-label="Current JSON">
+      <section
+        className="project-workflow-section"
+        aria-label="Project source snapshot"
+      >
         <div className="project-workflow-heading">
-          <h3>Current source</h3>
+          <h3>Source snapshot</h3>
           <span>{workflow.current.sourceLabel}</span>
         </div>
         <p className="project-workflow-detail">
@@ -203,7 +206,10 @@ export function ProjectJsonPanel({
           summary={workflow.current.summary}
         />
       </section>
-      <ProjectStorageStatus storageCapabilities={storageCapabilities} />
+      <details className="advanced-options compact project-secondary-details">
+        <summary>Storage availability</summary>
+        <ProjectStorageStatus storageCapabilities={storageCapabilities} />
+      </details>
       <ProjectOpfsCacheStatusView
         disabled={disabled}
         status={resolvedOpfsCacheStatus}
@@ -238,7 +244,7 @@ export function ProjectJsonPanel({
           workflow.draft.source.kind === "edited"
         }
       >
-        <summary>JSON interchange</summary>
+        <summary>JSON debug/interchange</summary>
         <div className="button-row compact">
           <button type="button" onClick={onExport} disabled={disabled}>
             Export JSON
@@ -308,11 +314,11 @@ function ProjectFileStatus({
     <section className="project-workflow-section" aria-label="Project file">
       <div className="project-workflow-heading">
         <h3>{getProjectFileNameLabel(projectFile)}</h3>
-        <span>{getProjectFileDirtyLabel(projectFile.dirty)}</span>
+        <span>{getProjectFileDirtyLabel(projectFile)}</span>
       </div>
       <dl className="project-workflow-grid">
         <ProjectWorkflowRow
-          label="Storage"
+          label="File"
           value={getProjectFileStorageModeLabel(projectFile.mode)}
           detail={
             projectFile.lastResult?.message ??
@@ -320,7 +326,7 @@ function ProjectFileStatus({
           }
         />
         <ProjectWorkflowRow
-          label="Direct save"
+          label="Save"
           value={getProjectFileDirectSaveLabel(
             projectFile,
             storageCapabilities.fileSystemAccessAvailable
@@ -331,28 +337,30 @@ function ProjectFileStatus({
               : "Open/save uses .wcad upload and download fallback."
           }
         />
-        <ProjectWorkflowRow
-          label="Package"
-          value={projectFile.packageVersion ?? "No package"}
-          detail={
-            projectFile.documentSchemaVersion
-              ? `Document ${projectFile.documentSchemaVersion}`
-              : "No .wcad package has been opened or saved yet."
-          }
-        />
-        <ProjectWorkflowRow
-          label="Source"
-          value={
-            projectFile.sourceIdentity
-              ? formatSourceIdentityDetail(projectFile.sourceIdentity)
-              : "No identity"
-          }
-          detail={diagnosticsSummary}
-        />
       </dl>
-      {projectFile.diagnostics.length > 0 && (
-        <details className="advanced-options compact">
-          <summary>Package diagnostics</summary>
+      <details className="advanced-options compact">
+        <summary>Package details</summary>
+        <dl className="project-workflow-grid">
+          <ProjectWorkflowRow
+            label="Package"
+            value={projectFile.packageVersion ?? "No package"}
+            detail={
+              projectFile.documentSchemaVersion
+                ? `Document ${projectFile.documentSchemaVersion}`
+                : "No .wcad package has been opened or saved yet."
+            }
+          />
+          <ProjectWorkflowRow
+            label="Source"
+            value={
+              projectFile.sourceIdentity
+                ? formatSourceIdentityDetail(projectFile.sourceIdentity)
+                : "No identity"
+            }
+            detail={diagnosticsSummary}
+          />
+        </dl>
+        {projectFile.diagnostics.length > 0 && (
           <ul className="compact-list">
             {projectFile.diagnostics.map((issue, index) => (
               <li key={`${issue.code}-${issue.entryPath ?? index}`}>
@@ -360,8 +368,8 @@ function ProjectFileStatus({
               </li>
             ))}
           </ul>
-        </details>
-      )}
+        )}
+      </details>
     </section>
   );
 }
@@ -395,12 +403,11 @@ function ProjectOpfsCacheStatusView({
         <span>{getProjectOpfsCacheStatusLabel(status)}</span>
       </div>
       <p className="project-workflow-detail">
-        Browser-private rebuildable cache only; project load does not depend on
-        OPFS.
+        Optional rebuildable cache for derived visualization data.
       </p>
       <dl className="project-workflow-grid">
         <ProjectWorkflowRow
-          label="Storage"
+          label="State"
           value={status.available ? "Available" : "Unavailable"}
           detail={
             status.lastResult ??
@@ -411,16 +418,6 @@ function ProjectOpfsCacheStatusView({
           label="Entries"
           value={`${status.entryCount}`}
           detail={`Health: ${getProjectOpfsCacheHealthLabel(status)}.`}
-        />
-        <ProjectWorkflowRow
-          label="Index"
-          value={status.indexVersion}
-          detail={diagnosticsSummary}
-        />
-        <ProjectWorkflowRow
-          label="Boundary"
-          value=".wcad unchanged"
-          detail="Clearing cache does not mutate source, history, file handles, selection, or viewport state."
         />
       </dl>
       <div className="button-row compact">
@@ -440,9 +437,21 @@ function ProjectOpfsCacheStatusView({
           Clear cache
         </button>
       </div>
-      {status.diagnostics.length > 0 && (
-        <details className="advanced-options compact">
-          <summary>Cache diagnostics</summary>
+      <details className="advanced-options compact">
+        <summary>Cache details</summary>
+        <dl className="project-workflow-grid">
+          <ProjectWorkflowRow
+            label="Index"
+            value={status.indexVersion}
+            detail={diagnosticsSummary}
+          />
+          <ProjectWorkflowRow
+            label="Boundary"
+            value=".wcad unchanged"
+            detail="Clear cache does not mutate source, history, file handles, selection, or viewport state."
+          />
+        </dl>
+        {status.diagnostics.length > 0 && (
           <ul className="compact-list">
             {status.diagnostics.map((diagnostic, index) => (
               <li key={`${diagnostic.code}-${diagnostic.cacheKey ?? index}`}>
@@ -450,8 +459,8 @@ function ProjectOpfsCacheStatusView({
               </li>
             ))}
           </ul>
-        </details>
-      )}
+        )}
+      </details>
     </section>
   );
 }
@@ -488,20 +497,10 @@ function ProjectExportReadinessStatus({
       <p className="project-workflow-detail">{display.detail}</p>
       <dl className="project-workflow-grid">
         <ProjectWorkflowRow
-          label="Source bodies"
+          label="Bodies"
           value={display.bodySummary}
           detail={display.sourceDetail}
         />
-        <ProjectWorkflowRow
-          label="Boundary"
-          value={visualizationExport ? "Source + display" : "Source only"}
-          detail={display.derivedDetail}
-        />
-      </dl>
-      <dl className="project-capability-list" aria-label="Export formats">
-        {display.formatRows.map((row) => (
-          <ProjectExportReadinessRowView key={row.id} row={row} />
-        ))}
       </dl>
       {(stepFormat?.available || visualizationExport) && (
         <div className="button-row compact">
@@ -535,15 +534,33 @@ function ProjectExportReadinessStatus({
           )}
         </div>
       )}
-      {display.bodyRows.length > 0 ? (
-        <dl className="project-capability-list" aria-label="Export body status">
-          {display.bodyRows.map((row) => (
+      <details className="advanced-options compact">
+        <summary>Export diagnostics</summary>
+        <dl className="project-workflow-grid">
+          <ProjectWorkflowRow
+            label="Boundary"
+            value={visualizationExport ? "Source + display" : "Source only"}
+            detail={display.derivedDetail}
+          />
+        </dl>
+        <dl className="project-capability-list" aria-label="Export formats">
+          {display.formatRows.map((row) => (
             <ProjectExportReadinessRowView key={row.id} row={row} />
           ))}
         </dl>
-      ) : (
-        <p className="empty-state compact">No candidate export bodies</p>
-      )}
+        {display.bodyRows.length > 0 ? (
+          <dl
+            className="project-capability-list"
+            aria-label="Export body status"
+          >
+            {display.bodyRows.map((row) => (
+              <ProjectExportReadinessRowView key={row.id} row={row} />
+            ))}
+          </dl>
+        ) : (
+          <p className="empty-state compact">No candidate export bodies</p>
+        )}
+      </details>
     </section>
   );
 }
@@ -574,21 +591,11 @@ function ProjectStorageStatus({
   readonly storageCapabilities: ProjectStorageCapabilityStatus;
 }) {
   return (
-    <section className="project-workflow-section" aria-label="Save/open status">
-      <div className="project-workflow-heading">
-        <h3>Save/open status</h3>
-        <span>{storageCapabilities.wcadPackage.label}</span>
-      </div>
-      <p className="project-workflow-detail">
-        Active storage mode is .wcad package workflow; JSON remains
-        interchange/debug.
-      </p>
-      <dl className="project-capability-list">
-        {storageCapabilities.entries.map((entry) => (
-          <ProjectStorageCapabilityRow key={entry.mode} entry={entry} />
-        ))}
-      </dl>
-    </section>
+    <dl className="project-capability-list" aria-label="Storage availability">
+      {storageCapabilities.entries.map((entry) => (
+        <ProjectStorageCapabilityRow key={entry.mode} entry={entry} />
+      ))}
+    </dl>
   );
 }
 

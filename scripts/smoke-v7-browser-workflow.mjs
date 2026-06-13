@@ -307,14 +307,14 @@ async function v7BrowserWorkflowSmoke({
   pass("app-load", "app loaded without runtime exceptions");
 
   await waitFor(
-    () => Boolean(findDetailsBySummary(document.body, "Advanced tools")),
-    "advanced tools drawer"
+    () => Boolean(findDetailsBySummary(document.body, "Workspace tools")),
+    "workspace tools drawer"
   );
-  openDetailsBySummary(document.body, "Advanced tools");
+  openDetailsBySummary(document.body, "Workspace tools");
   const advancedToolTabs = getElementByAriaLabel("Tool tabs");
   const advancedToolText = normalize(advancedToolTabs.textContent);
-  const expectedToolTabs = ["Sketches", "File", "Log"];
-  const removedToolTabs = ["Batch", "Mesh"];
+  const expectedToolTabs = ["Sketches", "Log"];
+  const removedToolTabs = ["Batch", "Mesh", "File"];
   const missingExpectedToolTabs = expectedToolTabs.filter(
     (label) => !includesText(advancedToolTabs, label)
   );
@@ -325,7 +325,7 @@ async function v7BrowserWorkflowSmoke({
   if (missingExpectedToolTabs.length > 0 || visibleRemovedToolTabs.length > 0) {
     fail(
       "advanced-tools-cleanup",
-      "Advanced tools exposes only Sketches, File, and Log",
+      "Workspace tools exposes only Sketches and Log",
       [
         missingExpectedToolTabs.length > 0
           ? `missing=${missingExpectedToolTabs.join(", ")}`
@@ -341,7 +341,7 @@ async function v7BrowserWorkflowSmoke({
   } else {
     pass(
       "advanced-tools-cleanup",
-      "Advanced tools hides Batch and Mesh cleanup targets",
+      "Workspace tools hides File, Batch, and Mesh cleanup targets",
       advancedToolText
     );
   }
@@ -352,13 +352,13 @@ async function v7BrowserWorkflowSmoke({
   if (scrollability.ok) {
     pass(
       "advanced-tools-scrollability",
-      "Advanced tools panel content scrolls when it overflows",
+      "Workspace tools panel content scrolls when it overflows",
       scrollability.detail
     );
   } else {
     fail(
       "advanced-tools-scrollability",
-      "Advanced tools panel content scrolls when it overflows",
+      "Workspace tools panel content scrolls when it overflows",
       scrollability.detail
     );
   }
@@ -729,20 +729,21 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
-  openDetailsBySummary(document.body, "Advanced tools");
-  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "File");
+  openDetailsBySummary(document.body, "Project/File");
   const projectPanel = getSectionByAriaLabel("Project");
   await waitFor(
     () =>
-      includesText(projectPanel, "Current source") &&
+      includesText(projectPanel, "Source snapshot") &&
       includesText(projectPanel, "Export readiness"),
     "project file panel"
   );
   const projectChecks = [
     assertIncludes(projectPanel, "web-cad.project.v16", "current-json-schema"),
+    assertIncludes(projectPanel, "Untitled project", "untitled-project"),
+    assertIncludes(projectPanel, "Not saved", "not-saved-state"),
     assertIncludes(projectPanel, "Open .wcad", "wcad-open-action"),
     assertIncludes(projectPanel, "Save As", "wcad-save-as-action"),
-    assertIncludes(projectPanel, "Save/open status", "storage-status"),
+    assertIncludes(projectPanel, "Storage availability", "storage-status"),
     assertIncludes(projectPanel, "JSON import/export", "json-storage-mode"),
     assertIncludes(
       projectPanel,
@@ -758,7 +759,7 @@ async function v7BrowserWorkflowSmoke({
     assertIncludes(projectPanel, "Clear cache", "opfs-cache-clear-action"),
     assertIncludes(
       projectPanel,
-      "Browser-private rebuildable cache only",
+      "Optional rebuildable cache",
       "opfs-cache-boundary"
     ),
     assertIncludes(
@@ -773,7 +774,7 @@ async function v7BrowserWorkflowSmoke({
   if (projectChecks.every(Boolean)) {
     pass(
       "project-file-panel",
-      "Project/File panel reports .wcad workflow, JSON interchange, storage capability, and export readiness"
+      "Project/File panel is primary and reports .wcad workflow, JSON debug/interchange, storage capability, and export readiness"
     );
   }
 
@@ -1004,8 +1005,6 @@ async function v7BrowserWorkflowSmoke({
     "project JSON round-trip preserves selection/reference diagnostics",
     getDiagnosticText()
   );
-
-  clickButtonContaining(getElementByAriaLabel("Tool tabs"), "File");
 
   if (requireGlbDownload) {
     await waitFor(() => {
@@ -1272,7 +1271,7 @@ async function v7BrowserWorkflowSmoke({
   function getProjectJsonEditorValue(projectPanel) {
     const editor = getDetailsBySummary(
       projectPanel,
-      "JSON interchange"
+      "JSON debug/interchange"
     ).querySelector("textarea");
 
     if (!(editor instanceof HTMLTextAreaElement)) {

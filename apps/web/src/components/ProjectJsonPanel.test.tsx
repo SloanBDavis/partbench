@@ -54,7 +54,7 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
-    expect(markup).toContain("Current source");
+    expect(markup).toContain("Source snapshot");
     expect(markup).toContain("cad-core document");
     expect(markup).toContain("Loaded file");
     expect(markup).toContain("legacy-v1.json");
@@ -188,12 +188,13 @@ describe("ProjectJsonPanel", () => {
       })
     );
 
+    expect(markup).toContain("Project/File");
     expect(markup).toContain("Open .wcad");
     expect(markup).toContain("Save As");
-    expect(markup).toContain("Saved");
+    expect(markup).toContain("Untitled project");
+    expect(markup).toContain("Not saved");
     expect(markup).toContain("No project file has been saved yet");
-    expect(markup).toContain("Save/open status");
-    expect(markup).toContain("Active storage mode is .wcad package workflow");
+    expect(markup).toContain("Storage availability");
     expect(markup).toContain("JSON import/export");
     expect(markup).toContain("Available");
     expect(markup).toContain("Direct browser file handles");
@@ -203,11 +204,12 @@ describe("ProjectJsonPanel", () => {
     expect(markup).toContain("OPFS cache");
     expect(markup).toContain("Clear cache");
     expect(markup).toContain("partbench.opfs-cache.v1");
-    expect(markup).toContain("Browser-private rebuildable cache only");
+    expect(markup).toContain("Optional rebuildable cache");
     expect(markup).toContain("Native .wcad package");
     expect(markup).toContain("Active");
     expect(markup).toContain("No project source");
     expect(markup).toContain("partbench.wcad.v1");
+    expect(markup).not.toContain("partbench-project.wcad");
   });
 
   it("renders OPFS cache diagnostics without exposing implementation handles", () => {
@@ -431,7 +433,7 @@ describe("ProjectJsonPanel", () => {
       /<button type="button" disabled="">Download visualization GLB<\/button>/
     );
     const jsonInterchangeStart = markup.indexOf(
-      "<summary>JSON interchange</summary>"
+      "<summary>JSON debug/interchange</summary>"
     );
     const jsonButtonRow = markup.slice(jsonInterchangeStart);
 
@@ -474,14 +476,7 @@ describe("ProjectJsonPanel", () => {
     );
 
     const exportSectionStart = markup.indexOf('aria-label="Export readiness"');
-    const exportSectionEnd = markup.indexOf(
-      '<div class="button-row"',
-      exportSectionStart
-    );
-    const exportReadinessMarkup = markup.slice(
-      exportSectionStart,
-      exportSectionEnd
-    );
+    const exportReadinessMarkup = markup.slice(exportSectionStart);
 
     expect(exportReadinessMarkup).toContain("Unavailable");
     expect(exportReadinessMarkup).toContain("Primitive object source");

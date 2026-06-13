@@ -185,6 +185,8 @@ import {
   createProjectFileStateFromRead,
   DEFAULT_WCAD_PROJECT_FILE_NAME,
   ensureWcadFileExtension,
+  getProjectFileDirtyLabel,
+  getProjectFileNameLabel,
   isFilePickerAbort,
   pickWcadOpenFile,
   pickWcadSaveFile,
@@ -287,13 +289,9 @@ const quickTorusForm: PrimitiveCommandForm = {
   translationZ: 0
 };
 
-type UtilityPanelId = "sketches" | "history" | "project";
+type UtilityPanelId = "sketches" | "history";
 
 type ModelBrowserPanelId = "tree" | "selection";
-
-function formatSchemaBadge(schemaVersion: string): string {
-  return schemaVersion.replace("web-cad.project.", "").toUpperCase();
-}
 
 function readTransactionHistory(): readonly CadTransactionHistoryEntry[] {
   const response = engine.executeQuery({
@@ -1303,6 +1301,7 @@ export function App() {
     draftJson: projectJson,
     draftSource: projectJsonDraftSource
   });
+  const currentProjectSummary = projectJsonWorkflow.current.summary;
   const projectStorageCapabilities = useMemo(
     () => createProjectStorageCapabilityStatus(window),
     []
@@ -1318,19 +1317,12 @@ export function App() {
         : undefined,
     [derivedGeometry, derivedGeometrySources, projectExportReadiness]
   );
-  const currentProjectSummary = projectJsonWorkflow.current.summary;
   const utilityPanels: readonly {
     readonly id: UtilityPanelId;
     readonly label: string;
-    readonly count?: number | string;
   }[] = [
-    { id: "sketches", label: "Sketches", count: sketches.length },
-    { id: "history", label: "Log", count: transactionHistory.length },
-    {
-      id: "project",
-      label: "File",
-      count: formatSchemaBadge(currentProjectSummary.schemaVersion)
-    }
+    { id: "sketches", label: "Sketches" },
+    { id: "history", label: "Log" }
   ];
 
   useEffect(() => {
@@ -2729,10 +2721,61 @@ export function App() {
             }
           />
 
+          <details className="project-file-drawer">
+            <summary>
+              <span>Project/File</span>
+              <small>
+                {getProjectFileNameLabel(projectFile)} ·{" "}
+                {getProjectFileDirtyLabel(projectFile)}
+              </small>
+            </summary>
+
+            <ProjectJsonPanel
+              disabled={commandPending}
+              exportReadiness={projectExportReadiness}
+              visualizationDownloadAvailable={
+                projectStorageCapabilities.jsonDownloadAvailable
+              }
+              visualizationExport={visualizationMeshExportStatus}
+              projectJson={projectJson}
+              projectFile={projectFile}
+              opfsCacheStatus={projectOpfsCacheStatus}
+              storageCapabilities={projectStorageCapabilities}
+              workflow={projectJsonWorkflow}
+              message={projectMessage}
+              messageTone={projectMessageTone}
+              onOpenWcad={openProjectWcad}
+              onOpenWcadFileLoaded={(bytes, fileName) =>
+                void importProjectWcadBytes(bytes, fileName, "uploadedFallback")
+              }
+              onProjectJsonChange={(value) => {
+                setProjectJson(value);
+                setProjectJsonDraftSource(
+                  createProjectJsonDraftSourceForEditorValue(value)
+                );
+                setProjectMessage(undefined);
+              }}
+              onProjectFileLoaded={loadProjectFile}
+              onProjectFileError={(message) => {
+                setProjectMessage(message);
+                setProjectMessageTone("error");
+              }}
+              onRefreshOpfsCache={() => void refreshProjectOpfsCache(true)}
+              onClearOpfsCache={() => void clearProjectOpfsCache()}
+              onSaveWcad={() => void saveProjectWcad()}
+              onSaveAsWcad={() => void saveProjectWcadAs()}
+              onExport={exportProjectJson}
+              onDownload={downloadProjectJson}
+              onDownloadStep={() => void downloadExactStepExport()}
+              onDownloadVisualization={downloadVisualizationMeshExport}
+              onImport={importProjectJson}
+            />
+          </details>
+
           <details className="advanced-tools-drawer">
             <summary>
-              <span>Advanced tools</span>
-              <small>Sketches, file, log</small>
+              <span>Workspace tools</span>
+              <small>Sketches, log</small>
             </summary>
 
             <section className="utility-dock" aria-label="Workspace tools">
@@ -2753,7 +2796,6 @@ export function App() {
                     onClick={() => setActiveUtilityPanel(panel.id)}
                   >
                     <span>{panel.label}</span>
-                    {panel.count !== undefined && <small>{panel.count}</small>}
                   </button>
                 ))}
               </div>
@@ -2844,61 +2886,6 @@ export function App() {
                   hidden={activeUtilityPanel !== "history"}
                 >
                   <HistoryPanel transactions={transactionHistory} />
-                </div>
-
-                <div
-                  id="utility-panel-project"
-                  role="tabpanel"
-                  aria-labelledby="utility-tab-project"
-                  className="utility-panel"
-                  hidden={activeUtilityPanel !== "project"}
-                >
-                  <ProjectJsonPanel
-                    disabled={commandPending}
-                    exportReadiness={projectExportReadiness}
-                    visualizationDownloadAvailable={
-                      projectStorageCapabilities.jsonDownloadAvailable
-                    }
-                    visualizationExport={visualizationMeshExportStatus}
-                    projectJson={projectJson}
-                    projectFile={projectFile}
-                    opfsCacheStatus={projectOpfsCacheStatus}
-                    storageCapabilities={projectStorageCapabilities}
-                    workflow={projectJsonWorkflow}
-                    message={projectMessage}
-                    messageTone={projectMessageTone}
-                    onOpenWcad={openProjectWcad}
-                    onOpenWcadFileLoaded={(bytes, fileName) =>
-                      void importProjectWcadBytes(
-                        bytes,
-                        fileName,
-                        "uploadedFallback"
-                      )
-                    }
-                    onProjectJsonChange={(value) => {
-                      setProjectJson(value);
-                      setProjectJsonDraftSource(
-                        createProjectJsonDraftSourceForEditorValue(value)
-                      );
-                      setProjectMessage(undefined);
-                    }}
-                    onProjectFileLoaded={loadProjectFile}
-                    onProjectFileError={(message) => {
-                      setProjectMessage(message);
-                      setProjectMessageTone("error");
-                    }}
-                    onRefreshOpfsCache={() =>
-                      void refreshProjectOpfsCache(true)
-                    }
-                    onClearOpfsCache={() => void clearProjectOpfsCache()}
-                    onSaveWcad={() => void saveProjectWcad()}
-                    onSaveAsWcad={() => void saveProjectWcadAs()}
-                    onExport={exportProjectJson}
-                    onDownload={downloadProjectJson}
-                    onDownloadStep={() => void downloadExactStepExport()}
-                    onDownloadVisualization={downloadVisualizationMeshExport}
-                    onImport={importProjectJson}
-                  />
                 </div>
               </div>
             </section>

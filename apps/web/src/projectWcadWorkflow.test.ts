@@ -10,6 +10,7 @@ import {
   formatWcadValidationIssue,
   getProjectFileDirectSaveLabel,
   getProjectFileDirtyLabel,
+  getProjectFileNameLabel,
   getProjectFileStorageModeLabel,
   markProjectFileDirty,
   pickWcadOpenFile,
@@ -29,8 +30,9 @@ describe("project WCAD workflow helpers", () => {
 
     expect(initial.mode).toBe("unsaved");
     expect(getProjectFileStorageModeLabel(initial.mode)).toBe("Unsaved");
-    expect(getProjectFileDirtyLabel(initial.dirty)).toBe("Saved");
-    expect(getProjectFileDirtyLabel(dirty.dirty)).toBe("Unsaved changes");
+    expect(getProjectFileNameLabel(initial)).toBe("Untitled project");
+    expect(getProjectFileDirtyLabel(initial)).toBe("Not saved");
+    expect(getProjectFileDirtyLabel(dirty)).toBe("Not saved");
 
     const saved = createProjectFileStateFromExport(exported, {
       mode: "wcadHandle",
@@ -47,6 +49,12 @@ describe("project WCAD workflow helpers", () => {
     });
     expect(saved.sourceIdentity?.sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(saved.lastResult?.status).toBe("saved");
+    expect(getProjectFileNameLabel(saved)).toBe("bracket.wcad");
+    expect(getProjectFileDirtyLabel(saved)).toBe("Saved");
+
+    const dirtySaved = markProjectFileDirty(saved);
+
+    expect(getProjectFileDirtyLabel(dirtySaved)).toBe("Unsaved changes");
 
     const jsonFallback = createJsonFallbackProjectFileState("debug.json");
 
@@ -55,6 +63,8 @@ describe("project WCAD workflow helpers", () => {
       fileName: "debug.json",
       dirty: false
     });
+    expect(getProjectFileNameLabel(jsonFallback)).toBe("Untitled project");
+    expect(getProjectFileDirtyLabel(jsonFallback)).toBe("JSON imported");
     expect(jsonFallback.sourceIdentity).toBeUndefined();
   });
 

@@ -1078,9 +1078,12 @@ Use these decisions when writing V8 implementation prompts:
    over the historical release fixture catalog, including `.wcad` round-trip,
    JSON-to-WCAD compatibility, corruption diagnostics, STEP supported and
    unsupported paths, and source/derived/file-handle separation checks.
-10. **Product Cleanup** - make native project workflow primary, demote raw JSON
-   to debug/interchange, remove duplicate storage/export status surfaces, and
-   verify normal use does not crowd the viewport.
+10. **Product Cleanup** - completed as H: Project/File is promoted out of the
+   workspace/debug tools drawer, new projects show `Untitled project` / `Not
+   saved` until a real `.wcad` open/save occurs, JSON is labeled as
+   debug/interchange, and storage/cache/export details are collapsed into
+   inspectable disclosures while keeping primary `.wcad`, cache, STEP, GLB, and
+   JSON actions available.
 
 Review follow-ups before declaring V8 release-ready:
 

@@ -1325,7 +1325,7 @@ canvas:active {
 .right-rail {
   display: grid;
   height: 100%;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   border-left: 1px solid var(--line-strong);
   background: var(--panel);
   overflow: hidden;
@@ -1806,6 +1806,7 @@ canvas:active {
   box-shadow: var(--shadow-tight);
 }
 
+.project-file-drawer,
 .advanced-tools-drawer {
   min-height: 0;
   border-top: 1px solid var(--line-strong);
@@ -1813,6 +1814,7 @@ canvas:active {
   overflow: hidden;
 }
 
+.project-file-drawer[open],
 .advanced-tools-drawer[open] {
   display: grid;
   height: min(54dvh, 520px);
@@ -1820,6 +1822,7 @@ canvas:active {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.project-file-drawer > summary,
 .advanced-tools-drawer > summary {
   display: flex;
   align-items: center;
@@ -1835,6 +1838,7 @@ canvas:active {
   text-transform: uppercase;
 }
 
+.project-file-drawer > summary small,
 .advanced-tools-drawer > summary small {
   min-width: 0;
   overflow: hidden;
@@ -1843,6 +1847,21 @@ canvas:active {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.project-file-drawer .project-panel {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .advanced-tools-drawer .utility-dock {

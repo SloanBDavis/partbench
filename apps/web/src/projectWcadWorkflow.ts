@@ -263,8 +263,22 @@ export function getProjectFileStorageModeLabel(
   }
 }
 
-export function getProjectFileDirtyLabel(dirty: boolean): string {
-  return dirty ? "Unsaved changes" : "Saved";
+export function getProjectFileDirtyLabel(
+  state: ProjectFileWorkflowState
+): string {
+  if (state.mode === "unsaved") {
+    return "Not saved";
+  }
+
+  if (state.dirty) {
+    return "Unsaved changes";
+  }
+
+  if (state.mode === "jsonFallback") {
+    return "JSON imported";
+  }
+
+  return "Saved";
 }
 
 export function getProjectFileDirectSaveLabel(
@@ -281,7 +295,16 @@ export function getProjectFileDirectSaveLabel(
 export function getProjectFileNameLabel(
   state: ProjectFileWorkflowState
 ): string {
-  return state.fileName ?? DEFAULT_WCAD_PROJECT_FILE_NAME;
+  if (
+    state.fileName &&
+    (state.mode === "wcadHandle" ||
+      state.mode === "uploadedFallback" ||
+      state.mode === "downloadedFallback")
+  ) {
+    return state.fileName;
+  }
+
+  return "Untitled project";
 }
 
 export function createWcadFilePickerAcceptTypes(): readonly WcadFilePickerAcceptTypeLike[] {
