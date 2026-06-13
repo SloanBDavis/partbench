@@ -2035,6 +2035,138 @@ export interface CadSelectionNamedReferenceInput {
   readonly name: NamedReferenceName;
 }
 
+export type CadViewportPointerInputKind =
+  | "move"
+  | "down"
+  | "up"
+  | "drag"
+  | "click"
+  | "doubleClick"
+  | "cancel";
+
+export type CadViewportPointerDevice = "mouse" | "pen" | "touch" | "unknown";
+
+export type CadViewportPointerButton =
+  | "none"
+  | "primary"
+  | "secondary"
+  | "middle";
+
+export type CadViewportModifierKey = "alt" | "control" | "meta" | "shift";
+
+export interface CadViewportScreenPoint {
+  readonly x: number;
+  readonly y: number;
+  readonly viewportWidth?: number;
+  readonly viewportHeight?: number;
+}
+
+export interface CadViewportPointerInputIntent {
+  readonly kind: CadViewportPointerInputKind;
+  readonly point: CadViewportScreenPoint;
+  readonly device: CadViewportPointerDevice;
+  readonly button?: CadViewportPointerButton;
+  readonly buttons?: readonly CadViewportPointerButton[];
+  readonly modifiers?: readonly CadViewportModifierKey[];
+  readonly timestampMs?: number;
+}
+
+export type CadViewportDisplayEntityKind =
+  | CadGeneratedEntityKind
+  | "sketchEntity";
+
+export type CadViewportHitPrecision =
+  | "exact"
+  | "bounds"
+  | "displayApproximation";
+
+export interface CadViewportHitCandidate {
+  readonly displayEntityKind: CadViewportDisplayEntityKind;
+  readonly semanticHint?: CadSelectionReferenceInput;
+  readonly rendererHitId?: string;
+  readonly selectionBufferHitId?: string;
+  readonly precision?: CadViewportHitPrecision;
+  readonly depth?: number;
+  readonly instancePath?: readonly string[];
+  readonly assemblyPath?: readonly string[];
+}
+
+export type CadViewportInteractionStatus =
+  | "resolved"
+  | "empty"
+  | "missing"
+  | "stale"
+  | "unsupported"
+  | "ambiguous"
+  | "non-commandable"
+  | "renderer-only"
+  | "assembly-unsupported";
+
+export type CadViewportInteractionDiagnosticCode =
+  | "VIEWPORT_MISSING_HIT_TARGET"
+  | "VIEWPORT_STALE_SEMANTIC_HINT"
+  | "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE"
+  | "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY"
+  | "VIEWPORT_NON_COMMANDABLE_TARGET"
+  | "VIEWPORT_RENDERER_ONLY_TARGET"
+  | "VIEWPORT_ASSEMBLY_INSTANCE_UNSUPPORTED";
+
+export interface CadViewportInteractionDiagnostic {
+  readonly code: CadViewportInteractionDiagnosticCode;
+  readonly status: Exclude<CadViewportInteractionStatus, "resolved" | "empty">;
+  readonly message: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadViewportSelectionIntent {
+  readonly source: "viewport";
+  readonly pointer?: CadViewportPointerInputIntent;
+  readonly hitCandidate?: CadViewportHitCandidate;
+  readonly selection?: CadSelectionReferenceInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly additive?: boolean;
+}
+
+export interface CadViewportCommandTargetSummary {
+  readonly selection: CadSelectionReferenceInput;
+  readonly status: CadSelectionReferenceStatus;
+  readonly commandable: boolean;
+  readonly target?: CadSelectionReferenceCommandTarget;
+  readonly label?: string;
+  readonly commandOperations: readonly CadSelectionReferenceOperation[];
+  readonly diagnostics: readonly CadViewportInteractionDiagnostic[];
+}
+
+export interface CadViewportHoverState {
+  readonly status: CadViewportInteractionStatus;
+  readonly hitCandidate?: CadViewportHitCandidate;
+  readonly selection?: CadSelectionReferenceInput;
+  readonly commandTarget?: CadViewportCommandTargetSummary;
+  readonly diagnostics: readonly CadViewportInteractionDiagnostic[];
+}
+
+export interface CadViewportSelectionState {
+  readonly status: CadViewportInteractionStatus;
+  readonly selection?: CadSelectionReferenceInput;
+  readonly commandTarget?: CadViewportCommandTargetSummary;
+  readonly diagnostics: readonly CadViewportInteractionDiagnostic[];
+}
+
+export type CadViewportMeasurementAuthority =
+  | "semanticDocument"
+  | "sourceAnalytic"
+  | "geometryBoundaryExact"
+  | "displayApproximation"
+  | "unsupported";
+
+export interface CadViewportMeasurementTarget {
+  readonly selection?: CadSelectionReferenceInput;
+  readonly authority: CadViewportMeasurementAuthority;
+  readonly status: CadViewportInteractionStatus;
+  readonly diagnostics: readonly CadViewportInteractionDiagnostic[];
+}
+
 export type CadSelectionReferenceOperation =
   | CadGeneratedReferenceEligibleOperation
   | "reference.nameGenerated";

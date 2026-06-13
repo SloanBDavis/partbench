@@ -18,6 +18,13 @@ import type {
   CadRevolveFeatureSummary,
   CadQueryRequest,
   CadQueryResponse,
+  CadViewportCommandTargetSummary,
+  CadViewportHitCandidate,
+  CadViewportHoverState,
+  CadViewportMeasurementTarget,
+  CadViewportPointerInputIntent,
+  CadViewportSelectionIntent,
+  CadViewportSelectionState,
   HoleFeatureSnapshot,
   ProjectPackageReadinessQueryResponse,
   RevolveFeatureSnapshot,
@@ -2148,6 +2155,111 @@ describe("cad-protocol", () => {
       query: "selection.referenceCandidates",
       status: "ambiguous",
       issues: [{ code: "AMBIGUOUS_SELECTION_TOPOLOGY" }]
+    });
+  });
+
+  it("types the V9 viewport interaction contract without making private hit IDs public references", () => {
+    const pointer: CadViewportPointerInputIntent = {
+      kind: "click",
+      point: { x: 240, y: 128, viewportWidth: 1024, viewportHeight: 768 },
+      device: "mouse",
+      button: "primary",
+      modifiers: ["shift"],
+      timestampMs: 10
+    };
+    const semanticHint = {
+      type: "generatedReference",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:endCap",
+      expectedKind: "face"
+    } as const;
+    const hitCandidate: CadViewportHitCandidate = {
+      displayEntityKind: "face",
+      rendererHitId: "renderer-hit:face:17",
+      selectionBufferHitId: "selection-buffer:color:001122",
+      precision: "displayApproximation",
+      depth: 0.25,
+      semanticHint
+    };
+    const selectionIntent: CadViewportSelectionIntent = {
+      source: "viewport",
+      pointer,
+      hitCandidate,
+      selection: semanticHint,
+      requiredOperation: "feature.attachSketchPlane",
+      additive: false
+    };
+    const commandTarget: CadViewportCommandTargetSummary = {
+      selection: semanticHint,
+      status: "resolved",
+      commandable: true,
+      target: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:endCap",
+        kind: "face"
+      },
+      label: "End cap",
+      commandOperations: [
+        "feature.attachSketchPlane",
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      diagnostics: []
+    };
+    const hover: CadViewportHoverState = {
+      status: "resolved",
+      hitCandidate,
+      selection: semanticHint,
+      commandTarget,
+      diagnostics: []
+    };
+    const selectionState: CadViewportSelectionState = {
+      status: "resolved",
+      selection: semanticHint,
+      commandTarget,
+      diagnostics: []
+    };
+    const measurementTarget: CadViewportMeasurementTarget = {
+      selection: semanticHint,
+      authority: "semanticDocument",
+      status: "resolved",
+      diagnostics: []
+    };
+
+    expect(selectionIntent.hitCandidate?.rendererHitId).toBe(
+      "renderer-hit:face:17"
+    );
+    expect(hover.status).toBe("resolved");
+    expect(selectionState.commandTarget?.commandable).toBe(true);
+    expect(measurementTarget.authority).toBe("semanticDocument");
+
+    const publicCommandTargetJson = JSON.stringify(commandTarget);
+
+    expect(publicCommandTargetJson).toContain("generated:face:body_1:endCap");
+    expect(publicCommandTargetJson).not.toContain("renderer-hit");
+    expect(publicCommandTargetJson).not.toContain("selection-buffer");
+    expect(publicCommandTargetJson).not.toContain("mesh");
+    expect(publicCommandTargetJson).not.toContain("occt");
+    expect(publicCommandTargetJson).not.toContain("gpu");
+    expect(publicCommandTargetJson).not.toContain("pixel");
+    expect(publicCommandTargetJson).not.toContain("opfs");
+    expect(publicCommandTargetJson).not.toContain("fileHandle");
+  });
+
+  it("reserves future assembly context as private viewport candidate context", () => {
+    const hitCandidate: CadViewportHitCandidate = {
+      displayEntityKind: "body",
+      rendererHitId: "renderer-hit:body:1",
+      instancePath: ["assembly-root", "instance-1"],
+      assemblyPath: ["assembly-root"],
+      semanticHint: { type: "body", bodyId: "body_1" }
+    };
+
+    expect(hitCandidate.instancePath).toEqual(["assembly-root", "instance-1"]);
+    expect(hitCandidate.semanticHint).toEqual({
+      type: "body",
+      bodyId: "body_1"
     });
   });
 });

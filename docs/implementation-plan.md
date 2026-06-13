@@ -99,6 +99,13 @@ These constraints remain active:
     writes abort failed writable streams, OPFS source identities require
     canonical SHA-256 hashes, and Project/File copy/layout stays focused on the
     primary CAD workflow.
+22. V9 Tranche A is implemented as a contract and pure-helper slice:
+    renderer-agnostic pointer intent, private hit-candidate, hover/selection,
+    command-target, measurement-target, and diagnostic protocol shapes plus app
+    helpers that map supported semantic viewport hints into
+    `selection.referenceCandidates`. It does not implement full viewport
+    picking, WebGPU, assemblies, persisted viewport/session state, or
+    `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -1204,9 +1211,11 @@ Use these decisions when writing V9 implementation prompts:
 
 ### V9 Proposed Tranche Sequence
 
-1. **Viewport Interaction Contract** - define typed hit-candidate,
-   pointer-intent, hover, selection, command-target, and measurement-target
-   shapes plus helpers proving renderer/source/session separation.
+1. **Viewport Interaction Contract** - implemented as a typed protocol and
+   pure-helper slice for hit-candidate, pointer-intent, hover, selection,
+   command-target, and measurement-target shapes plus helpers proving
+   renderer/source/session separation. Full body/face/edge picking remains in
+   later tranches.
 2. **Body Picking And Selection Routing** - let users select supported visible
    bodies directly in the viewport and route them through the same semantic
    Selection tab, inspector, modeling, and query paths as tree selection.
