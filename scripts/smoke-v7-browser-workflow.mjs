@@ -500,6 +500,23 @@ async function v7BrowserWorkflowSmoke({
   );
 
   openTreePanel();
+  clickViewportAtRatio(0.5, 0.5);
+  await waitFor(
+    () => isTreePanelOpen(),
+    "viewport generated face pick preserved preferred tree tab"
+  );
+  openSelectionPanel();
+  await waitForGeneratedReferenceCommandReady(
+    ids.bodyId,
+    "viewport generated face pick command-ready reference state"
+  );
+  pass(
+    "viewport-generated-face-pick-selection-routing",
+    "viewport generated planar face pick routes through semantic selection without forcing the Selection tab",
+    getSelectionText()
+  );
+
+  openTreePanel();
   clickButtonContaining(getElementByAriaLabel("Model structure"), ids.bodyName);
   openSelectionPanel();
 
@@ -1086,6 +1103,33 @@ async function v7BrowserWorkflowSmoke({
         includesText(currentInspector, "Command-ready reference") &&
         includesText(currentModeling, "Reference contract") &&
         includesText(currentModeling, "Command-ready reference");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `inspector=${normalize(currentInspector.textContent).slice(0, 180)}`,
+            `modeling=${normalize(currentModeling.textContent).slice(0, 180)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, label);
+  }
+
+  async function waitForGeneratedReferenceCommandReady(bodyId, label) {
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        isSelectionPanelOpen() &&
+        includesText(currentInspector, bodyId) &&
+        includesText(currentInspector, "Selected reference") &&
+        includesText(currentInspector, "Command-ready") &&
+        includesText(currentModeling, "Reference contract") &&
+        includesText(currentModeling, "Command-ready reference") &&
+        includesText(currentModeling, "Create sketch on face");
 
       if (!ready) {
         throw new Error(

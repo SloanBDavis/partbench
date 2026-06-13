@@ -1,6 +1,7 @@
 import type { SceneObject } from "@web-cad/cad-core";
 import type {
   CadBodySnapshot,
+  CadGeneratedEntityKind,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
   CadViewportHitCandidate,
@@ -17,6 +18,7 @@ import {
 export type ViewportPickIntentKind =
   | "empty"
   | "body"
+  | "generatedReference"
   | "object"
   | "unsupported"
   | "missing"
@@ -36,6 +38,18 @@ export type ViewportPickIntent =
       readonly kind: "body";
       readonly selectedId: string;
       readonly bodyId: string;
+      readonly renderTargetId: string;
+      readonly semanticSelection: CadSelectionReferenceInput;
+      readonly referenceCandidates?: SelectionReferenceCandidatesQueryResponse;
+      readonly issues: readonly CadSelectionReferenceIssue[];
+      readonly interactionDiagnostics: readonly CadViewportInteractionDiagnostic[];
+    }
+  | {
+      readonly kind: "generatedReference";
+      readonly selectedId: string;
+      readonly bodyId: string;
+      readonly stableId: string;
+      readonly expectedKind: CadGeneratedEntityKind;
       readonly renderTargetId: string;
       readonly semanticSelection: CadSelectionReferenceInput;
       readonly referenceCandidates?: SelectionReferenceCandidatesQueryResponse;
@@ -93,6 +107,15 @@ export type ViewportBodyHitTarget =
       readonly bodyId: string;
       readonly objectId: string;
       readonly renderTargetId: string;
+    }
+  | {
+      readonly kind: "generatedReference";
+      readonly hitCandidate: CadViewportHitCandidate;
+      readonly bodyId: string;
+      readonly stableId: string;
+      readonly expectedKind: CadGeneratedEntityKind;
+      readonly renderTargetId: string;
+      readonly objectId?: undefined;
     }
   | {
       readonly kind: "unsupported" | "renderer-only" | "ambiguous";
@@ -274,6 +297,21 @@ export function resolveViewportPickIntent({
     };
   }
 
+  if (hitTarget.kind === "generatedReference") {
+    return {
+      kind: "generatedReference",
+      selectedId: hitTarget.bodyId,
+      bodyId: hitTarget.bodyId,
+      stableId: hitTarget.stableId,
+      expectedKind: hitTarget.expectedKind,
+      renderTargetId: hitTarget.renderTargetId,
+      semanticSelection: resolution.selection,
+      referenceCandidates,
+      issues,
+      interactionDiagnostics
+    };
+  }
+
   if (hitTarget.kind === "body") {
     return {
       kind: "body",
@@ -296,6 +334,20 @@ export function resolveViewportPickIntent({
 function createViewportBodyHitTargetFromCandidate(
   hitCandidate: CadViewportHitCandidate
 ): ViewportBodyHitTarget {
+  if (
+    hitCandidate.semanticHint?.type === "generatedReference" &&
+    hitCandidate.displayEntityKind === hitCandidate.semanticHint.expectedKind
+  ) {
+    return {
+      kind: "generatedReference",
+      hitCandidate,
+      bodyId: hitCandidate.semanticHint.bodyId,
+      stableId: hitCandidate.semanticHint.stableId,
+      expectedKind: hitCandidate.semanticHint.expectedKind,
+      renderTargetId: hitCandidate.semanticHint.bodyId
+    };
+  }
+
   if (
     hitCandidate.displayEntityKind === "body" &&
     hitCandidate.semanticHint?.type === "body"

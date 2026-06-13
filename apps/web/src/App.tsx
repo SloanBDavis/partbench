@@ -110,7 +110,10 @@ import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
 import { StructurePanel } from "./components/StructurePanel";
-import { ViewportCanvas } from "./components/ViewportCanvas";
+import {
+  ViewportCanvas,
+  type ViewportCanvasPick
+} from "./components/ViewportCanvas";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createEmptyDerivedGeometrySnapshot,
@@ -165,6 +168,7 @@ import {
   type SelectedGeneratedReference
 } from "./generatedReferenceSelection";
 import { resolveViewportPickIntent } from "./viewportPickIntent";
+import { createViewportGeneratedPlanarFaceHitCandidate } from "./viewportGeneratedFacePicking";
 import {
   deriveModelingActions,
   type ModelingSelectionContext
@@ -1420,16 +1424,35 @@ export function App() {
     setSelectedGeneratedReference(undefined);
   }
 
-  function selectViewportPick(pickedRenderId: string | undefined) {
+  function selectViewportPick(pick: ViewportCanvasPick) {
+    const generatedFaceHitCandidate =
+      createViewportGeneratedPlanarFaceHitCandidate({
+        camera: pick.camera,
+        faces: [...generatedFacesByKey.values()],
+        pickedRenderId: pick.pickedRenderId,
+        point: pick.point,
+        preferredBodyId: selectedBody?.id,
+        size: pick.size,
+        sketchDisplayFrames: sketchDisplayState.frames
+      });
     const intent = resolveViewportPickIntent({
-      pickedRenderId,
+      hitCandidate: generatedFaceHitCandidate,
+      pickedRenderId: pick.pickedRenderId,
       bodies: projectStructure.bodies,
       objects: sceneObjects,
       readReferenceCandidates: readSelectionReferenceCandidates
     });
 
     setSelectedId(intent.selectedId);
-    setSelectedGeneratedReference(undefined);
+    setSelectedGeneratedReference(
+      intent.kind === "generatedReference"
+        ? {
+            bodyId: intent.bodyId,
+            stableId: intent.stableId,
+            kind: intent.expectedKind
+          }
+        : undefined
+    );
   }
 
   function reconcileDerivedGeometry(

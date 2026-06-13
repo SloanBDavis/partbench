@@ -7,6 +7,8 @@ import {
   type RenderCamera,
   type RenderTriangleMesh,
   type RenderPrimitive,
+  type ViewportPoint,
+  type ViewportSize,
   zoomCamera
 } from "@web-cad/renderer";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
@@ -15,6 +17,13 @@ import {
   fitCameraToRenderScene
 } from "../viewportCamera";
 
+export interface ViewportCanvasPick {
+  readonly camera: RenderCamera;
+  readonly pickedRenderId?: string;
+  readonly point: ViewportPoint;
+  readonly size: ViewportSize;
+}
+
 export function ViewportCanvas({
   meshes,
   onSelect,
@@ -22,7 +31,7 @@ export function ViewportCanvas({
   selectedId
 }: {
   readonly meshes?: readonly RenderTriangleMesh[];
-  readonly onSelect: (id: string | undefined) => void;
+  readonly onSelect: (pick: ViewportCanvasPick) => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
 }) {
@@ -116,15 +125,27 @@ export function ViewportCanvas({
     setCamera((current) => zoomCamera(current, 220));
   }
 
+  function getEventViewportPoint(
+    event: PointerEvent<HTMLCanvasElement>
+  ): ViewportPoint {
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    };
+  }
+
   function pickEventRenderId(
     event: PointerEvent<HTMLCanvasElement>
   ): string | undefined {
-    const rect = event.currentTarget.getBoundingClientRect();
-
-    return pickRenderScene(primitives, meshes ?? [], camera, size, {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    });
+    return pickRenderScene(
+      primitives,
+      meshes ?? [],
+      camera,
+      size,
+      getEventViewportPoint(event)
+    );
   }
 
   return (
@@ -221,9 +242,21 @@ export function ViewportCanvas({
               return;
             }
 
-            const id = pickEventRenderId(event);
+            const point = getEventViewportPoint(event);
+            const id = pickRenderScene(
+              primitives,
+              meshes ?? [],
+              camera,
+              size,
+              point
+            );
             setHoveredId(id);
-            onSelect(id);
+            onSelect({
+              camera,
+              pickedRenderId: id,
+              point,
+              size
+            });
           }}
           onPointerCancel={(event) => {
             const pointer = pointerRef.current;

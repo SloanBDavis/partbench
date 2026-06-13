@@ -2,6 +2,7 @@ import type { SceneObject } from "@web-cad/cad-core";
 import type {
   CadBodySnapshot,
   CadGeneratedFaceReference,
+  CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -101,6 +102,65 @@ describe("viewport pick intent", () => {
           status: "unsupported"
         }
       ]
+    });
+    expect(JSON.stringify(intent)).not.toContain("renderer-hit");
+  });
+
+  it("routes generated planar face hit candidates to semantic generated-reference selection", () => {
+    const body = createExtrudeBody("body_rect");
+    const face = createFaceReference(body.id);
+    const response = createCandidateResponse({
+      selection: {
+        type: "generatedReference",
+        bodyId: body.id,
+        stableId: face.stableId,
+        expectedKind: "face"
+      },
+      bodyId: body.id,
+      reference: face,
+      status: "resolved"
+    });
+    const intent = resolveViewportPickIntent({
+      pickedRenderId: body.id,
+      hitCandidate: {
+        displayEntityKind: "face",
+        rendererHitId: "renderer-hit:generated-face:body_rect:42",
+        semanticHint: {
+          type: "generatedReference",
+          bodyId: body.id,
+          stableId: face.stableId,
+          expectedKind: "face"
+        }
+      },
+      bodies: [body],
+      objects: [],
+      readReferenceCandidates: (selection) => {
+        expect(selection).toEqual({
+          type: "generatedReference",
+          bodyId: body.id,
+          stableId: face.stableId,
+          expectedKind: "face"
+        });
+        return response;
+      }
+    });
+
+    expect(intent).toMatchObject({
+      kind: "generatedReference",
+      selectedId: "body_rect",
+      bodyId: "body_rect",
+      stableId: "generated:face:body_rect:startCap",
+      expectedKind: "face",
+      renderTargetId: "body_rect",
+      semanticSelection: {
+        type: "generatedReference",
+        bodyId: "body_rect",
+        stableId: "generated:face:body_rect:startCap",
+        expectedKind: "face"
+      },
+      referenceCandidates: response,
+      issues: [],
+      interactionDiagnostics: []
     });
     expect(JSON.stringify(intent)).not.toContain("renderer-hit");
   });
@@ -295,19 +355,24 @@ function createBoxObject(id: string): SceneObject {
 function createCandidateResponse({
   bodyId,
   issue,
+  reference,
+  selection,
   status
 }: {
   readonly bodyId: string;
   readonly issue?: CadSelectionReferenceIssue;
+  readonly reference?: CadGeneratedFaceReference;
+  readonly selection?: CadSelectionReferenceInput;
   readonly status: SelectionReferenceCandidatesQueryResponse["status"];
 }): SelectionReferenceCandidatesQueryResponse {
-  const reference = createFaceReference(bodyId);
+  const candidateReference = reference ?? createFaceReference(bodyId);
+  const candidateSelection = selection ?? { type: "body", bodyId };
 
   return {
     ok: true,
     query: "selection.referenceCandidates",
     cadOpsVersion: "cadops.v1",
-    selection: { type: "body", bodyId },
+    selection: candidateSelection,
     status,
     candidateCount: issue ? 0 : 1,
     candidates: issue
@@ -318,16 +383,16 @@ function createCandidateResponse({
             target: {
               type: "generatedReference",
               bodyId,
-              stableId: reference.stableId,
-              kind: reference.kind
+              stableId: candidateReference.stableId,
+              kind: candidateReference.kind
             },
-            reference,
+            reference: candidateReference,
             commandable: true,
             commandOperations: [
               "reference.nameGenerated",
               "feature.selectReference"
             ],
-            label: reference.label,
+            label: candidateReference.label,
             issues: []
           }
         ],

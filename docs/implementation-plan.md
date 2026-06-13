@@ -114,6 +114,16 @@ These constraints remain active:
     hover/preselection visuals. It does not implement generated face/edge
     picking, WebGPU, assemblies, persisted viewport/session state, or
     `web-cad.project.v17`.
+24. V9 Tranche C1 is implemented as a narrow generated planar face
+    picking/reference-routing slice: when a supported rectangle/circle
+    `newBody` extrude body is already selected, the current canvas/app path can
+    refine a viewport body hit into a private generated planar face hit
+    candidate, resolve it through the V9 helper path and
+    `selection.referenceCandidates`, and update the existing generated-reference
+    selection, inspector, and modeling workflow state. It does not implement
+    generated edge/vertex picking, exact face-level visual highlighting,
+    WebGPU, assemblies, persisted viewport/session state, or
+    `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -1229,9 +1239,12 @@ Use these decisions when writing V9 implementation prompts:
    hit candidates and `selection.referenceCandidates`, and reflected in the
    same semantic Selection tab, inspector, modeling, and query paths as tree
    selection without forcing the left panel to switch tabs.
-3. **Generated Face/Edge Picking** - support generated planar face and generated
-   edge picking for defensible current references, including named-reference
-   routing and structured unsupported/ambiguous/consumed/stale diagnostics.
+3. **Generated Face/Edge Picking** - C1 implemented generated planar face
+   picking/reference routing for selected supported rectangle/circle `newBody`
+   extrudes. Remaining work is generated edge picking, exact face/edge visual
+   distinction, named-reference viewport routing, and structured
+   unsupported/ambiguous/consumed/stale diagnostics for the broader generated
+   reference target set.
 4. **Viewport Visual State System** - add restrained hover, selected,
    command-target, warning, pending, and failed highlight states as semantic
    renderer display inputs.
