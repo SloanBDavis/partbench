@@ -83,6 +83,7 @@ describe("V7 browser workflow smoke summary", () => {
         "viewport-generated-edge-pick-selection-routing",
         "viewport-generated-edge-contextual-actions",
         "viewport-generated-edge-measure-inspect",
+        "viewport-two-target-measure",
         "viewport-unobstructed-selection-layout",
         "attached-sketch-create",
         "consumed-body-diagnostic",

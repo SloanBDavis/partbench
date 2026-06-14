@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-13.
+Last updated: 2026-06-14.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
@@ -163,6 +163,18 @@ These constraints remain active:
     labels and structured stale, consumed, ambiguous, missing, unsupported, and
     unavailable-source diagnostics. It does not add two-target distance/angle,
     persisted measure state, new modeling commands, renderer authority,
+    OPFS/file/project schema changes, agent/MCP changes, WebGPU, assemblies,
+    STEP import, broad topology naming, or `web-cad.project.v17`.
+29. V9 Tranche F2 is implemented as a narrow, session-only two-target
+    measurement workflow: compact viewport Measure can capture a first
+    semantic target, preview/commit a second selected semantic target, and show
+    source-backed distance/angle rows with explicit authority and structured
+    missing, stale, consumed, ambiguous, unsupported, non-commandable, and
+    display-approximation-only diagnostics. It derives target points/vectors
+    only from existing `body.measurements`,
+    `body.generatedReferenceMeasurements`, and
+    `selection.referenceCandidates` state. It does not add persisted
+    measurements, sketch constraints, command history, renderer authority,
     OPFS/file/project schema changes, agent/MCP changes, WebGPU, assemblies,
     STEP import, broad topology naming, or `web-cad.project.v17`.
 
@@ -351,6 +363,11 @@ Current Partbench can:
   generated edges, and resolved named references, with explicit authority
   labels and structured unsupported/stale/consumed/ambiguous/missing
   diagnostics;
+- run a narrow session-only two-target viewport measurement from compact
+  Measure for supported semantic bodies, generated planar faces, generated
+  linear/circular edges, and resolved named references, with source-backed
+  center-distance and face-normal/linear-edge angle results where current query
+  data proves the points/vectors;
 - keep helper-level hover/measurement/interaction readiness tests available for
   future viewport work, but do not make them the visible product surface until
   a consolidated interaction model is explicitly designed;
@@ -408,8 +425,8 @@ Current limitations:
   the supported source-semantic subset. Compact viewport Measure/Inspect shows
   single-target values and authority labels, while deeper diagnostics still live
   in Selection/Inspector/Modeling. Exact face/edge/vertex highlighting,
-  generated vertex picking, two-target distance/angle measurement, and
-  selection-buffer mapping are not implemented yet.
+  generated vertex picking, persisted measurement annotations, sketch
+  measurement constraints, and selection-buffer mapping are not implemented yet.
 - The C4 helper work still provides typed viewport interaction readiness for
   future selection-buffer work, but the visible C4 product correction keeps the
   viewport unobstructed and moves current-selection detail into the left

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ViewportContextualCommandSurface } from "./ViewportContextualCommandSurface";
 import type { ViewportContextualCommandSurfaceModel } from "../viewportContextualCommands";
 import type { ViewportInteractionSurface } from "../viewportInteractionSurface";
+import type { ViewportTwoTargetMeasurementView } from "../viewportTwoTargetMeasurement";
 
 describe("ViewportContextualCommandSurface", () => {
   it("renders a compact command surface without debug panels", () => {
@@ -51,6 +52,24 @@ describe("ViewportContextualCommandSurface", () => {
     expect(markup).toContain('disabled=""');
     expect(markup).toContain("Selected body is consumed by feature feat_cut.");
     expect(markup).not.toContain("viewport-reference-action");
+  });
+
+  it("renders active two-target measure session state compactly", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportContextualCommandSurface, {
+        surface: createSurface(),
+        interactionSurface: createInteractionSurface(),
+        twoTargetMeasurement: createTwoTargetMeasurementView()
+      })
+    );
+
+    expect(markup).toContain("Two-target:");
+    expect(markup).toContain("Face: Start cap");
+    expect(markup).toContain("Select a second supported target");
+    expect(markup).toContain("viewport-contextual-session-status");
+    expect(markup).not.toContain("selection-buffer");
+    expect(markup).not.toContain("mesh-triangle");
+    expect(markup).not.toContain("occt-shape");
   });
 });
 
@@ -140,5 +159,47 @@ function createInteractionSurface(): ViewportInteractionSurface {
         diagnostics: []
       }
     }
+  };
+}
+
+function createTwoTargetMeasurementView(): ViewportTwoTargetMeasurementView {
+  return {
+    status: "waitingForSecond",
+    firstTarget: {
+      key: "body_rect:generated:face:body_rect:startCap:generatedPlanarFace",
+      targetKind: "generatedPlanarFace",
+      title: "Face: Start cap",
+      detail: "Generated reference target",
+      label: "Start cap",
+      bodyId: "body_rect",
+      stableId: "generated:face:body_rect:startCap",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_rect",
+        stableId: "generated:face:body_rect:startCap",
+        expectedKind: "face"
+      },
+      authority: "sourceAnalytic",
+      authorityLabel: "Authority: source-analytic exact",
+      status: "resolved",
+      diagnostics: [],
+      source: "body.generatedReferenceMeasurements",
+      point: [0, 0, 0],
+      pointLabel: "Face center",
+      pointRole: "generatedFaceCenter",
+      vector: [0, 0, 1],
+      vectorLabel: "Face normal",
+      vectorRole: "generatedFaceNormal",
+      summaryRows: []
+    },
+    results: [],
+    diagnostics: [
+      {
+        code: "VIEWPORT_TWO_TARGET_MISSING_SECOND_TARGET",
+        status: "missing",
+        message: "Select a second supported target, then open Measure."
+      }
+    ],
+    prompt: "Select a second supported target, then open Measure."
   };
 }

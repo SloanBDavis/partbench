@@ -2184,6 +2184,65 @@ export interface CadViewportSingleTargetMeasureInspectTarget extends CadViewport
   readonly referenceName?: NamedReferenceName;
 }
 
+export type CadViewportTwoTargetMeasurementKind = "distance" | "angle";
+
+export type CadViewportTwoTargetMeasurementTargetKind =
+  CadViewportSingleTargetMeasureInspectKind;
+
+export type CadViewportTwoTargetMeasurementPointRole =
+  | "bodyCentroid"
+  | "generatedFaceCenter"
+  | "generatedEdgeCenter";
+
+export type CadViewportTwoTargetMeasurementVectorRole =
+  | "generatedFaceNormal"
+  | "generatedLinearEdgeDirection";
+
+export type CadViewportTwoTargetMeasurementDiagnosticCode =
+  | "VIEWPORT_TWO_TARGET_MISSING_FIRST_TARGET"
+  | "VIEWPORT_TWO_TARGET_MISSING_SECOND_TARGET"
+  | "VIEWPORT_TWO_TARGET_STALE_TARGET"
+  | "VIEWPORT_TWO_TARGET_CONSUMED_TARGET"
+  | "VIEWPORT_TWO_TARGET_UNSUPPORTED_TARGET"
+  | "VIEWPORT_TWO_TARGET_UNSUPPORTED_PAIR"
+  | "VIEWPORT_TWO_TARGET_AMBIGUOUS_PAIR"
+  | "VIEWPORT_TWO_TARGET_NON_COMMANDABLE_TARGET"
+  | "VIEWPORT_TWO_TARGET_DISPLAY_APPROXIMATION_ONLY";
+
+export interface CadViewportTwoTargetMeasurementDiagnostic {
+  readonly code: CadViewportTwoTargetMeasurementDiagnosticCode;
+  readonly status: Exclude<CadViewportInteractionStatus, "resolved" | "empty">;
+  readonly message: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadViewportTwoTargetMeasurementTarget extends CadViewportMeasurementTarget {
+  readonly targetKind: CadViewportTwoTargetMeasurementTargetKind;
+  readonly label?: string;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly pointRole?: CadViewportTwoTargetMeasurementPointRole;
+  readonly vectorRole?: CadViewportTwoTargetMeasurementVectorRole;
+}
+
+export interface CadViewportTwoTargetMeasurementResult {
+  readonly kind: CadViewportTwoTargetMeasurementKind;
+  readonly authority: CadViewportMeasurementAuthority;
+  readonly value: number;
+  readonly units?: DocumentUnits | "deg";
+  readonly diagnostics: readonly CadViewportTwoTargetMeasurementDiagnostic[];
+}
+
+export interface CadViewportTwoTargetMeasurementState {
+  readonly firstTarget?: CadViewportTwoTargetMeasurementTarget;
+  readonly secondTarget?: CadViewportTwoTargetMeasurementTarget;
+  readonly pendingTarget?: CadViewportTwoTargetMeasurementTarget;
+  readonly results: readonly CadViewportTwoTargetMeasurementResult[];
+  readonly diagnostics: readonly CadViewportTwoTargetMeasurementDiagnostic[];
+}
+
 export type CadSelectionReferenceOperation =
   | CadGeneratedReferenceEligibleOperation
   | "reference.nameGenerated";

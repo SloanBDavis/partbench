@@ -6,6 +6,10 @@ import type {
   ViewportContextualCommandSurfaceModel
 } from "../viewportContextualCommands";
 import type { ViewportInteractionSurface } from "../viewportInteractionSurface";
+import type {
+  ViewportTwoTargetMeasurementTarget,
+  ViewportTwoTargetMeasurementView
+} from "../viewportTwoTargetMeasurement";
 
 type ExpandedContextualSection = "inspect" | "measure" | "name" | "references";
 
@@ -19,22 +23,34 @@ export function ViewportContextualCommandSurface({
   disabled = false,
   interactionSurface,
   surface,
+  twoTargetMeasurement,
   onContinueInModeling,
   onNameReference,
   onRunCommand,
+  onClearTwoTargetMeasurement,
+  onSetSecondTwoTargetMeasurement,
+  onStartTwoTargetMeasurement,
   onSelectReference
 }: {
   readonly disabled?: boolean;
   readonly interactionSurface?: ViewportInteractionSurface;
   readonly surface: ViewportContextualCommandSurfaceModel;
+  readonly twoTargetMeasurement?: ViewportTwoTargetMeasurementView;
   readonly onContinueInModeling?: (
     action: ViewportContextualCommandAction
   ) => void;
+  readonly onClearTwoTargetMeasurement?: () => void;
   readonly onNameReference?: (
     name: string,
     target: SelectedGeneratedReference
   ) => void;
   readonly onRunCommand?: (action: ViewportContextualCommandAction) => void;
+  readonly onSetSecondTwoTargetMeasurement?: (
+    target: ViewportTwoTargetMeasurementTarget
+  ) => void;
+  readonly onStartTwoTargetMeasurement?: (
+    target: ViewportTwoTargetMeasurementTarget
+  ) => void;
   readonly onSelectReference?: (reference: CadGeneratedReference) => void;
 }) {
   const [transient, setTransient] = useState<ContextualTransientState>(() => ({
@@ -108,6 +124,12 @@ export function ViewportContextualCommandSurface({
           {surface.diagnostic}
         </small>
       ) : null}
+      {twoTargetMeasurement?.firstTarget && expanded !== "measure" ? (
+        <small className="viewport-contextual-session-status">
+          Two-target: {twoTargetMeasurement.firstTarget.title} -{" "}
+          {twoTargetMeasurement.prompt}
+        </small>
+      ) : null}
       {expanded === "name" && activeNameAction ? (
         <form
           className="viewport-contextual-inline"
@@ -135,7 +157,14 @@ export function ViewportContextualCommandSurface({
         </form>
       ) : null}
       {expanded === "measure" ? (
-        <MeasurementSection interactionSurface={interactionSurface} />
+        <MeasurementSection
+          disabled={disabled}
+          interactionSurface={interactionSurface}
+          twoTargetMeasurement={twoTargetMeasurement}
+          onClearTwoTargetMeasurement={onClearTwoTargetMeasurement}
+          onSetSecondTwoTargetMeasurement={onSetSecondTwoTargetMeasurement}
+          onStartTwoTargetMeasurement={onStartTwoTargetMeasurement}
+        />
       ) : null}
       {expanded === "inspect" ? (
         <InspectSection
@@ -223,13 +252,27 @@ function getCurrentTransientState(
 }
 
 function MeasurementSection({
-  interactionSurface
+  disabled,
+  interactionSurface,
+  twoTargetMeasurement,
+  onClearTwoTargetMeasurement,
+  onSetSecondTwoTargetMeasurement,
+  onStartTwoTargetMeasurement
 }: {
+  readonly disabled: boolean;
   readonly interactionSurface?: ViewportInteractionSurface;
+  readonly twoTargetMeasurement?: ViewportTwoTargetMeasurementView;
+  readonly onClearTwoTargetMeasurement?: () => void;
+  readonly onSetSecondTwoTargetMeasurement?: (
+    target: ViewportTwoTargetMeasurementTarget
+  ) => void;
+  readonly onStartTwoTargetMeasurement?: (
+    target: ViewportTwoTargetMeasurementTarget
+  ) => void;
 }) {
   const measurement = interactionSurface?.selection.measurement;
 
-  if (!measurement) {
+  if (!measurement && !twoTargetMeasurement?.firstTarget) {
     return (
       <small className="viewport-contextual-diagnostic">
         Measurement details are unavailable for this selection.
@@ -239,33 +282,157 @@ function MeasurementSection({
 
   return (
     <div className="viewport-contextual-detail" aria-label="Viewport measure">
+      {measurement ? (
+        <>
+          <div className="viewport-contextual-detail-heading">
+            <strong>{measurement.title}</strong>
+            <span>{measurement.detail}</span>
+          </div>
+          <small className="viewport-contextual-authority">
+            {measurement.authorityLabel}
+          </small>
+          {measurement.rows.length > 0 ? (
+            <dl>
+              {measurement.rows.map((row) => (
+                <div key={`${row.label}:${row.value}`}>
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {measurement.overflowCount > 0 ? (
+            <small>
+              {measurement.overflowCount} more measurements in Inspector
+            </small>
+          ) : null}
+          {measurement.error ? (
+            <small className="viewport-contextual-diagnostic">
+              {measurement.error}
+            </small>
+          ) : null}
+        </>
+      ) : null}
+      {twoTargetMeasurement ? (
+        <TwoTargetMeasurementSection
+          disabled={disabled}
+          view={twoTargetMeasurement}
+          onClear={onClearTwoTargetMeasurement}
+          onSetSecond={onSetSecondTwoTargetMeasurement}
+          onStart={onStartTwoTargetMeasurement}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function TwoTargetMeasurementSection({
+  disabled,
+  onClear,
+  onSetSecond,
+  onStart,
+  view
+}: {
+  readonly disabled: boolean;
+  readonly onClear?: () => void;
+  readonly onSetSecond?: (target: ViewportTwoTargetMeasurementTarget) => void;
+  readonly onStart?: (target: ViewportTwoTargetMeasurementTarget) => void;
+  readonly view: ViewportTwoTargetMeasurementView;
+}) {
+  const firstTarget = view.firstTarget;
+  const pendingTarget = view.pendingTarget;
+  const secondTarget = view.secondTarget ?? pendingTarget;
+  const canStart = !disabled && !firstTarget && view.activeTarget && onStart;
+  const canSetSecond =
+    !disabled &&
+    firstTarget &&
+    pendingTarget &&
+    view.results.length > 0 &&
+    onSetSecond;
+
+  return (
+    <div
+      className="viewport-contextual-two-target"
+      aria-label="Viewport two-target measure"
+    >
       <div className="viewport-contextual-detail-heading">
-        <strong>{measurement.title}</strong>
-        <span>{measurement.detail}</span>
+        <strong>Two-target measure</strong>
+        <span>{view.prompt}</span>
       </div>
-      <small className="viewport-contextual-authority">
-        {measurement.authorityLabel}
-      </small>
-      {measurement.rows.length > 0 ? (
+      {firstTarget ? (
         <dl>
-          {measurement.rows.map((row) => (
-            <div key={`${row.label}:${row.value}`}>
-              <dt>{row.label}</dt>
-              <dd>{row.value}</dd>
-            </div>
-          ))}
+          <div>
+            <dt>First</dt>
+            <dd>{firstTarget.title}</dd>
+          </div>
+          <div>
+            <dt>{view.secondTarget ? "Second" : "Pending"}</dt>
+            <dd>{secondTarget?.title ?? "Select another target"}</dd>
+          </div>
         </dl>
       ) : null}
-      {measurement.overflowCount > 0 ? (
-        <small>
-          {measurement.overflowCount} more measurements in Inspector
-        </small>
-      ) : null}
-      {measurement.error ? (
+      {view.results.length > 0
+        ? view.results.map((result) => (
+            <div
+              key={`${result.kind}:${result.value}`}
+              className="viewport-contextual-result"
+            >
+              <div className="viewport-contextual-detail-heading">
+                <strong>{result.title}</strong>
+                <span>{result.detail}</span>
+              </div>
+              <small className="viewport-contextual-authority">
+                {result.authorityLabel}
+              </small>
+              <dl>
+                {result.rows.map((row) => (
+                  <div key={`${result.kind}:${row.label}:${row.value}`}>
+                    <dt>{row.label}</dt>
+                    <dd>{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))
+        : null}
+      {view.diagnostics[0] && firstTarget ? (
         <small className="viewport-contextual-diagnostic">
-          {measurement.error}
+          {view.diagnostics[0].message}
         </small>
       ) : null}
+      <div className="viewport-contextual-mini-actions">
+        {!firstTarget ? (
+          <button
+            type="button"
+            disabled={!canStart}
+            onClick={() => {
+              if (view.activeTarget) {
+                onStart?.(view.activeTarget);
+              }
+            }}
+          >
+            Start two-target
+          </button>
+        ) : null}
+        {pendingTarget ? (
+          <button
+            type="button"
+            disabled={!canSetSecond}
+            onClick={() => onSetSecond?.(pendingTarget)}
+          >
+            Use selected as second
+          </button>
+        ) : null}
+        {firstTarget ? (
+          <button
+            type="button"
+            disabled={disabled || !onClear}
+            onClick={onClear}
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

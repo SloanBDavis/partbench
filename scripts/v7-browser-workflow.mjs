@@ -16,6 +16,7 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "viewport-generated-edge-pick-selection-routing",
   "viewport-generated-edge-contextual-actions",
   "viewport-generated-edge-measure-inspect",
+  "viewport-two-target-measure",
   "body-reference-contract",
   "viewport-unobstructed-selection-layout",
   "modeling-reference-status",

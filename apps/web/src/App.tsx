@@ -184,6 +184,15 @@ import { resolveViewportHoverIntent } from "./viewportHoverIntent";
 import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import { createViewportVisualStateModel } from "./viewportVisualState";
 import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
+import {
+  clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange,
+  createViewportTwoTargetMeasurementTarget,
+  createViewportTwoTargetMeasurementView,
+  isViewportTwoTargetMeasurementSessionActive,
+  updateViewportTwoTargetMeasurementSession,
+  type ViewportTwoTargetMeasurementSession,
+  type ViewportTwoTargetMeasurementTarget
+} from "./viewportTwoTargetMeasurement";
 import { createViewportReferenceActions } from "./viewportReferenceActions";
 import { createViewportInteractionSurface } from "./viewportInteractionSurface";
 import {
@@ -982,6 +991,10 @@ export function App() {
   const [viewportPickIntent, setViewportPickIntent] = useState<
     ViewportPickIntent | undefined
   >();
+  const [
+    viewportTwoTargetMeasurementSession,
+    setViewportTwoTargetMeasurementSession
+  ] = useState<ViewportTwoTargetMeasurementSession>({});
   const [commandError, setCommandError] = useState<string | undefined>();
   const [commandNotice, setCommandNotice] = useState<string | undefined>();
   const [commandPending, setCommandPending] = useState(false);
@@ -1367,6 +1380,20 @@ export function App() {
     selectionReferenceCandidates: selectedSelectionReferenceCandidates,
     units: document.units
   });
+  const viewportTwoTargetMeasurementTarget =
+    createViewportTwoTargetMeasurementTarget({
+      bodyMeasurements: selectedBodyMeasurements.measurements,
+      generatedReferenceMeasurement:
+        selectedGeneratedReferenceState.status === "selected"
+          ? selectedGeneratedReferenceState.measurement?.measurement
+          : undefined,
+      measurementOverlay: viewportMeasurementOverlay
+    });
+  const viewportTwoTargetMeasurement = createViewportTwoTargetMeasurementView({
+    activeTarget: viewportTwoTargetMeasurementTarget,
+    session: viewportTwoTargetMeasurementSession,
+    units: document.units
+  });
   const viewportReferenceActions = createViewportReferenceActions({
     candidatesByStableId: referenceCandidatesByStableId,
     references: selectedBodyGeneratedReferences.references,
@@ -1387,6 +1414,31 @@ export function App() {
       selectedGeneratedReferenceState,
       selectionReferenceCandidates: selectedSelectionReferenceCandidates
     });
+  const viewportTwoTargetMeasurementSessionActive =
+    isViewportTwoTargetMeasurementSessionActive(
+      viewportTwoTargetMeasurementSession
+    );
+  useEffect(() => {
+    setViewportTwoTargetMeasurementSession((current) =>
+      clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange(current)
+    );
+  }, [viewportContextualCommandSurface.selectionKey]);
+  useEffect(() => {
+    if (!viewportTwoTargetMeasurementSessionActive) {
+      return undefined;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setViewportTwoTargetMeasurementSession((current) =>
+          updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
+        );
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [viewportTwoTargetMeasurementSessionActive]);
   const geometryStatusBySourceId = useMemo(
     () =>
       new Map(
@@ -1516,6 +1568,9 @@ export function App() {
     );
     setSelectedGeneratedReference((current) =>
       reconcileSelectedGeneratedReferenceBody(current, nextStructure.bodies)
+    );
+    setViewportTwoTargetMeasurementSession((current) =>
+      updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
     );
   }
 
@@ -2099,6 +2154,34 @@ export function App() {
     target: SelectedGeneratedReference
   ) {
     void nameGeneratedReference(name, target);
+  }
+
+  function startViewportTwoTargetMeasurement(
+    target: ViewportTwoTargetMeasurementTarget
+  ) {
+    setViewportTwoTargetMeasurementSession((current) =>
+      updateViewportTwoTargetMeasurementSession(current, {
+        type: "start",
+        target
+      })
+    );
+  }
+
+  function setSecondViewportTwoTargetMeasurement(
+    target: ViewportTwoTargetMeasurementTarget
+  ) {
+    setViewportTwoTargetMeasurementSession((current) =>
+      updateViewportTwoTargetMeasurementSession(current, {
+        type: "setSecond",
+        target
+      })
+    );
+  }
+
+  function clearViewportTwoTargetMeasurement() {
+    setViewportTwoTargetMeasurementSession((current) =>
+      updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
+    );
   }
 
   function getFeatureTargetBodyId(
@@ -2879,9 +2962,15 @@ export function App() {
               disabled={commandPending}
               surface={viewportContextualCommandSurface}
               interactionSurface={viewportInteractionSurface}
+              twoTargetMeasurement={viewportTwoTargetMeasurement}
+              onClearTwoTargetMeasurement={clearViewportTwoTargetMeasurement}
               onContinueInModeling={runViewportContextualCommand}
               onNameReference={nameViewportContextualReference}
               onRunCommand={runViewportContextualCommand}
+              onSetSecondTwoTargetMeasurement={
+                setSecondViewportTwoTargetMeasurement
+              }
+              onStartTwoTargetMeasurement={startViewportTwoTargetMeasurement}
               onSelectReference={selectGeneratedReference}
             />
           }

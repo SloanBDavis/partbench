@@ -558,6 +558,16 @@ async function v7BrowserWorkflowSmoke({
     "viewport generated planar face measure and inspect expose source-authoritative single-target details",
     getViewportContextualCommandText()
   );
+  clickViewportContextualCommand("Measure");
+  await waitForViewportContextualDetail(
+    ["Two-target measure", "Start two-target"],
+    "viewport two-target measure start affordance"
+  );
+  clickViewportContextualCommand("Start two-target");
+  await waitForViewportContextualDetail(
+    ["Two-target measure", "Select a second supported target", "First"],
+    "viewport two-target first target session prompt"
+  );
 
   openTreePanel();
   clickViewportWorldPoint([1, 0, 0]);
@@ -586,8 +596,30 @@ async function v7BrowserWorkflowSmoke({
   );
   clickViewportContextualCommand("Measure");
   await waitForViewportContextualDetail(
-    ["Edge measurement", "Authority: source-analytic exact", "Length"],
+    [
+      "Edge measurement",
+      "Authority: source-analytic exact",
+      "Length",
+      "Two-target measure",
+      "Distance",
+      "Angle"
+    ],
     "viewport generated edge measure details"
+  );
+  clickViewportContextualCommand("Use selected as second");
+  await waitForViewportContextualDetail(
+    [
+      "Two-target measurement complete",
+      "Distance",
+      "Angle",
+      "Authority: source-analytic exact"
+    ],
+    "viewport two-target distance and angle measure details"
+  );
+  pass(
+    "viewport-two-target-measure",
+    "viewport face-to-edge two-target measure exposes source-authoritative distance and angle",
+    getViewportContextualCommandText()
   );
   clickViewportContextualCommand("Inspect");
   await waitForViewportContextualDetail(

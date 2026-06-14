@@ -26,6 +26,9 @@ import type {
   CadViewportSelectionIntent,
   CadViewportSelectionState,
   CadViewportSingleTargetMeasureInspectTarget,
+  CadViewportTwoTargetMeasurementResult,
+  CadViewportTwoTargetMeasurementState,
+  CadViewportTwoTargetMeasurementTarget,
   HoleFeatureSnapshot,
   ProjectPackageReadinessQueryResponse,
   RevolveFeatureSnapshot,
@@ -1890,6 +1893,66 @@ describe("cad-protocol", () => {
       faceStableId: "generated:face:body_1:endCap",
       faceRole: "endCap"
     });
+  });
+
+  it("types viewport two-target measurement session output", () => {
+    const firstTarget: CadViewportTwoTargetMeasurementTarget = {
+      targetKind: "generatedPlanarFace",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:startCap",
+      label: "Start cap",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:startCap",
+        expectedKind: "face"
+      },
+      authority: "sourceAnalytic",
+      status: "resolved",
+      diagnostics: [],
+      pointRole: "generatedFaceCenter",
+      vectorRole: "generatedFaceNormal"
+    };
+    const secondTarget: CadViewportTwoTargetMeasurementTarget = {
+      targetKind: "generatedEdge",
+      bodyId: "body_1",
+      stableId: "generated:edge:body_1:start:uMin",
+      label: "Start uMin",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: "generated:edge:body_1:start:uMin",
+        expectedKind: "edge"
+      },
+      authority: "sourceAnalytic",
+      status: "resolved",
+      diagnostics: [],
+      pointRole: "generatedEdgeCenter",
+      vectorRole: "generatedLinearEdgeDirection"
+    };
+    const result: CadViewportTwoTargetMeasurementResult = {
+      kind: "angle",
+      authority: "sourceAnalytic",
+      value: 90,
+      units: "deg",
+      diagnostics: []
+    };
+    const state: CadViewportTwoTargetMeasurementState = {
+      firstTarget,
+      secondTarget,
+      pendingTarget: secondTarget,
+      results: [result],
+      diagnostics: []
+    };
+
+    expect(state.results[0]).toMatchObject({
+      kind: "angle",
+      authority: "sourceAnalytic",
+      value: 90,
+      units: "deg"
+    });
+    expect(state.firstTarget?.selection?.type).toBe("generatedReference");
+    expect(JSON.stringify(state)).not.toContain("renderer-hit");
   });
 
   it("types project extents with authored bodies and warnings", () => {
