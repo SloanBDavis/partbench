@@ -137,7 +137,12 @@ export function ViewportContextualCommandSurface({
       {expanded === "measure" ? (
         <MeasurementSection interactionSurface={interactionSurface} />
       ) : null}
-      {expanded === "inspect" ? <InspectSection surface={surface} /> : null}
+      {expanded === "inspect" ? (
+        <InspectSection
+          interactionSurface={interactionSurface}
+          surface={surface}
+        />
+      ) : null}
       {expanded === "references" ? (
         <ReferenceSection
           disabled={disabled}
@@ -238,6 +243,9 @@ function MeasurementSection({
         <strong>{measurement.title}</strong>
         <span>{measurement.detail}</span>
       </div>
+      <small className="viewport-contextual-authority">
+        {measurement.authorityLabel}
+      </small>
       {measurement.rows.length > 0 ? (
         <dl>
           {measurement.rows.map((row) => (
@@ -263,10 +271,41 @@ function MeasurementSection({
 }
 
 function InspectSection({
+  interactionSurface,
   surface
 }: {
+  readonly interactionSurface?: ViewportInteractionSurface;
   readonly surface: ViewportContextualCommandSurfaceModel;
 }) {
+  const inspect = interactionSurface?.selection.inspect;
+
+  if (inspect) {
+    return (
+      <div className="viewport-contextual-detail" aria-label="Viewport inspect">
+        <div className="viewport-contextual-detail-heading">
+          <strong>{inspect.title}</strong>
+          <span>{inspect.detail}</span>
+        </div>
+        <small className="viewport-contextual-authority">
+          {inspect.authorityLabel}
+        </small>
+        <dl>
+          {inspect.rows.map((row) => (
+            <div key={`${row.label}:${row.value}`}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+        {inspect.diagnostics[0] ? (
+          <small className="viewport-contextual-diagnostic">
+            {inspect.diagnostics[0].message}
+          </small>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="viewport-contextual-detail" aria-label="Viewport inspect">
       <div className="viewport-contextual-detail-heading">

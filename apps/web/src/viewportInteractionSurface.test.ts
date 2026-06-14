@@ -23,7 +23,16 @@ describe("viewport interaction surface", () => {
         rows: [
           { label: "Area", value: "8 mm^2" },
           { label: "Surface", value: "plane" }
-        ]
+        ],
+        inspect: createInspectOverlay({
+          rows: [
+            { label: "Target", value: "Face: Start cap" },
+            {
+              label: "Authority",
+              value: "Authority: source-analytic exact"
+            }
+          ]
+        })
       })
     });
 
@@ -35,12 +44,27 @@ describe("viewport interaction surface", () => {
         title: "Face measurement",
         detail: "Start cap",
         source: "body.generatedReferenceMeasurements",
+        authority: "sourceAnalytic",
+        authorityLabel: "Authority: source-analytic exact",
         tone: "ready",
         rows: [
           { label: "Area", value: "8 mm^2" },
           { label: "Surface", value: "plane" }
         ],
         overflowCount: 0
+      },
+      inspect: {
+        title: "Inspect target",
+        detail: "Command-ready target",
+        authority: "sourceAnalytic",
+        authorityLabel: "Authority: source-analytic exact",
+        rows: [
+          { label: "Target", value: "Face: Start cap" },
+          {
+            label: "Authority",
+            value: "Authority: source-analytic exact"
+          }
+        ]
       }
     });
   });
@@ -272,8 +296,49 @@ function createMeasurementOverlay(
     title: "Face measurement",
     detail: "Start cap",
     source: "body.generatedReferenceMeasurements",
+    authority: "sourceAnalytic",
+    authorityLabel: "Authority: source-analytic exact",
+    target: {
+      targetKind: "generatedPlanarFace",
+      title: "Face: Start cap",
+      detail: "Generated reference target",
+      label: "Start cap",
+      bodyId: "body_rect",
+      stableId: "generated:face:body_rect:startCap",
+      selection: {
+        type: "generatedReference",
+        bodyId: "body_rect",
+        stableId: "generated:face:body_rect:startCap",
+        expectedKind: "face"
+      },
+      authority: "sourceAnalytic",
+      authorityLabel: "Authority: source-analytic exact",
+      status: "resolved",
+      diagnostics: []
+    },
     tone: "ready",
     rows: [],
+    diagnostics: [],
+    inspect: createInspectOverlay(),
+    ...overrides
+  };
+}
+
+function createInspectOverlay(
+  overrides: Partial<ViewportMeasurementOverlay["inspect"]> = {}
+): ViewportMeasurementOverlay["inspect"] {
+  return {
+    title: "Inspect target",
+    detail: "Command-ready target",
+    authority: "sourceAnalytic",
+    authorityLabel: "Authority: source-analytic exact",
+    rows: [
+      { label: "Target", value: "Face: Start cap" },
+      { label: "Authority", value: "Authority: source-analytic exact" },
+      { label: "Commands", value: "Inspect reference" }
+    ],
+    commandOperationLabels: ["Inspect reference"],
+    diagnostics: [],
     ...overrides
   };
 }

@@ -239,7 +239,7 @@ describe("viewport pick intent", () => {
       "AMBIGUOUS_SELECTION_TOPOLOGY",
       "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE"
     ],
-    ["consumed", "CONSUMED_SELECTION_BODY", "VIEWPORT_NON_COMMANDABLE_TARGET"],
+    ["consumed", "CONSUMED_SELECTION_BODY", "VIEWPORT_CONSUMED_TARGET"],
     [
       "non-commandable",
       "NON_COMMANDABLE_SELECTION_TARGET",
@@ -278,7 +278,7 @@ describe("viewport pick intent", () => {
       expect(intent.interactionDiagnostics).toEqual([
         {
           code: viewportCode,
-          status: status === "consumed" ? "non-commandable" : status,
+          status,
           message: `${status} body diagnostic`
         }
       ]);

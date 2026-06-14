@@ -80,7 +80,7 @@ describe("V7 viewport baseline fixture", () => {
         tone: "ready"
       },
       measurement: {
-        title: "Body measurements",
+        title: "Body measurement",
         detail: "body_rect_1",
         rows: [
           "Volume: 24 mm^3",

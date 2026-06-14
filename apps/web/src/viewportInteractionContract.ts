@@ -233,8 +233,9 @@ function codeFromSelectionIssue(
       return "VIEWPORT_STALE_SEMANTIC_HINT";
     case "AMBIGUOUS_SELECTION_TOPOLOGY":
       return "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE";
-    case "NON_COMMANDABLE_SELECTION_TARGET":
     case "CONSUMED_SELECTION_BODY":
+      return "VIEWPORT_CONSUMED_TARGET";
+    case "NON_COMMANDABLE_SELECTION_TARGET":
       return "VIEWPORT_NON_COMMANDABLE_TARGET";
     case "SELECTION_KIND_MISMATCH":
     case "UNSUPPORTED_SELECTION_TARGET":
@@ -253,6 +254,7 @@ function codeFromSelectionStatus(
     case "ambiguous":
       return "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE";
     case "consumed":
+      return "VIEWPORT_CONSUMED_TARGET";
     case "non-commandable":
       return "VIEWPORT_NON_COMMANDABLE_TARGET";
     case "unsupported":
@@ -271,6 +273,7 @@ function statusFromSelectionStatus(
     case "ambiguous":
       return "ambiguous";
     case "consumed":
+      return "consumed";
     case "non-commandable":
       return "non-commandable";
     case "unsupported":

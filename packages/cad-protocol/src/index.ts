@@ -2098,6 +2098,7 @@ export type CadViewportInteractionStatus =
   | "stale"
   | "unsupported"
   | "ambiguous"
+  | "consumed"
   | "non-commandable"
   | "renderer-only"
   | "assembly-unsupported";
@@ -2107,6 +2108,7 @@ export type CadViewportInteractionDiagnosticCode =
   | "VIEWPORT_STALE_SEMANTIC_HINT"
   | "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE"
   | "VIEWPORT_UNSUPPORTED_DISPLAY_ENTITY"
+  | "VIEWPORT_CONSUMED_TARGET"
   | "VIEWPORT_NON_COMMANDABLE_TARGET"
   | "VIEWPORT_RENDERER_ONLY_TARGET"
   | "VIEWPORT_ASSEMBLY_INSTANCE_UNSUPPORTED";
@@ -2165,6 +2167,21 @@ export interface CadViewportMeasurementTarget {
   readonly authority: CadViewportMeasurementAuthority;
   readonly status: CadViewportInteractionStatus;
   readonly diagnostics: readonly CadViewportInteractionDiagnostic[];
+}
+
+export type CadViewportSingleTargetMeasureInspectKind =
+  | "body"
+  | "generatedPlanarFace"
+  | "generatedEdge"
+  | "namedReference"
+  | "unsupportedGeneratedReference";
+
+export interface CadViewportSingleTargetMeasureInspectTarget extends CadViewportMeasurementTarget {
+  readonly targetKind: CadViewportSingleTargetMeasureInspectKind;
+  readonly label?: string;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
 }
 
 export type CadSelectionReferenceOperation =

@@ -1,6 +1,9 @@
 import type { CadGeneratedReference } from "@web-cad/cad-protocol";
 import type { ViewportHoverState } from "./viewportHoverIntent";
-import type { ViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
+import type {
+  ViewportInspectOverlay,
+  ViewportMeasurementOverlay
+} from "./viewportMeasurementOverlay";
 import type { ViewportReferenceAction } from "./viewportReferenceActions";
 import type {
   ViewportSelectionDiagnostic,
@@ -14,8 +17,12 @@ const DEFAULT_MAX_REFERENCE_ACTIONS = 6;
 const DEFAULT_MAX_MEASUREMENT_ROWS = 5;
 
 export interface ViewportInteractionDiagnostic {
-  readonly code: ViewportSelectionDiagnostic["code"];
-  readonly status: ViewportSelectionDiagnostic["status"];
+  readonly code:
+    | ViewportSelectionDiagnostic["code"]
+    | ViewportInspectOverlay["diagnostics"][number]["code"];
+  readonly status:
+    | ViewportSelectionDiagnostic["status"]
+    | ViewportInspectOverlay["diagnostics"][number]["status"];
   readonly message: string;
 }
 
@@ -28,10 +35,22 @@ export interface ViewportInteractionMeasurementSection {
   readonly title: string;
   readonly detail: string;
   readonly source: ViewportMeasurementOverlay["source"];
+  readonly authority: ViewportMeasurementOverlay["authority"];
+  readonly authorityLabel: string;
   readonly tone: ViewportMeasurementOverlay["tone"];
   readonly rows: readonly ViewportInteractionMeasurementRow[];
   readonly overflowCount: number;
   readonly error?: string;
+}
+
+export interface ViewportInteractionInspectSection {
+  readonly title: string;
+  readonly detail: string;
+  readonly authority: ViewportInspectOverlay["authority"];
+  readonly authorityLabel: string;
+  readonly rows: readonly ViewportInteractionMeasurementRow[];
+  readonly commandOperationLabels: readonly string[];
+  readonly diagnostics: readonly ViewportInteractionDiagnostic[];
 }
 
 export interface ViewportInteractionSelectionSummary {
@@ -45,6 +64,7 @@ export interface ViewportInteractionSelectionSummary {
   readonly commandOperationLabels: readonly string[];
   readonly diagnostics: readonly ViewportInteractionDiagnostic[];
   readonly measurement?: ViewportInteractionMeasurementSection;
+  readonly inspect?: ViewportInteractionInspectSection;
 }
 
 export interface ViewportInteractionHoverSummary {
@@ -154,7 +174,8 @@ function createSelectionSummary(
           measurement: createMeasurementSection(
             measurementOverlay,
             maxMeasurementRows
-          )
+          ),
+          inspect: createInspectSection(measurementOverlay.inspect)
         }
       : {})
   };
@@ -170,6 +191,8 @@ function createMeasurementSection(
     title: clean(overlay.title),
     detail: clean(overlay.detail),
     source: overlay.source,
+    authority: overlay.authority,
+    authorityLabel: clean(overlay.authorityLabel),
     tone: overlay.tone,
     rows: visibleRows.map((row) => ({
       label: clean(row.label),
@@ -177,6 +200,23 @@ function createMeasurementSection(
     })),
     overflowCount: Math.max(0, overlay.rows.length - visibleRows.length),
     ...(overlay.error ? { error: clean(overlay.error) } : {})
+  };
+}
+
+function createInspectSection(
+  inspect: ViewportInspectOverlay
+): ViewportInteractionInspectSection {
+  return {
+    title: clean(inspect.title),
+    detail: clean(inspect.detail),
+    authority: inspect.authority,
+    authorityLabel: clean(inspect.authorityLabel),
+    rows: inspect.rows.map((row) => ({
+      label: clean(row.label),
+      value: clean(row.value)
+    })),
+    commandOperationLabels: inspect.commandOperationLabels.map(clean),
+    diagnostics: cleanDiagnostics(inspect.diagnostics)
   };
 }
 
@@ -349,13 +389,18 @@ function rankBoolean(value: boolean): number {
 }
 
 function cleanDiagnostics(
-  diagnostics: readonly ViewportSelectionDiagnostic[]
+  diagnostics: readonly (
+    | ViewportSelectionDiagnostic
+    | ViewportInspectOverlay["diagnostics"][number]
+  )[]
 ): readonly ViewportInteractionDiagnostic[] {
   return diagnostics.map(cleanDiagnostic);
 }
 
 function cleanDiagnostic(
-  diagnostic: ViewportSelectionDiagnostic
+  diagnostic:
+    | ViewportSelectionDiagnostic
+    | ViewportInspectOverlay["diagnostics"][number]
 ): ViewportInteractionDiagnostic {
   return {
     code: diagnostic.code,

@@ -206,7 +206,7 @@ describe("viewport interaction contract helpers", () => {
       "NON_COMMANDABLE_SELECTION_TARGET",
       "VIEWPORT_NON_COMMANDABLE_TARGET"
     ],
-    ["consumed", "CONSUMED_SELECTION_BODY", "VIEWPORT_NON_COMMANDABLE_TARGET"]
+    ["consumed", "CONSUMED_SELECTION_BODY", "VIEWPORT_CONSUMED_TARGET"]
   ] as const)(
     "maps %s selection.referenceCandidates diagnostics to viewport diagnostics",
     (status, selectionIssueCode, viewportCode) => {
@@ -225,7 +225,7 @@ describe("viewport interaction contract helpers", () => {
       expect(diagnostics).toEqual([
         {
           code: viewportCode,
-          status: status === "consumed" ? "non-commandable" : status,
+          status,
           message: `${status} CAD target`
         }
       ]);

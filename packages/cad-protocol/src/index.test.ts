@@ -25,6 +25,7 @@ import type {
   CadViewportPointerInputIntent,
   CadViewportSelectionIntent,
   CadViewportSelectionState,
+  CadViewportSingleTargetMeasureInspectTarget,
   HoleFeatureSnapshot,
   ProjectPackageReadinessQueryResponse,
   RevolveFeatureSnapshot,
@@ -2226,6 +2227,23 @@ describe("cad-protocol", () => {
       status: "resolved",
       diagnostics: []
     };
+    const inspectTarget: CadViewportSingleTargetMeasureInspectTarget = {
+      targetKind: "generatedPlanarFace",
+      selection: semanticHint,
+      authority: "sourceAnalytic",
+      status: "resolved",
+      label: "End cap",
+      bodyId: "body_1",
+      stableId: "generated:face:body_1:endCap",
+      diagnostics: []
+    };
+    const unsupportedInspectTarget: CadViewportSingleTargetMeasureInspectTarget =
+      {
+        targetKind: "unsupportedGeneratedReference",
+        authority: "unsupported",
+        status: "unsupported",
+        diagnostics: []
+      };
 
     expect(selectionIntent.hitCandidate?.rendererHitId).toBe(
       "renderer-hit:face:17"
@@ -2233,8 +2251,16 @@ describe("cad-protocol", () => {
     expect(hover.status).toBe("resolved");
     expect(selectionState.commandTarget?.commandable).toBe(true);
     expect(measurementTarget.authority).toBe("semanticDocument");
+    expect(inspectTarget.targetKind).toBe("generatedPlanarFace");
+    expect(unsupportedInspectTarget.targetKind).toBe(
+      "unsupportedGeneratedReference"
+    );
 
-    const publicCommandTargetJson = JSON.stringify(commandTarget);
+    const publicCommandTargetJson = JSON.stringify([
+      commandTarget,
+      inspectTarget,
+      unsupportedInspectTarget
+    ]);
 
     expect(publicCommandTargetJson).toContain("generated:face:body_1:endCap");
     expect(publicCommandTargetJson).not.toContain("renderer-hit");

@@ -498,6 +498,25 @@ async function v7BrowserWorkflowSmoke({
     "viewport body pick routes through semantic selection without forcing the Selection tab",
     getSelectionText()
   );
+  await waitForViewportContextualCommands(
+    ["Measure", "Inspect"],
+    "viewport body contextual measure and inspect commands"
+  );
+  clickViewportContextualCommand("Measure");
+  await waitForViewportContextualDetail(
+    ["Body measurement", "Authority: source-analytic exact", "Volume"],
+    "viewport body measure details"
+  );
+  clickViewportContextualCommand("Inspect");
+  await waitForViewportContextualDetail(
+    ["Inspect body", "Authority: source-analytic exact", "Commands"],
+    "viewport body inspect details"
+  );
+  pass(
+    "viewport-body-measure-inspect",
+    "viewport body measure and inspect expose source-authoritative single-target details",
+    getViewportContextualCommandText()
+  );
 
   openTreePanel();
   clickViewportAtRatio(0.5, 0.5);
@@ -524,6 +543,21 @@ async function v7BrowserWorkflowSmoke({
     "viewport generated planar face exposes compact command-ready contextual actions",
     getViewportContextualCommandText()
   );
+  clickViewportContextualCommand("Measure");
+  await waitForViewportContextualDetail(
+    ["Face measurement", "Authority: source-analytic exact", "Area"],
+    "viewport generated face measure details"
+  );
+  clickViewportContextualCommand("Inspect");
+  await waitForViewportContextualDetail(
+    ["Inspect target", "Face:", "Create sketch on face"],
+    "viewport generated face inspect details"
+  );
+  pass(
+    "viewport-generated-face-measure-inspect",
+    "viewport generated planar face measure and inspect expose source-authoritative single-target details",
+    getViewportContextualCommandText()
+  );
 
   openTreePanel();
   clickViewportWorldPoint([1, 0, 0]);
@@ -548,6 +582,21 @@ async function v7BrowserWorkflowSmoke({
   pass(
     "viewport-generated-edge-contextual-actions",
     "viewport generated edge exposes compact command-ready contextual actions",
+    getViewportContextualCommandText()
+  );
+  clickViewportContextualCommand("Measure");
+  await waitForViewportContextualDetail(
+    ["Edge measurement", "Authority: source-analytic exact", "Length"],
+    "viewport generated edge measure details"
+  );
+  clickViewportContextualCommand("Inspect");
+  await waitForViewportContextualDetail(
+    ["Inspect target", "Edge:", "Chamfer", "Fillet"],
+    "viewport generated edge inspect details"
+  );
+  pass(
+    "viewport-generated-edge-measure-inspect",
+    "viewport generated edge measure and inspect expose source-authoritative single-target details",
     getViewportContextualCommandText()
   );
 
@@ -1282,6 +1331,44 @@ async function v7BrowserWorkflowSmoke({
             `missing=${missingLabels.join(",") || "none"}`,
             `surfaceAreaRatio=${surfaceAreaRatio.toFixed(3)}`,
             `surface=${compactText(surface.textContent, 260)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, label);
+  }
+
+  function clickViewportContextualCommand(label) {
+    const viewport = getElementByAriaLabel("3D viewport");
+    const surface = getViewportContextualCommandSurface(viewport);
+
+    clickButtonContaining(surface, label);
+  }
+
+  async function waitForViewportContextualDetail(labels, label) {
+    await waitFor(() => {
+      const viewport = getElementByAriaLabel("3D viewport");
+      const surface = getViewportContextualCommandSurface(viewport);
+      const text = normalize(surface.textContent);
+      const missingLabels = labels.filter(
+        (requiredLabel) => !text.includes(requiredLabel)
+      );
+      const viewportRect = viewport.getBoundingClientRect();
+      const surfaceRect = surface.getBoundingClientRect();
+      const viewportArea = Math.max(
+        1,
+        viewportRect.width * viewportRect.height
+      );
+      const surfaceAreaRatio =
+        (surfaceRect.width * surfaceRect.height) / viewportArea;
+
+      if (missingLabels.length > 0 || surfaceAreaRatio > 0.22) {
+        throw new Error(
+          [
+            `missing=${missingLabels.join(",") || "none"}`,
+            `surfaceAreaRatio=${surfaceAreaRatio.toFixed(3)}`,
+            `surface=${compactText(surface.textContent, 300)}`
           ].join("; ")
         );
       }

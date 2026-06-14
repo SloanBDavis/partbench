@@ -117,9 +117,27 @@ function createInteractionSurface(): ViewportInteractionSurface {
         title: "Face measurement",
         detail: "Start cap",
         source: "body.generatedReferenceMeasurements",
+        authority: "sourceAnalytic",
+        authorityLabel: "Authority: source-analytic exact",
         tone: "ready",
         rows: [{ label: "Area", value: "8 mm^2" }],
         overflowCount: 0
+      },
+      inspect: {
+        title: "Inspect target",
+        detail: "Command-ready target",
+        authority: "sourceAnalytic",
+        authorityLabel: "Authority: source-analytic exact",
+        rows: [
+          { label: "Target", value: "Face: Start cap" },
+          {
+            label: "Authority",
+            value: "Authority: source-analytic exact"
+          },
+          { label: "Commands", value: "Inspect reference" }
+        ],
+        commandOperationLabels: ["Inspect reference"],
+        diagnostics: []
       }
     }
   };

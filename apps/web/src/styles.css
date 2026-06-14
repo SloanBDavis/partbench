@@ -1316,7 +1316,7 @@ button.model-story-row:hover,
   z-index: 3;
   right: 10px;
   bottom: 10px;
-  max-width: min(300px, calc(100% - 20px));
+  max-width: min(280px, calc(100% - 20px));
   pointer-events: none;
 }
 
@@ -1324,7 +1324,7 @@ button.model-story-row:hover,
   display: grid;
   gap: 7px;
   max-width: 100%;
-  max-height: min(236px, calc(100vh - 180px));
+  max-height: min(210px, calc(100vh - 180px));
   overflow: auto;
   padding: 8px;
   border: 1px solid rgba(110, 122, 110, 0.5);
@@ -1402,6 +1402,12 @@ button.model-story-row:hover,
   line-height: 1.25;
 }
 
+.viewport-contextual-authority {
+  color: var(--quiet);
+  font-size: 0.64rem;
+  line-height: 1.25;
+}
+
 .viewport-contextual-inline {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1420,7 +1426,7 @@ button.model-story-row:hover,
 .viewport-contextual-detail {
   display: grid;
   gap: 6px;
-  max-height: 172px;
+  max-height: 146px;
   overflow: auto;
   padding-top: 2px;
 }

@@ -261,8 +261,8 @@ function createActionsFromModeling(
       case "body.references.inspect":
         return [
           createActionFromModeling(action, {
-            label: "Refs",
-            route: "references"
+            label: "Inspect",
+            route: "inspect"
           })
         ];
       case "feature.chamfer":

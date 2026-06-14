@@ -156,6 +156,15 @@ These constraints remain active:
     modeling commands, persisted viewport/tool state, Tree/Selection tab
     auto-switching, renderer command authority, WebGPU, OPFS/file/project schema
     changes, agent/MCP changes, or `web-cad.project.v17`.
+28. V9 Tranche F1 is implemented as the single-target Measure/Inspect contract:
+    compact viewport Measure/Inspect can show selected body, generated planar
+    face, generated edge, and resolved named-reference values from existing
+    query-backed body/reference measurement helpers, with explicit authority
+    labels and structured stale, consumed, ambiguous, missing, unsupported, and
+    unavailable-source diagnostics. It does not add two-target distance/angle,
+    persisted measure state, new modeling commands, renderer authority,
+    OPFS/file/project schema changes, agent/MCP changes, WebGPU, assemblies,
+    STEP import, broad topology naming, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -165,8 +174,8 @@ and focused packages:
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
   derived-geometry orchestration, project panel, batch panel, current canvas
   viewport with V9 body/face/edge picking, visual-state routing, compact
-  contextual command surface, first feature tree, improved modeling workflow,
-  and focused UI helpers.
+  contextual command surface, single-target Measure/Inspect, first feature
+  tree, improved modeling workflow, and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
@@ -334,9 +343,14 @@ Current Partbench can:
   candidates and the same generated-reference `selection.referenceCandidates`
   path, preserving body-level visual selection while updating semantic
   generated-edge selection for inspector/modeling actions;
-- keep generated-reference actions, operation labels, commandability, structured
-  diagnostics, and selected-target measurements in the inspector/modeling
-  surfaces rather than floating them over the viewport;
+- keep generated-reference actions, operation labels, commandability, and
+  structured diagnostics aligned across the compact viewport surface,
+  Selection tab, Inspector, and Modeling surfaces;
+- measure and inspect one selected semantic CAD target at a time from the
+  compact viewport surface for supported bodies, generated planar faces,
+  generated edges, and resolved named references, with explicit authority
+  labels and structured unsupported/stale/consumed/ambiguous/missing
+  diagnostics;
 - keep helper-level hover/measurement/interaction readiness tests available for
   future viewport work, but do not make them the visible product surface until
   a consolidated interaction model is explicitly designed;
@@ -390,10 +404,12 @@ Current limitations:
 - Feature tree, inspector, modeling workflow, agents, MCP, and the left
   `Selection` tab consume semantic selections that the UI already exposes. The
   current viewport supports body/object-granularity pick intent for current
-  canvas renderables, but commandability details, generated-reference actions,
-  diagnostics, and measurements are shown in the Selection/inspector/modeling
-  surfaces rather than over the viewport. Exact face/edge/vertex picking, exact
-  reference highlighting, and selection-buffer mapping are not implemented yet.
+  canvas renderables plus generated planar face and generated edge picking for
+  the supported source-semantic subset. Compact viewport Measure/Inspect shows
+  single-target values and authority labels, while deeper diagnostics still live
+  in Selection/Inspector/Modeling. Exact face/edge/vertex highlighting,
+  generated vertex picking, two-target distance/angle measurement, and
+  selection-buffer mapping are not implemented yet.
 - The C4 helper work still provides typed viewport interaction readiness for
   future selection-buffer work, but the visible C4 product correction keeps the
   viewport unobstructed and moves current-selection detail into the left

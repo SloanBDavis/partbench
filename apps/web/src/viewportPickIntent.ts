@@ -477,6 +477,8 @@ function selectionIssueCodeFromViewportDiagnostic(
       return "STALE_SELECTION_REFERENCE";
     case "VIEWPORT_AMBIGUOUS_HIT_CANDIDATE":
       return "AMBIGUOUS_SELECTION_TOPOLOGY";
+    case "VIEWPORT_CONSUMED_TARGET":
+      return "CONSUMED_SELECTION_BODY";
     case "VIEWPORT_NON_COMMANDABLE_TARGET":
       return "NON_COMMANDABLE_SELECTION_TARGET";
     case "VIEWPORT_ASSEMBLY_INSTANCE_UNSUPPORTED":
@@ -496,6 +498,8 @@ function selectionStatusFromViewportStatus(
       return "stale";
     case "ambiguous":
       return "ambiguous";
+    case "consumed":
+      return "consumed";
     case "non-commandable":
       return "non-commandable";
     case "renderer-only":

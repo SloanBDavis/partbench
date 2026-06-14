@@ -1362,7 +1362,9 @@ export function App() {
     body: selectedBody,
     bodyMeasurements: selectedBodyMeasurements.measurements,
     bodyMeasurementsError: selectedBodyMeasurements.error,
+    namedReferences,
     selectedGeneratedReferenceState,
+    selectionReferenceCandidates: selectedSelectionReferenceCandidates,
     units: document.units
   });
   const viewportReferenceActions = createViewportReferenceActions({
