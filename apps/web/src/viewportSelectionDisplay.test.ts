@@ -85,7 +85,9 @@ describe("viewportSelectionDisplay", () => {
       })
     });
 
-    expect(display.detail).toBe("Selection body consumed");
+    expect(display.detail).toBe(
+      "Selected body body_rect is consumed by feature feat_cut."
+    );
     expect(display.tone).toBe("warning");
     expect(display.commandOperations).toEqual([]);
     expect(display.diagnostics).toEqual([
@@ -153,7 +155,9 @@ describe("viewportSelectionDisplay", () => {
       }
     });
 
-    expect(display.detail).toBe("Selection target unsupported");
+    expect(display.detail).toBe(
+      "Primitive body references are not command-ready."
+    );
     expect(display.tone).toBe("blocked");
     expect(display.geometryStatus).toBe("fallback");
     expect(display.diagnostics).toEqual([
@@ -193,7 +197,8 @@ describe("viewportSelectionDisplay", () => {
     expect(display).toMatchObject({
       selectionKind: "none",
       title: "Viewport pick unsupported",
-      detail: "Selection target unsupported",
+      detail:
+        "Sketch display geometry is not selectable as a command-ready CAD body from the viewport.",
       tone: "blocked",
       diagnostics: [
         {
@@ -253,7 +258,7 @@ describe("viewportSelectionDisplay", () => {
     expect(rendererOnlyDisplay).toMatchObject({
       selectionKind: "none",
       title: "Viewport pick unsupported",
-      detail: "Selection target unsupported",
+      detail: "Viewport hit target is renderer-private.",
       tone: "blocked",
       diagnostics: [
         {
@@ -265,7 +270,7 @@ describe("viewportSelectionDisplay", () => {
     expect(ambiguousDisplay).toMatchObject({
       selectionKind: "none",
       title: "Viewport pick unsupported",
-      detail: "Selection target ambiguous",
+      detail: "Viewport object hit maps to multiple CAD bodies.",
       tone: "blocked",
       diagnostics: [
         {

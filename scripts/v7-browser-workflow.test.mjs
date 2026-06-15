@@ -81,6 +81,7 @@ describe("V7 browser workflow smoke summary", () => {
         "viewport-body-pick-selection-routing",
         "viewport-body-measure-inspect",
         "viewport-unobstructed-after-navigation-measurement",
+        "viewport-responsive-text-readability",
         "viewport-generated-face-pick-selection-routing",
         "viewport-generated-face-contextual-actions",
         "viewport-generated-face-measure-inspect",
@@ -99,7 +100,8 @@ describe("V7 browser workflow smoke summary", () => {
         "project-roundtrip-viewport-unobstructed",
         "project-json-load-preview",
         "project-json-roundtrip-diagnostic",
-        "viewport-narrow-layout-smoke"
+        "viewport-narrow-layout-smoke",
+        "viewport-narrow-scroll-readability"
       ])
     );
 

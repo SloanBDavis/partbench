@@ -674,6 +674,10 @@ async function v7BrowserWorkflowSmoke({
     "viewport-unobstructed-after-navigation-measurement",
     "navigation controls and measurement details keep the viewport unobstructed"
   );
+  assertViewportResponsiveTextReadability(
+    "viewport-responsive-text-readability",
+    "viewport contextual and status text remains readable without overlap"
+  );
 
   openTreePanel();
   clickViewportAtRatio(0.5, 0.5);
@@ -1620,6 +1624,159 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
+  function assertViewportResponsiveTextReadability(id, label) {
+    const result = probeViewportResponsiveTextReadability();
+
+    if (!result.ok) {
+      fail(id, label, result.detail);
+      return;
+    }
+
+    pass(id, label, result.detail);
+  }
+
+  function probeViewportResponsiveTextReadability({
+    checkPageOverflow = false
+  } = {}) {
+    const viewport = getElementByAriaLabel("3D viewport");
+    const contextualSurface = viewport.querySelector(
+      '[aria-label="Viewport contextual commands"]'
+    );
+    const status = viewport.querySelector('[aria-label="Viewport status"]');
+    const issues = [];
+    const details = [];
+
+    if (contextualSurface) {
+      const contextualIssues = collectReadableTextIssues(contextualSurface, [
+        ".viewport-contextual-heading strong",
+        ".viewport-contextual-heading span",
+        ".viewport-contextual-detail-heading strong",
+        ".viewport-contextual-detail-heading span",
+        ".viewport-contextual-actions button",
+        ".viewport-contextual-mini-actions button",
+        ".viewport-contextual-diagnostic",
+        ".viewport-contextual-authority",
+        ".viewport-contextual-session-status",
+        ".viewport-contextual-detail dt",
+        ".viewport-contextual-detail dd",
+        ".viewport-contextual-reference-list button span",
+        ".viewport-contextual-reference-list button strong"
+      ]);
+      issues.push(...contextualIssues);
+
+      const style = getComputedStyle(contextualSurface);
+      if (
+        contextualSurface.scrollHeight > contextualSurface.clientHeight + 1 &&
+        style.overflowY !== "auto" &&
+        style.overflowY !== "scroll"
+      ) {
+        issues.push(
+          `contextual surface overflow is not scrollable; overflow-y=${style.overflowY}`
+        );
+      }
+
+      details.push(
+        `contextual=${Math.round(
+          contextualSurface.getBoundingClientRect().width
+        )}x${Math.round(contextualSurface.getBoundingClientRect().height)}`
+      );
+    }
+
+    if (status) {
+      issues.push(
+        ...collectReadableTextIssues(status, [
+          ".viewport-status strong",
+          ".viewport-status span"
+        ])
+      );
+      details.push(
+        `status=${Math.round(status.getBoundingClientRect().width)}x${Math.round(
+          status.getBoundingClientRect().height
+        )}`
+      );
+    }
+
+    if (contextualSurface && status) {
+      const overlap = getRectOverlapArea(
+        contextualSurface.getBoundingClientRect(),
+        status.getBoundingClientRect()
+      );
+
+      if (overlap > 1) {
+        issues.push(`contextual/status overlap=${Math.round(overlap)}px^2`);
+      }
+    }
+
+    if (checkPageOverflow) {
+      const scrollWidth = document.documentElement.scrollWidth;
+      const clientWidth = document.documentElement.clientWidth;
+
+      if (scrollWidth > clientWidth + 2) {
+        issues.push(
+          `horizontal page overflow scrollWidth=${scrollWidth}, clientWidth=${clientWidth}`
+        );
+      }
+    }
+
+    return {
+      ok: issues.length === 0,
+      detail:
+        issues.length > 0
+          ? issues.join("; ")
+          : details.length > 0
+            ? details.join("; ")
+            : "no contextual/status text present"
+    };
+  }
+
+  function collectReadableTextIssues(root, selectors) {
+    const issues = [];
+    const elements = root.querySelectorAll(selectors.join(","));
+
+    for (const element of elements) {
+      const text = normalize(element.textContent);
+      const rect = element.getBoundingClientRect();
+
+      if (!text || rect.width <= 0 || rect.height <= 0) {
+        continue;
+      }
+
+      const style = getComputedStyle(element);
+      const clippedX =
+        element.scrollWidth > element.clientWidth + 1 &&
+        style.overflowX !== "visible";
+      const clippedY =
+        element.scrollHeight > element.clientHeight + 1 &&
+        style.overflowY === "hidden";
+
+      if (style.whiteSpace === "nowrap" || clippedX || clippedY) {
+        issues.push(
+          `${element.className || element.tagName.toLowerCase()} clipped or nowrap: ${compactText(
+            text,
+            96
+          )}`
+        );
+      }
+    }
+
+    return issues;
+  }
+
+  function getRectOverlapArea(leftRect, rightRect) {
+    const width = Math.max(
+      0,
+      Math.min(leftRect.right, rightRect.right) -
+        Math.max(leftRect.left, rightRect.left)
+    );
+    const height = Math.max(
+      0,
+      Math.min(leftRect.bottom, rightRect.bottom) -
+        Math.max(leftRect.top, rightRect.top)
+    );
+
+    return width * height;
+  }
+
   function dispatchEscapeOutsideEditable() {
     window.dispatchEvent(
       new KeyboardEvent("keydown", {
@@ -2454,10 +2611,33 @@ async function v7BrowserWorkflowNarrowViewportSmoke({ timeoutMs }) {
         ].join("; ")
       );
     }
+
+    const readability = probeViewportResponsiveTextReadability({
+      checkPageOverflow: true
+    });
+
+    if (readability.ok) {
+      pass(
+        "viewport-narrow-scroll-readability",
+        "narrow viewport avoids text clipping and scroll traps",
+        readability.detail
+      );
+    } else {
+      fail(
+        "viewport-narrow-scroll-readability",
+        "narrow viewport avoids text clipping and scroll traps",
+        readability.detail
+      );
+    }
   } catch (error) {
     fail(
       "viewport-narrow-layout-smoke",
       "narrow viewport keeps the model surface visible",
+      error instanceof Error ? error.message : String(error)
+    );
+    fail(
+      "viewport-narrow-scroll-readability",
+      "narrow viewport avoids text clipping and scroll traps",
       error instanceof Error ? error.message : String(error)
     );
   }
@@ -2519,6 +2699,149 @@ async function v7BrowserWorkflowNarrowViewportSmoke({ timeoutMs }) {
     }
 
     return element;
+  }
+
+  function probeViewportResponsiveTextReadability({
+    checkPageOverflow = false
+  } = {}) {
+    const viewport = getElementByAriaLabel("3D viewport");
+    const contextualSurface = viewport.querySelector(
+      '[aria-label="Viewport contextual commands"]'
+    );
+    const status = viewport.querySelector('[aria-label="Viewport status"]');
+    const issues = [];
+    const details = [];
+
+    if (contextualSurface) {
+      issues.push(
+        ...collectReadableTextIssues(contextualSurface, [
+          ".viewport-contextual-heading strong",
+          ".viewport-contextual-heading span",
+          ".viewport-contextual-detail-heading strong",
+          ".viewport-contextual-detail-heading span",
+          ".viewport-contextual-actions button",
+          ".viewport-contextual-mini-actions button",
+          ".viewport-contextual-diagnostic",
+          ".viewport-contextual-authority",
+          ".viewport-contextual-session-status",
+          ".viewport-contextual-detail dt",
+          ".viewport-contextual-detail dd",
+          ".viewport-contextual-reference-list button span",
+          ".viewport-contextual-reference-list button strong"
+        ])
+      );
+
+      const style = getComputedStyle(contextualSurface);
+      if (
+        contextualSurface.scrollHeight > contextualSurface.clientHeight + 1 &&
+        style.overflowY !== "auto" &&
+        style.overflowY !== "scroll"
+      ) {
+        issues.push(
+          `contextual surface overflow is not scrollable; overflow-y=${style.overflowY}`
+        );
+      }
+
+      details.push(
+        `contextual=${Math.round(
+          contextualSurface.getBoundingClientRect().width
+        )}x${Math.round(contextualSurface.getBoundingClientRect().height)}`
+      );
+    }
+
+    if (status) {
+      issues.push(
+        ...collectReadableTextIssues(status, [
+          ".viewport-status strong",
+          ".viewport-status span"
+        ])
+      );
+      details.push(
+        `status=${Math.round(status.getBoundingClientRect().width)}x${Math.round(
+          status.getBoundingClientRect().height
+        )}`
+      );
+    }
+
+    if (contextualSurface && status) {
+      const overlap = getRectOverlapArea(
+        contextualSurface.getBoundingClientRect(),
+        status.getBoundingClientRect()
+      );
+
+      if (overlap > 1) {
+        issues.push(`contextual/status overlap=${Math.round(overlap)}px^2`);
+      }
+    }
+
+    if (checkPageOverflow) {
+      const scrollWidth = document.documentElement.scrollWidth;
+      const clientWidth = document.documentElement.clientWidth;
+
+      if (scrollWidth > clientWidth + 2) {
+        issues.push(
+          `horizontal page overflow scrollWidth=${scrollWidth}, clientWidth=${clientWidth}`
+        );
+      }
+    }
+
+    return {
+      ok: issues.length === 0,
+      detail:
+        issues.length > 0
+          ? issues.join("; ")
+          : details.length > 0
+            ? details.join("; ")
+            : "no contextual/status text present"
+    };
+  }
+
+  function collectReadableTextIssues(root, selectors) {
+    const issues = [];
+    const elements = root.querySelectorAll(selectors.join(","));
+
+    for (const element of elements) {
+      const text = normalize(element.textContent);
+      const rect = element.getBoundingClientRect();
+
+      if (!text || rect.width <= 0 || rect.height <= 0) {
+        continue;
+      }
+
+      const style = getComputedStyle(element);
+      const clippedX =
+        element.scrollWidth > element.clientWidth + 1 &&
+        style.overflowX !== "visible";
+      const clippedY =
+        element.scrollHeight > element.clientHeight + 1 &&
+        style.overflowY === "hidden";
+
+      if (style.whiteSpace === "nowrap" || clippedX || clippedY) {
+        issues.push(
+          `${element.className || element.tagName.toLowerCase()} clipped or nowrap: ${compactText(
+            text,
+            96
+          )}`
+        );
+      }
+    }
+
+    return issues;
+  }
+
+  function getRectOverlapArea(leftRect, rightRect) {
+    const width = Math.max(
+      0,
+      Math.min(leftRect.right, rightRect.right) -
+        Math.max(leftRect.left, rightRect.left)
+    );
+    const height = Math.max(
+      0,
+      Math.min(leftRect.bottom, rightRect.bottom) -
+        Math.max(leftRect.top, rightRect.top)
+    );
+
+    return width * height;
   }
 
   function normalize(value) {

@@ -174,13 +174,15 @@ export function createViewportSelectionDisplay({
     viewportPickIntent?.kind === "renderer-only" ||
     viewportPickIntent?.kind === "ambiguous"
   ) {
+    const fallbackDetail =
+      viewportPickIntent.kind === "ambiguous"
+        ? "Selection target ambiguous"
+        : "Selection target unsupported";
+
     return createDisplay({
       selectionKind: "none",
       title: "Viewport pick unsupported",
-      detail:
-        viewportPickIntent.kind === "ambiguous"
-          ? "Selection target ambiguous"
-          : "Selection target unsupported",
+      detail: viewportPickIntent.issues[0]?.message ?? fallbackDetail,
       tone: "blocked",
       geometry,
       diagnostics: viewportPickIntent.issues
@@ -191,7 +193,8 @@ export function createViewportSelectionDisplay({
     return createDisplay({
       selectionKind: "none",
       title: "Viewport pick unavailable",
-      detail: "Selection target missing",
+      detail:
+        viewportPickIntent.issues[0]?.message ?? "Selection target missing",
       tone: "blocked",
       geometry,
       diagnostics: viewportPickIntent.issues
@@ -266,9 +269,13 @@ function createReferenceCandidateDisplay(
     ...(primaryCandidate?.issues ?? []),
     ...response.issues
   ]);
+  const diagnosticDetail = diagnostics[0]?.message;
 
   return {
-    detail: formatSelectionReferenceStatus(response.status),
+    detail:
+      response.status === "resolved"
+        ? formatSelectionReferenceStatus(response.status)
+        : (diagnosticDetail ?? formatSelectionReferenceStatus(response.status)),
     tone: primary?.tone ?? toneFromReferenceStatus(response.status),
     referenceStatus: response.status,
     referenceSummary: primary?.title,

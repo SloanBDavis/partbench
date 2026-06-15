@@ -1331,12 +1331,18 @@ button.model-story-row:hover,
   pointer-events: none;
 }
 
+.viewport-frame-with-status .viewport-contextual-slot {
+  bottom: 62px;
+}
+
 .viewport-contextual-command-surface {
   display: grid;
   gap: 7px;
   max-width: 100%;
-  max-height: min(210px, calc(100vh - 180px));
-  overflow: auto;
+  max-height: min(190px, calc(100dvh - 220px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
   border: 1px solid rgba(110, 122, 110, 0.5);
   border-radius: 7px;
@@ -1358,9 +1364,8 @@ button.model-story-row:hover,
 .viewport-contextual-heading span,
 .viewport-contextual-detail-heading strong,
 .viewport-contextual-detail-heading span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .viewport-contextual-heading strong,
@@ -1389,6 +1394,8 @@ button.model-story-row:hover,
   min-height: 28px;
   padding: 0 8px;
   font-size: 0.68rem;
+  line-height: 1.15;
+  white-space: normal;
 }
 
 .viewport-contextual-actions button:first-child:not(:disabled) {
@@ -1412,18 +1419,21 @@ button.model-story-row:hover,
   color: var(--danger);
   font-size: 0.66rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .viewport-contextual-authority {
   color: var(--quiet);
   font-size: 0.64rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .viewport-contextual-session-status {
   color: var(--accent-strong);
   font-size: 0.64rem;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .viewport-contextual-inline {
@@ -1445,7 +1455,9 @@ button.model-story-row:hover,
   display: grid;
   gap: 6px;
   max-height: 146px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding-top: 2px;
 }
 
@@ -1479,11 +1491,10 @@ button.model-story-row:hover,
 
 .viewport-contextual-detail dt,
 .viewport-contextual-detail dd {
-  overflow: hidden;
   min-width: 0;
   margin: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .viewport-contextual-detail dt {
@@ -1511,10 +1522,9 @@ button.model-story-row:hover,
 
 .viewport-contextual-reference-list button span,
 .viewport-contextual-reference-list button strong {
-  overflow: hidden;
   max-width: 100%;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .viewport-contextual-reference-list button span {
@@ -1545,9 +1555,8 @@ button.model-story-row:hover,
 
 .viewport-status strong,
 .viewport-status span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .viewport-status strong {
@@ -3327,8 +3336,13 @@ button.dimension-status-row {
     max-width: none;
   }
 
+  .viewport-frame-with-status .viewport-contextual-slot {
+    bottom: 80px;
+  }
+
   .viewport-contextual-command-surface {
     width: min(100%, 360px);
+    max-height: min(150px, 30dvh);
   }
   .model-browser-sections {
     grid-template-columns: 1fr;

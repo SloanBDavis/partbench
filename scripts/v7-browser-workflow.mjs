@@ -15,6 +15,7 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "viewport-navigation-camera-controls",
   "viewport-body-measure-inspect",
   "viewport-unobstructed-after-navigation-measurement",
+  "viewport-responsive-text-readability",
   "viewport-generated-face-pick-selection-routing",
   "viewport-generated-face-contextual-actions",
   "viewport-generated-face-measure-inspect",
@@ -48,7 +49,8 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "project-json-import",
   "project-json-roundtrip-model",
   "project-json-roundtrip-diagnostic",
-  "viewport-narrow-layout-smoke"
+  "viewport-narrow-layout-smoke",
+  "viewport-narrow-scroll-readability"
 ]);
 
 export const V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID = "glb-download";

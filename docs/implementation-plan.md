@@ -195,6 +195,15 @@ These constraints remain active:
     harness. It does not change CAD behavior, modeling commands, renderer
     authority, project/source schemas, persisted UI state, WebGPU, assemblies,
     STEP import, agent/MCP behavior, or `web-cad.project.v17`.
+32. V9 Tranche H2 is implemented as responsive UX QA and diagnostic polish:
+    compact contextual/status text wraps instead of clipping, status/contextual
+    surfaces avoid overlap through app-layer layout state, blocked viewport
+    summaries prefer structured diagnostic messages over generic labels, and
+    the browser workflow smoke now requires desktop readability plus
+    narrow/mobile clipping and scroll-trap checks. It does not change CAD
+    behavior, modeling commands, renderer authority, project/source schemas,
+    persisted UI state, WebGPU, assemblies, STEP import, agent/MCP behavior, or
+    `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -317,7 +326,8 @@ deterministic sketch/rectangle/circle/new-body extrudes, checks model-tree body
 selection, inspector/modeling `selection.referenceCandidates` status, viewport
 reference selection, direct circle body/face/edge viewport routing,
 session-only Escape clearing, unobstructed viewport state after navigation,
-measurement, and project round-trip, narrow viewport visibility,
+measurement, and project round-trip, desktop/narrow contextual readability,
+narrow viewport visibility and scroll-trap checks,
 named-reference routing, attached-sketch creation on a generated planar face,
 consumed-body structured diagnostics, and Project/File JSON export/load/import
 round-trip behavior, then reports required checks plus optional skipped GLB
@@ -1354,11 +1364,12 @@ Use these decisions when writing V9 implementation prompts:
 8. **Release Smokes, UX QA, And Hardening** - H1 is implemented as browser
    smoke matrix expansion for direct circle viewport body/face/edge routing,
    Escape clearing, unobstructed viewport checks, project round-trip viewport
-   checks, and narrow viewport visibility. H2 should add broader UX QA/manual
-   browser audit evidence for supported and diagnostic interaction paths. H3
-   should close the final V9 release audit, full validation evidence, stale
-   wording cleanup, and remaining deferral notes without expanding CAD
-   behavior.
+   checks, and narrow viewport visibility. H2 is implemented as responsive UX
+   QA and diagnostic polish for contextual/status wrapping, overlap avoidance,
+   clearer blocked-selection labels, and desktop/narrow readability smoke
+   evidence. H3 should close the final V9 release audit, full validation
+   evidence, stale wording cleanup, and remaining deferral notes without
+   expanding CAD behavior.
 
 ### V9 Scope Guardrails
 

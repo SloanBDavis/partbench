@@ -70,6 +70,13 @@ export function ViewportCanvas({
   const canFitSelected = Boolean(
     selectedId && getRenderObjectBounds(selectedId, primitives, meshes ?? [])
   );
+  const frameClassName = [
+    "viewport-frame",
+    contextualSurface ? "viewport-frame-with-contextual" : undefined,
+    status ? "viewport-frame-with-status" : undefined
+  ]
+    .filter(Boolean)
+    .join(" ");
   const pointerRef = useRef<
     | {
         readonly id: number;
@@ -211,7 +218,7 @@ export function ViewportCanvas({
     <section className="viewport-panel" aria-label="3D viewport">
       <div
         ref={wrapperRef}
-        className="viewport-frame"
+        className={frameClassName}
         onContextMenu={(event) => event.preventDefault()}
       >
         <div className="viewport-head">

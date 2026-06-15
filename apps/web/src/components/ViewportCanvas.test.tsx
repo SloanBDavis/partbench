@@ -92,6 +92,33 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("Viewport selection diagnostics");
   });
 
+  it("marks the viewport frame when status and contextual controls share the model area", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        status: {
+          label: "Body selected",
+          detail: "Selected body body_rect is consumed by feature feat_cut.",
+          tone: "warning"
+        },
+        contextualSurface: createElement(
+          "section",
+          { "aria-label": "Viewport contextual commands" },
+          "Measure"
+        ),
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain(
+      'class="viewport-frame viewport-frame-with-contextual viewport-frame-with-status"'
+    );
+    expect(markup).toContain("Selected body body_rect is consumed");
+    expect(markup).toContain('aria-label="Viewport contextual commands"');
+  });
+
   it("disables fit selected until selected render bounds exist", () => {
     const emptyMarkup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
