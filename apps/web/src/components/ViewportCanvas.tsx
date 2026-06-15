@@ -9,8 +9,7 @@ import {
   type RenderPrimitive,
   type RenderVisualStateInput,
   type ViewportPoint,
-  type ViewportSize,
-  zoomCamera
+  type ViewportSize
 } from "@web-cad/renderer";
 import {
   useEffect,
@@ -20,9 +19,12 @@ import {
   type ReactNode
 } from "react";
 import {
-  fitCameraToRenderObject,
-  fitCameraToRenderScene
+  applyViewportCameraAction,
+  getRenderObjectBounds,
+  VIEWPORT_STANDARD_VIEWS,
+  type ViewportStandardViewId
 } from "../viewportCamera";
+import { shouldCancelViewportTransientState } from "../viewportKeyboard";
 
 export interface ViewportCanvasPick {
   readonly camera: RenderCamera;
@@ -42,6 +44,7 @@ export function ViewportCanvas({
   meshes,
   onHover,
   onSelect,
+  onCancelTransientState,
   primitives,
   selectedId,
   status,
@@ -51,6 +54,7 @@ export function ViewportCanvas({
   readonly meshes?: readonly RenderTriangleMesh[];
   readonly onHover?: (pick: ViewportCanvasPick | undefined) => void;
   readonly onSelect: (pick: ViewportCanvasPick) => void;
+  readonly onCancelTransientState?: () => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
   readonly status?: ViewportCanvasStatus;
@@ -63,6 +67,9 @@ export function ViewportCanvas({
   );
   const [size, setSize] = useState({ width: 900, height: 600 });
   const [hoveredId, setHoveredId] = useState<string | undefined>();
+  const canFitSelected = Boolean(
+    selectedId && getRenderObjectBounds(selectedId, primitives, meshes ?? [])
+  );
   const pointerRef = useRef<
     | {
         readonly id: number;
@@ -124,27 +131,69 @@ export function ViewportCanvas({
   }, [camera, hoveredId, meshes, primitives, selectedId, size, visualStates]);
 
   function fitView() {
-    setCamera((current) =>
-      fitCameraToRenderScene(current, primitives, meshes ?? [])
+    setCamera(
+      (current) =>
+        applyViewportCameraAction(
+          current,
+          { type: "fitAll" },
+          { primitives, meshes }
+        ).camera
     );
   }
 
   function fitSelectedView() {
-    setCamera((current) =>
-      fitCameraToRenderObject(current, selectedId, primitives, meshes ?? [])
+    setCamera(
+      (current) =>
+        applyViewportCameraAction(
+          current,
+          { type: "fitSelection", selectedRenderId: selectedId },
+          { primitives, meshes }
+        ).camera
     );
   }
 
   function resetView() {
-    setCamera(createDefaultCamera());
+    setCamera(
+      (current) =>
+        applyViewportCameraAction(
+          current,
+          { type: "reset" },
+          { primitives, meshes }
+        ).camera
+    );
   }
 
   function zoomIn() {
-    setCamera((current) => zoomCamera(current, -220));
+    setCamera(
+      (current) =>
+        applyViewportCameraAction(
+          current,
+          { type: "zoom", deltaY: -220 },
+          { primitives, meshes }
+        ).camera
+    );
   }
 
   function zoomOut() {
-    setCamera((current) => zoomCamera(current, 220));
+    setCamera(
+      (current) =>
+        applyViewportCameraAction(
+          current,
+          { type: "zoom", deltaY: 220 },
+          { primitives, meshes }
+        ).camera
+    );
+  }
+
+  function setStandardView(viewId: ViewportStandardViewId) {
+    setCamera(
+      (current) =>
+        applyViewportCameraAction(
+          current,
+          { type: "standardView", viewId },
+          { primitives, meshes }
+        ).camera
+    );
   }
 
   function getEventViewportPoint(
@@ -167,26 +216,50 @@ export function ViewportCanvas({
       >
         <div className="viewport-head">
           <div className="viewport-actions" aria-label="Viewport controls">
-            <button type="button" onClick={fitView} title="Fit all objects">
-              Fit all
-            </button>
-            <button
-              type="button"
-              onClick={fitSelectedView}
-              disabled={!selectedId}
-              title="Fit selected object"
+            <div
+              className="viewport-action-group"
+              aria-label="Viewport fit and zoom"
             >
-              Fit selected
-            </button>
-            <button type="button" onClick={resetView} title="Reset view">
-              Reset
-            </button>
-            <button type="button" onClick={zoomIn} title="Zoom in">
-              +
-            </button>
-            <button type="button" onClick={zoomOut} title="Zoom out">
-              -
-            </button>
+              <button type="button" onClick={fitView} title="Fit all objects">
+                Fit all
+              </button>
+              <button
+                type="button"
+                onClick={fitSelectedView}
+                disabled={!canFitSelected}
+                title={
+                  canFitSelected
+                    ? "Fit selected object"
+                    : "Fit selected unavailable"
+                }
+              >
+                Fit selected
+              </button>
+              <button type="button" onClick={resetView} title="Reset view">
+                Reset
+              </button>
+              <button type="button" onClick={zoomIn} title="Zoom in">
+                +
+              </button>
+              <button type="button" onClick={zoomOut} title="Zoom out">
+                -
+              </button>
+            </div>
+            <div
+              className="viewport-action-group"
+              aria-label="Viewport standard views"
+            >
+              {VIEWPORT_STANDARD_VIEWS.map((standardView) => (
+                <button
+                  key={standardView.id}
+                  type="button"
+                  onClick={() => setStandardView(standardView.id)}
+                  title={standardView.title}
+                >
+                  {standardView.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         {contextualSurface ? (
@@ -312,7 +385,14 @@ export function ViewportCanvas({
             event.preventDefault();
             const deltaY =
               event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
-            setCamera((current) => zoomCamera(current, deltaY));
+            setCamera(
+              (current) =>
+                applyViewportCameraAction(
+                  current,
+                  { type: "zoom", deltaY },
+                  { primitives, meshes }
+                ).camera
+            );
           }}
           onKeyDown={(event) => {
             if (event.key === "+" || event.key === "=") {
@@ -330,6 +410,12 @@ export function ViewportCanvas({
             if (event.key === "0") {
               event.preventDefault();
               resetView();
+              return;
+            }
+
+            if (shouldCancelViewportTransientState(event)) {
+              event.preventDefault();
+              onCancelTransientState?.();
             }
           }}
         />

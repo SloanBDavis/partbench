@@ -1,10 +1,12 @@
 import { createDefaultCamera, type RenderPrimitive } from "@web-cad/renderer";
 import { describe, expect, it } from "vitest";
 import {
+  applyViewportCameraAction,
   fitCameraToRenderObject,
   fitCameraToRenderScene,
   getRenderObjectBounds,
-  getRenderSceneBounds
+  getRenderSceneBounds,
+  VIEWPORT_STANDARD_VIEWS
 } from "./viewportCamera";
 
 describe("viewport camera helpers", () => {
@@ -100,12 +102,39 @@ describe("viewport camera helpers", () => {
 
   it("fits the camera target and distance to visible content", () => {
     const camera = createDefaultCamera();
+    const result = applyViewportCameraAction(
+      camera,
+      { type: "fitAll" },
+      { primitives: [createBoxPrimitive()] }
+    );
     const fitted = fitCameraToRenderScene(camera, [createBoxPrimitive()]);
 
+    expect(result.status).toBe("applied");
+    expect(result.source).toBe("scene");
+    expect(result.camera).toEqual(fitted);
     expect(fitted.target).toEqual([3, 3, 3]);
     expect(fitted.distance).toBeCloseTo(11.97, 2);
     expect(fitted.yaw).toBe(camera.yaw);
     expect(fitted.pitch).toBe(camera.pitch);
+  });
+
+  it("resets to the default camera when fit all has no visible geometry", () => {
+    const camera = {
+      ...createDefaultCamera(),
+      target: [5, 5, 5] as const,
+      distance: 42
+    };
+    const result = applyViewportCameraAction(
+      camera,
+      { type: "fitAll" },
+      { primitives: [] }
+    );
+
+    expect(result).toEqual({
+      camera: createDefaultCamera(),
+      status: "fallback-default",
+      source: "default"
+    });
   });
 
   it("bounds and fits a selected primitive object", () => {
@@ -150,6 +179,94 @@ describe("viewport camera helpers", () => {
     expect(fitted.distance).toBeCloseTo(11.54, 2);
   });
 
+  it("fits a selection fallback when the primary selected reference has no bounds", () => {
+    const camera = createDefaultCamera();
+    const result = applyViewportCameraAction(
+      camera,
+      {
+        type: "fitSelection",
+        selectedRenderId: "generated:face:top",
+        fallbackRenderId: "box_1"
+      },
+      { primitives: [createBoxPrimitive()] }
+    );
+
+    expect(result.status).toBe("applied");
+    expect(result.source).toBe("selectionFallback");
+    expect(result.camera.target).toEqual([3, 3, 3]);
+    expect(result.camera.distance).toBeCloseTo(11.97, 2);
+  });
+
+  it("leaves camera unchanged when fit selection has no defensible bounds", () => {
+    const camera = createDefaultCamera();
+    const result = applyViewportCameraAction(
+      camera,
+      {
+        type: "fitSelection",
+        selectedRenderId: "generated:edge:missing",
+        fallbackRenderId: "body_missing"
+      },
+      { primitives: [createBoxPrimitive()] }
+    );
+
+    expect(result).toEqual({
+      camera,
+      status: "unchanged",
+      source: "none"
+    });
+  });
+
+  it("sets standard views without changing target or distance", () => {
+    const camera = {
+      ...createDefaultCamera(),
+      target: [3, 4, 5] as const,
+      distance: 12
+    };
+
+    for (const standardView of VIEWPORT_STANDARD_VIEWS) {
+      const result = applyViewportCameraAction(
+        camera,
+        { type: "standardView", viewId: standardView.id },
+        { primitives: [] }
+      );
+
+      expect(result.status).toBe("applied");
+      expect(result.source).toBe("standardView");
+      expect(result.viewId).toBe(standardView.id);
+      expect(result.camera.target).toEqual(camera.target);
+      expect(result.camera.distance).toBe(camera.distance);
+      expect(result.camera.yaw).toBeCloseTo(standardView.yaw);
+      expect(result.camera.pitch).toBeCloseTo(standardView.pitch);
+    }
+  });
+
+  it("resets and zooms through the shared camera action helper", () => {
+    const camera = createDefaultCamera();
+    const reset = applyViewportCameraAction(
+      {
+        ...camera,
+        target: [3, 4, 5],
+        distance: 42
+      },
+      { type: "reset" },
+      { primitives: [] }
+    );
+    const zoomed = applyViewportCameraAction(
+      camera,
+      { type: "zoom", deltaY: -220 },
+      { primitives: [] }
+    );
+
+    expect(reset).toEqual({
+      camera: createDefaultCamera(),
+      status: "applied",
+      source: "default"
+    });
+    expect(zoomed.status).toBe("applied");
+    expect(zoomed.source).toBe("zoom");
+    expect(zoomed.camera.distance).toBeLessThan(camera.distance);
+  });
+
   it("bounds edge-only sketch display meshes for fit-all behavior", () => {
     const bounds = getRenderSceneBounds(
       [],
@@ -185,6 +302,39 @@ describe("viewport camera helpers", () => {
 
     expect(fitCameraToRenderObject(camera, undefined, [])).toBe(camera);
     expect(fitCameraToRenderObject(camera, "missing", [])).toBe(camera);
+  });
+
+  it("keeps camera action results separate from renderer, storage, and source IDs", () => {
+    const result = applyViewportCameraAction(
+      createDefaultCamera(),
+      { type: "fitAll" },
+      {
+        primitives: [],
+        meshes: [
+          {
+            id: "selection-buffer:face:17",
+            kind: "mesh",
+            vertices: [[0, 0, 0]],
+            indices: [],
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            },
+            source: "occt-cache"
+          }
+        ]
+      }
+    );
+    const text = JSON.stringify(result);
+
+    expect(text).not.toContain("selection-buffer");
+    expect(text).not.toContain("mesh-triangle");
+    expect(text).not.toContain("occt");
+    expect(text).not.toContain("opfs");
+    expect(text).not.toContain("file-handle");
+    expect(text).not.toContain("web-cad.project.v17");
+    expect(text).not.toContain(".wcad");
   });
 });
 

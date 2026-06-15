@@ -4,6 +4,7 @@ import {
   type RenderPrimitive,
   type RenderTransform,
   type RenderTriangleMesh,
+  zoomCamera,
   type Vec3
 } from "@web-cad/renderer";
 
@@ -12,18 +13,204 @@ export interface RenderSceneBounds {
   readonly max: Vec3;
 }
 
+export type ViewportStandardViewId = "top" | "front" | "right" | "isometric";
+
+export interface ViewportStandardView {
+  readonly id: ViewportStandardViewId;
+  readonly label: string;
+  readonly title: string;
+  readonly yaw: number;
+  readonly pitch: number;
+}
+
+export type ViewportCameraAction =
+  | { readonly type: "fitAll" }
+  | {
+      readonly type: "fitSelection";
+      readonly selectedRenderId?: string;
+      readonly fallbackRenderId?: string;
+    }
+  | { readonly type: "reset" }
+  | { readonly type: "standardView"; readonly viewId: ViewportStandardViewId }
+  | { readonly type: "zoom"; readonly deltaY: number };
+
+export type ViewportCameraActionStatus =
+  | "applied"
+  | "fallback-default"
+  | "unchanged";
+
+export type ViewportCameraActionSource =
+  | "default"
+  | "scene"
+  | "selection"
+  | "selectionFallback"
+  | "standardView"
+  | "none"
+  | "zoom";
+
+export interface ViewportCameraActionResult {
+  readonly camera: RenderCamera;
+  readonly status: ViewportCameraActionStatus;
+  readonly source: ViewportCameraActionSource;
+  readonly bounds?: RenderSceneBounds;
+  readonly viewId?: ViewportStandardViewId;
+}
+
+const TOP_VIEW_PITCH = Math.PI / 2 - 0.1;
+
+export const VIEWPORT_STANDARD_VIEWS: readonly ViewportStandardView[] = [
+  {
+    id: "top",
+    label: "Top",
+    title: "Top view",
+    yaw: 0,
+    pitch: TOP_VIEW_PITCH
+  },
+  {
+    id: "front",
+    label: "Front",
+    title: "Front view",
+    yaw: 0,
+    pitch: 0
+  },
+  {
+    id: "right",
+    label: "Right",
+    title: "Right view",
+    yaw: Math.PI / 2,
+    pitch: 0
+  },
+  {
+    id: "isometric",
+    label: "Iso",
+    title: "Isometric view",
+    yaw: createDefaultCamera().yaw,
+    pitch: createDefaultCamera().pitch
+  }
+];
+
+export function applyViewportCameraAction(
+  camera: RenderCamera,
+  action: ViewportCameraAction,
+  scene: {
+    readonly primitives: readonly RenderPrimitive[];
+    readonly meshes?: readonly RenderTriangleMesh[];
+  }
+): ViewportCameraActionResult {
+  const meshes = scene.meshes ?? [];
+
+  if (action.type === "fitAll") {
+    const bounds = getRenderSceneBounds(scene.primitives, meshes);
+
+    if (!bounds) {
+      return {
+        camera: createDefaultCamera(),
+        status: "fallback-default",
+        source: "default"
+      };
+    }
+
+    return {
+      camera: fitCameraToBounds(camera, bounds),
+      status: "applied",
+      source: "scene",
+      bounds
+    };
+  }
+
+  if (action.type === "fitSelection") {
+    const selectedBounds = action.selectedRenderId
+      ? getRenderObjectBounds(action.selectedRenderId, scene.primitives, meshes)
+      : undefined;
+
+    if (selectedBounds) {
+      return {
+        camera: fitCameraToBounds(camera, selectedBounds),
+        status: "applied",
+        source: "selection",
+        bounds: selectedBounds
+      };
+    }
+
+    const fallbackBounds =
+      action.fallbackRenderId &&
+      action.fallbackRenderId !== action.selectedRenderId
+        ? getRenderObjectBounds(
+            action.fallbackRenderId,
+            scene.primitives,
+            meshes
+          )
+        : undefined;
+
+    if (fallbackBounds) {
+      return {
+        camera: fitCameraToBounds(camera, fallbackBounds),
+        status: "applied",
+        source: "selectionFallback",
+        bounds: fallbackBounds
+      };
+    }
+
+    return {
+      camera,
+      status: "unchanged",
+      source: "none"
+    };
+  }
+
+  if (action.type === "reset") {
+    return {
+      camera: createDefaultCamera(),
+      status: "applied",
+      source: "default"
+    };
+  }
+
+  if (action.type === "standardView") {
+    const standardView = getViewportStandardView(action.viewId);
+
+    return {
+      camera: {
+        ...camera,
+        yaw: standardView.yaw,
+        pitch: standardView.pitch
+      },
+      status: "applied",
+      source: "standardView",
+      viewId: standardView.id
+    };
+  }
+
+  return {
+    camera: zoomCamera(camera, action.deltaY),
+    status: "applied",
+    source: "zoom"
+  };
+}
+
+export function getViewportStandardView(
+  viewId: ViewportStandardViewId
+): ViewportStandardView {
+  return (
+    VIEWPORT_STANDARD_VIEWS.find(
+      (standardView) => standardView.id === viewId
+    ) ?? VIEWPORT_STANDARD_VIEWS[VIEWPORT_STANDARD_VIEWS.length - 1]
+  );
+}
+
 export function fitCameraToRenderScene(
   camera: RenderCamera,
   primitives: readonly RenderPrimitive[],
   meshes: readonly RenderTriangleMesh[] = []
 ): RenderCamera {
-  const bounds = getRenderSceneBounds(primitives, meshes);
-
-  if (!bounds) {
-    return createDefaultCamera();
-  }
-
-  return fitCameraToBounds(camera, bounds);
+  return applyViewportCameraAction(
+    camera,
+    { type: "fitAll" },
+    {
+      primitives,
+      meshes
+    }
+  ).camera;
 }
 
 export function fitCameraToRenderObject(
@@ -32,13 +219,11 @@ export function fitCameraToRenderObject(
   primitives: readonly RenderPrimitive[],
   meshes: readonly RenderTriangleMesh[] = []
 ): RenderCamera {
-  if (!objectId) {
-    return camera;
-  }
-
-  const bounds = getRenderObjectBounds(objectId, primitives, meshes);
-
-  return bounds ? fitCameraToBounds(camera, bounds) : camera;
+  return applyViewportCameraAction(
+    camera,
+    { type: "fitSelection", selectedRenderId: objectId },
+    { primitives, meshes }
+  ).camera;
 }
 
 export function getRenderObjectBounds(

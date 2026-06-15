@@ -16,14 +16,22 @@ describe("ViewportCanvas", () => {
 
     expect(markup).toContain('aria-label="3D viewport"');
     expect(markup).toContain('aria-label="Viewport controls"');
+    expect(markup).toContain('aria-label="Viewport fit and zoom"');
+    expect(markup).toContain('aria-label="Viewport standard views"');
     expect(markup).toContain('aria-label="3D scene viewport"');
     expect(markup).toContain("Fit all");
     expect(markup).toContain("Fit selected");
     expect(markup).toContain("Reset");
+    expect(markup).toContain("Top");
+    expect(markup).toContain("Front");
+    expect(markup).toContain("Right");
+    expect(markup).toContain("Iso");
     expect(markup).not.toContain("Viewport interaction summary");
     expect(markup).not.toContain("Viewport reference candidates");
     expect(markup).not.toContain("Viewport selection diagnostics");
     expect(markup).not.toContain("Command-ready reference");
+    expect(markup).not.toContain("viewport-navigation-panel");
+    expect(markup).not.toContain("viewport-camera-overlay");
     expect(markup).not.toContain("viewport-interaction-surface");
     expect(markup).not.toContain("viewport-reference-action");
     expect(markup).not.toContain("viewport-measurement");
@@ -84,7 +92,7 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("Viewport selection diagnostics");
   });
 
-  it("disables fit selected until a render target is selected", () => {
+  it("disables fit selected until selected render bounds exist", () => {
     const emptyMarkup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
         primitives: [],
@@ -94,7 +102,18 @@ describe("ViewportCanvas", () => {
     );
     const selectedMarkup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
-        primitives: [],
+        primitives: [
+          {
+            id: "body_rect",
+            kind: "box",
+            dimensions: { width: 1, height: 1, depth: 1 },
+            transform: {
+              translation: [0, 0, 0],
+              rotation: [0, 0, 0],
+              scale: [1, 1, 1]
+            }
+          }
+        ],
         meshes: [],
         selectedId: "body_rect",
         onSelect: () => undefined
@@ -102,11 +121,37 @@ describe("ViewportCanvas", () => {
     );
 
     expect(emptyMarkup).toMatch(
-      /<button[^>]*disabled=""[^>]*title="Fit selected object"[^>]*>Fit selected/
+      /<button[^>]*disabled=""[^>]*title="Fit selected unavailable"[^>]*>Fit selected/
     );
     expect(selectedMarkup).not.toMatch(
       /<button[^>]*disabled=""[^>]*title="Fit selected object"[^>]*>Fit selected/
     );
+    expect(selectedMarkup).toMatch(
+      /<button[^>]*title="Fit selected object"[^>]*>Fit selected/
+    );
+  });
+
+  it("keeps navigation compact while hosting contextual controls separately", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "body_rect",
+        contextualSurface: createElement(
+          "section",
+          { "aria-label": "Viewport contextual commands" },
+          "Measure"
+        ),
+        onSelect: () => undefined
+      })
+    );
+    const buttonCount = markup.match(/<button/g)?.length ?? 0;
+
+    expect(buttonCount).toBe(9);
+    expect(markup).toContain("viewport-actions");
+    expect(markup).toContain("viewport-contextual-slot");
+    expect(markup).not.toContain("viewport-navigation-panel");
+    expect(markup).not.toContain("viewport-camera-overlay");
   });
 
   it("keeps renderer and selection-buffer identifiers out of visible markup", () => {

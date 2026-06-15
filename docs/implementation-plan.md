@@ -177,6 +177,15 @@ These constraints remain active:
     measurements, sketch constraints, command history, renderer authority,
     OPFS/file/project schema changes, agent/MCP changes, WebGPU, assemblies,
     STEP import, broad topology naming, or `web-cad.project.v17`.
+30. V9 Tranche G1 is implemented as a compact session-only navigation/camera
+    ergonomics slice: shared viewport camera action helpers now cover Fit all,
+    Fit selected with owning-body fallback for generated references, Reset,
+    Zoom, and Top/Front/Right/Isometric standard views; Escape clears transient
+    viewport hover/pick diagnostics, contextual detail, and active two-target
+    measurement state only outside editable controls. It does not add persisted
+    named views, user preferences, command history, storage/schema changes,
+    renderer authority, WebGPU, assemblies, STEP import, broad topology naming,
+    agent/MCP changes, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -186,7 +195,8 @@ and focused packages:
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
   derived-geometry orchestration, project panel, batch panel, current canvas
   viewport with V9 body/face/edge picking, visual-state routing, compact
-  contextual command surface, single-target Measure/Inspect, first feature
+  contextual command surface, single-target Measure/Inspect, session-only
+  two-target measurement, compact camera/navigation controls, first feature
   tree, improved modeling workflow, and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
@@ -1326,9 +1336,10 @@ Use these decisions when writing V9 implementation prompts:
 6. **Measure And Inspect Tool** - add viewport-native measurements for supported
    body/face/edge/reference combinations with exact/semantic/display authority
    labels and structured diagnostics.
-7. **Navigation, Camera, And Tool Ergonomics** - improve orbit/pan/zoom, fit
-   all, fit selection, standard views, active tool visibility, cancel behavior,
-   and keyboard/mouse basics without persisting view state.
+7. **Navigation, Camera, And Tool Ergonomics** - G1 implemented compact
+   session-only Fit all, Fit selected, standard views, active tool visibility,
+   and safe Escape cancel behavior. Broader keyboard repeat/additive-selection
+   polish remains deferred without persisting view state.
 8. **Release Smokes, UX QA, And Hardening** - add browser smokes for direct
    viewport body/face/edge selection, contextual commands, measurements,
    diagnostics, `.wcad` round-trip, export availability, and unobstructed

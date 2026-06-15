@@ -1300,6 +1300,17 @@ button.model-story-row:hover,
   max-width: min(460px, calc(100vw - 40px));
 }
 
+.viewport-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid rgba(160, 172, 160, 0.44);
+  border-radius: 7px;
+  background: rgba(247, 249, 246, 0.58);
+  backdrop-filter: blur(10px);
+}
+
 .viewport-actions button {
   min-width: 34px;
   min-height: 32px;
@@ -3302,6 +3313,11 @@ button.dimension-status-row {
 
   .viewport-actions {
     justify-content: flex-start;
+    max-width: none;
+  }
+
+  .viewport-action-group {
+    flex: 0 1 auto;
   }
 
   .viewport-contextual-slot {

@@ -10,6 +10,7 @@ import type {
   ViewportTwoTargetMeasurementTarget,
   ViewportTwoTargetMeasurementView
 } from "../viewportTwoTargetMeasurement";
+import { shouldCancelViewportTransientState } from "../viewportKeyboard";
 
 type ExpandedContextualSection = "inspect" | "measure" | "name" | "references";
 
@@ -67,7 +68,8 @@ export function ViewportContextualCommandSurface({
     }
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
+      if (shouldCancelViewportTransientState(event)) {
+        event.preventDefault();
         setTransient({
           selectionKey: surface.selectionKey,
           name: ""

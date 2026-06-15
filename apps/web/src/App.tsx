@@ -184,6 +184,7 @@ import { resolveViewportHoverIntent } from "./viewportHoverIntent";
 import { createViewportSelectionDisplay } from "./viewportSelectionDisplay";
 import { createViewportVisualStateModel } from "./viewportVisualState";
 import { createViewportMeasurementOverlay } from "./viewportMeasurementOverlay";
+import { shouldCancelViewportTransientState } from "./viewportKeyboard";
 import {
   clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange,
   createViewportTwoTargetMeasurementTarget,
@@ -1418,27 +1419,37 @@ export function App() {
     isViewportTwoTargetMeasurementSessionActive(
       viewportTwoTargetMeasurementSession
     );
+  const viewportTransientStateActive =
+    viewportTwoTargetMeasurementSessionActive ||
+    viewportHoverPick !== undefined ||
+    viewportPickIntent !== undefined;
+  const clearViewportTransientState = useCallback(() => {
+    setViewportHoverPick(undefined);
+    setViewportPickIntent(undefined);
+    setViewportTwoTargetMeasurementSession((current) =>
+      updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
+    );
+  }, []);
   useEffect(() => {
     setViewportTwoTargetMeasurementSession((current) =>
       clearViewportTwoTargetMeasurementSecondTargetOnSelectionChange(current)
     );
   }, [viewportContextualCommandSurface.selectionKey]);
   useEffect(() => {
-    if (!viewportTwoTargetMeasurementSessionActive) {
+    if (!viewportTransientStateActive) {
       return undefined;
     }
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setViewportTwoTargetMeasurementSession((current) =>
-          updateViewportTwoTargetMeasurementSession(current, { type: "clear" })
-        );
+      if (shouldCancelViewportTransientState(event)) {
+        event.preventDefault();
+        clearViewportTransientState();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [viewportTwoTargetMeasurementSessionActive]);
+  }, [clearViewportTransientState, viewportTransientStateActive]);
   const geometryStatusBySourceId = useMemo(
     () =>
       new Map(
@@ -2976,6 +2987,7 @@ export function App() {
           }
           onHover={hoverViewportPick}
           onSelect={selectViewportPick}
+          onCancelTransientState={clearViewportTransientState}
         />
 
         <div className="right-rail" aria-label="Context and advanced tools">

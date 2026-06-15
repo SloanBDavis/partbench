@@ -498,6 +498,16 @@ async function v7BrowserWorkflowSmoke({
     "viewport body pick routes through semantic selection without forcing the Selection tab",
     getSelectionText()
   );
+  exerciseViewportNavigationControls();
+  await waitForBodyCommandReady(
+    ids.bodyId,
+    "viewport body remains command-ready after camera controls"
+  );
+  pass(
+    "viewport-navigation-camera-controls",
+    "fit all, fit selected, and standard views keep viewport selection usable",
+    getViewportNavigationControlsText()
+  );
   await waitForViewportContextualCommands(
     ["Measure", "Inspect"],
     "viewport body contextual measure and inspect commands"
@@ -1338,6 +1348,49 @@ async function v7BrowserWorkflowSmoke({
       "viewport-unobstructed-selection-layout",
       "selection details live in the left Selection tab, not over the viewport"
     );
+  }
+
+  function exerciseViewportNavigationControls() {
+    const controls = getViewportNavigationControls();
+    const expectedLabels = [
+      "Fit all",
+      "Fit selected",
+      "Reset",
+      "+",
+      "-",
+      "Top",
+      "Front",
+      "Right",
+      "Iso"
+    ];
+    const missingLabels = expectedLabels.filter(
+      (label) => !includesText(controls, label)
+    );
+
+    if (missingLabels.length > 0) {
+      fail(
+        "viewport-navigation-camera-controls",
+        "viewport exposes compact navigation and standard-view controls",
+        `missing=${missingLabels.join(",")}; controls=${normalize(
+          controls.textContent
+        )}`
+      );
+      return;
+    }
+
+    clickButton(controls, "Fit all");
+    clickButton(controls, "Fit selected");
+    clickButton(controls, "Top");
+    clickButton(controls, "Iso");
+    clickButton(controls, "Reset");
+  }
+
+  function getViewportNavigationControlsText() {
+    return compactText(getViewportNavigationControls().textContent, 240);
+  }
+
+  function getViewportNavigationControls() {
+    return getElementByAriaLabel("Viewport controls");
   }
 
   async function waitForViewportContextualCommands(labels, label) {

@@ -9,6 +9,7 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "advanced-tools-scrollability",
   "circle-body-reference-contract",
   "viewport-body-pick-selection-routing",
+  "viewport-navigation-camera-controls",
   "viewport-body-measure-inspect",
   "viewport-generated-face-pick-selection-routing",
   "viewport-generated-face-contextual-actions",
