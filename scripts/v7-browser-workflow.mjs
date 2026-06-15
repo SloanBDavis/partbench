@@ -8,9 +8,13 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "advanced-tools-cleanup",
   "advanced-tools-scrollability",
   "circle-body-reference-contract",
+  "circle-viewport-body-pick-selection-routing",
+  "circle-viewport-generated-face-pick-selection-routing",
+  "circle-viewport-generated-edge-pick-selection-routing",
   "viewport-body-pick-selection-routing",
   "viewport-navigation-camera-controls",
   "viewport-body-measure-inspect",
+  "viewport-unobstructed-after-navigation-measurement",
   "viewport-generated-face-pick-selection-routing",
   "viewport-generated-face-contextual-actions",
   "viewport-generated-face-measure-inspect",
@@ -18,6 +22,7 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "viewport-generated-edge-contextual-actions",
   "viewport-generated-edge-measure-inspect",
   "viewport-two-target-measure",
+  "viewport-escape-clears-transient-detail",
   "body-reference-contract",
   "viewport-unobstructed-selection-layout",
   "modeling-reference-status",
@@ -37,11 +42,13 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "project-wcad-open-upload",
   "project-wcad-roundtrip-model",
   "project-wcad-viewport-usable",
+  "project-roundtrip-viewport-unobstructed",
   "project-json-export-preview",
   "project-json-load-preview",
   "project-json-import",
   "project-json-roundtrip-model",
-  "project-json-roundtrip-diagnostic"
+  "project-json-roundtrip-diagnostic",
+  "viewport-narrow-layout-smoke"
 ]);
 
 export const V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID = "glb-download";

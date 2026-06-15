@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-14.
+Last updated: 2026-06-15.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
@@ -186,6 +186,15 @@ These constraints remain active:
     named views, user preferences, command history, storage/schema changes,
     renderer authority, WebGPU, assemblies, STEP import, broad topology naming,
     agent/MCP changes, or `web-cad.project.v17`.
+31. V9 Tranche H1 is implemented as release smoke matrix expansion: the
+    browser workflow smoke now covers direct circle `newBody` viewport body,
+    generated planar face, and generated circular edge routing; session-only
+    Escape clearing for active two-target/contextual detail; viewport
+    unobstructed assertions after navigation, measurement, and project
+    round-trip; and a narrow viewport smoke check through the existing CDP
+    harness. It does not change CAD behavior, modeling commands, renderer
+    authority, project/source schemas, persisted UI state, WebGPU, assemblies,
+    STEP import, agent/MCP behavior, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -306,14 +315,16 @@ The default smoke follows the existing built-app/static-server/CDP pattern. It
 runs `pnpm build`, opens the built app in a Chromium-compatible browser, creates
 deterministic sketch/rectangle/circle/new-body extrudes, checks model-tree body
 selection, inspector/modeling `selection.referenceCandidates` status, viewport
-reference selection, named-reference routing, attached-sketch creation on a
-generated planar face, consumed-body structured diagnostics, and Project/File
-JSON export/load/import round-trip behavior, then reports required checks plus
-optional skipped GLB download readiness. Default production builds keep derived
-geometry disabled, so the GLB download check may be skipped with a structured
-reason. The smoke also verifies the reduced Advanced tools surface no longer
-exposes Batch or Mesh tabs and can scroll overflowing panel content. The derived
-smoke builds with
+reference selection, direct circle body/face/edge viewport routing,
+session-only Escape clearing, unobstructed viewport state after navigation,
+measurement, and project round-trip, narrow viewport visibility,
+named-reference routing, attached-sketch creation on a generated planar face,
+consumed-body structured diagnostics, and Project/File JSON export/load/import
+round-trip behavior, then reports required checks plus optional skipped GLB
+download readiness. Default production builds keep derived geometry disabled,
+so the GLB download check may be skipped with a structured reason. The smoke
+also verifies the reduced Advanced tools surface no longer exposes Batch or Mesh
+tabs and can scroll overflowing panel content. The derived smoke builds with
 `VITE_ENABLE_DERIVED_GEOMETRY=true` and
 requires `glb-download` to pass, proving transient
 `partbench-visualization.glb` output from ready derived display meshes.
@@ -1340,10 +1351,14 @@ Use these decisions when writing V9 implementation prompts:
    session-only Fit all, Fit selected, standard views, active tool visibility,
    and safe Escape cancel behavior. Broader keyboard repeat/additive-selection
    polish remains deferred without persisting view state.
-8. **Release Smokes, UX QA, And Hardening** - add browser smokes for direct
-   viewport body/face/edge selection, contextual commands, measurements,
-   diagnostics, `.wcad` round-trip, export availability, and unobstructed
-   viewport checks.
+8. **Release Smokes, UX QA, And Hardening** - H1 is implemented as browser
+   smoke matrix expansion for direct circle viewport body/face/edge routing,
+   Escape clearing, unobstructed viewport checks, project round-trip viewport
+   checks, and narrow viewport visibility. H2 should add broader UX QA/manual
+   browser audit evidence for supported and diagnostic interaction paths. H3
+   should close the final V9 release audit, full validation evidence, stale
+   wording cleanup, and remaining deferral notes without expanding CAD
+   behavior.
 
 ### V9 Scope Guardrails
 

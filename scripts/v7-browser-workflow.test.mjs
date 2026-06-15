@@ -75,8 +75,12 @@ describe("V7 browser workflow smoke summary", () => {
         "advanced-tools-cleanup",
         "advanced-tools-scrollability",
         "circle-body-reference-contract",
+        "circle-viewport-body-pick-selection-routing",
+        "circle-viewport-generated-face-pick-selection-routing",
+        "circle-viewport-generated-edge-pick-selection-routing",
         "viewport-body-pick-selection-routing",
         "viewport-body-measure-inspect",
+        "viewport-unobstructed-after-navigation-measurement",
         "viewport-generated-face-pick-selection-routing",
         "viewport-generated-face-contextual-actions",
         "viewport-generated-face-measure-inspect",
@@ -84,6 +88,7 @@ describe("V7 browser workflow smoke summary", () => {
         "viewport-generated-edge-contextual-actions",
         "viewport-generated-edge-measure-inspect",
         "viewport-two-target-measure",
+        "viewport-escape-clears-transient-detail",
         "viewport-unobstructed-selection-layout",
         "attached-sketch-create",
         "consumed-body-diagnostic",
@@ -91,8 +96,10 @@ describe("V7 browser workflow smoke summary", () => {
         "project-wcad-open-upload",
         "project-wcad-roundtrip-model",
         "project-wcad-viewport-usable",
+        "project-roundtrip-viewport-unobstructed",
         "project-json-load-preview",
-        "project-json-roundtrip-diagnostic"
+        "project-json-roundtrip-diagnostic",
+        "viewport-narrow-layout-smoke"
       ])
     );
 

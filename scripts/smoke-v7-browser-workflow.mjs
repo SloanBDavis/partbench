@@ -14,7 +14,7 @@ import {
   startStaticServer
 } from "./occt-smoke/browser.mjs";
 
-/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, MouseEvent, Node, PointerEvent, TextDecoder */
+/* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, KeyboardEvent, MouseEvent, Node, PointerEvent, TextDecoder, window */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appDistDir = join(repoRoot, "apps/web/dist");
@@ -253,11 +253,32 @@ async function runV7BrowserWorkflowSmoke(
     );
   }
 
-  const pageResult = result.result?.value ?? {
-    checks: [],
-    ids: {},
-    skipped: []
+  const pageResultValue = result.result?.value;
+  const pageResult = {
+    checks: Array.isArray(pageResultValue?.checks)
+      ? pageResultValue.checks
+      : [],
+    ids:
+      pageResultValue && typeof pageResultValue.ids === "object"
+        ? pageResultValue.ids
+        : {},
+    skipped: Array.isArray(pageResultValue?.skipped)
+      ? pageResultValue.skipped
+      : []
   };
+  if (
+    !Array.isArray(pageResultValue?.checks) &&
+    pageResultValue?.ok === false
+  ) {
+    exceptions.push("V7 browser workflow smoke did not return check details.");
+  }
+  const narrowViewportResult = await runNarrowViewportSmoke(
+    client,
+    sessionId,
+    Math.min(timeoutMs, 8_000)
+  );
+  pageResult.checks.push(...narrowViewportResult.checks);
+  pageResult.skipped.push(...narrowViewportResult.skipped);
 
   return createV7BrowserWorkflowSmokeResult({
     checks: pageResult.checks,
@@ -270,6 +291,72 @@ async function runV7BrowserWorkflowSmoke(
     consoleErrors,
     exceptions
   });
+}
+
+async function runNarrowViewportSmoke(client, sessionId, timeoutMs) {
+  try {
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 390,
+        height: 740,
+        deviceScaleFactor: 1,
+        mobile: true
+      },
+      sessionId
+    );
+
+    const result = await client.send(
+      "Runtime.evaluate",
+      {
+        awaitPromise: true,
+        returnByValue: true,
+        expression: `(${v7BrowserWorkflowNarrowViewportSmoke.toString()})(${JSON.stringify(
+          { timeoutMs }
+        )})`
+      },
+      sessionId
+    );
+
+    if (result.exceptionDetails) {
+      return {
+        checks: [
+          {
+            id: "viewport-narrow-layout-smoke",
+            label: "narrow viewport keeps the model surface visible",
+            status: "fail",
+            detail:
+              result.exceptionDetails.exception?.description ??
+              result.exceptionDetails.text ??
+              "Narrow viewport smoke failed."
+          }
+        ],
+        skipped: []
+      };
+    }
+
+    const value = result.result?.value;
+    return {
+      checks: Array.isArray(value?.checks) ? value.checks : [],
+      skipped: Array.isArray(value?.skipped) ? value.skipped : []
+    };
+  } catch (error) {
+    return {
+      checks: [
+        {
+          id: "viewport-narrow-layout-smoke",
+          label: "narrow viewport keeps the model surface visible",
+          status: "fail",
+          detail: error instanceof Error ? error.message : String(error)
+        }
+      ],
+      skipped: []
+    };
+  } finally {
+    await client
+      .send("Emulation.clearDeviceMetricsOverride", {}, sessionId)
+      .catch(() => {});
+  }
 }
 
 async function v7BrowserWorkflowSmoke({
@@ -483,6 +570,62 @@ async function v7BrowserWorkflowSmoke({
   );
 
   openTreePanel();
+  clickButtonContaining(modelStructure, ids.bodyName);
+  await waitFor(
+    () => includesText(getElementByAriaLabel("Inspector"), ids.bodyId),
+    "rectangle body selected before circle viewport body pick"
+  );
+  clickViewportWorldPoint([3, 0, 0.5]);
+  await waitFor(
+    () => isTreePanelOpen(),
+    "circle viewport body pick preserved preferred tree tab"
+  );
+  openSelectionPanel();
+  await waitForBodyCommandReady(
+    ids.circleBodyId,
+    "circle viewport body pick command-ready reference state"
+  );
+  pass(
+    "circle-viewport-body-pick-selection-routing",
+    "circle body viewport pick routes through semantic selection and remains command-ready",
+    getSelectionText()
+  );
+
+  openTreePanel();
+  clickViewportWorldPoint([3, 0, 1]);
+  await waitFor(
+    () => isTreePanelOpen(),
+    "circle viewport generated face pick preserved preferred tree tab"
+  );
+  openSelectionPanel();
+  await waitForGeneratedReferenceCommandReady(
+    ids.circleBodyId,
+    "circle viewport generated face pick command-ready reference state"
+  );
+  pass(
+    "circle-viewport-generated-face-pick-selection-routing",
+    "circle generated planar cap face pick routes through semantic generated-reference selection",
+    getSelectionText()
+  );
+
+  openTreePanel();
+  clickViewportWorldPoint([3.5, 0, 1]);
+  await waitFor(
+    () => isTreePanelOpen(),
+    "circle viewport generated edge pick preserved preferred tree tab"
+  );
+  openSelectionPanel();
+  await waitForGeneratedEdgeReferenceCommandReady(
+    ids.circleBodyId,
+    "circle viewport generated edge pick command-ready reference state"
+  );
+  pass(
+    "circle-viewport-generated-edge-pick-selection-routing",
+    "circle generated circular edge pick routes through semantic generated-reference selection",
+    getSelectionText()
+  );
+
+  openTreePanel();
   clickViewportAtRatio(0.5, 0.5);
   await waitFor(
     () => isTreePanelOpen(),
@@ -526,6 +669,10 @@ async function v7BrowserWorkflowSmoke({
     "viewport-body-measure-inspect",
     "viewport body measure and inspect expose source-authoritative single-target details",
     getViewportContextualCommandText()
+  );
+  assertViewportUsableAndUnobstructed(
+    "viewport-unobstructed-after-navigation-measurement",
+    "navigation controls and measurement details keep the viewport unobstructed"
   );
 
   openTreePanel();
@@ -639,6 +786,39 @@ async function v7BrowserWorkflowSmoke({
   pass(
     "viewport-generated-edge-measure-inspect",
     "viewport generated edge measure and inspect expose source-authoritative single-target details",
+    getViewportContextualCommandText()
+  );
+  dispatchEscapeOutsideEditable();
+  await waitFor(() => {
+    const viewport = getElementByAriaLabel("3D viewport");
+    const surface = getViewportContextualCommandSurface(viewport);
+    const text = normalize(surface.textContent);
+    const detail = viewport.querySelector(
+      [
+        '[aria-label="Viewport inspect"]',
+        '[aria-label="Viewport measure"]'
+      ].join(",")
+    );
+    const staleSessionText =
+      text.includes("Two-target:") ||
+      text.includes("Two-target measurement complete") ||
+      text.includes("First") ||
+      text.includes("Pending");
+
+    if (detail || staleSessionText) {
+      throw new Error(
+        `detail=${detail ? "visible" : "none"}; surface=${compactText(
+          surface.textContent,
+          320
+        )}`
+      );
+    }
+
+    return true;
+  }, "Escape cleared viewport contextual detail and two-target session");
+  pass(
+    "viewport-escape-clears-transient-detail",
+    "Escape outside editable controls clears active two-target measurement and contextual detail",
     getViewportContextualCommandText()
   );
 
@@ -1078,6 +1258,10 @@ async function v7BrowserWorkflowSmoke({
       )}`
     );
   }
+  assertViewportUsableAndUnobstructed(
+    "project-roundtrip-viewport-unobstructed",
+    "project round-trip keeps the viewport visible and unobstructed"
+  );
 
   clickButton(projectPanel, "Export JSON");
   await waitFor(() => {
@@ -1347,6 +1531,102 @@ async function v7BrowserWorkflowSmoke({
     pass(
       "viewport-unobstructed-selection-layout",
       "selection details live in the left Selection tab, not over the viewport"
+    );
+  }
+
+  function assertViewportUsableAndUnobstructed(id, label) {
+    const viewport = getElementByAriaLabel("3D viewport");
+    const canvas = getElementByAriaLabel("3D scene viewport");
+    const viewportRect = viewport.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    const obsoleteDetailSurface = viewport.querySelector(
+      [
+        '[aria-label="Viewport interaction summary"]',
+        '[aria-label="Viewport reference candidates"]',
+        '[aria-label="Viewport selection diagnostics"]',
+        ".viewport-interaction-surface"
+      ].join(",")
+    );
+    const contextualSurface = viewport.querySelector(
+      '[aria-label="Viewport contextual commands"]'
+    );
+    const contextualRect = contextualSurface?.getBoundingClientRect();
+    const viewportArea = Math.max(1, viewportRect.width * viewportRect.height);
+    const contextualAreaRatio = contextualRect
+      ? (contextualRect.width * contextualRect.height) / viewportArea
+      : 0;
+    const centerElement = document.elementFromPoint(
+      viewportRect.left + viewportRect.width / 2,
+      viewportRect.top + viewportRect.height / 2
+    );
+    const issues = [];
+
+    if (viewportRect.width <= 160 || viewportRect.height <= 160) {
+      issues.push(
+        `viewport=${Math.round(viewportRect.width)}x${Math.round(
+          viewportRect.height
+        )}`
+      );
+    }
+
+    if (canvasRect.width <= 120 || canvasRect.height <= 120) {
+      issues.push(
+        `canvas=${Math.round(canvasRect.width)}x${Math.round(
+          canvasRect.height
+        )}`
+      );
+    }
+
+    if (obsoleteDetailSurface) {
+      issues.push(
+        `obsolete-detail=${compactText(obsoleteDetailSurface.textContent, 160)}`
+      );
+    }
+
+    if (contextualAreaRatio > 0.22) {
+      issues.push(`contextualAreaRatio=${contextualAreaRatio.toFixed(3)}`);
+    }
+
+    if (!centerElement || !viewport.contains(centerElement)) {
+      issues.push(
+        `centerElement=${
+          centerElement
+            ? `${centerElement.tagName.toLowerCase()} ${compactText(
+                centerElement.textContent,
+                80
+              )}`
+            : "none"
+        }`
+      );
+    }
+
+    if (issues.length > 0) {
+      fail(id, label, issues.join("; "));
+      return;
+    }
+
+    pass(
+      id,
+      label,
+      [
+        `viewport=${Math.round(viewportRect.width)}x${Math.round(
+          viewportRect.height
+        )}`,
+        `canvas=${Math.round(canvasRect.width)}x${Math.round(
+          canvasRect.height
+        )}`,
+        `contextualAreaRatio=${contextualAreaRatio.toFixed(3)}`
+      ].join("; ")
+    );
+  }
+
+  function dispatchEscapeOutsideEditable() {
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Escape"
+      })
     );
   }
 
@@ -2064,5 +2344,194 @@ async function v7BrowserWorkflowSmoke({
 
   function getVisibleTextSnapshot() {
     return normalize(document.body.textContent).slice(0, 1000);
+  }
+}
+
+async function v7BrowserWorkflowNarrowViewportSmoke({ timeoutMs }) {
+  const checks = [];
+  const skipped = [];
+
+  try {
+    await waitFor(
+      () =>
+        window.innerWidth <= 640 || document.documentElement.clientWidth <= 640,
+      "narrow viewport metrics"
+    );
+
+    const viewport = getElementByAriaLabel("3D viewport");
+    viewport.scrollIntoView({ block: "center", inline: "nearest" });
+    await delay(100);
+
+    const canvas = getElementByAriaLabel("3D scene viewport");
+    const viewportRect = viewport.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    const contextualSurface = viewport.querySelector(
+      '[aria-label="Viewport contextual commands"]'
+    );
+    const contextualRect = contextualSurface?.getBoundingClientRect();
+    const viewportArea = Math.max(1, viewportRect.width * viewportRect.height);
+    const contextualAreaRatio = contextualRect
+      ? (contextualRect.width * contextualRect.height) / viewportArea
+      : 0;
+    const obsoleteDetailSurface = viewport.querySelector(
+      [
+        '[aria-label="Viewport interaction summary"]',
+        '[aria-label="Viewport reference candidates"]',
+        '[aria-label="Viewport selection diagnostics"]',
+        ".viewport-interaction-surface"
+      ].join(",")
+    );
+    const centerElement = document.elementFromPoint(
+      viewportRect.left + viewportRect.width / 2,
+      viewportRect.top + viewportRect.height / 2
+    );
+    const issues = [];
+
+    if (window.innerWidth > 640 && document.documentElement.clientWidth > 640) {
+      issues.push(
+        `viewport metrics did not narrow: innerWidth=${window.innerWidth}, clientWidth=${document.documentElement.clientWidth}`
+      );
+    }
+
+    if (viewportRect.width < 280 || viewportRect.height < 280) {
+      issues.push(
+        `viewport=${Math.round(viewportRect.width)}x${Math.round(
+          viewportRect.height
+        )}`
+      );
+    }
+
+    if (canvasRect.width < 240 || canvasRect.height < 220) {
+      issues.push(
+        `canvas=${Math.round(canvasRect.width)}x${Math.round(
+          canvasRect.height
+        )}`
+      );
+    }
+
+    if (contextualAreaRatio > 0.42) {
+      issues.push(`contextualAreaRatio=${contextualAreaRatio.toFixed(3)}`);
+    }
+
+    if (obsoleteDetailSurface) {
+      issues.push(
+        `obsolete-detail=${compactText(obsoleteDetailSurface.textContent, 160)}`
+      );
+    }
+
+    if (!centerElement || !viewport.contains(centerElement)) {
+      issues.push(
+        `centerElement=${
+          centerElement
+            ? `${centerElement.tagName.toLowerCase()} ${compactText(
+                centerElement.textContent,
+                80
+              )}`
+            : "none"
+        }`
+      );
+    }
+
+    if (issues.length > 0) {
+      fail(
+        "viewport-narrow-layout-smoke",
+        "narrow viewport keeps the model surface visible",
+        issues.join("; ")
+      );
+    } else {
+      pass(
+        "viewport-narrow-layout-smoke",
+        "narrow viewport keeps the model surface visible",
+        [
+          `innerWidth=${window.innerWidth}`,
+          `viewport=${Math.round(viewportRect.width)}x${Math.round(
+            viewportRect.height
+          )}`,
+          `canvas=${Math.round(canvasRect.width)}x${Math.round(
+            canvasRect.height
+          )}`,
+          `contextualAreaRatio=${contextualAreaRatio.toFixed(3)}`
+        ].join("; ")
+      );
+    }
+  } catch (error) {
+    fail(
+      "viewport-narrow-layout-smoke",
+      "narrow viewport keeps the model surface visible",
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+
+  return { checks, skipped };
+
+  function pass(id, label, detail) {
+    checks.push({
+      id,
+      label,
+      status: "pass",
+      ...(detail ? { detail } : {})
+    });
+  }
+
+  function fail(id, label, detail) {
+    checks.push({
+      id,
+      label,
+      status: "fail",
+      ...(detail ? { detail } : {})
+    });
+  }
+
+  async function waitFor(predicate, label) {
+    const deadline = Date.now() + timeoutMs;
+    let lastError;
+
+    while (Date.now() < deadline) {
+      try {
+        if (predicate()) {
+          return;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+
+      await delay(50);
+    }
+
+    throw new Error(
+      `Timed out waiting for ${label}.${
+        lastError instanceof Error ? ` Last error: ${lastError.message}` : ""
+      }`
+    );
+  }
+
+  function delay(milliseconds) {
+    return new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, milliseconds);
+    });
+  }
+
+  function getElementByAriaLabel(label) {
+    const element = document.querySelector(`[aria-label="${label}"]`);
+
+    if (!element) {
+      throw new Error(`Could not find element labelled ${label}.`);
+    }
+
+    return element;
+  }
+
+  function normalize(value) {
+    return (value ?? "").replace(/\s+/g, " ").trim();
+  }
+
+  function compactText(value, maxLength = 420) {
+    const normalized = normalize(value);
+
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, maxLength)}...`;
   }
 }
