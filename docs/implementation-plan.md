@@ -11,7 +11,7 @@ Use this document for day-to-day implementation decisions. Use
 archived V4 constrained sketch solving milestone, `docs/v7.md` for the
 completed V7 real CAD alpha release-readiness record, `docs/v8.md` for the
 completed local CAD foundation and exact interop release record, `docs/v9.md`
-for the active viewport-native CAD interaction release plan,
+for the completed viewport-native CAD interaction release-candidate record,
 `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
@@ -37,11 +37,11 @@ These constraints remain active:
     native `.wcad` package storage, File System Access local workflow,
     OPFS-derived cache, and exact STEP export for supported authored source
     bodies through the geometry boundary.
-11. V9 is the active broad major-release plan. Its center is viewport-native CAD
-    interaction: renderer-agnostic hit candidates, semantic selection
-    resolution, command-ready viewport selections, compact contextual tools,
-    exact/semantic inspect and measure workflows, and release-grade browser
-    interaction smokes.
+11. V9 is complete through the final H3 release-candidate audit/docs scope. Its
+    center is viewport-native CAD interaction: renderer-agnostic hit
+    candidates, semantic selection resolution, command-ready viewport
+    selections, compact contextual tools, exact/semantic inspect and measure
+    workflows, and release-grade browser interaction smokes.
 12. V9 implementation tranches should stay independently testable and should
     not mix renderer replacement, assemblies, STEP import, broad topology,
     broad sketch solving, new modeling commands, or persisted UI state without
@@ -204,6 +204,14 @@ These constraints remain active:
     behavior, modeling commands, renderer authority, project/source schemas,
     persisted UI state, WebGPU, assemblies, STEP import, agent/MCP behavior, or
     `web-cad.project.v17`.
+33. V9 Tranche H3 is implemented as the final release-candidate audit and
+    documentation gate: V9 docs now separate completed viewport-native behavior
+    from post-RC deferrals, document the exact RC validation command set, keep
+    the compatibility browser workflow script names clear, and add a
+    `smoke:v9-viewport-workflow` package-script alias over the existing browser
+    workflow runner. It does not add CAD behavior, modeling commands, renderer
+    authority, project/source schemas, persisted UI state, WebGPU, assemblies,
+    STEP import, agent/MCP behavior, or `web-cad.project.v17`.
 
 ## Current Repo State
 
@@ -211,11 +219,12 @@ Partbench is implemented as a TypeScript pnpm workspace with a Vite React app
 and focused packages:
 
 - `apps/web` - browser UI, command worker, geometry worker entrypoint,
-  derived-geometry orchestration, project panel, batch panel, current canvas
-  viewport with V9 body/face/edge picking, visual-state routing, compact
-  contextual command surface, single-target Measure/Inspect, session-only
-  two-target measurement, compact camera/navigation controls, first feature
-  tree, improved modeling workflow, and focused UI helpers.
+  derived-geometry orchestration, primary Project/File panel, reduced workspace
+  tools drawer, current canvas viewport with V9 body/face/edge picking,
+  visual-state routing, compact contextual command surface, single-target
+  Measure/Inspect, session-only two-target measurement, compact
+  camera/navigation controls, first feature tree, improved modeling workflow,
+  and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
@@ -271,6 +280,7 @@ pnpm smoke:v7-release-samples
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
+pnpm smoke:v9-viewport-workflow
 ```
 
 Derived geometry is enabled by default for local Vite serve:
@@ -312,12 +322,13 @@ verifies the V7 release-critical query surface. Use
 `node scripts/smoke-v7-release-samples.mjs --json` only when structured stdout
 is useful for CI or release tooling.
 
-V7 browser workflow smoke:
+Compatibility browser workflow smokes:
 
 ```sh
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
+pnpm smoke:v9-viewport-workflow
 ```
 
 The default smoke follows the existing built-app/static-server/CDP pattern. It
@@ -341,7 +352,12 @@ requires `glb-download` to pass, proving transient
 The V8-named `pnpm smoke:v8-wcad-workflow` script aliases the current browser
 workflow smoke and verifies fallback Save As `.wcad`, upload-open of the saved
 package, `.wcad` model round-trip, and viewport usability in addition to the
-existing workflow checks.
+existing workflow checks. The V9-named `pnpm smoke:v9-viewport-workflow` script
+is a release-clarity alias over the same compatibility runner, with derived
+geometry enabled so the current V8 `.wcad`/STEP/GLB surfaces and V9 direct
+viewport checks are represented together. The underlying files remain
+`scripts/smoke-v7-browser-workflow.mjs` and
+`scripts/v7-browser-workflow.mjs` for backward compatibility.
 
 ## Current Capabilities
 
@@ -470,7 +486,7 @@ Current limitations:
 - Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
   patterns, direct edits, general booleans, STEP import, production WebGPU,
   assemblies, hosted collaboration, production MCP auth, and natural-language
-  command entry remain unimplemented unless scoped into V9 or a later release.
+  command entry remain unimplemented unless scoped into a later release.
   V8 made `.wcad` the app-level project workflow: File System Access browsers
   can open/save/save-as through app-only handles, and other browsers use
   upload/download fallback. File handles are not written into cad-core, JSON,
@@ -1262,10 +1278,10 @@ selection state, storage capability/status state, file handles, thumbnails, mesh
 caches, export artifacts, OPFS paths, and renderer display state should stay
 rebuildable by default.
 
-## V9 Viewport-Native CAD Interaction Roadmap
+## V9 Viewport-Native CAD Interaction Release Record
 
-V9 is the active major-release plan. Its detailed release document is
-`docs/v9.md`.
+V9 is complete through the release-candidate H3 audit/docs scope. Its detailed
+release document is `docs/v9.md`.
 
 V9 is intentionally a large UI/interaction release, but it has one center: make
 the viewport the primary CAD interaction surface without coupling the product to
@@ -1300,7 +1316,7 @@ V9 is organized around these pillars:
 
 ### V9 Answered Decisions
 
-Use these decisions when writing V9 implementation prompts:
+Use these decisions when maintaining V9 behavior:
 
 - V9 does not replace the renderer with WebGPU, but it must define contracts a
   future WebGPU renderer can implement without product rewrite;
@@ -1328,7 +1344,7 @@ Use these decisions when writing V9 implementation prompts:
 - future assemblies are reserved through optional instance-path context, but V9
   does not implement assembly document source.
 
-### V9 Proposed Tranche Sequence
+### V9 Implemented Tranche Sequence
 
 1. **Viewport Interaction Contract** - implemented as a typed protocol and
    pure-helper slice for hit-candidate, pointer-intent, hover, selection,
@@ -1367,9 +1383,9 @@ Use these decisions when writing V9 implementation prompts:
    checks, and narrow viewport visibility. H2 is implemented as responsive UX
    QA and diagnostic polish for contextual/status wrapping, overlap avoidance,
    clearer blocked-selection labels, and desktop/narrow readability smoke
-   evidence. H3 should close the final V9 release audit, full validation
-   evidence, stale wording cleanup, and remaining deferral notes without
-   expanding CAD behavior.
+   evidence. H3 is implemented as the final release-candidate audit/docs gate,
+   stale wording cleanup, compatibility smoke alias/runbook update, and
+   remaining deferral notes without expanding CAD behavior.
 
 ### V9 Scope Guardrails
 
@@ -1390,7 +1406,7 @@ summaries, derived exact metadata, storage capability/status state, file
 handles, thumbnails, mesh caches, export artifacts, OPFS paths, and renderer
 display state should stay rebuildable or session-only by default.
 
-## Deferred Unless Explicitly Scoped Into V9 Or Later
+## Deferred Beyond V9 Unless Explicitly Scoped Later
 
 - Full arbitrary topological naming for every OCCT result shape.
 - Full general sketch solving beyond the current V4 constrained-sketch scope.
@@ -1410,7 +1426,12 @@ display state should stay rebuildable or session-only by default.
 - WebGPU production renderer.
 - Production WebGPU selection buffer and broad arbitrary face/edge/vertex
   picking beyond the V9 supported semantic subset.
-- Assemblies, mates, large-model LOD, and instancing.
+- Exact subentity canvas highlighting beyond current semantic routing to the
+  owning body.
+- Persistent viewport/camera/selection/tool state.
+- Assemblies, mates, large-model LOD, instancing, and assembly-instance
+  selection.
+- New project schema or `web-cad.project.v17` source data.
 - Hosted collaboration.
 - Production MCP auth/permission system.
 - Natural-language command entry.

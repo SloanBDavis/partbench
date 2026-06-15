@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   createV7BrowserWorkflowSmokeResult,
@@ -7,6 +10,8 @@ import {
   V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID,
   V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS
 } from "./v7-browser-workflow.mjs";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("V7 browser workflow smoke summary", () => {
   it("formats passed, failed, and skipped checks deterministically", () => {
@@ -194,5 +199,20 @@ describe("V7 browser workflow smoke summary", () => {
     expect(result.ok).toBe(true);
     expect(result.missingRequiredChecks).toEqual([]);
     expect(result.passedCount).toBe(2);
+  });
+
+  it("keeps V8 and V9 package smoke aliases on the compatibility browser runner", async () => {
+    const packageJson = JSON.parse(
+      await readFile(resolve(repoRoot, "package.json"), "utf8")
+    );
+    const compatibilityBrowserRunner =
+      "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs";
+
+    expect(packageJson.scripts["smoke:v8-wcad-workflow"]).toBe(
+      compatibilityBrowserRunner
+    );
+    expect(packageJson.scripts["smoke:v9-viewport-workflow"]).toBe(
+      compatibilityBrowserRunner
+    );
   });
 });
