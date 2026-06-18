@@ -1499,11 +1499,13 @@ display state should stay rebuildable or session-only by default.
 ## V10 Editable Feature History And Stable Modeling References Release
 
 V10 is underway in `docs/v10.md`. Tranche A is implemented as a query/contract
-slice. Tranche B, C1, C2, D1, D2, E1, E2, and F1 are implemented as the
-dependency/reference health, authored feature edit commit, rebuild-plan/body
-lifecycle contract, scoped transactional source-model rebuild, source-semantic
-reference expansion, generated-axis, and sketch edit readiness query slices;
-the rest of the release remains staged.
+slice. Tranche B, C1, C2, D1, D2, E1, E2, F1, G1, G2, and H1 are implemented
+as the dependency/reference health, authored feature edit commit,
+rebuild-plan/body lifecycle contract, scoped transactional source-model
+rebuild, source-semantic reference expansion, generated-axis, sketch edit
+readiness, named-reference repair, compact browser repair workflow, and first
+product/browser workflow hardening slices; release samples, audit, and final
+hardening remain staged.
 
 V10 should deepen the CAD model now that V8 made local project files/export real
 and V9 made viewport interaction semantic. The release center is:
@@ -1697,9 +1699,14 @@ Use these decisions when drafting or implementing V10 tranches:
    commandability, add a viewport overlay or repair wizard, silently retarget
    names, persist selection state, introduce renderer/mesh/OCCT authority, or
    change the project schema.
-13. **Product Integration And Browser Workflows** - compact feature edit,
-   rebuild, reference health, and repair UI across tree, Selection, Inspector,
-   Modeling, and viewport surfaces.
+13. **Product Integration And Browser Workflows** - H1 implements compact,
+   query-gated Inspector edit controls for C1/C2-supported extrude, revolve,
+   hole, chamfer, and fillet update commands; routes them through typed CADOps
+   builders; replaces implementation-facing "Reference contract" copy with
+   "Reference status"; and adds the `smoke:v10-browser-workflow` alias plus
+   required browser checks for edit -> reference health -> repair -> `.wcad`
+   round-trip. H1 does not add broad viewport contextual edit controls,
+   arbitrary topology stability, or project schema migration.
 14. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
    non-browser and browser smokes, release docs, migration audit if V17 is
    introduced, and final boundary cleanup.

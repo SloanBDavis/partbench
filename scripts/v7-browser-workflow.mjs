@@ -5,6 +5,7 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
   "create-extrude",
   "create-circle",
   "create-circle-extrude",
+  "primary-tools-language",
   "advanced-tools-cleanup",
   "advanced-tools-scrollability",
   "circle-body-reference-contract",
@@ -56,10 +57,17 @@ export const V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS = Object.freeze([
 export const V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID = "glb-download";
 export const V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID =
   "project-opfs-derived-mesh-cache";
+export const V10_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
+  "v10-feature-edit-commit",
+  "v10-reference-health-after-edit",
+  "v10-named-reference-repair-browser",
+  "v10-repaired-reference-wcad-roundtrip"
+]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({
   requireGlbDownload = false,
-  requireDerivedMeshCache = false
+  requireDerivedMeshCache = false,
+  requireV10Workflow = false
 } = {}) {
   const requiredCheckIds = [...V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS];
 
@@ -75,6 +83,14 @@ export function getV7BrowserWorkflowRequiredCheckIds({
     !requiredCheckIds.includes(V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID)
   ) {
     requiredCheckIds.push(V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID);
+  }
+
+  if (requireV10Workflow) {
+    for (const id of V10_BROWSER_WORKFLOW_CHECK_IDS) {
+      if (!requiredCheckIds.includes(id)) {
+        requiredCheckIds.push(id);
+      }
+    }
   }
 
   return requiredCheckIds;

@@ -28,6 +28,9 @@ import type {
   CadOp,
   DocumentUnitUpdateMode,
   FeatureExtrudeSide,
+  FeatureEditabilityQueryResponse,
+  FeatureHoleDepthMode,
+  FeatureHoleDirection,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
@@ -73,7 +76,11 @@ import {
   buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureRevolveOp,
+  buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
+  buildFeatureUpdateFilletOp,
+  buildFeatureUpdateHoleOp,
+  buildFeatureUpdateRevolveOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
   buildRepairNamedReferenceOp,
@@ -430,6 +437,26 @@ function readProjectExactStepExport():
   });
 
   return response.ok && response.query === "project.exportExact"
+    ? response
+    : undefined;
+}
+
+function readFeatureEditability(
+  featureId: string | undefined
+): FeatureEditabilityQueryResponse | undefined {
+  if (!featureId) {
+    return undefined;
+  }
+
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "feature.editability",
+      featureId
+    }
+  });
+
+  return response.ok && response.query === "feature.editability"
     ? response
     : undefined;
 }
@@ -1263,6 +1290,9 @@ export function App() {
         (feature) => feature.id === selectedBody.featureId
       )
     : undefined;
+  const selectedFeatureEditability = readFeatureEditability(
+    selectedFeature?.id
+  );
   const selectedBodyGeneratedReferences =
     selectedFeature?.kind === "extrude"
       ? readBodyGeneratedReferences(selectedBody?.id)
@@ -2134,6 +2164,74 @@ export function App() {
 
     await commitOps(
       [buildFeatureUpdateExtrudeOp(feature.id, depth, side)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateAuthoredRevolve(
+    featureId: string,
+    angleDegrees: number
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "revolve") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateRevolveOp(feature.id, angleDegrees)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateAuthoredHole(
+    featureId: string,
+    depthMode: FeatureHoleDepthMode,
+    depth: number | undefined,
+    direction: FeatureHoleDirection
+  ) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "hole") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateHoleOp(feature.id, depthMode, depth, direction)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateAuthoredChamfer(featureId: string, distance: number) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "chamfer") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateChamferOp(feature.id, distance)],
+      () => feature.bodyId
+    );
+  }
+
+  async function updateAuthoredFillet(featureId: string, radius: number) {
+    const feature = projectStructure.features.find(
+      (candidate) => candidate.id === featureId
+    );
+
+    if (feature?.kind !== "fillet") {
+      return;
+    }
+
+    await commitOps(
+      [buildFeatureUpdateFilletOp(feature.id, radius)],
       () => feature.bodyId
     );
   }
@@ -3019,6 +3117,7 @@ export function App() {
                 selectedBodyTopology.exactMetadataStatus
               }
               body={selectedBody}
+              featureEditability={selectedFeatureEditability}
               feature={selectedFeature}
               generatedReferences={selectedBodyGeneratedReferences.references}
               generatedReferencesError={selectedBodyGeneratedReferences.error}
@@ -3063,6 +3162,18 @@ export function App() {
               onUpdateExtrude={(featureId, depth, side) =>
                 void updateAuthoredExtrude(featureId, depth, side)
               }
+              onUpdateRevolve={(featureId, angleDegrees) =>
+                void updateAuthoredRevolve(featureId, angleDegrees)
+              }
+              onUpdateHole={(featureId, depthMode, depth, direction) =>
+                void updateAuthoredHole(featureId, depthMode, depth, direction)
+              }
+              onUpdateChamfer={(featureId, distance) =>
+                void updateAuthoredChamfer(featureId, distance)
+              }
+              onUpdateFillet={(featureId, radius) =>
+                void updateAuthoredFillet(featureId, radius)
+              }
             />
           </div>
         </aside>
@@ -3095,7 +3206,7 @@ export function App() {
           onCancelTransientState={clearViewportTransientState}
         />
 
-        <div className="right-rail" aria-label="Context and advanced tools">
+        <div className="right-rail" aria-label="Project and modeling tools">
           <ModelingActionsPanel
             actions={modelingActions}
             addTargetBodies={addTargetBodyOptions}

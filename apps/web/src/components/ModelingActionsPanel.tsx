@@ -445,7 +445,7 @@ function SelectionReferenceContractCard({
   return (
     <section className="workbench-card compact reference-contract-card">
       <div className="workbench-card-heading">
-        <h3>Reference contract</h3>
+        <h3>Reference status</h3>
         <small>{formatSelectionReferenceStatus(response.status)}</small>
       </div>
       {primary && (

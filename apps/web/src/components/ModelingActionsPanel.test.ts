@@ -504,7 +504,7 @@ describe("ModelingActionsPanel", () => {
     expect(markup).toContain("Face");
     expect(markup).toContain("Start cap");
     expect(markup).toContain("Name reference");
-    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Reference status");
     expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Back to body");
     expect(markup).toContain("Create sketch on face");
@@ -600,7 +600,7 @@ describe("ModelingActionsPanel", () => {
     );
 
     expect(markup).toContain("Name reference");
-    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Reference status");
     expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Edge finish");
     expect(markup).toContain("Chamfer");

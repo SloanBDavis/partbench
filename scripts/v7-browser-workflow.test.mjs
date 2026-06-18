@@ -6,6 +6,7 @@ import {
   createV7BrowserWorkflowSmokeResult,
   formatV7BrowserWorkflowSmokeSummary,
   getV7BrowserWorkflowRequiredCheckIds,
+  V10_BROWSER_WORKFLOW_CHECK_IDS,
   V8_WCAD_WORKFLOW_DERIVED_MESH_CACHE_CHECK_ID,
   V7_BROWSER_WORKFLOW_GLB_DOWNLOAD_CHECK_ID,
   V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS
@@ -30,15 +31,15 @@ describe("V7 browser workflow smoke summary", () => {
           status: "pass"
         },
         {
-          detail: "Reference contract was not visible.",
-          id: "reference-contract",
-          label: "semantic reference contract visible",
+          detail: "Reference status was not visible.",
+          id: "reference-status",
+          label: "semantic reference status visible",
           status: "fail"
         }
       ],
       requiredCheckIds: [
         "app-load",
-        "reference-contract",
+        "reference-status",
         "project-json-roundtrip-model"
       ],
       skipped: [
@@ -63,8 +64,8 @@ describe("V7 browser workflow smoke summary", () => {
         "V7 browser workflow smoke failed",
         "checks: 1 passed, 1 failed, 1 skipped, 1 missing required",
         "- pass app-load: app loaded",
-        "- fail reference-contract: semantic reference contract visible",
-        "  Reference contract was not visible.",
+        "- fail reference-status: semantic reference status visible",
+        "  Reference status was not visible.",
         "- missing required project-json-roundtrip-model",
         "- skip glb-download: Download visualization GLB is disabled.",
         "- console-error console error",
@@ -77,6 +78,7 @@ describe("V7 browser workflow smoke summary", () => {
     expect(V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS).toEqual(
       expect.arrayContaining([
         "create-circle-extrude",
+        "primary-tools-language",
         "advanced-tools-cleanup",
         "advanced-tools-scrollability",
         "circle-body-reference-contract",
@@ -149,6 +151,31 @@ describe("V7 browser workflow smoke summary", () => {
     );
   });
 
+  it("keeps V10 browser workflow checks optional unless required", () => {
+    expect(getV7BrowserWorkflowRequiredCheckIds()).not.toEqual(
+      expect.arrayContaining(V10_BROWSER_WORKFLOW_CHECK_IDS)
+    );
+    expect(
+      getV7BrowserWorkflowRequiredCheckIds({ requireV10Workflow: true })
+    ).toEqual(expect.arrayContaining(V10_BROWSER_WORKFLOW_CHECK_IDS));
+  });
+
+  it("emits every required V10 browser workflow check from the smoke runner", async () => {
+    const smokeSource = await readFile(
+      resolve(repoRoot, "scripts/smoke-v7-browser-workflow.mjs"),
+      "utf8"
+    );
+    const emittedCheckIds = new Set(
+      [...smokeSource.matchAll(/\b(?:pass|fail)\(\s*"([^"]+)"/g)].map(
+        (match) => match[1]
+      )
+    );
+
+    for (const id of V10_BROWSER_WORKFLOW_CHECK_IDS) {
+      expect(emittedCheckIds).toContain(id);
+    }
+  });
+
   it("fails clearly when required GLB download is skipped", () => {
     const result = createV7BrowserWorkflowSmokeResult({
       checks: [
@@ -201,18 +228,23 @@ describe("V7 browser workflow smoke summary", () => {
     expect(result.passedCount).toBe(2);
   });
 
-  it("keeps V8 and V9 package smoke aliases on the compatibility browser runner", async () => {
+  it("keeps release package smoke aliases on the compatibility browser runner", async () => {
     const packageJson = JSON.parse(
       await readFile(resolve(repoRoot, "package.json"), "utf8")
     );
     const compatibilityBrowserRunner =
       "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs";
+    const v10BrowserRunner =
+      "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v10-workflow";
 
     expect(packageJson.scripts["smoke:v8-wcad-workflow"]).toBe(
       compatibilityBrowserRunner
     );
     expect(packageJson.scripts["smoke:v9-viewport-workflow"]).toBe(
       compatibilityBrowserRunner
+    );
+    expect(packageJson.scripts["smoke:v10-browser-workflow"]).toBe(
+      v10BrowserRunner
     );
   });
 });

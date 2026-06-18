@@ -12,6 +12,9 @@ import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  FeatureEditabilityQueryResponse,
+  FeatureHoleDepthMode,
+  FeatureHoleDirection,
   CadReferenceHealthEntry,
   CadSelectionReferenceOperation,
   NamedGeneratedReferenceEntry,
@@ -109,6 +112,7 @@ export function Inspector({
   bodyTopologyError,
   bodyTopologyExactMetadataStatus,
   feature,
+  featureEditability,
   generatedReferences,
   generatedReferencesError,
   generatedReferenceMeasurements,
@@ -134,7 +138,11 @@ export function Inspector({
   onSelectGeneratedReference,
   onDelete,
   onDeleteFeature,
-  onUpdateExtrude
+  onUpdateExtrude,
+  onUpdateRevolve,
+  onUpdateHole,
+  onUpdateChamfer,
+  onUpdateFillet
 }: {
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
@@ -144,6 +152,7 @@ export function Inspector({
   readonly bodyTopologyError?: string;
   readonly bodyTopologyExactMetadataStatus?: string;
   readonly feature?: CadFeatureSummary;
+  readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
   readonly generatedReferenceMeasurements?: ReadonlyMap<
@@ -197,6 +206,15 @@ export function Inspector({
     depth: number,
     side: FeatureExtrudeSide
   ) => void;
+  readonly onUpdateRevolve: (featureId: string, angleDegrees: number) => void;
+  readonly onUpdateHole: (
+    featureId: string,
+    depthMode: FeatureHoleDepthMode,
+    depth: number | undefined,
+    direction: FeatureHoleDirection
+  ) => void;
+  readonly onUpdateChamfer: (featureId: string, distance: number) => void;
+  readonly onUpdateFillet: (featureId: string, radius: number) => void;
 }) {
   return (
     <aside className="inspector" aria-label="Inspector">
@@ -210,6 +228,7 @@ export function Inspector({
         bodyTopologyExactMetadataStatus,
         disabled,
         feature,
+        featureEditability,
         generatedReferences,
         generatedReferencesError,
         generatedReferenceMeasurements,
@@ -235,6 +254,10 @@ export function Inspector({
         onDelete,
         onDeleteFeature,
         onUpdateExtrude,
+        onUpdateRevolve,
+        onUpdateHole,
+        onUpdateChamfer,
+        onUpdateFillet,
         units
       })}
       <NamedReferencesPanel
@@ -260,6 +283,7 @@ function renderInspectorSelection(input: {
   readonly bodyTopologyExactMetadataStatus?: string;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
   readonly generatedReferenceMeasurements?: ReadonlyMap<
@@ -313,6 +337,15 @@ function renderInspectorSelection(input: {
     depth: number,
     side: FeatureExtrudeSide
   ) => void;
+  readonly onUpdateRevolve: (featureId: string, angleDegrees: number) => void;
+  readonly onUpdateHole: (
+    featureId: string,
+    depthMode: FeatureHoleDepthMode,
+    depth: number | undefined,
+    direction: FeatureHoleDirection
+  ) => void;
+  readonly onUpdateChamfer: (featureId: string, distance: number) => void;
+  readonly onUpdateFillet: (featureId: string, radius: number) => void;
 }) {
   if (input.body) {
     return (
@@ -325,6 +358,7 @@ function renderInspectorSelection(input: {
         topologyError={input.bodyTopologyError}
         disabled={input.disabled}
         feature={input.feature}
+        featureEditability={input.featureEditability}
         generatedReferences={input.generatedReferences}
         generatedReferencesError={input.generatedReferencesError}
         generatedReferenceMeasurements={input.generatedReferenceMeasurements}
@@ -340,6 +374,10 @@ function renderInspectorSelection(input: {
         selectionReferenceCandidates={input.selectionReferenceCandidates}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
+        onUpdateRevolve={input.onUpdateRevolve}
+        onUpdateHole={input.onUpdateHole}
+        onUpdateChamfer={input.onUpdateChamfer}
+        onUpdateFillet={input.onUpdateFillet}
         onRepairNamedReference={input.onRepairNamedReference}
         selectedGeneratedReference={input.selectedGeneratedReference}
         units={input.units}
@@ -414,6 +452,7 @@ function BodyInspector({
   body,
   disabled,
   feature,
+  featureEditability,
   generatedReferences,
   generatedReferencesError,
   generatedReferenceMeasurements,
@@ -429,6 +468,10 @@ function BodyInspector({
   onSelectGeneratedReference,
   onDeleteFeature,
   onUpdateExtrude,
+  onUpdateRevolve,
+  onUpdateHole,
+  onUpdateChamfer,
+  onUpdateFillet,
   selectedGeneratedReference,
   selectedNamedReferenceName,
   referenceCandidatesByStableId,
@@ -441,6 +484,7 @@ function BodyInspector({
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
   readonly feature?: CadFeatureSummary;
+  readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly generatedReferencesError?: string;
   readonly generatedReferenceMeasurements?: ReadonlyMap<
@@ -485,6 +529,15 @@ function BodyInspector({
     depth: number,
     side: FeatureExtrudeSide
   ) => void;
+  readonly onUpdateRevolve: (featureId: string, angleDegrees: number) => void;
+  readonly onUpdateHole: (
+    featureId: string,
+    depthMode: FeatureHoleDepthMode,
+    depth: number | undefined,
+    direction: FeatureHoleDirection
+  ) => void;
+  readonly onUpdateChamfer: (featureId: string, distance: number) => void;
+  readonly onUpdateFillet: (featureId: string, radius: number) => void;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly selectedNamedReferenceName?: string;
   readonly units: DocumentUnits;
@@ -521,44 +574,9 @@ function BodyInspector({
         </div>
         <div>
           <dt>Type</dt>
-          <dd>{feature?.kind === "extrude" ? "Sketch extrude" : body.kind}</dd>
+          <dd>{feature ? formatFeatureKindLabel(feature) : body.kind}</dd>
         </div>
-        {feature?.kind === "extrude" && (
-          <>
-            <div>
-              <dt>Profile</dt>
-              <dd>{feature.profileKind}</dd>
-            </div>
-            <div>
-              <dt>Sketch</dt>
-              <dd>{feature.sketchId}</dd>
-            </div>
-            <div>
-              <dt>Entity</dt>
-              <dd>{feature.entityId}</dd>
-            </div>
-            <div>
-              <dt>Side</dt>
-              <dd>{feature.side}</dd>
-            </div>
-            <div>
-              <dt>Operation</dt>
-              <dd>{formatExtrudeOperationMode(feature.operationMode)}</dd>
-            </div>
-            {feature.targetBodyId && (
-              <div>
-                <dt>Target body</dt>
-                <dd>{feature.targetBodyId}</dd>
-              </div>
-            )}
-            <div>
-              <dt>Depth</dt>
-              <dd>
-                {feature.depth} {units}
-              </dd>
-            </div>
-          </>
-        )}
+        {feature && renderFeatureDetailRows(feature, units)}
       </dl>
       <BodyMeasurementPanel
         error={measurementsError}
@@ -577,8 +595,50 @@ function BodyInspector({
         <ExtrudeDepthEditor
           key={`${feature.id}-${feature.depth}-${feature.side}`}
           disabled={disabled}
+          editability={featureEditability}
           feature={feature}
           onApply={onUpdateExtrude}
+          units={units}
+        />
+      )}
+      {feature?.kind === "revolve" && (
+        <RevolveFeatureEditor
+          key={`${feature.id}-${feature.angleDegrees}`}
+          disabled={disabled}
+          editability={featureEditability}
+          feature={feature}
+          onApply={onUpdateRevolve}
+        />
+      )}
+      {feature?.kind === "hole" && (
+        <HoleFeatureEditor
+          key={`${feature.id}-${feature.depthMode}-${feature.depth ?? "through"}-${feature.direction}`}
+          disabled={disabled}
+          editability={featureEditability}
+          feature={feature}
+          onApply={onUpdateHole}
+          units={units}
+        />
+      )}
+      {feature?.kind === "chamfer" && (
+        <EdgeFinishFeatureEditor
+          key={`${feature.id}-${feature.distance}`}
+          disabled={disabled}
+          editability={featureEditability}
+          feature={feature}
+          kind="chamfer"
+          onApply={onUpdateChamfer}
+          units={units}
+        />
+      )}
+      {feature?.kind === "fillet" && (
+        <EdgeFinishFeatureEditor
+          key={`${feature.id}-${feature.radius}`}
+          disabled={disabled}
+          editability={featureEditability}
+          feature={feature}
+          kind="fillet"
+          onApply={onUpdateFillet}
           units={units}
         />
       )}
@@ -720,6 +780,169 @@ function BodyTopologyPanel({
   );
 }
 
+function formatFeatureKindLabel(feature: CadFeatureSummary): string {
+  switch (feature.kind) {
+    case "extrude":
+      return "Sketch extrude";
+    case "revolve":
+      return "Sketch revolve";
+    case "hole":
+      return "Hole";
+    case "chamfer":
+      return "Chamfer";
+    case "fillet":
+      return "Fillet";
+    case "primitive":
+      return formatObjectKind(feature.primitive);
+  }
+}
+
+function formatFeatureOperationMode(mode: string): string {
+  if (mode === "newBody") {
+    return "New body";
+  }
+
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+function renderFeatureDetailRows(
+  feature: CadFeatureSummary,
+  units: DocumentUnits
+) {
+  if (feature.kind === "primitive") {
+    return null;
+  }
+
+  if (feature.kind === "extrude") {
+    return (
+      <>
+        <div>
+          <dt>Profile</dt>
+          <dd>{feature.profileKind}</dd>
+        </div>
+        <div>
+          <dt>Sketch</dt>
+          <dd>{feature.sketchId}</dd>
+        </div>
+        <div>
+          <dt>Entity</dt>
+          <dd>{feature.entityId}</dd>
+        </div>
+        <div>
+          <dt>Side</dt>
+          <dd>{feature.side}</dd>
+        </div>
+        <div>
+          <dt>Operation</dt>
+          <dd>{formatExtrudeOperationMode(feature.operationMode)}</dd>
+        </div>
+        {feature.targetBodyId && (
+          <div>
+            <dt>Target body</dt>
+            <dd>{feature.targetBodyId}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Depth</dt>
+          <dd>
+            {feature.depth} {units}
+          </dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "revolve") {
+    return (
+      <>
+        <div>
+          <dt>Profile</dt>
+          <dd>{feature.profileKind}</dd>
+        </div>
+        <div>
+          <dt>Sketch</dt>
+          <dd>{feature.sketchId}</dd>
+        </div>
+        <div>
+          <dt>Entity</dt>
+          <dd>{feature.entityId}</dd>
+        </div>
+        <div>
+          <dt>Axis</dt>
+          <dd>{feature.axis.entityId}</dd>
+        </div>
+        <div>
+          <dt>Operation</dt>
+          <dd>{formatFeatureOperationMode(feature.operationMode)}</dd>
+        </div>
+        <div>
+          <dt>Angle</dt>
+          <dd>{feature.angleDegrees} deg</dd>
+        </div>
+      </>
+    );
+  }
+
+  if (feature.kind === "hole") {
+    return (
+      <>
+        <div>
+          <dt>Target body</dt>
+          <dd>{feature.targetBodyId}</dd>
+        </div>
+        <div>
+          <dt>Sketch</dt>
+          <dd>{feature.sketchId}</dd>
+        </div>
+        <div>
+          <dt>Circle</dt>
+          <dd>{feature.circleEntityId}</dd>
+        </div>
+        <div>
+          <dt>Depth mode</dt>
+          <dd>
+            {feature.depthMode === "throughAll" ? "Through all" : "Blind"}
+          </dd>
+        </div>
+        {feature.depth !== undefined && (
+          <div>
+            <dt>Depth</dt>
+            <dd>
+              {feature.depth} {units}
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>Direction</dt>
+          <dd>{feature.direction}</dd>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div>
+        <dt>Target body</dt>
+        <dd>{feature.targetBodyId}</dd>
+      </div>
+      {(feature.edgeStableId || feature.namedReference) && (
+        <div>
+          <dt>Edge</dt>
+          <dd>{feature.namedReference ?? feature.edgeStableId}</dd>
+        </div>
+      )}
+      <div>
+        <dt>{feature.kind === "chamfer" ? "Distance" : "Radius"}</dt>
+        <dd>
+          {feature.kind === "chamfer" ? feature.distance : feature.radius}{" "}
+          {units}
+        </dd>
+      </div>
+    </>
+  );
+}
+
 function SelectionReferenceContractPanel({
   response
 }: {
@@ -742,7 +965,7 @@ function SelectionReferenceContractPanel({
   return (
     <section className="command-card nested reference-contract">
       <div className="command-card-heading">
-        <h3>Reference contract</h3>
+        <h3>Reference status</h3>
         <span>{formatSelectionReferenceStatus(response.status)}</span>
       </div>
       {primary && (
@@ -1909,11 +2132,13 @@ function GeneratedReferenceMeasurementRows({
 
 function ExtrudeDepthEditor({
   disabled,
+  editability,
   feature,
   onApply,
   units
 }: {
   readonly disabled: boolean;
+  readonly editability?: FeatureEditabilityQueryResponse;
   readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
   readonly onApply: (
     featureId: string,
@@ -1924,6 +2149,10 @@ function ExtrudeDepthEditor({
 }) {
   const [depth, setDepth] = useState(feature.depth);
   const [side, setSide] = useState<FeatureExtrudeSide>(feature.side);
+  const canEdit = isFeatureEditOperationAvailable(
+    editability,
+    "feature.updateExtrude"
+  );
   const hasChanges = depth !== feature.depth || side !== feature.side;
   const isValid = Number.isFinite(depth) && depth > 0;
 
@@ -1942,7 +2171,9 @@ function ExtrudeDepthEditor({
     <section className="command-card nested">
       <div className="command-card-heading">
         <h3>Extrude feature</h3>
-        {hasChanges && <span>Edited</span>}
+        <span>
+          {hasChanges ? "Edited" : formatFeatureEditStatus(editability)}
+        </span>
       </div>
       <label>
         Operation
@@ -1958,7 +2189,7 @@ function ExtrudeDepthEditor({
           type="number"
           step="0.1"
           value={depth}
-          disabled={disabled}
+          disabled={disabled || !canEdit}
           onChange={(event) => {
             const nextDepth = event.currentTarget.valueAsNumber;
             setDepth(Number.isNaN(nextDepth) ? 0 : nextDepth);
@@ -1969,7 +2200,7 @@ function ExtrudeDepthEditor({
         Side
         <select
           value={side}
-          disabled={disabled}
+          disabled={disabled || !canEdit}
           onChange={(event) =>
             setSide(event.currentTarget.value as FeatureExtrudeSide)
           }
@@ -1983,7 +2214,7 @@ function ExtrudeDepthEditor({
         <button
           type="button"
           onClick={handleApply}
-          disabled={disabled || !hasChanges || !isValid}
+          disabled={disabled || !canEdit || !hasChanges || !isValid}
         >
           Apply extrude
         </button>
@@ -1995,8 +2226,316 @@ function ExtrudeDepthEditor({
           Reset edits
         </button>
       </div>
-      {!isValid && <p className="error-text">Depth must be positive.</p>}
+      {!canEdit && (
+        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+      )}
+      {canEdit && !isValid && (
+        <p className="error-text">Depth must be positive.</p>
+      )}
     </section>
+  );
+}
+
+function RevolveFeatureEditor({
+  disabled,
+  editability,
+  feature,
+  onApply
+}: {
+  readonly disabled: boolean;
+  readonly editability?: FeatureEditabilityQueryResponse;
+  readonly feature: Extract<CadFeatureSummary, { readonly kind: "revolve" }>;
+  readonly onApply: (featureId: string, angleDegrees: number) => void;
+}) {
+  const [angleDegrees, setAngleDegrees] = useState(feature.angleDegrees);
+  const canEdit = isFeatureEditOperationAvailable(
+    editability,
+    "feature.updateRevolve"
+  );
+  const hasChanges = angleDegrees !== feature.angleDegrees;
+  const isValid =
+    Number.isFinite(angleDegrees) && angleDegrees > 0 && angleDegrees <= 360;
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Revolve feature</h3>
+        <span>
+          {hasChanges ? "Edited" : formatFeatureEditStatus(editability)}
+        </span>
+      </div>
+      <label>
+        Angle (deg)
+        <input
+          type="number"
+          step="1"
+          value={angleDegrees}
+          disabled={disabled || !canEdit}
+          onChange={(event) => {
+            const nextAngle = event.currentTarget.valueAsNumber;
+            setAngleDegrees(Number.isNaN(nextAngle) ? 0 : nextAngle);
+          }}
+        />
+      </label>
+      <div className="button-row">
+        <button
+          type="button"
+          disabled={disabled || !canEdit || !hasChanges || !isValid}
+          onClick={() => onApply(feature.id, angleDegrees)}
+        >
+          Apply revolve
+        </button>
+        <button
+          type="button"
+          disabled={disabled || !hasChanges}
+          onClick={() => setAngleDegrees(feature.angleDegrees)}
+        >
+          Reset edits
+        </button>
+      </div>
+      {!canEdit && (
+        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+      )}
+      {canEdit && !isValid && (
+        <p className="error-text">Angle must be between 0 and 360 degrees.</p>
+      )}
+    </section>
+  );
+}
+
+function HoleFeatureEditor({
+  disabled,
+  editability,
+  feature,
+  onApply,
+  units
+}: {
+  readonly disabled: boolean;
+  readonly editability?: FeatureEditabilityQueryResponse;
+  readonly feature: Extract<CadFeatureSummary, { readonly kind: "hole" }>;
+  readonly onApply: (
+    featureId: string,
+    depthMode: FeatureHoleDepthMode,
+    depth: number | undefined,
+    direction: FeatureHoleDirection
+  ) => void;
+  readonly units: DocumentUnits;
+}) {
+  const [depthMode, setDepthMode] = useState<FeatureHoleDepthMode>(
+    feature.depthMode
+  );
+  const [depth, setDepth] = useState(feature.depth ?? 1);
+  const [direction, setDirection] = useState<FeatureHoleDirection>(
+    feature.direction
+  );
+  const canEdit = isFeatureEditOperationAvailable(
+    editability,
+    "feature.updateHole"
+  );
+  const effectiveDepth = depthMode === "blind" ? depth : undefined;
+  const hasChanges =
+    depthMode !== feature.depthMode ||
+    direction !== feature.direction ||
+    (depthMode === "blind" && effectiveDepth !== feature.depth);
+  const isValid =
+    depthMode === "throughAll" || (Number.isFinite(depth) && depth > 0);
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>Hole feature</h3>
+        <span>
+          {hasChanges ? "Edited" : formatFeatureEditStatus(editability)}
+        </span>
+      </div>
+      <label>
+        Depth mode
+        <select
+          value={depthMode}
+          disabled={disabled || !canEdit}
+          onChange={(event) =>
+            setDepthMode(event.currentTarget.value as FeatureHoleDepthMode)
+          }
+        >
+          <option value="blind">Blind</option>
+          <option value="throughAll">Through all</option>
+        </select>
+      </label>
+      {depthMode === "blind" && (
+        <label>
+          Depth ({units})
+          <input
+            type="number"
+            step="0.1"
+            value={depth}
+            disabled={disabled || !canEdit}
+            onChange={(event) => {
+              const nextDepth = event.currentTarget.valueAsNumber;
+              setDepth(Number.isNaN(nextDepth) ? 0 : nextDepth);
+            }}
+          />
+        </label>
+      )}
+      <label>
+        Direction
+        <select
+          value={direction}
+          disabled={disabled || !canEdit}
+          onChange={(event) =>
+            setDirection(event.currentTarget.value as FeatureHoleDirection)
+          }
+        >
+          <option value="positive">Positive</option>
+          <option value="negative">Negative</option>
+        </select>
+      </label>
+      <div className="button-row">
+        <button
+          type="button"
+          disabled={disabled || !canEdit || !hasChanges || !isValid}
+          onClick={() =>
+            onApply(feature.id, depthMode, effectiveDepth, direction)
+          }
+        >
+          Apply hole
+        </button>
+        <button
+          type="button"
+          disabled={disabled || !hasChanges}
+          onClick={() => {
+            setDepthMode(feature.depthMode);
+            setDepth(feature.depth ?? 1);
+            setDirection(feature.direction);
+          }}
+        >
+          Reset edits
+        </button>
+      </div>
+      {!canEdit && (
+        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+      )}
+      {canEdit && !isValid && (
+        <p className="error-text">Blind hole depth must be positive.</p>
+      )}
+    </section>
+  );
+}
+
+function EdgeFinishFeatureEditor({
+  disabled,
+  editability,
+  feature,
+  kind,
+  onApply,
+  units
+}: {
+  readonly disabled: boolean;
+  readonly editability?: FeatureEditabilityQueryResponse;
+  readonly feature:
+    | Extract<CadFeatureSummary, { readonly kind: "chamfer" }>
+    | Extract<CadFeatureSummary, { readonly kind: "fillet" }>;
+  readonly kind: "chamfer" | "fillet";
+  readonly onApply: (featureId: string, value: number) => void;
+  readonly units: DocumentUnits;
+}) {
+  const currentValue =
+    feature.kind === "chamfer" ? feature.distance : feature.radius;
+  const [value, setValue] = useState(currentValue);
+  const operation =
+    feature.kind === "chamfer"
+      ? "feature.updateChamfer"
+      : "feature.updateFillet";
+  const canEdit = isFeatureEditOperationAvailable(editability, operation);
+  const hasChanges = value !== currentValue;
+  const isValid = Number.isFinite(value) && value > 0;
+  const label = kind === "chamfer" ? "Distance" : "Radius";
+
+  return (
+    <section className="command-card nested">
+      <div className="command-card-heading">
+        <h3>{kind === "chamfer" ? "Chamfer feature" : "Fillet feature"}</h3>
+        <span>
+          {hasChanges ? "Edited" : formatFeatureEditStatus(editability)}
+        </span>
+      </div>
+      <label>
+        {label} ({units})
+        <input
+          type="number"
+          step="0.05"
+          value={value}
+          disabled={disabled || !canEdit}
+          onChange={(event) => {
+            const nextValue = event.currentTarget.valueAsNumber;
+            setValue(Number.isNaN(nextValue) ? 0 : nextValue);
+          }}
+        />
+      </label>
+      <div className="button-row">
+        <button
+          type="button"
+          disabled={disabled || !canEdit || !hasChanges || !isValid}
+          onClick={() => onApply(feature.id, value)}
+        >
+          {kind === "chamfer" ? "Apply chamfer" : "Apply fillet"}
+        </button>
+        <button
+          type="button"
+          disabled={disabled || !hasChanges}
+          onClick={() => setValue(currentValue)}
+        >
+          Reset edits
+        </button>
+      </div>
+      {!canEdit && (
+        <p className="error-text">{getFeatureEditDiagnostic(editability)}</p>
+      )}
+      {canEdit && !isValid && (
+        <p className="error-text">{label} must be positive.</p>
+      )}
+    </section>
+  );
+}
+
+function isFeatureEditOperationAvailable(
+  editability: FeatureEditabilityQueryResponse | undefined,
+  operation: string
+): boolean {
+  return Boolean(
+    editability?.status === "editable" &&
+    editability.fields.some(
+      (field) => field.editable && field.commitOperation === operation
+    )
+  );
+}
+
+function formatFeatureEditStatus(
+  editability: FeatureEditabilityQueryResponse | undefined
+): string {
+  if (!editability) {
+    return "Unavailable";
+  }
+
+  if (editability.status === "editable") {
+    return "Editable";
+  }
+
+  return editability.status === "missing"
+    ? "Missing"
+    : editability.status === "unsupported"
+      ? "Unsupported"
+      : "Blocked";
+}
+
+function getFeatureEditDiagnostic(
+  editability: FeatureEditabilityQueryResponse | undefined
+): string {
+  return (
+    editability?.diagnostics.find(
+      (diagnostic) => diagnostic.severity === "blocker"
+    )?.message ??
+    editability?.diagnostics[0]?.message ??
+    "This feature is not editable from the current source state."
   );
 }
 

@@ -18,6 +18,10 @@ import type {
   FeatureHoleOp,
   FeatureRevolveOp,
   FeatureUpdateExtrudeOp,
+  FeatureUpdateChamferOp,
+  FeatureUpdateFilletOp,
+  FeatureUpdateHoleOp,
+  FeatureUpdateRevolveOp,
   ParameterCreateOp,
   ParameterDeleteOp,
   ParameterId,
@@ -867,6 +871,54 @@ export function buildFeatureUpdateExtrudeOp(
     id,
     depth,
     ...(side ? { side } : {})
+  };
+}
+
+export function buildFeatureUpdateRevolveOp(
+  id: string,
+  angleDegrees: number
+): FeatureUpdateRevolveOp {
+  return {
+    op: "feature.updateRevolve",
+    id,
+    angleDegrees
+  };
+}
+
+export function buildFeatureUpdateHoleOp(
+  id: string,
+  depthMode?: FeatureHoleDepthMode,
+  depth?: number,
+  direction?: FeatureHoleDirection
+): FeatureUpdateHoleOp {
+  return {
+    op: "feature.updateHole",
+    id,
+    ...(depthMode ? { depthMode } : {}),
+    ...(depth !== undefined ? { depth } : {}),
+    ...(direction ? { direction } : {})
+  };
+}
+
+export function buildFeatureUpdateChamferOp(
+  id: string,
+  distance: number
+): FeatureUpdateChamferOp {
+  return {
+    op: "feature.updateChamfer",
+    id,
+    distance
+  };
+}
+
+export function buildFeatureUpdateFilletOp(
+  id: string,
+  radius: number
+): FeatureUpdateFilletOp {
+  return {
+    op: "feature.updateFillet",
+    id,
+    radius
   };
 }
 

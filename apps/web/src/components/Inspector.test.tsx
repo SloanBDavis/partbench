@@ -5,6 +5,7 @@ import type {
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadReferenceHealthEntry,
+  FeatureEditabilityQueryResponse,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -49,7 +50,11 @@ describe("Inspector", () => {
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
         onDeleteFeature: () => undefined,
-        onUpdateExtrude: () => undefined
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
       })
     );
 
@@ -60,7 +65,7 @@ describe("Inspector", () => {
     expect(markup).toContain("Chamfer");
     expect(markup).toContain("Fillet");
     expect(markup).toContain("Name");
-    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Reference status");
     expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Stable ID and source");
     expect(markup).toContain("Selected reference");
@@ -105,7 +110,11 @@ describe("Inspector", () => {
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
         onDeleteFeature: () => undefined,
-        onUpdateExtrude: () => undefined
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
       })
     );
 
@@ -146,13 +155,17 @@ describe("Inspector", () => {
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
         onDeleteFeature: () => undefined,
-        onUpdateExtrude: () => undefined
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
       })
     );
 
     expect(markup).toContain("Selected reference");
     expect(markup).toContain("Start uMin edge");
-    expect(markup).toContain("Reference contract");
+    expect(markup).toContain("Reference status");
     expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Edge finish");
     expect(markup).toContain("Fillet");
@@ -160,11 +173,44 @@ describe("Inspector", () => {
   });
 
   it("offers feature delete for non-extrude authored bodies", () => {
+    const holeFeature = createHoleFeature();
     const markup = renderToStaticMarkup(
       createElement(Inspector, {
         body: createHoleBody(),
         disabled: false,
-        feature: createHoleFeature(),
+        feature: holeFeature,
+        featureEditability: createFeatureEditability(holeFeature, [
+          {
+            path: "depthMode",
+            label: "Depth mode",
+            valueType: "enum",
+            currentValue: "blind",
+            enumValues: ["blind", "throughAll"],
+            editable: true,
+            commitOperation: "feature.updateHole",
+            diagnostics: []
+          },
+          {
+            path: "depth",
+            label: "Depth",
+            valueType: "number",
+            currentValue: 1,
+            unit: "mm",
+            editable: true,
+            commitOperation: "feature.updateHole",
+            diagnostics: []
+          },
+          {
+            path: "direction",
+            label: "Direction",
+            valueType: "enum",
+            currentValue: "negative",
+            enumValues: ["positive", "negative"],
+            editable: true,
+            commitOperation: "feature.updateHole",
+            diagnostics: []
+          }
+        ]),
         namedReferences: [],
         units: "mm",
         onApplyDimensions: () => undefined,
@@ -179,10 +225,17 @@ describe("Inspector", () => {
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
         onDeleteFeature: () => undefined,
-        onUpdateExtrude: () => undefined
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
       })
     );
 
+    expect(markup).toContain("Hole feature");
+    expect(markup).toContain("Depth mode");
+    expect(markup).toContain("Apply hole");
     expect(markup).toContain("Delete feature");
   });
 
@@ -230,7 +283,11 @@ describe("Inspector", () => {
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
         onDeleteFeature: () => undefined,
-        onUpdateExtrude: () => undefined
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
       })
     );
 
@@ -316,6 +373,48 @@ function createHoleFeature(): Extract<
       circleEntityId: "circle_1",
       targetBodyId: "body_rect"
     }
+  };
+}
+
+function createFeatureEditability(
+  feature: CadFeatureSummary,
+  fields: FeatureEditabilityQueryResponse["fields"]
+): FeatureEditabilityQueryResponse {
+  return {
+    ok: true,
+    query: "feature.editability",
+    cadOpsVersion: "cadops.v1",
+    featureId: feature.id,
+    status: "editable",
+    feature,
+    fieldCount: fields.length,
+    fields,
+    rebuildReadiness: {
+      status: "ready",
+      commitDeferred: false,
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    dryRun: {
+      status: "not-requested",
+      willMutateDocument: false,
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    affected: {
+      sketchIds: [],
+      featureIds: [feature.id],
+      bodyIds: [feature.bodyId],
+      generatedReferenceCount: 0,
+      namedReferenceCount: 0
+    },
+    referenceChangeCount: 0,
+    referenceChanges: [],
+    diagnosticCount: 0,
+    diagnostics: [],
+    sourceBoundaryNote: "test source boundary",
+    derivedBoundaryNote: "test derived boundary",
+    requiresProjectSchemaMigration: false
   };
 }
 

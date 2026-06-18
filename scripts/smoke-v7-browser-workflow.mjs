@@ -94,9 +94,13 @@ function parseSmokeOptions(args, env) {
   const requireDerivedMeshCache = isTruthy(
     env.PARTBENCH_V8_WCAD_WORKFLOW_REQUIRE_DERIVED_CACHE
   );
+  const requireV10Workflow = isTruthy(
+    env.PARTBENCH_V10_BROWSER_WORKFLOW_REQUIRED
+  );
 
   let nextRequireGlbDownload = requireGlbDownload;
   let nextRequireDerivedMeshCache = requireDerivedMeshCache;
+  let nextRequireV10Workflow = requireV10Workflow;
 
   for (const arg of args) {
     if (arg === "--require-glb" || arg === "--require-glb-download") {
@@ -119,12 +123,23 @@ function parseSmokeOptions(args, env) {
       continue;
     }
 
+    if (arg === "--require-v10-workflow") {
+      nextRequireV10Workflow = true;
+      continue;
+    }
+
+    if (arg === "--no-require-v10-workflow") {
+      nextRequireV10Workflow = false;
+      continue;
+    }
+
     throw new Error(`Unknown option ${arg}`);
   }
 
   return {
     requireGlbDownload: nextRequireGlbDownload,
-    requireDerivedMeshCache: nextRequireDerivedMeshCache
+    requireDerivedMeshCache: nextRequireDerivedMeshCache,
+    requireV10Workflow: nextRequireV10Workflow
   };
 }
 
@@ -186,7 +201,11 @@ async function runV7BrowserWorkflowSmoke(
   client,
   appUrl,
   timeoutMs,
-  { requireGlbDownload = false, requireDerivedMeshCache = false } = {}
+  {
+    requireGlbDownload = false,
+    requireDerivedMeshCache = false,
+    requireV10Workflow = false
+  } = {}
 ) {
   const target = await client.send("Target.createTarget", {
     url: "about:blank"
@@ -239,6 +258,7 @@ async function runV7BrowserWorkflowSmoke(
       expression: `(${v7BrowserWorkflowSmoke.toString()})(${JSON.stringify({
         requireDerivedMeshCache,
         requireGlbDownload,
+        requireV10Workflow,
         timeoutMs
       })})`
     },
@@ -286,7 +306,8 @@ async function runV7BrowserWorkflowSmoke(
     skipped: pageResult.skipped,
     requiredCheckIds: getV7BrowserWorkflowRequiredCheckIds({
       requireDerivedMeshCache,
-      requireGlbDownload
+      requireGlbDownload,
+      requireV10Workflow
     }),
     consoleErrors,
     exceptions
@@ -362,6 +383,7 @@ async function runNarrowViewportSmoke(client, sessionId, timeoutMs) {
 async function v7BrowserWorkflowSmoke({
   requireDerivedMeshCache,
   requireGlbDownload,
+  requireV10Workflow,
   timeoutMs
 }) {
   const ids = {
@@ -381,6 +403,15 @@ async function v7BrowserWorkflowSmoke({
     featureId: "v7_smoke_feature",
     namedReference: "v7_smoke_top_face",
     projectFileName: "v7-browser-workflow-roundtrip.json",
+    v10RepairBodyId: "v10_smoke_repair_body",
+    v10RepairBodyName: "V10 smoke repair replacement body",
+    v10RepairEntityId: "v10_smoke_repair_rect",
+    v10RepairFeatureId: "v10_smoke_repair_feature",
+    v10RepairReferenceName: "v10_smoke_repaired_face",
+    v10StaleBodyId: "v10_smoke_stale_body",
+    v10StaleBodyName: "V10 smoke stale source body",
+    v10StaleEntityId: "v10_smoke_stale_rect",
+    v10StaleFeatureId: "v10_smoke_stale_feature",
     wcadFileName: "v8-browser-workflow-roundtrip.wcad",
     sketchId: "v7_smoke_sketch"
   };
@@ -392,6 +423,21 @@ async function v7BrowserWorkflowSmoke({
     "app shell"
   );
   pass("app-load", "app loaded without runtime exceptions");
+
+  const primaryTools = getElementByAriaLabel("Project and modeling tools");
+  if (document.querySelector('[aria-label="Context and advanced tools"]')) {
+    fail(
+      "primary-tools-language",
+      "primary right rail uses product workflow language",
+      "Old Context and advanced tools label is still present."
+    );
+  } else {
+    pass(
+      "primary-tools-language",
+      "primary right rail uses product workflow language",
+      compactText(primaryTools.textContent, 180)
+    );
+  }
 
   await waitFor(
     () => Boolean(findDetailsBySummary(document.body, "Workspace tools")),
@@ -842,11 +888,7 @@ async function v7BrowserWorkflowSmoke({
   assertViewportHasNoSelectionDetails();
 
   const modelingChecks = [
-    assertIncludes(
-      modeling,
-      "Reference contract",
-      "modeling-reference-contract"
-    ),
+    assertIncludes(modeling, "Reference status", "modeling-reference-heading"),
     assertIncludes(
       modeling,
       "Command-ready reference",
@@ -892,8 +934,8 @@ async function v7BrowserWorkflowSmoke({
     const generatedReferenceChecks = [
       assertIncludes(
         getElementByAriaLabel("Inspector"),
-        "Reference contract",
-        "selected-generated-reference-contract"
+        "Reference status",
+        "selected-generated-reference-status"
       ),
       assertIncludes(
         modeling,
@@ -950,13 +992,18 @@ async function v7BrowserWorkflowSmoke({
       );
     }
 
-    setFieldByLabel(inspector, "Sketch name", ids.attachedSketchName);
+    const attachedSketchInspector = getElementByAriaLabel("Inspector");
+    setFieldByLabel(
+      attachedSketchInspector,
+      "Sketch name",
+      ids.attachedSketchName
+    );
     setInputByDetailsSummary(
-      inspector,
+      attachedSketchInspector,
       "Advanced sketch options",
       ids.attachedSketchId
     );
-    clickButton(inspector, "Create attached sketch");
+    clickButton(attachedSketchInspector, "Create attached sketch");
     await waitFor(
       () =>
         includesText(getElementByAriaLabel("Model structure"), "Attached") &&
@@ -1071,6 +1118,10 @@ async function v7BrowserWorkflowSmoke({
       "consumed body selection shows structured reference diagnostics",
       getDiagnosticText()
     );
+
+    if (requireV10Workflow) {
+      await runV10EditRepairWorkflowSmoke();
+    }
   }
 
   openDetailsBySummary(document.body, "Project/File");
@@ -1199,6 +1250,36 @@ async function v7BrowserWorkflowSmoke({
     ".wcad round-trip preserves feature tree, attached sketch, and named reference",
     compactText(getElementByAriaLabel("Model structure").textContent)
   );
+  if (requireV10Workflow) {
+    openTreePanel();
+    const repairedReferenceButton = getButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v10RepairReferenceName
+    );
+    if (!repairedReferenceButton) {
+      fail(
+        "v10-repaired-reference-wcad-roundtrip",
+        "repaired named reference survives .wcad save/open and remains command-ready",
+        "Repaired named reference button was not found after .wcad round-trip."
+      );
+    } else {
+      repairedReferenceButton.click();
+      await waitFor(
+        () => isTreePanelOpen(),
+        "repaired named reference selection keeps preferred tree tab after .wcad round-trip"
+      );
+      openSelectionPanel();
+      await waitForGeneratedReferenceCommandReady(
+        ids.v10RepairBodyId,
+        "repaired named reference remains command-ready after .wcad round-trip"
+      );
+      pass(
+        "v10-repaired-reference-wcad-roundtrip",
+        "repaired named reference survives .wcad save/open and remains command-ready",
+        getSelectionText()
+      );
+    }
+  }
 
   const derivedMeshCacheObserved = () => {
     const text = normalize(projectPanel.textContent);
@@ -1407,6 +1488,264 @@ async function v7BrowserWorkflowSmoke({
     });
   }
 
+  async function runV10EditRepairWorkflowSmoke() {
+    await createV10RectangleNewBody({
+      bodyId: ids.v10StaleBodyId,
+      bodyName: ids.v10StaleBodyName,
+      centerX: "5",
+      entityId: ids.v10StaleEntityId,
+      featureId: ids.v10StaleFeatureId
+    });
+    await createV10RectangleNewBody({
+      bodyId: ids.v10RepairBodyId,
+      bodyName: ids.v10RepairBodyName,
+      centerX: "7",
+      entityId: ids.v10RepairEntityId,
+      featureId: ids.v10RepairFeatureId
+    });
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v10StaleBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v10StaleBodyId,
+      "selected V10 stale-source body before naming"
+    );
+    const staleFaceLabel = selectFirstGeneratedFaceFromInspector(
+      ids.v10StaleBodyId
+    );
+    await waitForGeneratedReferenceCommandReady(
+      ids.v10StaleBodyId,
+      "V10 stale-source generated face command-ready before naming"
+    );
+    const staleInspector = getElementByAriaLabel("Inspector");
+    setFieldByLabel(
+      staleInspector,
+      "Name this reference",
+      ids.v10RepairReferenceName
+    );
+    clickButton(staleInspector, "Save name");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          "Names for this reference"
+        ) &&
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          ids.v10RepairReferenceName
+        ),
+      "named V10 stale-source generated face"
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v10StaleBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v10StaleBodyId,
+      "selected V10 stale-source body before supported edit"
+    );
+    const editInspector = getElementByAriaLabel("Inspector");
+    setFieldByLabel(editInspector, "Depth (mm)", "1.25");
+    clickButton(editInspector, "Apply extrude");
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const depthControl = getControlByLabel(currentInspector, "Depth (mm)");
+      const ready =
+        depthControl instanceof HTMLInputElement &&
+        depthControl.value === "1.25" &&
+        includesText(currentInspector, "Command-ready reference") &&
+        includesText(currentInspector, "1.25 mm");
+
+      if (!ready) {
+        throw new Error(compactText(currentInspector.textContent, 520));
+      }
+
+      return true;
+    }, "V10 extra supported extrude edit committed and rebuilt");
+    pass(
+      "v10-feature-edit-commit",
+      "supported extrude depth edit commits through the browser workflow and rebuilds source state",
+      getSelectionText()
+    );
+
+    openTreePanel();
+    const editedReferenceButton = getButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v10RepairReferenceName
+    );
+    if (!editedReferenceButton) {
+      fail(
+        "v10-reference-health-after-edit",
+        "named reference remains routable after supported feature edit",
+        "Named reference button was not found after V10 edit."
+      );
+    } else {
+      editedReferenceButton.click();
+      await waitFor(
+        () => isTreePanelOpen(),
+        "V10 edited named reference selection keeps preferred tree tab"
+      );
+      openSelectionPanel();
+      await waitForGeneratedReferenceCommandReady(
+        ids.v10StaleBodyId,
+        "V10 edited named reference remains command-ready"
+      );
+      pass(
+        "v10-reference-health-after-edit",
+        "named reference remains active and command-ready after supported feature edit",
+        staleFaceLabel
+      );
+    }
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v10StaleBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v10StaleBodyId,
+      "selected V10 stale-source body before feature delete"
+    );
+    const deleteInspector = getElementByAriaLabel("Inspector");
+    clickButton(deleteInspector, "Delete feature");
+    await waitFor(
+      () =>
+        Boolean(
+          getButtonByText(
+            getElementByAriaLabel("Inspector"),
+            "Confirm delete feature"
+          )
+        ),
+      "armed V10 source feature delete confirmation"
+    );
+    clickButton(getElementByAriaLabel("Inspector"), "Confirm delete feature");
+    await waitFor(() => {
+      const structure = getElementByAriaLabel("Model structure");
+      const ready =
+        !includesText(structure, ids.v10StaleBodyName) &&
+        includesText(structure, ids.v10RepairReferenceName);
+
+      if (!ready) {
+        throw new Error(compactText(structure.textContent, 520));
+      }
+
+      return true;
+    }, "V10 named reference became stale after deleting its source feature");
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v10RepairBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v10RepairBodyId,
+      "selected V10 repair replacement body"
+    );
+    const replacementLabel = selectFirstGeneratedFaceFromInspector(
+      ids.v10RepairBodyId
+    );
+    await waitForGeneratedReferenceCommandReady(
+      ids.v10RepairBodyId,
+      "V10 replacement generated face command-ready before repair"
+    );
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        includesText(
+          currentInspector,
+          `Repair ${ids.v10RepairReferenceName}`
+        ) &&
+        includesText(currentInspector, "Repair name") &&
+        includesText(currentModeling, `Repair ${ids.v10RepairReferenceName}`) &&
+        includesText(currentModeling, "Repair name");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `inspector=${compactText(currentInspector.textContent, 300)}`,
+            `modeling=${compactText(currentModeling.textContent, 300)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V10 named reference repair affordance for replacement face");
+    clickButton(getElementByAriaLabel("Inspector"), "Repair name");
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const ready =
+        includesText(currentInspector, "Names for this reference") &&
+        includesText(currentInspector, ids.v10RepairReferenceName) &&
+        !includesText(currentInspector, `Repair ${ids.v10RepairReferenceName}`);
+
+      if (!ready) {
+        throw new Error(compactText(currentInspector.textContent, 420));
+      }
+
+      return true;
+    }, "V10 named reference repaired to active generated face");
+    pass(
+      "v10-named-reference-repair-browser",
+      "stale named reference is repaired through the browser workflow",
+      replacementLabel
+    );
+  }
+
+  async function createV10RectangleNewBody({
+    bodyId,
+    bodyName,
+    centerX,
+    entityId,
+    featureId
+  }) {
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.sketchId);
+    await waitFor(
+      () => getControlByLabel(sketches, "Active sketch").value === ids.sketchId,
+      `activated base sketch before creating ${bodyName}`
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Rectangle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      `${bodyName} rectangle entity editor`
+    );
+    setSelectByLabel(entityEditor, "Entity", "rectangle");
+    setInputByDetailsSummary(entityEditor, "Optional ID", entityId);
+    setFieldByLabel(entityEditor, "Center X", centerX);
+    setFieldByLabel(entityEditor, "Center Y", "0");
+    setFieldByLabel(entityEditor, "Width", "0.75");
+    setFieldByLabel(entityEditor, "Height", "0.75");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(getElementByAriaLabel("Select sketch entity"), entityId),
+      `created ${bodyName} source rectangle`
+    );
+
+    const featureEditor = getSectionByAriaLabel("Create authored feature");
+    setFieldByLabel(featureEditor, "Depth", "1");
+    setSelectByLabel(featureEditor, "Operation", "newBody");
+    setFieldByLabel(featureEditor, "Optional feature ID", featureId);
+    setFieldByLabel(featureEditor, "Optional body ID", bodyId);
+    setFieldByLabel(featureEditor, "Optional name", bodyName);
+    clickButton(featureEditor, "Create extrude");
+    await waitFor(
+      () => includesText(getElementByAriaLabel("Model structure"), bodyName),
+      `created ${bodyName} extrude body`
+    );
+  }
+
   async function waitForBodyCommandReady(bodyId, label) {
     await waitFor(() => {
       const currentInspector = getElementByAriaLabel("Inspector");
@@ -1415,7 +1754,7 @@ async function v7BrowserWorkflowSmoke({
         isSelectionPanelOpen() &&
         includesText(currentInspector, bodyId) &&
         includesText(currentInspector, "Command-ready reference") &&
-        includesText(currentModeling, "Reference contract") &&
+        includesText(currentModeling, "Reference status") &&
         includesText(currentModeling, "Command-ready reference");
 
       if (!ready) {
@@ -1441,7 +1780,7 @@ async function v7BrowserWorkflowSmoke({
         includesText(currentInspector, bodyId) &&
         includesText(currentInspector, "Selected reference") &&
         includesText(currentInspector, "Command-ready") &&
-        includesText(currentModeling, "Reference contract") &&
+        includesText(currentModeling, "Reference status") &&
         includesText(currentModeling, "Command-ready reference") &&
         includesText(currentModeling, "Create sketch on face");
 
@@ -1468,7 +1807,7 @@ async function v7BrowserWorkflowSmoke({
         includesText(currentInspector, bodyId) &&
         includesText(currentInspector, "Selected reference") &&
         includesText(currentInspector, "Command-ready") &&
-        includesText(currentModeling, "Reference contract") &&
+        includesText(currentModeling, "Reference status") &&
         includesText(currentModeling, "Command-ready reference") &&
         includesText(currentModeling, "Edge finish") &&
         includesText(currentModeling, "Chamfer") &&
@@ -2030,6 +2369,27 @@ async function v7BrowserWorkflowSmoke({
     return compactText(getElementByAriaLabel("Inspector").textContent, 520);
   }
 
+  function selectFirstGeneratedFaceFromInspector(bodyId) {
+    const inspector = getElementByAriaLabel("Inspector");
+    const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+    const faceOption = [...referenceSelect.querySelectorAll("option")].find(
+      (option) =>
+        option.value.includes(":face:") && option.value.includes(bodyId)
+    );
+
+    if (!faceOption) {
+      throw new Error(
+        `Could not find generated face option for ${bodyId}: ${compactText(
+          referenceSelect.textContent,
+          420
+        )}`
+      );
+    }
+
+    setSelectByLabel(inspector, "Inspect reference", faceOption.value);
+    return normalize(faceOption.textContent);
+  }
+
   function getExportReadinessText() {
     return compactText(
       getElementByAriaLabel("Export readiness").textContent,
@@ -2382,8 +2742,10 @@ async function v7BrowserWorkflowSmoke({
   }
 
   function queryControlByLabel(scope, label) {
+    const normalizedLabel = normalizeControlLabel(label);
     const matchingLabel = [...scope.querySelectorAll("label")].find(
-      (candidate) => getDirectLabelText(candidate) === label
+      (candidate) =>
+        normalizeControlLabel(getDirectLabelText(candidate)) === normalizedLabel
     );
 
     return matchingLabel?.querySelector("input, select, textarea");
@@ -2487,6 +2849,10 @@ async function v7BrowserWorkflowSmoke({
 
   function normalize(value) {
     return (value ?? "").replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeControlLabel(value) {
+    return normalize(value).replace(/\(\s+/g, "(").replace(/\s+\)/g, ")");
   }
 
   function compactText(value, maxLength = 420) {

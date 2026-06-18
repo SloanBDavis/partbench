@@ -21,7 +21,11 @@ import {
   buildFeatureFilletOp,
   buildFeatureHoleOp,
   buildFeatureRevolveOp,
+  buildFeatureUpdateChamferOp,
   buildFeatureUpdateExtrudeOp,
+  buildFeatureUpdateFilletOp,
+  buildFeatureUpdateHoleOp,
+  buildFeatureUpdateRevolveOp,
   buildDeleteNamedReferenceOp,
   buildDeleteParameterOp,
   buildDeleteSketchConstraintOp,
@@ -190,6 +194,35 @@ describe("cad command builders", () => {
       id: "feat_1",
       depth: 6,
       side: "symmetric"
+    });
+    expect(buildFeatureUpdateRevolveOp("feat_revolve", 180)).toEqual({
+      op: "feature.updateRevolve",
+      id: "feat_revolve",
+      angleDegrees: 180
+    });
+    expect(
+      buildFeatureUpdateHoleOp("feat_hole", "blind", 2.5, "negative")
+    ).toEqual({
+      op: "feature.updateHole",
+      id: "feat_hole",
+      depthMode: "blind",
+      depth: 2.5,
+      direction: "negative"
+    });
+    expect(buildFeatureUpdateHoleOp("feat_hole", "throughAll")).toEqual({
+      op: "feature.updateHole",
+      id: "feat_hole",
+      depthMode: "throughAll"
+    });
+    expect(buildFeatureUpdateChamferOp("feat_chamfer", 0.25)).toEqual({
+      op: "feature.updateChamfer",
+      id: "feat_chamfer",
+      distance: 0.25
+    });
+    expect(buildFeatureUpdateFilletOp("feat_fillet", 0.5)).toEqual({
+      op: "feature.updateFillet",
+      id: "feat_fillet",
+      radius: 0.5
     });
     expect(
       buildNameGeneratedReferenceOp(
