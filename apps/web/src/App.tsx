@@ -31,6 +31,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ReferenceHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
   SketchDimensionEntry,
   SketchDimensionTarget,
@@ -75,6 +76,7 @@ import {
   buildFeatureUpdateExtrudeOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
+  buildRepairNamedReferenceOp,
   buildRenameObjectOp,
   buildRenameSketchOp,
   buildSketchConstraintEditOps,
@@ -246,6 +248,11 @@ import {
   createSketchSelectionId,
   type SketchPanelSelectionContext
 } from "./sketchPanelUi";
+import {
+  createNamedReferenceHealthByName,
+  formatNamedReferenceRepairBatchError,
+  formatNamedReferenceRepairBatchMessage
+} from "./namedReferenceRepairUi";
 import "./styles.css";
 
 const engine = new CadEngine();
@@ -567,6 +574,17 @@ function readNamedReferences(): readonly NamedGeneratedReferenceEntry[] {
   return response.ok && response.query === "reference.listNamed"
     ? response.references
     : [];
+}
+
+function readReferenceHealth(): ReferenceHealthQueryResponse | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "reference.health", target: { type: "all" } }
+  });
+
+  return response.ok && response.query === "reference.health"
+    ? response
+    : undefined;
 }
 
 function readSelectionReferenceCandidates(
@@ -988,6 +1006,9 @@ export function App() {
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
   >();
+  const [selectedNamedReferenceName, setSelectedNamedReferenceName] = useState<
+    string | undefined
+  >();
   const [viewportHoverPick, setViewportHoverPick] = useState<
     ViewportCanvasPick | undefined
   >();
@@ -1260,6 +1281,19 @@ export function App() {
       ? readBodyTopology(selectedBody.id, derivedExactMetadata)
       : {};
   const namedReferences = readNamedReferences();
+  const referenceHealth = readReferenceHealth();
+  const namedReferenceHealthByName =
+    createNamedReferenceHealthByName(referenceHealth);
+  useEffect(() => {
+    if (
+      selectedNamedReferenceName &&
+      !namedReferences.some(
+        (reference) => reference.name === selectedNamedReferenceName
+      )
+    ) {
+      setSelectedNamedReferenceName(undefined);
+    }
+  }, [namedReferences, selectedNamedReferenceName]);
   const selectedBodyReferenceCandidates = selectedBody
     ? readSelectionReferenceCandidates({
         type: "body",
@@ -2114,24 +2148,77 @@ export function App() {
     );
   }
 
+  async function repairNamedReference(
+    name: string,
+    target: SelectedGeneratedReference
+  ) {
+    const op = buildRepairNamedReferenceOp(
+      name,
+      target.bodyId,
+      target.stableId
+    );
+
+    setCommandPending(true);
+    setCommandError(undefined);
+    setCommandNotice(undefined);
+
+    try {
+      const dryRun = await commandExecutor.executeBatch(
+        buildBatch("dryRun", [op], WEB_UI_ACTOR)
+      );
+
+      if (!dryRun.ok) {
+        setCommandError(formatNamedReferenceRepairBatchError(dryRun.error));
+        return;
+      }
+      setCommandNotice(
+        formatNamedReferenceRepairBatchMessage(dryRun, name.trim())
+      );
+    } finally {
+      setCommandPending(false);
+    }
+
+    const response = await commitOps([op], () => target.bodyId);
+
+    if (response?.ok) {
+      setSelectedNamedReferenceName(name.trim());
+      setSelectedGeneratedReference(target);
+      setCommandNotice(
+        formatNamedReferenceRepairBatchMessage(response, name.trim())
+      );
+    } else if (response) {
+      setCommandError(formatNamedReferenceRepairBatchError(response.error));
+    }
+  }
+
   async function deleteNamedReference(name: string) {
-    await commitOps([buildDeleteNamedReferenceOp(name)], () => selectedId);
+    const response = await commitOps(
+      [buildDeleteNamedReferenceOp(name)],
+      () => selectedId
+    );
+
+    if (response?.ok && selectedNamedReferenceName === name.trim()) {
+      setSelectedNamedReferenceName(undefined);
+    }
   }
 
   function inspectNamedReference(name: string) {
+    setSelectedNamedReferenceName(name);
     const response = engine.executeQuery({
       version: "cadops.v1",
       query: { query: "reference.resolveNamed", name }
     });
 
     if (!response.ok || response.query !== "reference.resolveNamed") {
-      setCommandError(
-        !response.ok ? response.error.message : "Named reference unavailable."
+      setCommandError(undefined);
+      setCommandNotice(
+        "Select a replacement generated reference, then repair the name."
       );
       return;
     }
 
     setCommandError(undefined);
+    setCommandNotice(undefined);
     setSelectedId(response.reference.bodyId);
     setSelectedGeneratedReference(
       createSelectedGeneratedReference(response.reference)
@@ -2939,10 +3026,12 @@ export function App() {
                 selectedGeneratedReferenceMeasurements
               }
               namedReferences={namedReferences}
+              namedReferenceHealthByName={namedReferenceHealthByName}
               namedReferenceCandidatesByName={namedReferenceCandidatesByName}
               object={selectedObject}
               referenceCandidatesByStableId={referenceCandidatesByStableId}
               selectedGeneratedReference={selectedGeneratedReference}
+              selectedNamedReferenceName={selectedNamedReferenceName}
               selectionReferenceCandidates={
                 selectedSelectionReferenceCandidates
               }
@@ -2961,6 +3050,9 @@ export function App() {
               onDeleteNamedReference={(name) => void deleteNamedReference(name)}
               onNameGeneratedReference={(name, target) =>
                 void nameGeneratedReference(name, target)
+              }
+              onRepairNamedReference={(name, target) =>
+                void repairNamedReference(name, target)
               }
               onInspectNamedReference={inspectNamedReference}
               onSelectGeneratedReference={(selection) => {
@@ -3012,6 +3104,8 @@ export function App() {
             disabled={commandPending}
             holeTargetBodies={holeTargetBodyOptions}
             namedReferences={namedReferences}
+            namedReferenceHealthByName={namedReferenceHealthByName}
+            selectedNamedReferenceName={selectedNamedReferenceName}
             sketches={sketches}
             onAddEntity={(sketchId, kind, form) =>
               void addSketchEntity(sketchId, kind, form)
@@ -3035,6 +3129,9 @@ export function App() {
             }
             onNameGeneratedReference={(name, target) =>
               void nameGeneratedReference(name, target)
+            }
+            onRepairNamedReference={(name, target) =>
+              void repairNamedReference(name, target)
             }
             onSelectBody={selectObject}
             onDeleteFeature={(featureId) =>

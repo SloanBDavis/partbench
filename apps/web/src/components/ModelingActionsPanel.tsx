@@ -3,6 +3,7 @@ import type {
   CadFeatureSummary,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadReferenceHealthEntry,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
   SketchConstraintKind,
@@ -39,6 +40,10 @@ import {
   formatSelectionReferenceOperationLabel,
   formatSelectionReferenceStatus
 } from "../generatedReferenceSelection";
+import {
+  createNamedReferenceRepairUiState,
+  formatNamedReferenceRepairHealthStatus
+} from "../namedReferenceRepairUi";
 import type {
   ModelingActionDescriptor,
   ModelingSelectionContext
@@ -78,6 +83,11 @@ export interface ModelingActionsPanelProps {
   readonly disabled?: boolean;
   readonly holeTargetBodies?: readonly BooleanTargetBodyOption[];
   readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
+  readonly selectedNamedReferenceName?: string;
   readonly sketches?: readonly SketchSnapshot[];
   readonly onAddEntity?: (
     sketchId: string,
@@ -112,6 +122,10 @@ export interface ModelingActionsPanelProps {
     form: FeatureHoleForm
   ) => void;
   readonly onNameGeneratedReference?: (
+    name: string,
+    target: ReturnType<typeof createSelectedGeneratedReference>
+  ) => void;
+  readonly onRepairNamedReference?: (
     name: string,
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
@@ -207,6 +221,8 @@ export function ModelingActionsPanel({
   disabled = false,
   holeTargetBodies = [],
   namedReferences = [],
+  namedReferenceHealthByName,
+  selectedNamedReferenceName,
   sketches = [],
   onAddEntity,
   onCreateConstraint,
@@ -217,6 +233,7 @@ export function ModelingActionsPanel({
   onExtrudeEntity,
   onHoleEntity,
   onNameGeneratedReference,
+  onRepairNamedReference,
   onSelectBody,
   onDeleteFeature,
   onDeleteEntity,
@@ -354,9 +371,12 @@ export function ModelingActionsPanel({
           context={context}
           disabled={disabled}
           namedReferences={namedReferences}
+          namedReferenceHealthByName={namedReferenceHealthByName}
+          selectedNamedReferenceName={selectedNamedReferenceName}
           onCreateEdgeFinish={onCreateEdgeFinish}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onNameGeneratedReference={onNameGeneratedReference}
+          onRepairNamedReference={onRepairNamedReference}
           onSelectBody={onSelectBody}
           onSelectSketch={onSelectSketch}
         />
@@ -2159,9 +2179,12 @@ function GeneratedReferenceWorkbench({
   context,
   disabled,
   namedReferences,
+  namedReferenceHealthByName,
+  selectedNamedReferenceName,
   onCreateEdgeFinish,
   onCreateSketchOnFace,
   onNameGeneratedReference,
+  onRepairNamedReference,
   onSelectBody,
   onSelectSketch
 }: {
@@ -2172,12 +2195,21 @@ function GeneratedReferenceWorkbench({
   >;
   readonly disabled: boolean;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
+  readonly selectedNamedReferenceName?: string;
   readonly onCreateEdgeFinish?: (
     operation: "chamfer" | "fillet",
     form: FeatureEdgeFinishForm
   ) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onNameGeneratedReference?: (
+    name: string,
+    target: ReturnType<typeof createSelectedGeneratedReference>
+  ) => void;
+  readonly onRepairNamedReference?: (
     name: string,
     target: ReturnType<typeof createSelectedGeneratedReference>
   ) => void;
@@ -2189,6 +2221,18 @@ function GeneratedReferenceWorkbench({
   const nameAction = actions.find((action) => action.id === "reference.name");
   const canSaveName =
     name.trim().length > 0 && (nameAction ? nameAction.available : true);
+  const repairReference = namedReferences.find(
+    (reference) => reference.name === selectedNamedReferenceName
+  );
+  const repairState = createNamedReferenceRepairUiState({
+    namedReferences: repairReference ? [repairReference] : [],
+    namedReferenceHealthByName,
+    selectedNamedReferenceName: repairReference?.name,
+    selectedGeneratedReference: selectedReference,
+    selectionReferenceCandidates: context.selectionReferenceCandidates
+  });
+  const repairDiagnostic =
+    repairState.status === "none" ? undefined : repairState.diagnostics[0];
 
   return (
     <div className="workbench-surface">
@@ -2242,6 +2286,40 @@ function GeneratedReferenceWorkbench({
               .map((reference) => reference.name)
               .join(", ") || "none"}
           </small>
+        )}
+        {repairState.status !== "none" && (
+          <div className="named-reference-repair">
+            <div>
+              <strong>Repair {repairState.reference.name}</strong>
+              <small>
+                {formatNamedReferenceRepairHealthStatus(
+                  repairState.healthStatus
+                )}
+              </small>
+              <small>{repairState.message}</small>
+              {repairDiagnostic && (
+                <small className="error-text compact">
+                  {repairDiagnostic.code
+                    ? `${repairDiagnostic.code}: ${repairDiagnostic.message}`
+                    : repairDiagnostic.message}
+                </small>
+              )}
+            </div>
+            {repairState.status === "ready" && (
+              <button
+                type="button"
+                disabled={disabled || !onRepairNamedReference}
+                onClick={() =>
+                  onRepairNamedReference?.(
+                    repairState.reference.name,
+                    repairState.target
+                  )
+                }
+              >
+                Repair name
+              </button>
+            )}
+          </div>
         )}
       </section>
       {context.reference.kind === "face" && (

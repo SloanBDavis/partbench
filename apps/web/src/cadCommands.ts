@@ -25,6 +25,7 @@ import type {
   ParameterUpdateOp,
   ReferenceDeleteNameOp,
   ReferenceNameGeneratedOp,
+  ReferenceRepairNameOp,
   ObjectId,
   SceneCreateBoxOp,
   SceneCreateConeOp,
@@ -876,6 +877,19 @@ export function buildNameGeneratedReferenceOp(
 ): ReferenceNameGeneratedOp {
   return {
     op: "reference.nameGenerated",
+    name: name.trim(),
+    bodyId,
+    stableId
+  };
+}
+
+export function buildRepairNamedReferenceOp(
+  name: string,
+  bodyId: string,
+  stableId: string
+): ReferenceRepairNameOp {
+  return {
+    op: "reference.repairName",
     name: name.trim(),
     bodyId,
     stableId

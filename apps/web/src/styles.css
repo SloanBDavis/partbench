@@ -2675,19 +2675,29 @@ button.dimension-status-row {
 }
 
 .named-reference-editor,
-.named-reference-matches {
+.named-reference-matches,
+.named-reference-repair {
   display: grid;
   gap: 8px;
   min-width: 0;
 }
 
-.named-reference-editor {
+.named-reference-editor,
+.named-reference-repair {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
 }
 
-.named-reference-editor button {
+.named-reference-editor button,
+.named-reference-repair button {
   padding: 0 10px;
+}
+
+.named-reference-repair {
+  padding: 8px;
+  border: 1px solid rgba(44, 96, 126, 0.22);
+  border-radius: 7px;
+  background: rgba(235, 246, 252, 0.72);
 }
 
 .reference-list .reference-measurements div,
@@ -3349,6 +3359,7 @@ button.dimension-status-row {
   .field-grid.three,
   .field-grid.four,
   .named-reference-editor,
+  .named-reference-repair,
   .project-workflow-grid,
   .project-summary-grid {
     grid-template-columns: 1fr;

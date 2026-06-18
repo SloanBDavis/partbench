@@ -4,6 +4,8 @@ import type {
   CadGeneratedReference,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
+  CadReferenceHealthEntry,
+  NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
@@ -42,6 +44,7 @@ describe("Inspector", () => {
         onCreateEdgeFinish: () => undefined,
         onDeleteNamedReference: () => undefined,
         onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
         onInspectNamedReference: () => undefined,
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
@@ -97,6 +100,7 @@ describe("Inspector", () => {
         onCreateEdgeFinish: () => undefined,
         onDeleteNamedReference: () => undefined,
         onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
         onInspectNamedReference: () => undefined,
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
@@ -137,6 +141,7 @@ describe("Inspector", () => {
         onCreateEdgeFinish: () => undefined,
         onDeleteNamedReference: () => undefined,
         onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
         onInspectNamedReference: () => undefined,
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
@@ -169,6 +174,7 @@ describe("Inspector", () => {
         onCreateEdgeFinish: () => undefined,
         onDeleteNamedReference: () => undefined,
         onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
         onInspectNamedReference: () => undefined,
         onSelectGeneratedReference: () => undefined,
         onDelete: () => undefined,
@@ -178,6 +184,60 @@ describe("Inspector", () => {
     );
 
     expect(markup).toContain("Delete feature");
+  });
+
+  it("shows query-proven repair action for selected stale named references", () => {
+    const face = createFace();
+    const edge = createEdge();
+    const faceCandidates = createSelectionReferenceCandidates(face);
+    const staleReference: NamedGeneratedReferenceEntry = {
+      name: "Top face",
+      kind: "face",
+      bodyId: "body_old",
+      stableId: "generated:face:body_old:startCap",
+      status: "stale"
+    };
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, edge),
+        namedReferences: [staleReference],
+        namedReferenceHealthByName: new Map([
+          ["Top face", createNamedReferenceHealth(staleReference)]
+        ]),
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: face.bodyId,
+          stableId: face.stableId,
+          kind: face.kind
+        },
+        selectedNamedReferenceName: "Top face",
+        selectionReferenceCandidates: faceCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Repair Top face");
+    expect(markup).toContain("Repair needed");
+    expect(markup).toContain("Repair name");
+    expect(markup).toContain("Named reference needs a new target.");
   });
 });
 
@@ -350,6 +410,43 @@ function createSignature() {
     sketchPlane: "XY" as const,
     extrudeSide: "positive" as const,
     depth: 2
+  };
+}
+
+function createNamedReferenceHealth(
+  reference: NamedGeneratedReferenceEntry
+): CadReferenceHealthEntry {
+  return {
+    source: "namedReference",
+    status: "repair-needed",
+    commandable: false,
+    commandOperations: [],
+    label: reference.name,
+    bodyId: reference.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind,
+    referenceName: reference.name,
+    sourceFeatureId: "feat_rect",
+    dependencies: {
+      sketchIds: ["sketch_1"],
+      sketchEntityIds: ["rect_1"],
+      featureIds: ["feat_rect"],
+      bodyIds: [reference.bodyId],
+      generatedReferenceStableIds: [reference.stableId],
+      namedReferenceNames: [reference.name]
+    },
+    diagnosticCount: 1,
+    diagnostics: [
+      {
+        code: "REFERENCE_REPAIR_NEEDED",
+        severity: "warning",
+        status: "repair-needed",
+        message: "Named reference needs a new target.",
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        referenceName: reference.name
+      }
+    ]
   };
 }
 

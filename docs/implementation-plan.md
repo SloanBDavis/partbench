@@ -466,7 +466,8 @@ Current Partbench can:
   `feature.chamfer`, and `feature.fillet` source records;
 - name generated references and resolve names later;
 - explicitly repair existing named generated references to new command-ready,
-  kind-compatible generated targets through CADOps;
+  kind-compatible generated targets through compact Selection/Inspector and
+  Modeling affordances backed by CADOps dry-run/commit;
 - inspect parts, sketches, features, bodies, named references, dependency
   health, history, measurements, extents, topology, exact-metadata health, and
   generated-reference measurements;
@@ -1683,11 +1684,19 @@ Use these decisions when drafting or implementing V10 tranches:
    `selection.referenceCandidates`, dependency graph, rebuild plan,
    transaction history, undo/redo, and agent/MCP batch pass-through stay aligned
    with the repaired source snapshot. G1 does not add silent retargeting,
-   automatic topology repair, broad UI repair workflow, arbitrary result
-   topology, renderer/mesh/OCCT authority, or `web-cad.project.v17`.
+   automatic topology repair, arbitrary result topology, renderer/mesh/OCCT
+   authority, or `web-cad.project.v17`.
 12. **Named Reference Repair Product Workflow** - compact health display and
-   explicit repair affordances in the browser where the query/command contracts
-   prove a safe target.
+   explicit repair affordances are implemented in the browser where the
+   query/command contracts prove a safe target. Stale named references remain
+   selectable from the tree and named-reference lists; Selection/Inspector and
+   Modeling surfaces show reference-health and repair diagnostics; same-kind
+   generated replacement references are accepted only after
+   `selection.referenceCandidates` proves them command-ready; repair then runs
+   through the normal CADOps dry-run/commit path. The UI does not infer
+   commandability, add a viewport overlay or repair wizard, silently retarget
+   names, persist selection state, introduce renderer/mesh/OCCT authority, or
+   change the project schema.
 13. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,
    Modeling, and viewport surfaces.

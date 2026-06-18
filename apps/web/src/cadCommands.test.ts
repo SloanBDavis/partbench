@@ -28,6 +28,7 @@ import {
   buildDeleteSketchDimensionOp,
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
+  buildRepairNamedReferenceOp,
   buildCreateSketchOnFaceOp,
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
@@ -205,6 +206,18 @@ describe("cad command builders", () => {
     expect(buildDeleteNamedReferenceOp(" Mounting face ")).toEqual({
       op: "reference.deleteName",
       name: "Mounting face"
+    });
+    expect(
+      buildRepairNamedReferenceOp(
+        " Mounting face ",
+        "body_2",
+        "generated:face:body_2:endCap"
+      )
+    ).toEqual({
+      op: "reference.repairName",
+      name: "Mounting face",
+      bodyId: "body_2",
+      stableId: "generated:face:body_2:endCap"
     });
     expect(
       buildUpdateSketchEntityOp("sketch_1", {

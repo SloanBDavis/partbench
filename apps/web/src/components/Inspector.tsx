@@ -12,6 +12,7 @@ import type {
   BodyGeneratedReferencesQueryResponse,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadReferenceHealthEntry,
   CadSelectionReferenceOperation,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
@@ -80,6 +81,10 @@ import {
   type SelectedGeneratedReference
 } from "../generatedReferenceSelection";
 import {
+  createNamedReferenceRepairUiState,
+  formatNamedReferenceRepairHealthStatus
+} from "../namedReferenceRepairUi";
+import {
   formatDimensions,
   formatBounds,
   formatBodyMeasurementConfidence,
@@ -109,9 +114,11 @@ export function Inspector({
   generatedReferenceMeasurements,
   measurements,
   namedReferences,
+  namedReferenceHealthByName,
   namedReferenceCandidatesByName,
   object,
   referenceCandidatesByStableId,
+  selectedNamedReferenceName,
   selectedGeneratedReference,
   selectionReferenceCandidates,
   units,
@@ -122,6 +129,7 @@ export function Inspector({
   onCreateEdgeFinish,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onRepairNamedReference,
   onInspectNamedReference,
   onSelectGeneratedReference,
   onDelete,
@@ -144,6 +152,10 @@ export function Inspector({
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
   readonly namedReferenceCandidatesByName?: ReadonlyMap<
     string,
     SelectionReferenceCandidatesQueryResponse
@@ -154,6 +166,7 @@ export function Inspector({
     SelectionReferenceCandidatesQueryResponse
   >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectedNamedReferenceName?: string;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
@@ -166,6 +179,10 @@ export function Inspector({
   ) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
   ) => void;
@@ -198,9 +215,11 @@ export function Inspector({
         generatedReferenceMeasurements,
         measurements,
         namedReferences,
+        namedReferenceHealthByName,
         namedReferenceCandidatesByName,
         object,
         referenceCandidatesByStableId,
+        selectedNamedReferenceName,
         selectedGeneratedReference,
         selectionReferenceCandidates,
         onApplyDimensions,
@@ -210,6 +229,7 @@ export function Inspector({
         onCreateEdgeFinish,
         onDeleteNamedReference,
         onNameGeneratedReference,
+        onRepairNamedReference,
         onInspectNamedReference,
         onSelectGeneratedReference,
         onDelete,
@@ -220,7 +240,9 @@ export function Inspector({
       <NamedReferencesPanel
         disabled={disabled}
         candidatesByName={namedReferenceCandidatesByName}
+        healthByName={namedReferenceHealthByName}
         references={namedReferences}
+        selectedNamedReferenceName={selectedNamedReferenceName}
         selectedGeneratedReference={selectedGeneratedReference}
         onInspectNamedReference={onInspectNamedReference}
         onDeleteNamedReference={onDeleteNamedReference}
@@ -246,6 +268,10 @@ function renderInspectorSelection(input: {
   >;
   readonly measurements?: ObjectMeasurementsSnapshot;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
   readonly namedReferenceCandidatesByName?: ReadonlyMap<
     string,
     SelectionReferenceCandidatesQueryResponse
@@ -256,6 +282,7 @@ function renderInspectorSelection(input: {
     SelectionReferenceCandidatesQueryResponse
   >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectedNamedReferenceName?: string;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly units: DocumentUnits;
   readonly onApplyDimensions: (form: DimensionCommandForm) => void;
@@ -268,6 +295,10 @@ function renderInspectorSelection(input: {
   ) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
   ) => void;
@@ -303,10 +334,13 @@ function renderInspectorSelection(input: {
         onNameGeneratedReference={input.onNameGeneratedReference}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
         namedReferences={input.namedReferences}
+        namedReferenceHealthByName={input.namedReferenceHealthByName}
+        selectedNamedReferenceName={input.selectedNamedReferenceName}
         referenceCandidatesByStableId={input.referenceCandidatesByStableId}
         selectionReferenceCandidates={input.selectionReferenceCandidates}
         onDeleteFeature={input.onDeleteFeature}
         onUpdateExtrude={input.onUpdateExtrude}
+        onRepairNamedReference={input.onRepairNamedReference}
         selectedGeneratedReference={input.selectedGeneratedReference}
         units={input.units}
       />
@@ -386,14 +420,17 @@ function BodyInspector({
   measurements,
   measurementsError,
   namedReferences,
+  namedReferenceHealthByName,
   onCreateSketchOnFace,
   onCreateEdgeFinish,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onRepairNamedReference,
   onSelectGeneratedReference,
   onDeleteFeature,
   onUpdateExtrude,
   selectedGeneratedReference,
+  selectedNamedReferenceName,
   referenceCandidatesByStableId,
   selectionReferenceCandidates,
   topology,
@@ -416,6 +453,10 @@ function BodyInspector({
   readonly topologyExactMetadataStatus?: string;
   readonly topologyError?: string;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
   readonly referenceCandidatesByStableId?: ReadonlyMap<
     string,
     SelectionReferenceCandidatesQueryResponse
@@ -431,6 +472,10 @@ function BodyInspector({
     name: string,
     target: SelectedGeneratedReference
   ) => void;
+  readonly onRepairNamedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onSelectGeneratedReference: (
     selection: SelectedGeneratedReference
   ) => void;
@@ -441,6 +486,7 @@ function BodyInspector({
     side: FeatureExtrudeSide
   ) => void;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectedNamedReferenceName?: string;
   readonly units: DocumentUnits;
 }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -546,14 +592,17 @@ function BodyInspector({
           feature={feature}
           measurementByStableId={generatedReferenceMeasurements}
           namedReferences={namedReferences}
+          namedReferenceHealthByName={namedReferenceHealthByName}
           onCreateEdgeFinish={onCreateEdgeFinish}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteNamedReference={onDeleteNamedReference}
           onNameGeneratedReference={onNameGeneratedReference}
+          onRepairNamedReference={onRepairNamedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
           references={generatedReferences}
           referenceCandidatesByStableId={referenceCandidatesByStableId}
           selectedGeneratedReference={selectedGeneratedReference}
+          selectedNamedReferenceName={selectedNamedReferenceName}
           selectionReferenceCandidates={selectionReferenceCandidates}
           units={units}
         />
@@ -721,14 +770,17 @@ function GeneratedReferencesPanel({
   feature,
   measurementByStableId,
   namedReferences,
+  namedReferenceHealthByName,
   onCreateEdgeFinish,
   onCreateSketchOnFace,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onRepairNamedReference,
   onSelectGeneratedReference,
   references,
   referenceCandidatesByStableId,
   selectedGeneratedReference,
+  selectedNamedReferenceName,
   selectionReferenceCandidates,
   units
 }: {
@@ -742,6 +794,10 @@ function GeneratedReferencesPanel({
     GeneratedReferenceMeasurementDisplay
   >;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
   readonly onCreateEdgeFinish: (
     operation: EdgeFinishOperation,
     form: FeatureEdgeFinishForm
@@ -749,6 +805,10 @@ function GeneratedReferencesPanel({
   readonly onCreateSketchOnFace: (form: SketchCreateOnFaceForm) => void;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
   ) => void;
@@ -761,6 +821,7 @@ function GeneratedReferencesPanel({
     SelectionReferenceCandidatesQueryResponse
   >;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
+  readonly selectedNamedReferenceName?: string;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly units: DocumentUnits;
 }) {
@@ -969,8 +1030,13 @@ function GeneratedReferencesPanel({
             }
             disabled={disabled}
             namedReferences={selectedNamedReferences}
+            namedReferenceHealthByName={namedReferenceHealthByName}
             onDeleteNamedReference={onDeleteNamedReference}
             onNameGeneratedReference={onNameGeneratedReference}
+            onRepairNamedReference={onRepairNamedReference}
+            repairReference={namedReferences.find(
+              (reference) => reference.name === selectedNamedReferenceName
+            )}
             selectionReferenceCandidates={selectionReferenceCandidates}
             state={selectedReferenceState}
             units={units}
@@ -1310,19 +1376,31 @@ function GeneratedReferenceIdentityDetails({
 function SelectedGeneratedReferencePanel({
   disabled,
   namedReferences,
+  namedReferenceHealthByName,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onRepairNamedReference,
+  repairReference,
   selectionReferenceCandidates,
   state,
   units
 }: {
   readonly disabled: boolean;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
     target: SelectedGeneratedReference
   ) => void;
+  readonly onRepairNamedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly repairReference?: NamedGeneratedReferenceEntry;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly state: GeneratedReferenceSelectionState;
   readonly units: DocumentUnits;
@@ -1339,6 +1417,14 @@ function SelectedGeneratedReferencePanel({
     state.status === "selected" &&
     normalizedName.length > 0 &&
     nameStatus.available;
+  const repairState = createNamedReferenceRepairUiState({
+    namedReferences: repairReference ? [repairReference] : [],
+    namedReferenceHealthByName,
+    selectedNamedReferenceName: repairReference?.name,
+    selectedGeneratedReference:
+      state.status === "selected" ? state.selection : undefined,
+    selectionReferenceCandidates
+  });
 
   if (state.status === "none") {
     return null;
@@ -1407,6 +1493,41 @@ function SelectedGeneratedReferencePanel({
           </div>
           {!nameStatus.available && (
             <p className="error-text">{nameStatus.message}</p>
+          )}
+          {repairState.status !== "none" && (
+            <div className="named-reference-repair">
+              <div>
+                <strong>Repair {repairState.reference.name}</strong>
+                <small>
+                  {formatNamedReferenceRepairHealthStatus(
+                    repairState.healthStatus
+                  )}
+                </small>
+                <small>{repairState.message}</small>
+                {repairState.diagnostics[0] && (
+                  <small className="error-text inline">
+                    {repairState.diagnostics[0].code
+                      ? `${repairState.diagnostics[0].code}: `
+                      : ""}
+                    {repairState.diagnostics[0].message}
+                  </small>
+                )}
+              </div>
+              {repairState.status === "ready" && (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    onRepairNamedReference(
+                      repairState.reference.name,
+                      repairState.target
+                    );
+                  }}
+                >
+                  Repair name
+                </button>
+              )}
+            </div>
           )}
           {namedReferences.length > 0 && (
             <div className="named-reference-matches">
@@ -1631,7 +1752,9 @@ function EdgeFinishEditor({
 function NamedReferencesPanel({
   candidatesByName,
   disabled,
+  healthByName,
   references,
+  selectedNamedReferenceName,
   selectedGeneratedReference,
   onInspectNamedReference,
   onDeleteNamedReference
@@ -1641,7 +1764,9 @@ function NamedReferencesPanel({
     SelectionReferenceCandidatesQueryResponse
   >;
   readonly disabled: boolean;
+  readonly healthByName?: ReadonlyMap<string, CadReferenceHealthEntry>;
   readonly references: readonly NamedGeneratedReferenceEntry[];
+  readonly selectedNamedReferenceName?: string;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly onInspectNamedReference: (name: string) => void;
   readonly onDeleteNamedReference: (name: string) => void;
@@ -1665,13 +1790,15 @@ function NamedReferencesPanel({
       <ul className="reference-list compact named-reference-list">
         {references.map((reference) => {
           const status = formatNamedReferenceStatus(reference);
+          const health = healthByName?.get(reference.name);
           const contractResponse = candidatesByName?.get(reference.name);
           const contractIssues =
             contractResponse?.issues.map((issue) => issue.message) ?? [];
           const isSelected =
-            selectedGeneratedReference?.bodyId === reference.bodyId &&
-            selectedGeneratedReference.stableId === reference.stableId &&
-            selectedGeneratedReference.kind === reference.kind;
+            selectedNamedReferenceName === reference.name ||
+            (selectedGeneratedReference?.bodyId === reference.bodyId &&
+              selectedGeneratedReference.stableId === reference.stableId &&
+              selectedGeneratedReference.kind === reference.kind);
 
           return (
             <li
@@ -1685,11 +1812,20 @@ function NamedReferencesPanel({
               <small>{formatNamedReferenceTarget(reference)}</small>
               <small
                 className={
-                  status.tone === "stale" ? "error-text inline" : undefined
+                  status.tone === "stale" || health?.status === "repair-needed"
+                    ? "error-text inline"
+                    : undefined
                 }
               >
-                {status.text}
+                {health
+                  ? formatNamedReferenceRepairHealthStatus(health.status)
+                  : status.text}
               </small>
+              {health?.diagnostics[0] && (
+                <small className="error-text inline">
+                  {health.diagnostics[0].code}: {health.diagnostics[0].message}
+                </small>
+              )}
               {contractResponse && (
                 <small
                   className={
@@ -1704,13 +1840,23 @@ function NamedReferencesPanel({
               {contractIssues.length > 0 && (
                 <small className="error-text inline">{contractIssues[0]}</small>
               )}
+              {selectedNamedReferenceName === reference.name &&
+                reference.status === "stale" && (
+                  <small>
+                    Select a replacement{" "}
+                    {formatGeneratedReferenceKind(reference.kind).toLowerCase()}{" "}
+                    reference, then repair the name.
+                  </small>
+                )}
               <div className="button-row compact">
                 <button
                   type="button"
-                  disabled={disabled || reference.status !== "resolved"}
+                  disabled={disabled}
                   onClick={() => onInspectNamedReference(reference.name)}
                 >
-                  Inspect
+                  {reference.status === "stale"
+                    ? "Select for repair"
+                    : "Inspect"}
                 </button>
                 <button
                   type="button"

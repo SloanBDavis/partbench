@@ -5,6 +5,8 @@ import type {
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadReferenceHealthEntry,
+  NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
@@ -509,6 +511,44 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("generated:face:body_rect:startCap");
   });
 
+  it("renders named reference repair in the generated reference workbench", () => {
+    const reference = createFace({
+      label: "Start cap"
+    });
+    const staleReference: NamedGeneratedReferenceEntry = {
+      name: "Top face",
+      kind: "face",
+      bodyId: "body_old",
+      stableId: "generated:face:body_old:startCap",
+      status: "stale"
+    };
+    const selectionReferenceCandidates =
+      createSelectionReferenceCandidates(reference);
+    const context = {
+      selectionKind: "generatedReference",
+      reference,
+      selectionReferenceCandidates
+    } as const;
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context,
+        namedReferences: [staleReference],
+        namedReferenceHealthByName: new Map([
+          ["Top face", createNamedReferenceHealth(staleReference)]
+        ]),
+        selectedNamedReferenceName: "Top face",
+        onRepairNamedReference: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Repair Top face");
+    expect(markup).toContain("Repair needed");
+    expect(markup).toContain("Repair name");
+    expect(markup).toContain("Named reference needs a new target.");
+  });
+
   it("renders structured V7 diagnostics for non-commandable generated references", () => {
     const reference = createFace({
       label: "Start cap"
@@ -671,6 +711,43 @@ function createEdge(
       curveType: "line"
     },
     ...overrides
+  };
+}
+
+function createNamedReferenceHealth(
+  reference: NamedGeneratedReferenceEntry
+): CadReferenceHealthEntry {
+  return {
+    source: "namedReference",
+    status: "repair-needed",
+    commandable: false,
+    commandOperations: [],
+    label: reference.name,
+    bodyId: reference.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind,
+    referenceName: reference.name,
+    sourceFeatureId: "feat_rect",
+    dependencies: {
+      sketchIds: ["sketch_1"],
+      sketchEntityIds: ["rect_1"],
+      featureIds: ["feat_rect"],
+      bodyIds: [reference.bodyId],
+      generatedReferenceStableIds: [reference.stableId],
+      namedReferenceNames: [reference.name]
+    },
+    diagnosticCount: 1,
+    diagnostics: [
+      {
+        code: "REFERENCE_REPAIR_NEEDED",
+        severity: "warning",
+        status: "repair-needed",
+        message: "Named reference needs a new target.",
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        referenceName: reference.name
+      }
+    ]
   };
 }
 

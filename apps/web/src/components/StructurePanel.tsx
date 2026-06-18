@@ -230,7 +230,6 @@ export function StructurePanel({
                     <button
                       type="button"
                       className="model-story-utility-row"
-                      disabled={reference.status !== "resolved"}
                       onClick={() => onInspectNamedReference(reference.name)}
                     >
                       <span className="model-story-title">
@@ -256,6 +255,9 @@ export function StructurePanel({
                         <small className="error-text inline">
                           {contractResponse.issues[0].message}
                         </small>
+                      )}
+                      {reference.status === "stale" && (
+                        <small>Select for repair</small>
                       )}
                       <HealthStatus status={status} />
                       <HealthIssues issues={issues} />

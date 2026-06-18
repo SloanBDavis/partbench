@@ -130,6 +130,37 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Command-ready reference");
   });
 
+  it("keeps stale named references selectable for repair", () => {
+    const face = createFaceReference();
+    const staleReference: NamedGeneratedReferenceEntry = {
+      name: "Old top face",
+      kind: "face",
+      bodyId: face.bodyId,
+      stableId: face.stableId,
+      status: "stale"
+    };
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [],
+        features: [],
+        health: createHealth(),
+        namedReferences: [staleReference],
+        objects: [],
+        parts: [createPart()],
+        sketches: [],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Old top face");
+    expect(markup).toContain("Select for repair");
+    expect(markup).toContain('class="model-story-utility-row"');
+    expect(markup).not.toContain("disabled");
+  });
+
   it("keeps only the active sketch lineage open by default", () => {
     const markup = renderToStaticMarkup(
       createElement(StructurePanel, {
