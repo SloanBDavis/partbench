@@ -52,6 +52,7 @@ import type {
   CadQueryError,
   CadQueryRequest,
   CadQueryResponse,
+  FeatureEditabilityQueryResponse,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
@@ -320,6 +321,7 @@ export interface CadOpsAgentReviewNotice {
 export type CadOpsAgentQueryResponse =
   | CadOpsAgentParameterListQueryResponse
   | CadOpsAgentParameterGetQueryResponse
+  | CadOpsAgentFeatureEditabilityQueryResponse
   | CadOpsAgentProjectSummaryQueryResponse
   | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentProjectStructureQueryResponse
@@ -363,6 +365,15 @@ export interface CadOpsAgentParameterGetQueryResponse {
   readonly cadOpsVersion: CadOpsVersion;
   readonly query: "parameter.get";
   readonly parameter: CadParameterSnapshot;
+}
+
+export interface CadOpsAgentFeatureEditabilityQueryResponse extends Omit<
+  FeatureEditabilityQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
 }
 
 export interface CadOpsAgentProjectSummaryQueryResponse {
@@ -682,6 +693,7 @@ export interface CadOpsAgentQueryErrorResponse {
   readonly query:
     | "parameter.list"
     | "parameter.get"
+    | "feature.editability"
     | "project.summary"
     | "project.features"
     | "project.structure"
@@ -2004,6 +2016,31 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "feature.editability") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      featureId: response.featureId,
+      status: response.status,
+      ...(response.feature ? { feature: response.feature } : {}),
+      fieldCount: response.fieldCount,
+      fields: response.fields,
+      rebuildReadiness: response.rebuildReadiness,
+      dryRun: response.dryRun,
+      affected: response.affected,
+      referenceChangeCount: response.referenceChangeCount,
+      referenceChanges: response.referenceChanges,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration
+    };
+  }
+
   if (response.query === "project.summary") {
     return {
       ok: true,
@@ -2760,6 +2797,10 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       Object.keys(value.query).length === 1) ||
       (value.query.query === "parameter.get" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "feature.editability" &&
+        typeof value.query.featureId === "string" &&
+        (value.query.proposedEdit === undefined ||
+          isCadFeatureEditProposal(value.query.proposedEdit))) ||
       (value.query.query === "project.summary" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.features" &&
@@ -2826,6 +2867,21 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
           isCadSelectionReferenceOperation(value.query.requiredOperation))) ||
       (value.query.query === "transaction.history" &&
         Object.keys(value.query).length === 1))
+  );
+}
+
+function isCadFeatureEditProposal(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.kind === "extrude" &&
+    Object.keys(value).every((key) =>
+      ["kind", "depth", "side"].includes(key)
+    ) &&
+    (value.depth === undefined || typeof value.depth === "number") &&
+    (value.side === undefined ||
+      value.side === "positive" ||
+      value.side === "negative" ||
+      value.side === "symmetric")
   );
 }
 

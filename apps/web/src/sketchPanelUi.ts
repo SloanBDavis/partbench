@@ -139,6 +139,16 @@ export function chooseSketchPanelSelection(
   return sketches[0]?.id;
 }
 
+export function chooseInitialSketchPanelSelection(
+  sketches: readonly SketchSnapshot[],
+  focusedSketchId: SketchId | undefined
+): SketchId | undefined {
+  return focusedSketchId &&
+    sketches.some((sketch) => sketch.id === focusedSketchId)
+    ? focusedSketchId
+    : sketches[0]?.id;
+}
+
 export function getDefaultSketchEntityKind(
   sketch: SketchSnapshot | undefined
 ): SketchEntityKind {

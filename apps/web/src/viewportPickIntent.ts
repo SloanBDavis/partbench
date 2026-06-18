@@ -132,6 +132,39 @@ export interface CreateViewportBodyHitTargetInput {
   readonly objects: readonly SceneObject[];
 }
 
+export interface ChooseViewportGeneratedReferencePickBodyIdInput {
+  readonly activeSelectionPanel: boolean;
+  readonly generatedReferenceSelected?: boolean;
+  readonly pickedBodyId?: string;
+  readonly selectedBodyId?: string;
+}
+
+export function chooseViewportGeneratedReferencePickBodyId({
+  activeSelectionPanel,
+  generatedReferenceSelected = false,
+  pickedBodyId,
+  selectedBodyId
+}: ChooseViewportGeneratedReferencePickBodyIdInput): string | undefined {
+  if (!pickedBodyId) {
+    return undefined;
+  }
+
+  return pickedBodyId === selectedBodyId ||
+    (activeSelectionPanel && !generatedReferenceSelected)
+    ? pickedBodyId
+    : undefined;
+}
+
+export function resolveViewportPickedBodyId(
+  input: CreateViewportBodyHitTargetInput
+): string | undefined {
+  const target = createViewportBodyHitTarget(input);
+
+  return target.kind === "body" || target.kind === "object"
+    ? target.bodyId
+    : undefined;
+}
+
 export function createViewportBodyHitTarget({
   bodies,
   objects,

@@ -974,6 +974,7 @@ export interface CadBatchErrorResponse {
 export type CadQueryKind =
   | "parameter.list"
   | "parameter.get"
+  | "feature.editability"
   | "project.summary"
   | "project.features"
   | "project.structure"
@@ -1002,6 +1003,7 @@ export type CadQueryKind =
 export type CadQuery =
   | ParameterListQuery
   | ParameterGetQuery
+  | FeatureEditabilityQuery
   | ProjectSummaryQuery
   | ProjectFeaturesQuery
   | ProjectStructureQuery
@@ -1034,6 +1036,12 @@ export interface ParameterListQuery {
 export interface ParameterGetQuery {
   readonly query: "parameter.get";
   readonly id: ParameterId;
+}
+
+export interface FeatureEditabilityQuery {
+  readonly query: "feature.editability";
+  readonly featureId: FeatureId;
+  readonly proposedEdit?: CadFeatureEditProposal;
 }
 
 export interface ProjectSummaryQuery {
@@ -1766,6 +1774,124 @@ export type CadFeatureSummary =
   | CadHoleFeatureSummary
   | CadChamferFeatureSummary
   | CadFilletFeatureSummary;
+
+export type CadFeatureEditabilityStatus =
+  | "editable"
+  | "blocked"
+  | "unsupported"
+  | "missing";
+
+export type CadFeatureEditFieldValueType = "number" | "enum" | "reference";
+
+export type CadFeatureRebuildReadinessStatus =
+  | "ready"
+  | "blocked"
+  | "deferred"
+  | "unsupported";
+
+export type CadFeatureEditDryRunStatus =
+  | "not-requested"
+  | "valid"
+  | "blocked"
+  | "deferred"
+  | "unsupported";
+
+export type CadFeatureReferenceChangeCategory =
+  | "active"
+  | "replaced"
+  | "stale"
+  | "consumed"
+  | "ambiguous"
+  | "missing"
+  | "unsupported"
+  | "repair-needed"
+  | "deleted";
+
+export type CadFeatureEditDiagnosticSeverity = "info" | "warning" | "blocker";
+
+export type CadFeatureEditDiagnosticCode =
+  | "FEATURE_NOT_FOUND"
+  | "FEATURE_EDIT_SUPPORTED"
+  | "FEATURE_EDIT_UNSUPPORTED"
+  | "FEATURE_EDIT_CONSUMED_BODY"
+  | "FEATURE_EDIT_INVALID_PROPOSAL"
+  | "FEATURE_EDIT_COMMIT_DEFERRED"
+  | "FEATURE_REBUILD_DEFERRED"
+  | "REFERENCE_HEALTH_DEFERRED"
+  | "AMBIGUOUS_RESULT_TOPOLOGY"
+  | "CONSUMED_REFERENCE_NOT_COMMAND_READY";
+
+export interface CadFeatureExtrudeEditProposal {
+  readonly kind: "extrude";
+  readonly depth?: number;
+  readonly side?: FeatureExtrudeSide;
+}
+
+export type CadFeatureEditProposal = CadFeatureExtrudeEditProposal;
+
+export interface CadFeatureEditDiagnostic {
+  readonly code: CadFeatureEditDiagnosticCode;
+  readonly severity: CadFeatureEditDiagnosticSeverity;
+  readonly message: string;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly fieldPath?: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadFeatureEditFieldDescriptor {
+  readonly path: string;
+  readonly label: string;
+  readonly valueType: CadFeatureEditFieldValueType;
+  readonly currentValue?: number | string;
+  readonly unit?: DocumentUnits | "deg";
+  readonly enumValues?: readonly string[];
+  readonly editable: boolean;
+  readonly commitOperation?: CadOp["op"];
+  readonly diagnostics: readonly CadFeatureEditDiagnostic[];
+}
+
+export interface CadFeatureEditAffectedSummary {
+  readonly sketchIds: readonly SketchId[];
+  readonly featureIds: readonly FeatureId[];
+  readonly bodyIds: readonly BodyId[];
+  readonly generatedReferenceCount: number;
+  readonly namedReferenceCount: number;
+}
+
+export interface CadFeatureReferenceChangeSummary {
+  readonly category: CadFeatureReferenceChangeCategory;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly kind?: CadGeneratedEntityKind;
+  readonly referenceName?: NamedReferenceName;
+  readonly sourceFeatureId?: FeatureId;
+  readonly targetFeatureId?: FeatureId;
+  readonly diagnosticCode?: CadFeatureEditDiagnosticCode;
+  readonly message: string;
+}
+
+export interface CadFeatureRebuildReadiness {
+  readonly status: CadFeatureRebuildReadinessStatus;
+  readonly commitDeferred: boolean;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadFeatureEditDiagnostic[];
+}
+
+export interface CadFeatureEditDryRunSummary {
+  readonly status: CadFeatureEditDryRunStatus;
+  readonly proposedEdit?: CadFeatureEditProposal;
+  readonly commitOperation?: CadOp["op"];
+  readonly willMutateDocument: false;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadFeatureEditDiagnostic[];
+}
 
 export interface CadPartSource {
   readonly type: "defaultScenePart";
@@ -3095,6 +3221,7 @@ export interface CadExportBodyReadiness {
 export type CadQueryResponse =
   | ParameterListQueryResponse
   | ParameterGetQueryResponse
+  | FeatureEditabilityQueryResponse
   | ProjectSummaryQueryResponse
   | ProjectFeaturesQueryResponse
   | ProjectStructureQueryResponse
@@ -3134,6 +3261,27 @@ export interface ParameterGetQueryResponse {
   readonly query: "parameter.get";
   readonly cadOpsVersion: CadOpsVersion;
   readonly parameter: CadParameterSnapshot;
+}
+
+export interface FeatureEditabilityQueryResponse {
+  readonly ok: true;
+  readonly query: "feature.editability";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly featureId: FeatureId;
+  readonly status: CadFeatureEditabilityStatus;
+  readonly feature?: CadFeatureSummary;
+  readonly fieldCount: number;
+  readonly fields: readonly CadFeatureEditFieldDescriptor[];
+  readonly rebuildReadiness: CadFeatureRebuildReadiness;
+  readonly dryRun: CadFeatureEditDryRunSummary;
+  readonly affected: CadFeatureEditAffectedSummary;
+  readonly referenceChangeCount: number;
+  readonly referenceChanges: readonly CadFeatureReferenceChangeSummary[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadFeatureEditDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiresProjectSchemaMigration: false;
 }
 
 export interface ProjectSummaryQueryResponse {

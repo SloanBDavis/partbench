@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-15.
+Last updated: 2026-06-17.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
@@ -12,7 +12,8 @@ archived V4 constrained sketch solving milestone, `docs/v7.md` for the
 completed V7 real CAD alpha release-readiness record, `docs/v8.md` for the
 completed local CAD foundation and exact interop release record, `docs/v9.md`
 for the completed viewport-native CAD interaction release-candidate record,
-`docs/native-format.md` for project-format direction, and
+`docs/v10.md` for the planned editable feature history and stable modeling
+references release, `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
 
 ## Active Rules
@@ -42,13 +43,14 @@ These constraints remain active:
     candidates, semantic selection resolution, command-ready viewport
     selections, compact contextual tools, exact/semantic inspect and measure
     workflows, and release-grade browser interaction smokes.
-12. V9 implementation tranches should stay independently testable and should
-    not mix renderer replacement, assemblies, STEP import, broad topology,
-    broad sketch solving, new modeling commands, or persisted UI state without
-    explicit approval.
-13. V8 implementation tranches should stay independently testable and should
-    not mix unrelated storage, renderer, topology, sketch-solver, assembly, or
-    agent-safety risks without explicit approval.
+12. V10 implementation tranches should stay independently testable and should
+    not mix schema migration, broad UI workflow changes, stable reference
+    expansion, unrelated new modeling commands, sketch solver expansion,
+    persistent B-rep checkpoints, WebGPU, assemblies, STEP import, or hosted
+    collaboration without explicit approval.
+13. Completed V8 and V9 tranche records below remain historical release records
+    and compatibility guardrails. Do not re-open those releases unless the user
+    explicitly asks for a maintenance or regression-fix tranche.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -212,6 +214,16 @@ These constraints remain active:
     workflow runner. It does not add CAD behavior, modeling commands, renderer
     authority, project/source schemas, persisted UI state, WebGPU, assemblies,
     STEP import, agent/MCP behavior, or `web-cad.project.v17`.
+34. V10 is underway in `docs/v10.md` as the editable feature history and
+    stable modeling references release. Tranche A is implemented as the
+    `feature.editability` contract/query slice. Its broader center remains
+    dependency and rebuild diagnostics, explicit consumed/replacement body
+    lifecycle, reference health/survival/repair semantics, and source-semantic
+    topology expansion for existing authored feature families where defensible.
+    V10 must not become arbitrary topological naming, production WebGPU,
+    assemblies, STEP import, broad sketch solving, broad new modeling features,
+    or persisted UI state unless a later tranche explicitly scopes one of those
+    items.
 
 ## Current Repo State
 
@@ -1387,9 +1399,9 @@ Use these decisions when maintaining V9 behavior:
    stale wording cleanup, compatibility smoke alias/runbook update, and
    remaining deferral notes without expanding CAD behavior.
 
-### V9 Scope Guardrails
+### V9 Historical Scope Guardrails
 
-Do not combine these in a single V9 tranche unless explicitly approved:
+These guardrails explain the completed V9 release boundaries:
 
 - production WebGPU renderer replacement and viewport picking;
 - broad topology/reference model changes and generated face/edge picking;
@@ -1406,17 +1418,126 @@ summaries, derived exact metadata, storage capability/status state, file
 handles, thumbnails, mesh caches, export artifacts, OPFS paths, and renderer
 display state should stay rebuildable or session-only by default.
 
-## Deferred Beyond V9 Unless Explicitly Scoped Later
+## V10 Editable Feature History And Stable Modeling References Release
+
+V10 is underway in `docs/v10.md`. Tranche A is implemented as a query/contract
+slice; the rest of the release remains staged.
+
+V10 should deepen the CAD model now that V8 made local project files/export real
+and V9 made viewport interaction semantic. The release center is:
+
+```text
+source feature intent -> dependency/rebuild graph -> stable semantic reference
+health -> editable feature parameters -> downstream rebuild diagnostics ->
+viewport/inspector/modeling actions that stay command-ready
+```
+
+### V10 Release Pillars
+
+V10 is organized around these pillars:
+
+- typed feature editability, dry-run rebuild, reference-change, and diagnostic
+  protocol/core contracts;
+- dependency graph and reference health queries for current sketches, features,
+  bodies, generated references, named references, consumed bodies, and result
+  bodies;
+- source-backed edit commands for existing authored feature parameters where
+  current source records or scoped schema migrations support them;
+- transactional rebuild behavior and explicit active/consumed/result/
+  replacement/stale/failed body lifecycle;
+- stable reference expansion for existing result features only where source
+  lineage and exact evidence can prove identity safely;
+- sketch solver/dimension work only where it supports feature editing and
+  rebuild diagnostics;
+- named-reference health and explicit repair commands instead of silent
+  retargeting;
+- compact Feature Tree, Selection, Inspector, Modeling, and viewport
+  integration that consumes cad-core query/command results;
+- agent/MCP dry-run and commit paths over the same CADOps surfaces;
+- deterministic rebuild samples and browser smokes for edit -> rebuild ->
+  reference health -> save/open workflows.
+
+### V10 Answered Decisions
+
+Use these decisions when drafting or implementing V10 tranches:
+
+- V10 is a modeling-depth release, not a renderer/platform release;
+- stable references must start from source role, feature lineage,
+  generated/modified/deleted evidence, geometric signatures, and named-reference
+  intent, never from raw OCCT, mesh, renderer, GPU, or selection-buffer IDs;
+- feature editability is a cad-core query/command concern before it is a UI
+  control;
+- rebuilds must be transactional and return semantic diffs plus structured
+  diagnostics;
+- consumed and replacement bodies are first-class lifecycle states;
+- named references must report active, replaced, stale, consumed, ambiguous,
+  missing, unsupported, repair-needed, or deleted health instead of silently
+  drifting;
+- V10 sketch-solver expansion should serve feature editing and diagnostics, not
+  attempt a complete solver rewrite;
+- `web-cad.project.v17` is allowed only in a tranche that adds new
+  source-of-truth data such as suppression state, new constraint records,
+  reference repair records, or non-derivable dependency/source-link records;
+- query-only editability, rebuild diagnostics, reference health, topology
+  summaries, derived exact metadata, OPFS cache, export artifacts, file handles,
+  and viewport/session state must not introduce `web-cad.project.v17`;
+- persistent B-rep checkpoints stay deferred by default.
+
+### V10 Proposed Tranche Sequence
+
+1. **Feature Edit And Rebuild Contract** - implemented `feature.editability`
+   typed protocol/core support for editable field descriptors, rebuild
+   readiness, reference-change diagnostics, non-mutating proposed-extrude
+   dry-run summaries, and thin agent/MCP pass-through. It supports active
+   authored `newBody` extrude depth/side editability where current source
+   semantics prove it, and reports structured consumed, primitive,
+   boolean-ambiguous, unsupported, missing, and deferred diagnostics. It does
+   not add broad UI, full transactional rebuild, named-reference repair, or
+   `web-cad.project.v17`.
+2. **Dependency Graph And Reference Health Queries** - authoritative dependency
+   graph and active/stale/consumed/ambiguous/missing/unsupported/repair-needed
+   reference health derived from document state.
+3. **Edit Existing Authored Feature Parameters** - source-backed edits for
+   current extrude, revolve, hole, chamfer, and fillet records where defensible,
+   with dry-run and commit semantic diffs.
+4. **Transactional Rebuild And Result Body Lifecycle** - active, consumed,
+   result, replacement, stale, failed, and suppressed states where scoped,
+   including source edit plus derived invalidation behavior.
+5. **Stable Reference Expansion For Defensible Result Features** - source-
+   semantic generated/result references for revolve, hole, scoped cut/add, and
+   edge-finish outputs only where identity evidence is strong enough.
+6. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
+   dimension/sketch edit dry-runs, and focused new constraints only where they
+   support feature editing with clear diagnostics.
+7. **Named Reference Repair Workflow** - health display, explicit repair
+   command, dry-run diagnostics, and agent/MCP path without silent retargeting.
+8. **Product Integration And Browser Workflows** - compact feature edit,
+   rebuild, reference health, and repair UI across tree, Selection, Inspector,
+   Modeling, and viewport surfaces.
+9. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
+   non-browser and browser smokes, release docs, migration audit if V17 is
+   introduced, and final boundary cleanup.
+
+### V10 Scope Guardrails
+
+Do not combine these in one V10 tranche unless explicitly approved:
+
+- source schema migration and broad UI workflow changes;
+- stable reference expansion and unrelated new modeling commands;
+- sketch solver expansion and feature tree/rebuild UI;
+- persistent B-rep checkpoints and `.wcad` package changes;
+- WebGPU renderer work and topology/reference model work;
+- assemblies/STEP import and feature rebuild work.
+
+## Deferred Beyond V10 Unless Explicitly Scoped Later
 
 - Full arbitrary topological naming for every OCCT result shape.
-- Full general sketch solving beyond the current V4 constrained-sketch scope.
-- Complex constraints such as tangent, concentric, equal, symmetry, spline, and
-  curvature constraints.
+- Full general sketch solving beyond scoped V10 edit/rebuild support.
 - Dragging solver UX.
 - Arbitrary parameter expressions.
 - General boolean trees beyond current add/cut plus scoped V6 hole behavior.
-- Shell, patterns, lofts, sweeps, mirror, direct edits, and broad feature
-  editing beyond scoped V6 revolve/hole/chamfer/fillet workflows.
+- Shell, patterns, lofts, sweeps, mirror, direct edits, and broad new modeling
+  families beyond V10's current-feature edit/rebuild scope.
 - Persistent exact B-rep checkpoints as source truth unless a future source
   checkpoint tranche explicitly adds them.
 - STEP import with healing, metadata, and assembly reconstruction.

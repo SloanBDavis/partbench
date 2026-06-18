@@ -131,6 +131,7 @@ import {
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
+import { createFeatureEditabilityResponse } from "./featureEditability";
 import { createProjectHealth } from "./projectHealth";
 import {
   applySketchConstraintValue,
@@ -221,7 +222,20 @@ export type {
   CadDependencyHealthIssueCode,
   CadDependencyHealthStatus,
   CadSketchDimensionHealth,
+  CadFeatureEditAffectedSummary,
+  CadFeatureEditDiagnostic,
+  CadFeatureEditDiagnosticCode,
+  CadFeatureEditDiagnosticSeverity,
+  CadFeatureEditDryRunStatus,
+  CadFeatureEditFieldDescriptor,
+  CadFeatureEditFieldValueType,
+  CadFeatureEditProposal,
+  CadFeatureEditabilityStatus,
   CadFeatureRef,
+  CadFeatureReferenceChangeCategory,
+  CadFeatureReferenceChangeSummary,
+  CadFeatureRebuildReadiness,
+  CadFeatureRebuildReadinessStatus,
   CadFeatureSummary,
   CadGeneratedBodyReference,
   CadGeneratedCurveType,
@@ -987,6 +1001,24 @@ export class CadEngine {
           cadOpsVersion: request.version,
           parameter: cloneParameterSnapshot(parameter)
         };
+      }
+
+      case "feature.editability": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createFeatureEditabilityResponse({
+          cadOpsVersion: request.version,
+          featureId: request.query.featureId,
+          proposedEdit: request.query.proposedEdit,
+          units: this.#document.units,
+          document: this.#document,
+          features: structure.features,
+          bodies: structure.bodies,
+          namedReferences: [...this.#document.namedReferences.values()]
+        });
       }
 
       case "project.summary": {
@@ -3577,6 +3609,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
   switch (value) {
     case "parameter.list":
     case "parameter.get":
+    case "feature.editability":
     case "project.summary":
     case "project.features":
     case "project.structure":
@@ -3644,6 +3677,13 @@ function isCadQuery(value: unknown): boolean {
           ))
       );
     case "parameter.get":
+      return typeof value.id === "string";
+    case "feature.editability":
+      return (
+        typeof value.featureId === "string" &&
+        (value.proposedEdit === undefined ||
+          isCadFeatureEditProposal(value.proposedEdit))
+      );
     case "object.get":
     case "object.measurements":
     case "sketch.get":
@@ -3677,6 +3717,21 @@ function isCadQuery(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isCadFeatureEditProposal(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.kind === "extrude" &&
+    Object.keys(value).every((key) =>
+      ["kind", "depth", "side"].includes(key)
+    ) &&
+    (value.depth === undefined || typeof value.depth === "number") &&
+    (value.side === undefined ||
+      value.side === "positive" ||
+      value.side === "negative" ||
+      value.side === "symmetric")
+  );
 }
 
 function isProjectExactExportQuery(value: Record<string, unknown>): boolean {

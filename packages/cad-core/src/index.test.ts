@@ -3,6 +3,7 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBatch,
   CadQueryRequest,
+  FeatureEditabilityQueryResponse,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
@@ -128,6 +129,27 @@ function readProjectExportReadiness(
 
   if (!response.ok || response.query !== "project.exportReadiness") {
     throw new Error("Expected project.exportReadiness response.");
+  }
+
+  return response;
+}
+
+function readFeatureEditability(
+  engine: CadEngine,
+  featureId: string,
+  proposedEdit?: FeatureEditabilityQueryResponse["dryRun"]["proposedEdit"]
+): FeatureEditabilityQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "feature.editability",
+      featureId,
+      ...(proposedEdit ? { proposedEdit } : {})
+    }
+  });
+
+  if (!response.ok || response.query !== "feature.editability") {
+    throw new Error("Expected feature.editability response.");
   }
 
   return response;
@@ -7349,6 +7371,288 @@ describe("cad-core", () => {
       transactionId: "txn_2"
     });
     expect(engine.getDocument().features.has("feat_rect_1")).toBe(false);
+  });
+
+  it("reports editable authored extrude fields and non-mutating dry-run effects", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Front face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    const response = readFeatureEditability(engine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 8,
+      side: "negative"
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "feature.editability",
+      featureId: "feat_rect_1",
+      status: "editable",
+      fieldCount: 2,
+      fields: [
+        expect.objectContaining({
+          path: "depth",
+          currentValue: 3,
+          editable: true,
+          commitOperation: "feature.updateExtrude"
+        }),
+        expect.objectContaining({
+          path: "side",
+          currentValue: "positive",
+          editable: true,
+          commitOperation: "feature.updateExtrude"
+        })
+      ],
+      rebuildReadiness: {
+        status: "ready",
+        commitDeferred: false
+      },
+      dryRun: {
+        status: "valid",
+        commitOperation: "feature.updateExtrude",
+        willMutateDocument: false
+      },
+      affected: {
+        sketchIds: ["sketch_1"],
+        featureIds: ["feat_rect_1"],
+        bodyIds: ["body_rect_1"],
+        namedReferenceCount: 1
+      },
+      requiresProjectSchemaMigration: false
+    });
+    expect(response.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap",
+          kind: "face"
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "Front face",
+          stableId: "generated:face:body_rect_1:startCap"
+        })
+      ])
+    );
+    expect(response.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: "FEATURE_EDIT_SUPPORTED",
+        severity: "info"
+      })
+    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+    expect(
+      response.referenceChanges.every(
+        (change) =>
+          change.stableId === undefined ||
+          !/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+            change.stableId
+          )
+      )
+    ).toBe(true);
+  });
+
+  it("returns structured dry-run diagnostics without mutating invalid extrude edits", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    const response = readFeatureEditability(engine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 0
+    });
+
+    expect(response).toMatchObject({
+      status: "editable",
+      dryRun: {
+        status: "blocked",
+        willMutateDocument: false,
+        diagnosticCount: 1,
+        diagnostics: [
+          expect.objectContaining({
+            code: "FEATURE_EDIT_INVALID_PROPOSAL",
+            fieldPath: "depth"
+          })
+        ]
+      }
+    });
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+  });
+
+  it("blocks feature editability for consumed body references", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_cut", name: "Cut", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut",
+        id: "rect_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_cut",
+        entityId: "rect_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const response = readFeatureEditability(engine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 6
+    });
+
+    expect(response).toMatchObject({
+      status: "blocked",
+      rebuildReadiness: {
+        status: "blocked",
+        diagnostics: [
+          expect.objectContaining({
+            code: "FEATURE_EDIT_CONSUMED_BODY",
+            bodyId: "body_rect_1",
+            received: "feat_cut_1"
+          })
+        ]
+      },
+      dryRun: {
+        status: "blocked",
+        willMutateDocument: false
+      }
+    });
+    expect(response.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "consumed",
+          diagnosticCode: "FEATURE_EDIT_CONSUMED_BODY",
+          bodyId: "body_rect_1"
+        })
+      ])
+    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+  });
+
+  it("reports primitive and deferred feature editability with source diagnostics", () => {
+    const primitiveEngine = new CadEngine();
+
+    primitiveEngine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+
+    const primitive = readFeatureEditability(primitiveEngine, "feature:box_1");
+
+    expect(primitive).toMatchObject({
+      status: "unsupported",
+      fieldCount: 0,
+      rebuildReadiness: {
+        status: "unsupported",
+        commitDeferred: true
+      },
+      diagnostics: [
+        expect.objectContaining({
+          code: "FEATURE_EDIT_UNSUPPORTED",
+          received: "primitive"
+        })
+      ],
+      requiresProjectSchemaMigration: false
+    });
+
+    const deferredEngine = createRectangleExtrudeEngine();
+    const edgeReferences = deferredEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_rect_1" }
+    });
+
+    if (
+      !edgeReferences.ok ||
+      edgeReferences.query !== "body.generatedReferences"
+    ) {
+      throw new Error("Expected body.generatedReferences response.");
+    }
+
+    deferredEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: edgeReferences.edges[0]?.stableId,
+      distance: 0.25
+    });
+
+    const deferred = readFeatureEditability(deferredEngine, "feat_chamfer_1", {
+      kind: "extrude",
+      depth: 2
+    });
+
+    expect(deferred).toMatchObject({
+      status: "unsupported",
+      fields: [
+        expect.objectContaining({
+          path: "distance",
+          editable: false
+        }),
+        expect.objectContaining({
+          path: "edgeStableId",
+          editable: false
+        })
+      ],
+      rebuildReadiness: {
+        status: "deferred",
+        commitDeferred: true
+      },
+      dryRun: {
+        status: "unsupported",
+        willMutateDocument: false
+      },
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "FEATURE_EDIT_COMMIT_DEFERRED"
+        }),
+        expect.objectContaining({
+          code: "FEATURE_REBUILD_DEFERRED"
+        }),
+        expect.objectContaining({
+          code: "REFERENCE_HEALTH_DEFERRED"
+        })
+      ]),
+      requiresProjectSchemaMigration: false
+    });
+    expect(exportCadProjectJson(deferredEngine)).not.toContain(
+      "web-cad.project.v17"
+    );
+  });
+
+  it("returns missing feature editability diagnostics as query data", () => {
+    const engine = createRectangleExtrudeEngine();
+    const response = readFeatureEditability(engine, "missing_feature");
+
+    expect(response).toMatchObject({
+      status: "missing",
+      fieldCount: 0,
+      dryRun: {
+        status: "not-requested",
+        willMutateDocument: false
+      },
+      diagnostics: [
+        expect.objectContaining({
+          code: "FEATURE_NOT_FOUND",
+          featureId: "missing_feature"
+        })
+      ]
+    });
   });
 
   it("updates authored extrude depth and side and marks feature bodies modified", () => {

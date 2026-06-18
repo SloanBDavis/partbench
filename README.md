@@ -120,6 +120,8 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
   record.
 - `docs/v9.md` - completed V9 viewport-native CAD interaction
   release-candidate record.
+- `docs/v10.md` - planned V10 editable feature history and stable modeling
+  references release.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.
@@ -172,6 +174,10 @@ protocol/package migration.
   renderer-agnostic hit candidates, semantic selection resolution,
   command-ready viewport selections, contextual tools, and inspect/measure
   workflows for the supported current semantic subset.
+- V10 is planned as the editable feature history and stable modeling references
+  release: feature editability, dependency/rebuild diagnostics,
+  consumed/replacement body lifecycle, reference health/repair semantics, and
+  source-semantic topology expansion where defensible.
 - No broad stable topology, STEP import, production WebGPU renderer,
   assemblies, hosted collaboration, production MCP auth, or natural-language
   command parsing is implemented unless scoped into a later release.

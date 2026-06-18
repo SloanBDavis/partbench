@@ -21,6 +21,7 @@ describe("mcp stdio server", () => {
         tools: [
           { name: "cad.parameter_list" },
           { name: "cad.parameter_get" },
+          { name: "cad.feature_editability" },
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
           { name: "cad.project_structure" },

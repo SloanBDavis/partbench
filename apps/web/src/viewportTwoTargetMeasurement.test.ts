@@ -164,6 +164,35 @@ describe("viewport two-target measurement", () => {
     });
   });
 
+  it("labels source-backed point results from the measured inputs instead of unsupported target affordances", () => {
+    const first = createTarget("body", {
+      authority: "unsupported",
+      point: [0, 0, 0],
+      pointLabel: "Body centroid",
+      source: "body.measurements"
+    });
+    const second = createTarget("edge", {
+      authority: "unsupported",
+      point: [1, 1, 0],
+      pointLabel: "Edge center",
+      source: "body.generatedReferenceMeasurements"
+    });
+    const view = createViewportTwoTargetMeasurementView({
+      session: { firstTarget: first, secondTarget: second },
+      units: "mm"
+    });
+
+    expect(view.results[0]).toMatchObject({
+      kind: "distance",
+      authority: "sourceAnalytic",
+      authorityLabel: "Authority: source-analytic exact",
+      rows: [
+        { label: "Distance", value: "1.41 mm" },
+        { label: "Basis", value: "Body centroid to Edge center" }
+      ]
+    });
+  });
+
   it.each([
     ["stale", "VIEWPORT_TWO_TARGET_STALE_TARGET"],
     ["consumed", "VIEWPORT_TWO_TARGET_CONSUMED_TARGET"],

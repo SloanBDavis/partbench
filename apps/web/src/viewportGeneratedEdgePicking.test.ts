@@ -79,7 +79,7 @@ describe("viewport generated edge picking", () => {
     });
   });
 
-  it("requires the current picked body to match the preferred selected body", () => {
+  it("requires a resolved target body but not the previously selected body", () => {
     const point = projectPoint([2, 0, 0], camera, size);
     const edges = createRectangleEdges("body_rect");
 
@@ -98,10 +98,17 @@ describe("viewport generated edge picking", () => {
         edges,
         pickedRenderId: "body_other",
         point: { x: point?.x ?? 0, y: point?.y ?? 0 },
-        preferredBodyId: "body_rect",
+        targetBodyId: "body_rect",
         size
       })
-    ).toBeUndefined();
+    ).toMatchObject({
+      displayEntityKind: "edge",
+      semanticHint: {
+        type: "generatedReference",
+        bodyId: "body_rect",
+        expectedKind: "edge"
+      }
+    });
   });
 
   it("keeps renderer and session details out of the semantic selection hint", () => {

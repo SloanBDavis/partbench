@@ -175,7 +175,9 @@ import {
   type ViewportContextualCommandAction
 } from "./viewportContextualCommands";
 import {
+  chooseViewportGeneratedReferencePickBodyId,
   resolveViewportPickIntent,
+  resolveViewportPickedBodyId,
   type ViewportPickIntent
 } from "./viewportPickIntent";
 import { createViewportGeneratedPlanarFaceHitCandidate } from "./viewportGeneratedFacePicking";
@@ -1592,12 +1594,24 @@ export function App() {
   }
 
   function selectViewportPick(pick: ViewportCanvasPick) {
+    const pickedBodyId = resolveViewportPickedBodyId({
+      pickedRenderId: pick.pickedRenderId,
+      bodies: projectStructure.bodies,
+      objects: sceneObjects
+    });
+    const targetGeneratedReferenceBodyId =
+      chooseViewportGeneratedReferencePickBodyId({
+        activeSelectionPanel: activeModelBrowserPanel === "selection",
+        generatedReferenceSelected: selectedGeneratedReference !== undefined,
+        pickedBodyId,
+        selectedBodyId: selectedBody?.id
+      });
     const generatedEdgeHitCandidate = createViewportGeneratedEdgeHitCandidate({
       camera: pick.camera,
       edges: [...generatedEdgesByKey.values()],
       pickedRenderId: pick.pickedRenderId,
       point: pick.point,
-      preferredBodyId: selectedBody?.id,
+      targetBodyId: targetGeneratedReferenceBodyId,
       size: pick.size,
       sketchDisplayFrames: sketchDisplayState.frames
     });
@@ -1607,7 +1621,7 @@ export function App() {
         faces: [...generatedFacesByKey.values()],
         pickedRenderId: pick.pickedRenderId,
         point: pick.point,
-        preferredBodyId: selectedBody?.id,
+        targetBodyId: targetGeneratedReferenceBodyId,
         size: pick.size,
         sketchDisplayFrames: sketchDisplayState.frames
       });

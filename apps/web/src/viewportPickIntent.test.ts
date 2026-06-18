@@ -10,7 +10,9 @@ import type {
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
+  chooseViewportGeneratedReferencePickBodyId,
   createViewportBodyHitTarget,
+  resolveViewportPickedBodyId,
   resolveViewportPickIntent
 } from "./viewportPickIntent";
 
@@ -33,6 +35,66 @@ describe("viewport pick intent", () => {
         semanticHint: { type: "body", bodyId: "body_rect" }
       }
     });
+  });
+
+  it("resolves picked render targets to semantic body IDs for generated-reference hit tests", () => {
+    const directBody = createExtrudeBody("body_rect");
+    const object = createBoxObject("box_1");
+    const objectBody = createPrimitiveBody("body:box_1", object.id);
+
+    expect(
+      resolveViewportPickedBodyId({
+        pickedRenderId: directBody.id,
+        bodies: [directBody, objectBody],
+        objects: [object]
+      })
+    ).toBe(directBody.id);
+    expect(
+      resolveViewportPickedBodyId({
+        pickedRenderId: object.id,
+        bodies: [directBody, objectBody],
+        objects: [object]
+      })
+    ).toBe(objectBody.id);
+    expect(
+      resolveViewportPickedBodyId({
+        pickedRenderId: "renderer-only",
+        bodies: [directBody, objectBody],
+        objects: [object]
+      })
+    ).toBeUndefined();
+  });
+
+  it("chooses generated-reference pick mode only for drill-down or explicit selection-panel picks", () => {
+    expect(
+      chooseViewportGeneratedReferencePickBodyId({
+        activeSelectionPanel: false,
+        pickedBodyId: "body_rect",
+        selectedBodyId: "body_circle"
+      })
+    ).toBeUndefined();
+    expect(
+      chooseViewportGeneratedReferencePickBodyId({
+        activeSelectionPanel: false,
+        pickedBodyId: "body_rect",
+        selectedBodyId: "body_rect"
+      })
+    ).toBe("body_rect");
+    expect(
+      chooseViewportGeneratedReferencePickBodyId({
+        activeSelectionPanel: true,
+        pickedBodyId: "body_rect",
+        selectedBodyId: "body_circle"
+      })
+    ).toBe("body_rect");
+    expect(
+      chooseViewportGeneratedReferencePickBodyId({
+        activeSelectionPanel: true,
+        generatedReferenceSelected: true,
+        pickedBodyId: "body_rect",
+        selectedBodyId: "body_circle"
+      })
+    ).toBeUndefined();
   });
 
   it("resolves authored body render IDs through V9 semantic body selection", () => {

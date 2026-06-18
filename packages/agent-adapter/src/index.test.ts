@@ -3532,6 +3532,72 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("returns V10 feature editability through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_feature_editability",
+      entityId: "rect_feature_editability",
+      featureId: "feat_feature_editability",
+      bodyId: "body_feature_editability"
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_feature_editability",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "feature.editability",
+          featureId: "feat_feature_editability",
+          proposedEdit: {
+            kind: "extrude",
+            depth: 9,
+            side: "symmetric"
+          }
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_feature_editability",
+      query: "feature.editability",
+      featureId: "feat_feature_editability",
+      status: "editable",
+      fieldCount: 2,
+      rebuildReadiness: {
+        status: "ready",
+        commitDeferred: false
+      },
+      dryRun: {
+        status: "valid",
+        commitOperation: "feature.updateExtrude",
+        willMutateDocument: false
+      },
+      affected: {
+        sketchIds: ["sketch_feature_editability"],
+        featureIds: ["feat_feature_editability"],
+        bodyIds: ["body_feature_editability"]
+      },
+      requiresProjectSchemaMigration: false
+    });
+
+    if (!response.ok || response.query !== "feature.editability") {
+      throw new Error("Expected feature.editability agent response.");
+    }
+
+    expect(
+      response.referenceChanges.every(
+        (change) =>
+          change.stableId === undefined ||
+          !/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+            change.stableId
+          )
+      )
+    ).toBe(true);
+  });
+
   it("returns generated reference measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

@@ -32,6 +32,7 @@ import { formatSketchAttachmentLabel } from "../generatedReferenceUi";
 import type { SketchDisplayStatus } from "../sketchDisplayFrames";
 import {
   chooseSketchEntitySelection,
+  chooseInitialSketchPanelSelection,
   chooseSketchPanelSelection,
   createAvailableCoincidentPointTargetOptions,
   createAvailableFixedPointTargetOptions,
@@ -252,7 +253,7 @@ export function SketchPanel({
   onSelectionContextChange
 }: SketchPanelProps) {
   const [selectedSketchId, setSelectedSketchId] = useState<string | undefined>(
-    sketches[0]?.id
+    chooseInitialSketchPanelSelection(sketches, focusedSketchId)
   );
   const [selectedEntityId, setSelectedEntityId] = useState<
     SketchEntityId | undefined

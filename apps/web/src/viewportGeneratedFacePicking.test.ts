@@ -41,7 +41,7 @@ describe("viewport generated face picking", () => {
     );
   });
 
-  it("requires the current picked body to match the preferred selected body", () => {
+  it("requires a resolved target body but not the previously selected body", () => {
     const point = projectPoint([2, 0, 1.5], camera, size);
     const faces = createRectangleFaces("body_rect");
 
@@ -60,10 +60,17 @@ describe("viewport generated face picking", () => {
         faces,
         pickedRenderId: "body_other",
         point: { x: point?.x ?? 0, y: point?.y ?? 0 },
-        preferredBodyId: "body_rect",
+        targetBodyId: "body_rect",
         size
       })
-    ).toBeUndefined();
+    ).toMatchObject({
+      displayEntityKind: "face",
+      semanticHint: {
+        type: "generatedReference",
+        bodyId: "body_rect",
+        expectedKind: "face"
+      }
+    });
   });
 
   it("supports generated circle cap faces but not the cylindrical side face", () => {

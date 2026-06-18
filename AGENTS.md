@@ -16,6 +16,7 @@ The current implementation source of truth is:
 - `docs/v7.md` — completed V7 real CAD alpha release-readiness record
 - `docs/v8.md` — completed V8 local CAD foundation and exact interop release record
 - `docs/v9.md` — completed V9 viewport-native CAD interaction release-candidate record
+- `docs/v10.md` — planned V10 editable feature history and stable modeling references release
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 

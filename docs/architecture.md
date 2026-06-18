@@ -12,6 +12,7 @@ The current implementation source of truth is:
 - `docs/v7.md`
 - `docs/v8.md`
 - `docs/v9.md`
+- `docs/v10.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -925,8 +926,9 @@ The local MCP server should bind to `127.0.0.1`, require a per-session token, en
 ## 20. What Codex should build first
 
 This section is historical initial-build guidance. The implementation has now
-progressed through the completed V7 real CAD alpha; follow
-`docs/implementation-plan.md` and `docs/v9.md` for current V9 work.
+progressed through the completed V9 viewport-native CAD interaction release
+candidate; follow `docs/implementation-plan.md` and `docs/v10.md` for current
+V10 planning work.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

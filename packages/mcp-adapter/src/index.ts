@@ -15,6 +15,7 @@ import type {
   CadBatch,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
+  CadFeatureEditProposal,
   CadGeneratedEntityKind,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation
@@ -25,6 +26,7 @@ const SHA256_HEX_PATTERN = "^[a-f0-9]{64}$";
 export type CadMcpToolName =
   | "cad.parameter_list"
   | "cad.parameter_get"
+  | "cad.feature_editability"
   | "cad.project_summary"
   | "cad.project_features"
   | "cad.project_structure"
@@ -148,6 +150,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.parameter_get") {
       return this.#callParameterGet(request);
+    }
+
+    if (request.name === "cad.feature_editability") {
+      return this.#callFeatureEditability(request);
     }
 
     if (request.name === "cad.project_summary") {
@@ -340,6 +346,36 @@ export class CadMcpServer {
           query: {
             query: "parameter.get",
             id: request.arguments.id
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callFeatureEditability(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isFeatureEditabilityToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.feature_editability expects arguments shaped as { featureId: string, proposedEdit?: { kind: 'extrude', depth?: number, side?: 'positive' | 'negative' | 'symmetric' } }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "feature.editability",
+            featureId: request.arguments.featureId,
+            ...(request.arguments.proposedEdit
+              ? { proposedEdit: request.arguments.proposedEdit }
+              : {})
           }
         }
       })
@@ -1049,6 +1085,38 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.feature_editability",
+    description:
+      "Returns V10 source feature editability, editable fields, rebuild readiness, dry-run status, and reference-effect diagnostics.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["featureId"],
+      properties: {
+        featureId: {
+          type: "string",
+          description: "Source feature ID to inspect."
+        },
+        proposedEdit: {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind"],
+          properties: {
+            kind: { const: "extrude" },
+            depth: {
+              type: "number",
+              description: "Optional proposed extrude depth."
+            },
+            side: {
+              enum: ["positive", "negative", "symmetric"],
+              description: "Optional proposed extrude side."
+            }
+          }
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_summary",
     description:
       "Returns a compact V7 release summary with legacy objects plus source-derived structure, health, reference capability, export readiness, and workflow hints.",
@@ -1559,6 +1627,19 @@ function isIdToolArguments(value: unknown): value is { readonly id: string } {
   return isRecord(value) && typeof value.id === "string" && value.id !== "";
 }
 
+function isFeatureEditabilityToolArguments(value: unknown): value is {
+  readonly featureId: string;
+  readonly proposedEdit?: CadFeatureEditProposal;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.featureId === "string" &&
+    value.featureId !== "" &&
+    (value.proposedEdit === undefined ||
+      isCadFeatureEditProposal(value.proposedEdit))
+  );
+}
+
 function isBodyMeasurementsToolArguments(
   value: unknown
 ): value is { readonly bodyId: string } {
@@ -1705,6 +1786,23 @@ function isSelectionReferenceCandidatesToolArguments(value: unknown): value is {
     isCadSelectionReferenceInput(value.selection) &&
     (value.requiredOperation === undefined ||
       isCadSelectionReferenceOperation(value.requiredOperation))
+  );
+}
+
+function isCadFeatureEditProposal(
+  value: unknown
+): value is CadFeatureEditProposal {
+  return (
+    isRecord(value) &&
+    value.kind === "extrude" &&
+    Object.keys(value).every((key) =>
+      ["kind", "depth", "side"].includes(key)
+    ) &&
+    (value.depth === undefined || typeof value.depth === "number") &&
+    (value.side === undefined ||
+      value.side === "positive" ||
+      value.side === "negative" ||
+      value.side === "symmetric")
   );
 }
 

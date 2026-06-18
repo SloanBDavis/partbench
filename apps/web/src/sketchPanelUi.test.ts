@@ -8,6 +8,7 @@ import type {
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import {
+  chooseInitialSketchPanelSelection,
   chooseSketchEntitySelection,
   chooseSketchPanelSelection,
   createAvailableCoincidentPointTargetOptions,
@@ -60,6 +61,20 @@ describe("sketch panel UI helpers", () => {
     expect(
       chooseSketchPanelSelection(sketches, undefined, "sketch_face_1")
     ).toBe("sketch_face_1");
+  });
+
+  it("initializes remounted sketch panels from the focused sketch", () => {
+    const sketches = [createSketch("sketch_1"), createSketch("sketch_face_1")];
+
+    expect(chooseInitialSketchPanelSelection(sketches, "sketch_face_1")).toBe(
+      "sketch_face_1"
+    );
+    expect(chooseInitialSketchPanelSelection(sketches, "missing")).toBe(
+      "sketch_1"
+    );
+    expect(chooseInitialSketchPanelSelection([], "sketch_face_1")).toBe(
+      undefined
+    );
   });
 
   it("keeps current selection before focus and falls back when focus is stale", () => {

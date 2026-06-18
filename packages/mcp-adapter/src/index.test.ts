@@ -9,6 +9,7 @@ describe("mcp-adapter", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "cad.parameter_list",
       "cad.parameter_get",
+      "cad.feature_editability",
       "cad.project_summary",
       "cad.project_features",
       "cad.project_structure",
@@ -2679,6 +2680,71 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("returns V10 feature editability through cad.feature_editability", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_editability_sketch",
+      entityId: "mcp_editability_rect",
+      featureId: "mcp_editability_feature",
+      bodyId: "mcp_editability_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.feature_editability",
+      requestId: "mcp_req_feature_editability",
+      arguments: {
+        featureId: "mcp_editability_feature",
+        proposedEdit: {
+          kind: "extrude",
+          depth: 10,
+          side: "negative"
+        }
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.feature_editability",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_feature_editability",
+        query: "feature.editability",
+        featureId: "mcp_editability_feature",
+        status: "editable",
+        fieldCount: 2,
+        rebuildReadiness: {
+          status: "ready",
+          commitDeferred: false
+        },
+        dryRun: {
+          status: "valid",
+          commitOperation: "feature.updateExtrude",
+          willMutateDocument: false
+        },
+        affected: {
+          sketchIds: ["mcp_editability_sketch"],
+          featureIds: ["mcp_editability_feature"],
+          bodyIds: ["mcp_editability_body"]
+        },
+        requiresProjectSchemaMigration: false
+      }
+    });
+    const structured = result.structuredContent as {
+      readonly referenceChanges?: readonly { readonly stableId?: string }[];
+    };
+
+    expect(
+      structured.referenceChanges?.every(
+        (change) =>
+          change.stableId === undefined ||
+          !/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+            change.stableId
+          )
+      )
+    ).toBe(true);
+  });
+
   it("resolves generated references through cad.resolve_generated_reference", () => {
     const server = new CadMcpServer();
 
@@ -3389,6 +3455,7 @@ describe("mcp-adapter", () => {
         tools: [
           { name: "cad.parameter_list" },
           { name: "cad.parameter_get" },
+          { name: "cad.feature_editability" },
           { name: "cad.project_summary" },
           { name: "cad.project_features" },
           { name: "cad.project_structure" },

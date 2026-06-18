@@ -552,24 +552,15 @@ function createResults(
   secondTarget: ViewportTwoTargetMeasurementTarget,
   units: DocumentUnits
 ): readonly ViewportTwoTargetMeasurementDisplayResult[] {
-  const authority = combineAuthority(
-    firstTarget.authority,
-    secondTarget.authority
-  );
-  const diagnostics =
-    authority === "displayApproximation"
-      ? [
-          createDiagnostic(
-            "VIEWPORT_TWO_TARGET_DISPLAY_APPROXIMATION_ONLY",
-            "unsupported",
-            "This result is display approximation only."
-          )
-        ]
-      : [];
   const results: ViewportTwoTargetMeasurementDisplayResult[] = [];
 
   if (firstTarget.point && secondTarget.point) {
     const value = distance(firstTarget.point, secondTarget.point);
+    const authority = combineAuthority(
+      getPointAuthority(firstTarget),
+      getPointAuthority(secondTarget)
+    );
+    const diagnostics = createResultAuthorityDiagnostics(authority);
 
     results.push({
       kind: "distance",
@@ -596,6 +587,11 @@ function createResults(
 
   if (firstTarget.vector && secondTarget.vector) {
     const value = angleDegrees(firstTarget.vector, secondTarget.vector);
+    const authority = combineAuthority(
+      getVectorAuthority(firstTarget),
+      getVectorAuthority(secondTarget)
+    );
+    const diagnostics = createResultAuthorityDiagnostics(authority);
 
     if (Number.isFinite(value)) {
       results.push({
@@ -623,6 +619,46 @@ function createResults(
   }
 
   return results.map(cleanResult);
+}
+
+function createResultAuthorityDiagnostics(
+  authority: CadViewportMeasurementAuthority
+): readonly CadViewportTwoTargetMeasurementDiagnostic[] {
+  return authority === "displayApproximation"
+    ? [
+        createDiagnostic(
+          "VIEWPORT_TWO_TARGET_DISPLAY_APPROXIMATION_ONLY",
+          "unsupported",
+          "This result is display approximation only."
+        )
+      ]
+    : [];
+}
+
+function getPointAuthority(
+  target: ViewportTwoTargetMeasurementTarget
+): CadViewportMeasurementAuthority {
+  return getSourceBackedInputAuthority(target, Boolean(target.point));
+}
+
+function getVectorAuthority(
+  target: ViewportTwoTargetMeasurementTarget
+): CadViewportMeasurementAuthority {
+  return getSourceBackedInputAuthority(target, Boolean(target.vector));
+}
+
+function getSourceBackedInputAuthority(
+  target: ViewportTwoTargetMeasurementTarget,
+  hasInput: boolean
+): CadViewportMeasurementAuthority {
+  if (!hasInput || target.authority !== "unsupported") {
+    return target.authority;
+  }
+
+  return target.source === "body.measurements" ||
+    target.source === "body.generatedReferenceMeasurements"
+    ? "sourceAnalytic"
+    : target.authority;
 }
 
 function cleanResult(

@@ -27,6 +27,7 @@ export interface CreateViewportGeneratedEdgeHitCandidateInput {
   readonly edges: readonly CadGeneratedEdgeReference[];
   readonly pickedRenderId?: string;
   readonly point: ViewportPoint;
+  readonly targetBodyId?: string;
   readonly preferredBodyId?: string;
   readonly size: ViewportSize;
   readonly sketchDisplayFrames?: ReadonlyMap<string, SketchDisplayFrame>;
@@ -41,20 +42,22 @@ interface ViewportGeneratedEdgeCandidate {
 export function createViewportGeneratedEdgeHitCandidate({
   camera,
   edges,
-  pickedRenderId,
   point,
+  targetBodyId,
   preferredBodyId,
   size,
   sketchDisplayFrames
 }: CreateViewportGeneratedEdgeHitCandidateInput):
   | CadViewportHitCandidate
   | undefined {
-  if (!preferredBodyId || pickedRenderId !== preferredBodyId) {
+  const bodyId = targetBodyId ?? preferredBodyId;
+
+  if (!bodyId) {
     return undefined;
   }
 
   const candidates = edges
-    .filter((edge) => edge.bodyId === preferredBodyId)
+    .filter((edge) => edge.bodyId === bodyId)
     .map((edge) =>
       createViewportGeneratedEdgeCandidate({
         camera,

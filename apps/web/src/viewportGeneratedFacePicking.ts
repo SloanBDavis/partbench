@@ -24,6 +24,7 @@ export interface CreateViewportGeneratedPlanarFaceHitCandidateInput {
   readonly faces: readonly CadGeneratedFaceReference[];
   readonly pickedRenderId?: string;
   readonly point: ViewportPoint;
+  readonly targetBodyId?: string;
   readonly preferredBodyId?: string;
   readonly size: ViewportSize;
   readonly sketchDisplayFrames?: ReadonlyMap<string, SketchDisplayFrame>;
@@ -37,20 +38,22 @@ interface ViewportGeneratedPlanarFaceCandidate {
 export function createViewportGeneratedPlanarFaceHitCandidate({
   camera,
   faces,
-  pickedRenderId,
   point,
+  targetBodyId,
   preferredBodyId,
   size,
   sketchDisplayFrames
 }: CreateViewportGeneratedPlanarFaceHitCandidateInput):
   | CadViewportHitCandidate
   | undefined {
-  if (!preferredBodyId || pickedRenderId !== preferredBodyId) {
+  const bodyId = targetBodyId ?? preferredBodyId;
+
+  if (!bodyId) {
     return undefined;
   }
 
   const candidates = faces
-    .filter((face) => face.bodyId === preferredBodyId)
+    .filter((face) => face.bodyId === bodyId)
     .map((face) =>
       createViewportGeneratedPlanarFaceCandidate({
         camera,
