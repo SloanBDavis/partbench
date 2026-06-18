@@ -241,6 +241,10 @@ export type CadOp =
   | FeatureChamferOp
   | FeatureFilletOp
   | FeatureUpdateExtrudeOp
+  | FeatureUpdateRevolveOp
+  | FeatureUpdateHoleOp
+  | FeatureUpdateChamferOp
+  | FeatureUpdateFilletOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceDeleteNameOp;
@@ -615,6 +619,32 @@ export interface FeatureUpdateExtrudeOp {
   readonly side?: FeatureExtrudeSide;
 }
 
+export interface FeatureUpdateRevolveOp {
+  readonly op: "feature.updateRevolve";
+  readonly id: FeatureId;
+  readonly angleDegrees: number;
+}
+
+export interface FeatureUpdateHoleOp {
+  readonly op: "feature.updateHole";
+  readonly id: FeatureId;
+  readonly depthMode?: FeatureHoleDepthMode;
+  readonly depth?: number;
+  readonly direction?: FeatureHoleDirection;
+}
+
+export interface FeatureUpdateChamferOp {
+  readonly op: "feature.updateChamfer";
+  readonly id: FeatureId;
+  readonly distance: number;
+}
+
+export interface FeatureUpdateFilletOp {
+  readonly op: "feature.updateFillet";
+  readonly id: FeatureId;
+  readonly radius: number;
+}
+
 export interface ReferenceNameGeneratedOp {
   readonly op: "reference.nameGenerated";
   readonly name: NamedReferenceName;
@@ -773,6 +803,7 @@ export interface FeatureSemanticDiff {
   readonly bodiesCreated?: readonly CadBodyRef[];
   readonly bodiesModified?: readonly CadBodyRef[];
   readonly bodiesDeleted?: readonly CadBodyRef[];
+  readonly referenceEffects?: readonly CadFeatureReferenceChangeSummary[];
 }
 
 export interface ReferenceSemanticDiff {
@@ -1840,7 +1871,34 @@ export interface CadFeatureExtrudeEditProposal {
   readonly side?: FeatureExtrudeSide;
 }
 
-export type CadFeatureEditProposal = CadFeatureExtrudeEditProposal;
+export interface CadFeatureRevolveEditProposal {
+  readonly kind: "revolve";
+  readonly angleDegrees?: number;
+}
+
+export interface CadFeatureHoleEditProposal {
+  readonly kind: "hole";
+  readonly depthMode?: FeatureHoleDepthMode;
+  readonly depth?: number;
+  readonly direction?: FeatureHoleDirection;
+}
+
+export interface CadFeatureChamferEditProposal {
+  readonly kind: "chamfer";
+  readonly distance?: number;
+}
+
+export interface CadFeatureFilletEditProposal {
+  readonly kind: "fillet";
+  readonly radius?: number;
+}
+
+export type CadFeatureEditProposal =
+  | CadFeatureExtrudeEditProposal
+  | CadFeatureRevolveEditProposal
+  | CadFeatureHoleEditProposal
+  | CadFeatureChamferEditProposal
+  | CadFeatureFilletEditProposal;
 
 export interface CadFeatureEditDiagnostic {
   readonly code: CadFeatureEditDiagnosticCode;

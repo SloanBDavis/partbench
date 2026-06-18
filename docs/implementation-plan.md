@@ -221,14 +221,28 @@ These constraints remain active:
     source-derived graph nodes/edges and reference health cover sketches,
     sketch entities, features, bodies, generated references, named references,
     consumed target bodies, and ambiguous/unsupported/deferred result topology
-    with structured diagnostics and thin agent/MCP pass-through. Its broader
-    center remains transactional edit/rebuild behavior, explicit
-    consumed/replacement body lifecycle, reference survival/repair semantics,
-    and source-semantic topology expansion for existing authored feature
-    families where defensible. V10 must not become arbitrary topological
-    naming, production WebGPU, assemblies, STEP import, broad sketch solving,
-    broad new modeling features, or persisted UI state unless a later tranche
-    explicitly scopes one of those items.
+    with structured diagnostics and thin agent/MCP pass-through. Tranche C1 is
+    implemented as the first real edit commit path: supported authored
+    rectangle/circle `newBody` extrude depth/side edits go through
+    `feature.updateExtrude`, produce semantic feature/body rebuild effects plus
+    V10 reference effects, preserve active generated/named references, block
+    consumed or boolean-result edits, and remain visible through transaction
+    history, agent, and MCP surfaces. Tranche C2 is implemented as the
+    conservative source-backed edit path for current authored revolve, hole,
+    chamfer, and fillet parameters: `feature.updateRevolve`,
+    `feature.updateHole`, `feature.updateChamfer`, and `feature.updateFillet`
+    support dry-run and commit through CADOps, update authoritative feature
+    source fields, produce semantic feature/body diffs plus V10 reference
+    effects, keep `feature.editability`, `project.dependencyGraph`, and
+    `reference.health` consistent, and remain thinly available through
+    agent/MCP batch surfaces without introducing `web-cad.project.v17`. Its
+    broader center remains transactional downstream rebuild behavior,
+    explicit consumed/replacement body lifecycle, reference survival/repair
+    semantics, and source-semantic topology expansion for existing authored
+    feature families where defensible. V10 must not become arbitrary
+    topological naming, production WebGPU, assemblies, STEP import, broad sketch
+    solving, broad new modeling features, or persisted UI state unless a later
+    tranche explicitly scopes one of those items.
 
 ## Current Repo State
 
@@ -1509,24 +1523,40 @@ Use these decisions when drafting or implementing V10 tranches:
    references, consumed target bodies, and ambiguous or deferred result bodies,
    with structured diagnostics, Tranche A editability consistency, thin
    agent/MCP pass-through, and no `web-cad.project.v17`.
-3. **Edit Existing Authored Feature Parameters** - source-backed edits for
-   current extrude, revolve, hole, chamfer, and fillet records where defensible,
-   with dry-run and commit semantic diffs.
-4. **Transactional Rebuild And Result Body Lifecycle** - active, consumed,
+3. **Authored Extrude Edit Commit And Rebuild Effects** - implemented the first
+   real V10 edit commit path for active authored rectangle/circle `newBody`
+   extrudes. `feature.updateExtrude` supports depth/side dry-run and commit,
+   emits modified feature/body semantic diffs plus active generated/named
+   reference effects, keeps `feature.editability`, `project.dependencyGraph`,
+   and `reference.health` consistent before and after safe edits, blocks
+   consumed target-body and boolean result edits without mutation, exposes the
+   effects through transaction history/agent/MCP, and does not introduce
+   `web-cad.project.v17`.
+4. **More Authored Feature Edit Commit Paths** - implemented conservative
+   source-backed edits for current authored revolve, hole, chamfer, and fillet
+   records. `feature.updateRevolve` supports angle edits,
+   `feature.updateHole` supports depth mode/depth/direction edits,
+   `feature.updateChamfer` supports distance edits, and `feature.updateFillet`
+   supports radius edits where existing source/reference semantics remain
+   defensible. The commands support dry-run and commit, emit semantic
+   feature/body diffs plus V10 reference effects, keep editability/graph/health
+   behavior consistent, expose thin agent/MCP batch pass-through, and do not
+   introduce `web-cad.project.v17`.
+5. **Transactional Rebuild And Result Body Lifecycle** - active, consumed,
    result, replacement, stale, failed, and suppressed states where scoped,
    including source edit plus derived invalidation behavior.
-5. **Stable Reference Expansion For Defensible Result Features** - source-
+6. **Stable Reference Expansion For Defensible Result Features** - source-
    semantic generated/result references for revolve, hole, scoped cut/add, and
    edge-finish outputs only where identity evidence is strong enough.
-6. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
+7. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
    dimension/sketch edit dry-runs, and focused new constraints only where they
    support feature editing with clear diagnostics.
-7. **Named Reference Repair Workflow** - health display, explicit repair
+8. **Named Reference Repair Workflow** - health display, explicit repair
    command, dry-run diagnostics, and agent/MCP path without silent retargeting.
-8. **Product Integration And Browser Workflows** - compact feature edit,
+9. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,
    Modeling, and viewport surfaces.
-9. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
+10. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
    non-browser and browser smokes, release docs, migration audit if V17 is
    introduced, and final boundary cleanup.
 

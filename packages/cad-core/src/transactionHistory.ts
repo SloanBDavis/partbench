@@ -624,6 +624,82 @@ function createOperationSummaries(
         });
       }
 
+      case "feature.updateRevolve": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update revolve feature ${op.id} angle to ${op.angleDegrees}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          sketchId: modifiedFeatureRef
+            ? getFeatureRefSketchId(modifiedFeatureRef)
+            : undefined,
+          sketchEntityId: modifiedFeatureRef
+            ? getFeatureRefSketchEntityId(modifiedFeatureRef)
+            : undefined
+        });
+      }
+
+      case "feature.updateHole": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update hole feature ${op.id} ${formatHoleUpdateLabel(op)}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          targetBodyId:
+            modifiedFeatureRef?.kind === "hole"
+              ? modifiedFeatureRef.targetBodyId
+              : undefined,
+          sketchId: modifiedFeatureRef
+            ? getFeatureRefSketchId(modifiedFeatureRef)
+            : undefined,
+          sketchEntityId: modifiedFeatureRef
+            ? getFeatureRefSketchEntityId(modifiedFeatureRef)
+            : undefined
+        });
+      }
+
+      case "feature.updateChamfer": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update chamfer feature ${op.id} distance to ${op.distance}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          targetBodyId:
+            modifiedFeatureRef?.kind === "chamfer"
+              ? modifiedFeatureRef.targetBodyId
+              : undefined
+        });
+      }
+
+      case "feature.updateFillet": {
+        const modifiedFeatureRef = transaction.diff.features?.modified?.find(
+          (feature) => feature.id === op.id
+        );
+
+        return createFeatureOperationSummary({
+          op: op.op,
+          label: `Update fillet feature ${op.id} radius to ${op.radius}`,
+          featureId: op.id,
+          bodyId: modifiedFeatureRef?.bodyId,
+          targetBodyId:
+            modifiedFeatureRef?.kind === "fillet"
+              ? modifiedFeatureRef.targetBodyId
+              : undefined
+        });
+      }
+
       case "reference.nameGenerated": {
         const kindLabel = createdNamedReferenceRef?.kind
           ? `${createdNamedReferenceRef.kind} `
@@ -691,6 +767,18 @@ function formatExtrudeUpdateLabel(
   const edits = [
     ...(op.depth !== undefined ? [`depth to ${op.depth}`] : []),
     ...(op.side !== undefined ? [`side to ${op.side}`] : [])
+  ];
+
+  return edits.join(" and ");
+}
+
+function formatHoleUpdateLabel(
+  op: Extract<CadOp, { readonly op: "feature.updateHole" }>
+): string {
+  const edits = [
+    ...(op.depthMode !== undefined ? [`depth mode to ${op.depthMode}`] : []),
+    ...(op.depth !== undefined ? [`depth to ${op.depth}`] : []),
+    ...(op.direction !== undefined ? [`direction to ${op.direction}`] : [])
   ];
 
   return edits.join(" and ");
@@ -978,7 +1066,10 @@ function cloneFeatureSemanticDiff(
     ...(diff.bodiesModified
       ? { bodiesModified: [...diff.bodiesModified] }
       : {}),
-    ...(diff.bodiesDeleted ? { bodiesDeleted: [...diff.bodiesDeleted] } : {})
+    ...(diff.bodiesDeleted ? { bodiesDeleted: [...diff.bodiesDeleted] } : {}),
+    ...(diff.referenceEffects
+      ? { referenceEffects: [...diff.referenceEffects] }
+      : {})
   };
 }
 

@@ -122,6 +122,22 @@ export function createFeatureEditabilityResponse(
     return createExtrudeEditabilityResponse(options, feature);
   }
 
+  if (feature.kind === "revolve") {
+    return createRevolveEditabilityResponse(options, feature);
+  }
+
+  if (feature.kind === "hole") {
+    return createHoleEditabilityResponse(options, feature);
+  }
+
+  if (feature.kind === "chamfer") {
+    return createEdgeFinishEditabilityResponse(options, feature);
+  }
+
+  if (feature.kind === "fillet") {
+    return createEdgeFinishEditabilityResponse(options, feature);
+  }
+
   return createDeferredSourceFeatureResponse(options, feature);
 }
 
@@ -238,6 +254,7 @@ function createExtrudeEditabilityResponse(
     rebuildDiagnostics: blockingDiagnostics,
     dryRunStatus,
     dryRunDiagnostics,
+    commitOperation: "feature.updateExtrude",
     affected,
     referenceChanges: createReferenceChangesForBody({
       options,
@@ -254,6 +271,361 @@ function createExtrudeEditabilityResponse(
         : "Source generated references require review before a committed edit can be considered command-ready."
     })
   });
+}
+
+function createRevolveEditabilityResponse(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "revolve" }>
+): FeatureEditabilityQueryResponse {
+  const body = options.bodies.find(
+    (candidate) => candidate.id === feature.bodyId
+  );
+  const blockingDiagnostics = createResultBodyBlockingDiagnostics(
+    feature.id,
+    feature.bodyId,
+    body?.consumedByFeatureId,
+    "feature.updateRevolve"
+  );
+
+  if (feature.operationMode !== "newBody") {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "AMBIGUOUS_RESULT_TOPOLOGY",
+        severity: "blocker",
+        message:
+          "V10 Tranche C2 does not claim command-ready edit/rebuild references for non-newBody revolve result topology.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        targetBodyId: feature.targetBodyId,
+        expected: "newBody revolve",
+        received: feature.operationMode
+      })
+    );
+  }
+
+  return createSourceParameterEditabilityResponse({
+    options,
+    feature,
+    fields: [
+      {
+        path: "angleDegrees",
+        label: "Angle",
+        valueType: "number",
+        currentValue: feature.angleDegrees,
+        unit: "deg"
+      }
+    ],
+    blockingDiagnostics,
+    commitOperation: "feature.updateRevolve",
+    supportMessage:
+      "Revolve angle can be edited through feature.updateRevolve; this query does not mutate document state.",
+    dryRunDiagnostics: createRevolveDryRunDiagnostics(
+      feature,
+      options.proposedEdit,
+      blockingDiagnostics
+    ),
+    affectedSketchIds: [feature.sketchId],
+    affectedBodyIds: [feature.bodyId],
+    referenceChanges: createRepairNeededResultReferenceChanges(feature)
+  });
+}
+
+function createHoleEditabilityResponse(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "hole" }>
+): FeatureEditabilityQueryResponse {
+  const body = options.bodies.find(
+    (candidate) => candidate.id === feature.bodyId
+  );
+  const targetBody = options.bodies.find(
+    (candidate) => candidate.id === feature.targetBodyId
+  );
+  const blockingDiagnostics = createResultBodyBlockingDiagnostics(
+    feature.id,
+    feature.bodyId,
+    body?.consumedByFeatureId,
+    "feature.updateHole"
+  );
+
+  if (targetBody?.consumedByFeatureId !== feature.id) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "CONSUMED_REFERENCE_NOT_COMMAND_READY",
+        severity: "blocker",
+        message:
+          "Hole edits require the target body to be consumed by the hole feature being edited.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        targetBodyId: feature.targetBodyId,
+        expected: feature.id,
+        received: targetBody?.consumedByFeatureId ?? "active target body"
+      })
+    );
+  }
+
+  return createSourceParameterEditabilityResponse({
+    options,
+    feature,
+    fields: [
+      {
+        path: "depthMode",
+        label: "Depth mode",
+        valueType: "enum",
+        currentValue: feature.depthMode,
+        enumValues: ["throughAll", "blind"]
+      },
+      {
+        path: "depth",
+        label: "Depth",
+        valueType: "number",
+        currentValue: feature.depth,
+        unit: options.units
+      },
+      {
+        path: "direction",
+        label: "Direction",
+        valueType: "enum",
+        currentValue: feature.direction,
+        enumValues: ["positive", "negative"]
+      }
+    ],
+    blockingDiagnostics,
+    commitOperation: "feature.updateHole",
+    supportMessage:
+      "Hole depth mode, depth, and direction can be edited through feature.updateHole; this query does not mutate document state.",
+    dryRunDiagnostics: createHoleDryRunDiagnostics(
+      feature,
+      options.proposedEdit,
+      blockingDiagnostics
+    ),
+    affectedSketchIds: [feature.sketchId],
+    affectedBodyIds: [feature.bodyId, feature.targetBodyId],
+    referenceChanges: createRepairNeededResultReferenceChanges(feature)
+  });
+}
+
+function createEdgeFinishEditabilityResponse(
+  options: CreateFeatureEditabilityResponseOptions,
+  feature: Extract<CadFeatureSummary, { readonly kind: "chamfer" | "fillet" }>
+): FeatureEditabilityQueryResponse {
+  const body = options.bodies.find(
+    (candidate) => candidate.id === feature.bodyId
+  );
+  const targetBody = options.bodies.find(
+    (candidate) => candidate.id === feature.targetBodyId
+  );
+  const blockingDiagnostics = createResultBodyBlockingDiagnostics(
+    feature.id,
+    feature.bodyId,
+    body?.consumedByFeatureId,
+    feature.kind === "chamfer"
+      ? "feature.updateChamfer"
+      : "feature.updateFillet"
+  );
+
+  if (targetBody?.consumedByFeatureId !== feature.id) {
+    blockingDiagnostics.push(
+      createDiagnostic({
+        code: "CONSUMED_REFERENCE_NOT_COMMAND_READY",
+        severity: "blocker",
+        message:
+          "Edge-finish edits require the target body to be consumed by the chamfer/fillet feature being edited.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        targetBodyId: feature.targetBodyId,
+        stableId: feature.edgeStableId,
+        referenceName: feature.namedReference,
+        expected: feature.id,
+        received: targetBody?.consumedByFeatureId ?? "active target body"
+      })
+    );
+  }
+
+  const isChamfer = feature.kind === "chamfer";
+  const scalarPath = isChamfer ? "distance" : "radius";
+
+  return createSourceParameterEditabilityResponse({
+    options,
+    feature,
+    fields: [
+      {
+        path: scalarPath,
+        label: isChamfer ? "Distance" : "Radius",
+        valueType: "number",
+        currentValue: isChamfer ? feature.distance : feature.radius,
+        unit: options.units
+      },
+      {
+        path: feature.namedReference ? "namedReference" : "edgeStableId",
+        label: feature.namedReference ? "Named reference" : "Edge reference",
+        valueType: "reference",
+        currentValue: feature.namedReference ?? feature.edgeStableId
+      }
+    ],
+    blockingDiagnostics,
+    commitOperation: isChamfer
+      ? "feature.updateChamfer"
+      : "feature.updateFillet",
+    supportMessage: isChamfer
+      ? "Chamfer distance can be edited through feature.updateChamfer; this query does not mutate document state."
+      : "Fillet radius can be edited through feature.updateFillet; this query does not mutate document state.",
+    dryRunDiagnostics: isChamfer
+      ? createChamferDryRunDiagnostics(
+          feature,
+          options.proposedEdit,
+          blockingDiagnostics
+        )
+      : createFilletDryRunDiagnostics(
+          feature,
+          options.proposedEdit,
+          blockingDiagnostics
+        ),
+    affectedSketchIds: [],
+    affectedBodyIds: [feature.bodyId, feature.targetBodyId],
+    referenceChanges: createRepairNeededResultReferenceChanges(feature)
+  });
+}
+
+interface SourceEditableFieldInput {
+  readonly path: string;
+  readonly label: string;
+  readonly valueType: CadFeatureEditFieldDescriptor["valueType"];
+  readonly currentValue?: number | string;
+  readonly unit?: CadFeatureEditFieldDescriptor["unit"];
+  readonly enumValues?: readonly string[];
+}
+
+function createSourceParameterEditabilityResponse(args: {
+  readonly options: CreateFeatureEditabilityResponseOptions;
+  readonly feature: Exclude<CadFeatureSummary, { readonly kind: "primitive" }>;
+  readonly fields: readonly SourceEditableFieldInput[];
+  readonly blockingDiagnostics: readonly CadFeatureEditDiagnostic[];
+  readonly commitOperation: CadFeatureEditFieldDescriptor["commitOperation"];
+  readonly supportMessage: string;
+  readonly dryRunDiagnostics: readonly CadFeatureEditDiagnostic[];
+  readonly affectedSketchIds: readonly SketchId[];
+  readonly affectedBodyIds: readonly BodyId[];
+  readonly referenceChanges: readonly CadFeatureReferenceChangeSummary[];
+}): FeatureEditabilityQueryResponse {
+  const editable = args.blockingDiagnostics.length === 0;
+  const fieldDiagnostics = editable ? [] : args.blockingDiagnostics;
+  const fields = args.fields.map((field) => ({
+    ...field,
+    editable: field.valueType === "reference" ? false : editable,
+    ...(editable && field.valueType !== "reference"
+      ? { commitOperation: args.commitOperation }
+      : {}),
+    diagnostics:
+      field.valueType === "reference"
+        ? [
+            createDiagnostic({
+              code: "FEATURE_EDIT_UNSUPPORTED",
+              severity: "warning",
+              message:
+                "Reference retargeting is deferred; only scalar/source parameter edits are supported in V10 Tranche C2.",
+              featureId: args.feature.id,
+              bodyId: args.feature.bodyId,
+              fieldPath: field.path
+            })
+          ]
+        : fieldDiagnostics
+  }));
+  const supportDiagnostic = editable
+    ? [
+        createDiagnostic({
+          code: "FEATURE_EDIT_SUPPORTED",
+          severity: "info",
+          message: args.supportMessage,
+          featureId: args.feature.id,
+          bodyId: args.feature.bodyId
+        })
+      ]
+    : [];
+  const topologyDiagnostic = editable
+    ? [
+        createDiagnostic({
+          code: "AMBIGUOUS_RESULT_TOPOLOGY",
+          severity: "warning",
+          message:
+            "Committed source parameter edits are supported, but result-body generated topology remains repair-needed until a later stable-reference tranche proves it.",
+          featureId: args.feature.id,
+          bodyId: args.feature.bodyId
+        })
+      ]
+    : [];
+  const diagnostics = [
+    ...supportDiagnostic,
+    ...topologyDiagnostic,
+    ...args.blockingDiagnostics
+  ];
+  const dryRunStatus = chooseSourceDryRunStatus(
+    args.options.proposedEdit,
+    editable,
+    args.dryRunDiagnostics
+  );
+  const targetBodyIds =
+    "targetBodyId" in args.feature && args.feature.targetBodyId
+      ? [args.feature.targetBodyId]
+      : [];
+
+  return createResponse({
+    options: args.options,
+    feature: args.feature,
+    status: editable ? "editable" : "blocked",
+    fields,
+    diagnostics,
+    rebuildStatus: editable ? "ready" : "blocked",
+    rebuildDiagnostics: [...topologyDiagnostic, ...args.blockingDiagnostics],
+    dryRunStatus,
+    dryRunDiagnostics: args.dryRunDiagnostics,
+    commitOperation: args.commitOperation,
+    affected: createAffectedSummary(
+      args.affectedSketchIds,
+      [args.feature.id],
+      [...args.affectedBodyIds, ...targetBodyIds],
+      countGeneratedReferences(args.options, args.feature.bodyId),
+      countNamedReferences(args.options, args.feature.bodyId)
+    ),
+    referenceChanges: args.referenceChanges
+  });
+}
+
+function createResultBodyBlockingDiagnostics(
+  featureId: FeatureId,
+  bodyId: BodyId,
+  consumedByFeatureId: FeatureId | undefined,
+  operation: CadFeatureEditFieldDescriptor["commitOperation"]
+): CadFeatureEditDiagnostic[] {
+  if (!consumedByFeatureId) {
+    return [];
+  }
+
+  return [
+    createDiagnostic({
+      code: "FEATURE_EDIT_CONSUMED_BODY",
+      severity: "blocker",
+      message: `Feature ${featureId} cannot be edited safely through ${operation} because result body ${bodyId} is consumed by feature ${consumedByFeatureId}.`,
+      featureId,
+      bodyId,
+      expected: "active feature result body",
+      received: consumedByFeatureId
+    })
+  ];
+}
+
+function createRepairNeededResultReferenceChanges(
+  feature: Exclude<CadFeatureSummary, { readonly kind: "primitive" }>
+): readonly CadFeatureReferenceChangeSummary[] {
+  return [
+    createReferenceChange({
+      category: "repair-needed",
+      bodyId: feature.bodyId,
+      sourceFeatureId: feature.id,
+      diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY",
+      message:
+        "Result-body generated references remain repair-needed for this feature family."
+    })
+  ];
 }
 
 function createDeferredSourceFeatureResponse(
@@ -498,6 +870,7 @@ function createExtrudeDryRunDiagnostics(
         received: proposedEdit.kind
       })
     );
+    return diagnostics;
   }
 
   if (proposedEdit.depth === undefined && proposedEdit.side === undefined) {
@@ -553,7 +926,288 @@ function createExtrudeDryRunDiagnostics(
   return diagnostics;
 }
 
+function createRevolveDryRunDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "revolve" }>,
+  proposedEdit: CadFeatureEditProposal | undefined,
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+): readonly CadFeatureEditDiagnostic[] {
+  if (proposedEdit === undefined) {
+    return [];
+  }
+
+  if (blockingDiagnostics.length > 0) {
+    return blockingDiagnostics;
+  }
+
+  const diagnostics = createKindAndFieldDiagnostics(
+    feature,
+    proposedEdit,
+    "revolve",
+    ["angleDegrees"]
+  );
+
+  if (
+    proposedEdit.kind === "revolve" &&
+    proposedEdit.angleDegrees !== undefined &&
+    (!Number.isFinite(proposedEdit.angleDegrees) ||
+      proposedEdit.angleDegrees <= 0 ||
+      proposedEdit.angleDegrees > 360)
+  ) {
+    diagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message:
+          "Revolve angleDegrees must be a finite number greater than zero and <= 360.",
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        fieldPath: "angleDegrees",
+        expected: "finite positive number <= 360",
+        received: String(proposedEdit.angleDegrees)
+      })
+    );
+  }
+
+  return diagnostics;
+}
+
+function createHoleDryRunDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "hole" }>,
+  proposedEdit: CadFeatureEditProposal | undefined,
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+): readonly CadFeatureEditDiagnostic[] {
+  if (proposedEdit === undefined) {
+    return [];
+  }
+
+  if (blockingDiagnostics.length > 0) {
+    return blockingDiagnostics;
+  }
+
+  const diagnostics = createKindAndFieldDiagnostics(
+    feature,
+    proposedEdit,
+    "hole",
+    ["depthMode", "depth", "direction"]
+  );
+
+  if (proposedEdit.kind !== "hole") {
+    return diagnostics;
+  }
+
+  if (
+    proposedEdit.depthMode !== undefined &&
+    proposedEdit.depthMode !== "blind" &&
+    proposedEdit.depthMode !== "throughAll"
+  ) {
+    diagnostics.push(
+      createInvalidProposalDiagnostic(
+        feature,
+        "depthMode",
+        "blind | throughAll",
+        String(proposedEdit.depthMode)
+      )
+    );
+  }
+
+  if (
+    proposedEdit.direction !== undefined &&
+    proposedEdit.direction !== "positive" &&
+    proposedEdit.direction !== "negative"
+  ) {
+    diagnostics.push(
+      createInvalidProposalDiagnostic(
+        feature,
+        "direction",
+        "positive | negative",
+        String(proposedEdit.direction)
+      )
+    );
+  }
+
+  const depthMode = proposedEdit.depthMode ?? feature.depthMode;
+  const depth =
+    proposedEdit.depth !== undefined
+      ? proposedEdit.depth
+      : depthMode === feature.depthMode
+        ? feature.depth
+        : undefined;
+
+  if (depthMode === "blind") {
+    if (depth === undefined || !Number.isFinite(depth) || depth <= 0) {
+      diagnostics.push(
+        createInvalidProposalDiagnostic(
+          feature,
+          "depth",
+          "finite positive number for blind hole",
+          String(depth)
+        )
+      );
+    }
+  } else if (proposedEdit.depth !== undefined) {
+    diagnostics.push(
+      createInvalidProposalDiagnostic(
+        feature,
+        "depth",
+        "omitted depth for throughAll hole",
+        String(proposedEdit.depth)
+      )
+    );
+  }
+
+  return diagnostics;
+}
+
+function createChamferDryRunDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "chamfer" }>,
+  proposedEdit: CadFeatureEditProposal | undefined,
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+): readonly CadFeatureEditDiagnostic[] {
+  return createScalarDryRunDiagnostics(
+    feature,
+    proposedEdit,
+    blockingDiagnostics,
+    "chamfer",
+    "distance"
+  );
+}
+
+function createFilletDryRunDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "fillet" }>,
+  proposedEdit: CadFeatureEditProposal | undefined,
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[]
+): readonly CadFeatureEditDiagnostic[] {
+  return createScalarDryRunDiagnostics(
+    feature,
+    proposedEdit,
+    blockingDiagnostics,
+    "fillet",
+    "radius"
+  );
+}
+
+function createScalarDryRunDiagnostics(
+  feature: Extract<CadFeatureSummary, { readonly kind: "chamfer" | "fillet" }>,
+  proposedEdit: CadFeatureEditProposal | undefined,
+  blockingDiagnostics: readonly CadFeatureEditDiagnostic[],
+  expectedKind: "chamfer" | "fillet",
+  fieldPath: "distance" | "radius"
+): readonly CadFeatureEditDiagnostic[] {
+  if (proposedEdit === undefined) {
+    return [];
+  }
+
+  if (blockingDiagnostics.length > 0) {
+    return blockingDiagnostics;
+  }
+
+  const diagnostics = createKindAndFieldDiagnostics(
+    feature,
+    proposedEdit,
+    expectedKind,
+    [fieldPath]
+  );
+  const value =
+    proposedEdit.kind === "chamfer"
+      ? proposedEdit.distance
+      : proposedEdit.kind === "fillet"
+        ? proposedEdit.radius
+        : undefined;
+
+  if (
+    proposedEdit.kind === expectedKind &&
+    value !== undefined &&
+    (!Number.isFinite(value) || value <= 0)
+  ) {
+    diagnostics.push(
+      createInvalidProposalDiagnostic(
+        feature,
+        fieldPath,
+        "finite positive number",
+        String(value)
+      )
+    );
+  }
+
+  return diagnostics;
+}
+
+function createKindAndFieldDiagnostics(
+  feature: Exclude<CadFeatureSummary, { readonly kind: "primitive" }>,
+  proposedEdit: CadFeatureEditProposal,
+  expectedKind: CadFeatureEditProposal["kind"],
+  fieldPaths: readonly string[]
+): CadFeatureEditDiagnostic[] {
+  const diagnostics: CadFeatureEditDiagnostic[] = [];
+
+  if (proposedEdit.kind !== expectedKind) {
+    diagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: `${expectedKind} editability dry-run expects a ${expectedKind} proposal.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        fieldPath: "kind",
+        expected: expectedKind,
+        received: proposedEdit.kind
+      })
+    );
+    return diagnostics;
+  }
+
+  if (!fieldPaths.some((fieldPath) => fieldPath in proposedEdit)) {
+    diagnostics.push(
+      createDiagnostic({
+        code: "FEATURE_EDIT_INVALID_PROPOSAL",
+        severity: "blocker",
+        message: `${expectedKind} edit dry-run requires at least one editable field.`,
+        featureId: feature.id,
+        bodyId: feature.bodyId,
+        expected: fieldPaths.join(", "),
+        received: "no editable fields"
+      })
+    );
+  }
+
+  return diagnostics;
+}
+
+function createInvalidProposalDiagnostic(
+  feature: Exclude<CadFeatureSummary, { readonly kind: "primitive" }>,
+  fieldPath: string,
+  expected: string,
+  received: string
+): CadFeatureEditDiagnostic {
+  return createDiagnostic({
+    code: "FEATURE_EDIT_INVALID_PROPOSAL",
+    severity: "blocker",
+    message: `${fieldPath} is not valid for this feature edit dry-run.`,
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    fieldPath,
+    expected,
+    received
+  });
+}
+
 function chooseExtrudeDryRunStatus(
+  proposedEdit: CadFeatureEditProposal | undefined,
+  editable: boolean,
+  diagnostics: readonly CadFeatureEditDiagnostic[]
+): CadFeatureEditDryRunStatus {
+  if (proposedEdit === undefined) {
+    return "not-requested";
+  }
+
+  if (!editable) {
+    return "blocked";
+  }
+
+  return diagnostics.length === 0 ? "valid" : "blocked";
+}
+
+function chooseSourceDryRunStatus(
   proposedEdit: CadFeatureEditProposal | undefined,
   editable: boolean,
   diagnostics: readonly CadFeatureEditDiagnostic[]
@@ -581,6 +1235,7 @@ function createResponse(args: {
   readonly affected: CadFeatureEditAffectedSummary;
   readonly referenceChanges: readonly CadFeatureReferenceChangeSummary[];
   readonly feature?: CadFeatureSummary;
+  readonly commitOperation?: CadFeatureEditFieldDescriptor["commitOperation"];
 }): FeatureEditabilityQueryResponse {
   return {
     ok: true,
@@ -604,8 +1259,8 @@ function createResponse(args: {
       ...(args.options.proposedEdit
         ? { proposedEdit: args.options.proposedEdit }
         : {}),
-      ...(args.dryRunStatus === "valid"
-        ? { commitOperation: "feature.updateExtrude" as const }
+      ...(args.dryRunStatus === "valid" && args.commitOperation
+        ? { commitOperation: args.commitOperation }
         : {}),
       willMutateDocument: false,
       diagnosticCount: args.dryRunDiagnostics.length,

@@ -1871,6 +1871,59 @@ function createOperationReview(
       };
     }
 
+    case "feature.updateRevolve":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update revolve feature ${op.id} (angle ${op.angleDegrees})`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateHole": {
+      const edits = [
+        ...(op.depthMode !== undefined ? [`depthMode ${op.depthMode}`] : []),
+        ...(op.depth !== undefined ? [`depth ${op.depth}`] : []),
+        ...(op.direction !== undefined ? [`direction ${op.direction}`] : [])
+      ];
+
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update hole feature ${op.id}${
+            edits.length > 0 ? ` (${edits.join(", ")})` : ""
+          }`
+        ),
+        featureId: op.id
+      };
+    }
+
+    case "feature.updateChamfer":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update chamfer feature ${op.id} (distance ${op.distance})`
+        ),
+        featureId: op.id
+      };
+
+    case "feature.updateFillet":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Update fillet feature ${op.id} (radius ${op.radius})`
+        ),
+        featureId: op.id
+      };
+
     case "reference.nameGenerated":
       return {
         ...operationReviewBase(
@@ -2942,18 +2995,59 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
 }
 
 function isCadFeatureEditProposal(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    value.kind === "extrude" &&
-    Object.keys(value).every((key) =>
-      ["kind", "depth", "side"].includes(key)
-    ) &&
-    (value.depth === undefined || typeof value.depth === "number") &&
-    (value.side === undefined ||
-      value.side === "positive" ||
-      value.side === "negative" ||
-      value.side === "symmetric")
-  );
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+
+  if (value.kind === "extrude") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "depth", "side"].includes(key)
+      ) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.side === undefined ||
+        value.side === "positive" ||
+        value.side === "negative" ||
+        value.side === "symmetric")
+    );
+  }
+
+  if (value.kind === "revolve") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "angleDegrees"].includes(key)
+      ) &&
+      (value.angleDegrees === undefined ||
+        typeof value.angleDegrees === "number")
+    );
+  }
+
+  if (value.kind === "hole") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "depthMode", "depth", "direction"].includes(key)
+      ) &&
+      (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.direction === undefined || isHoleDirection(value.direction))
+    );
+  }
+
+  if (value.kind === "chamfer") {
+    return (
+      Object.keys(value).every((key) => ["kind", "distance"].includes(key)) &&
+      (value.distance === undefined || typeof value.distance === "number")
+    );
+  }
+
+  if (value.kind === "fillet") {
+    return (
+      Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
+      (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  return false;
 }
 
 function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
@@ -3495,6 +3589,32 @@ function isCadOp(value: unknown): value is CadOp {
       (value.side === undefined || isExtrudeSide(value.side)) &&
       (value.depth !== undefined || value.side !== undefined)
     );
+  }
+
+  if (value.op === "feature.updateRevolve") {
+    return (
+      typeof value.id === "string" && typeof value.angleDegrees === "number"
+    );
+  }
+
+  if (value.op === "feature.updateHole") {
+    return (
+      typeof value.id === "string" &&
+      (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.direction === undefined || isHoleDirection(value.direction)) &&
+      (value.depthMode !== undefined ||
+        value.depth !== undefined ||
+        value.direction !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateChamfer") {
+    return typeof value.id === "string" && typeof value.distance === "number";
+  }
+
+  if (value.op === "feature.updateFillet") {
+    return typeof value.id === "string" && typeof value.radius === "number";
   }
 
   if (value.op === "feature.delete") {

@@ -575,6 +575,27 @@ describe("cad-protocol", () => {
         side: "symmetric"
       },
       {
+        op: "feature.updateRevolve",
+        id: "feat_revolve_1",
+        angleDegrees: 180
+      },
+      {
+        op: "feature.updateHole",
+        id: "feat_hole_1",
+        depthMode: "throughAll",
+        direction: "positive"
+      },
+      {
+        op: "feature.updateChamfer",
+        id: "feat_chamfer_1",
+        distance: 0.75
+      },
+      {
+        op: "feature.updateFillet",
+        id: "feat_fillet_1",
+        radius: 1.25
+      },
+      {
         op: "feature.delete",
         id: "feat_1"
       },
@@ -621,6 +642,10 @@ describe("cad-protocol", () => {
       "feature.chamfer",
       "feature.fillet",
       "feature.updateExtrude",
+      "feature.updateRevolve",
+      "feature.updateHole",
+      "feature.updateChamfer",
+      "feature.updateFillet",
       "feature.delete",
       "reference.nameGenerated",
       "reference.deleteName"

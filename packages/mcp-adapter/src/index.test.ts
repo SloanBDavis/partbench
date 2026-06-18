@@ -2060,6 +2060,10 @@ describe("mcp-adapter", () => {
       name: "cad.project_structure",
       requestId: "mcp_req_update_commit_structure"
     });
+    const history = server.callTool({
+      name: "cad.transaction_history",
+      requestId: "mcp_req_update_commit_history"
+    });
 
     expect(commit).toMatchObject({
       toolName: "cad.batch",
@@ -2090,6 +2094,163 @@ describe("mcp-adapter", () => {
         ok: true,
         features: [{ id: "feat_update", depth: 9, side: "symmetric" }],
         bodies: [{ id: "body_update", featureId: "feat_update" }]
+      }
+    });
+
+    expect(history).toMatchObject({
+      toolName: "cad.transaction_history",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "transaction.history"
+      }
+    });
+
+    const historyContent = history.structuredContent as {
+      readonly transactions?: readonly {
+        readonly diff: {
+          readonly features?: {
+            readonly referenceEffects?: readonly {
+              readonly category: string;
+              readonly bodyId?: string;
+              readonly sourceFeatureId?: string;
+            }[];
+          };
+        };
+      }[];
+    };
+
+    expect(historyContent.transactions?.at(-1)?.diff.features).toMatchObject({
+      referenceEffects: expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_update",
+          sourceFeatureId: "feat_update"
+        })
+      ])
+    });
+  });
+
+  it("passes feature.updateHole through cad.batch dry-run and commit", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "sketch_hole_target",
+      entityId: "circle_hole_target",
+      featureId: "feat_hole_target",
+      bodyId: "body_hole_target"
+    });
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_seed_hole",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_hole",
+              name: "Hole",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addCircle",
+              sketchId: "sketch_hole",
+              id: "circle_hole",
+              center: [0, 0],
+              radius: 0.4
+            },
+            {
+              op: "feature.hole",
+              id: "feat_hole",
+              bodyId: "body_hole",
+              targetBodyId: "body_hole_target",
+              sketchId: "sketch_hole",
+              circleEntityId: "circle_hole",
+              depthMode: "blind",
+              depth: 1,
+              direction: "negative"
+            }
+          ]
+        }
+      }
+    });
+
+    const dryRun = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_update_hole_dry_run",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "feature.updateHole",
+              id: "feat_hole",
+              depthMode: "throughAll",
+              direction: "positive"
+            }
+          ]
+        }
+      }
+    });
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_update_hole_commit",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "feature.updateHole",
+              id: "feat_hole",
+              depthMode: "throughAll",
+              direction: "positive"
+            }
+          ]
+        }
+      }
+    });
+    const structure = server.callTool({
+      name: "cad.project_structure",
+      requestId: "mcp_req_update_hole_structure"
+    });
+
+    expect(dryRun).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        mode: "dryRun",
+        modifiedFeatureIds: ["feat_hole"],
+        modifiedBodyIds: ["body_hole"]
+      }
+    });
+    expect(commit).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        mode: "commit",
+        modifiedFeatureIds: ["feat_hole"],
+        modifiedBodyIds: ["body_hole"]
+      }
+    });
+    expect(structure).toMatchObject({
+      structuredContent: {
+        ok: true,
+        features: expect.arrayContaining([
+          expect.objectContaining({
+            id: "feat_hole",
+            kind: "hole",
+            depthMode: "throughAll",
+            direction: "positive"
+          })
+        ])
       }
     });
   });

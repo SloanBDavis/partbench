@@ -23,8 +23,10 @@ import type {
   CadBodyTopologySnapshot,
   CadBodyRef,
   CadBodySnapshot,
+  CadFeatureEditDiagnosticCode,
   CadFeatureRef,
   CadFeatureSummary,
+  CadFeatureReferenceChangeSummary,
   CadGeneratedFaceReference,
   CadGeneratedEntityKind,
   CadGeneratedReference,
@@ -2524,6 +2526,7 @@ type MutableFeatureSemanticDiff = {
   bodiesCreated: CadBodyRef[];
   bodiesModified: CadBodyRef[];
   bodiesDeleted: CadBodyRef[];
+  referenceEffects: CadFeatureReferenceChangeSummary[];
 };
 
 type MutableReferenceSemanticDiff = {
@@ -3365,6 +3368,26 @@ function applyOperation(
       return;
     }
 
+    case "feature.updateRevolve": {
+      updateRevolveFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateHole": {
+      updateHoleFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateChamfer": {
+      updateChamferFeature(state, op, diff, opIndex);
+      return;
+    }
+
+    case "feature.updateFillet": {
+      updateFilletFeature(state, op, diff, opIndex);
+      return;
+    }
+
     case "reference.nameGenerated": {
       const name = normalizeNamedReferenceName(op.name, opIndex);
 
@@ -3575,6 +3598,10 @@ function isCadOperationKind(value: string): boolean {
     case "feature.fillet":
     case "feature.delete":
     case "feature.updateExtrude":
+    case "feature.updateRevolve":
+    case "feature.updateHole":
+    case "feature.updateChamfer":
+    case "feature.updateFillet":
     case "reference.nameGenerated":
     case "reference.deleteName":
       return true;
@@ -3781,18 +3808,59 @@ function isCadQuery(value: unknown): boolean {
 }
 
 function isCadFeatureEditProposal(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    value.kind === "extrude" &&
-    Object.keys(value).every((key) =>
-      ["kind", "depth", "side"].includes(key)
-    ) &&
-    (value.depth === undefined || typeof value.depth === "number") &&
-    (value.side === undefined ||
-      value.side === "positive" ||
-      value.side === "negative" ||
-      value.side === "symmetric")
-  );
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+
+  if (value.kind === "extrude") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "depth", "side"].includes(key)
+      ) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.side === undefined ||
+        value.side === "positive" ||
+        value.side === "negative" ||
+        value.side === "symmetric")
+    );
+  }
+
+  if (value.kind === "revolve") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "angleDegrees"].includes(key)
+      ) &&
+      (value.angleDegrees === undefined ||
+        typeof value.angleDegrees === "number")
+    );
+  }
+
+  if (value.kind === "hole") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "depthMode", "depth", "direction"].includes(key)
+      ) &&
+      (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.direction === undefined || isHoleDirection(value.direction))
+    );
+  }
+
+  if (value.kind === "chamfer") {
+    return (
+      Object.keys(value).every((key) => ["kind", "distance"].includes(key)) &&
+      (value.distance === undefined || typeof value.distance === "number")
+    );
+  }
+
+  if (value.kind === "fillet") {
+    return (
+      Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
+      (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  return false;
 }
 
 function isCadReferenceHealthTarget(value: unknown): boolean {
@@ -6649,6 +6717,19 @@ function updateExtrudeFeature(
     });
   }
 
+  if (feature.operationMode !== "newBody") {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature ${featureId} cannot be edited through feature.updateExtrude because ${feature.operationMode} result topology is not command-ready in V10 Tranche C1.`,
+      opIndex,
+      featureId,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "id"),
+      expected: "authored newBody extrude feature id",
+      received: feature.operationMode
+    });
+  }
+
   const consumingFeature = findConsumingFeatureByTargetBodyId(
     state.features,
     feature.bodyId
@@ -6694,6 +6775,568 @@ function updateExtrudeFeature(
   state.features.set(featureId, updated);
   pushFeatureModified(diff, featureRef(updated));
   pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createActiveExtrudeEditReferenceEffects(state, updated)
+  );
+}
+
+function updateRevolveFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateRevolve" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "revolve",
+    "feature.updateRevolve",
+    opIndex
+  );
+
+  if (feature.operationMode !== "newBody") {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature ${feature.id} cannot be edited through feature.updateRevolve because ${feature.operationMode} result topology is not command-ready in V10 Tranche C2.`,
+      opIndex,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "id"),
+      expected: "authored newBody revolve feature id",
+      received: feature.operationMode
+    });
+  }
+
+  assertFeatureResultBodyActiveForEdit(
+    state,
+    feature,
+    "feature.updateRevolve",
+    opIndex
+  );
+
+  const updated: RevolveFeature = {
+    ...feature,
+    angleDegrees: validateRevolveAngleDegrees(op.angleDegrees, opIndex)
+  };
+
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createAmbiguousResultFeatureEditReferenceEffects(
+      updated,
+      "Revolve result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+}
+
+function updateHoleFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateHole" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "hole",
+    "feature.updateHole",
+    opIndex
+  );
+  const sketch = getSketchOrThrow(state.sketches, feature.sketchId, opIndex);
+  const entity = sketch.entities.get(feature.circleEntityId);
+
+  if (!entity) {
+    throwSketchEntityNotFound(
+      feature.sketchId,
+      feature.circleEntityId,
+      opIndex
+    );
+  }
+
+  assertHoleCircleEntity(
+    entity,
+    opIndex,
+    feature.sketchId,
+    feature.circleEntityId
+  );
+  validateHoleSketchAttachment(state, sketch, opIndex);
+  assertFeatureResultBodyActiveForEdit(
+    state,
+    feature,
+    "feature.updateHole",
+    opIndex
+  );
+  assertConsumingFeatureTargetOwnedByEditedFeature(
+    state,
+    feature,
+    "feature.updateHole",
+    opIndex
+  );
+  assertSupportedHoleTarget(state, feature.targetBodyId, opIndex);
+
+  if (
+    op.depthMode === undefined &&
+    op.depth === undefined &&
+    op.direction === undefined
+  ) {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "feature.updateHole requires depthMode, depth, or direction.",
+      opIndex,
+      featureId: feature.id,
+      path: operationPath(opIndex),
+      expected: "depthMode, depth, or direction",
+      received: "no editable fields"
+    });
+  }
+
+  const depthMode =
+    op.depthMode === undefined
+      ? feature.depthMode
+      : validateHoleDepthMode(op.depthMode, opIndex);
+  const depth = validateHoleDepth(
+    depthMode,
+    op.depth === undefined && depthMode === feature.depthMode
+      ? feature.depth
+      : op.depth,
+    opIndex
+  );
+  const direction =
+    op.direction === undefined
+      ? feature.direction
+      : validateHoleDirection(op.direction, opIndex);
+  const updated = createUpdatedHoleFeature(
+    feature,
+    depthMode,
+    depth,
+    direction
+  );
+
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createConsumingFeatureEditReferenceEffects(state, updated)
+  );
+}
+
+function updateChamferFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateChamfer" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "chamfer",
+    "feature.updateChamfer",
+    opIndex
+  );
+  const updated: ChamferFeature = {
+    ...feature,
+    distance: validateEdgeFinishScalar(op.distance, "feature.chamfer", opIndex)
+  };
+
+  assertEdgeFinishFeatureEditable(state, updated, "feature.chamfer", opIndex);
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createConsumingFeatureEditReferenceEffects(state, updated)
+  );
+}
+
+function updateFilletFeature(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "feature.updateFillet" }>,
+  diff: MutableSemanticDiff,
+  opIndex?: number
+): void {
+  const feature = getEditableFeatureForUpdate(
+    state,
+    op.id,
+    "fillet",
+    "feature.updateFillet",
+    opIndex
+  );
+  const updated: FilletFeature = {
+    ...feature,
+    radius: validateEdgeFinishScalar(op.radius, "feature.fillet", opIndex)
+  };
+
+  assertEdgeFinishFeatureEditable(state, updated, "feature.fillet", opIndex);
+  state.features.set(feature.id, updated);
+  pushFeatureModified(diff, featureRef(updated));
+  pushBodyModified(diff, bodyRef(updated));
+  pushFeatureReferenceEffects(
+    diff,
+    createConsumingFeatureEditReferenceEffects(state, updated)
+  );
+}
+
+function getEditableFeatureForUpdate<K extends Feature["kind"]>(
+  state: MutableDocumentState,
+  featureIdInput: FeatureId,
+  expectedKind: K,
+  operation: CadOp["op"],
+  opIndex?: number
+): Extract<Feature, { readonly kind: K }> {
+  const featureId = validateFeatureId(featureIdInput, opIndex);
+  const feature = state.features.get(featureId);
+
+  if (!feature) {
+    if (isPrimitiveFeatureId(state, featureId)) {
+      throwValidationError({
+        code: "FEATURE_NOT_EDITABLE",
+        message: `Primitive-derived feature cannot be edited through ${operation}: ${featureId}`,
+        opIndex,
+        featureId,
+        path: operationPath(opIndex, "id"),
+        expected: `authored ${expectedKind} feature id`,
+        received: featureId
+      });
+    }
+
+    throwValidationError({
+      code: "FEATURE_NOT_FOUND",
+      message: `Feature does not exist: ${featureId}`,
+      opIndex,
+      featureId,
+      path: operationPath(opIndex, "id"),
+      expected: `existing authored ${expectedKind} feature id`,
+      received: featureId
+    });
+  }
+
+  if (feature.kind !== expectedKind) {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature cannot be edited through ${operation} because it is ${feature.kind}: ${featureId}`,
+      opIndex,
+      featureId,
+      path: operationPath(opIndex, "id"),
+      expected: `authored ${expectedKind} feature id`,
+      received: feature.kind
+    });
+  }
+
+  return feature as Extract<Feature, { readonly kind: K }>;
+}
+
+function assertFeatureResultBodyActiveForEdit(
+  state: MutableDocumentState,
+  feature: Feature,
+  operation: CadOp["op"],
+  opIndex?: number
+): void {
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.bodyId
+  );
+
+  if (!consumingFeature) {
+    return;
+  }
+
+  throwValidationError({
+    code: "FEATURE_NOT_EDITABLE",
+    message: `Feature ${feature.id} cannot be edited through ${operation} because its result body ${feature.bodyId} is consumed by feature ${consumingFeature.id}.`,
+    opIndex,
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    path: operationPath(opIndex, "id"),
+    expected: "active feature result body",
+    received: consumingFeature.id
+  });
+}
+
+function assertConsumingFeatureTargetOwnedByEditedFeature(
+  state: MutableDocumentState,
+  feature: Extract<Feature, { readonly targetBodyId: BodyId }>,
+  operation: CadOp["op"],
+  opIndex?: number
+): void {
+  const consumingFeature = findConsumingFeatureByTargetBodyId(
+    state.features,
+    feature.targetBodyId
+  );
+
+  if (consumingFeature?.id === feature.id) {
+    return;
+  }
+
+  throwValidationError({
+    code: "FEATURE_NOT_EDITABLE",
+    message: `Feature ${feature.id} cannot be edited through ${operation} because target body ${feature.targetBodyId} is not consumed by that feature.`,
+    opIndex,
+    featureId: feature.id,
+    bodyId: feature.bodyId,
+    path: operationPath(opIndex, "id"),
+    expected: "target body consumed only by the edited feature",
+    received: consumingFeature?.id ?? "active target body"
+  });
+}
+
+function assertEdgeFinishFeatureEditable(
+  state: MutableDocumentState,
+  feature: ChamferFeature | FilletFeature,
+  operation: EdgeFinishOperation,
+  opIndex?: number
+): void {
+  assertFeatureResultBodyActiveForEdit(state, feature, operation, opIndex);
+  assertConsumingFeatureTargetOwnedByEditedFeature(
+    state,
+    feature,
+    operation,
+    opIndex
+  );
+  assertSupportedEdgeFinishTarget(
+    state,
+    operation,
+    feature.targetBodyId,
+    opIndex
+  );
+  validateEdgeFinishReference(
+    state,
+    operation,
+    feature.targetBodyId,
+    feature,
+    opIndex
+  );
+}
+
+function assertSupportedEdgeFinishTarget(
+  state: MutableDocumentState,
+  operation: EdgeFinishOperation,
+  targetBodyId: BodyId,
+  opIndex?: number
+): void {
+  const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+
+  if (!targetFeature) {
+    if (isPrimitiveBodyId(state, targetBodyId)) {
+      throwValidationError({
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        message: `Primitive-derived body cannot be targeted by ${operation}: ${targetBodyId}`,
+        opIndex,
+        bodyId: targetBodyId,
+        path: operationPath(opIndex, "targetBodyId"),
+        expected: "active rectangle/circle newBody extrude target body",
+        received: targetBodyId
+      });
+    }
+
+    throwValidationError({
+      code: "BODY_NOT_FOUND",
+      message: `Target body does not exist: ${targetBodyId}`,
+      opIndex,
+      bodyId: targetBodyId,
+      path: operationPath(opIndex, "targetBodyId"),
+      expected: "existing authored target body id",
+      received: targetBodyId
+    });
+  }
+
+  if (
+    targetFeature.kind === "extrude" &&
+    targetFeature.operationMode === "newBody" &&
+    isSupportedCutTargetProfileKind(targetFeature.profileKind)
+  ) {
+    return;
+  }
+
+  throwValidationError({
+    code: "UNSUPPORTED_FEATURE_OPERATION",
+    message: `${operation} edits require the original target to remain a stable generated edge on a rectangle or circle newBody extrude target body.`,
+    opIndex,
+    bodyId: targetBodyId,
+    path: operationPath(opIndex, "targetBodyId"),
+    expected: "rectangle/circle newBody extrude target body",
+    received: describeReceived({
+      targetBodyId,
+      targetFeatureKind: targetFeature.kind,
+      targetProfileKind:
+        targetFeature.kind === "extrude"
+          ? targetFeature.profileKind
+          : undefined,
+      targetOperationMode:
+        targetFeature.kind === "extrude"
+          ? targetFeature.operationMode
+          : undefined
+    })
+  });
+}
+
+function createUpdatedHoleFeature(
+  feature: HoleFeature,
+  depthMode: FeatureHoleDepthMode,
+  depth: number | undefined,
+  direction: FeatureHoleDirection
+): HoleFeature {
+  const common = {
+    id: feature.id,
+    kind: "hole" as const,
+    name: feature.name,
+    targetBodyId: feature.targetBodyId,
+    sketchId: feature.sketchId,
+    circleEntityId: feature.circleEntityId,
+    depthMode,
+    direction,
+    bodyId: feature.bodyId
+  };
+
+  return depth === undefined ? common : { ...common, depth };
+}
+
+function createActiveExtrudeEditReferenceEffects(
+  state: MutableDocumentState,
+  feature: ExtrudeFeature
+): readonly CadFeatureReferenceChangeSummary[] {
+  const generatedReferences = listGeneratedReferences(
+    createBodyGeneratedReferences(state, feature.bodyId, DEFAULT_PART_ID)
+  ).map((reference) => ({
+    category: "active" as const,
+    bodyId: feature.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind,
+    sourceFeatureId: feature.id,
+    message:
+      "Generated reference remains active after supported authored extrude source edit."
+  }));
+  const namedReferences = [...state.namedReferences.values()]
+    .filter((reference) => reference.bodyId === feature.bodyId)
+    .map((reference) => ({
+      category: "active" as const,
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      kind: reference.kind,
+      referenceName: reference.name,
+      sourceFeatureId: feature.id,
+      message:
+        "Named reference remains active after supported authored extrude source edit."
+    }));
+
+  return [...generatedReferences, ...namedReferences];
+}
+
+function createAmbiguousResultFeatureEditReferenceEffects(
+  feature: Feature,
+  message: string
+): readonly CadFeatureReferenceChangeSummary[] {
+  return [
+    {
+      category: "repair-needed",
+      bodyId: feature.bodyId,
+      sourceFeatureId: feature.id,
+      diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY",
+      message
+    }
+  ];
+}
+
+function createConsumingFeatureEditReferenceEffects(
+  state: MutableDocumentState,
+  feature: HoleFeature | ChamferFeature | FilletFeature
+): readonly CadFeatureReferenceChangeSummary[] {
+  const resultEffects = createAmbiguousResultFeatureEditReferenceEffects(
+    feature,
+    `${formatFeatureKindForMessage(feature.kind)} result topology remains repair-needed after supported source parameter edit.`
+  );
+
+  if (feature.kind === "hole") {
+    const generatedReferences = listGeneratedReferences(
+      createBodyGeneratedReferences(
+        state,
+        feature.targetBodyId,
+        DEFAULT_PART_ID
+      )
+    ).map((reference) => ({
+      category: "consumed" as const,
+      bodyId: feature.targetBodyId,
+      stableId: reference.stableId,
+      kind: reference.kind,
+      sourceFeatureId: feature.id,
+      targetFeatureId: feature.id,
+      diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const,
+      message:
+        "Target-body generated reference remains consumed by the edited hole feature."
+    }));
+    const namedReferences = [...state.namedReferences.values()]
+      .filter((reference) => reference.bodyId === feature.targetBodyId)
+      .map((reference) => ({
+        category: "consumed" as const,
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        kind: reference.kind,
+        referenceName: reference.name,
+        sourceFeatureId: feature.id,
+        targetFeatureId: feature.id,
+        diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const,
+        message:
+          "Target-body named reference remains consumed by the edited hole feature."
+      }));
+
+    return [...generatedReferences, ...namedReferences, ...resultEffects];
+  }
+
+  const sourceReferenceEffect = createEdgeFinishSourceReferenceEffect(
+    state,
+    feature
+  );
+
+  return sourceReferenceEffect
+    ? [sourceReferenceEffect, ...resultEffects]
+    : resultEffects;
+}
+
+function createEdgeFinishSourceReferenceEffect(
+  state: MutableDocumentState,
+  feature: ChamferFeature | FilletFeature
+): CadFeatureReferenceChangeSummary | undefined {
+  const references = createBodyGeneratedReferences(
+    state,
+    feature.targetBodyId,
+    DEFAULT_PART_ID
+  );
+  const stableId =
+    feature.edgeStableId ??
+    (feature.namedReference
+      ? state.namedReferences.get(feature.namedReference)?.stableId
+      : undefined);
+
+  if (!references || !stableId) {
+    return undefined;
+  }
+
+  const resolution = resolveGeneratedReference(references, stableId);
+
+  if (!resolution) {
+    return undefined;
+  }
+
+  return {
+    category: "active",
+    bodyId: feature.targetBodyId,
+    stableId,
+    kind: resolution.kind,
+    ...(feature.namedReference
+      ? { referenceName: feature.namedReference }
+      : {}),
+    sourceFeatureId: feature.id,
+    targetFeatureId: feature.id,
+    message:
+      "Source edge reference remains active for this feature's own parameter edit."
+  };
+}
+
+function formatFeatureKindForMessage(kind: Feature["kind"]): string {
+  return kind[0].toUpperCase() + kind.slice(1);
 }
 
 function validateFeatureId(id: FeatureId, opIndex?: number): FeatureId {
@@ -9245,6 +9888,17 @@ function pushBodyDeleted(diff: MutableSemanticDiff, ref: CadBodyRef): void {
   ensureFeatureDiff(diff).bodiesDeleted.push(ref);
 }
 
+function pushFeatureReferenceEffects(
+  diff: MutableSemanticDiff,
+  effects: readonly CadFeatureReferenceChangeSummary[]
+): void {
+  if (effects.length === 0) {
+    return;
+  }
+
+  ensureFeatureDiff(diff).referenceEffects.push(...effects);
+}
+
 function ensureFeatureDiff(
   diff: MutableSemanticDiff
 ): MutableFeatureSemanticDiff {
@@ -9254,7 +9908,8 @@ function ensureFeatureDiff(
     deleted: [],
     bodiesCreated: [],
     bodiesModified: [],
-    bodiesDeleted: []
+    bodiesDeleted: [],
+    referenceEffects: []
   };
 
   return diff.features;
@@ -17864,6 +18519,45 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "feature.updateRevolve") {
+    return (
+      typeof value.id === "string" &&
+      typeof value.angleDegrees === "number" &&
+      isPositiveFiniteNumber(value.angleDegrees) &&
+      value.angleDegrees <= 360
+    );
+  }
+
+  if (value.op === "feature.updateHole") {
+    return (
+      typeof value.id === "string" &&
+      (value.depthMode === undefined || isHoleDepthMode(value.depthMode)) &&
+      (value.depth === undefined ||
+        (typeof value.depth === "number" &&
+          isPositiveFiniteNumber(value.depth))) &&
+      (value.direction === undefined || isHoleDirection(value.direction)) &&
+      (value.depthMode !== undefined ||
+        value.depth !== undefined ||
+        value.direction !== undefined)
+    );
+  }
+
+  if (value.op === "feature.updateChamfer") {
+    return (
+      typeof value.id === "string" &&
+      typeof value.distance === "number" &&
+      isPositiveFiniteNumber(value.distance)
+    );
+  }
+
+  if (value.op === "feature.updateFillet") {
+    return (
+      typeof value.id === "string" &&
+      typeof value.radius === "number" &&
+      isPositiveFiniteNumber(value.radius)
+    );
+  }
+
   if (value.op === "reference.nameGenerated") {
     return (
       typeof value.name === "string" &&
@@ -17958,7 +18652,64 @@ function isFeatureSemanticDiff(value: unknown): value is FeatureSemanticDiff {
         value.bodiesModified.every(isCadBodyRef))) &&
     (value.bodiesDeleted === undefined ||
       (Array.isArray(value.bodiesDeleted) &&
-        value.bodiesDeleted.every(isCadBodyRef)))
+        value.bodiesDeleted.every(isCadBodyRef))) &&
+    (value.referenceEffects === undefined ||
+      (Array.isArray(value.referenceEffects) &&
+        value.referenceEffects.every(isCadFeatureReferenceChangeSummary)))
+  );
+}
+
+function isCadFeatureReferenceChangeSummary(
+  value: unknown
+): value is CadFeatureReferenceChangeSummary {
+  return (
+    isRecord(value) &&
+    isCadFeatureReferenceChangeCategory(value.category) &&
+    typeof value.message === "string" &&
+    (value.bodyId === undefined || typeof value.bodyId === "string") &&
+    (value.stableId === undefined || typeof value.stableId === "string") &&
+    (value.kind === undefined || isGeneratedEntityKind(value.kind)) &&
+    (value.referenceName === undefined ||
+      typeof value.referenceName === "string") &&
+    (value.sourceFeatureId === undefined ||
+      typeof value.sourceFeatureId === "string") &&
+    (value.targetFeatureId === undefined ||
+      typeof value.targetFeatureId === "string") &&
+    (value.diagnosticCode === undefined ||
+      isCadFeatureEditDiagnosticCode(value.diagnosticCode))
+  );
+}
+
+function isCadFeatureReferenceChangeCategory(
+  value: unknown
+): value is CadFeatureReferenceChangeSummary["category"] {
+  return (
+    value === "active" ||
+    value === "replaced" ||
+    value === "stale" ||
+    value === "consumed" ||
+    value === "ambiguous" ||
+    value === "missing" ||
+    value === "unsupported" ||
+    value === "repair-needed" ||
+    value === "deleted"
+  );
+}
+
+function isCadFeatureEditDiagnosticCode(
+  value: unknown
+): value is CadFeatureEditDiagnosticCode {
+  return (
+    value === "FEATURE_NOT_FOUND" ||
+    value === "FEATURE_EDIT_SUPPORTED" ||
+    value === "FEATURE_EDIT_UNSUPPORTED" ||
+    value === "FEATURE_EDIT_CONSUMED_BODY" ||
+    value === "FEATURE_EDIT_INVALID_PROPOSAL" ||
+    value === "FEATURE_EDIT_COMMIT_DEFERRED" ||
+    value === "FEATURE_REBUILD_DEFERRED" ||
+    value === "REFERENCE_HEALTH_DEFERRED" ||
+    value === "AMBIGUOUS_RESULT_TOPOLOGY" ||
+    value === "CONSUMED_REFERENCE_NOT_COMMAND_READY"
   );
 }
 

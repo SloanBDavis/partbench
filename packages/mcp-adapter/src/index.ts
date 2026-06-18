@@ -371,7 +371,7 @@ export class CadMcpServer {
     if (!isFeatureEditabilityToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.feature_editability expects arguments shaped as { featureId: string, proposedEdit?: { kind: 'extrude', depth?: number, side?: 'positive' | 'negative' | 'symmetric' } }."
+        "cad.feature_editability expects arguments shaped as { featureId: string, proposedEdit?: supported feature edit proposal }."
       );
     }
 
@@ -1946,18 +1946,63 @@ function isReferenceHealthToolArguments(value: unknown): value is
 function isCadFeatureEditProposal(
   value: unknown
 ): value is CadFeatureEditProposal {
-  return (
-    isRecord(value) &&
-    value.kind === "extrude" &&
-    Object.keys(value).every((key) =>
-      ["kind", "depth", "side"].includes(key)
-    ) &&
-    (value.depth === undefined || typeof value.depth === "number") &&
-    (value.side === undefined ||
-      value.side === "positive" ||
-      value.side === "negative" ||
-      value.side === "symmetric")
-  );
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+
+  if (value.kind === "extrude") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "depth", "side"].includes(key)
+      ) &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.side === undefined ||
+        value.side === "positive" ||
+        value.side === "negative" ||
+        value.side === "symmetric")
+    );
+  }
+
+  if (value.kind === "revolve") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "angleDegrees"].includes(key)
+      ) &&
+      (value.angleDegrees === undefined ||
+        typeof value.angleDegrees === "number")
+    );
+  }
+
+  if (value.kind === "hole") {
+    return (
+      Object.keys(value).every((key) =>
+        ["kind", "depthMode", "depth", "direction"].includes(key)
+      ) &&
+      (value.depthMode === undefined ||
+        value.depthMode === "blind" ||
+        value.depthMode === "throughAll") &&
+      (value.depth === undefined || typeof value.depth === "number") &&
+      (value.direction === undefined ||
+        value.direction === "positive" ||
+        value.direction === "negative")
+    );
+  }
+
+  if (value.kind === "chamfer") {
+    return (
+      Object.keys(value).every((key) => ["kind", "distance"].includes(key)) &&
+      (value.distance === undefined || typeof value.distance === "number")
+    );
+  }
+
+  if (value.kind === "fillet") {
+    return (
+      Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
+      (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  return false;
 }
 
 function isCadSelectionReferenceInput(

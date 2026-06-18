@@ -1476,6 +1476,14 @@ describe("agent-adapter", () => {
       version: "cadops.v1",
       query: { query: "project.structure" }
     });
+    const history = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_req_update_extrude_history",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "transaction.history" }
+      }
+    });
 
     expect(commit).toMatchObject({
       ok: true,
@@ -1500,6 +1508,139 @@ describe("agent-adapter", () => {
       features: [{ id: "feat_update", depth: 9, side: "symmetric" }],
       bodies: [{ id: "body_update", featureId: "feat_update" }]
     });
+
+    if (!history.ok || history.query !== "transaction.history") {
+      throw new Error("Expected transaction.history agent response.");
+    }
+
+    expect(history.transactions.at(-1)?.diff.features).toMatchObject({
+      referenceEffects: expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_update",
+          sourceFeatureId: "feat_update"
+        })
+      ])
+    });
+  });
+
+  it("passes feature.updateHole through JSON batch dry-run and commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_hole_target",
+      entityId: "rect_hole_target",
+      featureId: "feat_hole_target",
+      bodyId: "body_hole_target"
+    });
+    adapter.getEngine().applyBatch([
+      { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [0, 0],
+        radius: 0.4
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole",
+        bodyId: "body_hole",
+        targetBodyId: "body_hole_target",
+        sketchId: "sketch_hole",
+        circleEntityId: "circle_hole",
+        depthMode: "blind",
+        depth: 1,
+        direction: "negative"
+      }
+    ]);
+
+    const dryRun = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_update_hole_dry_run",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "feature.updateHole",
+                id: "feat_hole",
+                depthMode: "throughAll",
+                direction: "positive"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly modifiedFeatureIds?: readonly string[];
+      readonly modifiedBodyIds?: readonly string[];
+    };
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedFeatureIds: ["feat_hole"],
+      modifiedBodyIds: ["body_hole"]
+    });
+    expect(
+      adapter.getEngine().getDocument().features.get("feat_hole")
+    ).toMatchObject({
+      kind: "hole",
+      depthMode: "blind",
+      depth: 1,
+      direction: "negative"
+    });
+
+    const commit = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_update_hole_commit",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "feature.updateHole",
+                id: "feat_hole",
+                depthMode: "throughAll",
+                direction: "positive"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly modifiedFeatureIds?: readonly string[];
+      readonly modifiedBodyIds?: readonly string[];
+    };
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      modifiedFeatureIds: ["feat_hole"],
+      modifiedBodyIds: ["body_hole"]
+    });
+    expect(
+      adapter.getEngine().getDocument().features.get("feat_hole")
+    ).toMatchObject({
+      kind: "hole",
+      depthMode: "throughAll",
+      direction: "positive"
+    });
+    expect(
+      (
+        adapter.getEngine().getDocument().features.get("feat_hole") as
+          | { readonly depth?: number }
+          | undefined
+      )?.depth
+    ).toBeUndefined();
   });
 
   it("passes sketch.updateEntity profile edits through JSON batch dry-run and commit", () => {
