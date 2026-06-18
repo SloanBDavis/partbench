@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  FeatureEditabilityQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ProjectRebuildPlanQueryResponse,
   ProjectSummaryQueryResponse,
   ReferenceListNamedQueryResponse,
   SelectionReferenceCandidatesQueryResponse
@@ -11,11 +13,14 @@ import {
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
   createV7ReleaseSampleBatch,
+  createV10ReleaseSampleBatch,
   exportCadProjectJson,
   importCadProjectJson,
   listV7ReleaseSampleFixtures,
+  listV10ReleaseSampleFixtures,
   parseCadProjectJson,
-  type V7ReleaseSampleFixture
+  type V7ReleaseSampleFixture,
+  type V10ReleaseSampleFixture
 } from "./index";
 
 describe("V7 release sample fixtures", () => {
@@ -184,6 +189,77 @@ describe("V7 release sample fixtures", () => {
   }
 });
 
+describe("V10 release sample fixtures", () => {
+  it("defines deterministic typed edit/rebuild fixtures without raw derived IDs", () => {
+    const fixtures = listV10ReleaseSampleFixtures();
+
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([
+      "v10-extrude-edit-attached-sketch",
+      "v10-c2-feature-lifecycle-edits",
+      "v10-named-reference-repair-roundtrip"
+    ]);
+
+    for (const fixture of fixtures) {
+      expect(fixture.units).toBe("mm");
+      expect(fixture.ops.length).toBeGreaterThan(0);
+      expect(fixture.workflowTags).toEqual(
+        expect.arrayContaining([
+          "feature-editability",
+          "reference-health",
+          "wcad-roundtrip",
+          "source-boundary"
+        ])
+      );
+      expect(createV10ReleaseSampleBatch(fixture.id)).toEqual({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: fixture.ops
+      });
+
+      assertNoRawDerivedIds(JSON.stringify(fixture));
+    }
+  });
+
+  for (const fixture of listV10ReleaseSampleFixtures()) {
+    it(`round-trips and verifies ${fixture.id}`, () => {
+      const engine = buildV10SampleEngine(fixture);
+      const json = exportCadProjectJson(engine);
+      const project = parseCadProjectJson(json);
+      const restored = importCadProjectJson(json);
+
+      expect(project.schemaVersion).toBe(CURRENT_CAD_PROJECT_FORMAT_VERSION);
+      expect(json).not.toContain("web-cad.project.v17");
+      expect(json).not.toContain("project.rebuildPlan");
+      expect(json).not.toContain("feature.editability");
+      expect(json).not.toContain("reference.health");
+      assertNoRawDerivedIds(json);
+
+      expect(restored.getDocument().units).toBe(fixture.units);
+
+      const rebuildPlan = readProjectRebuildPlan(restored);
+      expect(rebuildPlan.status).toBe(fixture.expectedRebuild.initialStatus);
+      expect(rebuildPlan.requiresProjectSchemaMigration).toBe(false);
+
+      for (const expectation of fixture.expectedEditability) {
+        const editability = readFeatureEditability(
+          restored,
+          expectation.featureId
+        );
+
+        expect(editability.status).toBe(expectation.expectedStatus);
+        expect(editability.fields).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              commitOperation: expectation.expectedCommitOperation
+            })
+          ])
+        );
+        expect(editability.requiresProjectSchemaMigration).toBe(false);
+      }
+    });
+  }
+});
+
 function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV7ReleaseSampleBatch(fixture.id));
@@ -194,6 +270,15 @@ function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
     warnings: []
   });
   expect(engine.getTransactions()).toHaveLength(1);
+
+  return engine;
+}
+
+function buildV10SampleEngine(fixture: V10ReleaseSampleFixture): CadEngine {
+  const engine = new CadEngine();
+  const response = engine.executeBatch(createV10ReleaseSampleBatch(fixture.id));
+
+  expect(response.ok).toBe(true);
 
   return engine;
 }
@@ -234,6 +319,37 @@ function readProjectExportReadiness(
 
   if (!response.ok || response.query !== "project.exportReadiness") {
     throw new Error("Expected project.exportReadiness response.");
+  }
+
+  return response;
+}
+
+function readFeatureEditability(
+  engine: CadEngine,
+  featureId: string
+): FeatureEditabilityQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "feature.editability", featureId }
+  });
+
+  if (!response.ok || response.query !== "feature.editability") {
+    throw new Error("Expected feature.editability response.");
+  }
+
+  return response;
+}
+
+function readProjectRebuildPlan(
+  engine: CadEngine
+): ProjectRebuildPlanQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.rebuildPlan" }
+  });
+
+  if (!response.ok || response.query !== "project.rebuildPlan") {
+    throw new Error("Expected project.rebuildPlan response.");
   }
 
   return response;

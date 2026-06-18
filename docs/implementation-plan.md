@@ -363,10 +363,12 @@ pnpm build
 pnpm lint
 pnpm format:check
 pnpm smoke:v7-release-samples
+pnpm smoke:v10-release-samples
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
 pnpm smoke:v9-viewport-workflow
+pnpm smoke:v10-browser-workflow
 ```
 
 Derived geometry is enabled by default for local Vite serve:
@@ -408,6 +410,18 @@ verifies the V7 release-critical query surface. Use
 `node scripts/smoke-v7-release-samples.mjs --json` only when structured stdout
 is useful for CI or release tooling.
 
+V10 release sample edit/rebuild smoke:
+
+```sh
+pnpm smoke:v10-release-samples
+```
+
+The smoke is deterministic, non-browser, and CADOps/cad-core-only. It builds
+the V10 release fixtures, verifies long edit -> rebuild -> reference health ->
+repair chains, checks JSON and `.wcad` round-trips, and rejects renderer, mesh,
+OCCT, OPFS, file-handle, selection-buffer, GPU/pixel, viewport-state, or schema
+V17 leaks from public sample/source outputs.
+
 Compatibility browser workflow smokes:
 
 ```sh
@@ -415,6 +429,7 @@ pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
 pnpm smoke:v9-viewport-workflow
+pnpm smoke:v10-browser-workflow
 ```
 
 The default smoke follows the existing built-app/static-server/CDP pattern. It
@@ -1499,13 +1514,13 @@ display state should stay rebuildable or session-only by default.
 ## V10 Editable Feature History And Stable Modeling References Release
 
 V10 is underway in `docs/v10.md`. Tranche A is implemented as a query/contract
-slice. Tranche B, C1, C2, D1, D2, E1, E2, F1, G1, G2, and H1 are implemented
-as the dependency/reference health, authored feature edit commit,
+slice. Tranche B, C1, C2, D1, D2, E1, E2, F1, G1, G2, H1, and I1 are
+implemented as the dependency/reference health, authored feature edit commit,
 rebuild-plan/body lifecycle contract, scoped transactional source-model
 rebuild, source-semantic reference expansion, generated-axis, sketch edit
-readiness, named-reference repair, compact browser repair workflow, and first
-product/browser workflow hardening slices; release samples, audit, and final
-hardening remain staged.
+readiness, named-reference repair, compact browser repair workflow, first
+product/browser workflow hardening, and deterministic release-sample
+hardening slices; final audit and completion hardening remain staged.
 
 V10 should deepen the CAD model now that V8 made local project files/export real
 and V9 made viewport interaction semantic. The release center is:
@@ -1707,9 +1722,15 @@ Use these decisions when drafting or implementing V10 tranches:
    required browser checks for edit -> reference health -> repair -> `.wcad`
    round-trip. H1 does not add broad viewport contextual edit controls,
    arbitrary topology stability, or project schema migration.
-14. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
-   non-browser and browser smokes, release docs, migration audit if V17 is
-   introduced, and final boundary cleanup.
+14. **Release Samples, Audit, And Hardening** - I1 is implemented as
+   deterministic V10 release fixtures in cad-core plus
+   `pnpm smoke:v10-release-samples`. The smoke runs three long CADOps-only
+   chains covering attached-sketch extrude edits, mixed C2 feature edits and
+   lifecycle/reference diagnostics, explicit named-reference repair, dry-run
+   non-mutation, committed rebuild effects, dependency/reference health,
+   JSON/`.wcad` round-trips, source/derived/session boundary checks, and no
+   `web-cad.project.v17`. Remaining work is final release audit, any further
+   browser smoke expansion after product changes, and final docs cleanup.
 
 ### V10 Scope Guardrails
 

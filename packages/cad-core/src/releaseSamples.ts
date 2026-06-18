@@ -4,8 +4,12 @@ import type {
   CadDependencyHealthStatus,
   CadExportFormatId,
   CadExportReadinessStatus,
+  CadFeatureEditabilityStatus,
+  CadFeatureReferenceChangeCategory,
   CadGeneratedEntityKind,
   CadOp,
+  CadRebuildPlanStatus,
+  CadReferenceHealthStatus,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
@@ -1185,5 +1189,535 @@ export function createV7ReleaseSampleBatch(id: V7ReleaseSampleId): CadBatch {
     version: "cadops.v1",
     mode: "commit",
     ops: getV7ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
+  };
+}
+
+export type V10ReleaseSampleId =
+  | "v10-extrude-edit-attached-sketch"
+  | "v10-c2-feature-lifecycle-edits"
+  | "v10-named-reference-repair-roundtrip";
+
+export type V10ReleaseSampleWorkflowTag =
+  | "feature-editability"
+  | "feature-update"
+  | "source-rebuild"
+  | "body-lifecycle"
+  | "dependency-graph"
+  | "reference-health"
+  | "generated-references"
+  | "named-reference-repair"
+  | "attached-sketch"
+  | "wcad-roundtrip"
+  | "source-boundary";
+
+export interface V10ReleaseSampleFeatureEditExpectation {
+  readonly featureId: string;
+  readonly expectedStatus: CadFeatureEditabilityStatus;
+  readonly expectedCommitOperation: CadOp["op"];
+  readonly expectedReferenceCategories: readonly CadFeatureReferenceChangeCategory[];
+}
+
+export interface V10ReleaseSampleRebuildExpectation {
+  readonly initialStatus: CadRebuildPlanStatus;
+  readonly committedStatus: CadRebuildPlanStatus;
+  readonly expectedLifecycleBodies: readonly BodyId[];
+}
+
+export interface V10ReleaseSampleReferenceHealthExpectation {
+  readonly targetLabel: string;
+  readonly expectedStatus: CadReferenceHealthStatus;
+  readonly expectedCommandable: boolean;
+}
+
+export interface V10ReleaseSampleFixture {
+  readonly id: V10ReleaseSampleId;
+  readonly title: string;
+  readonly description: string;
+  readonly units: DocumentUnits;
+  readonly workflowTags: readonly V10ReleaseSampleWorkflowTag[];
+  readonly expectedEditability: readonly V10ReleaseSampleFeatureEditExpectation[];
+  readonly expectedRebuild: V10ReleaseSampleRebuildExpectation;
+  readonly expectedReferenceHealth: readonly V10ReleaseSampleReferenceHealthExpectation[];
+  readonly knownLimitations: readonly string[];
+  readonly ops: readonly CadOp[];
+}
+
+const V10_ATTACHED_SOURCE_BODY = "v10_attached_source_body";
+const V10_ATTACHED_CHILD_BODY = "v10_attached_child_body";
+const V10_ATTACHED_END_FACE = `generated:face:${V10_ATTACHED_SOURCE_BODY}:endCap`;
+
+const V10_C2_HOLE_TARGET_BODY = "v10_c2_hole_target_body";
+const V10_C2_HOLE_BODY = "v10_c2_hole_body";
+const V10_C2_REVOLVE_BODY = "v10_c2_revolve_body";
+const V10_C2_CHAMFER_TARGET_BODY = "v10_c2_chamfer_target_body";
+const V10_C2_CHAMFER_BODY = "v10_c2_chamfer_body";
+const V10_C2_CHAMFER_EDGE = `generated:edge:${V10_C2_CHAMFER_TARGET_BODY}:start:uMin`;
+const V10_C2_FILLET_TARGET_BODY = "v10_c2_fillet_target_body";
+const V10_C2_FILLET_BODY = "v10_c2_fillet_body";
+const V10_C2_FILLET_EDGE = `generated:edge:${V10_C2_FILLET_TARGET_BODY}:end:circular`;
+
+const V10_REPAIR_OLD_BODY = "v10_repair_old_body";
+const V10_REPAIR_NEW_BODY = "v10_repair_new_body";
+
+export const V10_RELEASE_SAMPLE_FIXTURES = [
+  {
+    id: "v10-extrude-edit-attached-sketch",
+    title: "V10 extrude edit with attached sketch sample",
+    description:
+      "Authored rectangle extrude with a named planar face, attached sketch, and child extrude used to prove editability, lifecycle, dependency, and reference-health chains.",
+    units: "mm",
+    workflowTags: [
+      "feature-editability",
+      "feature-update",
+      "source-rebuild",
+      "body-lifecycle",
+      "dependency-graph",
+      "reference-health",
+      "generated-references",
+      "attached-sketch",
+      "wcad-roundtrip",
+      "source-boundary"
+    ],
+    expectedEditability: [
+      {
+        featureId: "v10_attached_source_extrude",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateExtrude",
+        expectedReferenceCategories: ["active"]
+      },
+      {
+        featureId: "v10_attached_child_extrude",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateExtrude",
+        expectedReferenceCategories: ["active"]
+      }
+    ],
+    expectedRebuild: {
+      initialStatus: "ready",
+      committedStatus: "pending",
+      expectedLifecycleBodies: [
+        V10_ATTACHED_SOURCE_BODY,
+        V10_ATTACHED_CHILD_BODY
+      ]
+    },
+    expectedReferenceHealth: [
+      {
+        targetLabel: "V10 attached top face",
+        expectedStatus: "active",
+        expectedCommandable: true
+      }
+    ],
+    knownLimitations: [
+      "The sample proves direct source lifecycle/readiness and attached-sketch reference survival; it does not claim arbitrary downstream topological naming.",
+      "Visualization rebuild remains derived app/runtime work, not fixture source truth."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v10_attached_source_sketch",
+        name: "V10 attached source profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v10_attached_source_sketch",
+        id: "v10_attached_source_rect",
+        center: [0, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_attached_source_extrude",
+        bodyId: V10_ATTACHED_SOURCE_BODY,
+        name: "V10 editable source body",
+        sketchId: "v10_attached_source_sketch",
+        entityId: "v10_attached_source_rect",
+        depth: 3,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "V10 attached top face",
+        bodyId: V10_ATTACHED_SOURCE_BODY,
+        stableId: V10_ATTACHED_END_FACE
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "v10_attached_child_sketch",
+        name: "V10 attached child sketch",
+        referenceName: "V10 attached top face"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v10_attached_child_sketch",
+        id: "v10_attached_child_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_attached_child_extrude",
+        bodyId: V10_ATTACHED_CHILD_BODY,
+        name: "V10 attached child body",
+        sketchId: "v10_attached_child_sketch",
+        entityId: "v10_attached_child_rect",
+        depth: 1,
+        side: "symmetric",
+        operationMode: "newBody"
+      }
+    ]
+  },
+  {
+    id: "v10-c2-feature-lifecycle-edits",
+    title: "V10 C2 feature lifecycle edit sample",
+    description:
+      "Mixed authored revolve, hole, chamfer, and fillet source features used to prove conservative C2 edit commits, lifecycle effects, and supported generated reference expansion.",
+    units: "mm",
+    workflowTags: [
+      "feature-editability",
+      "feature-update",
+      "source-rebuild",
+      "body-lifecycle",
+      "dependency-graph",
+      "reference-health",
+      "generated-references",
+      "wcad-roundtrip",
+      "source-boundary"
+    ],
+    expectedEditability: [
+      {
+        featureId: "v10_c2_revolve_feature",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateRevolve",
+        expectedReferenceCategories: ["repair-needed"]
+      },
+      {
+        featureId: "v10_c2_hole_feature",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateHole",
+        expectedReferenceCategories: ["repair-needed"]
+      },
+      {
+        featureId: "v10_c2_chamfer_feature",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateChamfer",
+        expectedReferenceCategories: ["repair-needed"]
+      },
+      {
+        featureId: "v10_c2_fillet_feature",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateFillet",
+        expectedReferenceCategories: ["repair-needed"]
+      }
+    ],
+    expectedRebuild: {
+      initialStatus: "repair-needed",
+      committedStatus: "repair-needed",
+      expectedLifecycleBodies: [
+        V10_C2_HOLE_TARGET_BODY,
+        V10_C2_HOLE_BODY,
+        V10_C2_REVOLVE_BODY,
+        V10_C2_CHAMFER_TARGET_BODY,
+        V10_C2_CHAMFER_BODY,
+        V10_C2_FILLET_TARGET_BODY,
+        V10_C2_FILLET_BODY
+      ]
+    },
+    expectedReferenceHealth: [
+      {
+        targetLabel: "V10 C2 hole wall",
+        expectedStatus: "active",
+        expectedCommandable: true
+      },
+      {
+        targetLabel: "V10 C2 fillet source edge",
+        expectedStatus: "active",
+        expectedCommandable: true
+      }
+    ],
+    knownLimitations: [
+      "Revolve, chamfer, and fillet result topology remains repair-needed unless source semantics prove a specific generated reference.",
+      "The sample proves parameter edit and diagnostic behavior, not arbitrary topology repair."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v10_c2_hole_target_sketch",
+        name: "V10 C2 hole target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v10_c2_hole_target_sketch",
+        id: "v10_c2_hole_target_rect",
+        center: [0, 0],
+        width: 5,
+        height: 3
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_c2_hole_target_extrude",
+        bodyId: V10_C2_HOLE_TARGET_BODY,
+        name: "V10 C2 hole target body",
+        sketchId: "v10_c2_hole_target_sketch",
+        entityId: "v10_c2_hole_target_rect",
+        depth: 3,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "sketch.create",
+        id: "v10_c2_hole_sketch",
+        name: "V10 C2 hole profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v10_c2_hole_sketch",
+        id: "v10_c2_hole_circle",
+        center: [0, 0],
+        radius: 0.5
+      },
+      {
+        op: "feature.hole",
+        id: "v10_c2_hole_feature",
+        bodyId: V10_C2_HOLE_BODY,
+        name: "V10 C2 hole result",
+        targetBodyId: V10_C2_HOLE_TARGET_BODY,
+        sketchId: "v10_c2_hole_sketch",
+        circleEntityId: "v10_c2_hole_circle",
+        depthMode: "blind",
+        depth: 1,
+        direction: "negative"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "V10 C2 hole wall",
+        bodyId: V10_C2_HOLE_BODY,
+        stableId: `generated:face:${V10_C2_HOLE_BODY}:holeWall`
+      },
+      {
+        op: "sketch.create",
+        id: "v10_c2_revolve_sketch",
+        name: "V10 C2 revolve profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "v10_c2_revolve_sketch",
+        id: "v10_c2_revolve_axis",
+        start: [0, -2],
+        end: [0, 2]
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v10_c2_revolve_sketch",
+        id: "v10_c2_revolve_rect",
+        center: [2, 0],
+        width: 1,
+        height: 2
+      },
+      {
+        op: "feature.revolve",
+        id: "v10_c2_revolve_feature",
+        bodyId: V10_C2_REVOLVE_BODY,
+        name: "V10 C2 revolve body",
+        sketchId: "v10_c2_revolve_sketch",
+        entityId: "v10_c2_revolve_rect",
+        axis: {
+          type: "sketchLine",
+          sketchId: "v10_c2_revolve_sketch",
+          entityId: "v10_c2_revolve_axis"
+        },
+        angleDegrees: 270,
+        operationMode: "newBody"
+      },
+      {
+        op: "sketch.create",
+        id: "v10_c2_chamfer_target_sketch",
+        name: "V10 C2 chamfer target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v10_c2_chamfer_target_sketch",
+        id: "v10_c2_chamfer_target_rect",
+        center: [-3, 0],
+        width: 2,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_c2_chamfer_target_extrude",
+        bodyId: V10_C2_CHAMFER_TARGET_BODY,
+        name: "V10 C2 chamfer target body",
+        sketchId: "v10_c2_chamfer_target_sketch",
+        entityId: "v10_c2_chamfer_target_rect",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "feature.chamfer",
+        id: "v10_c2_chamfer_feature",
+        bodyId: V10_C2_CHAMFER_BODY,
+        name: "V10 C2 chamfer result",
+        targetBodyId: V10_C2_CHAMFER_TARGET_BODY,
+        edgeStableId: V10_C2_CHAMFER_EDGE,
+        distance: 0.2
+      },
+      {
+        op: "sketch.create",
+        id: "v10_c2_fillet_target_sketch",
+        name: "V10 C2 fillet target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "v10_c2_fillet_target_sketch",
+        id: "v10_c2_fillet_target_circle",
+        center: [3, 0],
+        radius: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_c2_fillet_target_extrude",
+        bodyId: V10_C2_FILLET_TARGET_BODY,
+        name: "V10 C2 fillet target body",
+        sketchId: "v10_c2_fillet_target_sketch",
+        entityId: "v10_c2_fillet_target_circle",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "V10 C2 fillet source edge",
+        bodyId: V10_C2_FILLET_TARGET_BODY,
+        stableId: V10_C2_FILLET_EDGE
+      },
+      {
+        op: "feature.fillet",
+        id: "v10_c2_fillet_feature",
+        bodyId: V10_C2_FILLET_BODY,
+        name: "V10 C2 fillet result",
+        targetBodyId: V10_C2_FILLET_TARGET_BODY,
+        namedReference: "V10 C2 fillet source edge",
+        radius: 0.25
+      }
+    ]
+  },
+  {
+    id: "v10-named-reference-repair-roundtrip",
+    title: "V10 named reference repair round-trip sample",
+    description:
+      "Two source-equivalent rectangle extrudes and a stale named face reference used to prove explicit repair, reference health, history, and WCAD round-trip behavior.",
+    units: "mm",
+    workflowTags: [
+      "feature-editability",
+      "feature-update",
+      "dependency-graph",
+      "reference-health",
+      "named-reference-repair",
+      "wcad-roundtrip",
+      "source-boundary"
+    ],
+    expectedEditability: [
+      {
+        featureId: "v10_repair_new_extrude",
+        expectedStatus: "editable",
+        expectedCommitOperation: "feature.updateExtrude",
+        expectedReferenceCategories: ["active"]
+      }
+    ],
+    expectedRebuild: {
+      initialStatus: "ready",
+      committedStatus: "pending",
+      expectedLifecycleBodies: [V10_REPAIR_NEW_BODY]
+    },
+    expectedReferenceHealth: [
+      {
+        targetLabel: "V10 repair face",
+        expectedStatus: "active",
+        expectedCommandable: true
+      }
+    ],
+    knownLimitations: [
+      "Repair is explicit and user/agent directed; V10 does not guess replacement references automatically.",
+      "The stale intermediate state remains non-commandable until repaired."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v10_repair_sketch",
+        name: "V10 repair profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v10_repair_sketch",
+        id: "v10_repair_rect",
+        center: [0, 0],
+        width: 3,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_repair_old_extrude",
+        bodyId: V10_REPAIR_OLD_BODY,
+        name: "V10 old repair source",
+        sketchId: "v10_repair_sketch",
+        entityId: "v10_repair_rect",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "feature.extrude",
+        id: "v10_repair_new_extrude",
+        bodyId: V10_REPAIR_NEW_BODY,
+        name: "V10 new repair source",
+        sketchId: "v10_repair_sketch",
+        entityId: "v10_repair_rect",
+        depth: 3,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "V10 repair face",
+        bodyId: V10_REPAIR_OLD_BODY,
+        stableId: `generated:face:${V10_REPAIR_OLD_BODY}:startCap`
+      }
+    ]
+  }
+] as const satisfies readonly V10ReleaseSampleFixture[];
+
+export function listV10ReleaseSampleFixtures(): readonly V10ReleaseSampleFixture[] {
+  return V10_RELEASE_SAMPLE_FIXTURES;
+}
+
+export function getV10ReleaseSampleFixture(
+  id: V10ReleaseSampleId
+): V10ReleaseSampleFixture {
+  const fixture = V10_RELEASE_SAMPLE_FIXTURES.find(
+    (candidate) => candidate.id === id
+  );
+
+  if (!fixture) {
+    throw new Error(`Unknown V10 release sample fixture: ${id}`);
+  }
+
+  return fixture;
+}
+
+export function createV10ReleaseSampleBatch(id: V10ReleaseSampleId): CadBatch {
+  return {
+    version: "cadops.v1",
+    mode: "commit",
+    ops: getV10ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
   };
 }
