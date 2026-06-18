@@ -46,6 +46,7 @@ import type {
   ProjectExportReadinessQueryResponse,
   ProjectDependencyGraphQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ProjectRebuildPlanQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
   CadProjectSummaryReferenceSummary,
@@ -330,6 +331,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectStructureQueryResponse
   | CadOpsAgentProjectHealthQueryResponse
   | CadOpsAgentProjectDependencyGraphQueryResponse
+  | CadOpsAgentProjectRebuildPlanQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
   | CadOpsAgentProjectExactExportQueryResponse
   | CadOpsAgentProjectPackageReadinessQueryResponse
@@ -454,6 +456,15 @@ export interface CadOpsAgentProjectHealthQueryResponse {
 
 export interface CadOpsAgentProjectDependencyGraphQueryResponse extends Omit<
   ProjectDependencyGraphQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentProjectRebuildPlanQueryResponse extends Omit<
+  ProjectRebuildPlanQueryResponse,
   "ok"
 > {
   readonly ok: true;
@@ -722,6 +733,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.structure"
     | "project.health"
     | "project.dependencyGraph"
+    | "project.rebuildPlan"
     | "project.exportReadiness"
     | "project.exportExact"
     | "project.packageReadiness"
@@ -2219,6 +2231,27 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.rebuildPlan") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      status: response.status,
+      bodyLifecycleCount: response.bodyLifecycleCount,
+      bodyLifecycles: response.bodyLifecycles,
+      lifecycleEffectCount: response.lifecycleEffectCount,
+      lifecycleEffects: response.lifecycleEffects,
+      affected: response.affected,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration
+    };
+  }
+
   if (response.query === "project.exportReadiness") {
     return {
       ok: true,
@@ -2926,6 +2959,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.dependencyGraph" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.rebuildPlan" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportReadiness" &&
         Object.keys(value.query).length === 1) ||

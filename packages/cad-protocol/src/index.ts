@@ -804,6 +804,7 @@ export interface FeatureSemanticDiff {
   readonly bodiesModified?: readonly CadBodyRef[];
   readonly bodiesDeleted?: readonly CadBodyRef[];
   readonly referenceEffects?: readonly CadFeatureReferenceChangeSummary[];
+  readonly lifecycleEffects?: readonly CadBodyLifecycleEffectSummary[];
 }
 
 export interface ReferenceSemanticDiff {
@@ -1011,6 +1012,7 @@ export type CadQueryKind =
   | "project.structure"
   | "project.health"
   | "project.dependencyGraph"
+  | "project.rebuildPlan"
   | "project.exportReadiness"
   | "project.exportExact"
   | "project.packageReadiness"
@@ -1042,6 +1044,7 @@ export type CadQuery =
   | ProjectStructureQuery
   | ProjectHealthQuery
   | ProjectDependencyGraphQuery
+  | ProjectRebuildPlanQuery
   | ProjectExportReadinessQuery
   | ProjectExactExportQuery
   | ProjectPackageReadinessQuery
@@ -1098,6 +1101,10 @@ export interface ProjectHealthQuery {
 
 export interface ProjectDependencyGraphQuery {
   readonly query: "project.dependencyGraph";
+}
+
+export interface ProjectRebuildPlanQuery {
+  readonly query: "project.rebuildPlan";
 }
 
 export interface ProjectExportReadinessQuery {
@@ -1946,6 +1953,99 @@ export interface CadFeatureReferenceChangeSummary {
   readonly targetFeatureId?: FeatureId;
   readonly diagnosticCode?: CadFeatureEditDiagnosticCode;
   readonly message: string;
+}
+
+export type CadBodyLifecycleState =
+  | CadFeatureReferenceChangeCategory
+  | "source"
+  | "result"
+  | "modified"
+  | "replacement"
+  | "failed"
+  | "derived-rebuild-pending"
+  | "suppressed"
+  | "deferred";
+
+export type CadBodyLifecycleRole =
+  | "source"
+  | "target"
+  | "result"
+  | "primitiveCompatibility";
+
+export type CadRebuildPlanStatus =
+  | "ready"
+  | "pending"
+  | "repair-needed"
+  | "blocked"
+  | "unsupported"
+  | "failed";
+
+export type CadRebuildPlanDiagnosticSeverity = CadFeatureEditDiagnosticSeverity;
+
+export type CadRebuildPlanDiagnosticCode =
+  | "REBUILD_PLAN_READY"
+  | "REBUILD_DERIVED_PENDING"
+  | "REBUILD_TARGET_CONSUMED"
+  | "REBUILD_RESULT_REPAIR_NEEDED"
+  | "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS"
+  | "REBUILD_BODY_UNSUPPORTED"
+  | "REBUILD_SOURCE_STALE"
+  | "REBUILD_FAILED"
+  | "REBUILD_REFERENCE_REPAIR_NEEDED"
+  | "REBUILD_EXECUTION_DEFERRED";
+
+export interface CadRebuildPlanDiagnostic {
+  readonly code: CadRebuildPlanDiagnosticCode;
+  readonly severity: CadRebuildPlanDiagnosticSeverity;
+  readonly message: string;
+  readonly status: CadRebuildPlanStatus;
+  readonly featureId?: FeatureId;
+  readonly targetFeatureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadBodyLifecycleSummary {
+  readonly bodyId: BodyId;
+  readonly bodyName?: string;
+  readonly featureId: FeatureId;
+  readonly featureKind?: CadFeatureSummary["kind"];
+  readonly role: CadBodyLifecycleRole;
+  readonly sourceType: CadBodySource["type"];
+  readonly primaryState: CadBodyLifecycleState;
+  readonly states: readonly CadBodyLifecycleState[];
+  readonly consumedByFeatureId?: FeatureId;
+  readonly targetBodyId?: BodyId;
+  readonly referenceHealthStatus?: CadReferenceHealthStatus;
+  readonly rebuildRequired: boolean;
+  readonly derivedRebuildPending: boolean;
+  readonly commandReady: boolean;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadRebuildPlanDiagnostic[];
+}
+
+export interface CadBodyLifecycleEffectSummary {
+  readonly bodyId: BodyId;
+  readonly featureId?: FeatureId;
+  readonly targetFeatureId?: FeatureId;
+  readonly primaryState: CadBodyLifecycleState;
+  readonly states: readonly CadBodyLifecycleState[];
+  readonly diagnosticCode?: CadRebuildPlanDiagnosticCode;
+  readonly message: string;
+}
+
+export interface CadRebuildAffectedSummary {
+  readonly sketchIds: readonly SketchId[];
+  readonly sketchEntityIds: readonly SketchEntityId[];
+  readonly featureIds: readonly FeatureId[];
+  readonly bodyIds: readonly BodyId[];
+  readonly generatedReferenceCount: number;
+  readonly namedReferenceCount: number;
+  readonly derivedArtifactKinds: readonly string[];
 }
 
 export interface CadFeatureRebuildReadiness {
@@ -3438,6 +3538,7 @@ export type CadQueryResponse =
   | ProjectStructureQueryResponse
   | ProjectHealthQueryResponse
   | ProjectDependencyGraphQueryResponse
+  | ProjectRebuildPlanQueryResponse
   | ProjectExportReadinessQueryResponse
   | ProjectExactExportQueryResponse
   | ProjectPackageReadinessQueryResponse
@@ -3572,6 +3673,23 @@ export interface ProjectDependencyGraphQueryResponse {
   readonly referenceHealth: readonly CadReferenceHealthEntry[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadReferenceHealthDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiresProjectSchemaMigration: false;
+}
+
+export interface ProjectRebuildPlanQueryResponse {
+  readonly ok: true;
+  readonly query: "project.rebuildPlan";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadRebuildPlanStatus;
+  readonly bodyLifecycleCount: number;
+  readonly bodyLifecycles: readonly CadBodyLifecycleSummary[];
+  readonly lifecycleEffectCount: number;
+  readonly lifecycleEffects: readonly CadBodyLifecycleEffectSummary[];
+  readonly affected: CadRebuildAffectedSummary;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadRebuildPlanDiagnostic[];
   readonly sourceBoundaryNote: string;
   readonly derivedBoundaryNote: string;
   readonly requiresProjectSchemaMigration: false;

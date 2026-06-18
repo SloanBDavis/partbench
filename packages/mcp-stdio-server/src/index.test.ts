@@ -27,6 +27,7 @@ describe("mcp stdio server", () => {
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
           { name: "cad.project_dependency_graph" },
+          { name: "cad.project_rebuild_plan" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },

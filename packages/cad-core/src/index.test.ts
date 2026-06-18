@@ -8,6 +8,7 @@ import type {
   ProjectDependencyGraphQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
   ReferenceHealthQueryResponse,
@@ -218,6 +219,21 @@ function readProjectDependencyGraph(
 
   if (!response.ok || response.query !== "project.dependencyGraph") {
     throw new Error("Expected project.dependencyGraph response.");
+  }
+
+  return response;
+}
+
+function readProjectRebuildPlan(
+  engine: CadEngine
+): ProjectRebuildPlanQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.rebuildPlan" }
+  });
+
+  if (!response.ok || response.query !== "project.rebuildPlan") {
+    throw new Error("Expected project.rebuildPlan response.");
   }
 
   return response;
@@ -8945,6 +8961,342 @@ describe("cad-core", () => {
       )
     ).toBe(false);
     expect(exportCadProjectJson(filletEngine)).not.toContain(
+      "web-cad.project.v17"
+    );
+  });
+
+  it("reports V10 rebuild plan lifecycle for active authored extrude source chains", () => {
+    const engine = createRectangleExtrudeEngine();
+    const plan = readProjectRebuildPlan(engine);
+
+    expect(plan).toMatchObject({
+      status: "ready",
+      bodyLifecycleCount: 1,
+      lifecycleEffectCount: 0,
+      bodyLifecycles: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          featureId: "feat_rect_1",
+          featureKind: "extrude",
+          role: "source",
+          sourceType: "sketchExtrudeFeature",
+          primaryState: "active",
+          states: ["active", "source"],
+          referenceHealthStatus: "active",
+          rebuildRequired: false,
+          derivedRebuildPending: false,
+          commandReady: true,
+          diagnosticCount: 0
+        })
+      ],
+      affected: {
+        sketchIds: [],
+        sketchEntityIds: [],
+        featureIds: [],
+        bodyIds: [],
+        generatedReferenceCount: 0,
+        namedReferenceCount: 0,
+        derivedArtifactKinds: []
+      },
+      diagnosticCount: 0,
+      requiresProjectSchemaMigration: false
+    });
+    expect(
+      /mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+        JSON.stringify([plan.bodyLifecycles, plan.lifecycleEffects])
+      )
+    ).toBe(false);
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+  });
+
+  it("reports consumed target and repair-needed result body lifecycle from downstream feature chains", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [0, 0],
+        radius: 0.5
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_hole",
+        circleEntityId: "circle_hole",
+        depthMode: "blind",
+        depth: 1,
+        direction: "negative"
+      }
+    ]);
+
+    const plan = readProjectRebuildPlan(engine);
+    const targetLifecycle = plan.bodyLifecycles.find(
+      (body) => body.bodyId === "body_rect_1"
+    );
+    const resultLifecycle = plan.bodyLifecycles.find(
+      (body) => body.bodyId === "body_hole_1"
+    );
+    const graph = readProjectDependencyGraph(engine);
+    const resultHealth = readReferenceHealth(engine, {
+      type: "body",
+      bodyId: "body_hole_1"
+    });
+
+    expect(plan.status).toBe("repair-needed");
+    expect(targetLifecycle).toMatchObject({
+      bodyId: "body_rect_1",
+      primaryState: "consumed",
+      role: "target",
+      states: ["consumed"],
+      consumedByFeatureId: "feat_hole_1",
+      commandReady: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "REBUILD_TARGET_CONSUMED",
+          severity: "warning"
+        })
+      ])
+    });
+    expect(resultLifecycle).toMatchObject({
+      bodyId: "body_hole_1",
+      primaryState: "repair-needed",
+      role: "result",
+      states: ["active", "result", "repair-needed"],
+      targetBodyId: "body_rect_1",
+      referenceHealthStatus: "repair-needed",
+      commandReady: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "REBUILD_RESULT_REPAIR_NEEDED",
+          severity: "warning"
+        })
+      ])
+    });
+    expect(graph.referenceHealth).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          status: "repair-needed",
+          commandable: false
+        })
+      ])
+    );
+    expect(resultHealth.status).toBe("repair-needed");
+    expect(plan.affected).toMatchObject({
+      sketchIds: expect.arrayContaining(["sketch_1", "sketch_hole"]),
+      sketchEntityIds: expect.arrayContaining(["rect_1", "circle_hole"]),
+      featureIds: expect.arrayContaining(["feat_rect_1", "feat_hole_1"]),
+      bodyIds: expect.arrayContaining(["body_rect_1", "body_hole_1"]),
+      derivedArtifactKinds: ["derivedGeometry"]
+    });
+  });
+
+  it("keeps rebuild plan, lifecycle effects, history, and failed edit paths source-consistent", () => {
+    const extrudeEngine = createRectangleExtrudeEngine();
+    const beforeExtrudePlan = readProjectRebuildPlan(extrudeEngine);
+    const extrudeDryRun = extrudeEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_rect_1",
+          depth: 8
+        }
+      ]
+    });
+
+    expect(extrudeDryRun).toMatchObject({
+      ok: true,
+      modifiedFeatureIds: ["feat_rect_1"],
+      modifiedBodyIds: ["body_rect_1"]
+    });
+    expect(readProjectRebuildPlan(extrudeEngine)).toEqual(beforeExtrudePlan);
+
+    const extrudeCommit = extrudeEngine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+    const extrudePlan = readProjectRebuildPlan(extrudeEngine);
+    const extrudeHistory = extrudeEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+
+    expect(extrudeCommit.transaction.diff.features?.lifecycleEffects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          featureId: "feat_rect_1",
+          primaryState: "derived-rebuild-pending",
+          states: expect.arrayContaining([
+            "active",
+            "source",
+            "modified",
+            "derived-rebuild-pending"
+          ]),
+          diagnosticCode: "REBUILD_DERIVED_PENDING"
+        })
+      ])
+    );
+    expect(extrudePlan).toMatchObject({
+      status: "pending",
+      lifecycleEffects: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          diagnosticCode: "REBUILD_DERIVED_PENDING"
+        })
+      ]),
+      bodyLifecycles: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "derived-rebuild-pending",
+          derivedRebuildPending: true,
+          rebuildRequired: true,
+          commandReady: false
+        })
+      ]
+    });
+    expect(readFeatureEditability(extrudeEngine, "feat_rect_1")).toMatchObject({
+      status: "editable"
+    });
+    expect(
+      readReferenceHealth(extrudeEngine, {
+        type: "body",
+        bodyId: "body_rect_1"
+      })
+    ).toMatchObject({
+      status: "active"
+    });
+
+    if (!extrudeHistory.ok || extrudeHistory.query !== "transaction.history") {
+      throw new Error("Expected transaction.history response.");
+    }
+
+    expect(extrudeHistory.transactions.at(-1)?.diff.features).toMatchObject({
+      lifecycleEffects: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          diagnosticCode: "REBUILD_DERIVED_PENDING"
+        })
+      ])
+    });
+
+    const holeEngine = createRectangleExtrudeEngine();
+
+    holeEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [0, 0],
+        radius: 0.5
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_hole",
+        circleEntityId: "circle_hole",
+        depthMode: "blind",
+        depth: 1,
+        direction: "negative"
+      }
+    ]);
+
+    const beforeInvalidPlan = readProjectRebuildPlan(holeEngine);
+    const beforeInvalidJson = exportCadProjectJson(holeEngine);
+    const invalidCommit = holeEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateHole",
+          id: "feat_hole_1",
+          depthMode: "throughAll",
+          depth: 2
+        }
+      ]
+    });
+
+    expect(invalidCommit).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_FEATURE" }
+    });
+    expect(readProjectRebuildPlan(holeEngine)).toEqual(beforeInvalidPlan);
+    expect(exportCadProjectJson(holeEngine)).toBe(beforeInvalidJson);
+
+    const holeCommit = holeEngine.apply({
+      op: "feature.updateHole",
+      id: "feat_hole_1",
+      depthMode: "throughAll",
+      direction: "positive"
+    });
+    const holePlan = readProjectRebuildPlan(holeEngine);
+
+    expect(holeCommit.transaction.diff.features?.lifecycleEffects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "consumed",
+          diagnosticCode: "REBUILD_TARGET_CONSUMED"
+        }),
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          primaryState: "repair-needed",
+          states: expect.arrayContaining([
+            "result",
+            "modified",
+            "derived-rebuild-pending",
+            "repair-needed",
+            "ambiguous"
+          ]),
+          diagnosticCode: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS"
+        })
+      ])
+    );
+    expect(holePlan).toMatchObject({
+      status: "repair-needed",
+      lifecycleEffects: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          diagnosticCode: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS"
+        })
+      ]),
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "consumed"
+        }),
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          primaryState: "repair-needed",
+          derivedRebuildPending: true,
+          rebuildRequired: true
+        })
+      ])
+    });
+    expect(
+      /mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+        JSON.stringify([
+          extrudeCommit.transaction.diff.features?.lifecycleEffects,
+          extrudePlan.bodyLifecycles,
+          extrudePlan.lifecycleEffects,
+          holeCommit.transaction.diff.features?.lifecycleEffects,
+          holePlan.bodyLifecycles,
+          holePlan.lifecycleEffects
+        ])
+      )
+    ).toBe(false);
+    expect(exportCadProjectJson(holeEngine)).not.toContain(
       "web-cad.project.v17"
     );
   });

@@ -20,6 +20,8 @@ import type {
   BodyExtentSnapshot,
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
+  CadBodyLifecycleEffectSummary,
+  CadBodyLifecycleState,
   CadBodyTopologySnapshot,
   CadBodyRef,
   CadBodySnapshot,
@@ -44,6 +46,7 @@ import type {
   CadQueryKind,
   CadQueryRequest,
   CadQueryResponse,
+  CadRebuildPlanDiagnosticCode,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceCommandTarget,
   CadSelectionReferenceCandidateSource,
@@ -138,6 +141,7 @@ import {
   createProjectDependencyGraph,
   createReferenceHealth
 } from "./projectDependencyGraph";
+import { createProjectRebuildPlan } from "./projectRebuildPlan";
 import { createProjectHealth } from "./projectHealth";
 import {
   applySketchConstraintValue,
@@ -196,6 +200,10 @@ export type {
   CadBodyExactMetadataSnapshot,
   CadBodyExactMetadataStatus,
   CadBodyExactMetadataTopologyCounts,
+  CadBodyLifecycleEffectSummary,
+  CadBodyLifecycleRole,
+  CadBodyLifecycleState,
+  CadBodyLifecycleSummary,
   CadBodyRef,
   CadBodySnapshot,
   CadBodyTopologyIssue,
@@ -243,6 +251,11 @@ export type {
   CadFeatureRebuildReadiness,
   CadFeatureRebuildReadinessStatus,
   CadFeatureSummary,
+  CadRebuildAffectedSummary,
+  CadRebuildPlanDiagnostic,
+  CadRebuildPlanDiagnosticCode,
+  CadRebuildPlanDiagnosticSeverity,
+  CadRebuildPlanStatus,
   CadDependencyGraphEdge,
   CadDependencyGraphEdgeKind,
   CadDependencyGraphNode,
@@ -287,6 +300,7 @@ export type {
   ProjectDependencyGraphQueryResponse,
   ProjectExactExportQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ProjectRebuildPlanQueryResponse,
   ReferenceHealthQueryResponse,
   CadQueryRequest,
   CadQueryError,
@@ -1115,6 +1129,33 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()]
+        });
+      }
+
+      case "project.rebuildPlan": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const referenceHealth = createReferenceHealth({
+          cadOpsVersion: request.version,
+          ownerPartId: DEFAULT_PART_ID,
+          document: this.#document,
+          features: structure.features,
+          bodies: structure.bodies,
+          namedReferences: [...this.#document.namedReferences.values()],
+          target: { type: "all" }
+        });
+        const latestLifecycleEffects =
+          this.#history.at(-1)?.transaction.diff.features?.lifecycleEffects ??
+          [];
+
+        return createProjectRebuildPlan({
+          cadOpsVersion: request.version,
+          features: structure.features,
+          bodies: structure.bodies,
+          referenceHealth: referenceHealth.referenceHealth,
+          lifecycleEffects: latestLifecycleEffects
         });
       }
 
@@ -2527,6 +2568,7 @@ type MutableFeatureSemanticDiff = {
   bodiesModified: CadBodyRef[];
   bodiesDeleted: CadBodyRef[];
   referenceEffects: CadFeatureReferenceChangeSummary[];
+  lifecycleEffects: CadBodyLifecycleEffectSummary[];
 };
 
 type MutableReferenceSemanticDiff = {
@@ -3694,6 +3736,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.structure":
     case "project.health":
     case "project.dependencyGraph":
+    case "project.rebuildPlan":
     case "project.exportReadiness":
     case "project.exportExact":
     case "project.packageReadiness":
@@ -3732,6 +3775,7 @@ function isCadQuery(value: unknown): boolean {
     case "project.features":
     case "project.structure":
     case "project.dependencyGraph":
+    case "project.rebuildPlan":
     case "project.exportReadiness":
     case "project.packageReadiness":
     case "project.sketches":
@@ -6779,6 +6823,10 @@ function updateExtrudeFeature(
     diff,
     createActiveExtrudeEditReferenceEffects(state, updated)
   );
+  pushFeatureLifecycleEffects(
+    diff,
+    createActiveSourceFeatureEditLifecycleEffects(updated)
+  );
 }
 
 function updateRevolveFeature(
@@ -6828,6 +6876,13 @@ function updateRevolveFeature(
     createAmbiguousResultFeatureEditReferenceEffects(
       updated,
       "Revolve result topology remains repair-needed after supported source parameter edit."
+    )
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createAmbiguousResultFeatureEditLifecycleEffects(
+      updated,
+      "Revolve result body requires derived rebuild and topology repair after supported source parameter edit."
     )
   );
 }
@@ -6922,6 +6977,13 @@ function updateHoleFeature(
     diff,
     createConsumingFeatureEditReferenceEffects(state, updated)
   );
+  pushFeatureLifecycleEffects(
+    diff,
+    createConsumingFeatureEditLifecycleEffects(
+      updated,
+      "Hole result body requires derived rebuild and topology repair after supported source parameter edit."
+    )
+  );
 }
 
 function updateChamferFeature(
@@ -6950,6 +7012,13 @@ function updateChamferFeature(
     diff,
     createConsumingFeatureEditReferenceEffects(state, updated)
   );
+  pushFeatureLifecycleEffects(
+    diff,
+    createConsumingFeatureEditLifecycleEffects(
+      updated,
+      "Chamfer result body requires derived rebuild and topology repair after supported source parameter edit."
+    )
+  );
 }
 
 function updateFilletFeature(
@@ -6977,6 +7046,13 @@ function updateFilletFeature(
   pushFeatureReferenceEffects(
     diff,
     createConsumingFeatureEditReferenceEffects(state, updated)
+  );
+  pushFeatureLifecycleEffects(
+    diff,
+    createConsumingFeatureEditLifecycleEffects(
+      updated,
+      "Fillet result body requires derived rebuild and topology repair after supported source parameter edit."
+    )
   );
 }
 
@@ -7333,6 +7409,63 @@ function createEdgeFinishSourceReferenceEffect(
     message:
       "Source edge reference remains active for this feature's own parameter edit."
   };
+}
+
+function createActiveSourceFeatureEditLifecycleEffects(
+  feature: ExtrudeFeature
+): readonly CadBodyLifecycleEffectSummary[] {
+  return [
+    {
+      bodyId: feature.bodyId,
+      featureId: feature.id,
+      primaryState: "derived-rebuild-pending",
+      states: ["active", "source", "modified", "derived-rebuild-pending"],
+      diagnosticCode: "REBUILD_DERIVED_PENDING",
+      message:
+        "Authored extrude source body was modified and derived geometry rebuild is pending."
+    }
+  ];
+}
+
+function createAmbiguousResultFeatureEditLifecycleEffects(
+  feature: Feature,
+  message: string
+): readonly CadBodyLifecycleEffectSummary[] {
+  return [
+    {
+      bodyId: feature.bodyId,
+      featureId: feature.id,
+      primaryState: "repair-needed",
+      states: [
+        "active",
+        "result",
+        "modified",
+        "derived-rebuild-pending",
+        "repair-needed",
+        "ambiguous"
+      ],
+      diagnosticCode: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS",
+      message
+    }
+  ];
+}
+
+function createConsumingFeatureEditLifecycleEffects(
+  feature: HoleFeature | ChamferFeature | FilletFeature,
+  resultMessage: string
+): readonly CadBodyLifecycleEffectSummary[] {
+  return [
+    {
+      bodyId: feature.targetBodyId,
+      featureId: feature.id,
+      targetFeatureId: feature.id,
+      primaryState: "consumed",
+      states: ["consumed"],
+      diagnosticCode: "REBUILD_TARGET_CONSUMED",
+      message: `Target body ${feature.targetBodyId} remains consumed by edited ${feature.kind} feature ${feature.id}.`
+    },
+    ...createAmbiguousResultFeatureEditLifecycleEffects(feature, resultMessage)
+  ];
 }
 
 function formatFeatureKindForMessage(kind: Feature["kind"]): string {
@@ -9899,6 +10032,17 @@ function pushFeatureReferenceEffects(
   ensureFeatureDiff(diff).referenceEffects.push(...effects);
 }
 
+function pushFeatureLifecycleEffects(
+  diff: MutableSemanticDiff,
+  effects: readonly CadBodyLifecycleEffectSummary[]
+): void {
+  if (effects.length === 0) {
+    return;
+  }
+
+  ensureFeatureDiff(diff).lifecycleEffects.push(...effects);
+}
+
 function ensureFeatureDiff(
   diff: MutableSemanticDiff
 ): MutableFeatureSemanticDiff {
@@ -9909,7 +10053,8 @@ function ensureFeatureDiff(
     bodiesCreated: [],
     bodiesModified: [],
     bodiesDeleted: [],
-    referenceEffects: []
+    referenceEffects: [],
+    lifecycleEffects: []
   };
 
   return diff.features;
@@ -18655,7 +18800,10 @@ function isFeatureSemanticDiff(value: unknown): value is FeatureSemanticDiff {
         value.bodiesDeleted.every(isCadBodyRef))) &&
     (value.referenceEffects === undefined ||
       (Array.isArray(value.referenceEffects) &&
-        value.referenceEffects.every(isCadFeatureReferenceChangeSummary)))
+        value.referenceEffects.every(isCadFeatureReferenceChangeSummary))) &&
+    (value.lifecycleEffects === undefined ||
+      (Array.isArray(value.lifecycleEffects) &&
+        value.lifecycleEffects.every(isCadBodyLifecycleEffectSummary)))
   );
 }
 
@@ -18710,6 +18858,57 @@ function isCadFeatureEditDiagnosticCode(
     value === "REFERENCE_HEALTH_DEFERRED" ||
     value === "AMBIGUOUS_RESULT_TOPOLOGY" ||
     value === "CONSUMED_REFERENCE_NOT_COMMAND_READY"
+  );
+}
+
+function isCadBodyLifecycleEffectSummary(
+  value: unknown
+): value is CadBodyLifecycleEffectSummary {
+  return (
+    isRecord(value) &&
+    typeof value.bodyId === "string" &&
+    isCadBodyLifecycleState(value.primaryState) &&
+    Array.isArray(value.states) &&
+    value.states.every(isCadBodyLifecycleState) &&
+    typeof value.message === "string" &&
+    (value.featureId === undefined || typeof value.featureId === "string") &&
+    (value.targetFeatureId === undefined ||
+      typeof value.targetFeatureId === "string") &&
+    (value.diagnosticCode === undefined ||
+      isCadRebuildPlanDiagnosticCode(value.diagnosticCode))
+  );
+}
+
+function isCadBodyLifecycleState(
+  value: unknown
+): value is CadBodyLifecycleState {
+  return (
+    isCadFeatureReferenceChangeCategory(value) ||
+    value === "source" ||
+    value === "result" ||
+    value === "modified" ||
+    value === "replacement" ||
+    value === "failed" ||
+    value === "derived-rebuild-pending" ||
+    value === "suppressed" ||
+    value === "deferred"
+  );
+}
+
+function isCadRebuildPlanDiagnosticCode(
+  value: unknown
+): value is CadRebuildPlanDiagnosticCode {
+  return (
+    value === "REBUILD_PLAN_READY" ||
+    value === "REBUILD_DERIVED_PENDING" ||
+    value === "REBUILD_TARGET_CONSUMED" ||
+    value === "REBUILD_RESULT_REPAIR_NEEDED" ||
+    value === "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS" ||
+    value === "REBUILD_BODY_UNSUPPORTED" ||
+    value === "REBUILD_SOURCE_STALE" ||
+    value === "REBUILD_FAILED" ||
+    value === "REBUILD_REFERENCE_REPAIR_NEEDED" ||
+    value === "REBUILD_EXECUTION_DEFERRED"
   );
 }
 

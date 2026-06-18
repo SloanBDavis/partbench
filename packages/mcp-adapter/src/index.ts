@@ -33,6 +33,7 @@ export type CadMcpToolName =
   | "cad.project_structure"
   | "cad.project_health"
   | "cad.project_dependency_graph"
+  | "cad.project_rebuild_plan"
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
@@ -177,6 +178,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_dependency_graph") {
       return this.#callProjectDependencyGraph(request);
+    }
+
+    if (request.name === "cad.project_rebuild_plan") {
+      return this.#callProjectRebuildPlan(request);
     }
 
     if (request.name === "cad.project_export_readiness") {
@@ -509,6 +514,30 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.dependencyGraph" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectRebuildPlan(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_rebuild_plan does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.rebuildPlan" }
         }
       })
     );
@@ -1222,6 +1251,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_dependency_graph",
     description:
       "Returns V10 source-derived dependency graph nodes, edges, reference health, and structured downstream reference diagnostics.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.project_rebuild_plan",
+    description:
+      "Returns V10 source-derived rebuild plan and body lifecycle status, including active, consumed, modified, repair-needed, and derived-rebuild-pending body effects.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

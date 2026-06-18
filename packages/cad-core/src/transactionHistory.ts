@@ -1069,6 +1069,9 @@ function cloneFeatureSemanticDiff(
     ...(diff.bodiesDeleted ? { bodiesDeleted: [...diff.bodiesDeleted] } : {}),
     ...(diff.referenceEffects
       ? { referenceEffects: [...diff.referenceEffects] }
+      : {}),
+    ...(diff.lifecycleEffects
+      ? { lifecycleEffects: [...diff.lifecycleEffects] }
       : {})
   };
 }

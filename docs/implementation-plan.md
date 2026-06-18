@@ -4,7 +4,7 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-17.
+Last updated: 2026-06-18.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
@@ -235,11 +235,17 @@ These constraints remain active:
     source fields, produce semantic feature/body diffs plus V10 reference
     effects, keep `feature.editability`, `project.dependencyGraph`, and
     `reference.health` consistent, and remain thinly available through
-    agent/MCP batch surfaces without introducing `web-cad.project.v17`. Its
-    broader center remains transactional downstream rebuild behavior,
-    explicit consumed/replacement body lifecycle, reference survival/repair
-    semantics, and source-semantic topology expansion for existing authored
-    feature families where defensible. V10 must not become arbitrary
+    agent/MCP batch surfaces without introducing `web-cad.project.v17`. Tranche
+    D1 is implemented as the `project.rebuildPlan` and lifecycle semantic-diff
+    slice: cad-core reports active/source, consumed target, result, modified,
+    repair-needed/ambiguous, unsupported, and derived-rebuild-pending body
+    lifecycle state from authoritative document structure, dependency/reference
+    health, and latest V10 edit diffs, and agents/MCP expose thin pass-through
+    without UI or renderer authority. Its broader center remains transactional
+    downstream rebuild execution, replacement/stale/failed result-body
+    transitions, reference survival/repair semantics, and source-semantic
+    topology expansion for existing authored feature families where defensible.
+    V10 must not become arbitrary
     topological naming, production WebGPU, assemblies, STEP import, broad sketch
     solving, broad new modeling features, or persisted UI state unless a later
     tranche explicitly scopes one of those items.
@@ -1442,7 +1448,9 @@ display state should stay rebuildable or session-only by default.
 ## V10 Editable Feature History And Stable Modeling References Release
 
 V10 is underway in `docs/v10.md`. Tranche A is implemented as a query/contract
-slice; the rest of the release remains staged.
+slice. Tranche B, C1, C2, and D1 are implemented as the dependency/reference
+health, authored feature edit commit, and rebuild-plan/body-lifecycle contract
+slices; the rest of the release remains staged.
 
 V10 should deepen the CAD model now that V8 made local project files/export real
 and V9 made viewport interaction semantic. The release center is:
@@ -1542,21 +1550,34 @@ Use these decisions when drafting or implementing V10 tranches:
    feature/body diffs plus V10 reference effects, keep editability/graph/health
    behavior consistent, expose thin agent/MCP batch pass-through, and do not
    introduce `web-cad.project.v17`.
-5. **Transactional Rebuild And Result Body Lifecycle** - active, consumed,
-   result, replacement, stale, failed, and suppressed states where scoped,
-   including source edit plus derived invalidation behavior.
-6. **Stable Reference Expansion For Defensible Result Features** - source-
+5. **Rebuild Plan And Body Lifecycle Contract** - implemented D1 as
+   `project.rebuildPlan` protocol/core support plus lifecycle effects on the
+   V10 C1/C2 edit command semantic diffs. Cad-core now reports active/source,
+   consumed target, result, modified, repair-needed/ambiguous, unsupported, and
+   derived-rebuild-pending body lifecycle state from authoritative project
+   structure, dependency graph/reference health, and latest semantic diffs.
+   `feature.updateExtrude`, `feature.updateRevolve`, `feature.updateHole`,
+   `feature.updateChamfer`, and `feature.updateFillet` emit lifecycle effects
+   through transaction history; agent/MCP expose thin pass-through via
+   `project.rebuildPlan` and `cad.project_rebuild_plan`. D1 does not execute
+   arbitrary downstream rebuilds, expand result topology stability, add UI
+   rebuild controls, or introduce `web-cad.project.v17`.
+6. **Transactional Rebuild Execution For Scoped Chains** - future D2-style work
+   to execute proven downstream rebuilds, replacement/stale/failed result-body
+   transitions, and source identity behavior where scoped. It must continue to
+   leave failed/unsupported/ambiguous plans non-mutating.
+7. **Stable Reference Expansion For Defensible Result Features** - source-
    semantic generated/result references for revolve, hole, scoped cut/add, and
    edge-finish outputs only where identity evidence is strong enough.
-7. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
+8. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
    dimension/sketch edit dry-runs, and focused new constraints only where they
    support feature editing with clear diagnostics.
-8. **Named Reference Repair Workflow** - health display, explicit repair
+9. **Named Reference Repair Workflow** - health display, explicit repair
    command, dry-run diagnostics, and agent/MCP path without silent retargeting.
-9. **Product Integration And Browser Workflows** - compact feature edit,
+10. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,
    Modeling, and viewport surfaces.
-10. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
+11. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
    non-browser and browser smokes, release docs, migration audit if V17 is
    introduced, and final boundary cleanup.
 

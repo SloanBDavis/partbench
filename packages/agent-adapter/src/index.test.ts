@@ -3785,6 +3785,14 @@ describe("agent-adapter", () => {
         }
       }
     });
+    const rebuildPlan = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_rebuild_plan",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.rebuildPlan" }
+      }
+    });
 
     expect(graph).toMatchObject({
       ok: true,
@@ -3818,9 +3826,29 @@ describe("agent-adapter", () => {
         })
       ]
     });
+    expect(rebuildPlan).toMatchObject({
+      ok: true,
+      requestId: "agent_rebuild_plan",
+      query: "project.rebuildPlan",
+      status: "ready",
+      bodyLifecycles: [
+        expect.objectContaining({
+          bodyId: "body_dependency_graph",
+          primaryState: "active",
+          states: ["active", "source"],
+          referenceHealthStatus: "active",
+          commandReady: true
+        })
+      ],
+      requiresProjectSchemaMigration: false
+    });
 
     if (!graph.ok || graph.query !== "project.dependencyGraph") {
       throw new Error("Expected project.dependencyGraph agent response.");
+    }
+
+    if (!rebuildPlan.ok || rebuildPlan.query !== "project.rebuildPlan") {
+      throw new Error("Expected project.rebuildPlan agent response.");
     }
 
     expect(
@@ -3828,7 +3856,9 @@ describe("agent-adapter", () => {
         JSON.stringify({
           nodes: graph.nodes,
           edges: graph.edges,
-          referenceHealth: graph.referenceHealth
+          referenceHealth: graph.referenceHealth,
+          bodyLifecycles: rebuildPlan.bodyLifecycles,
+          lifecycleEffects: rebuildPlan.lifecycleEffects
         })
       )
     ).toBe(false);

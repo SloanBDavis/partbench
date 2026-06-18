@@ -15,6 +15,7 @@ describe("mcp-adapter", () => {
       "cad.project_structure",
       "cad.project_health",
       "cad.project_dependency_graph",
+      "cad.project_rebuild_plan",
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
@@ -2943,6 +2944,10 @@ describe("mcp-adapter", () => {
       name: "cad.project_dependency_graph",
       requestId: "mcp_req_dependency_graph"
     });
+    const rebuildPlan = server.callTool({
+      name: "cad.project_rebuild_plan",
+      requestId: "mcp_req_rebuild_plan"
+    });
     const health = server.callTool({
       name: "cad.reference_health",
       requestId: "mcp_req_reference_health",
@@ -2989,6 +2994,25 @@ describe("mcp-adapter", () => {
             stableId: "generated:face:mcp_dependency_body:endCap"
           })
         ]
+      }
+    });
+    expect(rebuildPlan).toMatchObject({
+      toolName: "cad.project_rebuild_plan",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_rebuild_plan",
+        query: "project.rebuildPlan",
+        status: "ready",
+        bodyLifecycles: [
+          expect.objectContaining({
+            bodyId: "mcp_dependency_body",
+            primaryState: "active",
+            referenceHealthStatus: "active",
+            commandReady: true
+          })
+        ],
+        requiresProjectSchemaMigration: false
       }
     });
   });
@@ -3709,6 +3733,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
           { name: "cad.project_dependency_graph" },
+          { name: "cad.project_rebuild_plan" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
