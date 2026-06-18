@@ -7587,7 +7587,7 @@ describe("cad-core", () => {
     expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
   });
 
-  it("blocks feature editability for consumed body references", () => {
+  it("reports D2 feature editability for direct consumed source rebuild chains", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -7618,28 +7618,37 @@ describe("cad-core", () => {
     });
 
     expect(response).toMatchObject({
-      status: "blocked",
+      status: "editable",
       rebuildReadiness: {
-        status: "blocked",
-        diagnostics: [
-          expect.objectContaining({
-            code: "FEATURE_EDIT_CONSUMED_BODY",
-            bodyId: "body_rect_1",
-            received: "feat_cut_1"
-          })
-        ]
+        status: "ready",
+        commitDeferred: false
       },
       dryRun: {
-        status: "blocked",
+        status: "valid",
+        commitOperation: "feature.updateExtrude",
         willMutateDocument: false
+      },
+      affected: {
+        sketchIds: expect.arrayContaining(["sketch_1", "sketch_cut"]),
+        featureIds: expect.arrayContaining(["feat_rect_1", "feat_cut_1"]),
+        bodyIds: expect.arrayContaining(["body_rect_1", "body_cut_1"])
       }
     });
     expect(response.referenceChanges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           category: "consumed",
-          diagnosticCode: "FEATURE_EDIT_CONSUMED_BODY",
-          bodyId: "body_rect_1"
+          diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "replaced",
+          bodyId: "body_cut_1",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1",
+          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
         })
       ])
     );
@@ -7848,12 +7857,21 @@ describe("cad-core", () => {
         })
       ]
     });
-    expect(editability.status).toBe("blocked");
+    expect(editability.status).toBe("editable");
     expect(editability.referenceChanges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           category: "consumed",
-          bodyId: "body_rect_1"
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "replaced",
+          bodyId: "body_cut_1",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1",
+          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
         })
       ])
     );
@@ -8507,7 +8525,7 @@ describe("cad-core", () => {
     }
   });
 
-  it("blocks unsupported boolean result and consumed target extrude edits without changing reference health", () => {
+  it("executes D2 scoped source rebuilds while still blocking boolean result edits", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -8532,16 +8550,18 @@ describe("cad-core", () => {
       }
     ]);
 
-    const beforeTargetHealth = readReferenceHealth(engine, {
-      type: "body",
-      bodyId: "body_rect_1"
+    const sourceEditDryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_rect_1",
+          depth: 6
+        }
+      ]
     });
-    const beforeResultHealth = readReferenceHealth(engine, {
-      type: "body",
-      bodyId: "body_cut_1"
-    });
-    const beforeJson = exportCadProjectJson(engine);
-    const blockedConsumedTarget = engine.executeBatch({
+    const sourceEdit = engine.executeBatch({
       version: "cadops.v1",
       mode: "commit",
       ops: [
@@ -8552,6 +8572,7 @@ describe("cad-core", () => {
         }
       ]
     });
+    const afterSourceEditPlan = readProjectRebuildPlan(engine);
     const blockedBooleanResult = engine.executeBatch({
       version: "cadops.v1",
       mode: "commit",
@@ -8564,14 +8585,18 @@ describe("cad-core", () => {
       ]
     });
 
-    expect(blockedConsumedTarget).toMatchObject({
-      ok: false,
-      error: {
-        code: "FEATURE_NOT_EDITABLE",
-        featureId: "feat_rect_1",
-        bodyId: "body_rect_1",
-        received: "feat_cut_1"
-      }
+    expect(sourceEditDryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedFeatureIds: expect.arrayContaining(["feat_rect_1", "feat_cut_1"]),
+      modifiedBodyIds: expect.arrayContaining(["body_rect_1", "body_cut_1"])
+    });
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(6);
+    expect(sourceEdit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      modifiedFeatureIds: expect.arrayContaining(["feat_rect_1", "feat_cut_1"]),
+      modifiedBodyIds: expect.arrayContaining(["body_rect_1", "body_cut_1"])
     });
     expect(blockedBooleanResult).toMatchObject({
       ok: false,
@@ -8582,15 +8607,249 @@ describe("cad-core", () => {
         received: "cut"
       }
     });
-    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+    expect(afterSourceEditPlan).toMatchObject({
+      status: "repair-needed",
+      lifecycleEffects: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "consumed",
+          states: expect.arrayContaining(["consumed", "source", "modified"]),
+          featureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          bodyId: "body_cut_1",
+          primaryState: "replacement",
+          states: expect.arrayContaining(["result", "modified", "replacement"]),
+          featureId: "feat_cut_1"
+        })
+      ]),
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_cut_1",
+          primaryState: "replacement",
+          commandReady: false
+        })
+      ])
+    });
     expect(getExtrudeFeature(engine, "feat_cut_1").depth).toBe(1);
     expect(
       readReferenceHealth(engine, { type: "body", bodyId: "body_rect_1" })
-    ).toEqual(beforeTargetHealth);
+    ).toMatchObject({ status: "consumed" });
     expect(
       readReferenceHealth(engine, { type: "body", bodyId: "body_cut_1" })
-    ).toEqual(beforeResultHealth);
-    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    ).toMatchObject({ status: "ambiguous" });
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+  });
+
+  it("executes D2 scoped source-model rebuild effects for add, hole, chamfer, and fillet direct consumers", () => {
+    const addEngine = createRectangleExtrudeEngine();
+
+    addEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_add", name: "Add", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_add",
+        id: "rect_add",
+        center: [1, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "sketch_add",
+        entityId: "rect_add",
+        depth: 1,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const holeEngine = createRectangleExtrudeEngine();
+
+    holeEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_hole", name: "Hole", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole",
+        id: "circle_hole",
+        center: [0, 0],
+        radius: 0.5
+      },
+      {
+        op: "feature.hole",
+        id: "feat_hole_1",
+        bodyId: "body_hole_1",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_hole",
+        circleEntityId: "circle_hole",
+        depthMode: "blind",
+        depth: 1,
+        direction: "negative"
+      }
+    ]);
+
+    const chamferEngine = createRectangleExtrudeEngine();
+
+    chamferEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      distance: 0.25
+    });
+
+    const filletEngine = createCircleExtrudeEngine();
+
+    filletEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Top circle edge",
+      bodyId: "body_circle_1",
+      stableId: "generated:edge:body_circle_1:end:circular"
+    });
+    filletEngine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_1",
+      bodyId: "body_fillet_1",
+      targetBodyId: "body_circle_1",
+      namedReference: "Top circle edge",
+      radius: 0.4
+    });
+
+    const cases = [
+      {
+        engine: addEngine,
+        sourceFeatureId: "feat_rect_1",
+        sourceBodyId: "body_rect_1",
+        resultFeatureId: "feat_add_1",
+        resultBodyId: "body_add_1",
+        expectedHealth: "ambiguous"
+      },
+      {
+        engine: holeEngine,
+        sourceFeatureId: "feat_rect_1",
+        sourceBodyId: "body_rect_1",
+        resultFeatureId: "feat_hole_1",
+        resultBodyId: "body_hole_1",
+        expectedHealth: "repair-needed"
+      },
+      {
+        engine: chamferEngine,
+        sourceFeatureId: "feat_rect_1",
+        sourceBodyId: "body_rect_1",
+        resultFeatureId: "feat_chamfer_1",
+        resultBodyId: "body_chamfer_1",
+        expectedHealth: "repair-needed"
+      },
+      {
+        engine: filletEngine,
+        sourceFeatureId: "feat_circle_1",
+        sourceBodyId: "body_circle_1",
+        resultFeatureId: "feat_fillet_1",
+        resultBodyId: "body_fillet_1",
+        expectedHealth: "repair-needed"
+      }
+    ];
+
+    for (const testCase of cases) {
+      const editability = readFeatureEditability(
+        testCase.engine,
+        testCase.sourceFeatureId,
+        {
+          kind: "extrude",
+          depth: 7
+        }
+      );
+      const result = testCase.engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.updateExtrude",
+            id: testCase.sourceFeatureId,
+            depth: 7
+          }
+        ]
+      });
+      const plan = readProjectRebuildPlan(testCase.engine);
+
+      expect(editability).toMatchObject({
+        status: "editable",
+        rebuildReadiness: {
+          status: "ready",
+          commitDeferred: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "AMBIGUOUS_RESULT_TOPOLOGY",
+              severity: "warning",
+              bodyId: testCase.resultBodyId
+            })
+          ])
+        },
+        dryRun: {
+          status: "valid",
+          commitOperation: "feature.updateExtrude"
+        },
+        referenceChanges: expect.arrayContaining([
+          expect.objectContaining({
+            category: "consumed",
+            bodyId: testCase.sourceBodyId,
+            sourceFeatureId: testCase.sourceFeatureId,
+            targetFeatureId: testCase.resultFeatureId
+          }),
+          expect.objectContaining({
+            category: "replaced",
+            bodyId: testCase.resultBodyId,
+            sourceFeatureId: testCase.sourceFeatureId,
+            targetFeatureId: testCase.resultFeatureId
+          })
+        ])
+      });
+      expect(result).toMatchObject({
+        ok: true,
+        modifiedFeatureIds: expect.arrayContaining([
+          testCase.sourceFeatureId,
+          testCase.resultFeatureId
+        ]),
+        modifiedBodyIds: expect.arrayContaining([
+          testCase.sourceBodyId,
+          testCase.resultBodyId
+        ])
+      });
+      expect(plan).toMatchObject({
+        status: "repair-needed",
+        bodyLifecycles: expect.arrayContaining([
+          expect.objectContaining({
+            bodyId: testCase.sourceBodyId,
+            primaryState: "consumed",
+            states: expect.arrayContaining(["consumed", "source", "modified"])
+          }),
+          expect.objectContaining({
+            bodyId: testCase.resultBodyId,
+            primaryState: "replacement",
+            states: expect.arrayContaining([
+              "active",
+              "result",
+              "modified",
+              "replacement"
+            ]),
+            commandReady: false
+          })
+        ])
+      });
+      expect(
+        readReferenceHealth(testCase.engine, {
+          type: "body",
+          bodyId: testCase.resultBodyId
+        }).status
+      ).toBe(testCase.expectedHealth);
+      expect(exportCadProjectJson(testCase.engine)).not.toContain(
+        "web-cad.project.v17"
+      );
+    }
   });
 
   it("updates authored revolve, hole, chamfer, and fillet parameters with V10 reference effects", () => {
@@ -9052,7 +9311,7 @@ describe("cad-core", () => {
       bodyId: "body_rect_1",
       primaryState: "consumed",
       role: "target",
-      states: ["consumed"],
+      states: ["consumed", "source"],
       consumedByFeatureId: "feat_hole_1",
       commandReady: false,
       diagnostics: expect.arrayContaining([
@@ -9301,6 +9560,104 @@ describe("cad-core", () => {
     );
   });
 
+  it("keeps current rebuild lifecycle state across unrelated commits and undo redo", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+
+    const pendingAfterEdit = readProjectRebuildPlan(engine);
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Edited end face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+
+    const pendingAfterReferenceCommit = readProjectRebuildPlan(engine);
+
+    expect(pendingAfterEdit).toMatchObject({
+      status: "pending",
+      lifecycleEffectCount: 1,
+      bodyLifecycles: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "derived-rebuild-pending"
+        })
+      ]
+    });
+    expect(pendingAfterReferenceCommit).toMatchObject({
+      status: "pending",
+      lifecycleEffectCount: 1,
+      bodyLifecycles: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "derived-rebuild-pending"
+        })
+      ]
+    });
+
+    engine.undo();
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "pending",
+      lifecycleEffectCount: 1
+    });
+
+    engine.undo();
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "ready",
+      lifecycleEffectCount: 0
+    });
+
+    engine.redo();
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(8);
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "pending",
+      lifecycleEffectCount: 1
+    });
+
+    engine.redo();
+    expect(
+      readReferenceHealth(engine, {
+        type: "namedReference",
+        name: "Edited end face"
+      })
+    ).toMatchObject({
+      status: "active"
+    });
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "pending",
+      lifecycleEffectCount: 1
+    });
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+
+    const deleteEngine = createRectangleExtrudeEngine();
+
+    deleteEngine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 8
+    });
+    expect(readProjectRebuildPlan(deleteEngine)).toMatchObject({
+      status: "pending",
+      lifecycleEffectCount: 1
+    });
+
+    deleteEngine.apply({ op: "feature.delete", id: "feat_rect_1" });
+    expect(readProjectRebuildPlan(deleteEngine)).toMatchObject({
+      status: "ready",
+      bodyLifecycleCount: 0,
+      lifecycleEffectCount: 0,
+      bodyLifecycles: [],
+      lifecycleEffects: []
+    });
+  });
+
   it("blocks invalid C2 feature edits without mutating source or reference health", () => {
     const holeEngine = createRectangleExtrudeEngine();
 
@@ -9424,6 +9781,92 @@ describe("cad-core", () => {
     });
     expect(getFilletFeature(filletEngine, "feat_fillet_1").radius).toBe(0.4);
     expect(exportCadProjectJson(filletEngine)).toBe(beforeFilletJson);
+  });
+
+  it("blocks failed D2 source rebuild execution without mutating source history identity or reference health", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top circle edge",
+      bodyId: "body_circle_1",
+      stableId: "generated:edge:body_circle_1:end:circular"
+    });
+    engine.apply({
+      op: "feature.fillet",
+      id: "feat_fillet_1",
+      bodyId: "body_fillet_1",
+      targetBodyId: "body_circle_1",
+      namedReference: "Top circle edge",
+      radius: 0.4
+    });
+    engine.apply({
+      op: "reference.deleteName",
+      name: "Top circle edge"
+    });
+
+    const editability = readFeatureEditability(engine, "feat_circle_1", {
+      kind: "extrude",
+      depth: 7
+    });
+    const beforeJson = exportCadProjectJson(engine);
+    const beforeSourceIdentity = createCadProjectSourceIdentity(
+      exportCadProject(engine)
+    );
+    const beforeReferenceHealth = readReferenceHealth(engine, {
+      type: "body",
+      bodyId: "body_circle_1"
+    });
+    const beforeRebuildPlan = readProjectRebuildPlan(engine);
+    const beforeHistoryLength = engine.getTransactions().length;
+    const failed = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "feature.updateExtrude",
+          id: "feat_circle_1",
+          depth: 7
+        }
+      ]
+    });
+
+    expect(editability).toMatchObject({
+      status: "blocked",
+      rebuildReadiness: {
+        status: "blocked",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "FEATURE_EDIT_CONSUMED_BODY",
+            bodyId: "body_circle_1"
+          })
+        ])
+      },
+      dryRun: {
+        status: "blocked",
+        willMutateDocument: false
+      }
+    });
+    expect(failed).toMatchObject({
+      ok: false,
+      error: {
+        code: "NAMED_REFERENCE_NOT_FOUND",
+        referenceName: "Top circle edge"
+      }
+    });
+    expect(getExtrudeFeature(engine, "feat_circle_1").depth).toBe(4);
+    expect(engine.getTransactions()).toHaveLength(beforeHistoryLength);
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(createCadProjectSourceIdentity(exportCadProject(engine))).toEqual(
+      beforeSourceIdentity
+    );
+    expect(
+      readReferenceHealth(engine, {
+        type: "body",
+        bodyId: "body_circle_1"
+      })
+    ).toEqual(beforeReferenceHealth);
+    expect(readProjectRebuildPlan(engine)).toEqual(beforeRebuildPlan);
   });
 
   it("round-trips extrude depth and side updates through project JSON and history summaries", () => {

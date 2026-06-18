@@ -1146,16 +1146,14 @@ export class CadEngine {
           namedReferences: [...this.#document.namedReferences.values()],
           target: { type: "all" }
         });
-        const latestLifecycleEffects =
-          this.#history.at(-1)?.transaction.diff.features?.lifecycleEffects ??
-          [];
-
         return createProjectRebuildPlan({
           cadOpsVersion: request.version,
           features: structure.features,
           bodies: structure.bodies,
           referenceHealth: referenceHealth.referenceHealth,
-          lifecycleEffects: latestLifecycleEffects
+          lifecycleEffects: createCurrentLifecycleEffects(
+            this.#history.map((entry) => entry.transaction)
+          )
         });
       }
 
@@ -6774,23 +6772,12 @@ function updateExtrudeFeature(
     });
   }
 
-  const consumingFeature = findConsumingFeatureByTargetBodyId(
-    state.features,
-    feature.bodyId
+  const scopedRebuildChain = validateScopedSourceExtrudeRebuildChain(
+    state,
+    feature,
+    "feature.updateExtrude",
+    opIndex
   );
-
-  if (consumingFeature) {
-    throwValidationError({
-      code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${featureId} cannot be edited because its body is consumed by feature ${consumingFeature.id}.`,
-      opIndex,
-      featureId,
-      bodyId: feature.bodyId,
-      path: operationPath(opIndex, "id"),
-      expected: "feature body not consumed by a downstream feature",
-      received: consumingFeature.id
-    });
-  }
 
   if (op.depth === undefined && op.side === undefined) {
     throwValidationError({
@@ -6819,13 +6806,152 @@ function updateExtrudeFeature(
   state.features.set(featureId, updated);
   pushFeatureModified(diff, featureRef(updated));
   pushBodyModified(diff, bodyRef(updated));
+  if (scopedRebuildChain) {
+    pushFeatureModified(diff, featureRef(scopedRebuildChain.consumingFeature));
+    pushBodyModified(diff, bodyRef(scopedRebuildChain.consumingFeature));
+  }
   pushFeatureReferenceEffects(
     diff,
-    createActiveExtrudeEditReferenceEffects(state, updated)
+    scopedRebuildChain
+      ? createScopedSourceExtrudeRebuildReferenceEffects(
+          state,
+          updated,
+          scopedRebuildChain.consumingFeature
+        )
+      : createActiveExtrudeEditReferenceEffects(state, updated)
   );
   pushFeatureLifecycleEffects(
     diff,
-    createActiveSourceFeatureEditLifecycleEffects(updated)
+    scopedRebuildChain
+      ? createScopedSourceExtrudeRebuildLifecycleEffects(
+          updated,
+          scopedRebuildChain.consumingFeature
+        )
+      : createActiveSourceFeatureEditLifecycleEffects(updated)
+  );
+}
+
+type TargetConsumingFeature =
+  | (ExtrudeFeature & {
+      readonly operationMode: "add" | "cut";
+      readonly targetBodyId: BodyId;
+    })
+  | HoleFeature
+  | ChamferFeature
+  | FilletFeature;
+
+interface ScopedSourceExtrudeRebuildChain {
+  readonly consumingFeature: TargetConsumingFeature;
+}
+
+function validateScopedSourceExtrudeRebuildChain(
+  state: MutableDocumentState,
+  feature: ExtrudeFeature,
+  operation: CadOp["op"],
+  opIndex?: number
+): ScopedSourceExtrudeRebuildChain | undefined {
+  const consumingFeatures = findConsumingFeaturesByTargetBodyId(
+    state.features,
+    feature.bodyId
+  );
+
+  if (consumingFeatures.length === 0) {
+    return undefined;
+  }
+
+  if (consumingFeatures.length > 1) {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature ${feature.id} cannot be edited through ${operation} because body ${feature.bodyId} has multiple downstream consumers.`,
+      opIndex,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "id"),
+      expected: "one direct supported consuming feature",
+      received: consumingFeatures.map((candidate) => candidate.id).join(", ")
+    });
+  }
+
+  const consumingFeature = consumingFeatures[0];
+  const nextConsumer = findConsumingFeatureByTargetBodyId(
+    state.features,
+    consumingFeature.bodyId
+  );
+
+  if (nextConsumer) {
+    throwValidationError({
+      code: "FEATURE_NOT_EDITABLE",
+      message: `Feature ${feature.id} cannot be edited through ${operation} because downstream result body ${consumingFeature.bodyId} is consumed by feature ${nextConsumer.id}.`,
+      opIndex,
+      featureId: feature.id,
+      bodyId: feature.bodyId,
+      path: operationPath(opIndex, "id"),
+      expected: "one direct supported consuming feature",
+      received: nextConsumer.id
+    });
+  }
+
+  validateDirectConsumingFeatureForSourceExtrudeRebuild(
+    state,
+    consumingFeature,
+    opIndex
+  );
+
+  return { consumingFeature };
+}
+
+function validateDirectConsumingFeatureForSourceExtrudeRebuild(
+  state: MutableDocumentState,
+  feature: TargetConsumingFeature,
+  opIndex?: number
+): void {
+  if (feature.kind === "extrude") {
+    assertSupportedExtrudeOperation(
+      state,
+      feature.operationMode,
+      feature.profileKind,
+      feature.targetBodyId,
+      opIndex,
+      feature.id
+    );
+    return;
+  }
+
+  if (feature.kind === "hole") {
+    const sketch = getSketchOrThrow(state.sketches, feature.sketchId, opIndex);
+    const entity = sketch.entities.get(feature.circleEntityId);
+
+    if (!entity) {
+      throwSketchEntityNotFound(
+        feature.sketchId,
+        feature.circleEntityId,
+        opIndex
+      );
+    }
+
+    assertHoleCircleEntity(
+      entity,
+      opIndex,
+      feature.sketchId,
+      feature.circleEntityId
+    );
+    validateHoleSketchAttachment(state, sketch, opIndex);
+    assertSupportedHoleTarget(state, feature.targetBodyId, opIndex);
+    return;
+  }
+
+  assertSupportedEdgeFinishTarget(
+    state,
+    feature.kind === "chamfer" ? "feature.chamfer" : "feature.fillet",
+    feature.targetBodyId,
+    opIndex
+  );
+  validateEdgeFinishReference(
+    state,
+    feature.kind === "chamfer" ? "feature.chamfer" : "feature.fillet",
+    feature.targetBodyId,
+    feature,
+    opIndex
   );
 }
 
@@ -7458,13 +7584,87 @@ function createConsumingFeatureEditLifecycleEffects(
     {
       bodyId: feature.targetBodyId,
       featureId: feature.id,
-      targetFeatureId: feature.id,
       primaryState: "consumed",
       states: ["consumed"],
       diagnosticCode: "REBUILD_TARGET_CONSUMED",
       message: `Target body ${feature.targetBodyId} remains consumed by edited ${feature.kind} feature ${feature.id}.`
     },
     ...createAmbiguousResultFeatureEditLifecycleEffects(feature, resultMessage)
+  ];
+}
+
+function createScopedSourceExtrudeRebuildReferenceEffects(
+  state: MutableDocumentState,
+  sourceFeature: ExtrudeFeature,
+  consumingFeature: TargetConsumingFeature
+): readonly CadFeatureReferenceChangeSummary[] {
+  const targetGeneratedReferences = listGeneratedReferences(
+    createBodyGeneratedReferences(state, sourceFeature.bodyId, DEFAULT_PART_ID)
+  ).map((reference) => ({
+    category: "consumed" as const,
+    bodyId: sourceFeature.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind,
+    sourceFeatureId: sourceFeature.id,
+    targetFeatureId: consumingFeature.id,
+    diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const,
+    message:
+      "Source generated reference remains consumed by the downstream revalidated feature."
+  }));
+  const targetNamedReferences = [...state.namedReferences.values()]
+    .filter((reference) => reference.bodyId === sourceFeature.bodyId)
+    .map((reference) => ({
+      category: "consumed" as const,
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      kind: reference.kind,
+      referenceName: reference.name,
+      sourceFeatureId: sourceFeature.id,
+      targetFeatureId: consumingFeature.id,
+      diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY" as const,
+      message:
+        "Source named reference remains consumed by the downstream revalidated feature."
+    }));
+  const resultReplacement: CadFeatureReferenceChangeSummary = {
+    category: "replaced",
+    bodyId: consumingFeature.bodyId,
+    sourceFeatureId: sourceFeature.id,
+    targetFeatureId: consumingFeature.id,
+    diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY",
+    message:
+      "Downstream result body was revalidated from existing source records after the source edit; result topology remains repair-needed."
+  };
+
+  return [
+    ...targetGeneratedReferences,
+    ...targetNamedReferences,
+    resultReplacement
+  ];
+}
+
+function createScopedSourceExtrudeRebuildLifecycleEffects(
+  sourceFeature: ExtrudeFeature,
+  consumingFeature: TargetConsumingFeature
+): readonly CadBodyLifecycleEffectSummary[] {
+  return [
+    {
+      bodyId: sourceFeature.bodyId,
+      featureId: sourceFeature.id,
+      targetFeatureId: consumingFeature.id,
+      primaryState: "consumed",
+      states: ["consumed", "source", "modified"],
+      diagnosticCode: "REBUILD_TARGET_CONSUMED",
+      message: `Source body ${sourceFeature.bodyId} was edited and remains consumed by revalidated feature ${consumingFeature.id}.`
+    },
+    {
+      bodyId: consumingFeature.bodyId,
+      featureId: consumingFeature.id,
+      primaryState: "replacement",
+      states: ["active", "result", "modified", "replacement"],
+      diagnosticCode: "REBUILD_RESULT_REPAIR_NEEDED",
+      message:
+        "Downstream result body was revalidated from existing source records; generated result topology remains repair-needed."
+    }
   ];
 }
 
@@ -7536,15 +7736,30 @@ function findConsumingFeatureByTargetBodyId(
   features: ReadonlyMap<FeatureId, Feature>,
   targetBodyId: BodyId
 ): Feature | undefined {
-  return [...features.values()].find(
-    (feature) =>
-      isTargetConsumingFeature(feature) && feature.targetBodyId === targetBodyId
-  );
+  return findConsumingFeaturesByTargetBodyId(features, targetBodyId)[0];
+}
+
+function findConsumingFeaturesByTargetBodyId(
+  features: ReadonlyMap<FeatureId, Feature>,
+  targetBodyId: BodyId
+): readonly TargetConsumingFeature[] {
+  const consumingFeatures: TargetConsumingFeature[] = [];
+
+  for (const feature of features.values()) {
+    if (
+      isTargetConsumingFeature(feature) &&
+      feature.targetBodyId === targetBodyId
+    ) {
+      consumingFeatures.push(feature);
+    }
+  }
+
+  return consumingFeatures;
 }
 
 function isTargetConsumingFeature(
   feature: Feature
-): feature is Extract<Feature, { readonly targetBodyId: BodyId }> {
+): feature is TargetConsumingFeature {
   return (
     (feature.kind === "extrude" &&
       isConsumingExtrudeOperationMode(feature.operationMode) &&
@@ -11203,6 +11418,20 @@ function createProjectStructure(
     bodies,
     objectSources
   };
+}
+
+function createCurrentLifecycleEffects(
+  transactions: readonly Transaction[]
+): readonly CadBodyLifecycleEffectSummary[] {
+  const currentByBodyId = new Map<BodyId, CadBodyLifecycleEffectSummary>();
+
+  for (const transaction of sortTransactions(transactions)) {
+    for (const effect of transaction.diff.features?.lifecycleEffects ?? []) {
+      currentByBodyId.set(effect.bodyId, effect);
+    }
+  }
+
+  return [...currentByBodyId.values()];
 }
 
 function createPrimitiveFeatureSummary(

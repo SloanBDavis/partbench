@@ -34,7 +34,10 @@ export interface CreateProjectRebuildPlanOptions {
 export function createProjectRebuildPlan(
   options: CreateProjectRebuildPlanOptions
 ): ProjectRebuildPlanQueryResponse {
-  const lifecycleEffects = options.lifecycleEffects ?? [];
+  const bodyIds = new Set(options.bodies.map((body) => body.id));
+  const lifecycleEffects = (options.lifecycleEffects ?? []).filter((effect) =>
+    bodyIds.has(effect.bodyId)
+  );
   const bodyLifecycles = options.bodies.map((body) =>
     createBodyLifecycleSummary(options, body, lifecycleEffects)
   );
@@ -158,9 +161,19 @@ function lifecycleStatesForBody(
   role: CadBodyLifecycleRole
 ): readonly CadBodyLifecycleState[] {
   if (body.consumedByFeatureId) {
-    return role === "source" || role === "result"
-      ? ["consumed", role]
-      : ["consumed"];
+    if (
+      body.source.type === "sketchExtrudeFeature" &&
+      feature?.kind === "extrude" &&
+      feature.operationMode === "newBody"
+    ) {
+      return ["consumed", "source"];
+    }
+
+    if (body.source.type !== "primitiveFeature") {
+      return ["consumed", "result"];
+    }
+
+    return ["consumed"];
   }
 
   if (role === "source") {
@@ -212,6 +225,13 @@ function primaryLifecycleState(
 
   if (states.includes("failed")) {
     return "failed";
+  }
+
+  if (
+    latestEffectPrimary &&
+    ["replacement", "stale", "modified"].includes(latestEffectPrimary)
+  ) {
+    return latestEffectPrimary;
   }
 
   if (states.includes("repair-needed")) {

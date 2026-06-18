@@ -1949,7 +1949,9 @@ export interface CadFeatureReferenceChangeSummary {
   readonly stableId?: string;
   readonly kind?: CadGeneratedEntityKind;
   readonly referenceName?: NamedReferenceName;
+  /** Feature whose source edit or output owns the reported reference effect. */
   readonly sourceFeatureId?: FeatureId;
+  /** Direct downstream feature affected by the source feature, when applicable. */
   readonly targetFeatureId?: FeatureId;
   readonly diagnosticCode?: CadFeatureEditDiagnosticCode;
   readonly message: string;
@@ -2030,7 +2032,9 @@ export interface CadBodyLifecycleSummary {
 
 export interface CadBodyLifecycleEffectSummary {
   readonly bodyId: BodyId;
+  /** Feature that owns the body or lifecycle effect being reported. */
   readonly featureId?: FeatureId;
+  /** Direct consuming/downstream feature affected by a source-body effect. */
   readonly targetFeatureId?: FeatureId;
   readonly primaryState: CadBodyLifecycleState;
   readonly states: readonly CadBodyLifecycleState[];

@@ -245,7 +245,18 @@ These constraints remain active:
     downstream rebuild execution, replacement/stale/failed result-body
     transitions, reference survival/repair semantics, and source-semantic
     topology expansion for existing authored feature families where defensible.
-    V10 must not become arbitrary
+    Tranche D2 is implemented as the first transactional source-model rebuild
+    slice for scoped direct chains: `feature.updateExtrude` can edit a
+    supported rectangle/circle `newBody` source consumed by one supported
+    downstream cut/add extrude, hole, chamfer, or fillet whose existing source
+    records can be revalidated and whose result body is not itself consumed. D2
+    marks consumed source targets, modified/replacement direct downstream
+    results, and repair-needed result topology through semantic diffs and
+    `project.rebuildPlan`, keeps `feature.editability`,
+    `project.dependencyGraph`, and `reference.health` consistent, preserves
+    lifecycle state across unrelated commits through current transaction
+    history, leaves failed source-model rebuild non-mutating, and does not
+    introduce `web-cad.project.v17`. V10 must not become arbitrary
     topological naming, production WebGPU, assemblies, STEP import, broad sketch
     solving, broad new modeling features, or persisted UI state unless a later
     tranche explicitly scopes one of those items.
@@ -1448,9 +1459,10 @@ display state should stay rebuildable or session-only by default.
 ## V10 Editable Feature History And Stable Modeling References Release
 
 V10 is underway in `docs/v10.md`. Tranche A is implemented as a query/contract
-slice. Tranche B, C1, C2, and D1 are implemented as the dependency/reference
-health, authored feature edit commit, and rebuild-plan/body-lifecycle contract
-slices; the rest of the release remains staged.
+slice. Tranche B, C1, C2, D1, and D2 are implemented as the dependency/
+reference health, authored feature edit commit, rebuild-plan/body-lifecycle
+contract, and scoped transactional source-model rebuild slices; the rest of
+the release remains staged.
 
 V10 should deepen the CAD model now that V8 made local project files/export real
 and V9 made viewport interaction semantic. The release center is:
@@ -1562,10 +1574,20 @@ Use these decisions when drafting or implementing V10 tranches:
    `project.rebuildPlan` and `cad.project_rebuild_plan`. D1 does not execute
    arbitrary downstream rebuilds, expand result topology stability, add UI
    rebuild controls, or introduce `web-cad.project.v17`.
-6. **Transactional Rebuild Execution For Scoped Chains** - future D2-style work
-   to execute proven downstream rebuilds, replacement/stale/failed result-body
-   transitions, and source identity behavior where scoped. It must continue to
-   leave failed/unsupported/ambiguous plans non-mutating.
+6. **Transactional Source-Model Rebuild For Scoped Chains** - implemented D2 as
+   the first direct-chain source-model rebuild path. Supported rectangle/circle
+   `newBody` source extrude edits can revalidate one direct supported
+   downstream cut/add extrude, hole, chamfer, or fillet from existing source
+   records when the downstream result body is not itself consumed. The semantic
+   diff marks source targets consumed/source/modified, direct downstream
+   results modified/replacement, and result topology repair-needed without
+   claiming command-ready generated result references or persistent B-rep
+   replay. `project.rebuildPlan` now carries current lifecycle effects across
+   unrelated commits and undo/redo from the current transaction history while
+   filtering stale effects for deleted bodies. Failed source-model rebuild paths
+   stay non-mutating for source JSON, history, source identity, reference
+   health, and rebuild plan. D2 does not add arbitrary topology, broad UI,
+   renderer/geometry/storage authority, or `web-cad.project.v17`.
 7. **Stable Reference Expansion For Defensible Result Features** - source-
    semantic generated/result references for revolve, hole, scoped cut/add, and
    edge-finish outputs only where identity evidence is strong enough.
