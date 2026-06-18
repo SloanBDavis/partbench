@@ -194,7 +194,13 @@ function createAttachedSourceMeasurementFrame(
   const profile = face.geometricSignature.profile;
   const normal = face.geometricSignature.normal;
 
-  if (!profile || !normal) {
+  if (
+    !profile ||
+    !normal ||
+    !isExtrudeFaceRole(face.role) ||
+    face.geometricSignature.depth === undefined ||
+    face.geometricSignature.extrudeSide === undefined
+  ) {
     return undefined;
   }
 
@@ -237,6 +243,12 @@ function createAttachedSourceMeasurementFrame(
     },
     normal
   );
+}
+
+function isExtrudeFaceRole(
+  role: CadGeneratedFaceReference["role"]
+): role is CadGeneratedExtrudeFaceRole {
+  return role !== "holeWall";
 }
 
 function orientFrameToNormal(

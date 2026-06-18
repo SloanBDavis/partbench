@@ -141,7 +141,11 @@ function createGeneratedPlanarFacePolygon(
 
   const { profile } = geometricSignature;
 
-  if (!profile) {
+  if (
+    !profile ||
+    geometricSignature.depth === undefined ||
+    geometricSignature.extrudeSide === undefined
+  ) {
     return undefined;
   }
 

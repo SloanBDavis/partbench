@@ -227,19 +227,21 @@ function createExtrudeEditabilityResponse(
       ]
     : [];
   const scopedRebuildDiagnostics = scopedRebuildConsumer
-    ? [
-        createDiagnostic({
-          code: "AMBIGUOUS_RESULT_TOPOLOGY",
-          severity: "warning",
-          message:
-            "The direct downstream source-model rebuild can commit, but downstream result generated topology remains repair-needed until a later stable-reference tranche proves it.",
-          featureId: feature.id,
-          bodyId: scopedRebuildConsumer.bodyId,
-          targetBodyId: feature.bodyId,
-          expected: "command-ready downstream result topology",
-          received: scopedRebuildConsumer.kind
-        })
-      ]
+    ? scopedRebuildConsumer.kind === "hole"
+      ? []
+      : [
+          createDiagnostic({
+            code: "AMBIGUOUS_RESULT_TOPOLOGY",
+            severity: "warning",
+            message:
+              "The direct downstream source-model rebuild can commit, but downstream result generated topology remains repair-needed until a later stable-reference tranche proves it.",
+            featureId: feature.id,
+            bodyId: scopedRebuildConsumer.bodyId,
+            targetBodyId: feature.bodyId,
+            expected: "command-ready downstream result topology",
+            received: scopedRebuildConsumer.kind
+          })
+        ]
     : [];
   const diagnostics = [
     ...supportDiagnostic,
@@ -313,13 +315,18 @@ function createExtrudeEditabilityResponse(
   const resultReferenceChanges = scopedRebuildConsumer
     ? [
         createReferenceChange({
-          category: "replaced",
+          category:
+            scopedRebuildConsumer.kind === "hole" ? "active" : "replaced",
           bodyId: scopedRebuildConsumer.bodyId,
           sourceFeatureId: feature.id,
           targetFeatureId: scopedRebuildConsumer.id,
-          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY",
+          ...(scopedRebuildConsumer.kind === "hole"
+            ? {}
+            : { diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY" as const }),
           message:
-            "Direct downstream result can be revalidated from source records, but generated result topology remains repair-needed."
+            scopedRebuildConsumer.kind === "hole"
+              ? "Direct downstream hole result references can be revalidated from source records."
+              : "Direct downstream result can be revalidated from source records, but generated result topology remains repair-needed."
         })
       ]
     : [];

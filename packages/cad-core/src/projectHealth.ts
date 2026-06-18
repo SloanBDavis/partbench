@@ -976,7 +976,8 @@ function createAttachedSketchHealth(
     );
 
     if (validation.reference.kind === "face") {
-      resolvedFaceRole = validation.reference.role;
+      resolvedFaceRole = validation.reference
+        .role as CadGeneratedExtrudeFaceRole;
 
       if (
         validation.reference.sourceFeatureId !== attachment.sourceFeatureId ||

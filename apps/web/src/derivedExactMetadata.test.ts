@@ -534,7 +534,7 @@ describe("derivedExactMetadata", () => {
     });
   });
 
-  it("enriches authored hole topology with derived exact metadata while generated references remain unsupported", () => {
+  it("enriches authored hole topology while generated references stay source-semantic", () => {
     const engine = createHoleEngine();
     const bodyId = "body_hole_1";
     const sourceIdentitySignature = readBodyTopologySignature(engine, bodyId);
@@ -577,11 +577,27 @@ describe("derivedExactMetadata", () => {
       }
     });
     expect(generatedReferences).toMatchObject({
-      ok: false,
+      ok: true,
       query: "body.generatedReferences",
-      error: {
-        code: "UNSUPPORTED_BODY_REFERENCES"
-      }
+      body: {
+        stableId: "generated:body:body_hole_1",
+        geometricSignature: {
+          sourceKind: "hole",
+          targetBodyId: "body_rect_1"
+        }
+      },
+      faces: [
+        {
+          stableId: "generated:face:body_hole_1:holeWall",
+          role: "holeWall"
+        }
+      ],
+      edges: [
+        {
+          stableId: "generated:edge:body_hole_1:startRim",
+          role: "startRim"
+        }
+      ]
     });
   });
 

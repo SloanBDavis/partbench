@@ -7,6 +7,8 @@ import type {
   CadGeneratedExtrudeFaceRole,
   CadGeneratedExtrudeVertexRole,
   CadGeneratedFaceReference,
+  CadGeneratedHoleEdgeRole,
+  CadGeneratedHoleFaceRole,
   CadGeneratedReference,
   CadGeneratedReferenceEligibleOperation,
   CadGeneratedReferenceProfileSignature,
@@ -202,94 +204,15 @@ export function createBodyGeneratedReferences(
     return undefined;
   }
 
-  if (feature.kind !== "extrude") {
-    return undefined;
+  if (feature.kind === "extrude") {
+    return createExtrudeBodyGeneratedReferences(document, feature, ownerPartId);
   }
 
-  if (feature.operationMode !== "newBody") {
-    return undefined;
+  if (feature.kind === "hole") {
+    return createHoleBodyGeneratedReferences(document, feature, ownerPartId);
   }
 
-  const sketch = document.sketches.get(feature.sketchId);
-  const entity = sketch?.entities.get(feature.entityId);
-
-  if (!sketch || !entity) {
-    return undefined;
-  }
-
-  if (feature.profileKind === "rectangle" && entity.kind !== "rectangle") {
-    return undefined;
-  }
-
-  if (feature.profileKind === "circle" && entity.kind !== "circle") {
-    return undefined;
-  }
-
-  const profile = createGeneratedReferenceProfileSignature(entity);
-  const body: CadGeneratedBodyReference = {
-    kind: "body",
-    stableId: `generated:body:${feature.bodyId}`,
-    label: createBodyReferenceLabel(feature.profileKind),
-    description: createBodyReferenceDescription(feature),
-    eligibleOperations: createBodyEligibleOperations(),
-    eligibilityNotes: createBodyEligibilityNotes(),
-    bodyId: feature.bodyId,
-    ownerPartId,
-    sourceFeatureId: feature.id,
-    sourceSketchId: feature.sketchId,
-    sourceSketchEntityId: feature.entityId,
-    profileKind: feature.profileKind,
-    geometricSignature: createGeneratedReferenceSignature(
-      feature,
-      sketch,
-      profile,
-      {
-        axis: createSketchPlaneNormal(sketch.plane),
-        axisRole: "sketchPlaneNormal"
-      }
-    )
-  };
-
-  return {
-    body,
-    faces:
-      feature.profileKind === "rectangle"
-        ? createRectangleExtrudeFaceReferences(
-            feature,
-            sketch,
-            profile,
-            ownerPartId
-          )
-        : createCircleExtrudeFaceReferences(
-            feature,
-            sketch,
-            profile,
-            ownerPartId
-          ),
-    edges:
-      feature.profileKind === "rectangle"
-        ? createRectangleExtrudeEdgeReferences(
-            feature,
-            sketch,
-            profile,
-            ownerPartId
-          )
-        : createCircleExtrudeEdgeReferences(
-            feature,
-            sketch,
-            profile,
-            ownerPartId
-          ),
-    vertices:
-      feature.profileKind === "rectangle" && profile.kind === "rectangle"
-        ? createRectangleExtrudeVertexReferences(
-            feature,
-            sketch,
-            profile,
-            ownerPartId
-          )
-        : []
-  };
+  return undefined;
 }
 
 export function validateGeneratedReference(
@@ -308,7 +231,7 @@ export function validateGeneratedReference(
         ? {
             code: "UNSUPPORTED_BODY_REFERENCES",
             message:
-              "Generated references are currently available only for authored sketch-extrude bodies.",
+              "Generated references are currently available only for authored sketch-extrude bodies and supported authored hole result bodies.",
             bodyId: options.bodyId,
             stableId: options.stableId
           }
@@ -425,6 +348,151 @@ function createGeneratedReferenceProfileSignature(
   }
 
   throw new Error(`Unsupported generated reference profile: ${entity.kind}`);
+}
+
+function createExtrudeBodyGeneratedReferences(
+  document: GeneratedReferencesDocument,
+  feature: GeneratedReferencesExtrudeFeature,
+  ownerPartId: PartId
+): BodyGeneratedReferencesSnapshot | undefined {
+  if (feature.operationMode !== "newBody") {
+    return undefined;
+  }
+
+  const sketch = document.sketches.get(feature.sketchId);
+  const entity = sketch?.entities.get(feature.entityId);
+
+  if (!sketch || !entity) {
+    return undefined;
+  }
+
+  if (feature.profileKind === "rectangle" && entity.kind !== "rectangle") {
+    return undefined;
+  }
+
+  if (feature.profileKind === "circle" && entity.kind !== "circle") {
+    return undefined;
+  }
+
+  const profile = createGeneratedReferenceProfileSignature(entity);
+  const body: CadGeneratedBodyReference = {
+    kind: "body",
+    stableId: `generated:body:${feature.bodyId}`,
+    label: createBodyReferenceLabel(feature.profileKind),
+    description: createBodyReferenceDescription(feature),
+    eligibleOperations: createBodyEligibleOperations(),
+    eligibilityNotes: createBodyEligibilityNotes(),
+    bodyId: feature.bodyId,
+    ownerPartId,
+    sourceFeatureId: feature.id,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.entityId,
+    profileKind: feature.profileKind,
+    geometricSignature: createGeneratedReferenceSignature(
+      feature,
+      sketch,
+      profile,
+      {
+        axis: createSketchPlaneNormal(sketch.plane),
+        axisRole: "sketchPlaneNormal"
+      }
+    )
+  };
+
+  return {
+    body,
+    faces:
+      feature.profileKind === "rectangle"
+        ? createRectangleExtrudeFaceReferences(
+            feature,
+            sketch,
+            profile,
+            ownerPartId
+          )
+        : createCircleExtrudeFaceReferences(
+            feature,
+            sketch,
+            profile,
+            ownerPartId
+          ),
+    edges:
+      feature.profileKind === "rectangle"
+        ? createRectangleExtrudeEdgeReferences(
+            feature,
+            sketch,
+            profile,
+            ownerPartId
+          )
+        : createCircleExtrudeEdgeReferences(
+            feature,
+            sketch,
+            profile,
+            ownerPartId
+          ),
+    vertices:
+      feature.profileKind === "rectangle" && profile.kind === "rectangle"
+        ? createRectangleExtrudeVertexReferences(
+            feature,
+            sketch,
+            profile,
+            ownerPartId
+          )
+        : []
+  };
+}
+
+function createHoleBodyGeneratedReferences(
+  document: GeneratedReferencesDocument,
+  feature: GeneratedReferencesHoleFeature,
+  ownerPartId: PartId
+): BodyGeneratedReferencesSnapshot | undefined {
+  const sketch = document.sketches.get(feature.sketchId);
+  const entity = sketch?.entities.get(feature.circleEntityId);
+
+  if (!sketch || !entity || entity.kind !== "circle") {
+    return undefined;
+  }
+
+  const profile = createGeneratedReferenceProfileSignature(entity);
+
+  if (profile.kind !== "circle") {
+    return undefined;
+  }
+
+  const body: CadGeneratedBodyReference = {
+    kind: "body",
+    stableId: `generated:body:${feature.bodyId}`,
+    label: "Hole result body",
+    description: `Result body generated by ${feature.depthMode} hole feature ${feature.id} in target body ${feature.targetBodyId}.`,
+    eligibleOperations: createHoleBodyEligibleOperations(),
+    eligibilityNotes: createHoleEligibilityNotes(),
+    bodyId: feature.bodyId,
+    ownerPartId,
+    sourceFeatureId: feature.id,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.circleEntityId,
+    profileKind: "circle",
+    geometricSignature: createHoleGeneratedReferenceSignature(
+      feature,
+      sketch,
+      profile,
+      {
+        normal: createSketchPlaneNormal(sketch.plane),
+        normalRole: "sketchPlaneNormal",
+        axis: createHoleAxis(sketch.plane, feature.direction),
+        axisRole: "holeDirection"
+      }
+    )
+  };
+
+  return {
+    body,
+    faces: [
+      createHoleFaceReference(feature, sketch, profile, "holeWall", ownerPartId)
+    ],
+    edges: createHoleEdgeReferences(feature, sketch, profile, ownerPartId),
+    vertices: []
+  };
 }
 
 function createRectangleExtrudeFaceReferences(
@@ -772,6 +840,99 @@ function createGeneratedVertexReference(
   };
 }
 
+function createHoleFaceReference(
+  feature: GeneratedReferencesHoleFeature,
+  sketch: GeneratedReferencesSketch,
+  profile: Extract<
+    CadGeneratedReferenceProfileSignature,
+    { readonly kind: "circle" }
+  >,
+  role: CadGeneratedHoleFaceRole,
+  ownerPartId: PartId
+): CadGeneratedFaceReference {
+  return {
+    kind: "face",
+    stableId: `generated:face:${feature.bodyId}:${role}`,
+    label: "Hole wall face",
+    description:
+      "Cylindrical wall face generated from the authored hole circle.",
+    eligibleOperations: createHoleReferenceEligibleOperations(),
+    eligibilityNotes: createHoleEligibilityNotes(),
+    bodyId: feature.bodyId,
+    ownerPartId,
+    sourceFeatureId: feature.id,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.circleEntityId,
+    role,
+    geometricSignature: createHoleGeneratedReferenceSignature(
+      feature,
+      sketch,
+      profile,
+      {
+        surfaceType: "cylinder",
+        normal: createSketchPlaneNormal(sketch.plane),
+        normalRole: "sketchPlaneNormal",
+        axis: createHoleAxis(sketch.plane, feature.direction),
+        axisRole: "holeDirection"
+      }
+    )
+  };
+}
+
+function createHoleEdgeReferences(
+  feature: GeneratedReferencesHoleFeature,
+  sketch: GeneratedReferencesSketch,
+  profile: Extract<
+    CadGeneratedReferenceProfileSignature,
+    { readonly kind: "circle" }
+  >,
+  ownerPartId: PartId
+): readonly CadGeneratedEdgeReference[] {
+  return [
+    createHoleEdgeReference(feature, sketch, profile, "startRim", ownerPartId)
+  ];
+}
+
+function createHoleEdgeReference(
+  feature: GeneratedReferencesHoleFeature,
+  sketch: GeneratedReferencesSketch,
+  profile: Extract<
+    CadGeneratedReferenceProfileSignature,
+    { readonly kind: "circle" }
+  >,
+  role: CadGeneratedHoleEdgeRole,
+  ownerPartId: PartId
+): CadGeneratedEdgeReference {
+  return {
+    kind: "edge",
+    stableId: `generated:edge:${feature.bodyId}:${role}`,
+    label: createHoleEdgeReferenceLabel(),
+    description: createHoleEdgeReferenceDescription(),
+    eligibleOperations: createHoleReferenceEligibleOperations(),
+    eligibilityNotes: createHoleEligibilityNotes(),
+    bodyId: feature.bodyId,
+    ownerPartId,
+    sourceFeatureId: feature.id,
+    sourceSketchId: feature.sketchId,
+    sourceSketchEntityId: feature.circleEntityId,
+    role,
+    adjacentFaceRoles: ["holeWall"],
+    geometricSignature: createHoleGeneratedReferenceSignature(
+      feature,
+      sketch,
+      profile,
+      {
+        curveType: "circle",
+        normal: createSketchPlaneNormal(sketch.plane),
+        normalRole: "sketchPlaneNormal",
+        axis: createHoleAxis(sketch.plane, feature.direction),
+        axisRole: "holeStartRim",
+        positionRole: role
+      }
+    )
+  };
+}
+
 function createGeneratedReferenceSignature(
   feature: GeneratedReferencesExtrudeFeature,
   sketch: GeneratedReferencesSketch,
@@ -789,10 +950,42 @@ function createGeneratedReferenceSignature(
   > = {}
 ): CadGeneratedReferenceSignature {
   return {
+    sourceKind: "extrude",
     profileKind: feature.profileKind,
     sketchPlane: sketch.plane,
     extrudeSide: feature.side,
     depth: feature.depth,
+    profile,
+    ...signature
+  };
+}
+
+function createHoleGeneratedReferenceSignature(
+  feature: GeneratedReferencesHoleFeature,
+  sketch: GeneratedReferencesSketch,
+  profile: Extract<
+    CadGeneratedReferenceProfileSignature,
+    { readonly kind: "circle" }
+  >,
+  signature: Pick<
+    CadGeneratedReferenceSignature,
+    | "surfaceType"
+    | "curveType"
+    | "normal"
+    | "axis"
+    | "normalRole"
+    | "axisRole"
+    | "positionRole"
+  > = {}
+): CadGeneratedReferenceSignature {
+  return {
+    sourceKind: "hole",
+    targetBodyId: feature.targetBodyId,
+    profileKind: "circle",
+    sketchPlane: sketch.plane,
+    holeDepthMode: feature.depthMode,
+    ...(feature.depth !== undefined ? { holeDepth: feature.depth } : {}),
+    holeDirection: feature.direction,
     profile,
     ...signature
   };
@@ -822,6 +1015,14 @@ function createExtrudeCapNormal(
   }
 
   return role === "startCap" ? negateVector(normal) : normal;
+}
+
+function createHoleAxis(
+  plane: SketchPlane,
+  direction: FeatureHoleDirection
+): Vec3 {
+  const normal = createSketchPlaneNormal(plane);
+  return direction === "positive" ? normal : negateVector(normal);
 }
 
 function createRectangleSideNormal(
@@ -865,8 +1066,23 @@ function createBodyEligibleOperations(): readonly CadGeneratedReferenceEligibleO
   return MEASURE_AND_SELECT_OPERATIONS;
 }
 
+function createHoleBodyEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
+  return ["feature.selectReference"];
+}
+
+function createHoleReferenceEligibleOperations(): readonly CadGeneratedReferenceEligibleOperation[] {
+  return ["feature.selectReference"];
+}
+
 function createBodyEligibilityNotes(): readonly string[] {
   return [SEMANTIC_REFERENCE_NOTE];
+}
+
+function createHoleEligibilityNotes(): readonly string[] {
+  return [
+    SEMANTIC_REFERENCE_NOTE,
+    "Hole result references are source-semantic result-body references; hole axes and terminal rims are deferred until typed exact evidence proves them."
+  ];
 }
 
 function createFaceReferenceLabel(role: CadGeneratedExtrudeFaceRole): string {
@@ -976,6 +1192,14 @@ function createEdgeEligibleOperations(): readonly CadGeneratedReferenceEligibleO
 
 function createEdgeEligibilityNotes(): readonly string[] {
   return [SEMANTIC_REFERENCE_NOTE];
+}
+
+function createHoleEdgeReferenceLabel(): string {
+  return "Hole start rim edge";
+}
+
+function createHoleEdgeReferenceDescription(): string {
+  return "Circular rim edge where the authored hole starts from the source circle.";
 }
 
 function createVertexReferenceLabel(

@@ -29,6 +29,7 @@ import type {
   CadFeatureRef,
   CadFeatureSummary,
   CadFeatureReferenceChangeSummary,
+  CadGeneratedExtrudeFaceRole,
   CadGeneratedFaceReference,
   CadGeneratedEntityKind,
   CadGeneratedReference,
@@ -1536,7 +1537,7 @@ export class CadEngine {
               ? {
                   code: "UNSUPPORTED_BODY_REFERENCES",
                   message:
-                    "Generated references are currently available only for authored sketch-extrude bodies.",
+                    "Generated references are currently available only for authored sketch-extrude bodies and supported authored hole result bodies.",
                   bodyId
                 }
               : {
@@ -1583,7 +1584,7 @@ export class CadEngine {
               ? {
                   code: "UNSUPPORTED_BODY_REFERENCES",
                   message:
-                    "Generated references are currently available only for authored sketch-extrude bodies.",
+                    "Generated references are currently available only for authored sketch-extrude bodies and supported authored hole result bodies.",
                   bodyId
                 }
               : {
@@ -7107,7 +7108,7 @@ function updateHoleFeature(
     diff,
     createConsumingFeatureEditLifecycleEffects(
       updated,
-      "Hole result body requires derived rebuild and topology repair after supported source parameter edit."
+      "Hole result body was modified and derived geometry rebuild is pending after supported source parameter edit."
     )
   );
 }
@@ -7446,13 +7447,8 @@ function createConsumingFeatureEditReferenceEffects(
   state: MutableDocumentState,
   feature: HoleFeature | ChamferFeature | FilletFeature
 ): readonly CadFeatureReferenceChangeSummary[] {
-  const resultEffects = createAmbiguousResultFeatureEditReferenceEffects(
-    feature,
-    `${formatFeatureKindForMessage(feature.kind)} result topology remains repair-needed after supported source parameter edit.`
-  );
-
   if (feature.kind === "hole") {
-    const generatedReferences = listGeneratedReferences(
+    const targetGeneratedReferences = listGeneratedReferences(
       createBodyGeneratedReferences(
         state,
         feature.targetBodyId,
@@ -7469,7 +7465,7 @@ function createConsumingFeatureEditReferenceEffects(
       message:
         "Target-body generated reference remains consumed by the edited hole feature."
     }));
-    const namedReferences = [...state.namedReferences.values()]
+    const targetNamedReferences = [...state.namedReferences.values()]
       .filter((reference) => reference.bodyId === feature.targetBodyId)
       .map((reference) => ({
         category: "consumed" as const,
@@ -7483,9 +7479,42 @@ function createConsumingFeatureEditReferenceEffects(
         message:
           "Target-body named reference remains consumed by the edited hole feature."
       }));
+    const resultGeneratedReferences = listGeneratedReferences(
+      createBodyGeneratedReferences(state, feature.bodyId, DEFAULT_PART_ID)
+    ).map((reference) => ({
+      category: "active" as const,
+      bodyId: feature.bodyId,
+      stableId: reference.stableId,
+      kind: reference.kind,
+      sourceFeatureId: feature.id,
+      message:
+        "Hole result generated reference remains active after supported source parameter edit."
+    }));
+    const resultNamedReferences = [...state.namedReferences.values()]
+      .filter((reference) => reference.bodyId === feature.bodyId)
+      .map((reference) => ({
+        category: "active" as const,
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        kind: reference.kind,
+        referenceName: reference.name,
+        sourceFeatureId: feature.id,
+        message:
+          "Hole result named reference remains active after supported source parameter edit."
+      }));
 
-    return [...generatedReferences, ...namedReferences, ...resultEffects];
+    return [
+      ...targetGeneratedReferences,
+      ...targetNamedReferences,
+      ...resultGeneratedReferences,
+      ...resultNamedReferences
+    ];
   }
+
+  const resultEffects = createAmbiguousResultFeatureEditReferenceEffects(
+    feature,
+    `${formatFeatureKindForMessage(feature.kind)} result topology remains repair-needed after supported source parameter edit.`
+  );
 
   const sourceReferenceEffect = createEdgeFinishSourceReferenceEffect(
     state,
@@ -7580,6 +7609,28 @@ function createConsumingFeatureEditLifecycleEffects(
   feature: HoleFeature | ChamferFeature | FilletFeature,
   resultMessage: string
 ): readonly CadBodyLifecycleEffectSummary[] {
+  const resultEffects =
+    feature.kind === "hole"
+      ? [
+          {
+            bodyId: feature.bodyId,
+            featureId: feature.id,
+            primaryState: "derived-rebuild-pending" as const,
+            states: [
+              "active",
+              "result",
+              "modified",
+              "derived-rebuild-pending"
+            ] as const,
+            diagnosticCode: "REBUILD_DERIVED_PENDING" as const,
+            message: resultMessage
+          }
+        ]
+      : createAmbiguousResultFeatureEditLifecycleEffects(
+          feature,
+          resultMessage
+        );
+
   return [
     {
       bodyId: feature.targetBodyId,
@@ -7589,7 +7640,7 @@ function createConsumingFeatureEditLifecycleEffects(
       diagnosticCode: "REBUILD_TARGET_CONSUMED",
       message: `Target body ${feature.targetBodyId} remains consumed by edited ${feature.kind} feature ${feature.id}.`
     },
-    ...createAmbiguousResultFeatureEditLifecycleEffects(feature, resultMessage)
+    ...resultEffects
   ];
 }
 
@@ -7626,13 +7677,17 @@ function createScopedSourceExtrudeRebuildReferenceEffects(
         "Source named reference remains consumed by the downstream revalidated feature."
     }));
   const resultReplacement: CadFeatureReferenceChangeSummary = {
-    category: "replaced",
+    category: consumingFeature.kind === "hole" ? "active" : "replaced",
     bodyId: consumingFeature.bodyId,
     sourceFeatureId: sourceFeature.id,
     targetFeatureId: consumingFeature.id,
-    diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY",
+    ...(consumingFeature.kind === "hole"
+      ? {}
+      : { diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY" as const }),
     message:
-      "Downstream result body was revalidated from existing source records after the source edit; result topology remains repair-needed."
+      consumingFeature.kind === "hole"
+        ? "Downstream hole result references remain active after source-model revalidation."
+        : "Downstream result body was revalidated from existing source records after the source edit; result topology remains repair-needed."
   };
 
   return [
@@ -7646,6 +7701,26 @@ function createScopedSourceExtrudeRebuildLifecycleEffects(
   sourceFeature: ExtrudeFeature,
   consumingFeature: TargetConsumingFeature
 ): readonly CadBodyLifecycleEffectSummary[] {
+  const resultEffect: CadBodyLifecycleEffectSummary =
+    consumingFeature.kind === "hole"
+      ? {
+          bodyId: consumingFeature.bodyId,
+          featureId: consumingFeature.id,
+          primaryState: "replacement",
+          states: ["active", "result", "modified", "replacement"],
+          message:
+            "Downstream hole result body was revalidated from existing source records; generated result references remain source-semantic."
+        }
+      : {
+          bodyId: consumingFeature.bodyId,
+          featureId: consumingFeature.id,
+          primaryState: "replacement",
+          states: ["active", "result", "modified", "replacement"],
+          diagnosticCode: "REBUILD_RESULT_REPAIR_NEEDED",
+          message:
+            "Downstream result body was revalidated from existing source records; generated result topology remains repair-needed."
+        };
+
   return [
     {
       bodyId: sourceFeature.bodyId,
@@ -7656,15 +7731,7 @@ function createScopedSourceExtrudeRebuildLifecycleEffects(
       diagnosticCode: "REBUILD_TARGET_CONSUMED",
       message: `Source body ${sourceFeature.bodyId} was edited and remains consumed by revalidated feature ${consumingFeature.id}.`
     },
-    {
-      bodyId: consumingFeature.bodyId,
-      featureId: consumingFeature.id,
-      primaryState: "replacement",
-      states: ["active", "result", "modified", "replacement"],
-      diagnosticCode: "REBUILD_RESULT_REPAIR_NEEDED",
-      message:
-        "Downstream result body was revalidated from existing source records; generated result topology remains repair-needed."
-    }
+    resultEffect
   ];
 }
 
@@ -9763,7 +9830,7 @@ function describeGeneratedReferenceValidationExpected(
   }
 
   if (error.code === "UNSUPPORTED_BODY_REFERENCES") {
-    return "authored sketch-extrude body";
+    return "authored sketch-extrude body or supported authored hole result body";
   }
 
   if (error.code === "GENERATED_REFERENCE_NOT_FOUND") {
@@ -9842,7 +9909,7 @@ function createSketchFaceAttachment(
     sourceFeatureId: face.sourceFeatureId,
     sourceSketchId: face.sourceSketchId,
     sourceSketchEntityId: face.sourceSketchEntityId,
-    faceRole: face.role
+    faceRole: face.role as CadGeneratedExtrudeFaceRole
   };
 }
 

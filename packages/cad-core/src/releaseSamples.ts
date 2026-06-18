@@ -849,17 +849,17 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       },
       {
         selection: { type: "body", bodyId: HOLE_RESULT_BODY_ID },
-        expectedStatus: "ambiguous",
-        expectedCandidateCount: 0,
-        expectedCommandableCount: 0
+        expectedStatus: "resolved",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 1
       }
     ],
     expectedReferenceSummary: {
       namedReferenceCount: 1,
       semanticBodySelectionCount: 2,
-      generatedReferenceBodyCount: 0,
-      generatedReferenceCount: 0,
-      commandableReferenceCount: 0
+      generatedReferenceBodyCount: 1,
+      generatedReferenceCount: 3,
+      commandableReferenceCount: 3
     },
     expectedExportReadiness: {
       status: "deferred",

@@ -186,7 +186,12 @@ function createAttachedSketchFaceFrame(
   const profile = face.geometricSignature.profile;
   const normal = face.geometricSignature.normal;
 
-  if (!profile || !normal) {
+  if (
+    !profile ||
+    !normal ||
+    face.geometricSignature.depth === undefined ||
+    face.geometricSignature.extrudeSide === undefined
+  ) {
     return undefined;
   }
 

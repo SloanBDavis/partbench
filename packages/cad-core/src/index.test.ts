@@ -3666,11 +3666,11 @@ describe("cad-core", () => {
     });
     expect(summary.references).toMatchObject({
       semanticBodySelectionCount: 2,
-      generatedReferenceBodyCount: 0,
-      generatedReferenceCount: 0,
-      commandableReferenceCount: 0,
+      generatedReferenceBodyCount: 1,
+      generatedReferenceCount: 3,
+      commandableReferenceCount: 3,
       semanticBodySelectionStatusCounts: {
-        ambiguous: 1,
+        ambiguous: 0,
         consumed: 1
       }
     });
@@ -3684,7 +3684,6 @@ describe("cad-core", () => {
     });
     expect(summary.workflowHints.map((hint) => hint.code)).toEqual([
       "PROJECT_HEALTH_ISSUES",
-      "NO_COMMANDABLE_REFERENCES",
       "EXPORT_DEFERRED"
     ]);
   });
@@ -4812,6 +4811,591 @@ describe("cad-core", () => {
       ],
       vertices: []
     });
+  });
+
+  it("returns source-semantic generated references for authored hole result bodies", () => {
+    const engine = createRectangleHoleEngine();
+
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_hole_1" }
+    });
+
+    expect(references).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: {
+        kind: "body",
+        stableId: "generated:body:body_hole_1",
+        label: "Hole result body",
+        eligibleOperations: ["feature.selectReference"],
+        bodyId: "body_hole_1",
+        sourceFeatureId: "feat_hole_1",
+        sourceSketchId: "sketch_hole",
+        sourceSketchEntityId: "circle_hole",
+        profileKind: "circle",
+        geometricSignature: {
+          sourceKind: "hole",
+          targetBodyId: "body_rect_1",
+          profileKind: "circle",
+          sketchPlane: "XY",
+          holeDepthMode: "blind",
+          holeDepth: 2,
+          holeDirection: "positive",
+          profile: {
+            kind: "circle",
+            center: [0, 0],
+            radius: 0.5
+          },
+          normal: [0, 0, 1],
+          normalRole: "sketchPlaneNormal",
+          axis: [0, 0, 1],
+          axisRole: "holeDirection"
+        }
+      },
+      faceCount: 1,
+      edgeCount: 1,
+      vertexCount: 0,
+      faces: [
+        {
+          kind: "face",
+          stableId: "generated:face:body_hole_1:holeWall",
+          role: "holeWall",
+          label: "Hole wall face",
+          eligibleOperations: ["feature.selectReference"],
+          geometricSignature: {
+            sourceKind: "hole",
+            surfaceType: "cylinder",
+            axis: [0, 0, 1],
+            axisRole: "holeDirection"
+          }
+        }
+      ],
+      edges: [
+        {
+          kind: "edge",
+          stableId: "generated:edge:body_hole_1:startRim",
+          role: "startRim",
+          label: "Hole start rim edge",
+          eligibleOperations: ["feature.selectReference"],
+          adjacentFaceRoles: ["holeWall"],
+          geometricSignature: {
+            sourceKind: "hole",
+            curveType: "circle",
+            positionRole: "startRim"
+          }
+        }
+      ]
+    });
+
+    if (!references.ok || references.query !== "body.generatedReferences") {
+      throw new Error("Expected hole generated references response.");
+    }
+
+    expect(references.faces[0].eligibilityNotes?.join(" ")).toContain(
+      "hole axes and terminal rims are deferred"
+    );
+    expect(JSON.stringify(references)).not.toMatch(
+      /occt|mesh|renderer|selectionBuffer|selection-buffer|opfs|fileHandle|file-handle/i
+    );
+
+    engine.apply({
+      op: "feature.updateHole",
+      id: "feat_hole_1",
+      depthMode: "throughAll",
+      direction: "negative"
+    });
+
+    const throughAllReferences = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_hole_1" }
+    });
+
+    expect(throughAllReferences).toMatchObject({
+      ok: true,
+      edgeCount: 1,
+      edges: [{ stableId: "generated:edge:body_hole_1:startRim" }],
+      body: {
+        geometricSignature: {
+          holeDepthMode: "throughAll",
+          holeDirection: "negative",
+          axis: [0, 0, -1]
+        }
+      }
+    });
+    if (
+      !throughAllReferences.ok ||
+      throughAllReferences.query !== "body.generatedReferences"
+    ) {
+      throw new Error(
+        "Expected through-all hole generated references response."
+      );
+    }
+    expect("holeDepth" in throughAllReferences.body.geometricSignature).toBe(
+      false
+    );
+  });
+
+  it("resolves selects names and reports health for hole generated references", () => {
+    const engine = createRectangleHoleEngine();
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_hole_1",
+          stableId: "generated:face:body_hole_1:holeWall"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "face",
+      reference: {
+        kind: "face",
+        role: "holeWall",
+        eligibleOperations: ["feature.selectReference"]
+      }
+    });
+
+    const selection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_hole_1",
+          stableId: "generated:edge:body_hole_1:startRim",
+          expectedKind: "edge"
+        },
+        requiredOperation: "feature.selectReference"
+      }
+    });
+    const chamferSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_hole_1",
+          stableId: "generated:edge:body_hole_1:startRim",
+          expectedKind: "edge"
+        },
+        requiredOperation: "feature.chamfer"
+      }
+    });
+
+    expect(selection).toMatchObject({
+      ok: true,
+      status: "resolved",
+      candidateCount: 1,
+      issueCount: 0,
+      candidates: [
+        {
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.selectReference"
+          ],
+          target: {
+            type: "generatedReference",
+            bodyId: "body_hole_1",
+            stableId: "generated:edge:body_hole_1:startRim",
+            kind: "edge"
+          }
+        }
+      ]
+    });
+    expect(chamferSelection).toMatchObject({
+      ok: true,
+      status: "non-commandable",
+      candidateCount: 1,
+      issues: [
+        expect.objectContaining({
+          code: "NON_COMMANDABLE_SELECTION_TARGET",
+          expected: "feature.chamfer"
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_hole_1",
+          stableId: "generated:edge:body_hole_1:startRim"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_hole_1",
+        stableId: "generated:edge:body_hole_1:startRim"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Hole wall sketch",
+            bodyId: "body_hole_1",
+            faceStableId: "generated:face:body_hole_1:holeWall"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        op: "sketch.createOnFace",
+        bodyId: "body_hole_1",
+        stableId: "generated:face:body_hole_1:holeWall",
+        expected: "feature.attachSketchPlane"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            id: "feat_bad_hole_chamfer",
+            bodyId: "body_bad_hole_chamfer",
+            targetBodyId: "body_hole_1",
+            edgeStableId: "generated:edge:body_hole_1:startRim",
+            distance: 0.1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        op: "feature.chamfer",
+        bodyId: "body_hole_1",
+        expected: "active rectangle/circle newBody extrude target body"
+      }
+    });
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Hole wall",
+      bodyId: "body_hole_1",
+      stableId: "generated:face:body_hole_1:holeWall"
+    });
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Hole start rim",
+      bodyId: "body_hole_1",
+      stableId: "generated:edge:body_hole_1:startRim"
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Hole wall" }
+      })
+    ).toMatchObject({
+      ok: true,
+      reference: {
+        kind: "face",
+        stableId: "generated:face:body_hole_1:holeWall",
+        role: "holeWall"
+      }
+    });
+    expect(
+      readReferenceHealth(engine, {
+        type: "generatedReference",
+        bodyId: "body_hole_1",
+        stableId: "generated:face:body_hole_1:holeWall",
+        expectedKind: "face"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          source: "generatedReference",
+          status: "active",
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.selectReference"
+          ])
+        })
+      ])
+    });
+    expect(
+      readReferenceHealth(engine, { type: "namedReference", name: "Hole wall" })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: "generated:face:body_hole_1:holeWall"
+        })
+      ]
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Named hole wall sketch",
+            referenceName: "Hole wall"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        op: "sketch.createOnFace",
+        referenceName: "Hole wall",
+        expected: "feature.attachSketchPlane"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.fillet",
+            id: "feat_bad_hole_fillet",
+            bodyId: "body_bad_hole_fillet",
+            targetBodyId: "body_hole_1",
+            namedReference: "Hole start rim",
+            radius: 0.1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        op: "feature.fillet",
+        bodyId: "body_hole_1",
+        expected: "active rectangle/circle newBody extrude target body"
+      }
+    });
+    const roundTripJson = exportCadProjectJson(engine);
+    const restored = importCadProjectJson(roundTripJson);
+
+    expect(roundTripJson).not.toContain("web-cad.project.v17");
+    expect(roundTripJson).not.toMatch(
+      /occt|mesh|renderer|selectionBuffer|selection-buffer|opfs|fileHandle|file-handle/i
+    );
+    expect(
+      restored.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Hole wall" }
+      })
+    ).toMatchObject({
+      ok: true,
+      reference: {
+        stableId: "generated:face:body_hole_1:holeWall",
+        role: "holeWall"
+      }
+    });
+    expect(readProjectDependencyGraph(engine)).toMatchObject({
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          stableId: "generated:face:body_hole_1:holeWall",
+          status: "active"
+        })
+      ])
+    });
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "ready",
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          referenceHealthStatus: "active",
+          commandReady: true
+        })
+      ])
+    });
+  });
+
+  it("keeps hole reference ids stable across source edits and delete undo redo without schema migration", () => {
+    const engine = createRectangleHoleEngine();
+    const beforeQueryJson = exportCadProjectJson(engine);
+
+    const before = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_hole_1" }
+    });
+
+    expect(exportCadProjectJson(engine)).toBe(beforeQueryJson);
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_hole",
+      entity: {
+        id: "circle_hole",
+        kind: "circle",
+        center: [1, -1],
+        radius: 0.75
+      }
+    });
+
+    const afterSourceEdit = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_hole_1" }
+    });
+
+    if (
+      !before.ok ||
+      before.query !== "body.generatedReferences" ||
+      !afterSourceEdit.ok ||
+      afterSourceEdit.query !== "body.generatedReferences"
+    ) {
+      throw new Error("Expected hole generated references responses.");
+    }
+
+    expect(afterSourceEdit.faces.map((face) => face.stableId)).toEqual(
+      before.faces.map((face) => face.stableId)
+    );
+    expect(afterSourceEdit.edges.map((edge) => edge.stableId)).toEqual(
+      before.edges.map((edge) => edge.stableId)
+    );
+    expect(afterSourceEdit.body.geometricSignature.profile).toEqual({
+      kind: "circle",
+      center: [1, -1],
+      radius: 0.75
+    });
+
+    engine.apply({ op: "feature.delete", id: "feat_hole_1" });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_hole_1",
+          stableId: "generated:face:body_hole_1:holeWall"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND", bodyId: "body_hole_1" }
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_hole_1",
+          stableId: "generated:face:body_hole_1:holeWall"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      kind: "face",
+      reference: { role: "holeWall" }
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_hole_1" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND" }
+    });
+    expect(exportCadProjectJson(createRectangleHoleEngine())).not.toContain(
+      "web-cad.project.v17"
+    );
+  });
+
+  it("keeps unsupported result topology diagnostic-only for cut add revolve chamfer and fillet bodies", () => {
+    const cutAddEngine = createRectangleExtrudeEngine();
+
+    cutAddEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_result", name: "Result", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_result",
+        id: "rect_result",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_result",
+        bodyId: "body_cut_result",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_result",
+        entityId: "rect_result",
+        depth: 1,
+        operationMode: "cut"
+      }
+    ]);
+
+    const addEngine = createRectangleExtrudeEngine();
+    addEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_add", name: "Add", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_add",
+        id: "rect_add",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_result",
+        bodyId: "body_add_result",
+        targetBodyId: "body_rect_1",
+        sketchId: "sketch_add",
+        entityId: "rect_add",
+        depth: 1,
+        operationMode: "add"
+      }
+    ]);
+
+    for (const [engine, bodyId, expectedStatus] of [
+      [cutAddEngine, "body_cut_result", "ambiguous"],
+      [addEngine, "body_add_result", "ambiguous"],
+      [createRectangleRevolveEngine(), "body_revolve_1", "unsupported"],
+      [createRectangleChamferEngine(), "body_chamfer_1", "repair-needed"],
+      [createRectangleFilletEngine(), "body_fillet_1", "repair-needed"]
+    ] as const) {
+      expect(
+        engine.executeQuery({
+          version: "cadops.v1",
+          query: { query: "body.generatedReferences", bodyId }
+        })
+      ).toMatchObject({
+        ok: false,
+        error: { code: "UNSUPPORTED_BODY_REFERENCES", bodyId }
+      });
+      expect(
+        readReferenceHealth(engine, { type: "body", bodyId })
+      ).toMatchObject({
+        status: expectedStatus,
+        referenceHealth: [
+          expect.objectContaining({
+            commandable: false
+          })
+        ]
+      });
+    }
   });
 
   it("reports stale or unsupported generated reference resolution", () => {
@@ -8734,7 +9318,10 @@ describe("cad-core", () => {
         sourceBodyId: "body_rect_1",
         resultFeatureId: "feat_hole_1",
         resultBodyId: "body_hole_1",
-        expectedHealth: "repair-needed"
+        expectedHealth: "active",
+        expectedReferenceCategory: "active",
+        expectedPlanStatus: "ready",
+        expectedCommandReady: true
       },
       {
         engine: chamferEngine,
@@ -8781,13 +9368,16 @@ describe("cad-core", () => {
         rebuildReadiness: {
           status: "ready",
           commitDeferred: false,
-          diagnostics: expect.arrayContaining([
-            expect.objectContaining({
-              code: "AMBIGUOUS_RESULT_TOPOLOGY",
-              severity: "warning",
-              bodyId: testCase.resultBodyId
-            })
-          ])
+          diagnostics:
+            testCase.expectedHealth === "active"
+              ? []
+              : expect.arrayContaining([
+                  expect.objectContaining({
+                    code: "AMBIGUOUS_RESULT_TOPOLOGY",
+                    severity: "warning",
+                    bodyId: testCase.resultBodyId
+                  })
+                ])
         },
         dryRun: {
           status: "valid",
@@ -8801,7 +9391,7 @@ describe("cad-core", () => {
             targetFeatureId: testCase.resultFeatureId
           }),
           expect.objectContaining({
-            category: "replaced",
+            category: testCase.expectedReferenceCategory ?? "replaced",
             bodyId: testCase.resultBodyId,
             sourceFeatureId: testCase.sourceFeatureId,
             targetFeatureId: testCase.resultFeatureId
@@ -8820,7 +9410,7 @@ describe("cad-core", () => {
         ])
       });
       expect(plan).toMatchObject({
-        status: "repair-needed",
+        status: testCase.expectedPlanStatus ?? "repair-needed",
         bodyLifecycles: expect.arrayContaining([
           expect.objectContaining({
             bodyId: testCase.sourceBodyId,
@@ -8836,7 +9426,7 @@ describe("cad-core", () => {
               "modified",
               "replacement"
             ]),
-            commandReady: false
+            commandReady: testCase.expectedCommandReady ?? false
           })
         ])
       });
@@ -9061,10 +9651,11 @@ describe("cad-core", () => {
           diagnosticCode: "CONSUMED_REFERENCE_NOT_COMMAND_READY"
         }),
         expect.objectContaining({
-          category: "repair-needed",
+          category: "active",
           bodyId: "body_hole_1",
           sourceFeatureId: "feat_hole_1",
-          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+          stableId: "generated:face:body_hole_1:holeWall",
+          kind: "face"
         })
       ])
     );
@@ -9306,7 +9897,7 @@ describe("cad-core", () => {
       bodyId: "body_hole_1"
     });
 
-    expect(plan.status).toBe("repair-needed");
+    expect(plan.status).toBe("ready");
     expect(targetLifecycle).toMatchObject({
       bodyId: "body_rect_1",
       primaryState: "consumed",
@@ -9323,34 +9914,29 @@ describe("cad-core", () => {
     });
     expect(resultLifecycle).toMatchObject({
       bodyId: "body_hole_1",
-      primaryState: "repair-needed",
+      primaryState: "active",
       role: "result",
-      states: ["active", "result", "repair-needed"],
+      states: ["active", "result"],
       targetBodyId: "body_rect_1",
-      referenceHealthStatus: "repair-needed",
-      commandReady: false,
-      diagnostics: expect.arrayContaining([
-        expect.objectContaining({
-          code: "REBUILD_RESULT_REPAIR_NEEDED",
-          severity: "warning"
-        })
-      ])
+      referenceHealthStatus: "active",
+      commandReady: true,
+      diagnostics: []
     });
     expect(graph.referenceHealth).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           bodyId: "body_hole_1",
-          status: "repair-needed",
-          commandable: false
+          status: "active",
+          commandable: true
         })
       ])
     );
-    expect(resultHealth.status).toBe("repair-needed");
+    expect(resultHealth.status).toBe("active");
     expect(plan.affected).toMatchObject({
       sketchIds: expect.arrayContaining(["sketch_1", "sketch_hole"]),
       sketchEntityIds: expect.arrayContaining(["rect_1", "circle_hole"]),
       featureIds: expect.arrayContaining(["feat_rect_1", "feat_hole_1"]),
-      bodyIds: expect.arrayContaining(["body_rect_1", "body_hole_1"]),
+      bodyIds: ["body_rect_1"],
       derivedArtifactKinds: ["derivedGeometry"]
     });
   });
@@ -9510,24 +10096,22 @@ describe("cad-core", () => {
         }),
         expect.objectContaining({
           bodyId: "body_hole_1",
-          primaryState: "repair-needed",
+          primaryState: "derived-rebuild-pending",
           states: expect.arrayContaining([
             "result",
             "modified",
-            "derived-rebuild-pending",
-            "repair-needed",
-            "ambiguous"
+            "derived-rebuild-pending"
           ]),
-          diagnosticCode: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS"
+          diagnosticCode: "REBUILD_DERIVED_PENDING"
         })
       ])
     );
     expect(holePlan).toMatchObject({
-      status: "repair-needed",
+      status: "pending",
       lifecycleEffects: expect.arrayContaining([
         expect.objectContaining({
           bodyId: "body_hole_1",
-          diagnosticCode: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS"
+          diagnosticCode: "REBUILD_DERIVED_PENDING"
         })
       ]),
       bodyLifecycles: expect.arrayContaining([
@@ -9537,7 +10121,7 @@ describe("cad-core", () => {
         }),
         expect.objectContaining({
           bodyId: "body_hole_1",
-          primaryState: "repair-needed",
+          primaryState: "derived-rebuild-pending",
           derivedRebuildPending: true,
           rebuildRequired: true
         })
@@ -11470,7 +12054,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("reports derived exact metadata for hole bodies without generated topology references", () => {
+  it("reports derived exact metadata for hole bodies while generated references remain source-semantic", () => {
     const engine = createRectangleHoleEngine();
     const sourceIdentitySignature = readBodyTopologySourceSignature(
       engine,

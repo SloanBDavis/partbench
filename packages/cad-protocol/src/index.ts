@@ -2301,6 +2301,12 @@ export type CadGeneratedExtrudeFaceRole =
   | "side:vMax"
   | "side:circular";
 
+export type CadGeneratedHoleFaceRole = "holeWall";
+
+export type CadGeneratedFaceRole =
+  | CadGeneratedExtrudeFaceRole
+  | CadGeneratedHoleFaceRole;
+
 export type CadGeneratedExtrudeEdgeRole =
   | "start:uMin"
   | "start:uMax"
@@ -2316,6 +2322,12 @@ export type CadGeneratedExtrudeEdgeRole =
   | "longitudinal:uMax:vMax"
   | "start:circular"
   | "end:circular";
+
+export type CadGeneratedHoleEdgeRole = "startRim";
+
+export type CadGeneratedEdgeRole =
+  | CadGeneratedExtrudeEdgeRole
+  | CadGeneratedHoleEdgeRole;
 
 export type CadGeneratedExtrudeVertexRole =
   | "start:uMin:vMin"
@@ -2351,10 +2363,15 @@ export type CadGeneratedReferenceProfileSignature =
     };
 
 export interface CadGeneratedReferenceSignature {
+  readonly sourceKind?: "extrude" | "hole";
+  readonly targetBodyId?: BodyId;
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly sketchPlane: SketchPlane;
-  readonly extrudeSide: FeatureExtrudeSide;
-  readonly depth: number;
+  readonly extrudeSide?: FeatureExtrudeSide;
+  readonly depth?: number;
+  readonly holeDepthMode?: FeatureHoleDepthMode;
+  readonly holeDepth?: number;
+  readonly holeDirection?: FeatureHoleDirection;
   readonly profile?: CadGeneratedReferenceProfileSignature;
   readonly surfaceType?: CadGeneratedSurfaceType;
   readonly curveType?: CadGeneratedCurveType;
@@ -2394,7 +2411,7 @@ export interface CadGeneratedFaceReference {
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
   readonly sourceSketchEntityId: SketchEntityId;
-  readonly role: CadGeneratedExtrudeFaceRole;
+  readonly role: CadGeneratedFaceRole;
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
@@ -2410,8 +2427,8 @@ export interface CadGeneratedEdgeReference {
   readonly sourceFeatureId: FeatureId;
   readonly sourceSketchId: SketchId;
   readonly sourceSketchEntityId: SketchEntityId;
-  readonly role: CadGeneratedExtrudeEdgeRole;
-  readonly adjacentFaceRoles: readonly CadGeneratedExtrudeFaceRole[];
+  readonly role: CadGeneratedEdgeRole;
+  readonly adjacentFaceRoles: readonly CadGeneratedFaceRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
@@ -2428,7 +2445,7 @@ export interface CadGeneratedVertexReference {
   readonly sourceSketchId: SketchId;
   readonly sourceSketchEntityId: SketchEntityId;
   readonly role: CadGeneratedExtrudeVertexRole;
-  readonly adjacentFaceRoles: readonly CadGeneratedExtrudeFaceRole[];
+  readonly adjacentFaceRoles: readonly CadGeneratedFaceRole[];
   readonly adjacentEdgeRoles: readonly CadGeneratedExtrudeEdgeRole[];
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }

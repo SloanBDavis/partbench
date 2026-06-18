@@ -186,7 +186,13 @@ function createReferenceMeasurementInput(
   const sketch = document.sketches.get(reference.sourceSketchId);
   const profile = reference.geometricSignature.profile;
 
-  if (!sketch || !profile) {
+  if (
+    reference.geometricSignature.sourceKind === "hole" ||
+    reference.geometricSignature.depth === undefined ||
+    reference.geometricSignature.extrudeSide === undefined ||
+    !sketch ||
+    !profile
+  ) {
     return undefined;
   }
 
@@ -215,8 +221,13 @@ function createFaceMeasurement(
   reference: CadGeneratedFaceReference,
   input: NonNullable<ReturnType<typeof createReferenceMeasurementInput>>
 ): GeneratedReferenceMeasurement | undefined {
+  if (!isExtrudeFaceRole(reference.role)) {
+    return undefined;
+  }
+
+  const role = reference.role;
   const profile = input.profile;
-  const boundsPoints = createFaceBoundsPoints(reference.role, profile, input);
+  const boundsPoints = createFaceBoundsPoints(role, profile, input);
 
   if (boundsPoints.length === 0) {
     return undefined;
@@ -225,12 +236,10 @@ function createFaceMeasurement(
   return {
     ...base,
     kind: "face",
-    role: reference.role,
-    area: cleanMeasurementNumber(
-      createFaceArea(reference.role, profile, input)
-    ),
+    role,
+    area: cleanMeasurementNumber(createFaceArea(role, profile, input)),
     bounds: createMeasurementBounds(boundsPoints),
-    center: createFaceCenter(reference.role, profile, input),
+    center: createFaceCenter(role, profile, input),
     surfaceType: reference.geometricSignature.surfaceType ?? "plane",
     ...(reference.geometricSignature.normal
       ? { normal: reference.geometricSignature.normal }
@@ -252,23 +261,24 @@ function createEdgeMeasurement(
   reference: CadGeneratedEdgeReference,
   input: NonNullable<ReturnType<typeof createReferenceMeasurementInput>>
 ): GeneratedReferenceMeasurement | undefined {
-  if (
-    reference.role === "start:circular" ||
-    reference.role === "end:circular"
-  ) {
+  if (!isExtrudeEdgeRole(reference.role)) {
+    return undefined;
+  }
+
+  const role = reference.role;
+
+  if (role === "start:circular" || role === "end:circular") {
     if (input.profile.kind !== "circle") {
       return undefined;
     }
 
     const depth =
-      reference.role === "start:circular"
-        ? input.depthRange[0]
-        : input.depthRange[1];
+      role === "start:circular" ? input.depthRange[0] : input.depthRange[1];
 
     return {
       ...base,
       kind: "edge",
-      role: reference.role,
+      role,
       length: cleanMeasurementNumber(2 * Math.PI * input.profile.radius),
       curveType: "circle",
       center: mapLocalPoint(input, [
@@ -291,7 +301,7 @@ function createEdgeMeasurement(
   }
 
   const endpoints = createRectangleEdgeEndpoints(
-    reference.role,
+    role,
     input.profile,
     input.depthRange
   );
@@ -306,7 +316,7 @@ function createEdgeMeasurement(
   return {
     ...base,
     kind: "edge",
-    role: reference.role,
+    role,
     length: cleanMeasurementNumber(distanceVec3(startPoint, endPoint)),
     curveType: "line",
     startPoint,
@@ -318,6 +328,18 @@ function createEdgeMeasurement(
       ? { axisRole: reference.geometricSignature.axisRole }
       : {})
   };
+}
+
+function isExtrudeFaceRole(
+  role: CadGeneratedFaceReference["role"]
+): role is CadGeneratedExtrudeFaceRole {
+  return role !== "holeWall";
+}
+
+function isExtrudeEdgeRole(
+  role: CadGeneratedEdgeReference["role"]
+): role is CadGeneratedExtrudeEdgeRole {
+  return role !== "startRim";
 }
 
 function createVertexMeasurement(

@@ -256,10 +256,18 @@ These constraints remain active:
     `project.dependencyGraph`, and `reference.health` consistent, preserves
     lifecycle state across unrelated commits through current transaction
     history, leaves failed source-model rebuild non-mutating, and does not
-    introduce `web-cad.project.v17`. V10 must not become arbitrary
-    topological naming, production WebGPU, assemblies, STEP import, broad sketch
-    solving, broad new modeling features, or persisted UI state unless a later
-    tranche explicitly scopes one of those items.
+    introduce `web-cad.project.v17`. Tranche E1 is implemented as the first
+    source-semantic stable-reference expansion for result features: supported
+    authored hole result bodies now expose deterministic generated body,
+    cylindrical wall-face, start-rim edge, and blind-end-rim edge references
+    from public source data and current hole source state. E1 keeps source
+    target bodies consumed, keeps cut/add, revolve, chamfer, and fillet result
+    topology diagnostic-only or repair-needed, defers hole axis plus blind
+    terminal-rim and through-all exit-rim references, and does not introduce
+    `web-cad.project.v17`. V10 must not become arbitrary topological naming,
+    production WebGPU, assemblies, STEP import, broad sketch solving, broad new
+    modeling features, or persisted UI state unless a later tranche explicitly
+    scopes one of those items.
 
 ## Current Repo State
 
@@ -274,8 +282,8 @@ and focused packages:
   camera/navigation controls, first feature tree, improved modeling workflow,
   and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
-  feature editability, dependency/reference-health, and validation error
-  shapes.
+  feature editability, dependency/reference-health, generated-reference role
+  and signature, and validation error shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
@@ -283,7 +291,8 @@ and focused packages:
   perpendicular line constraints, authored rectangle/circle extrude features,
   narrow rectangle-tool add/cut boolean source data, authored revolve, hole,
   chamfer, and fillet source intent, named references, feature editability,
-  source-derived dependency graph/reference-health queries, and versioned
+  source-derived dependency graph/reference-health queries, source-semantic
+  generated references for supported authored hole result bodies, and versioned
   project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
@@ -1058,19 +1067,20 @@ existing V6 feature breadth without changing modeling behavior or project
 schema:
 
 - `V7_RELEASE_SAMPLE_FIXTURES` now includes deterministic source-only samples
-  for authored rectangle `newBody` revolve, authored hole result diagnostics,
-  and edge-finished chamfer/fillet result diagnostics, in addition to the
-  original extrude/reference/export fixtures;
+  for authored rectangle `newBody` revolve, authored hole result source
+  semantics, and edge-finished chamfer/fillet result diagnostics, in addition
+  to the original extrude/reference/export fixtures;
 - the new samples use existing CADOps feature operations and are automatically
   exercised by `pnpm smoke:v7-release-samples`;
 - each added fixture records source counts, health expectations,
   generated/named reference expectations where defensible, structured
   `selection.referenceCandidates` outcomes, `project.summary` reference/export
   counts, `project.exportReadiness`, and known limitations;
-- revolve, hole, chamfer, and fillet result bodies intentionally remain
-  ambiguous/unsupported for generated semantic references. Consumed source
-  bodies and target edges can still resolve semantically for diagnostics, but
-  they are non-commandable after consumption;
+- revolve, chamfer, and fillet result bodies intentionally remain
+  ambiguous/unsupported or repair-needed for generated semantic references;
+  E1 adds a narrow supported authored hole result-reference subset. Consumed
+  source bodies and target edges can still resolve semantically for diagnostics,
+  but they are non-commandable after consumption;
 - tests and smoke coverage continue to verify current
   `web-cad.project.v16` import/export behavior, absence of
   `web-cad.project.v17`, source/query-derived fixture data, and separation from
@@ -1580,26 +1590,40 @@ Use these decisions when drafting or implementing V10 tranches:
    downstream cut/add extrude, hole, chamfer, or fillet from existing source
    records when the downstream result body is not itself consumed. The semantic
    diff marks source targets consumed/source/modified, direct downstream
-   results modified/replacement, and result topology repair-needed without
-   claiming command-ready generated result references or persistent B-rep
+   results modified/replacement, and keeps result topology repair-needed
+   without claiming command-ready generated result references except for the
+   later E1-supported authored hole subset. It does not add persistent B-rep
    replay. `project.rebuildPlan` now carries current lifecycle effects across
    unrelated commits and undo/redo from the current transaction history while
    filtering stale effects for deleted bodies. Failed source-model rebuild paths
    stay non-mutating for source JSON, history, source identity, reference
    health, and rebuild plan. D2 does not add arbitrary topology, broad UI,
    renderer/geometry/storage authority, or `web-cad.project.v17`.
-7. **Stable Reference Expansion For Defensible Result Features** - source-
-   semantic generated/result references for revolve, hole, scoped cut/add, and
+7. **Source-Semantic Hole Generated References** - implemented E1 as the first
+   stable-reference expansion for result features. Supported authored
+   `feature.hole` result bodies expose deterministic generated body,
+   cylindrical `holeWall` face, and `startRim` edge references through
+   `body.generatedReferences`, `body.resolveGeneratedReference`,
+   `selection.referenceCandidates`, named references, `reference.health`,
+   dependency graph, editability, and rebuild plan paths. The references are
+   based on public semantic source data and source-state signatures, not OCCT,
+   mesh, renderer, selection-buffer, OPFS, or file-handle IDs. E1 keeps
+   consumed source bodies consumed, keeps cut/add, revolve, chamfer, and fillet
+   result topology diagnostic-only or repair-needed, defers hole axis plus
+   blind terminal-rim and through-all exit-rim references, adds no UI/modeling
+   command/storage behavior, and does not introduce `web-cad.project.v17`.
+8. **Further Stable Reference Expansion For Defensible Result Features** -
+   source-semantic generated/result references for revolve, scoped cut/add, and
    edge-finish outputs only where identity evidence is strong enough.
-8. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
+9. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
    dimension/sketch edit dry-runs, and focused new constraints only where they
    support feature editing with clear diagnostics.
-9. **Named Reference Repair Workflow** - health display, explicit repair
+10. **Named Reference Repair Workflow** - health display, explicit repair
    command, dry-run diagnostics, and agent/MCP path without silent retargeting.
-10. **Product Integration And Browser Workflows** - compact feature edit,
+11. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,
    Modeling, and viewport surfaces.
-11. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
+12. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
    non-browser and browser smokes, release docs, migration audit if V17 is
    introduced, and final boundary cleanup.
 

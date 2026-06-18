@@ -149,7 +149,11 @@ function createGeneratedEdgePolyline(
   const { geometricSignature } = edge;
   const { profile } = geometricSignature;
 
-  if (!profile) {
+  if (
+    !profile ||
+    geometricSignature.depth === undefined ||
+    geometricSignature.extrudeSide === undefined
+  ) {
     return [];
   }
 
@@ -266,6 +270,8 @@ function createRectangleEdgePolyline(
       ]);
     case "start:circular":
     case "end:circular":
+      return [];
+    default:
       return [];
   }
 }

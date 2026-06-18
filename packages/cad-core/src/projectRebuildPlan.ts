@@ -196,8 +196,11 @@ function lifecycleStatesForBody(
     return ["active", "result", "ambiguous", "repair-needed"];
   }
 
+  if (body.source.type === "sketchHoleFeature") {
+    return ["active", "result"];
+  }
+
   if (
-    body.source.type === "sketchHoleFeature" ||
     body.source.type === "edgeChamferFeature" ||
     body.source.type === "edgeFilletFeature"
   ) {

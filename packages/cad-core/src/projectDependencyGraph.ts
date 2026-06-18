@@ -1123,11 +1123,11 @@ function featureStatus(
     return "unsupported";
   }
 
-  if (
-    feature.kind === "hole" ||
-    feature.kind === "chamfer" ||
-    feature.kind === "fillet"
-  ) {
+  if (feature.kind === "hole") {
+    return "active";
+  }
+
+  if (feature.kind === "chamfer" || feature.kind === "fillet") {
     return "repair-needed";
   }
 
