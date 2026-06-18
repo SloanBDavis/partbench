@@ -773,10 +773,15 @@ function ModelStoryReferences({
     { label: "Body", references: [references.body] },
     { label: "Faces", references: references.faces },
     { label: "Edges", references: references.edges },
-    { label: "Vertices", references: references.vertices }
+    { label: "Vertices", references: references.vertices },
+    { label: "Axes", references: references.axes }
   ];
   const total =
-    1 + references.faceCount + references.edgeCount + references.vertexCount;
+    1 +
+    references.faceCount +
+    references.edgeCount +
+    references.vertexCount +
+    references.axisCount;
 
   return (
     <details
@@ -1163,6 +1168,8 @@ function formatGeneratedReferenceKindLabel(
       return "Edge";
     case "vertex":
       return "Vertex";
+    case "axis":
+      return "Axis";
   }
 }
 

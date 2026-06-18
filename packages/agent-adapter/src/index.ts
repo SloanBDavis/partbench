@@ -30,6 +30,7 @@ import type {
   CadSketchConstraintHealth,
   CadSketchDimensionHealth,
   CadSketchEvaluationHealth,
+  CadGeneratedAxisReference,
   CadGeneratedBodyReference,
   CadGeneratedEdgeReference,
   CadGeneratedEntityKind,
@@ -637,6 +638,8 @@ export interface CadOpsAgentBodyGeneratedReferencesQueryResponse {
   readonly edges: readonly CadGeneratedEdgeReference[];
   readonly vertexCount: number;
   readonly vertices: readonly CadGeneratedVertexReference[];
+  readonly axisCount: number;
+  readonly axes: readonly CadGeneratedAxisReference[];
 }
 
 export interface CadOpsAgentBodyResolveGeneratedReferenceQueryResponse {
@@ -2455,7 +2458,9 @@ function toAgentQueryResponse(
       edgeCount: response.edgeCount,
       edges: response.edges,
       vertexCount: response.vertexCount,
-      vertices: response.vertices
+      vertices: response.vertices,
+      axisCount: response.axisCount,
+      axes: response.axes
     };
   }
 
@@ -3182,7 +3187,8 @@ function isGeneratedEntityKind(
     value === "body" ||
     value === "face" ||
     value === "edge" ||
-    value === "vertex"
+    value === "vertex" ||
+    value === "axis"
   );
 }
 

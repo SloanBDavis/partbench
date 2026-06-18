@@ -484,7 +484,7 @@ describe("derivedExactMetadata", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
-  it("enriches authored revolve topology with derived exact metadata while generated references remain unsupported", () => {
+  it("enriches authored revolve topology with derived exact metadata while generated references stay source-semantic", () => {
     const engine = createRevolvedRectangleEngine();
     const bodyId = "body_revolve_1";
     const sourceIdentitySignature = readBodyTopologySignature(engine, bodyId);
@@ -526,11 +526,23 @@ describe("derivedExactMetadata", () => {
       }
     });
     expect(generatedReferences).toMatchObject({
-      ok: false,
+      ok: true,
       query: "body.generatedReferences",
-      error: {
-        code: "UNSUPPORTED_BODY_REFERENCES"
-      }
+      body: {
+        stableId: "generated:body:body_revolve_1",
+        geometricSignature: {
+          sourceKind: "revolve"
+        }
+      },
+      faces: [],
+      edges: [],
+      vertices: [],
+      axes: [
+        {
+          stableId: "generated:axis:body_revolve_1:revolveAxis",
+          role: "revolveAxis"
+        }
+      ]
     });
   });
 
@@ -596,6 +608,12 @@ describe("derivedExactMetadata", () => {
         {
           stableId: "generated:edge:body_hole_1:startRim",
           role: "startRim"
+        }
+      ],
+      axes: [
+        {
+          stableId: "generated:axis:body_hole_1:holeAxis",
+          role: "holeAxis"
         }
       ]
     });

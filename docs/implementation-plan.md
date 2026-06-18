@@ -259,12 +259,21 @@ These constraints remain active:
     introduce `web-cad.project.v17`. Tranche E1 is implemented as the first
     source-semantic stable-reference expansion for result features: supported
     authored hole result bodies now expose deterministic generated body,
-    cylindrical wall-face, start-rim edge, and blind-end-rim edge references
-    from public source data and current hole source state. E1 keeps source
-    target bodies consumed, keeps cut/add, revolve, chamfer, and fillet result
-    topology diagnostic-only or repair-needed, defers hole axis plus blind
-    terminal-rim and through-all exit-rim references, and does not introduce
-    `web-cad.project.v17`. V10 must not become arbitrary topological naming,
+    cylindrical wall-face, and start-rim edge references from public source
+    data and current hole source state. E1 keeps source target bodies
+    consumed, keeps cut/add, revolve, chamfer, and fillet result topology
+    diagnostic-only or repair-needed, defers hole axis plus blind terminal-rim
+    and through-all exit-rim references, and does not introduce
+    `web-cad.project.v17`. Tranche E2 is implemented as the query-only
+    generated axis slice: supported authored revolve `newBody` result bodies
+    expose deterministic generated body plus `revolveAxis` references, and
+    supported authored hole result bodies add deterministic `holeAxis`
+    references beside the E1 body/`holeWall`/`startRim` references. E2 keeps
+    axes selection/name-only, keeps measurement, attach-sketch, chamfer,
+    fillet, cut/add result refs, revolve faces/edges, chamfer/fillet
+    replacement topology, and hole terminal/exit rims unsupported or
+    diagnostic-only, and does not introduce `web-cad.project.v17`. V10 must
+    not become arbitrary topological naming,
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
     scopes one of those items.
@@ -1612,13 +1621,27 @@ Use these decisions when drafting or implementing V10 tranches:
    result topology diagnostic-only or repair-needed, defers hole axis plus
    blind terminal-rim and through-all exit-rim references, adds no UI/modeling
    command/storage behavior, and does not introduce `web-cad.project.v17`.
-8. **Further Stable Reference Expansion For Defensible Result Features** -
+8. **Source-Semantic Axis References For Revolve And Hole** - implemented E2
+   as the query-only generated axis slice. `CadGeneratedEntityKind` now
+   includes `axis`; generated-reference responses include `axes`/`axisCount`;
+   supported authored revolve `newBody` result bodies expose only generated
+   body plus `revolveAxis` references; supported authored hole result bodies
+   add `holeAxis` to the E1 body/`holeWall`/`startRim` references. Axis stable
+   IDs and signatures are derived from public source feature/sketch/profile/
+   axis/circle state, not OCCT, mesh, renderer, viewport, GPU, selection-buffer,
+   OPFS, file-handle, or exact metadata IDs. Axis references are selectable and
+   nameable only; they are not eligible for measurements, attached sketches,
+   chamfer, fillet, or modeling commands. E2 keeps revolve faces/edges,
+   cut/add results, chamfer/fillet replacement topology, and hole terminal/exit
+   rims diagnostic-only or deferred, adds no UI/storage behavior, and does not
+   introduce `web-cad.project.v17`.
+9. **Further Stable Reference Expansion For Defensible Result Features** -
    source-semantic generated/result references for revolve, scoped cut/add, and
    edge-finish outputs only where identity evidence is strong enough.
-9. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
+10. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
    dimension/sketch edit dry-runs, and focused new constraints only where they
    support feature editing with clear diagnostics.
-10. **Named Reference Repair Workflow** - health display, explicit repair
+11. **Named Reference Repair Workflow** - health display, explicit repair
    command, dry-run diagnostics, and agent/MCP path without silent retargeting.
 11. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,

@@ -422,6 +422,13 @@ function createGeneratedReference(
           "longitudinal:uMin:vMin"
         ]
       };
+    case "axis":
+      return {
+        ...base,
+        kind,
+        stableId: "generated:axis:body_rect:axis",
+        role: "revolveAxis"
+      };
   }
 }
 
@@ -435,6 +442,8 @@ function formatKindLabel(kind: CadGeneratedReference["kind"]): string {
       return "Edge";
     case "vertex":
       return "Vertex";
+    case "axis":
+      return "Axis";
   }
 }
 

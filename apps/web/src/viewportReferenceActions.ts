@@ -83,5 +83,7 @@ function formatActionKind(kind: CadGeneratedReference["kind"]): string {
       return "Edge";
     case "vertex":
       return "Vertex";
+    case "axis":
+      return "Axis";
   }
 }

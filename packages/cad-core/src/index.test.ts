@@ -3610,7 +3610,8 @@ describe("cad-core", () => {
         body: 1,
         face: 6,
         edge: 12,
-        vertex: 8
+        vertex: 8,
+        axis: 0
       },
       operationCounts: {
         "reference.nameGenerated": 27,
@@ -3667,8 +3668,8 @@ describe("cad-core", () => {
     expect(summary.references).toMatchObject({
       semanticBodySelectionCount: 2,
       generatedReferenceBodyCount: 1,
-      generatedReferenceCount: 3,
-      commandableReferenceCount: 3,
+      generatedReferenceCount: 4,
+      commandableReferenceCount: 4,
       semanticBodySelectionStatusCounts: {
         ambiguous: 0,
         consumed: 1
@@ -4856,6 +4857,7 @@ describe("cad-core", () => {
       faceCount: 1,
       edgeCount: 1,
       vertexCount: 0,
+      axisCount: 1,
       faces: [
         {
           kind: "face",
@@ -4885,6 +4887,21 @@ describe("cad-core", () => {
             positionRole: "startRim"
           }
         }
+      ],
+      axes: [
+        {
+          kind: "axis",
+          stableId: "generated:axis:body_hole_1:holeAxis",
+          role: "holeAxis",
+          label: "Hole axis",
+          eligibleOperations: ["feature.selectReference"],
+          geometricSignature: {
+            sourceKind: "hole",
+            axis: [0, 0, 1],
+            axisRole: "holeAxis",
+            positionRole: "holeCenter"
+          }
+        }
       ]
     });
 
@@ -4893,7 +4910,10 @@ describe("cad-core", () => {
     }
 
     expect(references.faces[0].eligibilityNotes?.join(" ")).toContain(
-      "hole axes and terminal rims are deferred"
+      "terminal and exit rims are deferred"
+    );
+    expect(JSON.stringify(references)).not.toContain(
+      "generated:edge:body_hole_1:terminalRim"
     );
     expect(JSON.stringify(references)).not.toMatch(
       /occt|mesh|renderer|selectionBuffer|selection-buffer|opfs|fileHandle|file-handle/i
@@ -4915,6 +4935,8 @@ describe("cad-core", () => {
       ok: true,
       edgeCount: 1,
       edges: [{ stableId: "generated:edge:body_hole_1:startRim" }],
+      axisCount: 1,
+      axes: [{ stableId: "generated:axis:body_hole_1:holeAxis" }],
       body: {
         geometricSignature: {
           holeDepthMode: "throughAll",
@@ -4934,6 +4956,101 @@ describe("cad-core", () => {
     expect("holeDepth" in throughAllReferences.body.geometricSignature).toBe(
       false
     );
+  });
+
+  it("returns source-semantic generated body and axis references for authored revolve newBody bodies", () => {
+    const engine = createRectangleRevolveEngine();
+
+    const references = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_revolve_1" }
+    });
+
+    expect(references).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: {
+        kind: "body",
+        stableId: "generated:body:body_revolve_1",
+        label: "Rectangle revolve body",
+        eligibleOperations: ["feature.selectReference"],
+        bodyId: "body_revolve_1",
+        sourceFeatureId: "feat_revolve_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        profileKind: "rectangle",
+        geometricSignature: {
+          sourceKind: "revolve",
+          profileKind: "rectangle",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [2, 0],
+            width: 1,
+            height: 3
+          },
+          revolveAxis: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1"
+          },
+          revolveAxisSignature: {
+            type: "sketchLine",
+            sketchId: "sketch_1",
+            entityId: "axis_1",
+            start: [0, -2],
+            end: [0, 2]
+          },
+          revolveAngleDegrees: 360,
+          axis: [0, 1, 0],
+          axisRole: "revolveAxis"
+        }
+      },
+      faceCount: 0,
+      faces: [],
+      edgeCount: 0,
+      edges: [],
+      vertexCount: 0,
+      vertices: [],
+      axisCount: 1,
+      axes: [
+        {
+          kind: "axis",
+          stableId: "generated:axis:body_revolve_1:revolveAxis",
+          role: "revolveAxis",
+          label: "Revolve axis",
+          eligibleOperations: ["feature.selectReference"],
+          sourceSketchId: "sketch_1",
+          sourceSketchEntityId: "axis_1",
+          geometricSignature: {
+            sourceKind: "revolve",
+            axis: [0, 1, 0],
+            axisRole: "revolveAxis"
+          }
+        }
+      ]
+    });
+
+    expect(JSON.stringify(references)).not.toMatch(
+      /generated:(face|edge|vertex):body_revolve_1|occt|mesh|renderer|selectionBuffer|selection-buffer|opfs|fileHandle|file-handle/i
+    );
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_revolve_1",
+          stableId: "generated:face:body_revolve_1:startCap"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_revolve_1",
+        stableId: "generated:face:body_revolve_1:startCap"
+      }
+    });
   });
 
   it("resolves selects names and reports health for hole generated references", () => {
@@ -4965,8 +5082,8 @@ describe("cad-core", () => {
         selection: {
           type: "generatedReference",
           bodyId: "body_hole_1",
-          stableId: "generated:edge:body_hole_1:startRim",
-          expectedKind: "edge"
+          stableId: "generated:axis:body_hole_1:holeAxis",
+          expectedKind: "axis"
         },
         requiredOperation: "feature.selectReference"
       }
@@ -4978,10 +5095,23 @@ describe("cad-core", () => {
         selection: {
           type: "generatedReference",
           bodyId: "body_hole_1",
-          stableId: "generated:edge:body_hole_1:startRim",
-          expectedKind: "edge"
+          stableId: "generated:axis:body_hole_1:holeAxis",
+          expectedKind: "axis"
         },
         requiredOperation: "feature.chamfer"
+      }
+    });
+    const filletSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_hole_1",
+          stableId: "generated:axis:body_hole_1:holeAxis",
+          expectedKind: "axis"
+        },
+        requiredOperation: "feature.fillet"
       }
     });
 
@@ -5000,8 +5130,8 @@ describe("cad-core", () => {
           target: {
             type: "generatedReference",
             bodyId: "body_hole_1",
-            stableId: "generated:edge:body_hole_1:startRim",
-            kind: "edge"
+            stableId: "generated:axis:body_hole_1:holeAxis",
+            kind: "axis"
           }
         }
       ]
@@ -5017,13 +5147,24 @@ describe("cad-core", () => {
         })
       ]
     });
+    expect(filletSelection).toMatchObject({
+      ok: true,
+      status: "non-commandable",
+      candidateCount: 1,
+      issues: [
+        expect.objectContaining({
+          code: "NON_COMMANDABLE_SELECTION_TARGET",
+          expected: "feature.fillet"
+        })
+      ]
+    });
     expect(
       engine.executeQuery({
         version: "cadops.v1",
         query: {
           query: "body.generatedReferenceMeasurements",
           bodyId: "body_hole_1",
-          stableId: "generated:edge:body_hole_1:startRim"
+          stableId: "generated:axis:body_hole_1:holeAxis"
         }
       })
     ).toMatchObject({
@@ -5031,7 +5172,7 @@ describe("cad-core", () => {
       error: {
         code: "GENERATED_REFERENCE_NOT_FOUND",
         bodyId: "body_hole_1",
-        stableId: "generated:edge:body_hole_1:startRim"
+        stableId: "generated:axis:body_hole_1:holeAxis"
       }
     });
     expect(
@@ -5055,6 +5196,30 @@ describe("cad-core", () => {
         bodyId: "body_hole_1",
         stableId: "generated:face:body_hole_1:holeWall",
         expected: "feature.attachSketchPlane"
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Hole axis sketch",
+            bodyId: "body_hole_1",
+            faceStableId: "generated:axis:body_hole_1:holeAxis"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        op: "sketch.createOnFace",
+        bodyId: "body_hole_1",
+        stableId: "generated:axis:body_hole_1:holeAxis",
+        expected: "face",
+        received: "axis"
       }
     });
     expect(
@@ -5090,9 +5255,9 @@ describe("cad-core", () => {
     });
     engine.apply({
       op: "reference.nameGenerated",
-      name: "Hole start rim",
+      name: "Hole axis",
       bodyId: "body_hole_1",
-      stableId: "generated:edge:body_hole_1:startRim"
+      stableId: "generated:axis:body_hole_1:holeAxis"
     });
 
     expect(
@@ -5106,6 +5271,19 @@ describe("cad-core", () => {
         kind: "face",
         stableId: "generated:face:body_hole_1:holeWall",
         role: "holeWall"
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Hole axis" }
+      })
+    ).toMatchObject({
+      ok: true,
+      reference: {
+        kind: "axis",
+        stableId: "generated:axis:body_hole_1:holeAxis",
+        role: "holeAxis"
       }
     });
     expect(
@@ -5173,7 +5351,7 @@ describe("cad-core", () => {
             id: "feat_bad_hole_fillet",
             bodyId: "body_bad_hole_fillet",
             targetBodyId: "body_hole_1",
-            namedReference: "Hole start rim",
+            namedReference: "Hole axis",
             radius: 0.1
           }
         ]
@@ -5211,6 +5389,11 @@ describe("cad-core", () => {
         expect.objectContaining({
           bodyId: "body_hole_1",
           stableId: "generated:face:body_hole_1:holeWall",
+          status: "active"
+        }),
+        expect.objectContaining({
+          bodyId: "body_hole_1",
+          stableId: "generated:axis:body_hole_1:holeAxis",
           status: "active"
         })
       ])
@@ -5269,7 +5452,15 @@ describe("cad-core", () => {
     expect(afterSourceEdit.edges.map((edge) => edge.stableId)).toEqual(
       before.edges.map((edge) => edge.stableId)
     );
+    expect(afterSourceEdit.axes.map((axis) => axis.stableId)).toEqual(
+      before.axes.map((axis) => axis.stableId)
+    );
     expect(afterSourceEdit.body.geometricSignature.profile).toEqual({
+      kind: "circle",
+      center: [1, -1],
+      radius: 0.75
+    });
+    expect(afterSourceEdit.axes[0]?.geometricSignature.profile).toEqual({
       kind: "circle",
       center: [1, -1],
       radius: 0.75
@@ -5321,7 +5512,55 @@ describe("cad-core", () => {
     );
   });
 
-  it("keeps unsupported result topology diagnostic-only for cut add revolve chamfer and fillet bodies", () => {
+  it("keeps revolve axis reference ids stable while source axis signatures update", () => {
+    const engine = createRectangleRevolveEngine();
+    const before = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_revolve_1" }
+    });
+
+    engine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "axis_1",
+        kind: "line",
+        start: [0, -3],
+        end: [0, 3]
+      }
+    });
+
+    const after = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.generatedReferences", bodyId: "body_revolve_1" }
+    });
+
+    if (
+      !before.ok ||
+      before.query !== "body.generatedReferences" ||
+      !after.ok ||
+      after.query !== "body.generatedReferences"
+    ) {
+      throw new Error("Expected revolve generated references responses.");
+    }
+
+    expect(after.axes.map((axis) => axis.stableId)).toEqual(
+      before.axes.map((axis) => axis.stableId)
+    );
+    expect(after.axes[0]?.geometricSignature.revolveAxisSignature).toEqual({
+      type: "sketchLine",
+      sketchId: "sketch_1",
+      entityId: "axis_1",
+      start: [0, -3],
+      end: [0, 3]
+    });
+    expect(after.faces).toEqual([]);
+    expect(after.edges).toEqual([]);
+    expect(after.vertices).toEqual([]);
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+  });
+
+  it("keeps unsupported result topology diagnostic-only for cut add chamfer and fillet bodies", () => {
     const cutAddEngine = createRectangleExtrudeEngine();
 
     cutAddEngine.applyBatch([
@@ -5372,7 +5611,6 @@ describe("cad-core", () => {
     for (const [engine, bodyId, expectedStatus] of [
       [cutAddEngine, "body_cut_result", "ambiguous"],
       [addEngine, "body_add_result", "ambiguous"],
-      [createRectangleRevolveEngine(), "body_revolve_1", "unsupported"],
       [createRectangleChamferEngine(), "body_chamfer_1", "repair-needed"],
       [createRectangleFilletEngine(), "body_fillet_1", "repair-needed"]
     ] as const) {
@@ -5396,6 +5634,45 @@ describe("cad-core", () => {
         ]
       });
     }
+
+    const revolveEngine = createRectangleRevolveEngine();
+    expect(
+      revolveEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_revolve_1",
+          stableId: "generated:edge:body_revolve_1:startRim"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        bodyId: "body_revolve_1",
+        stableId: "generated:edge:body_revolve_1:startRim"
+      }
+    });
+    expect(
+      readReferenceHealth(revolveEngine, {
+        type: "body",
+        bodyId: "body_revolve_1"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:body:body_revolve_1",
+          kind: "body",
+          commandable: true
+        }),
+        expect.objectContaining({
+          stableId: "generated:axis:body_revolve_1:revolveAxis",
+          kind: "axis",
+          commandable: true
+        })
+      ])
+    });
   });
 
   it("reports stale or unsupported generated reference resolution", () => {

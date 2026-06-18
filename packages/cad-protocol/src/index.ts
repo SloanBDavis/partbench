@@ -2290,7 +2290,12 @@ export interface CadBodySnapshot {
   readonly source: CadBodySource;
 }
 
-export type CadGeneratedEntityKind = "body" | "face" | "edge" | "vertex";
+export type CadGeneratedEntityKind =
+  | "body"
+  | "face"
+  | "edge"
+  | "vertex"
+  | "axis";
 
 export type CadGeneratedExtrudeFaceRole =
   | "startCap"
@@ -2329,6 +2334,8 @@ export type CadGeneratedEdgeRole =
   | CadGeneratedExtrudeEdgeRole
   | CadGeneratedHoleEdgeRole;
 
+export type CadGeneratedAxisRole = "revolveAxis" | "holeAxis";
+
 export type CadGeneratedExtrudeVertexRole =
   | "start:uMin:vMin"
   | "start:uMin:vMax"
@@ -2341,6 +2348,14 @@ export type CadGeneratedExtrudeVertexRole =
 
 export type CadGeneratedSurfaceType = "plane" | "cylinder";
 export type CadGeneratedCurveType = "line" | "circle";
+
+export interface CadGeneratedAxisSourceSignature {
+  readonly type: "sketchLine";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly start: Vec2;
+  readonly end: Vec2;
+}
 
 export type CadGeneratedReferenceEligibleOperation =
   | "feature.attachSketchPlane"
@@ -2363,12 +2378,15 @@ export type CadGeneratedReferenceProfileSignature =
     };
 
 export interface CadGeneratedReferenceSignature {
-  readonly sourceKind?: "extrude" | "hole";
+  readonly sourceKind?: "extrude" | "revolve" | "hole";
   readonly targetBodyId?: BodyId;
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly sketchPlane: SketchPlane;
   readonly extrudeSide?: FeatureExtrudeSide;
   readonly depth?: number;
+  readonly revolveAxis?: FeatureRevolveAxis;
+  readonly revolveAxisSignature?: CadGeneratedAxisSourceSignature;
+  readonly revolveAngleDegrees?: number;
   readonly holeDepthMode?: FeatureHoleDepthMode;
   readonly holeDepth?: number;
   readonly holeDirection?: FeatureHoleDirection;
@@ -2450,11 +2468,28 @@ export interface CadGeneratedVertexReference {
   readonly geometricSignature: CadGeneratedReferenceSignature;
 }
 
+export interface CadGeneratedAxisReference {
+  readonly kind: "axis";
+  readonly stableId: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly eligibleOperations: readonly CadGeneratedReferenceEligibleOperation[];
+  readonly eligibilityNotes?: readonly string[];
+  readonly bodyId: BodyId;
+  readonly ownerPartId: PartId;
+  readonly sourceFeatureId: FeatureId;
+  readonly sourceSketchId: SketchId;
+  readonly sourceSketchEntityId: SketchEntityId;
+  readonly role: CadGeneratedAxisRole;
+  readonly geometricSignature: CadGeneratedReferenceSignature;
+}
+
 export type CadGeneratedReference =
   | CadGeneratedBodyReference
   | CadGeneratedFaceReference
   | CadGeneratedEdgeReference
-  | CadGeneratedVertexReference;
+  | CadGeneratedVertexReference
+  | CadGeneratedAxisReference;
 
 export interface NamedGeneratedReferenceSnapshot {
   readonly name: NamedReferenceName;
@@ -3886,6 +3921,8 @@ export interface BodyGeneratedReferencesQueryResponse {
   readonly edges: readonly CadGeneratedEdgeReference[];
   readonly vertexCount: number;
   readonly vertices: readonly CadGeneratedVertexReference[];
+  readonly axisCount: number;
+  readonly axes: readonly CadGeneratedAxisReference[];
 }
 
 export interface BodyResolveGeneratedReferenceQueryResponse {

@@ -193,7 +193,7 @@ function lifecycleStatesForBody(
   }
 
   if (body.source.type === "sketchRevolveFeature") {
-    return ["active", "result", "ambiguous", "repair-needed"];
+    return ["active", "result"];
   }
 
   if (body.source.type === "sketchHoleFeature") {

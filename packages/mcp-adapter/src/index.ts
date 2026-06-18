@@ -2118,7 +2118,8 @@ function isGeneratedEntityKind(
     value === "body" ||
     value === "face" ||
     value === "edge" ||
-    value === "vertex"
+    value === "vertex" ||
+    value === "axis"
   );
 }
 

@@ -1537,7 +1537,7 @@ export class CadEngine {
               ? {
                   code: "UNSUPPORTED_BODY_REFERENCES",
                   message:
-                    "Generated references are currently available only for authored sketch-extrude bodies and supported authored hole result bodies.",
+                    "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
                   bodyId
                 }
               : {
@@ -1558,7 +1558,9 @@ export class CadEngine {
           edgeCount: references.edges.length,
           edges: references.edges,
           vertexCount: references.vertices.length,
-          vertices: references.vertices
+          vertices: references.vertices,
+          axisCount: references.axes.length,
+          axes: references.axes
         };
       }
 
@@ -1584,7 +1586,7 @@ export class CadEngine {
               ? {
                   code: "UNSUPPORTED_BODY_REFERENCES",
                   message:
-                    "Generated references are currently available only for authored sketch-extrude bodies and supported authored hole result bodies.",
+                    "Generated references are currently available only for authored sketch-extrude bodies, supported authored revolve newBody result bodies, and supported authored hole result bodies.",
                   bodyId
                 }
               : {
@@ -11147,7 +11149,8 @@ const SUMMARY_REFERENCE_KINDS = [
   "body",
   "face",
   "edge",
-  "vertex"
+  "vertex",
+  "axis"
 ] satisfies readonly CadGeneratedEntityKind[];
 
 function createProjectSummary(
@@ -11332,7 +11335,8 @@ function listGeneratedReferences(
     references.body,
     ...references.faces,
     ...references.edges,
-    ...references.vertices
+    ...references.vertices,
+    ...references.axes
   ];
 }
 
@@ -19674,7 +19678,8 @@ function isGeneratedEntityKind(
     value === "body" ||
     value === "face" ||
     value === "edge" ||
-    value === "vertex"
+    value === "vertex" ||
+    value === "axis"
   );
 }
 

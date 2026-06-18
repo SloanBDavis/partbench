@@ -148,7 +148,13 @@ export function createGeneratedReferenceMeasurements(
       ? createFaceMeasurement(base, validation.reference, measurementInput)
       : validation.reference.kind === "edge"
         ? createEdgeMeasurement(base, validation.reference, measurementInput)
-        : createVertexMeasurement(base, validation.reference, measurementInput);
+        : validation.reference.kind === "vertex"
+          ? createVertexMeasurement(
+              base,
+              validation.reference,
+              measurementInput
+            )
+          : undefined;
 
   if (!measurements) {
     return {

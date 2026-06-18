@@ -1010,7 +1010,8 @@ function listGeneratedReferences(
     references.body,
     ...references.faces,
     ...references.edges,
-    ...references.vertices
+    ...references.vertices,
+    ...references.axes
   ];
 }
 

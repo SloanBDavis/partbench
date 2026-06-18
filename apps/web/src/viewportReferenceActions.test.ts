@@ -119,7 +119,9 @@ function createReferences(
     edgeCount: 0,
     edges: [],
     vertexCount: 0,
-    vertices: []
+    vertices: [],
+    axisCount: 0,
+    axes: []
   };
 }
 

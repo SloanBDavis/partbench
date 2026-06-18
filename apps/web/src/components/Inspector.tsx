@@ -538,7 +538,7 @@ function BodyInspector({
       )}
       {feature?.kind === "extrude" && (
         <GeneratedReferencesPanel
-          key={`${body.id}-${generatedReferences?.faceCount ?? 0}-${generatedReferences?.edgeCount ?? 0}-${generatedReferences?.vertexCount ?? 0}`}
+          key={`${body.id}-${generatedReferences?.faceCount ?? 0}-${generatedReferences?.edgeCount ?? 0}-${generatedReferences?.vertexCount ?? 0}-${generatedReferences?.axisCount ?? 0}`}
           body={body}
           bodyId={body.id}
           disabled={disabled}

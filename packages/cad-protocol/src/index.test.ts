@@ -1249,7 +1249,8 @@ describe("cad-protocol", () => {
           body: 1,
           face: 0,
           edge: 0,
-          vertex: 0
+          vertex: 0,
+          axis: 0
         },
         operationCounts: {
           "reference.nameGenerated": 1,

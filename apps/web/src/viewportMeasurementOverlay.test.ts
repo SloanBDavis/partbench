@@ -480,7 +480,9 @@ function createReferences(reference: CadGeneratedReference) {
     edgeCount: reference.kind === "edge" ? 1 : 0,
     edges: reference.kind === "edge" ? [reference] : [],
     vertexCount: reference.kind === "vertex" ? 1 : 0,
-    vertices: reference.kind === "vertex" ? [reference] : []
+    vertices: reference.kind === "vertex" ? [reference] : [],
+    axisCount: reference.kind === "axis" ? 1 : 0,
+    axes: reference.kind === "axis" ? [reference] : []
   } as const;
 }
 

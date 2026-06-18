@@ -288,7 +288,9 @@ function createGeneratedReferences(
     edgeCount: 1,
     edges: [edge],
     vertexCount: 0,
-    vertices: []
+    vertices: [],
+    axisCount: 0,
+    axes: []
   };
 }
 

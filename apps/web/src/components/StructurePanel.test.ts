@@ -357,7 +357,9 @@ function createGeneratedReferences(): BodyGeneratedReferencesQueryResponse {
       }
     ],
     vertexCount: 0,
-    vertices: []
+    vertices: [],
+    axisCount: 0,
+    axes: []
   };
 }
 

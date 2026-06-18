@@ -112,6 +112,10 @@ function getSelectedVisualTargetKind(
     selectedGeneratedReferenceState.status === "selected" ||
     selectedGeneratedReferenceState.status === "stale"
   ) {
+    if (selectedGeneratedReferenceState.selection.kind === "axis") {
+      return "body";
+    }
+
     return selectedGeneratedReferenceState.selection.kind;
   }
 
@@ -153,7 +157,7 @@ function createCompactStatus(
   const generatedReferenceStatus =
     selectedGeneratedReferenceState.status === "selected"
       ? {
-          label: `${formatTargetKind(selectedGeneratedReferenceState.reference.kind)} selected`,
+          label: `${formatTargetKind(selectedGeneratedReferenceState.reference.kind === "axis" ? "body" : selectedGeneratedReferenceState.reference.kind)} selected`,
           detail:
             selectedGeneratedReferenceState.reference.kind === "body"
               ? selectionDisplay.detail

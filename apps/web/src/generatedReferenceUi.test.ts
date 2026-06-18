@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadGeneratedAxisReference,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
@@ -405,11 +406,13 @@ function createFace(
 function createReferences({
   faces = [],
   edges = [],
-  vertices = []
+  vertices = [],
+  axes = []
 }: {
   readonly faces?: readonly CadGeneratedFaceReference[];
   readonly edges?: readonly CadGeneratedEdgeReference[];
   readonly vertices?: readonly CadGeneratedVertexReference[];
+  readonly axes?: readonly CadGeneratedAxisReference[];
 }): BodyGeneratedReferencesQueryResponse {
   return {
     ok: true,
@@ -436,7 +439,9 @@ function createReferences({
     edgeCount: edges.length,
     edges,
     vertexCount: vertices.length,
-    vertices
+    vertices,
+    axisCount: axes.length,
+    axes
   };
 }
 

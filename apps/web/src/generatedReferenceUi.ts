@@ -126,7 +126,7 @@ export function formatGeneratedReferencesError(error: CadQueryError): string {
   }
 
   if (error.code === "UNSUPPORTED_BODY_REFERENCES") {
-    return `Generated references unavailable for ${error.bodyId ?? "selected body"}. Authored rectangle and circle extrude bodies are supported.`;
+    return `Generated references unavailable for ${error.bodyId ?? "selected body"}. Authored rectangle/circle extrudes, supported revolves, and supported holes are supported.`;
   }
 
   if (error.code === "GENERATED_REFERENCE_NOT_FOUND") {
@@ -149,7 +149,8 @@ export function getGeneratedReferenceItems(
     references.body,
     ...references.faces,
     ...references.edges,
-    ...references.vertices
+    ...references.vertices,
+    ...references.axes
   ];
 }
 
@@ -160,7 +161,8 @@ export function getGeneratedReferenceGroups(
     createGeneratedReferenceGroup("body", [references.body]),
     createGeneratedReferenceGroup("face", references.faces),
     createGeneratedReferenceGroup("edge", references.edges),
-    createGeneratedReferenceGroup("vertex", references.vertices)
+    createGeneratedReferenceGroup("vertex", references.vertices),
+    createGeneratedReferenceGroup("axis", references.axes)
   ].filter((group) => group.references.length > 0);
 }
 
@@ -176,6 +178,8 @@ export function formatGeneratedReferenceKind(
       return "Edge";
     case "vertex":
       return "Vertex";
+    case "axis":
+      return "Axis";
   }
 }
 
@@ -191,6 +195,8 @@ export function formatGeneratedReferenceKindPlural(
       return "Edges";
     case "vertex":
       return "Vertices";
+    case "axis":
+      return "Axes";
   }
 }
 
@@ -204,7 +210,9 @@ export function formatGeneratedReferenceCount(
       ? "bodies"
       : kind === "vertex"
         ? "vertices"
-        : `${singular}s`;
+        : kind === "axis"
+          ? "axes"
+          : `${singular}s`;
 
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -311,6 +319,8 @@ export function createGeneratedReferenceMeasurementRows(
       ];
     case "vertex":
       return [{ label: "Point", value: formatPoint(measurement.point, units) }];
+    default:
+      return [];
   }
 }
 

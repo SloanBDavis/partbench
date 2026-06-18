@@ -690,9 +690,9 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
     expectedSelectionQueries: [
       {
         selection: { type: "body", bodyId: REVOLVE_BODY_ID },
-        expectedStatus: "ambiguous",
-        expectedCandidateCount: 0,
-        expectedCommandableCount: 0
+        expectedStatus: "resolved",
+        expectedCandidateCount: 1,
+        expectedCommandableCount: 1
       },
       {
         selection: {
@@ -702,7 +702,7 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
           expectedKind: "face"
         },
         requiredOperation: "feature.attachSketchPlane",
-        expectedStatus: "ambiguous",
+        expectedStatus: "stale",
         expectedCandidateCount: 0,
         expectedCommandableCount: 0
       }
@@ -710,9 +710,9 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
     expectedReferenceSummary: {
       namedReferenceCount: 0,
       semanticBodySelectionCount: 1,
-      generatedReferenceBodyCount: 0,
-      generatedReferenceCount: 0,
-      commandableReferenceCount: 0
+      generatedReferenceBodyCount: 1,
+      generatedReferenceCount: 2,
+      commandableReferenceCount: 2
     },
     expectedExportReadiness: {
       status: "deferred",
@@ -858,8 +858,8 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       namedReferenceCount: 1,
       semanticBodySelectionCount: 2,
       generatedReferenceBodyCount: 1,
-      generatedReferenceCount: 3,
-      commandableReferenceCount: 3
+      generatedReferenceCount: 4,
+      commandableReferenceCount: 4
     },
     expectedExportReadiness: {
       status: "deferred",

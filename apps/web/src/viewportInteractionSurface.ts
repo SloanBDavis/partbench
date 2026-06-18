@@ -381,6 +381,8 @@ function getReferenceKindRank(kind: CadGeneratedReference["kind"]): number {
       return 2;
     case "vertex":
       return 3;
+    case "axis":
+      return 4;
   }
 }
 
