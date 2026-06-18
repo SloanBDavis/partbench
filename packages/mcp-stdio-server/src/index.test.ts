@@ -26,6 +26,7 @@ describe("mcp stdio server", () => {
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
+          { name: "cad.project_dependency_graph" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
@@ -44,6 +45,7 @@ describe("mcp stdio server", () => {
           { name: "cad.generated_reference_measurements" },
           { name: "cad.named_references" },
           { name: "cad.resolve_named_reference" },
+          { name: "cad.reference_health" },
           { name: "cad.selection_reference_candidates" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }

@@ -979,6 +979,7 @@ export type CadQueryKind =
   | "project.features"
   | "project.structure"
   | "project.health"
+  | "project.dependencyGraph"
   | "project.exportReadiness"
   | "project.exportExact"
   | "project.packageReadiness"
@@ -997,6 +998,7 @@ export type CadQueryKind =
   | "body.generatedReferenceMeasurements"
   | "reference.listNamed"
   | "reference.resolveNamed"
+  | "reference.health"
   | "selection.referenceCandidates"
   | "transaction.history";
 
@@ -1008,6 +1010,7 @@ export type CadQuery =
   | ProjectFeaturesQuery
   | ProjectStructureQuery
   | ProjectHealthQuery
+  | ProjectDependencyGraphQuery
   | ProjectExportReadinessQuery
   | ProjectExactExportQuery
   | ProjectPackageReadinessQuery
@@ -1026,6 +1029,7 @@ export type CadQuery =
   | BodyGeneratedReferenceMeasurementsQuery
   | ReferenceListNamedQuery
   | ReferenceResolveNamedQuery
+  | ReferenceHealthQuery
   | SelectionReferenceCandidatesQuery
   | TransactionHistoryQuery;
 
@@ -1059,6 +1063,10 @@ export interface ProjectStructureQuery {
 export interface ProjectHealthQuery {
   readonly query: "project.health";
   readonly derivedExactMetadata?: readonly CadBodyDerivedExactMetadataSnapshot[];
+}
+
+export interface ProjectDependencyGraphQuery {
+  readonly query: "project.dependencyGraph";
 }
 
 export interface ProjectExportReadinessQuery {
@@ -1150,6 +1158,11 @@ export interface ReferenceListNamedQuery {
 export interface ReferenceResolveNamedQuery {
   readonly query: "reference.resolveNamed";
   readonly name: NamedReferenceName;
+}
+
+export interface ReferenceHealthQuery {
+  readonly query: "reference.health";
+  readonly target?: CadReferenceHealthTarget;
 }
 
 export interface SelectionReferenceCandidatesQuery {
@@ -1891,6 +1904,146 @@ export interface CadFeatureEditDryRunSummary {
   readonly willMutateDocument: false;
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadFeatureEditDiagnostic[];
+}
+
+export type CadReferenceHealthStatus = CadFeatureReferenceChangeCategory;
+
+export type CadReferenceHealthDiagnosticSeverity =
+  CadFeatureEditDiagnosticSeverity;
+
+export type CadReferenceHealthDiagnosticCode =
+  | "REFERENCE_ACTIVE"
+  | "REFERENCE_REPLACED_DEFERRED"
+  | "REFERENCE_STALE"
+  | "REFERENCE_BODY_CONSUMED"
+  | "REFERENCE_TOPOLOGY_AMBIGUOUS"
+  | "REFERENCE_TARGET_MISSING"
+  | "REFERENCE_UNSUPPORTED"
+  | "REFERENCE_REPAIR_NEEDED"
+  | "REFERENCE_DELETED"
+  | "DEPENDENCY_SOURCE_MISSING";
+
+export type CadDependencyGraphNodeKind =
+  | "sketch"
+  | "sketchEntity"
+  | "feature"
+  | "body"
+  | "generatedReference"
+  | "namedReference";
+
+export type CadDependencyGraphEdgeKind =
+  | "contains"
+  | "sources"
+  | "produces"
+  | "targets"
+  | "consumes"
+  | "generates"
+  | "names"
+  | "dependsOn";
+
+export type CadDependencyGraphNodeId = string;
+
+export interface CadDependencyGraphNode {
+  readonly id: CadDependencyGraphNodeId;
+  readonly kind: CadDependencyGraphNodeKind;
+  readonly label: string;
+  readonly status: CadReferenceHealthStatus;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly generatedReferenceKind?: CadGeneratedEntityKind;
+  readonly featureKind?: CadFeatureSummary["kind"];
+  readonly bodySourceType?: CadBodySource["type"];
+}
+
+export interface CadDependencyGraphEdge {
+  readonly id: string;
+  readonly kind: CadDependencyGraphEdgeKind;
+  readonly from: CadDependencyGraphNodeId;
+  readonly to: CadDependencyGraphNodeId;
+  readonly label: string;
+  readonly sourceFeatureId?: FeatureId;
+  readonly targetFeatureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+}
+
+export interface CadReferenceHealthDiagnostic {
+  readonly code: CadReferenceHealthDiagnosticCode;
+  readonly severity: CadReferenceHealthDiagnosticSeverity;
+  readonly message: string;
+  readonly status: CadReferenceHealthStatus;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export type CadReferenceHealthTarget =
+  | CadReferenceHealthAllTarget
+  | CadReferenceHealthBodyTarget
+  | CadReferenceHealthGeneratedReferenceTarget
+  | CadReferenceHealthNamedReferenceTarget;
+
+export interface CadReferenceHealthAllTarget {
+  readonly type: "all";
+}
+
+export interface CadReferenceHealthBodyTarget {
+  readonly type: "body";
+  readonly bodyId: BodyId;
+}
+
+export interface CadReferenceHealthGeneratedReferenceTarget {
+  readonly type: "generatedReference";
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly expectedKind?: CadGeneratedEntityKind;
+}
+
+export interface CadReferenceHealthNamedReferenceTarget {
+  readonly type: "namedReference";
+  readonly name: NamedReferenceName;
+}
+
+export interface CadReferenceHealthDependencies {
+  readonly sketchIds: readonly SketchId[];
+  readonly sketchEntityIds: readonly SketchEntityId[];
+  readonly featureIds: readonly FeatureId[];
+  readonly bodyIds: readonly BodyId[];
+  readonly generatedReferenceStableIds: readonly string[];
+  readonly namedReferenceNames: readonly NamedReferenceName[];
+}
+
+export type CadReferenceHealthSource =
+  | "body"
+  | "generatedReference"
+  | "namedReference";
+
+export interface CadReferenceHealthEntry {
+  readonly source: CadReferenceHealthSource;
+  readonly status: CadReferenceHealthStatus;
+  readonly commandable: boolean;
+  readonly commandOperations: readonly CadSelectionReferenceOperation[];
+  readonly label: string;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly kind?: CadGeneratedEntityKind;
+  readonly referenceName?: NamedReferenceName;
+  readonly sourceFeatureId?: FeatureId;
+  readonly consumedByFeatureId?: FeatureId;
+  readonly dependencies: CadReferenceHealthDependencies;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadReferenceHealthDiagnostic[];
 }
 
 export interface CadPartSource {
@@ -3226,6 +3379,7 @@ export type CadQueryResponse =
   | ProjectFeaturesQueryResponse
   | ProjectStructureQueryResponse
   | ProjectHealthQueryResponse
+  | ProjectDependencyGraphQueryResponse
   | ProjectExportReadinessQueryResponse
   | ProjectExactExportQueryResponse
   | ProjectPackageReadinessQueryResponse
@@ -3244,6 +3398,7 @@ export type CadQueryResponse =
   | BodyGeneratedReferenceMeasurementsQueryResponse
   | ReferenceListNamedQueryResponse
   | ReferenceResolveNamedQueryResponse
+  | ReferenceHealthQueryResponse
   | SelectionReferenceCandidatesQueryResponse
   | TransactionHistoryQueryResponse
   | CadQueryErrorResponse;
@@ -3345,6 +3500,23 @@ export interface ProjectHealthQueryResponse {
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
   readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
+}
+
+export interface ProjectDependencyGraphQueryResponse {
+  readonly ok: true;
+  readonly query: "project.dependencyGraph";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly nodeCount: number;
+  readonly edgeCount: number;
+  readonly nodes: readonly CadDependencyGraphNode[];
+  readonly edges: readonly CadDependencyGraphEdge[];
+  readonly referenceHealthCount: number;
+  readonly referenceHealth: readonly CadReferenceHealthEntry[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadReferenceHealthDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiresProjectSchemaMigration: false;
 }
 
 export interface ProjectExportReadinessQueryResponse {
@@ -3569,6 +3741,21 @@ export interface ReferenceResolveNamedQueryResponse {
   readonly name: NamedReferenceName;
   readonly target: NamedGeneratedReferenceSnapshot;
   readonly reference: CadGeneratedReference;
+}
+
+export interface ReferenceHealthQueryResponse {
+  readonly ok: true;
+  readonly query: "reference.health";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly target: CadReferenceHealthTarget;
+  readonly status: CadReferenceHealthStatus;
+  readonly referenceHealthCount: number;
+  readonly referenceHealth: readonly CadReferenceHealthEntry[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadReferenceHealthDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiresProjectSchemaMigration: false;
 }
 
 export interface SelectionReferenceCandidatesQueryResponse {

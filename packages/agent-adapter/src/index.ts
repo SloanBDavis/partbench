@@ -25,6 +25,7 @@ import type {
   CadExportFormatReadiness,
   CadExportReadinessStatus,
   CadFeatureSummary,
+  CadReferenceHealthTarget,
   CadNamedReferenceHealth,
   CadSketchConstraintHealth,
   CadSketchDimensionHealth,
@@ -43,6 +44,7 @@ import type {
   CadPartSnapshot,
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
+  ProjectDependencyGraphQueryResponse,
   ProjectPackageReadinessQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
@@ -53,6 +55,7 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   FeatureEditabilityQueryResponse,
+  ReferenceHealthQueryResponse,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
@@ -326,6 +329,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectFeaturesQueryResponse
   | CadOpsAgentProjectStructureQueryResponse
   | CadOpsAgentProjectHealthQueryResponse
+  | CadOpsAgentProjectDependencyGraphQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
   | CadOpsAgentProjectExactExportQueryResponse
   | CadOpsAgentProjectPackageReadinessQueryResponse
@@ -344,6 +348,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyGeneratedReferenceMeasurementsQueryResponse
   | CadOpsAgentReferenceListNamedQueryResponse
   | CadOpsAgentReferenceResolveNamedQueryResponse
+  | CadOpsAgentReferenceHealthQueryResponse
   | CadOpsAgentSelectionReferenceCandidatesQueryResponse
   | CadOpsAgentTransactionHistoryQueryResponse
   | CadOpsAgentQueryErrorResponse;
@@ -445,6 +450,15 @@ export interface CadOpsAgentProjectHealthQueryResponse {
   readonly sketchDimensions: readonly CadSketchDimensionHealth[];
   readonly sketchConstraints: readonly CadSketchConstraintHealth[];
   readonly namedReferences: readonly CadNamedReferenceHealth[];
+}
+
+export interface CadOpsAgentProjectDependencyGraphQueryResponse extends Omit<
+  ProjectDependencyGraphQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
 }
 
 export interface CadOpsAgentProjectExportReadinessQueryResponse {
@@ -660,6 +674,15 @@ export interface CadOpsAgentReferenceResolveNamedQueryResponse {
   readonly reference: CadGeneratedReference;
 }
 
+export interface CadOpsAgentReferenceHealthQueryResponse extends Omit<
+  ReferenceHealthQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentSelectionReferenceCandidatesQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -698,6 +721,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.features"
     | "project.structure"
     | "project.health"
+    | "project.dependencyGraph"
     | "project.exportReadiness"
     | "project.exportExact"
     | "project.packageReadiness"
@@ -716,6 +740,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.generatedReferenceMeasurements"
     | "reference.listNamed"
     | "reference.resolveNamed"
+    | "reference.health"
     | "selection.referenceCandidates"
     | "transaction.history";
   readonly error: CadQueryError;
@@ -2120,6 +2145,27 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.dependencyGraph") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      nodeCount: response.nodeCount,
+      edgeCount: response.edgeCount,
+      nodes: response.nodes,
+      edges: response.edges,
+      referenceHealthCount: response.referenceHealthCount,
+      referenceHealth: response.referenceHealth,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration
+    };
+  }
+
   if (response.query === "project.exportReadiness") {
     return {
       ok: true,
@@ -2378,6 +2424,25 @@ function toAgentQueryResponse(
       name: response.name,
       target: response.target,
       reference: response.reference
+    };
+  }
+
+  if (response.query === "reference.health") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      target: response.target,
+      status: response.status,
+      referenceHealthCount: response.referenceHealthCount,
+      referenceHealth: response.referenceHealth,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration
     };
   }
 
@@ -2807,6 +2872,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.dependencyGraph" &&
+        Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportExact" &&
@@ -2861,6 +2928,10 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "reference.resolveNamed" &&
         typeof value.query.name === "string") ||
+      (value.query.query === "reference.health" &&
+        (Object.keys(value.query).length === 1 ||
+          (Object.keys(value.query).length === 2 &&
+            isCadReferenceHealthTarget(value.query.target)))) ||
       (value.query.query === "selection.referenceCandidates" &&
         isCadSelectionReferenceInput(value.query.selection) &&
         (value.query.requiredOperation === undefined ||
@@ -2929,6 +3000,34 @@ function isCadSelectionReferenceInput(
       );
     case "namedReference":
       return typeof value.name === "string";
+    default:
+      return false;
+  }
+}
+
+function isCadReferenceHealthTarget(
+  value: unknown
+): value is CadReferenceHealthTarget {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "all":
+      return Object.keys(value).length === 1;
+    case "body":
+      return typeof value.bodyId === "string" && value.bodyId !== "";
+    case "generatedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        value.bodyId !== "" &&
+        typeof value.stableId === "string" &&
+        value.stableId !== "" &&
+        (value.expectedKind === undefined ||
+          isGeneratedEntityKind(value.expectedKind))
+      );
+    case "namedReference":
+      return typeof value.name === "string" && value.name !== "";
     default:
       return false;
   }

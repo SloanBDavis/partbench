@@ -216,14 +216,19 @@ These constraints remain active:
     STEP import, agent/MCP behavior, or `web-cad.project.v17`.
 34. V10 is underway in `docs/v10.md` as the editable feature history and
     stable modeling references release. Tranche A is implemented as the
-    `feature.editability` contract/query slice. Its broader center remains
-    dependency and rebuild diagnostics, explicit consumed/replacement body
-    lifecycle, reference health/survival/repair semantics, and source-semantic
-    topology expansion for existing authored feature families where defensible.
-    V10 must not become arbitrary topological naming, production WebGPU,
-    assemblies, STEP import, broad sketch solving, broad new modeling features,
-    or persisted UI state unless a later tranche explicitly scopes one of those
-    items.
+    `feature.editability` contract/query slice. Tranche B is implemented as the
+    `project.dependencyGraph` and `reference.health` contract/query slice:
+    source-derived graph nodes/edges and reference health cover sketches,
+    sketch entities, features, bodies, generated references, named references,
+    consumed target bodies, and ambiguous/unsupported/deferred result topology
+    with structured diagnostics and thin agent/MCP pass-through. Its broader
+    center remains transactional edit/rebuild behavior, explicit
+    consumed/replacement body lifecycle, reference survival/repair semantics,
+    and source-semantic topology expansion for existing authored feature
+    families where defensible. V10 must not become arbitrary topological
+    naming, production WebGPU, assemblies, STEP import, broad sketch solving,
+    broad new modeling features, or persisted UI state unless a later tranche
+    explicitly scopes one of those items.
 
 ## Current Repo State
 
@@ -238,15 +243,17 @@ and focused packages:
   camera/navigation controls, first feature tree, improved modeling workflow,
   and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
-  and validation error shapes.
+  feature editability, dependency/reference-health, and validation error
+  shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
   line constraints, fixed/coincident/midpoint point constraints, parallel and
   perpendicular line constraints, authored rectangle/circle extrude features,
   narrow rectangle-tool add/cut boolean source data, authored revolve, hole,
-  chamfer, and fillet source intent, named references, and versioned project
-  JSON import/export.
+  chamfer, and fillet source intent, named references, feature editability,
+  source-derived dependency graph/reference-health queries, and versioned
+  project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -1494,9 +1501,14 @@ Use these decisions when drafting or implementing V10 tranches:
    boolean-ambiguous, unsupported, missing, and deferred diagnostics. It does
    not add broad UI, full transactional rebuild, named-reference repair, or
    `web-cad.project.v17`.
-2. **Dependency Graph And Reference Health Queries** - authoritative dependency
-   graph and active/stale/consumed/ambiguous/missing/unsupported/repair-needed
-   reference health derived from document state.
+2. **Dependency Graph And Reference Health Queries** - implemented
+   `project.dependencyGraph` and `reference.health` protocol/core queries for
+   source-derived graph nodes/edges and active/stale/consumed/ambiguous/
+   missing/unsupported/repair-needed reference health. The slice covers current
+   sketches/entities, authored feature records, generated references, named
+   references, consumed target bodies, and ambiguous or deferred result bodies,
+   with structured diagnostics, Tranche A editability consistency, thin
+   agent/MCP pass-through, and no `web-cad.project.v17`.
 3. **Edit Existing Authored Feature Parameters** - source-backed edits for
    current extrude, revolve, hole, chamfer, and fillet records where defensible,
    with dry-run and commit semantic diffs.

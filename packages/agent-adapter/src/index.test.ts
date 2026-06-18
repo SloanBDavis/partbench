@@ -3598,6 +3598,101 @@ describe("agent-adapter", () => {
     ).toBe(true);
   });
 
+  it("returns V10 dependency graph and reference health through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_dependency_graph",
+      entityId: "rect_dependency_graph",
+      featureId: "feat_dependency_graph",
+      bodyId: "body_dependency_graph"
+    });
+    adapter.execute({
+      requestId: "agent_req_name_dependency_graph_ref",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "Graph face",
+            bodyId: "body_dependency_graph",
+            stableId: "generated:face:body_dependency_graph:endCap"
+          }
+        ]
+      }
+    });
+
+    const graph = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_dependency_graph",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.dependencyGraph" }
+      }
+    });
+    const health = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_reference_health",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "reference.health",
+          target: { type: "namedReference", name: "Graph face" }
+        }
+      }
+    });
+
+    expect(graph).toMatchObject({
+      ok: true,
+      requestId: "agent_dependency_graph",
+      query: "project.dependencyGraph",
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feature:feat_dependency_graph",
+          kind: "feature"
+        }),
+        expect.objectContaining({
+          id: "named-reference:Graph face",
+          kind: "namedReference",
+          status: "active"
+        })
+      ]),
+      requiresProjectSchemaMigration: false
+    });
+    expect(health).toMatchObject({
+      ok: true,
+      requestId: "agent_reference_health",
+      query: "reference.health",
+      target: { type: "namedReference", name: "Graph face" },
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          commandable: true,
+          referenceName: "Graph face",
+          stableId: "generated:face:body_dependency_graph:endCap"
+        })
+      ]
+    });
+
+    if (!graph.ok || graph.query !== "project.dependencyGraph") {
+      throw new Error("Expected project.dependencyGraph agent response.");
+    }
+
+    expect(
+      /mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+        JSON.stringify({
+          nodes: graph.nodes,
+          edges: graph.edges,
+          referenceHealth: graph.referenceHealth
+        })
+      )
+    ).toBe(false);
+  });
+
   it("returns generated reference measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

@@ -132,6 +132,10 @@ import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import { createFeatureEditabilityResponse } from "./featureEditability";
+import {
+  createProjectDependencyGraph,
+  createReferenceHealth
+} from "./projectDependencyGraph";
 import { createProjectHealth } from "./projectHealth";
 import {
   applySketchConstraintValue,
@@ -237,6 +241,11 @@ export type {
   CadFeatureRebuildReadiness,
   CadFeatureRebuildReadinessStatus,
   CadFeatureSummary,
+  CadDependencyGraphEdge,
+  CadDependencyGraphEdgeKind,
+  CadDependencyGraphNode,
+  CadDependencyGraphNodeId,
+  CadDependencyGraphNodeKind,
   CadGeneratedBodyReference,
   CadGeneratedCurveType,
   CadGeneratedEdgeReference,
@@ -273,11 +282,21 @@ export type {
   CadProjectSummaryWorkflowHint,
   CadProjectSummaryWorkflowHintCode,
   CadProjectSummaryWorkflowHintLevel,
+  ProjectDependencyGraphQueryResponse,
   ProjectExactExportQueryResponse,
   ProjectPackageReadinessQueryResponse,
+  ReferenceHealthQueryResponse,
   CadQueryRequest,
   CadQueryError,
   CadQueryResponse,
+  CadReferenceHealthDependencies,
+  CadReferenceHealthDiagnostic,
+  CadReferenceHealthDiagnosticCode,
+  CadReferenceHealthDiagnosticSeverity,
+  CadReferenceHealthEntry,
+  CadReferenceHealthSource,
+  CadReferenceHealthStatus,
+  CadReferenceHealthTarget,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceCommandTarget,
   CadSelectionReferenceCandidateSource,
@@ -1081,6 +1100,22 @@ export class CadEngine {
         });
       }
 
+      case "project.dependencyGraph": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createProjectDependencyGraph({
+          cadOpsVersion: request.version,
+          ownerPartId: DEFAULT_PART_ID,
+          document: this.#document,
+          features: structure.features,
+          bodies: structure.bodies,
+          namedReferences: [...this.#document.namedReferences.values()]
+        });
+      }
+
       case "project.exportReadiness": {
         const structure = createProjectStructure(
           this.#document,
@@ -1611,6 +1646,23 @@ export class CadEngine {
           target: cloneNamedReferenceSnapshot(reference),
           reference: entry.reference
         };
+      }
+
+      case "reference.health": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createReferenceHealth({
+          cadOpsVersion: request.version,
+          ownerPartId: DEFAULT_PART_ID,
+          document: this.#document,
+          features: structure.features,
+          bodies: structure.bodies,
+          namedReferences: [...this.#document.namedReferences.values()],
+          target: request.query.target
+        });
       }
 
       case "selection.referenceCandidates": {
@@ -3614,6 +3666,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.features":
     case "project.structure":
     case "project.health":
+    case "project.dependencyGraph":
     case "project.exportReadiness":
     case "project.exportExact":
     case "project.packageReadiness":
@@ -3632,6 +3685,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "body.generatedReferenceMeasurements":
     case "reference.listNamed":
     case "reference.resolveNamed":
+    case "reference.health":
     case "selection.referenceCandidates":
     case "transaction.history":
       return true;
@@ -3650,6 +3704,7 @@ function isCadQuery(value: unknown): boolean {
     case "project.summary":
     case "project.features":
     case "project.structure":
+    case "project.dependencyGraph":
     case "project.exportReadiness":
     case "project.packageReadiness":
     case "project.sketches":
@@ -3708,6 +3763,12 @@ function isCadQuery(value: unknown): boolean {
       );
     case "reference.resolveNamed":
       return typeof value.name === "string";
+    case "reference.health":
+      return (
+        Object.keys(value).length === 1 ||
+        (Object.keys(value).length === 2 &&
+          isCadReferenceHealthTarget(value.target))
+      );
     case "selection.referenceCandidates":
       return (
         isCadSelectionReferenceInput(value.selection) &&
@@ -3732,6 +3793,30 @@ function isCadFeatureEditProposal(value: unknown): boolean {
       value.side === "negative" ||
       value.side === "symmetric")
   );
+}
+
+function isCadReferenceHealthTarget(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "all":
+      return Object.keys(value).length === 1;
+    case "body":
+      return typeof value.bodyId === "string";
+    case "generatedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        typeof value.stableId === "string" &&
+        (value.expectedKind === undefined ||
+          isGeneratedEntityKind(value.expectedKind))
+      );
+    case "namedReference":
+      return typeof value.name === "string";
+    default:
+      return false;
+  }
 }
 
 function isProjectExactExportQuery(value: Record<string, unknown>): boolean {

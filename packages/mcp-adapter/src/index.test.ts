@@ -14,6 +14,7 @@ describe("mcp-adapter", () => {
       "cad.project_features",
       "cad.project_structure",
       "cad.project_health",
+      "cad.project_dependency_graph",
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
@@ -32,6 +33,7 @@ describe("mcp-adapter", () => {
       "cad.generated_reference_measurements",
       "cad.named_references",
       "cad.resolve_named_reference",
+      "cad.reference_health",
       "cad.selection_reference_candidates",
       "cad.transaction_history",
       "cad.batch"
@@ -2745,6 +2747,91 @@ describe("mcp-adapter", () => {
     ).toBe(true);
   });
 
+  it("returns V10 dependency graph and reference health through MCP tools", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_dependency_sketch",
+      entityId: "mcp_dependency_circle",
+      featureId: "mcp_dependency_feature",
+      bodyId: "mcp_dependency_body"
+    });
+    expect(
+      server.callTool({
+        name: "cad.batch",
+        requestId: "mcp_req_name_dependency_ref",
+        arguments: {
+          allowCommit: true,
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "reference.nameGenerated",
+                name: "MCP graph face",
+                bodyId: "mcp_dependency_body",
+                stableId: "generated:face:mcp_dependency_body:endCap"
+              }
+            ]
+          }
+        }
+      })
+    ).toMatchObject({ isError: false });
+
+    const graph = server.callTool({
+      name: "cad.project_dependency_graph",
+      requestId: "mcp_req_dependency_graph"
+    });
+    const health = server.callTool({
+      name: "cad.reference_health",
+      requestId: "mcp_req_reference_health",
+      arguments: {
+        target: { type: "namedReference", name: "MCP graph face" }
+      }
+    });
+
+    expect(graph).toMatchObject({
+      toolName: "cad.project_dependency_graph",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_dependency_graph",
+        query: "project.dependencyGraph",
+        nodes: expect.arrayContaining([
+          expect.objectContaining({
+            id: "feature:mcp_dependency_feature",
+            kind: "feature"
+          }),
+          expect.objectContaining({
+            id: "named-reference:MCP graph face",
+            kind: "namedReference",
+            status: "active"
+          })
+        ]),
+        requiresProjectSchemaMigration: false
+      }
+    });
+    expect(health).toMatchObject({
+      toolName: "cad.reference_health",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_reference_health",
+        query: "reference.health",
+        target: { type: "namedReference", name: "MCP graph face" },
+        status: "active",
+        referenceHealth: [
+          expect.objectContaining({
+            source: "namedReference",
+            commandable: true,
+            referenceName: "MCP graph face",
+            stableId: "generated:face:mcp_dependency_body:endCap"
+          })
+        ]
+      }
+    });
+  });
+
   it("resolves generated references through cad.resolve_generated_reference", () => {
     const server = new CadMcpServer();
 
@@ -3460,6 +3547,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_features" },
           { name: "cad.project_structure" },
           { name: "cad.project_health" },
+          { name: "cad.project_dependency_graph" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
@@ -3478,6 +3566,7 @@ describe("mcp-adapter", () => {
           { name: "cad.generated_reference_measurements" },
           { name: "cad.named_references" },
           { name: "cad.resolve_named_reference" },
+          { name: "cad.reference_health" },
           { name: "cad.selection_reference_candidates" },
           { name: "cad.transaction_history" },
           { name: "cad.batch" }

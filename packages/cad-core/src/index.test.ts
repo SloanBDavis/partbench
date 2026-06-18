@@ -5,10 +5,13 @@ import type {
   CadQueryRequest,
   FeatureEditabilityQueryResponse,
   ProjectExactExportQueryResponse,
+  ProjectDependencyGraphQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
+  ReferenceHealthQueryResponse,
+  CadReferenceHealthTarget,
   SketchConstraintSnapshot,
   SketchDimensionSnapshot,
   SketchEntitySnapshot
@@ -150,6 +153,40 @@ function readFeatureEditability(
 
   if (!response.ok || response.query !== "feature.editability") {
     throw new Error("Expected feature.editability response.");
+  }
+
+  return response;
+}
+
+function readProjectDependencyGraph(
+  engine: CadEngine
+): ProjectDependencyGraphQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.dependencyGraph" }
+  });
+
+  if (!response.ok || response.query !== "project.dependencyGraph") {
+    throw new Error("Expected project.dependencyGraph response.");
+  }
+
+  return response;
+}
+
+function readReferenceHealth(
+  engine: CadEngine,
+  target?: CadReferenceHealthTarget
+): ReferenceHealthQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "reference.health",
+      ...(target ? { target } : {})
+    }
+  });
+
+  if (!response.ok || response.query !== "reference.health") {
+    throw new Error("Expected reference.health response.");
   }
 
   return response;
@@ -7541,6 +7578,337 @@ describe("cad-core", () => {
       ])
     );
     expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
+  });
+
+  it("returns V10 dependency graph and active reference health for authored extrude source chains", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Front face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    const graph = readProjectDependencyGraph(engine);
+
+    expect(graph).toMatchObject({
+      ok: true,
+      query: "project.dependencyGraph",
+      requiresProjectSchemaMigration: false
+    });
+    expect(graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "sketch:sketch_1",
+          kind: "sketch",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "sketch-entity:sketch_1:rect_1",
+          kind: "sketchEntity",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "feature:feat_rect_1",
+          kind: "feature",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "body:body_rect_1",
+          kind: "body",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "generated-reference:body_rect_1:generated:face:body_rect_1:startCap",
+          kind: "generatedReference",
+          status: "active",
+          generatedReferenceKind: "face"
+        }),
+        expect.objectContaining({
+          id: "named-reference:Front face",
+          kind: "namedReference",
+          status: "active"
+        })
+      ])
+    );
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "contains",
+          from: "sketch:sketch_1",
+          to: "sketch-entity:sketch_1:rect_1"
+        }),
+        expect.objectContaining({
+          kind: "sources",
+          from: "sketch-entity:sketch_1:rect_1",
+          to: "feature:feat_rect_1"
+        }),
+        expect.objectContaining({
+          kind: "produces",
+          from: "feature:feat_rect_1",
+          to: "body:body_rect_1"
+        }),
+        expect.objectContaining({
+          kind: "generates",
+          from: "body:body_rect_1",
+          to: "generated-reference:body_rect_1:generated:face:body_rect_1:startCap"
+        }),
+        expect.objectContaining({
+          kind: "names",
+          from: "named-reference:Front face",
+          to: "generated-reference:body_rect_1:generated:face:body_rect_1:startCap"
+        })
+      ])
+    );
+    expect(graph.referenceHealth).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "generatedReference",
+          status: "active",
+          commandable: true,
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:startCap",
+          kind: "face",
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.attachSketchPlane"
+          ])
+        }),
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          referenceName: "Front face",
+          stableId: "generated:face:body_rect_1:startCap"
+        })
+      ])
+    );
+    expect(
+      /mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+        JSON.stringify({
+          nodes: graph.nodes,
+          edges: graph.edges,
+          referenceHealth: graph.referenceHealth
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("reports V10 consumed target and ambiguous result reference health without overclaiming topology", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_cut", name: "Cut", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut",
+        id: "rect_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_cut",
+        entityId: "rect_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const graph = readProjectDependencyGraph(engine);
+    const consumedTarget = readReferenceHealth(engine, {
+      type: "body",
+      bodyId: "body_rect_1"
+    });
+    const ambiguousResult = readReferenceHealth(engine, {
+      type: "body",
+      bodyId: "body_cut_1"
+    });
+    const editability = readFeatureEditability(engine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 6
+    });
+
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "targets",
+          from: "feature:feat_cut_1",
+          to: "body:body_rect_1"
+        }),
+        expect.objectContaining({
+          kind: "consumes",
+          from: "feature:feat_cut_1",
+          to: "body:body_rect_1"
+        })
+      ])
+    );
+    expect(consumedTarget).toMatchObject({
+      query: "reference.health",
+      target: { type: "body", bodyId: "body_rect_1" },
+      status: "consumed"
+    });
+    expect(consumedTarget.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "REFERENCE_BODY_CONSUMED",
+          status: "consumed",
+          bodyId: "body_rect_1",
+          received: "feat_cut_1"
+        })
+      ])
+    );
+    expect(ambiguousResult).toMatchObject({
+      query: "reference.health",
+      target: { type: "body", bodyId: "body_cut_1" },
+      status: "ambiguous",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "body",
+          status: "ambiguous",
+          commandable: false,
+          bodyId: "body_cut_1",
+          diagnostics: [
+            expect.objectContaining({
+              code: "REFERENCE_TOPOLOGY_AMBIGUOUS",
+              status: "ambiguous"
+            })
+          ]
+        })
+      ]
+    });
+    expect(editability.status).toBe("blocked");
+    expect(editability.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "consumed",
+          bodyId: "body_rect_1"
+        })
+      ])
+    );
+  });
+
+  it("reports V10 named reference active stale missing and unsupported health states", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Front face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    const active = readReferenceHealth(engine, {
+      type: "namedReference",
+      name: "Front face"
+    });
+    const missing = readReferenceHealth(engine, {
+      type: "namedReference",
+      name: "Missing face"
+    });
+    const document = engine.getDocument();
+    const stale = readReferenceHealth(
+      new CadEngine(
+        createCadDocument(
+          document.objects,
+          document.units,
+          document.sketches,
+          document.parameters,
+          document.sketchDimensions,
+          document.sketchConstraints,
+          document.features,
+          [
+            [
+              "Lost face",
+              {
+                name: "Lost face",
+                bodyId: "body_rect_1",
+                stableId: "generated:face:body_rect_1:lostFace",
+                kind: "face"
+              }
+            ]
+          ]
+        )
+      ),
+      { type: "namedReference", name: "Lost face" }
+    );
+    const primitiveEngine = new CadEngine();
+
+    primitiveEngine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 2, depth: 3 }
+    });
+    const unsupported = readReferenceHealth(primitiveEngine, {
+      type: "body",
+      bodyId: "body:box_1"
+    });
+
+    expect(active).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          referenceName: "Front face"
+        })
+      ],
+      diagnosticCount: 0
+    });
+    expect(missing).toMatchObject({
+      status: "missing",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "missing",
+          commandable: false,
+          referenceName: "Missing face",
+          diagnostics: [
+            expect.objectContaining({
+              code: "REFERENCE_TARGET_MISSING"
+            })
+          ]
+        })
+      ]
+    });
+    expect(stale).toMatchObject({
+      status: "stale",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "stale",
+          commandable: false,
+          referenceName: "Lost face",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "REFERENCE_STALE" }),
+            expect.objectContaining({ code: "REFERENCE_REPAIR_NEEDED" })
+          ])
+        })
+      ]
+    });
+    expect(unsupported).toMatchObject({
+      status: "unsupported",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "body",
+          status: "unsupported",
+          commandable: false,
+          bodyId: "body:box_1",
+          diagnostics: [
+            expect.objectContaining({
+              code: "REFERENCE_UNSUPPORTED"
+            })
+          ]
+        })
+      ],
+      requiresProjectSchemaMigration: false
+    });
   });
 
   it("reports primitive and deferred feature editability with source diagnostics", () => {

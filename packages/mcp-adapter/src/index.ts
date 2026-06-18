@@ -17,6 +17,7 @@ import type {
   CadBodyExactMetadataSnapshot,
   CadFeatureEditProposal,
   CadGeneratedEntityKind,
+  CadReferenceHealthTarget,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation
 } from "@web-cad/cad-protocol";
@@ -31,6 +32,7 @@ export type CadMcpToolName =
   | "cad.project_features"
   | "cad.project_structure"
   | "cad.project_health"
+  | "cad.project_dependency_graph"
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
@@ -49,6 +51,7 @@ export type CadMcpToolName =
   | "cad.generated_reference_measurements"
   | "cad.named_references"
   | "cad.resolve_named_reference"
+  | "cad.reference_health"
   | "cad.selection_reference_candidates"
   | "cad.transaction_history"
   | "cad.batch";
@@ -172,6 +175,10 @@ export class CadMcpServer {
       return this.#callProjectHealth(request);
     }
 
+    if (request.name === "cad.project_dependency_graph") {
+      return this.#callProjectDependencyGraph(request);
+    }
+
     if (request.name === "cad.project_export_readiness") {
       return this.#callProjectExportReadiness(request);
     }
@@ -242,6 +249,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.resolve_named_reference") {
       return this.#callResolveNamedReference(request);
+    }
+
+    if (request.name === "cad.reference_health") {
+      return this.#callReferenceHealth(request);
     }
 
     if (request.name === "cad.selection_reference_candidates") {
@@ -474,6 +485,30 @@ export class CadMcpServer {
                 }
               : {})
           }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callProjectDependencyGraph(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isEmptyObjectOrUndefined(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.project_dependency_graph does not accept arguments."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: { query: "project.dependencyGraph" }
         }
       })
     );
@@ -948,6 +983,33 @@ export class CadMcpServer {
     return createToolResult(request.name, response, !response.ok);
   }
 
+  #callReferenceHealth(request: CadMcpToolCallRequest): CadMcpToolCallResult {
+    if (!isReferenceHealthToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.reference_health expects optional arguments shaped as { target?: { type: 'all' } | { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' } | { type: 'namedReference', name: string } }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "reference.health",
+            ...(request.arguments?.target
+              ? { target: request.arguments.target }
+              : {})
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
   #callSelectionReferenceCandidates(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
@@ -1150,6 +1212,16 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     name: "cad.project_health",
     description:
       "Returns read-only dependency and health status for authored sketches, features, generated bodies, and named references.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {}
+    }
+  },
+  {
+    name: "cad.project_dependency_graph",
+    description:
+      "Returns V10 source-derived dependency graph nodes, edges, reference health, and structured downstream reference diagnostics.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1462,6 +1534,75 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         name: {
           type: "string",
           description: "Named generated reference to resolve."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.reference_health",
+    description:
+      "Returns V10 source-derived reference health for all references or a body, generated reference, or named reference target.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        target: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type"],
+              properties: {
+                type: { const: "all" }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "bodyId"],
+              properties: {
+                type: { const: "body" },
+                bodyId: {
+                  type: "string",
+                  description: "Source-of-truth body ID to inspect."
+                }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "bodyId", "stableId"],
+              properties: {
+                type: { const: "generatedReference" },
+                bodyId: {
+                  type: "string",
+                  description: "Source-of-truth body ID to inspect."
+                },
+                stableId: {
+                  type: "string",
+                  description: "Semantic generated reference stable ID."
+                },
+                expectedKind: {
+                  type: "string",
+                  enum: ["body", "face", "edge", "vertex"],
+                  description:
+                    "Optional expected generated reference entity kind."
+                }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "name"],
+              properties: {
+                type: { const: "namedReference" },
+                name: {
+                  type: "string",
+                  description: "Source-of-truth named generated reference."
+                }
+              }
+            }
+          ]
         }
       }
     }
@@ -1789,6 +1930,19 @@ function isSelectionReferenceCandidatesToolArguments(value: unknown): value is {
   );
 }
 
+function isReferenceHealthToolArguments(value: unknown): value is
+  | {
+      readonly target?: CadReferenceHealthTarget;
+    }
+  | undefined {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      Object.keys(value).every((key) => key === "target") &&
+      (value.target === undefined || isCadReferenceHealthTarget(value.target)))
+  );
+}
+
 function isCadFeatureEditProposal(
   value: unknown
 ): value is CadFeatureEditProposal {
@@ -1814,6 +1968,34 @@ function isCadSelectionReferenceInput(
   }
 
   switch (value.type) {
+    case "body":
+      return typeof value.bodyId === "string" && value.bodyId !== "";
+    case "generatedReference":
+      return (
+        typeof value.bodyId === "string" &&
+        value.bodyId !== "" &&
+        typeof value.stableId === "string" &&
+        value.stableId !== "" &&
+        (value.expectedKind === undefined ||
+          isGeneratedEntityKind(value.expectedKind))
+      );
+    case "namedReference":
+      return typeof value.name === "string" && value.name !== "";
+    default:
+      return false;
+  }
+}
+
+function isCadReferenceHealthTarget(
+  value: unknown
+): value is CadReferenceHealthTarget {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "all":
+      return Object.keys(value).length === 1;
     case "body":
       return typeof value.bodyId === "string" && value.bodyId !== "";
     case "generatedReference":
