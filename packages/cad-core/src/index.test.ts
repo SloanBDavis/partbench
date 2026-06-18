@@ -6162,6 +6162,316 @@ describe("cad-core", () => {
     });
   });
 
+  it("repairs named generated references explicitly with dry-run commit history and undo redo", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+    const beforeJson = exportCadProjectJson(engine);
+
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [
+        {
+          op: "reference.repairName",
+          name: "Top face",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      ]
+    });
+
+    expect(dryRun).toMatchObject({ ok: true, mode: "dryRun" });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: { stableId: "generated:face:body_rect_1:startCap" }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    const result = engine.apply({
+      op: "reference.repairName",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+
+    expect(result.transaction.diff.references).toMatchObject({
+      namedRepaired: [
+        {
+          before: {
+            name: "Top face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:startCap",
+            kind: "face"
+          },
+          after: {
+            name: "Top face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face"
+          }
+        }
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: { stableId: "generated:face:body_rect_1:endCap" },
+      reference: { kind: "face", role: "endCap" }
+    });
+
+    const selection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "namedReference", name: "Top face" },
+        requiredOperation: "feature.selectReference"
+      }
+    });
+    expect(selection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          target: {
+            type: "generatedReference",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face",
+            referenceName: "Top face"
+          }
+        })
+      ]
+    });
+
+    const health = readReferenceHealth(engine, {
+      type: "namedReference",
+      name: "Top face"
+    });
+    expect(health).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          commandable: true,
+          stableId: "generated:face:body_rect_1:endCap"
+        })
+      ],
+      requiresProjectSchemaMigration: false
+    });
+
+    const graph = readProjectDependencyGraph(engine);
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "names",
+          from: "named-reference:Top face",
+          to: "generated-reference:body_rect_1:generated:face:body_rect_1:endCap"
+        })
+      ])
+    );
+
+    const rebuildPlan = readProjectRebuildPlan(engine);
+    expect(rebuildPlan).toMatchObject({
+      query: "project.rebuildPlan",
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "active",
+          commandReady: true
+        })
+      ]),
+      requiresProjectSchemaMigration: false
+    });
+
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: expect.arrayContaining([
+            expect.objectContaining({
+              op: "reference.repairName",
+              label: "Repair named face reference Top face",
+              referenceName: "Top face",
+              stableId: "generated:face:body_rect_1:endCap"
+            })
+          ])
+        })
+      ])
+    });
+
+    engine.undo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: { stableId: "generated:face:body_rect_1:startCap" }
+    });
+
+    engine.redo();
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: { stableId: "generated:face:body_rect_1:endCap" }
+    });
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+  });
+
+  it("rejects invalid named-reference repairs without mutating source", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+    engine.apply({
+      op: "scene.createBox",
+      id: "box_1",
+      dimensions: { width: 1, height: 1, depth: 1 }
+    });
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_cut", name: "Cut", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut",
+        id: "rect_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut",
+        bodyId: "body_cut",
+        sketchId: "sketch_cut",
+        entityId: "rect_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const beforeJson = exportCadProjectJson(engine);
+    const invalidRepairs: ReadonlyArray<{
+      readonly name: string;
+      readonly bodyId: string;
+      readonly stableId: string;
+      readonly code: string;
+      readonly received?: string;
+    }> = [
+      {
+        name: "Missing name",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap",
+        code: "NAMED_REFERENCE_NOT_FOUND"
+      },
+      {
+        name: "Top face",
+        bodyId: "missing_body",
+        stableId: "generated:face:missing_body:endCap",
+        code: "BODY_NOT_FOUND"
+      },
+      {
+        name: "Top face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:missing",
+        code: "GENERATED_REFERENCE_NOT_FOUND"
+      },
+      {
+        name: "Top face",
+        bodyId: "body:box_1",
+        stableId: "generated:body:body:box_1",
+        code: "UNSUPPORTED_BODY_REFERENCES"
+      },
+      {
+        name: "Top face",
+        bodyId: "body_cut",
+        stableId: "generated:face:body_cut:endCap",
+        code: "UNSUPPORTED_BODY_REFERENCES",
+        received: "cut extrude result"
+      },
+      {
+        name: "Top face",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap",
+        code: "TARGET_BODY_NOT_SUPPORTED",
+        received: "consumed by feat_cut"
+      },
+      {
+        name: "Top face",
+        bodyId: "body_rect_1",
+        stableId: "generated:edge:body_rect_1:start:uMin",
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        received: "edge"
+      }
+    ];
+
+    for (const invalidRepair of invalidRepairs) {
+      expect(
+        engine.executeBatch({
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "reference.repairName",
+              name: invalidRepair.name,
+              bodyId: invalidRepair.bodyId,
+              stableId: invalidRepair.stableId
+            }
+          ]
+        })
+      ).toMatchObject({
+        ok: false,
+        error: {
+          code: invalidRepair.code,
+          ...(invalidRepair.received
+            ? { received: invalidRepair.received }
+            : {})
+        }
+      });
+    }
+
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: { stableId: "generated:face:body_rect_1:startCap" }
+    });
+  });
+
   it("validates generated reference naming", () => {
     const engine = createRectangleExtrudeEngine();
 
@@ -6305,6 +6615,111 @@ describe("cad-core", () => {
     ).toMatchObject({
       ok: false,
       error: { code: "NAMED_REFERENCE_NOT_FOUND" }
+    });
+  });
+
+  it("repairs stale named references to an explicit command-ready target", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "feature.extrude",
+      id: "feat_rect_2",
+      bodyId: "body_rect_2",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 2,
+      operationMode: "newBody"
+    });
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Mounting face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+    engine.apply({ op: "feature.delete", id: "feat_rect_1" });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Mounting face" }
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND", referenceName: "Mounting face" }
+    });
+
+    engine.apply({
+      op: "reference.repairName",
+      name: "Mounting face",
+      bodyId: "body_rect_2",
+      stableId: "generated:face:body_rect_2:endCap"
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.health" }
+      })
+    ).toMatchObject({
+      ok: true,
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          source: "namedReference",
+          referenceName: "Mounting face",
+          status: "active",
+          bodyId: "body_rect_2",
+          stableId: "generated:face:body_rect_2:endCap"
+        })
+      ])
+    });
+  });
+
+  it("rejects named reference repairs that break existing edge-finish consumers", () => {
+    const consumerEngine = createRectangleExtrudeEngine();
+    consumerEngine.apply({
+      op: "feature.extrude",
+      id: "feat_rect_2",
+      bodyId: "body_rect_2",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 2,
+      operationMode: "newBody"
+    });
+    consumerEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Source edge",
+      bodyId: "body_rect_1",
+      stableId: "generated:edge:body_rect_1:start:uMin"
+    });
+    consumerEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_chamfer_1",
+      bodyId: "body_chamfer_1",
+      targetBodyId: "body_rect_1",
+      namedReference: "Source edge",
+      distance: 0.25
+    });
+
+    expect(
+      consumerEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.repairName",
+            name: "Source edge",
+            bodyId: "body_rect_2",
+            stableId: "generated:edge:body_rect_2:start:uMin"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        referenceName: "Source edge",
+        featureId: "feat_chamfer_1"
+      }
     });
   });
 

@@ -282,6 +282,14 @@ These constraints remain active:
     unsupported/missing/stale/over-defined/under-defined/non-rebuildable/
     consumed/ambiguous/schema-migration diagnostics from authoritative source
     state, exposes thin adapter/MCP pass-through, and does not introduce
+    `web-cad.project.v17`. Tranche G1 is implemented as the first explicit
+    named-reference repair contract: `reference.repairName` intentionally
+    retargets an existing named generated reference to a new command-ready,
+    kind-compatible generated target through the existing dry-run/commit
+    CADOps path, records before/after `namedRepaired` semantic diffs, keeps
+    resolve/health/selection/dependency/history/undo/redo consistent, and
+    rejects missing, stale, unsupported, consumed, ambiguous, and kind-mismatch
+    repair targets with structured diagnostics without introducing
     `web-cad.project.v17`. V10 must not become arbitrary topological naming,
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
@@ -301,7 +309,8 @@ and focused packages:
   and focused UI helpers.
 - `packages/cad-protocol` - typed CADOps command, batch, query, actor metadata,
   feature editability, dependency/reference-health, generated-reference role
-  and signature, and validation error shapes.
+  and signature, named-reference repair diff shape, and validation error
+  shapes.
 - `packages/cad-core` - authoritative in-memory document model, transactions,
   semantic diffs, undo/redo, queries, measurements/extents, source-of-truth
   sketches, document parameters, driving sketch dimensions, horizontal/vertical
@@ -310,8 +319,8 @@ and focused packages:
   narrow rectangle-tool add/cut boolean source data, authored revolve, hole,
   chamfer, and fillet source intent, named references, feature editability,
   source-derived dependency graph/reference-health queries, source-semantic
-  generated references for supported authored hole result bodies, and versioned
-  project JSON import/export.
+  generated references for supported authored hole result bodies, explicit
+  named-reference repair, and versioned project JSON import/export.
 - `packages/renderer` - renderer-facing primitive and mesh types plus the
   current canvas viewport.
 - `packages/renderer-mesh-bridge` - adapter from serializable geometry-worker
@@ -456,6 +465,8 @@ Current Partbench can:
 - create supported authored `feature.revolve`, `feature.hole`,
   `feature.chamfer`, and `feature.fillet` source records;
 - name generated references and resolve names later;
+- explicitly repair existing named generated references to new command-ready,
+  kind-compatible generated targets through CADOps;
 - inspect parts, sketches, features, bodies, named references, dependency
   health, history, measurements, extents, topology, exact-metadata health, and
   generated-reference measurements;
@@ -1661,12 +1672,26 @@ Use these decisions when drafting or implementing V10 tranches:
    diagnostics from authoritative source state. F1 does not add drag solver UX,
    arbitrary sketch solving, new UI, renderer/mesh/OCCT/storage authority, or
    `web-cad.project.v17`.
-11. **Named Reference Repair Workflow** - health display, explicit repair
-   command, dry-run diagnostics, and agent/MCP path without silent retargeting.
-12. **Product Integration And Browser Workflows** - compact feature edit,
+11. **Named Reference Repair Workflow** - implemented G1 as explicit
+   `reference.repairName` command support. Existing named generated references
+   can be intentionally retargeted to a same-kind command-ready generated
+   reference through CADOps dry-run or commit. Cad-core validates the existing
+   name, source-derived target, target kind, command-ready selection
+   eligibility, active body lifecycle, and existing edge-finish consumers, then
+   emits `references.namedRepaired` semantic diffs with before/after snapshots.
+   `reference.resolveNamed`, `reference.health`,
+   `selection.referenceCandidates`, dependency graph, rebuild plan,
+   transaction history, undo/redo, and agent/MCP batch pass-through stay aligned
+   with the repaired source snapshot. G1 does not add silent retargeting,
+   automatic topology repair, broad UI repair workflow, arbitrary result
+   topology, renderer/mesh/OCCT authority, or `web-cad.project.v17`.
+12. **Named Reference Repair Product Workflow** - compact health display and
+   explicit repair affordances in the browser where the query/command contracts
+   prove a safe target.
+13. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,
    Modeling, and viewport surfaces.
-13. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
+14. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
    non-browser and browser smokes, release docs, migration audit if V17 is
    introduced, and final boundary cleanup.
 

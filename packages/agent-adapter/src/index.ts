@@ -1312,7 +1312,7 @@ function createEntityChangeSummary(
       ? {
           created: ops.filter((op) => op.op === "reference.nameGenerated")
             .length,
-          modified: 0,
+          modified: ops.filter((op) => op.op === "reference.repairName").length,
           deleted: ops.filter((op) => op.op === "reference.deleteName").length
         }
       : emptyChangeCount();
@@ -1959,6 +1959,19 @@ function createOperationReview(
           op,
           "create",
           `Name generated reference ${op.name} on ${op.bodyId}`
+        ),
+        referenceName: op.name,
+        bodyId: op.bodyId,
+        stableId: op.stableId
+      };
+
+    case "reference.repairName":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Repair named reference ${op.name} to ${op.stableId} on ${op.bodyId}`
         ),
         referenceName: op.name,
         bodyId: op.bodyId,
@@ -3804,6 +3817,14 @@ function isCadOp(value: unknown): value is CadOp {
   }
 
   if (value.op === "reference.nameGenerated") {
+    return (
+      typeof value.name === "string" &&
+      typeof value.bodyId === "string" &&
+      typeof value.stableId === "string"
+    );
+  }
+
+  if (value.op === "reference.repairName") {
     return (
       typeof value.name === "string" &&
       typeof value.bodyId === "string" &&

@@ -81,6 +81,7 @@ function createOperationSummaries(
   let createdFeatureIndex = 0;
   let deletedFeatureIndex = 0;
   let createdNamedReferenceIndex = 0;
+  let repairedNamedReferenceIndex = 0;
   let deletedNamedReferenceIndex = 0;
   let createdParameterIndex = 0;
   let deletedParameterIndex = 0;
@@ -121,6 +122,12 @@ function createOperationSummaries(
       op.op === "reference.nameGenerated"
         ? transaction.diff.references?.namedCreated?.[
             createdNamedReferenceIndex++
+          ]
+        : undefined;
+    const repairedNamedReferenceRef =
+      op.op === "reference.repairName"
+        ? transaction.diff.references?.namedRepaired?.[
+            repairedNamedReferenceIndex++
           ]
         : undefined;
     const deletedNamedReferenceRef =
@@ -715,6 +722,21 @@ function createOperationSummaries(
         });
       }
 
+      case "reference.repairName": {
+        const kindLabel = repairedNamedReferenceRef?.after.kind
+          ? `${repairedNamedReferenceRef.after.kind} `
+          : "";
+
+        return createReferenceOperationSummary({
+          op: op.op,
+          label: `Repair named ${kindLabel}reference ${op.name}`,
+          referenceName: op.name,
+          bodyId: op.bodyId,
+          stableId: op.stableId,
+          generatedReferenceKind: repairedNamedReferenceRef?.after.kind
+        });
+      }
+
       case "reference.deleteName": {
         const targetLabel = deletedNamedReferenceRef?.stableId
           ? ` for ${deletedNamedReferenceRef.stableId}`
@@ -992,6 +1014,7 @@ function cloneReferenceSemanticDiff(
 ): ReferenceSemanticDiff {
   return {
     ...(diff.namedCreated ? { namedCreated: [...diff.namedCreated] } : {}),
+    ...(diff.namedRepaired ? { namedRepaired: [...diff.namedRepaired] } : {}),
     ...(diff.namedDeleted ? { namedDeleted: [...diff.namedDeleted] } : {})
   };
 }

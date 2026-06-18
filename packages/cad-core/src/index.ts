@@ -33,6 +33,7 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedEntityKind,
   CadGeneratedReference,
+  CadNamedReferenceRepairRef,
   CadNamedReferenceRef,
   CadObjectSnapshot,
   CadObjectRef,
@@ -276,6 +277,7 @@ export type {
   CadGeneratedReferenceProfileSignature,
   CadGeneratedReferenceSignature,
   CadGeneratedVertexReference,
+  CadNamedReferenceRepairRef,
   CadNamedReferenceRef,
   CadParameterRef,
   CadParameterSnapshot,
@@ -2610,6 +2612,7 @@ type MutableFeatureSemanticDiff = {
 
 type MutableReferenceSemanticDiff = {
   namedCreated: CadNamedReferenceRef[];
+  namedRepaired: CadNamedReferenceRepairRef[];
   namedDeleted: CadNamedReferenceRef[];
 };
 
@@ -3509,6 +3512,61 @@ function applyOperation(
       return;
     }
 
+    case "reference.repairName": {
+      const name = normalizeNamedReferenceName(op.name, opIndex);
+      const before = state.namedReferences.get(name);
+
+      if (!before) {
+        throwValidationError({
+          code: "NAMED_REFERENCE_NOT_FOUND",
+          message: `Named reference does not exist: ${name}`,
+          opIndex,
+          referenceName: name,
+          path: operationPath(opIndex, "name"),
+          expected: "existing named reference",
+          received: name
+        });
+      }
+
+      const validation = validateGeneratedReference({
+        document: state,
+        ownerPartId: DEFAULT_PART_ID,
+        bodyId: op.bodyId,
+        stableId: op.stableId,
+        expectedKind: before.kind,
+        bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+        requiredOperation: "feature.selectReference"
+      });
+
+      if (!validation.ok) {
+        throwRepairGeneratedReferenceValidationError(
+          state,
+          validation.error,
+          opIndex,
+          name
+        );
+      }
+
+      assertRepairTargetBodyActive(
+        state,
+        op.bodyId,
+        op.stableId,
+        name,
+        opIndex
+      );
+
+      const after: NamedGeneratedReferenceSnapshot = {
+        name,
+        bodyId: op.bodyId,
+        stableId: op.stableId,
+        kind: validation.kind
+      };
+      assertNamedReferenceRepairConsumers(state, before, after, opIndex);
+      state.namedReferences.set(name, after);
+      pushNamedReferenceRepaired(diff, before, after);
+      return;
+    }
+
     case "reference.deleteName": {
       const name = normalizeNamedReferenceName(op.name, opIndex);
       const reference = state.namedReferences.get(name);
@@ -3682,6 +3740,7 @@ function isCadOperationKind(value: string): boolean {
     case "feature.updateChamfer":
     case "feature.updateFillet":
     case "reference.nameGenerated":
+    case "reference.repairName":
     case "reference.deleteName":
       return true;
   }
@@ -9412,6 +9471,118 @@ function documentBodyExists(
   );
 }
 
+function assertRepairTargetBodyActive(
+  state: MutableDocumentState,
+  bodyId: BodyId,
+  stableId: string,
+  referenceName: NamedReferenceName,
+  opIndex?: number
+): void {
+  const body = createProjectStructure(state, []).bodies.find(
+    (candidate) => candidate.id === bodyId
+  );
+
+  if (!body?.consumedByFeatureId) {
+    return;
+  }
+
+  throwValidationError({
+    code: "TARGET_BODY_NOT_SUPPORTED",
+    message: `Cannot repair named reference ${referenceName} to consumed body ${bodyId}.`,
+    opIndex,
+    bodyId,
+    stableId,
+    referenceName,
+    path: operationPath(opIndex, "bodyId"),
+    expected: "active command-ready generated reference target",
+    received: `consumed by ${body.consumedByFeatureId}`
+  });
+}
+
+function assertNamedReferenceRepairConsumers(
+  state: MutableDocumentState,
+  before: NamedGeneratedReferenceSnapshot,
+  after: NamedGeneratedReferenceSnapshot,
+  opIndex?: number
+): void {
+  for (const feature of state.features.values()) {
+    if (
+      (feature.kind !== "chamfer" && feature.kind !== "fillet") ||
+      feature.namedReference !== before.name
+    ) {
+      continue;
+    }
+
+    if (after.kind !== "edge") {
+      throwValidationError({
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        message: `Named reference ${before.name} is used by ${feature.kind} feature ${feature.id} and must remain an edge.`,
+        opIndex,
+        bodyId: after.bodyId,
+        stableId: after.stableId,
+        featureId: feature.id,
+        referenceName: before.name,
+        path: operationPath(opIndex, "stableId"),
+        expected: "edge",
+        received: after.kind
+      });
+    }
+
+    if (after.bodyId !== feature.targetBodyId) {
+      throwValidationError({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: `Named reference ${before.name} is used by ${feature.kind} feature ${feature.id} and must still resolve to target body ${feature.targetBodyId}.`,
+        opIndex,
+        bodyId: after.bodyId,
+        stableId: after.stableId,
+        featureId: feature.id,
+        referenceName: before.name,
+        path: operationPath(opIndex, "bodyId"),
+        expected: `named edge reference resolving to ${feature.targetBodyId}`,
+        received: after.bodyId
+      });
+    }
+  }
+}
+
+function throwRepairGeneratedReferenceValidationError(
+  state: MutableDocumentState,
+  error: GeneratedReferenceValidationError,
+  opIndex: number | undefined,
+  referenceName: NamedReferenceName
+): never {
+  const body = createProjectStructure(state, []).bodies.find(
+    (candidate) => candidate.id === error.bodyId
+  );
+  const feature = body ? state.features.get(body.featureId) : undefined;
+
+  if (
+    error.code === "UNSUPPORTED_BODY_REFERENCES" &&
+    body !== undefined &&
+    feature?.kind === "extrude" &&
+    feature.operationMode !== "newBody"
+  ) {
+    throwValidationError({
+      code: error.code,
+      message: `Boolean result body ${error.bodyId} has ambiguous generated topology and cannot be used as a named-reference repair target yet.`,
+      opIndex,
+      bodyId: error.bodyId,
+      stableId: error.stableId,
+      referenceName,
+      path: operationPath(opIndex, "bodyId"),
+      expected: "command-ready source-semantic generated reference",
+      received: `${feature.operationMode} extrude result`
+    });
+  }
+
+  throwGeneratedReferenceValidationError(
+    error,
+    opIndex,
+    "stableId",
+    referenceName
+  );
+}
+
 function createNamedReferenceEntry(
   document: CadDocument,
   reference: NamedGeneratedReferenceSnapshot,
@@ -10486,6 +10657,17 @@ function pushNamedReferenceCreated(
   ensureReferenceDiff(diff).namedCreated.push(namedReferenceRef(reference));
 }
 
+function pushNamedReferenceRepaired(
+  diff: MutableSemanticDiff,
+  before: NamedGeneratedReferenceSnapshot,
+  after: NamedGeneratedReferenceSnapshot
+): void {
+  ensureReferenceDiff(diff).namedRepaired.push({
+    before: namedReferenceRef(before),
+    after: namedReferenceRef(after)
+  });
+}
+
 function pushNamedReferenceDeleted(
   diff: MutableSemanticDiff,
   reference: NamedGeneratedReferenceSnapshot
@@ -10498,6 +10680,7 @@ function ensureReferenceDiff(
 ): MutableReferenceSemanticDiff {
   diff.references ??= {
     namedCreated: [],
+    namedRepaired: [],
     namedDeleted: []
   };
 
@@ -19146,6 +19329,14 @@ function isCadOp(value: unknown): value is CadOp {
     );
   }
 
+  if (value.op === "reference.repairName") {
+    return (
+      typeof value.name === "string" &&
+      typeof value.bodyId === "string" &&
+      typeof value.stableId === "string"
+    );
+  }
+
   if (value.op === "reference.deleteName") {
     return typeof value.name === "string";
   }
@@ -19355,6 +19546,9 @@ function isReferenceSemanticDiff(
     (value.namedCreated === undefined ||
       (Array.isArray(value.namedCreated) &&
         value.namedCreated.every(isCadNamedReferenceRef))) &&
+    (value.namedRepaired === undefined ||
+      (Array.isArray(value.namedRepaired) &&
+        value.namedRepaired.every(isCadNamedReferenceRepairRef))) &&
     (value.namedDeleted === undefined ||
       (Array.isArray(value.namedDeleted) &&
         value.namedDeleted.every(isCadNamedReferenceRef)))
@@ -19522,6 +19716,16 @@ function isCadNamedReferenceRef(value: unknown): value is CadNamedReferenceRef {
     typeof value.bodyId === "string" &&
     typeof value.stableId === "string" &&
     isGeneratedEntityKind(value.kind)
+  );
+}
+
+function isCadNamedReferenceRepairRef(
+  value: unknown
+): value is CadNamedReferenceRepairRef {
+  return (
+    isRecord(value) &&
+    isCadNamedReferenceRef(value.before) &&
+    isCadNamedReferenceRef(value.after)
   );
 }
 

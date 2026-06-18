@@ -247,6 +247,7 @@ export type CadOp =
   | FeatureUpdateFilletOp
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
+  | ReferenceRepairNameOp
   | ReferenceDeleteNameOp;
 
 export interface DocumentUpdateUnitsOp {
@@ -652,6 +653,13 @@ export interface ReferenceNameGeneratedOp {
   readonly stableId: string;
 }
 
+export interface ReferenceRepairNameOp {
+  readonly op: "reference.repairName";
+  readonly name: NamedReferenceName;
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+}
+
 export interface ReferenceDeleteNameOp {
   readonly op: "reference.deleteName";
   readonly name: NamedReferenceName;
@@ -809,7 +817,13 @@ export interface FeatureSemanticDiff {
 
 export interface ReferenceSemanticDiff {
   readonly namedCreated?: readonly CadNamedReferenceRef[];
+  readonly namedRepaired?: readonly CadNamedReferenceRepairRef[];
   readonly namedDeleted?: readonly CadNamedReferenceRef[];
+}
+
+export interface CadNamedReferenceRepairRef {
+  readonly before: CadNamedReferenceRef;
+  readonly after: CadNamedReferenceRef;
 }
 
 export interface ParameterSemanticDiff {

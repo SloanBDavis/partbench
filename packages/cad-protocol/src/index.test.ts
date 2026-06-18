@@ -18,6 +18,7 @@ import type {
   CadRevolveFeatureSummary,
   CadQueryRequest,
   CadQueryResponse,
+  SemanticDiff,
   CadViewportCommandTargetSummary,
   CadViewportHitCandidate,
   CadViewportHoverState,
@@ -607,6 +608,12 @@ describe("cad-protocol", () => {
         stableId: "generated:face:body_1:startCap"
       },
       {
+        op: "reference.repairName",
+        name: "Mounting face",
+        bodyId: "body_1",
+        stableId: "generated:face:body_1:endCap"
+      },
+      {
         op: "reference.deleteName",
         name: "Mounting face"
       }
@@ -649,6 +656,7 @@ describe("cad-protocol", () => {
       "feature.updateFillet",
       "feature.delete",
       "reference.nameGenerated",
+      "reference.repairName",
       "reference.deleteName"
     ]);
     expect(ops[0]).toMatchObject({
@@ -679,6 +687,16 @@ describe("cad-protocol", () => {
       op: "feature.extrude",
       operationMode: "add",
       targetBodyId: "body_target"
+    });
+    const repairNamedReferenceOp: CadOp = {
+      op: "reference.repairName",
+      name: "Mounting face",
+      bodyId: "body_2",
+      stableId: "generated:face:body_2:endCap"
+    };
+    expect(repairNamedReferenceOp).toMatchObject({
+      op: "reference.repairName",
+      name: "Mounting face"
     });
   });
 
@@ -711,6 +729,37 @@ describe("cad-protocol", () => {
     expect(batch.actor?.type).toBe("script");
     expect(batch.audit?.operationCount).toBe(1);
     expect(batch.ops).toHaveLength(1);
+  });
+
+  it("types named reference repair semantic diffs", () => {
+    const diff: SemanticDiff = {
+      created: [],
+      modified: [],
+      deleted: [],
+      references: {
+        namedRepaired: [
+          {
+            before: {
+              name: "Mounting face",
+              bodyId: "body_1",
+              stableId: "generated:face:body_1:startCap",
+              kind: "face"
+            },
+            after: {
+              name: "Mounting face",
+              bodyId: "body_1",
+              stableId: "generated:face:body_1:endCap",
+              kind: "face"
+            }
+          }
+        ]
+      }
+    };
+
+    expect(diff.references?.namedRepaired?.[0]).toMatchObject({
+      before: { stableId: "generated:face:body_1:startCap" },
+      after: { stableId: "generated:face:body_1:endCap" }
+    });
   });
 
   it("types V3 parameter and sketch dimension commands", () => {
