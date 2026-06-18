@@ -38,6 +38,7 @@ describe("mcp stdio server", () => {
           { name: "cad.body_topology" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
+          { name: "cad.sketch_edit_readiness" },
           { name: "cad.sketch_dimensions" },
           { name: "cad.sketch_evaluation" },
           { name: "cad.sketch_dimension_get" },

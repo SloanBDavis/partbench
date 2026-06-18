@@ -13,6 +13,8 @@ import type {
   ProjectSummaryQueryResponse,
   ReferenceHealthQueryResponse,
   CadReferenceHealthTarget,
+  CadSketchEditProposal,
+  SketchEditReadinessQueryResponse,
   SketchConstraintSnapshot,
   SketchDimensionSnapshot,
   SketchEntitySnapshot
@@ -256,6 +258,28 @@ function readReferenceHealth(
   }
 
   return response;
+}
+
+function readSketchEditReadiness(
+  engine: CadEngine,
+  edit: CadSketchEditProposal
+): SketchEditReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "sketch.editReadiness", edit }
+  });
+
+  if (!response.ok || response.query !== "sketch.editReadiness") {
+    throw new Error("Expected sketch.editReadiness response.");
+  }
+
+  return response;
+}
+
+function expectNoDerivedInfraIdentifiers(value: unknown): void {
+  expect(JSON.stringify(value)).not.toMatch(
+    /mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i
+  );
 }
 
 function readProjectExactExport(
@@ -10133,6 +10157,355 @@ describe("cad-core", () => {
         JSON.stringify([plan.bodyLifecycles, plan.lifecycleEffects])
       )
     ).toBe(false);
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+  });
+
+  it("reports F1 sketch edit readiness for source-backed rectangle dimensions without mutating", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Front face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+
+    const readiness = readSketchEditReadiness(engine, {
+      editKind: "entity.dimension.update",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "width" },
+      value: 8
+    });
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "sketch.editReadiness",
+      status: "ready",
+      dryRun: {
+        status: "valid",
+        commitOperation: "sketch.updateEntity",
+        willMutateDocument: false
+      },
+      affected: {
+        sketchIds: expect.arrayContaining(["sketch_1"]),
+        sketchEntityIds: expect.arrayContaining(["rect_1"]),
+        featureIds: expect.arrayContaining(["feat_rect_1"]),
+        bodyIds: expect.arrayContaining(["body_rect_1"]),
+        namedReferenceCount: 1
+      },
+      featureImpacts: [
+        expect.objectContaining({
+          featureId: "feat_rect_1",
+          featureKind: "extrude",
+          bodyId: "body_rect_1",
+          impact: "source-profile",
+          sketchId: "sketch_1",
+          sketchEntityId: "rect_1",
+          bodyLifecycle: "active",
+          referenceHealthStatus: "active"
+        })
+      ],
+      bodyLifecycles: [
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "active",
+          commandReady: true
+        })
+      ],
+      requiresProjectSchemaMigration: false
+    });
+    expect(readiness.sketchHealth?.after?.dimensions).toEqual([]);
+    expect(readiness.referenceEffects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_rect_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "Front face",
+          stableId: "generated:face:body_rect_1:startCap"
+        })
+      ])
+    );
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("rect_1")
+    ).toMatchObject({ kind: "rectangle", width: 4 });
+    expectNoDerivedInfraIdentifiers({
+      affected: readiness.affected,
+      featureImpacts: readiness.featureImpacts,
+      bodyLifecycles: readiness.bodyLifecycles,
+      referenceEffects: readiness.referenceEffects,
+      referenceHealth: readiness.referenceHealth,
+      diagnostics: readiness.diagnostics
+    });
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
+  });
+
+  it("supports F1 circle radius and line length sketch edit readiness", () => {
+    const circleEngine = createCircleExtrudeEngine();
+    const circleReadiness = readSketchEditReadiness(circleEngine, {
+      editKind: "entity.dimension.update",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      target: { entityKind: "circle", role: "radius" },
+      value: 3
+    });
+    const lineEngine = new CadEngine();
+
+    lineEngine.applyBatch([
+      { op: "sketch.create", id: "sketch_line", name: "Line", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_line",
+        id: "line_1",
+        start: [0, 0],
+        end: [3, 4]
+      }
+    ]);
+
+    const lineReadiness = readSketchEditReadiness(lineEngine, {
+      editKind: "entity.dimension.update",
+      sketchId: "sketch_line",
+      entityId: "line_1",
+      target: { entityKind: "line", role: "length" },
+      value: 10
+    });
+
+    expect(circleReadiness).toMatchObject({
+      status: "ready",
+      dryRun: { status: "valid", willMutateDocument: false },
+      affected: {
+        featureIds: expect.arrayContaining(["feat_circle_1"]),
+        bodyIds: expect.arrayContaining(["body_circle_1"])
+      }
+    });
+    expect(lineReadiness).toMatchObject({
+      status: "ready",
+      dryRun: { status: "valid", willMutateDocument: false },
+      affected: {
+        sketchIds: ["sketch_line"],
+        sketchEntityIds: ["line_1"],
+        featureIds: [],
+        bodyIds: []
+      }
+    });
+    expect(
+      lineEngine
+        .getDocument()
+        .sketches.get("sketch_line")
+        ?.entities.get("line_1")
+    ).toMatchObject({ kind: "line", start: [0, 0], end: [3, 4] });
+  });
+
+  it("reports F1 sketch dimension update/create/delete and constraint diagnostics", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.apply({
+      op: "sketch.dimension.create",
+      id: "dim_width",
+      name: "Width",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "width" },
+      value: 4
+    });
+
+    const updateReadiness = readSketchEditReadiness(engine, {
+      editKind: "sketch.dimension.update",
+      id: "dim_width",
+      value: 9
+    });
+    const createReadiness = readSketchEditReadiness(engine, {
+      editKind: "sketch.dimension.create",
+      id: "dim_height",
+      name: "Height",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "height" },
+      value: 5
+    });
+    const deleteReadiness = readSketchEditReadiness(engine, {
+      editKind: "sketch.dimension.delete",
+      id: "dim_width"
+    });
+    const conflictingConstraint = readSketchEditReadiness(engine, {
+      editKind: "sketch.constraint.create",
+      id: "con_bad_vertical",
+      name: "Bad vertical",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      kind: "vertical"
+    });
+    const missingDimension = readSketchEditReadiness(engine, {
+      editKind: "sketch.dimension.update",
+      id: "dim_missing",
+      value: 2
+    });
+    const missingParameter = readSketchEditReadiness(engine, {
+      editKind: "sketch.dimension.update",
+      id: "dim_width",
+      parameterId: "missing_parameter"
+    });
+
+    expect(updateReadiness).toMatchObject({
+      status: "ready",
+      dryRun: {
+        status: "valid",
+        commitOperation: "sketch.dimension.update"
+      },
+      affected: {
+        dimensionIds: ["dim_width"],
+        featureIds: expect.arrayContaining(["feat_rect_1"])
+      }
+    });
+    expect(createReadiness).toMatchObject({
+      status: "ready",
+      dryRun: {
+        status: "valid",
+        commitOperation: "sketch.dimension.create"
+      },
+      affected: {
+        dimensionIds: ["dim_height"]
+      }
+    });
+    expect(deleteReadiness).toMatchObject({
+      status: "ready",
+      dryRun: {
+        status: "valid",
+        commitOperation: "sketch.dimension.delete"
+      },
+      affected: {
+        dimensionIds: ["dim_width"]
+      }
+    });
+    expect(conflictingConstraint).toMatchObject({
+      status: "unsupported",
+      dryRun: { status: "unsupported" },
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_EDIT_UNSUPPORTED",
+          sketchConstraintId: "con_bad_vertical"
+        })
+      ])
+    });
+    expect(missingDimension).toMatchObject({
+      status: "missing",
+      dryRun: { status: "missing" },
+      diagnostics: [
+        expect.objectContaining({
+          code: "SKETCH_EDIT_MISSING_DIMENSION",
+          sketchDimensionId: "dim_missing"
+        })
+      ]
+    });
+    expect(missingParameter).toMatchObject({
+      status: "missing",
+      dryRun: { status: "missing" },
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_EDIT_MISSING_PARAMETER",
+          sketchDimensionId: "dim_width",
+          received: "missing_parameter"
+        })
+      ])
+    });
+    expect(
+      engine.getDocument().sketches.get("sketch_1")?.entities.get("rect_1")
+    ).toMatchObject({ kind: "rectangle", width: 4, height: 2 });
+  });
+
+  it("reports F1 downstream consumed and ambiguous rebuild impact consistently", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_cut", name: "Cut", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut",
+        id: "rect_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_cut",
+        entityId: "rect_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const readiness = readSketchEditReadiness(engine, {
+      editKind: "entity.dimension.update",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "height" },
+      value: 6
+    });
+    const graph = readProjectDependencyGraph(engine);
+    const rebuildPlan = readProjectRebuildPlan(engine);
+
+    expect(readiness).toMatchObject({
+      status: "ready",
+      affected: {
+        featureIds: expect.arrayContaining(["feat_rect_1", "feat_cut_1"]),
+        bodyIds: expect.arrayContaining(["body_rect_1", "body_cut_1"])
+      },
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "consumed",
+          consumedByFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          bodyId: "body_cut_1",
+          primaryState: "repair-needed",
+          referenceHealthStatus: "ambiguous"
+        })
+      ]),
+      referenceEffects: expect.arrayContaining([
+        expect.objectContaining({
+          category: "consumed",
+          bodyId: "body_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "ambiguous",
+          bodyId: "body_cut_1"
+        })
+      ]),
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_EDIT_CONSUMED_DOWNSTREAM",
+          bodyId: "body_rect_1"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_EDIT_AMBIGUOUS_DOWNSTREAM",
+          bodyId: "body_cut_1"
+        })
+      ])
+    });
+    expect(graph.nodes).toEqual(
+      expect.arrayContaining(
+        readiness.affected.featureIds.map((featureId) =>
+          expect.objectContaining({ kind: "feature", featureId })
+        )
+      )
+    );
+    expect(readiness.bodyLifecycles.map((body) => body.bodyId)).toEqual(
+      expect.arrayContaining(
+        rebuildPlan.bodyLifecycles
+          .filter((body) => readiness.affected.bodyIds.includes(body.bodyId))
+          .map((body) => body.bodyId)
+      )
+    );
+    expect(getExtrudeFeature(engine, "feat_rect_1").depth).toBe(3);
     expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
   });
 

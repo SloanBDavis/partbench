@@ -1021,6 +1021,7 @@ export type CadQueryKind =
   | "object.measurements"
   | "project.extents"
   | "sketch.get"
+  | "sketch.editReadiness"
   | "sketch.evaluation"
   | "sketch.dimensions"
   | "sketch.dimension.get"
@@ -1053,6 +1054,7 @@ export type CadQuery =
   | ObjectMeasurementsQuery
   | ProjectExtentsQuery
   | SketchGetQuery
+  | SketchEditReadinessQuery
   | SketchEvaluationQuery
   | SketchDimensionsQuery
   | SketchDimensionGetQuery
@@ -1144,6 +1146,11 @@ export interface ProjectExtentsQuery {
 export interface SketchGetQuery {
   readonly query: "sketch.get";
   readonly id: SketchId;
+}
+
+export interface SketchEditReadinessQuery {
+  readonly query: "sketch.editReadiness";
+  readonly edit: CadSketchEditProposal;
 }
 
 export interface SketchEvaluationQuery {
@@ -2066,6 +2073,197 @@ export interface CadFeatureEditDryRunSummary {
   readonly willMutateDocument: false;
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadFeatureEditDiagnostic[];
+}
+
+export type CadSketchEditReadinessStatus =
+  | "ready"
+  | "blocked"
+  | "unsupported"
+  | "missing"
+  | "repair-needed"
+  | "schema-migration-needed";
+
+export type CadSketchEditDryRunStatus =
+  | "valid"
+  | "blocked"
+  | "unsupported"
+  | "missing";
+
+export type CadSketchEditDiagnosticSeverity = CadFeatureEditDiagnosticSeverity;
+
+export type CadSketchEditDiagnosticCode =
+  | "SKETCH_EDIT_SUPPORTED"
+  | "SKETCH_EDIT_UNSUPPORTED"
+  | "SKETCH_EDIT_INVALID_PROPOSAL"
+  | "SKETCH_EDIT_MISSING_SKETCH"
+  | "SKETCH_EDIT_MISSING_ENTITY"
+  | "SKETCH_EDIT_MISSING_PARAMETER"
+  | "SKETCH_EDIT_MISSING_DIMENSION"
+  | "SKETCH_EDIT_MISSING_CONSTRAINT"
+  | "SKETCH_EDIT_STALE_SOURCE"
+  | "SKETCH_EDIT_INVALID_VALUE"
+  | "SKETCH_EDIT_UNDER_DEFINED"
+  | "SKETCH_EDIT_OVER_DEFINED"
+  | "SKETCH_EDIT_CONFLICTING_CONSTRAINT"
+  | "SKETCH_EDIT_NON_REBUILDABLE"
+  | "SKETCH_EDIT_CONSUMED_DOWNSTREAM"
+  | "SKETCH_EDIT_AMBIGUOUS_DOWNSTREAM"
+  | "SKETCH_EDIT_REPAIR_NEEDED_DOWNSTREAM"
+  | "SKETCH_EDIT_SCHEMA_MIGRATION_NEEDED";
+
+export interface CadSketchEntityDimensionEditProposal {
+  readonly editKind: "entity.dimension.update";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly target: SketchDimensionTarget;
+  readonly value: number;
+}
+
+export interface CadSketchDimensionCreateEditProposal extends Omit<
+  SketchDimensionCreateOp,
+  "op"
+> {
+  readonly editKind: "sketch.dimension.create";
+}
+
+export interface CadSketchDimensionUpdateEditProposal extends Omit<
+  SketchDimensionUpdateOp,
+  "op"
+> {
+  readonly editKind: "sketch.dimension.update";
+}
+
+export interface CadSketchDimensionDeleteEditProposal extends Omit<
+  SketchDimensionDeleteOp,
+  "op"
+> {
+  readonly editKind: "sketch.dimension.delete";
+}
+
+export type CadSketchConstraintCreateEditProposal =
+  | (Omit<SketchOrientationConstraintCreateOp, "op"> & {
+      readonly editKind: "sketch.constraint.create";
+    })
+  | (Omit<SketchFixedConstraintCreateOp, "op"> & {
+      readonly editKind: "sketch.constraint.create";
+    })
+  | (Omit<SketchCoincidentConstraintCreateOp, "op"> & {
+      readonly editKind: "sketch.constraint.create";
+    })
+  | (Omit<SketchMidpointConstraintCreateOp, "op"> & {
+      readonly editKind: "sketch.constraint.create";
+    })
+  | (Omit<SketchParallelConstraintCreateOp, "op"> & {
+      readonly editKind: "sketch.constraint.create";
+    })
+  | (Omit<SketchPerpendicularConstraintCreateOp, "op"> & {
+      readonly editKind: "sketch.constraint.create";
+    });
+
+export interface CadSketchConstraintDeleteEditProposal extends Omit<
+  SketchConstraintDeleteOp,
+  "op"
+> {
+  readonly editKind: "sketch.constraint.delete";
+}
+
+export type CadSketchEditProposal =
+  | CadSketchEntityDimensionEditProposal
+  | CadSketchDimensionCreateEditProposal
+  | CadSketchDimensionUpdateEditProposal
+  | CadSketchDimensionDeleteEditProposal
+  | CadSketchConstraintCreateEditProposal
+  | CadSketchConstraintDeleteEditProposal;
+
+export interface CadSketchEditDiagnostic {
+  readonly code: CadSketchEditDiagnosticCode;
+  readonly severity: CadSketchEditDiagnosticSeverity;
+  readonly message: string;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly sketchDimensionId?: SketchDimensionId;
+  readonly sketchConstraintId?: SketchConstraintId;
+  readonly featureId?: FeatureId;
+  readonly bodyId?: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly stableId?: string;
+  readonly referenceName?: NamedReferenceName;
+  readonly fieldPath?: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadSketchEditEvaluationSummary {
+  readonly sketchId: SketchId;
+  readonly sketchName: string;
+  readonly plane: SketchPlane;
+  readonly status: SketchDimensionStatus;
+  readonly drivenEntityCount: number;
+  readonly drivenEntityIds: readonly SketchEntityId[];
+  readonly dimensionCount: number;
+  readonly dimensions: readonly SketchDimensionEntry[];
+  readonly constraintCount: number;
+  readonly constraints: readonly SketchConstraintEntry[];
+  readonly issueCount: number;
+  readonly issues: readonly SketchEvaluationIssue[];
+}
+
+export interface CadSketchEditHealthSummary {
+  readonly before: CadSketchEditEvaluationSummary;
+  readonly after?: CadSketchEditEvaluationSummary;
+  readonly statusChanged: boolean;
+}
+
+export interface CadSketchEditDryRunSummary {
+  readonly status: CadSketchEditDryRunStatus;
+  readonly edit: CadSketchEditProposal;
+  readonly commitOperation?: CadOp["op"];
+  readonly willMutateDocument: false;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchEditDiagnostic[];
+}
+
+export interface CadSketchEditAffectedSummary {
+  readonly sketchIds: readonly SketchId[];
+  readonly sketchEntityIds: readonly SketchEntityId[];
+  readonly dimensionIds: readonly SketchDimensionId[];
+  readonly constraintIds: readonly SketchConstraintId[];
+  readonly featureIds: readonly FeatureId[];
+  readonly bodyIds: readonly BodyId[];
+  readonly generatedReferenceCount: number;
+  readonly namedReferenceCount: number;
+}
+
+export type CadSketchEditFeatureImpactKind =
+  | "source-profile"
+  | "source-axis"
+  | "source-hole-circle"
+  | "downstream-target";
+
+export interface CadSketchEditFeatureImpact {
+  readonly featureId: FeatureId;
+  readonly featureKind: CadFeatureSummary["kind"];
+  readonly bodyId: BodyId;
+  readonly impact: CadSketchEditFeatureImpactKind;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly targetBodyId?: BodyId;
+  readonly bodyLifecycle?: CadBodyLifecycleState;
+  readonly referenceHealthStatus?: CadReferenceHealthStatus;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchEditDiagnostic[];
+}
+
+export interface CadSketchEditReferenceEffectSummary {
+  readonly category: CadReferenceHealthStatus;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly kind?: CadGeneratedEntityKind;
+  readonly referenceName?: NamedReferenceName;
+  readonly sourceFeatureId?: FeatureId;
+  readonly targetFeatureId?: FeatureId;
+  readonly diagnosticCode?: CadSketchEditDiagnosticCode;
+  readonly message: string;
 }
 
 export type CadReferenceHealthStatus = CadFeatureReferenceChangeCategory;
@@ -3603,6 +3801,7 @@ export type CadQueryResponse =
   | ObjectMeasurementsQueryResponse
   | ProjectExtentsQueryResponse
   | SketchGetQueryResponse
+  | SketchEditReadinessQueryResponse
   | SketchEvaluationQueryResponse
   | SketchDimensionsQueryResponse
   | SketchDimensionGetQueryResponse
@@ -3874,6 +4073,30 @@ export interface SketchGetQueryResponse {
   readonly query: "sketch.get";
   readonly cadOpsVersion: CadOpsVersion;
   readonly sketch: SketchSnapshot;
+}
+
+export interface SketchEditReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.editReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadSketchEditReadinessStatus;
+  readonly edit: CadSketchEditProposal;
+  readonly dryRun: CadSketchEditDryRunSummary;
+  readonly sketchHealth?: CadSketchEditHealthSummary;
+  readonly affected: CadSketchEditAffectedSummary;
+  readonly featureImpactCount: number;
+  readonly featureImpacts: readonly CadSketchEditFeatureImpact[];
+  readonly bodyLifecycleCount: number;
+  readonly bodyLifecycles: readonly CadBodyLifecycleSummary[];
+  readonly referenceEffectCount: number;
+  readonly referenceEffects: readonly CadSketchEditReferenceEffectSummary[];
+  readonly referenceHealthCount: number;
+  readonly referenceHealth: readonly CadReferenceHealthEntry[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchEditDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiresProjectSchemaMigration: false;
 }
 
 export interface SketchEvaluationQueryResponse {

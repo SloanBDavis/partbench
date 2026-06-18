@@ -18,6 +18,7 @@ import type {
   CadFeatureEditProposal,
   CadGeneratedEntityKind,
   CadReferenceHealthTarget,
+  CadSketchEditProposal,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation
 } from "@web-cad/cad-protocol";
@@ -44,6 +45,7 @@ export type CadMcpToolName =
   | "cad.body_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
+  | "cad.sketch_edit_readiness"
   | "cad.sketch_evaluation"
   | "cad.sketch_dimensions"
   | "cad.sketch_dimension_get"
@@ -222,6 +224,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.sketch_get") {
       return this.#callSketchGet(request);
+    }
+
+    if (request.name === "cad.sketch_edit_readiness") {
+      return this.#callSketchEditReadiness(request);
     }
 
     if (request.name === "cad.sketch_evaluation") {
@@ -795,6 +801,33 @@ export class CadMcpServer {
           query: {
             query: "sketch.get",
             id: request.arguments.id
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callSketchEditReadiness(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isSketchEditReadinessToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.sketch_edit_readiness expects arguments shaped as { edit: supported sketch edit readiness proposal }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.editReadiness",
+            edit: request.arguments.edit
           }
         }
       })
@@ -1449,6 +1482,23 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.sketch_edit_readiness",
+    description:
+      "Returns V10 F1 sketch edit readiness, sketch health, rebuild impact, body lifecycle, and reference-effect diagnostics for one supported source-backed sketch edit proposal.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["edit"],
+      properties: {
+        edit: {
+          type: "object",
+          description:
+            "Supported sketch edit proposal, such as entity.dimension.update, sketch.dimension.update/create/delete, or sketch.constraint.create/delete."
+        }
+      }
+    }
+  },
+  {
     name: "cad.sketch_dimensions",
     description: "Returns source-of-truth driving dimensions for one sketch.",
     inputSchema: {
@@ -1820,6 +1870,12 @@ function isFeatureEditabilityToolArguments(value: unknown): value is {
   );
 }
 
+function isSketchEditReadinessToolArguments(value: unknown): value is {
+  readonly edit: CadSketchEditProposal;
+} {
+  return isRecord(value) && isCadSketchEditProposal(value.edit);
+}
+
 function isBodyMeasurementsToolArguments(
   value: unknown
 ): value is { readonly bodyId: string } {
@@ -2038,6 +2094,104 @@ function isCadFeatureEditProposal(
     return (
       Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
       (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  return false;
+}
+
+function isCadSketchEditProposal(
+  value: unknown
+): value is CadSketchEditProposal {
+  if (!isRecord(value) || typeof value.editKind !== "string") {
+    return false;
+  }
+
+  if (value.editKind === "entity.dimension.update") {
+    return (
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      typeof value.value === "number"
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.create") {
+    return (
+      (value.id === undefined || typeof value.id === "string") &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      ((typeof value.value === "number" && value.parameterId === undefined) ||
+        (value.value === undefined && typeof value.parameterId === "string"))
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.update") {
+    return (
+      typeof value.id === "string" &&
+      ((typeof value.value === "number" && value.parameterId === undefined) ||
+        (value.value === undefined && typeof value.parameterId === "string"))
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.delete") {
+    return typeof value.id === "string";
+  }
+
+  if (value.editKind === "sketch.constraint.create") {
+    return isSketchConstraintCreateEditProposal(value);
+  }
+
+  if (value.editKind === "sketch.constraint.delete") {
+    return typeof value.id === "string";
+  }
+
+  return false;
+}
+
+function isSketchConstraintCreateEditProposal(
+  value: Record<string, unknown>
+): boolean {
+  if (
+    typeof value.name !== "string" ||
+    typeof value.sketchId !== "string" ||
+    typeof value.kind !== "string" ||
+    (value.id !== undefined && typeof value.id !== "string")
+  ) {
+    return false;
+  }
+
+  if (value.kind === "horizontal" || value.kind === "vertical") {
+    return typeof value.entityId === "string";
+  }
+
+  if (value.kind === "fixed") {
+    return (
+      isSketchPointTarget(value.target) &&
+      (value.coordinate === undefined || isVec2(value.coordinate))
+    );
+  }
+
+  if (value.kind === "coincident") {
+    return (
+      isSketchPointTarget(value.primaryTarget) &&
+      isSketchPointTarget(value.secondaryTarget)
+    );
+  }
+
+  if (value.kind === "midpoint") {
+    return (
+      typeof value.lineEntityId === "string" &&
+      isSketchPointTarget(value.target)
+    );
+  }
+
+  if (value.kind === "parallel" || value.kind === "perpendicular") {
+    return (
+      typeof value.primaryLineEntityId === "string" &&
+      typeof value.secondaryLineEntityId === "string"
     );
   }
 
@@ -2289,6 +2443,48 @@ function isVec3(value: unknown): value is readonly [number, number, number] {
     Array.isArray(value) &&
     value.length === 3 &&
     value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
+function isVec2(value: unknown): value is readonly [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item))
+  );
+}
+
+function isSketchDimensionTarget(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.entityKind === "rectangle") {
+    return value.role === "width" || value.role === "height";
+  }
+
+  if (value.entityKind === "circle") {
+    return value.role === "radius";
+  }
+
+  if (value.entityKind === "line") {
+    return value.role === "length";
+  }
+
+  return false;
+}
+
+function isSketchPointTarget(value: unknown): value is {
+  readonly entityId: string;
+  readonly role: "position" | "start" | "end" | "center";
+} {
+  return (
+    isRecord(value) &&
+    typeof value.entityId === "string" &&
+    (value.role === "position" ||
+      value.role === "start" ||
+      value.role === "end" ||
+      value.role === "center")
   );
 }
 

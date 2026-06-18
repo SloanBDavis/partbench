@@ -34,6 +34,7 @@ import type {
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   ProjectSummaryQueryResponse,
+  SketchEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
   WcadManifestV1,
   WcadPackageValidationIssue,
@@ -1002,6 +1003,19 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: {
+          query: "sketch.editReadiness",
+          edit: {
+            editKind: "entity.dimension.update",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            target: { entityKind: "rectangle", role: "width" },
+            value: 12
+          }
+        }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "parameter.list" }
       },
       {
@@ -1080,6 +1094,7 @@ describe("cad-protocol", () => {
       "project.extents",
       "project.extents",
       "sketch.get",
+      "sketch.editReadiness",
       "parameter.list",
       "parameter.get",
       "sketch.dimensions",
@@ -1190,6 +1205,77 @@ describe("cad-protocol", () => {
 
     expect(evaluation.status).toBe("under-defined");
     expect(health.sketchEvaluations[0]?.status).toBe("under-defined");
+  });
+
+  it("types V10 F1 sketch edit readiness responses", () => {
+    const response: SketchEditReadinessQueryResponse = {
+      ok: true,
+      query: "sketch.editReadiness",
+      cadOpsVersion: "cadops.v1",
+      status: "ready",
+      edit: {
+        editKind: "entity.dimension.update",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        value: 16
+      },
+      dryRun: {
+        status: "valid",
+        edit: {
+          editKind: "entity.dimension.update",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: { entityKind: "rectangle", role: "width" },
+          value: 16
+        },
+        commitOperation: "sketch.updateEntity",
+        willMutateDocument: false,
+        diagnosticCount: 0,
+        diagnostics: []
+      },
+      affected: {
+        sketchIds: ["sketch_1"],
+        sketchEntityIds: ["rect_1"],
+        dimensionIds: [],
+        constraintIds: [],
+        featureIds: ["feat_rect"],
+        bodyIds: ["body_rect"],
+        generatedReferenceCount: 1,
+        namedReferenceCount: 0
+      },
+      featureImpactCount: 1,
+      featureImpacts: [
+        {
+          featureId: "feat_rect",
+          featureKind: "extrude",
+          bodyId: "body_rect",
+          impact: "source-profile",
+          sketchId: "sketch_1",
+          sketchEntityId: "rect_1",
+          bodyLifecycle: "active",
+          referenceHealthStatus: "active",
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      bodyLifecycleCount: 0,
+      bodyLifecycles: [],
+      referenceEffectCount: 0,
+      referenceEffects: [],
+      referenceHealthCount: 0,
+      referenceHealth: [],
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote:
+        "Sketch edit readiness is derived from authoritative sketch source.",
+      derivedBoundaryNote:
+        "Renderer meshes and file handles are excluded from sketch edit readiness.",
+      requiresProjectSchemaMigration: false
+    };
+
+    expect(response.dryRun.willMutateDocument).toBe(false);
+    expect(response.requiresProjectSchemaMigration).toBe(false);
   });
 
   it("types V7 project summary fields while preserving legacy object fields", () => {

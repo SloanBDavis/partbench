@@ -3739,6 +3739,75 @@ describe("agent-adapter", () => {
     ).toBe(true);
   });
 
+  it("returns V10 F1 sketch edit readiness through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_edit_readiness",
+      entityId: "rect_edit_readiness",
+      featureId: "feat_edit_readiness",
+      bodyId: "body_edit_readiness"
+    });
+
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_sketch_edit_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.editReadiness",
+          edit: {
+            editKind: "entity.dimension.update",
+            sketchId: "sketch_edit_readiness",
+            entityId: "rect_edit_readiness",
+            target: { entityKind: "rectangle", role: "width" },
+            value: 7
+          }
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_sketch_edit_readiness",
+      query: "sketch.editReadiness",
+      status: "ready",
+      dryRun: {
+        status: "valid",
+        commitOperation: "sketch.updateEntity",
+        willMutateDocument: false
+      },
+      affected: {
+        sketchIds: expect.arrayContaining(["sketch_edit_readiness"]),
+        sketchEntityIds: expect.arrayContaining(["rect_edit_readiness"]),
+        featureIds: expect.arrayContaining(["feat_edit_readiness"]),
+        bodyIds: expect.arrayContaining(["body_edit_readiness"])
+      },
+      featureImpacts: [
+        expect.objectContaining({
+          featureId: "feat_edit_readiness",
+          impact: "source-profile"
+        })
+      ],
+      requiresProjectSchemaMigration: false
+    });
+
+    if (!response.ok || response.query !== "sketch.editReadiness") {
+      throw new Error("Expected sketch.editReadiness agent response.");
+    }
+
+    expect(
+      JSON.stringify({
+        affected: response.affected,
+        featureImpacts: response.featureImpacts,
+        bodyLifecycles: response.bodyLifecycles,
+        referenceEffects: response.referenceEffects,
+        referenceHealth: response.referenceHealth,
+        diagnostics: response.diagnostics
+      })
+    ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i);
+  });
+
   it("returns V10 dependency graph and reference health through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

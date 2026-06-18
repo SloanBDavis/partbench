@@ -272,8 +272,17 @@ These constraints remain active:
     axes selection/name-only, keeps measurement, attach-sketch, chamfer,
     fillet, cut/add result refs, revolve faces/edges, chamfer/fillet
     replacement topology, and hole terminal/exit rims unsupported or
-    diagnostic-only, and does not introduce `web-cad.project.v17`. V10 must
-    not become arbitrary topological naming,
+    diagnostic-only, and does not introduce `web-cad.project.v17`. Tranche F1
+    is implemented as the first `sketch.editReadiness` query slice: UI,
+    agents, MCP, and future sketch edit commands can ask for non-mutating
+    readiness over supported rectangle width/height, circle radius, line
+    length, current sketch dimension edits, and current validated/evaluated
+    constraint edits. Cad-core derives sketch health, affected features/bodies,
+    body lifecycle, rebuild-plan consistency, reference effects, and structured
+    unsupported/missing/stale/over-defined/under-defined/non-rebuildable/
+    consumed/ambiguous/schema-migration diagnostics from authoritative source
+    state, exposes thin adapter/MCP pass-through, and does not introduce
+    `web-cad.project.v17`. V10 must not become arbitrary topological naming,
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
     scopes one of those items.
@@ -1478,10 +1487,11 @@ display state should stay rebuildable or session-only by default.
 ## V10 Editable Feature History And Stable Modeling References Release
 
 V10 is underway in `docs/v10.md`. Tranche A is implemented as a query/contract
-slice. Tranche B, C1, C2, D1, and D2 are implemented as the dependency/
-reference health, authored feature edit commit, rebuild-plan/body-lifecycle
-contract, and scoped transactional source-model rebuild slices; the rest of
-the release remains staged.
+slice. Tranche B, C1, C2, D1, D2, E1, E2, and F1 are implemented as the
+dependency/reference health, authored feature edit commit, rebuild-plan/body
+lifecycle contract, scoped transactional source-model rebuild, source-semantic
+reference expansion, generated-axis, and sketch edit readiness query slices;
+the rest of the release remains staged.
 
 V10 should deepen the CAD model now that V8 made local project files/export real
 and V9 made viewport interaction semantic. The release center is:
@@ -1638,15 +1648,25 @@ Use these decisions when drafting or implementing V10 tranches:
 9. **Further Stable Reference Expansion For Defensible Result Features** -
    source-semantic generated/result references for revolve, scoped cut/add, and
    edge-finish outputs only where identity evidence is strong enough.
-10. **Sketch Solver/Dimension Editing For Rebuild** - solver readiness,
-   dimension/sketch edit dry-runs, and focused new constraints only where they
-   support feature editing with clear diagnostics.
+10. **Sketch Edit Readiness And Rebuild Impact Query** - implemented F1 as
+   `sketch.editReadiness` protocol/core support with thin agent/MCP
+   pass-through through `cad.sketch_edit_readiness`. The query is non-mutating
+   and covers supported rectangle width/height, circle radius, line length,
+   current sketch dimension create/update/delete, and current validated/
+   evaluated constraint create/delete readiness. Cad-core derives sketch
+   health, affected sketch/entity/dimension/constraint/feature/body summaries,
+   feature impact, body lifecycle, rebuild-plan consistency, reference effects,
+   reference health, and structured unsupported/missing/stale/over-defined/
+   under-defined/non-rebuildable/consumed/ambiguous/schema-migration
+   diagnostics from authoritative source state. F1 does not add drag solver UX,
+   arbitrary sketch solving, new UI, renderer/mesh/OCCT/storage authority, or
+   `web-cad.project.v17`.
 11. **Named Reference Repair Workflow** - health display, explicit repair
    command, dry-run diagnostics, and agent/MCP path without silent retargeting.
-11. **Product Integration And Browser Workflows** - compact feature edit,
+12. **Product Integration And Browser Workflows** - compact feature edit,
    rebuild, reference health, and repair UI across tree, Selection, Inspector,
    Modeling, and viewport surfaces.
-12. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
+13. **Release Samples, Audit, And Hardening** - deterministic rebuild fixtures,
    non-browser and browser smokes, release docs, migration audit if V17 is
    introduced, and final boundary cleanup.
 

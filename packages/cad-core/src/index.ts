@@ -156,6 +156,7 @@ import {
   type SketchSolverApplyIssue,
   type SketchSolverDocument
 } from "./sketchSolver";
+import { createSketchEditReadinessResponse } from "./sketchEditReadiness";
 import {
   createProjectExactExport,
   createProjectExportReadiness
@@ -1323,6 +1324,41 @@ export class CadEngine {
           cadOpsVersion: request.version,
           sketch: createSketchSnapshot(sketch)
         };
+      }
+
+      case "sketch.editReadiness": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const referenceHealth = createReferenceHealth({
+          cadOpsVersion: request.version,
+          ownerPartId: DEFAULT_PART_ID,
+          document: this.#document,
+          features: structure.features,
+          bodies: structure.bodies,
+          namedReferences: [...this.#document.namedReferences.values()],
+          target: { type: "all" }
+        });
+        const rebuildPlan = createProjectRebuildPlan({
+          cadOpsVersion: request.version,
+          features: structure.features,
+          bodies: structure.bodies,
+          referenceHealth: referenceHealth.referenceHealth,
+          lifecycleEffects: createCurrentLifecycleEffects(
+            this.#history.map((entry) => entry.transaction)
+          )
+        });
+
+        return createSketchEditReadinessResponse({
+          cadOpsVersion: request.version,
+          edit: request.query.edit,
+          document: this.#document,
+          features: structure.features,
+          bodies: structure.bodies,
+          referenceHealth: referenceHealth.referenceHealth,
+          bodyLifecycles: rebuildPlan.bodyLifecycles
+        });
       }
 
       case "sketch.dimensions": {
@@ -3746,6 +3782,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "object.measurements":
     case "project.extents":
     case "sketch.get":
+    case "sketch.editReadiness":
     case "sketch.evaluation":
     case "sketch.dimensions":
     case "sketch.dimension.get":
@@ -3816,6 +3853,8 @@ function isCadQuery(value: unknown): boolean {
     case "sketch.get":
     case "sketch.dimension.get":
       return typeof value.id === "string";
+    case "sketch.editReadiness":
+      return isCadSketchEditProposal(value.edit);
     case "sketch.evaluation":
     case "sketch.dimensions":
       return typeof value.sketchId === "string";
@@ -3902,6 +3941,102 @@ function isCadFeatureEditProposal(value: unknown): boolean {
     return (
       Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
       (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  return false;
+}
+
+function isCadSketchEditProposal(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.editKind !== "string") {
+    return false;
+  }
+
+  if (value.editKind === "entity.dimension.update") {
+    return (
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      typeof value.value === "number"
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.create") {
+    return (
+      (value.id === undefined || typeof value.id === "string") &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      ((typeof value.value === "number" && value.parameterId === undefined) ||
+        (value.value === undefined && typeof value.parameterId === "string"))
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.update") {
+    return (
+      typeof value.id === "string" &&
+      ((typeof value.value === "number" && value.parameterId === undefined) ||
+        (value.value === undefined && typeof value.parameterId === "string"))
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.delete") {
+    return typeof value.id === "string";
+  }
+
+  if (value.editKind === "sketch.constraint.create") {
+    return isSketchConstraintCreateEditProposal(value);
+  }
+
+  if (value.editKind === "sketch.constraint.delete") {
+    return typeof value.id === "string";
+  }
+
+  return false;
+}
+
+function isSketchConstraintCreateEditProposal(value: {
+  readonly [key: string]: unknown;
+}): boolean {
+  if (
+    typeof value.name !== "string" ||
+    typeof value.sketchId !== "string" ||
+    typeof value.kind !== "string" ||
+    (value.id !== undefined && typeof value.id !== "string")
+  ) {
+    return false;
+  }
+
+  if (value.kind === "horizontal" || value.kind === "vertical") {
+    return typeof value.entityId === "string";
+  }
+
+  if (value.kind === "fixed") {
+    return (
+      isSketchPointTarget(value.target) &&
+      (value.coordinate === undefined || isVec2(value.coordinate))
+    );
+  }
+
+  if (value.kind === "coincident") {
+    return (
+      isSketchPointTarget(value.primaryTarget) &&
+      isSketchPointTarget(value.secondaryTarget)
+    );
+  }
+
+  if (value.kind === "midpoint") {
+    return (
+      typeof value.lineEntityId === "string" &&
+      isSketchPointTarget(value.target)
+    );
+  }
+
+  if (value.kind === "parallel" || value.kind === "perpendicular") {
+    return (
+      typeof value.primaryLineEntityId === "string" &&
+      typeof value.secondaryLineEntityId === "string"
     );
   }
 

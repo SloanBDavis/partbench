@@ -26,6 +26,7 @@ describe("mcp-adapter", () => {
       "cad.body_topology",
       "cad.project_extents",
       "cad.sketch_get",
+      "cad.sketch_edit_readiness",
       "cad.sketch_dimensions",
       "cad.sketch_evaluation",
       "cad.sketch_dimension_get",
@@ -2909,6 +2910,82 @@ describe("mcp-adapter", () => {
     ).toBe(true);
   });
 
+  it("returns V10 F1 sketch edit readiness through cad.sketch_edit_readiness", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_sketch_readiness_sketch",
+      entityId: "mcp_sketch_readiness_rect",
+      featureId: "mcp_sketch_readiness_feature",
+      bodyId: "mcp_sketch_readiness_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.sketch_edit_readiness",
+      requestId: "mcp_req_sketch_edit_readiness",
+      arguments: {
+        edit: {
+          editKind: "entity.dimension.update",
+          sketchId: "mcp_sketch_readiness_sketch",
+          entityId: "mcp_sketch_readiness_rect",
+          target: { entityKind: "circle", role: "radius" },
+          value: 3
+        }
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.sketch_edit_readiness",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_sketch_edit_readiness",
+        query: "sketch.editReadiness",
+        status: "ready",
+        dryRun: {
+          status: "valid",
+          commitOperation: "sketch.updateEntity",
+          willMutateDocument: false
+        },
+        affected: {
+          sketchIds: expect.arrayContaining(["mcp_sketch_readiness_sketch"]),
+          sketchEntityIds: expect.arrayContaining([
+            "mcp_sketch_readiness_rect"
+          ]),
+          featureIds: expect.arrayContaining(["mcp_sketch_readiness_feature"]),
+          bodyIds: expect.arrayContaining(["mcp_sketch_readiness_body"])
+        },
+        featureImpacts: [
+          expect.objectContaining({
+            featureId: "mcp_sketch_readiness_feature",
+            impact: "source-profile"
+          })
+        ],
+        requiresProjectSchemaMigration: false
+      }
+    });
+
+    const structured = result.structuredContent;
+    if (
+      !structured.ok ||
+      !("query" in structured) ||
+      structured.query !== "sketch.editReadiness"
+    ) {
+      throw new Error("Expected sketch.editReadiness MCP response.");
+    }
+
+    expect(
+      JSON.stringify({
+        affected: structured.affected,
+        featureImpacts: structured.featureImpacts,
+        bodyLifecycles: structured.bodyLifecycles,
+        referenceEffects: structured.referenceEffects,
+        referenceHealth: structured.referenceHealth,
+        diagnostics: structured.diagnostics
+      })
+    ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i);
+  });
+
   it("returns V10 dependency graph and reference health through MCP tools", () => {
     const server = new CadMcpServer();
 
@@ -3744,6 +3821,7 @@ describe("mcp-adapter", () => {
           { name: "cad.body_topology" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
+          { name: "cad.sketch_edit_readiness" },
           { name: "cad.sketch_dimensions" },
           { name: "cad.sketch_evaluation" },
           { name: "cad.sketch_dimension_get" },

@@ -48,6 +48,7 @@ import type {
   ProjectDependencyGraphQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
+  SketchEditReadinessQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
   CadProjectSummaryReferenceSummary,
@@ -58,6 +59,7 @@ import type {
   CadQueryResponse,
   FeatureEditabilityQueryResponse,
   ReferenceHealthQueryResponse,
+  CadSketchEditProposal,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceInput,
   CadSelectionReferenceIssue,
@@ -343,6 +345,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentBodyMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
+  | CadOpsAgentSketchEditReadinessQueryResponse
   | CadOpsAgentSketchEvaluationQueryResponse
   | CadOpsAgentSketchDimensionsQueryResponse
   | CadOpsAgentSketchDimensionGetQueryResponse
@@ -585,6 +588,15 @@ export interface CadOpsAgentSketchGetQueryResponse {
   readonly sketch: SketchSnapshot;
 }
 
+export interface CadOpsAgentSketchEditReadinessQueryResponse extends Omit<
+  SketchEditReadinessQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentSketchEvaluationQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -747,6 +759,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "body.measurements"
     | "project.extents"
     | "sketch.get"
+    | "sketch.editReadiness"
     | "sketch.evaluation"
     | "sketch.dimensions"
     | "sketch.dimension.get"
@@ -2399,6 +2412,34 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "sketch.editReadiness") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      status: response.status,
+      edit: response.edit,
+      dryRun: response.dryRun,
+      ...(response.sketchHealth ? { sketchHealth: response.sketchHealth } : {}),
+      affected: response.affected,
+      featureImpactCount: response.featureImpactCount,
+      featureImpacts: response.featureImpacts,
+      bodyLifecycleCount: response.bodyLifecycleCount,
+      bodyLifecycles: response.bodyLifecycles,
+      referenceEffectCount: response.referenceEffectCount,
+      referenceEffects: response.referenceEffects,
+      referenceHealthCount: response.referenceHealthCount,
+      referenceHealth: response.referenceHealth,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration
+    };
+  }
+
   if (response.query === "sketch.dimensions") {
     return {
       ok: true,
@@ -3003,6 +3044,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
             )))) ||
       (value.query.query === "sketch.get" &&
         typeof value.query.id === "string") ||
+      (value.query.query === "sketch.editReadiness" &&
+        isCadSketchEditProposal(value.query.edit)) ||
       (value.query.query === "sketch.evaluation" &&
         typeof value.query.sketchId === "string") ||
       (value.query.query === "sketch.dimensions" &&
@@ -3084,6 +3127,104 @@ function isCadFeatureEditProposal(value: unknown): boolean {
     return (
       Object.keys(value).every((key) => ["kind", "radius"].includes(key)) &&
       (value.radius === undefined || typeof value.radius === "number")
+    );
+  }
+
+  return false;
+}
+
+function isCadSketchEditProposal(
+  value: unknown
+): value is CadSketchEditProposal {
+  if (!isRecord(value) || typeof value.editKind !== "string") {
+    return false;
+  }
+
+  if (value.editKind === "entity.dimension.update") {
+    return (
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      typeof value.value === "number"
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.create") {
+    return (
+      (value.id === undefined || typeof value.id === "string") &&
+      typeof value.name === "string" &&
+      typeof value.sketchId === "string" &&
+      typeof value.entityId === "string" &&
+      isSketchDimensionTarget(value.target) &&
+      ((typeof value.value === "number" && value.parameterId === undefined) ||
+        (value.value === undefined && typeof value.parameterId === "string"))
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.update") {
+    return (
+      typeof value.id === "string" &&
+      ((typeof value.value === "number" && value.parameterId === undefined) ||
+        (value.value === undefined && typeof value.parameterId === "string"))
+    );
+  }
+
+  if (value.editKind === "sketch.dimension.delete") {
+    return typeof value.id === "string";
+  }
+
+  if (value.editKind === "sketch.constraint.create") {
+    return isSketchConstraintCreateEditProposal(value);
+  }
+
+  if (value.editKind === "sketch.constraint.delete") {
+    return typeof value.id === "string";
+  }
+
+  return false;
+}
+
+function isSketchConstraintCreateEditProposal(
+  value: Record<string, unknown>
+): boolean {
+  if (
+    typeof value.name !== "string" ||
+    typeof value.sketchId !== "string" ||
+    typeof value.kind !== "string" ||
+    (value.id !== undefined && typeof value.id !== "string")
+  ) {
+    return false;
+  }
+
+  if (value.kind === "horizontal" || value.kind === "vertical") {
+    return typeof value.entityId === "string";
+  }
+
+  if (value.kind === "fixed") {
+    return (
+      isSketchPointTarget(value.target) &&
+      (value.coordinate === undefined || isVec2(value.coordinate))
+    );
+  }
+
+  if (value.kind === "coincident") {
+    return (
+      isSketchPointTarget(value.primaryTarget) &&
+      isSketchPointTarget(value.secondaryTarget)
+    );
+  }
+
+  if (value.kind === "midpoint") {
+    return (
+      typeof value.lineEntityId === "string" &&
+      isSketchPointTarget(value.target)
+    );
+  }
+
+  if (value.kind === "parallel" || value.kind === "perpendicular") {
+    return (
+      typeof value.primaryLineEntityId === "string" &&
+      typeof value.secondaryLineEntityId === "string"
     );
   }
 
