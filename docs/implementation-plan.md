@@ -1824,10 +1824,11 @@ Use these decisions when drafting or implementing V11 tranches:
 
 ### V11 Proposed Tranche Sequence
 
-1. **Sketch Solver Protocol And Source Contract** - add typed sketch solve,
-   constraint, dimension, inference, profile-validity, and diagnostic shapes.
-   Decide the V17 source additions but do not write V17 until new source data
-   is actually committed.
+1. **Sketch Solver Protocol And Source Contract** - implemented as the first
+   query-only `sketch.solverStatus` surface. It adds typed sketch solve,
+   constraint, dimension, profile-validity, preview, source-contract, and
+   diagnostic shapes. It decides the likely V17 source additions but does not
+   write V17 because no new source data is committed.
 2. **Solver Package Foundation** - add the custom 2D solver package boundary,
    normalized solve model, variables, residuals, tolerance constants, solve
    results, deterministic tests, and structured diagnostics.

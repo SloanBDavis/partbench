@@ -15,6 +15,7 @@ import type {
   CadReferenceHealthTarget,
   CadSketchEditProposal,
   SketchEditReadinessQueryResponse,
+  SketchSolverStatusQueryResponse,
   SketchConstraintSnapshot,
   SketchDimensionSnapshot,
   SketchEntitySnapshot
@@ -271,6 +272,22 @@ function readSketchEditReadiness(
 
   if (!response.ok || response.query !== "sketch.editReadiness") {
     throw new Error("Expected sketch.editReadiness response.");
+  }
+
+  return response;
+}
+
+function readSketchSolverStatus(
+  engine: CadEngine,
+  sketchId: string
+): SketchSolverStatusQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "sketch.solverStatus", sketchId }
+  });
+
+  if (!response.ok || response.query !== "sketch.solverStatus") {
+    throw new Error("Expected sketch.solverStatus response.");
   }
 
   return response;
@@ -19628,6 +19645,302 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     ).toMatchObject({
       ok: false,
       query: "sketch.evaluation",
+      error: {
+        code: "SKETCH_NOT_FOUND",
+        sketchId: "missing_sketch"
+      }
+    });
+  });
+
+  it("reports V11 sketch solver status from current sketch source without schema migration", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      { op: "parameter.create", id: "param_w", name: "Width", value: 6 },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_w",
+        name: "Width",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        parameterId: "param_w"
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_h",
+        name: "Height",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "height" },
+        value: 5
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_rect_center",
+        name: "Fix rectangle center",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "rect_1", role: "center" }
+      }
+    ]);
+
+    const beforeProject = exportCadProjectJson(engine);
+    const response = readSketchSolverStatus(engine, "sketch_1");
+    const afterProject = exportCadProjectJson(engine);
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "sketch.solverStatus",
+      sketchId: "sketch_1",
+      sketchName: "Profile",
+      plane: "XY",
+      status: "fully-defined",
+      readiness: "ready",
+      solver: {
+        engine: "current-direct-evaluator",
+        numericalSolverStatus: "deferred",
+        canSolveNumerically: false,
+        deterministic: true,
+        workerReady: false
+      },
+      entityCount: 1,
+      entities: [
+        expect.objectContaining({
+          entityId: "rect_1",
+          entityKind: "rectangle",
+          supported: true,
+          degreesOfFreedom: 4,
+          targets: expect.arrayContaining([
+            expect.objectContaining({
+              type: "entity",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              entityKind: "rectangle"
+            }),
+            expect.objectContaining({
+              type: "point",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              role: "center"
+            })
+          ])
+        })
+      ],
+      dimensionCount: 2,
+      dimensions: expect.arrayContaining([
+        expect.objectContaining({
+          dimensionId: "dim_w",
+          status: "healthy",
+          effectiveValue: 6,
+          targetRef: expect.objectContaining({
+            type: "dimension",
+            sketchId: "sketch_1",
+            dimensionId: "dim_w",
+            entityId: "rect_1"
+          })
+        }),
+        expect.objectContaining({
+          dimensionId: "dim_h",
+          status: "healthy",
+          effectiveValue: 5
+        })
+      ]),
+      constraintCount: 1,
+      constraints: [
+        expect.objectContaining({
+          constraintId: "fix_rect_center",
+          kind: "fixed",
+          status: "current-source",
+          sourceBacked: true,
+          supportedByCurrentEvaluator: true
+        })
+      ],
+      deferredConstraintCount: 7,
+      deferredConstraints: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tangent",
+          status: "deferred",
+          requiresProjectSchemaMigration: true,
+          nextProjectSchemaVersion: "web-cad.project.v17"
+        }),
+        expect.objectContaining({
+          kind: "symmetry",
+          status: "deferred",
+          requiresProjectSchemaMigration: true
+        })
+      ]),
+      profileValidity: {
+        status: "valid",
+        profileCount: 1,
+        validProfileCount: 1,
+        profiles: [
+          expect.objectContaining({
+            entityId: "rect_1",
+            profileKind: "rectangle",
+            closed: true,
+            featureReady: true
+          })
+        ]
+      },
+      preview: {
+        status: "deferred",
+        willMutateDocument: false
+      },
+      sourceContract: {
+        currentProjectSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        emittedProjectSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        packageVersion: "partbench.wcad.v1",
+        queryOnly: true,
+        requiresProjectSchemaMigration: false,
+        nextProjectSchemaVersion: "web-cad.project.v17"
+      },
+      requiresProjectSchemaMigration: false
+    });
+
+    expect(response.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_NUMERICAL_SOLVER_DEFERRED",
+          severity: "warning"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_SCHEMA_V17_DEFERRED",
+          severity: "info"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+          constraintKind: "tangent"
+        })
+      ])
+    );
+    expect(afterProject).toBe(beforeProject);
+    expect(engine.exportProject().schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expectNoDerivedInfraIdentifiers({
+      entities: response.entities,
+      dimensions: response.dimensions,
+      constraints: response.constraints,
+      sourceContract: response.sourceContract
+    });
+  });
+
+  it("reports V11 profile validity for open sketches and missing solver targets", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Open sketch", plane: "XY" },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [2, 0]
+      }
+    ]);
+
+    const openStatus = readSketchSolverStatus(engine, "sketch_1");
+    expect(openStatus).toMatchObject({
+      status: "under-defined",
+      readiness: "ready",
+      profileValidity: {
+        status: "unsupported",
+        validProfileCount: 0,
+        profiles: [
+          expect.objectContaining({
+            entityId: "line_1",
+            entityKind: "line",
+            profileKind: "open",
+            closed: false,
+            featureReady: false
+          })
+        ]
+      },
+      requiresProjectSchemaMigration: false
+    });
+    expect(openStatus.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_PROFILE_OPEN",
+          sketchEntityId: "line_1"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNDER_DEFINED"
+        })
+      ])
+    );
+
+    const staleEngine = new CadEngine(
+      createCadDocument(
+        [],
+        "mm",
+        [
+          [
+            "sketch_stale",
+            {
+              id: "sketch_stale",
+              name: "Stale sketch",
+              plane: "XY",
+              entities: new Map<string, SketchEntitySnapshot>()
+            }
+          ]
+        ],
+        [],
+        new Map<string, SketchDimensionSnapshot>([
+          [
+            "dim_missing_entity",
+            {
+              id: "dim_missing_entity",
+              name: "Missing",
+              sketchId: "sketch_stale",
+              entityId: "missing_entity",
+              target: { entityKind: "line", role: "length" },
+              valueSource: { type: "literal", value: 4 }
+            }
+          ]
+        ])
+      )
+    );
+
+    const staleStatus = readSketchSolverStatus(staleEngine, "sketch_stale");
+    expect(staleStatus).toMatchObject({
+      status: "missing-target",
+      readiness: "missing",
+      dimensions: [
+        expect.objectContaining({
+          dimensionId: "dim_missing_entity",
+          status: "missing-target",
+          supported: false
+        })
+      ],
+      profileValidity: {
+        status: "unsupported",
+        validProfileCount: 0
+      },
+      requiresProjectSchemaMigration: false
+    });
+    expect(staleStatus.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sketchDimensionId: "dim_missing_entity",
+          sketchEntityId: "missing_entity"
+        })
+      ])
+    );
+
+    expect(
+      staleEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "sketch.solverStatus",
+          sketchId: "missing_sketch"
+        }
+      })
+    ).toMatchObject({
+      ok: false,
+      query: "sketch.solverStatus",
       error: {
         code: "SKETCH_NOT_FOUND",
         sketchId: "missing_sketch"

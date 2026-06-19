@@ -37,6 +37,7 @@ import type {
   ProjectSummaryQueryResponse,
   SketchEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
+  SketchSolverStatusQueryResponse,
   WcadManifestV1,
   WcadPackageValidationIssue,
   NamedGeneratedReferenceEntry,
@@ -1065,6 +1066,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "sketch.solverStatus", sketchId: "sketch_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "parameter.list" }
       },
       {
@@ -1144,6 +1149,7 @@ describe("cad-protocol", () => {
       "project.extents",
       "sketch.get",
       "sketch.editReadiness",
+      "sketch.solverStatus",
       "parameter.list",
       "parameter.get",
       "sketch.dimensions",
@@ -1325,6 +1331,162 @@ describe("cad-protocol", () => {
 
     expect(response.dryRun.willMutateDocument).toBe(false);
     expect(response.requiresProjectSchemaMigration).toBe(false);
+  });
+
+  it("types V11 sketch solver status responses", () => {
+    const response: SketchSolverStatusQueryResponse = {
+      ok: true,
+      query: "sketch.solverStatus",
+      cadOpsVersion: "cadops.v1",
+      sketchId: "sketch_1",
+      sketchName: "Profile",
+      plane: "XY",
+      status: "under-defined",
+      readiness: "ready",
+      solver: {
+        engine: "current-direct-evaluator",
+        numericalSolverStatus: "deferred",
+        canSolveNumerically: false,
+        deterministic: true,
+        workerReady: false,
+        diagnostic: {
+          code: "SKETCH_SOLVER_NUMERICAL_SOLVER_DEFERRED",
+          severity: "warning",
+          message: "Numerical solve is deferred.",
+          sketchId: "sketch_1"
+        }
+      },
+      entityCount: 1,
+      entities: [
+        {
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          entityKind: "rectangle",
+          supported: true,
+          variableCount: 4,
+          degreesOfFreedom: 4,
+          targetCount: 2,
+          targets: [
+            {
+              type: "entity",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              entityKind: "rectangle"
+            },
+            {
+              type: "point",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              role: "center"
+            }
+          ],
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      dimensionCount: 1,
+      dimensions: [
+        {
+          dimensionId: "dim_w",
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          target: { entityKind: "rectangle", role: "width" },
+          valueSource: { type: "literal", value: 4 },
+          effectiveValue: 4,
+          status: "healthy",
+          supported: true,
+          targetRef: {
+            type: "dimension",
+            sketchId: "sketch_1",
+            dimensionId: "dim_w",
+            entityId: "rect_1",
+            dimensionTarget: { entityKind: "rectangle", role: "width" }
+          },
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      constraintCount: 0,
+      constraints: [],
+      deferredConstraintCount: 1,
+      deferredConstraints: [
+        {
+          kind: "tangent",
+          status: "deferred",
+          requiresProjectSchemaMigration: true,
+          nextProjectSchemaVersion: "web-cad.project.v17",
+          diagnostic: {
+            code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+            severity: "info",
+            message: "Tangent is deferred.",
+            sketchId: "sketch_1",
+            constraintKind: "tangent"
+          }
+        }
+      ],
+      profileValidity: {
+        status: "valid",
+        profileCount: 1,
+        validProfileCount: 1,
+        profiles: [
+          {
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            entityKind: "rectangle",
+            profileKind: "rectangle",
+            closed: true,
+            featureReady: true,
+            diagnosticCount: 0,
+            diagnostics: []
+          }
+        ],
+        diagnosticCount: 0,
+        diagnostics: []
+      },
+      preview: {
+        status: "deferred",
+        willMutateDocument: false,
+        supportedPreviewKinds: [],
+        deferredPreviewKinds: ["entity.drag"],
+        diagnosticCount: 1,
+        diagnostics: [
+          {
+            code: "SKETCH_SOLVER_PREVIEW_DEFERRED",
+            severity: "info",
+            message: "Preview is deferred.",
+            sketchId: "sketch_1"
+          }
+        ]
+      },
+      sourceContract: {
+        currentProjectSchemaVersion: "web-cad.project.v16",
+        emittedProjectSchemaVersion: "web-cad.project.v16",
+        packageVersion: "partbench.wcad.v1",
+        queryOnly: true,
+        requiresProjectSchemaMigration: false,
+        nextProjectSchemaVersion: "web-cad.project.v17",
+        sourceRecordRequirements: [
+          {
+            recordKind: "advancedConstraint",
+            status: "v17-required",
+            requiresProjectSchemaMigration: true,
+            nextProjectSchemaVersion: "web-cad.project.v17",
+            reason: "Advanced constraints need source records."
+          }
+        ]
+      },
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote: "Derived from sketch source.",
+      derivedBoundaryNote: "No renderer ids.",
+      requiresProjectSchemaMigration: false
+    };
+
+    expect(response.query).toBe("sketch.solverStatus");
+    expect(response.preview.willMutateDocument).toBe(false);
+    expect(response.sourceContract.emittedProjectSchemaVersion).toBe(
+      "web-cad.project.v16"
+    );
   });
 
   it("types V7 project summary fields while preserving legacy object fields", () => {

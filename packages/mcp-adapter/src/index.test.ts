@@ -27,6 +27,7 @@ describe("mcp-adapter", () => {
       "cad.project_extents",
       "cad.sketch_get",
       "cad.sketch_edit_readiness",
+      "cad.sketch_solver_status",
       "cad.sketch_dimensions",
       "cad.sketch_evaluation",
       "cad.sketch_dimension_get",
@@ -3005,6 +3006,73 @@ describe("mcp-adapter", () => {
     ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i);
   });
 
+  it("returns V11 sketch solver status through cad.sketch_solver_status", () => {
+    const server = new CadMcpServer();
+
+    seedMcpExtrudeFeature(server, {
+      sketchId: "mcp_solver_status_sketch",
+      entityId: "mcp_solver_status_rect",
+      featureId: "mcp_solver_status_feature",
+      bodyId: "mcp_solver_status_body"
+    });
+
+    const result = server.callTool({
+      name: "cad.sketch_solver_status",
+      requestId: "mcp_req_sketch_solver_status",
+      arguments: {
+        sketchId: "mcp_solver_status_sketch"
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.sketch_solver_status",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_sketch_solver_status",
+        query: "sketch.solverStatus",
+        sketchId: "mcp_solver_status_sketch",
+        status: "under-defined",
+        readiness: "ready",
+        solver: {
+          engine: "current-direct-evaluator",
+          numericalSolverStatus: "deferred",
+          canSolveNumerically: false
+        },
+        entityCount: 1,
+        deferredConstraintCount: 7,
+        profileValidity: {
+          status: "valid",
+          validProfileCount: 1
+        },
+        sourceContract: {
+          emittedProjectSchemaVersion: "web-cad.project.v16",
+          requiresProjectSchemaMigration: false,
+          nextProjectSchemaVersion: "web-cad.project.v17"
+        },
+        requiresProjectSchemaMigration: false
+      }
+    });
+
+    const structured = result.structuredContent;
+    if (
+      !structured.ok ||
+      !("query" in structured) ||
+      structured.query !== "sketch.solverStatus"
+    ) {
+      throw new Error("Expected sketch.solverStatus MCP response.");
+    }
+
+    expect(
+      JSON.stringify({
+        entities: structured.entities,
+        dimensions: structured.dimensions,
+        constraints: structured.constraints,
+        sourceContract: structured.sourceContract
+      })
+    ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport|gpu/i);
+  });
+
   it("returns V10 dependency graph and reference health through MCP tools", () => {
     const server = new CadMcpServer();
 
@@ -3841,6 +3909,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.sketch_edit_readiness" },
+          { name: "cad.sketch_solver_status" },
           { name: "cad.sketch_dimensions" },
           { name: "cad.sketch_evaluation" },
           { name: "cad.sketch_dimension_get" },

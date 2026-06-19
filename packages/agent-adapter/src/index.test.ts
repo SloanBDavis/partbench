@@ -1974,6 +1974,97 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes V11 sketch solver status queries through the adapter", () => {
+    const engine = new CadEngine();
+
+    executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_solver_seed",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.create",
+            id: "agent_solver_sketch",
+            name: "Agent solver sketch",
+            plane: "XY"
+          },
+          {
+            op: "sketch.addCircle",
+            sketchId: "agent_solver_sketch",
+            id: "agent_solver_circle",
+            center: [0, 0],
+            radius: 2
+          },
+          {
+            op: "sketch.dimension.create",
+            id: "agent_solver_radius",
+            name: "Radius",
+            sketchId: "agent_solver_sketch",
+            entityId: "agent_solver_circle",
+            target: { entityKind: "circle", role: "radius" },
+            value: 2
+          }
+        ]
+      }
+    });
+
+    const response = executeCadOpsAgentQueryRequest(engine, {
+      requestId: "agent_req_solver_status",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.solverStatus",
+          sketchId: "agent_solver_sketch"
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_req_solver_status",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "sketch.solverStatus",
+      sketchId: "agent_solver_sketch",
+      status: "under-defined",
+      readiness: "ready",
+      solver: {
+        engine: "current-direct-evaluator",
+        numericalSolverStatus: "deferred",
+        canSolveNumerically: false
+      },
+      entityCount: 1,
+      dimensionCount: 1,
+      deferredConstraintCount: 7,
+      profileValidity: {
+        status: "valid",
+        validProfileCount: 1
+      },
+      sourceContract: {
+        emittedProjectSchemaVersion: "web-cad.project.v16",
+        requiresProjectSchemaMigration: false,
+        nextProjectSchemaVersion: "web-cad.project.v17"
+      },
+      requiresProjectSchemaMigration: false
+    });
+
+    if (!response.ok || response.query !== "sketch.solverStatus") {
+      throw new Error("Expected sketch.solverStatus agent response.");
+    }
+
+    expect(
+      JSON.stringify({
+        entities: response.entities,
+        dimensions: response.dimensions,
+        constraints: response.constraints,
+        sourceContract: response.sourceContract
+      })
+    ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport|gpu/i);
+  });
+
   it("returns one object through adapter query JSON", () => {
     const adapter = new CadOpsAgentAdapter();
 

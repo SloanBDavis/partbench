@@ -1430,6 +1430,10 @@ package read/write helpers without changing project source format:
 - Agent/MCP wrappers expose package, cache, and exact STEP readiness through
   thin pass-throughs, including the compact V8 project surface. They do not gain
   arbitrary file access or return artifact bytes.
+- V11 Tranche A adds query-only `sketch.solverStatus` source-contract and
+  profile-validity reporting. It continues to emit `web-cad.project.v16` and
+  reserves `web-cad.project.v17` for a later tranche that commits new
+  source-of-truth solver data.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over

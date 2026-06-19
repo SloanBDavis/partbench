@@ -49,6 +49,7 @@ import type {
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   SketchEditReadinessQueryResponse,
+  SketchSolverStatusQueryResponse,
   CadProjectSummaryExportSummary,
   CadProjectSummaryHealthSummary,
   CadProjectSummaryReferenceSummary,
@@ -346,6 +347,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
   | CadOpsAgentSketchEditReadinessQueryResponse
+  | CadOpsAgentSketchSolverStatusQueryResponse
   | CadOpsAgentSketchEvaluationQueryResponse
   | CadOpsAgentSketchDimensionsQueryResponse
   | CadOpsAgentSketchDimensionGetQueryResponse
@@ -597,6 +599,15 @@ export interface CadOpsAgentSketchEditReadinessQueryResponse extends Omit<
   readonly adapterVersion: AgentAdapterVersion;
 }
 
+export interface CadOpsAgentSketchSolverStatusQueryResponse extends Omit<
+  SketchSolverStatusQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentSketchEvaluationQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -760,6 +771,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.extents"
     | "sketch.get"
     | "sketch.editReadiness"
+    | "sketch.solverStatus"
     | "sketch.evaluation"
     | "sketch.dimensions"
     | "sketch.dimension.get"
@@ -2453,6 +2465,38 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "sketch.solverStatus") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      sketchId: response.sketchId,
+      sketchName: response.sketchName,
+      plane: response.plane,
+      status: response.status,
+      readiness: response.readiness,
+      solver: response.solver,
+      entityCount: response.entityCount,
+      entities: response.entities,
+      dimensionCount: response.dimensionCount,
+      dimensions: response.dimensions,
+      constraintCount: response.constraintCount,
+      constraints: response.constraints,
+      deferredConstraintCount: response.deferredConstraintCount,
+      deferredConstraints: response.deferredConstraints,
+      profileValidity: response.profileValidity,
+      preview: response.preview,
+      sourceContract: response.sourceContract,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration
+    };
+  }
+
   if (response.query === "sketch.dimensions") {
     return {
       ok: true,
@@ -3059,6 +3103,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         typeof value.query.id === "string") ||
       (value.query.query === "sketch.editReadiness" &&
         isCadSketchEditProposal(value.query.edit)) ||
+      (value.query.query === "sketch.solverStatus" &&
+        typeof value.query.sketchId === "string") ||
       (value.query.query === "sketch.evaluation" &&
         typeof value.query.sketchId === "string") ||
       (value.query.query === "sketch.dimensions" &&

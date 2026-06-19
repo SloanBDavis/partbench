@@ -46,6 +46,7 @@ export type CadMcpToolName =
   | "cad.project_extents"
   | "cad.sketch_get"
   | "cad.sketch_edit_readiness"
+  | "cad.sketch_solver_status"
   | "cad.sketch_evaluation"
   | "cad.sketch_dimensions"
   | "cad.sketch_dimension_get"
@@ -228,6 +229,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.sketch_edit_readiness") {
       return this.#callSketchEditReadiness(request);
+    }
+
+    if (request.name === "cad.sketch_solver_status") {
+      return this.#callSketchSolverStatus(request);
     }
 
     if (request.name === "cad.sketch_evaluation") {
@@ -828,6 +833,33 @@ export class CadMcpServer {
           query: {
             query: "sketch.editReadiness",
             edit: request.arguments.edit
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callSketchSolverStatus(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isSketchDimensionsToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.sketch_solver_status expects arguments shaped as { sketchId: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.solverStatus",
+            sketchId: request.arguments.sketchId
           }
         }
       })
@@ -1494,6 +1526,22 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           type: "object",
           description:
             "Supported sketch edit proposal, such as entity.dimension.update, sketch.dimension.update/create/delete, or sketch.constraint.create/delete."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.sketch_solver_status",
+    description:
+      "Returns V11 sketch solver status/readiness, current constraint and dimension descriptors, profile validity, source-contract status, and deferred solver diagnostics for one sketch.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["sketchId"],
+      properties: {
+        sketchId: {
+          type: "string",
+          description: "Sketch ID to inspect."
         }
       }
     }

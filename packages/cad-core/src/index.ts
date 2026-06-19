@@ -158,6 +158,7 @@ import {
   type SketchSolverDocument
 } from "./sketchSolver";
 import { createSketchEditReadinessResponse } from "./sketchEditReadiness";
+import { createSketchSolverStatusResponse } from "./sketchSolverStatus";
 import {
   createProjectExactExport,
   createProjectExportReadiness
@@ -1360,6 +1361,30 @@ export class CadEngine {
           bodies: structure.bodies,
           referenceHealth: referenceHealth.referenceHealth,
           bodyLifecycles: rebuildPlan.bodyLifecycles
+        });
+      }
+
+      case "sketch.solverStatus": {
+        const sketch = this.#document.sketches.get(request.query.sketchId);
+
+        if (!sketch) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: {
+              code: "SKETCH_NOT_FOUND",
+              message: `Sketch does not exist: ${request.query.sketchId}`,
+              sketchId: request.query.sketchId
+            }
+          };
+        }
+
+        return createSketchSolverStatusResponse({
+          cadOpsVersion: request.version,
+          document: this.#document,
+          sketch,
+          currentProjectSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
         });
       }
 
@@ -3842,6 +3867,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.extents":
     case "sketch.get":
     case "sketch.editReadiness":
+    case "sketch.solverStatus":
     case "sketch.evaluation":
     case "sketch.dimensions":
     case "sketch.dimension.get":
@@ -3914,6 +3940,7 @@ function isCadQuery(value: unknown): boolean {
       return typeof value.id === "string";
     case "sketch.editReadiness":
       return isCadSketchEditProposal(value.edit);
+    case "sketch.solverStatus":
     case "sketch.evaluation":
     case "sketch.dimensions":
       return typeof value.sketchId === "string";

@@ -1036,6 +1036,7 @@ export type CadQueryKind =
   | "project.extents"
   | "sketch.get"
   | "sketch.editReadiness"
+  | "sketch.solverStatus"
   | "sketch.evaluation"
   | "sketch.dimensions"
   | "sketch.dimension.get"
@@ -1069,6 +1070,7 @@ export type CadQuery =
   | ProjectExtentsQuery
   | SketchGetQuery
   | SketchEditReadinessQuery
+  | SketchSolverStatusQuery
   | SketchEvaluationQuery
   | SketchDimensionsQuery
   | SketchDimensionGetQuery
@@ -1165,6 +1167,11 @@ export interface SketchGetQuery {
 export interface SketchEditReadinessQuery {
   readonly query: "sketch.editReadiness";
   readonly edit: CadSketchEditProposal;
+}
+
+export interface SketchSolverStatusQuery {
+  readonly query: "sketch.solverStatus";
+  readonly sketchId: SketchId;
 }
 
 export interface SketchEvaluationQuery {
@@ -2278,6 +2285,235 @@ export interface CadSketchEditReferenceEffectSummary {
   readonly targetFeatureId?: FeatureId;
   readonly diagnosticCode?: CadSketchEditDiagnosticCode;
   readonly message: string;
+}
+
+export type CadSketchSolverStatus =
+  | "not-run"
+  | "solved"
+  | "fully-defined"
+  | "under-defined"
+  | "over-defined"
+  | "conflicting"
+  | "redundant"
+  | "failed"
+  | "unsupported"
+  | "missing-target";
+
+export type CadSketchSolverReadinessStatus =
+  | "ready"
+  | "deferred"
+  | "blocked"
+  | "unsupported"
+  | "missing";
+
+export type CadSketchProfileValidityStatus =
+  | "valid"
+  | "invalid"
+  | "unsupported"
+  | "not-evaluated";
+
+export type CadSketchSolverDiagnosticSeverity =
+  CadFeatureEditDiagnosticSeverity;
+
+export type CadSketchSolverDiagnosticCode =
+  | "SKETCH_SOLVER_STATUS_READY"
+  | "SKETCH_SOLVER_MISSING_TARGET"
+  | "SKETCH_SOLVER_UNSUPPORTED_ENTITY"
+  | "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
+  | "SKETCH_SOLVER_STALE_TARGET"
+  | "SKETCH_SOLVER_UNDER_DEFINED"
+  | "SKETCH_SOLVER_FULLY_DEFINED"
+  | "SKETCH_SOLVER_OVER_DEFINED"
+  | "SKETCH_SOLVER_CONFLICTING"
+  | "SKETCH_SOLVER_REDUNDANT"
+  | "SKETCH_SOLVER_FAILED"
+  | "SKETCH_SOLVER_NOT_RUN"
+  | "SKETCH_SOLVER_NUMERICAL_SOLVER_DEFERRED"
+  | "SKETCH_SOLVER_PREVIEW_DEFERRED"
+  | "SKETCH_SOLVER_SCHEMA_V17_DEFERRED"
+  | "SKETCH_SOLVER_PROFILE_OPEN"
+  | "SKETCH_SOLVER_PROFILE_VALID";
+
+export type CadSketchSolverSourceRecordKind =
+  | "advancedConstraint"
+  | "constructionGeometry"
+  | "constraintLabel"
+  | "dimensionDisplayIntent"
+  | "solverSettings"
+  | "sketchSolvePolicy";
+
+export type CadSketchSolverSourceRecordStatus =
+  | "current-source"
+  | "v17-required"
+  | "deferred";
+
+export type CadSketchSolverConstraintSupportStatus =
+  | "current-source"
+  | "deferred";
+
+export type CadSketchSolverPreviewStatus = "deferred" | "unsupported";
+
+export interface CadSketchSolverDiagnostic {
+  readonly code: CadSketchSolverDiagnosticCode;
+  readonly severity: CadSketchSolverDiagnosticSeverity;
+  readonly message: string;
+  readonly sketchId?: SketchId;
+  readonly sketchEntityId?: SketchEntityId;
+  readonly sketchDimensionId?: SketchDimensionId;
+  readonly sketchConstraintId?: SketchConstraintId;
+  readonly constraintKind?:
+    | SketchConstraintKind
+    | CadSketchSolverDeferredConstraintKind;
+  readonly target?: CadSketchSolverTargetReference;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export type CadSketchSolverTargetReference =
+  | CadSketchSolverEntityTargetReference
+  | CadSketchSolverPointTargetReference
+  | CadSketchSolverDimensionTargetReference
+  | CadSketchSolverConstraintTargetReference;
+
+export interface CadSketchSolverEntityTargetReference {
+  readonly type: "entity";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly entityKind: SketchEntityKind;
+}
+
+export interface CadSketchSolverPointTargetReference {
+  readonly type: "point";
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly role: SketchPointTargetRole;
+}
+
+export interface CadSketchSolverDimensionTargetReference {
+  readonly type: "dimension";
+  readonly sketchId: SketchId;
+  readonly dimensionId: SketchDimensionId;
+  readonly entityId: SketchEntityId;
+  readonly dimensionTarget: SketchDimensionTarget;
+}
+
+export interface CadSketchSolverConstraintTargetReference {
+  readonly type: "constraint";
+  readonly sketchId: SketchId;
+  readonly constraintId: SketchConstraintId;
+  readonly kind: SketchConstraintKind;
+}
+
+export type CadSketchSolverDeferredConstraintKind =
+  | "tangent"
+  | "concentric"
+  | "equalLength"
+  | "equalRadius"
+  | "distance"
+  | "angle"
+  | "symmetry";
+
+export interface CadSketchSolverEntitySummary {
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly entityKind: SketchEntityKind;
+  readonly supported: boolean;
+  readonly variableCount: number;
+  readonly degreesOfFreedom: number;
+  readonly targetCount: number;
+  readonly targets: readonly CadSketchSolverTargetReference[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+}
+
+export interface CadSketchSolverDimensionSummary {
+  readonly dimensionId: SketchDimensionId;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly target: SketchDimensionTarget;
+  readonly valueSource: SketchDimensionValueSource;
+  readonly effectiveValue?: number;
+  readonly status: SketchDimensionStatus;
+  readonly supported: boolean;
+  readonly targetRef: CadSketchSolverDimensionTargetReference;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+}
+
+export interface CadSketchSolverConstraintSummary {
+  readonly constraintId: SketchConstraintId;
+  readonly sketchId: SketchId;
+  readonly kind: SketchConstraintKind | CadSketchSolverDeferredConstraintKind;
+  readonly status: CadSketchSolverConstraintSupportStatus;
+  readonly sourceBacked: boolean;
+  readonly supportedByCurrentEvaluator: boolean;
+  readonly targetRefs: readonly CadSketchSolverTargetReference[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+}
+
+export interface CadSketchSolverDeferredConstraintSummary {
+  readonly kind: CadSketchSolverDeferredConstraintKind;
+  readonly status: "deferred";
+  readonly requiresProjectSchemaMigration: true;
+  readonly nextProjectSchemaVersion: "web-cad.project.v17";
+  readonly diagnostic: CadSketchSolverDiagnostic;
+}
+
+export interface CadSketchProfileCandidateSummary {
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly entityKind: SketchEntityKind;
+  readonly profileKind: "rectangle" | "circle" | "open" | "unsupported";
+  readonly closed: boolean;
+  readonly featureReady: boolean;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+}
+
+export interface CadSketchProfileValiditySummary {
+  readonly status: CadSketchProfileValidityStatus;
+  readonly profileCount: number;
+  readonly validProfileCount: number;
+  readonly profiles: readonly CadSketchProfileCandidateSummary[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+}
+
+export interface CadSketchSolverPreviewSummary {
+  readonly status: CadSketchSolverPreviewStatus;
+  readonly willMutateDocument: false;
+  readonly supportedPreviewKinds: readonly string[];
+  readonly deferredPreviewKinds: readonly string[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
+}
+
+export interface CadSketchSolverSourceRecordRequirement {
+  readonly recordKind: CadSketchSolverSourceRecordKind;
+  readonly status: CadSketchSolverSourceRecordStatus;
+  readonly requiresProjectSchemaMigration: boolean;
+  readonly nextProjectSchemaVersion?: "web-cad.project.v17";
+  readonly reason: string;
+}
+
+export interface CadSketchSolverSourceContract {
+  readonly currentProjectSchemaVersion: WcadDocumentSchemaVersion;
+  readonly emittedProjectSchemaVersion: WcadDocumentSchemaVersion;
+  readonly packageVersion: WcadPackageVersion;
+  readonly queryOnly: true;
+  readonly requiresProjectSchemaMigration: false;
+  readonly nextProjectSchemaVersion: "web-cad.project.v17";
+  readonly sourceRecordRequirements: readonly CadSketchSolverSourceRecordRequirement[];
+}
+
+export interface CadSketchSolverEngineSummary {
+  readonly engine: "current-direct-evaluator";
+  readonly numericalSolverStatus: "deferred";
+  readonly canSolveNumerically: false;
+  readonly deterministic: true;
+  readonly workerReady: false;
+  readonly diagnostic: CadSketchSolverDiagnostic;
 }
 
 export type CadReferenceHealthStatus = CadFeatureReferenceChangeCategory;
@@ -3816,6 +4052,7 @@ export type CadQueryResponse =
   | ProjectExtentsQueryResponse
   | SketchGetQueryResponse
   | SketchEditReadinessQueryResponse
+  | SketchSolverStatusQueryResponse
   | SketchEvaluationQueryResponse
   | SketchDimensionsQueryResponse
   | SketchDimensionGetQueryResponse
@@ -4108,6 +4345,34 @@ export interface SketchEditReadinessQueryResponse {
   readonly referenceHealth: readonly CadReferenceHealthEntry[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadSketchEditDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly requiresProjectSchemaMigration: false;
+}
+
+export interface SketchSolverStatusQueryResponse {
+  readonly ok: true;
+  readonly query: "sketch.solverStatus";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly sketchId: SketchId;
+  readonly sketchName: string;
+  readonly plane: SketchPlane;
+  readonly status: CadSketchSolverStatus;
+  readonly readiness: CadSketchSolverReadinessStatus;
+  readonly solver: CadSketchSolverEngineSummary;
+  readonly entityCount: number;
+  readonly entities: readonly CadSketchSolverEntitySummary[];
+  readonly dimensionCount: number;
+  readonly dimensions: readonly CadSketchSolverDimensionSummary[];
+  readonly constraintCount: number;
+  readonly constraints: readonly CadSketchSolverConstraintSummary[];
+  readonly deferredConstraintCount: number;
+  readonly deferredConstraints: readonly CadSketchSolverDeferredConstraintSummary[];
+  readonly profileValidity: CadSketchProfileValiditySummary;
+  readonly preview: CadSketchSolverPreviewSummary;
+  readonly sourceContract: CadSketchSolverSourceContract;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadSketchSolverDiagnostic[];
   readonly sourceBoundaryNote: string;
   readonly derivedBoundaryNote: string;
   readonly requiresProjectSchemaMigration: false;
