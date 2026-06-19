@@ -8,13 +8,13 @@ Last updated: 2026-06-19.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
-archived V4 constrained sketch solving milestone, `docs/v7.md` for the
-completed V7 real CAD alpha release-readiness record, `docs/v8.md` for the
-completed local CAD foundation and exact interop release record, `docs/v9.md`
-for the completed viewport-native CAD interaction release-candidate record,
-`docs/v10.md` for the completed editable feature history and stable modeling
-references release record, `docs/native-format.md` for project-format
-direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size findings.
+archived V4 constrained sketch solving milestone, `docs/v10.md` for the
+completed editable feature history and stable modeling references release
+record, `docs/v11.md` for the planned full sketch solver and parametric sketch
+UX release record, `docs/native-format.md` for project-format direction, and
+`docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, and V9 are
+completed historical releases whose details are now condensed in this plan
+instead of maintained as separate release documents.
 
 ## Active Rules
 
@@ -49,12 +49,12 @@ These constraints remain active:
     compact product integration, and release-grade edit/rebuild/browser smokes.
 13. Future implementation tranches should stay independently testable and
     should not mix schema migration, broad UI workflow changes, stable reference
-    expansion, unrelated new modeling commands, sketch solver expansion,
-    persistent B-rep checkpoints, WebGPU, assemblies, STEP import, or hosted
-    collaboration without explicit approval. Completed V8, V9, and V10 tranche
-    records below remain historical release records and compatibility
-    guardrails. Do not re-open those releases unless the user explicitly asks
-    for a maintenance or regression-fix tranche.
+    expansion, unrelated new modeling commands, persistent B-rep checkpoints,
+    WebGPU, assemblies, STEP import, or hosted collaboration without explicit
+    approval. V11 is the explicit scope for sketch solver expansion. Completed
+    V8, V9, and V10 tranche records below remain historical release records and
+    compatibility guardrails. Do not re-open those releases unless the user
+    explicitly asks for a maintenance or regression-fix tranche.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -298,6 +298,16 @@ These constraints remain active:
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
     scopes one of those items.
+35. V11 is planned in `docs/v11.md` as the full sketch solver and parametric
+    sketch UX release. Its center is source-backed constraints and dimensions,
+    custom solver diagnostics, profile validity, drag-solve preview/commit,
+    compact sketch UI, downstream V10 rebuild/reference-health integration, and
+    JSON/`.wcad` round-trips for the new sketch source data. V11 may introduce
+    `web-cad.project.v17` only when new source-of-truth solver data is actually
+    added. Query-only readiness work must not bump the schema. V11 does not
+    scope WebGPU, assemblies, STEP import, persistent B-rep checkpoints, hosted
+    collaboration, natural-language command entry, broad new solid modeling
+    families, or renderer authority over sketch solving.
 
 ## Current Repo State
 
@@ -554,14 +564,16 @@ Current Partbench can:
 
 ## Current Limitations
 
-The repo now includes the completed V7 real CAD alpha surface on top of the
-practical solid-modeling baseline. It is not yet a full CAD system.
+The repo now includes the completed V10 editable feature history surface on top
+of the local CAD, viewport-native interaction, and practical solid-modeling
+baseline. It is not yet a full CAD system.
 
 Current limitations:
 
-- There is no general sketch solver. Current constraints are limited to
-  horizontal/vertical line orientation, fixed/coincident/midpoint point
-  relationships, and parallel/perpendicular line relationships.
+- There is no general sketch solver yet. V11 now scopes that work. Current
+  constraints are limited to horizontal/vertical line orientation,
+  fixed/coincident/midpoint point relationships, and parallel/perpendicular
+  line relationships.
 - Sketch dimensions currently drive only rectangle width/height, circle radius,
   and line length through a direct evaluator path.
 - There is no parameter expression language.
@@ -692,9 +704,9 @@ V7 is a major release umbrella, not a single implementation milestone. The
 implemented A-G7 surface turns the V6 modeling baseline into an early usable
 local CAD alpha while preserving the architecture in `docs/architecture.md`.
 
-The V7 release-readiness record lives in `docs/v7.md`. This implementation plan
-records the current status and day-to-day sequencing rules for any later V7
-work.
+The V7 release-readiness record has been condensed into this implementation
+plan. This section records the durable status and day-to-day sequencing rules
+for any later V7 work.
 
 ### V7 Release Pillars
 
@@ -1071,7 +1083,7 @@ non-browser release smoke:
   `project.summary`, and public source/derived separation;
 - tests cover the success summary and a synthetic fixture-expectation failure
   path;
-- `docs/v7.md` records the release QA boundary and explicitly separates
+- this section records the release QA boundary and explicitly separates
   automated source/query smoke from browser verification.
 
 G2 does not add browser E2E automation, persistent metrics, static sample JSON,
@@ -1235,17 +1247,17 @@ agent/MCP adapters, storage schemas, WebGPU deferrals, STEP deferrals, or
 
 For implementation accounting, V7 is complete through the implemented A-H1
 tranche scope described above. The 2026-06-11 release-candidate pass completed
-the required automated gates recorded in `docs/v7.md`, including the default
-browser workflow smoke and the opt-in derived GLB smoke. Manual browser checks
-were performed as release QA for visual breadth, varied data, and workflow
-coherence beyond deterministic smokes. They are not hidden
+the required automated gates recorded in this condensed release history,
+including the default browser workflow smoke and the opt-in derived GLB smoke.
+Manual browser checks were performed as release QA for visual breadth, varied
+data, and workflow coherence beyond deterministic smokes. They are not hidden
 implementation tranches and do not imply that deferred items such as STEP,
 WebGPU, native storage, assemblies, broad topology naming, or broad sketch
 solving are implemented.
 
 ## V8 Local CAD Foundation And Exact Interop Record
 
-V8 is complete through the release-candidate scope documented in `docs/v8.md`.
+V8 is complete through the release-candidate scope condensed in this plan.
 
 V8 was intentionally broad, but it had one center: make Partbench a credible
 local CAD application by implementing native `.wcad` project storage, local
@@ -1389,8 +1401,8 @@ rebuildable by default.
 
 ## V9 Viewport-Native CAD Interaction Release Record
 
-V9 is complete through the release-candidate H3 audit/docs scope. Its detailed
-release document is `docs/v9.md`.
+V9 is complete through the release-candidate H3 audit/docs scope. Its durable
+release history is condensed in this plan.
 
 V9 is intentionally a large UI/interaction release, but it has one center: make
 the viewport the primary CAD interaction surface without coupling the product to
@@ -1753,11 +1765,111 @@ Do not combine these in one V10 tranche unless explicitly approved:
 - WebGPU renderer work and topology/reference model work;
 - assemblies/STEP import and feature rebuild work.
 
-## Deferred Beyond V10 Unless Explicitly Scoped Later
+## V11 Full Sketch Solver And Parametric Sketch UX Release
+
+V11 is planned in `docs/v11.md`. It is the release that turns the current
+limited sketch dimensions and constraint evaluator into a solver-backed
+parametric sketch workflow:
+
+```text
+sketch source geometry -> constraints and dimensions -> solver result ->
+profile validity -> feature rebuild impact -> reference health ->
+viewport and inspector sketch editing that stay command-backed
+```
+
+### V11 Release Pillars
+
+V11 is organized around these pillars:
+
+- typed sketch solver, constraint, dimension, inference, profile-validity, and
+  diagnostic protocol/core contracts;
+- a custom, non-GPL 2D sketch solver boundary aligned with the architecture's
+  damped least squares / Levenberg-Marquardt direction;
+- source-backed solver-grade constraints and dimensions, with
+  `web-cad.project.v17` introduced only when new source data is committed;
+- compact sketch UI for constraint glyphs, driving dimensions, selected-entity
+  controls, and solver diagnostics;
+- non-mutating drag/edit previews followed by CADOps commits;
+- profile validity and downstream feature rebuild impact integrated with V10
+  dependency graph, reference health, and rebuild plan contracts;
+- JSON and `.wcad` round-trips for new sketch source data;
+- thin agent/MCP access to the same solve, edit, and diagnostic surfaces;
+- long combined browser smokes for create -> constrain -> solve -> feature ->
+  rebuild -> save/open workflows.
+
+### V11 Answered Decisions
+
+Use these decisions when drafting or implementing V11 tranches:
+
+- V11 is a sketch solver/modeling-authority release, not a renderer/platform
+  release;
+- no SolveSpace/GPL dependency should be introduced;
+- the solver boundary should be custom, deterministic, and package/worker-ready
+  so an implementation detail can move behind the boundary without changing
+  CADOps semantics;
+- source sketch constraints, driving dimensions, construction flags, and
+  persistent solver intent belong in the document model;
+- solver matrix state, residual caches, drag previews, hover/selection/tool
+  state, renderer hits, OPFS caches, and export artifacts remain derived or
+  session-only;
+- V11 may introduce `web-cad.project.v17` for new source-of-truth solver data;
+  query-only readiness work must not bump the schema;
+- `.wcad` package version `partbench.wcad.v1` can remain unchanged unless the
+  package layout changes;
+- dimension values are numeric driving source data for V11; arbitrary
+  parameter expressions remain deferred;
+- sketch dragging is a dry-run preview followed by an explicit CADOps commit;
+- React and renderer code must not infer solve validity, profile validity, or
+  feature rebuild commandability.
+
+### V11 Proposed Tranche Sequence
+
+1. **Sketch Solver Protocol And Source Contract** - add typed sketch solve,
+   constraint, dimension, inference, profile-validity, and diagnostic shapes.
+   Decide the V17 source additions but do not write V17 until new source data
+   is actually committed.
+2. **Solver Package Foundation** - add the custom 2D solver package boundary,
+   normalized solve model, variables, residuals, tolerance constants, solve
+   results, deterministic tests, and structured diagnostics.
+3. **V17 Constraint And Dimension Source Migration** - add migratable
+   source-backed solver records once the first new V11 source data exists.
+   Preserve JSON and `.wcad` round-trips and deterministic source identity.
+4. **Core Constraint Commands And Solver Status** - route coincident,
+   horizontal, vertical, fixed, distance, radius, midpoint, parallel, and
+   perpendicular create/update/delete behavior through CADOps and the unified
+   solver status.
+5. **Advanced Geometric Constraints** - add tangent, concentric, equal length,
+   equal radius, angle, and symmetry with pure solver fixtures and structured
+   unsupported/conflict diagnostics.
+6. **Profile Validity And Feature Rebuild Integration** - make solved sketch
+   status feed profile validity, feature editability, dependency graph,
+   reference health, and rebuild plan behavior.
+7. **Sketch Editing Product UI** - add compact constraint/dimension/solver
+   controls without reintroducing large debug panels or viewport-blocking
+   overlays.
+8. **Drag Solve Preview And Commit** - support endpoint, line, circle-center,
+   and radius dragging as non-mutating previews followed by CADOps commits.
+9. **Constraint Inference** - add conservative session-only inference while
+   drawing or dragging, with source commits only when accepted through CADOps.
+10. **Agent/MCP Sketch Workflows** - expose solver status, constraint/dimension
+    edits, dry-runs, and diagnostics through thin wrappers.
+11. **Release Hardening And Long Sketch Smokes** - add stress fixtures,
+    combined browser workflows, docs cleanup, and a final V11 audit.
+
+### V11 Scope Guardrails
+
+Do not combine these in one V11 tranche unless explicitly approved:
+
+- source schema migration and broad UI workflow changes;
+- solver numeric engine work and unrelated new modeling commands;
+- drag UX and persistent viewport/tool state;
+- sketch solver work and arbitrary topology naming expansion;
+- sketch solver work and WebGPU renderer replacement;
+- sketch solver work and STEP import or assemblies.
+
+## Deferred Beyond V11 Unless Explicitly Scoped Later
 
 - Full arbitrary topological naming for every OCCT result shape.
-- Full general sketch solving beyond scoped V10 edit/rebuild support.
-- Dragging solver UX.
 - Arbitrary parameter expressions.
 - General boolean trees beyond current add/cut plus scoped V6 hole behavior.
 - Shell, patterns, lofts, sweeps, mirror, direct edits, and broad new modeling
@@ -1776,7 +1888,7 @@ Do not combine these in one V10 tranche unless explicitly approved:
 - Persistent viewport/camera/selection/tool state.
 - Assemblies, mates, large-model LOD, instancing, and assembly-instance
   selection.
-- New project schema or `web-cad.project.v17` source data.
+- Project schema changes beyond V11's scoped solver source data.
 - Hosted collaboration.
 - Production MCP auth/permission system.
 - Natural-language command entry.

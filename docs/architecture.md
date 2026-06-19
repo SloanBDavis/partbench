@@ -9,10 +9,8 @@ The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
 - `docs/archive/v4.md`
-- `docs/v7.md`
-- `docs/v8.md`
-- `docs/v9.md`
 - `docs/v10.md`
+- `docs/v11.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -927,8 +925,9 @@ The local MCP server should bind to `127.0.0.1`, require a per-session token, en
 
 This section is historical initial-build guidance. The implementation has now
 progressed through the completed V10 editable feature history and stable
-modeling references release; follow `docs/implementation-plan.md` for the
-current implementation source of truth.
+modeling references release, with V11 sketch solver planning in
+`docs/v11.md`; follow `docs/implementation-plan.md` for the current
+implementation source of truth.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

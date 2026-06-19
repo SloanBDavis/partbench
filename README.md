@@ -115,13 +115,10 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/implementation-plan.md` - current implementation source of truth and
   roadmap.
 - `docs/archive/v4.md` - archived V4 constrained sketch solving milestone.
-- `docs/v7.md` - completed V7 real CAD alpha release-readiness record.
-- `docs/v8.md` - completed V8 local CAD foundation and exact interop release
-  record.
-- `docs/v9.md` - completed V9 viewport-native CAD interaction
-  release-candidate record.
-- `docs/v10.md` - planned V10 editable feature history and stable modeling
-  references release.
+- `docs/v10.md` - completed V10 editable feature history and stable modeling
+  references release record.
+- `docs/v11.md` - planned V11 full sketch solver and parametric sketch UX
+  release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.

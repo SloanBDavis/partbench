@@ -22,13 +22,15 @@ Schema V15 added source-of-truth circular hole feature records for
 feature records for `feature.chamfer` and `feature.fillet`. Current exports use
 `web-cad.project.v16` while the loader still accepts V1 through V15 projects
 through explicit migration. The
-`web-cad.project.*` names are retained as compatibility schema
-identifiers after the Partbench product rename; changing them would require a
-deliberate project-format migration. V8 now scopes the first native package
-release in `docs/v8.md`: `.wcad` package v1, File System Access local workflow,
-OPFS-derived cache, and exact STEP export for supported bodies. This document
-continues to define the project-format and source/derived rules that V8 storage
-work must preserve.
+`web-cad.project.*` names are retained as compatibility schema identifiers
+after the Partbench product rename; changing them would require a deliberate
+project-format migration. V8 completed the first native package release:
+`.wcad` package v1, File System Access local workflow, OPFS-derived cache, and
+exact STEP export for supported bodies. V11 planning reserves
+`web-cad.project.v17` for full sketch solver source data if and when new
+source-of-truth constraint, dimension, or solver-intent records are added. This
+document continues to define the project-format and source/derived rules that
+storage and solver work must preserve.
 
 ## Current Format
 
