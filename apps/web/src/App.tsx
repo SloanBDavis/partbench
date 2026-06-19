@@ -3074,6 +3074,7 @@ export function App() {
             <StructurePanel
               bodies={projectStructure.bodies}
               features={projectStructure.features}
+              featureEditability={selectedFeatureEditability}
               focusedSketchId={focusedSketchId}
               generatedReferences={selectedBodyGeneratedReferences.references}
               geometryStatuses={

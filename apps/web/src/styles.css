@@ -749,6 +749,19 @@ button.model-story-row:hover,
   overflow-wrap: anywhere;
 }
 
+.model-story-row > .feature-edit-cue {
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.feature-edit-cue.ready {
+  color: var(--accent-strong);
+}
+
+.feature-edit-cue.blocked {
+  color: var(--amber);
+}
+
 .model-story-entities,
 .model-story-feature-chain,
 .model-story-result-chain {
@@ -2266,6 +2279,71 @@ canvas:active {
   padding-top: 12px;
   border-color: var(--line);
   background: var(--panel-soft);
+}
+
+.feature-edit-callout {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.feature-edit-callout.ready {
+  border-color: rgba(47, 111, 69, 0.28);
+  background: var(--success-soft);
+}
+
+.feature-edit-callout.pending {
+  border-color: rgba(169, 102, 22, 0.24);
+  background: var(--amber-soft);
+}
+
+.feature-edit-callout.blocked {
+  border-color: rgba(163, 58, 54, 0.22);
+  background: var(--danger-soft);
+}
+
+.feature-edit-callout > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.feature-edit-callout strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+
+.feature-edit-callout span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.feature-edit-callout.ready span {
+  color: var(--success);
+}
+
+.feature-edit-callout.pending span {
+  color: var(--amber);
+}
+
+.feature-edit-callout.blocked span {
+  color: var(--danger);
+}
+
+.feature-edit-callout small {
+  color: var(--muted);
+  font-size: 0.71rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .command-card-heading,

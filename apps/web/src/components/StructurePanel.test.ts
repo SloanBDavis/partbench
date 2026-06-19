@@ -6,6 +6,7 @@ import type {
   CadPartSnapshot,
   CadGeneratedFaceReference,
   NamedGeneratedReferenceEntry,
+  FeatureEditabilityQueryResponse,
   ProjectHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
   SketchSnapshot
@@ -94,6 +95,70 @@ describe("StructurePanel", () => {
     expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Start uMin edge");
     expect(markup).not.toContain("generated:face:body_base:startCap");
+  });
+
+  it("points selected editable feature rows to inspector edit controls", () => {
+    const feature = createBaseFeature();
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [createExtrudeBody("body_base", "feature_base")],
+        features: [feature],
+        featureEditability: createFeatureEditability(feature),
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [
+          {
+            ...createPart(),
+            featureIds: ["feature_base"],
+            bodyIds: ["body_base"]
+          }
+        ],
+        selectedId: "body_base",
+        sketches: [createSketch()],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Edit in Inspector - Depth, Side");
+  });
+
+  it("shows selected feature edit diagnostics from the editability query", () => {
+    const feature = createBaseFeature();
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [createExtrudeBody("body_base", "feature_base")],
+        features: [feature],
+        featureEditability: createFeatureEditability(feature, {
+          status: "unsupported",
+          fields: [],
+          diagnostic: "Consumed result features cannot be edited safely."
+        }),
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [
+          {
+            ...createPart(),
+            featureIds: ["feature_base"],
+            bodyIds: ["body_base"]
+          }
+        ],
+        selectedId: "body_base",
+        sketches: [createSketch()],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain(
+      "Inspector edit unavailable - Consumed result features cannot be edited safely."
+    );
   });
 
   it("renders named reference candidate state from the V7 query contract", () => {
@@ -292,6 +357,86 @@ function createCutFeature(): Extract<CadFeatureSummary, { kind: "extrude" }> {
     depth: 1,
     operationMode: "cut",
     targetBodyId: "body_base"
+  };
+}
+
+function createFeatureEditability(
+  feature: CadFeatureSummary,
+  overrides: {
+    readonly status?: FeatureEditabilityQueryResponse["status"];
+    readonly fields?: FeatureEditabilityQueryResponse["fields"];
+    readonly diagnostic?: string;
+  } = {}
+): FeatureEditabilityQueryResponse {
+  const fields =
+    overrides.fields ??
+    ([
+      {
+        path: "depth",
+        label: "Depth",
+        valueType: "number",
+        currentValue: 4,
+        unit: "mm",
+        editable: true,
+        commitOperation: "feature.updateExtrude",
+        diagnostics: []
+      },
+      {
+        path: "side",
+        label: "Side",
+        valueType: "enum",
+        currentValue: "positive",
+        enumValues: ["positive", "negative", "symmetric"],
+        editable: true,
+        commitOperation: "feature.updateExtrude",
+        diagnostics: []
+      }
+    ] satisfies FeatureEditabilityQueryResponse["fields"]);
+  const status = overrides.status ?? "editable";
+  const diagnostic = overrides.diagnostic
+    ? {
+        code: "FEATURE_EDIT_UNSUPPORTED" as const,
+        severity: "blocker" as const,
+        message: overrides.diagnostic,
+        featureId: feature.id
+      }
+    : undefined;
+
+  return {
+    ok: true,
+    query: "feature.editability",
+    cadOpsVersion: "cadops.v1",
+    featureId: feature.id,
+    status,
+    feature,
+    fieldCount: fields.length,
+    fields,
+    rebuildReadiness: {
+      status: status === "editable" ? "ready" : "blocked",
+      commitDeferred: false,
+      diagnosticCount: diagnostic ? 1 : 0,
+      diagnostics: diagnostic ? [diagnostic] : []
+    },
+    dryRun: {
+      status: "not-requested",
+      willMutateDocument: false,
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    affected: {
+      sketchIds: [],
+      featureIds: [feature.id],
+      bodyIds: [feature.bodyId],
+      generatedReferenceCount: 0,
+      namedReferenceCount: 0
+    },
+    referenceChangeCount: 0,
+    referenceChanges: [],
+    diagnosticCount: diagnostic ? 1 : 0,
+    diagnostics: diagnostic ? [diagnostic] : [],
+    sourceBoundaryNote: "test source boundary",
+    derivedBoundaryNote: "test derived boundary",
+    requiresProjectSchemaMigration: false
   };
 }
 

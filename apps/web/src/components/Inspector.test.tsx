@@ -123,6 +123,103 @@ describe("Inspector", () => {
     expect(markup).toContain("Body body_rect was consumed by feat_cut.");
   });
 
+  it("surfaces selected feature editability before body detail", () => {
+    const feature = createFeature();
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature,
+        featureEditability: createFeatureEditability(feature, [
+          {
+            path: "depth",
+            label: "Depth",
+            valueType: "number",
+            currentValue: feature.depth,
+            unit: "mm",
+            editable: true,
+            commitOperation: "feature.updateExtrude",
+            diagnostics: []
+          },
+          {
+            path: "side",
+            label: "Side",
+            valueType: "enum",
+            currentValue: feature.side,
+            enumValues: ["positive", "negative", "symmetric"],
+            editable: true,
+            commitOperation: "feature.updateExtrude",
+            diagnostics: []
+          }
+        ]),
+        namedReferences: [],
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Feature edits ready");
+    expect(markup).toContain("Edit Depth and Side below");
+    expect(markup.indexOf("Feature edits ready")).toBeLessThan(
+      markup.indexOf("<dt>ID</dt>")
+    );
+  });
+
+  it("surfaces non-editable feature diagnostics before disabled controls", () => {
+    const feature = createFeature();
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature,
+        featureEditability: createFeatureEditability(feature, [], {
+          status: "unsupported",
+          diagnostic: "Boolean result topology cannot be edited safely."
+        }),
+        namedReferences: [],
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Feature edit unavailable");
+    expect(markup).toContain(
+      "Boolean result topology cannot be edited safely."
+    );
+  });
+
   it("plumbs selected generated edges into inspector edge-finish affordances", () => {
     const face = createFace();
     const edge = createEdge();
@@ -435,22 +532,36 @@ function createHoleFeature(): Extract<
 
 function createFeatureEditability(
   feature: CadFeatureSummary,
-  fields: FeatureEditabilityQueryResponse["fields"]
+  fields: FeatureEditabilityQueryResponse["fields"],
+  overrides: {
+    readonly status?: FeatureEditabilityQueryResponse["status"];
+    readonly diagnostic?: string;
+  } = {}
 ): FeatureEditabilityQueryResponse {
+  const status = overrides.status ?? "editable";
+  const diagnostic = overrides.diagnostic
+    ? {
+        code: "FEATURE_EDIT_UNSUPPORTED" as const,
+        severity: "blocker" as const,
+        message: overrides.diagnostic,
+        featureId: feature.id
+      }
+    : undefined;
+
   return {
     ok: true,
     query: "feature.editability",
     cadOpsVersion: "cadops.v1",
     featureId: feature.id,
-    status: "editable",
+    status,
     feature,
     fieldCount: fields.length,
     fields,
     rebuildReadiness: {
-      status: "ready",
+      status: status === "editable" ? "ready" : "blocked",
       commitDeferred: false,
-      diagnosticCount: 0,
-      diagnostics: []
+      diagnosticCount: diagnostic ? 1 : 0,
+      diagnostics: diagnostic ? [diagnostic] : []
     },
     dryRun: {
       status: "not-requested",
@@ -467,8 +578,8 @@ function createFeatureEditability(
     },
     referenceChangeCount: 0,
     referenceChanges: [],
-    diagnosticCount: 0,
-    diagnostics: [],
+    diagnosticCount: diagnostic ? 1 : 0,
+    diagnostics: diagnostic ? [diagnostic] : [],
     sourceBoundaryNote: "test source boundary",
     derivedBoundaryNote: "test derived boundary",
     requiresProjectSchemaMigration: false

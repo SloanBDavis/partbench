@@ -563,6 +563,12 @@ function BodyInspector({
       <div className="command-card-heading">
         <h3>Body</h3>
       </div>
+      {feature && (
+        <FeatureEditabilityCallout
+          editability={featureEditability}
+          feature={feature}
+        />
+      )}
       <dl>
         <div>
           <dt>ID</dt>
@@ -690,6 +696,83 @@ function BodyInspector({
       )}
     </section>
   );
+}
+
+function FeatureEditabilityCallout({
+  editability,
+  feature
+}: {
+  readonly editability?: FeatureEditabilityQueryResponse;
+  readonly feature: CadFeatureSummary;
+}) {
+  const state = getFeatureEditCalloutState(editability);
+
+  return (
+    <section className={`feature-edit-callout ${state}`}>
+      <div>
+        <strong>{formatFeatureEditCalloutTitle(editability)}</strong>
+        <span>{formatFeatureEditStatus(editability)}</span>
+      </div>
+      <small>{formatFeatureEditCalloutDetail(editability, feature)}</small>
+    </section>
+  );
+}
+
+function getFeatureEditCalloutState(
+  editability: FeatureEditabilityQueryResponse | undefined
+): "ready" | "pending" | "blocked" {
+  if (!editability) {
+    return "pending";
+  }
+
+  return editability.status === "editable" ? "ready" : "blocked";
+}
+
+function formatFeatureEditCalloutTitle(
+  editability: FeatureEditabilityQueryResponse | undefined
+): string {
+  if (!editability) {
+    return "Feature edit status";
+  }
+
+  return editability.status === "editable"
+    ? "Feature edits ready"
+    : "Feature edit unavailable";
+}
+
+function formatFeatureEditCalloutDetail(
+  editability: FeatureEditabilityQueryResponse | undefined,
+  feature: CadFeatureSummary
+): string {
+  if (!editability) {
+    return "Inspector needs a feature.editability query result before enabling edits.";
+  }
+
+  if (editability.status !== "editable") {
+    return getFeatureEditDiagnostic(editability);
+  }
+
+  const editableFields = editability.fields.filter((field) => field.editable);
+  const fieldList = formatFeatureEditFieldList(editableFields);
+
+  return fieldList
+    ? `Edit ${fieldList} below for this ${formatFeatureKindLabel(feature).toLowerCase()} feature.`
+    : `This ${formatFeatureKindLabel(feature).toLowerCase()} feature is editable.`;
+}
+
+function formatFeatureEditFieldList(
+  fields: FeatureEditabilityQueryResponse["fields"]
+): string {
+  const labels = fields.map((field) => field.label).filter(Boolean);
+
+  if (labels.length <= 2) {
+    return labels.join(" and ");
+  }
+
+  const remainingCount = labels.length - 2;
+  const remainingLabel = remainingCount === 1 ? "field" : "fields";
+
+  return `${labels.slice(0, 2).join(", ")} and ${remainingCount} more ${remainingLabel}`;
 }
 
 function BodyMeasurementPanel({

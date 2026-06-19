@@ -4,6 +4,7 @@ import type {
   CadFeatureSummary,
   CadGeneratedReference,
   CadPartSnapshot,
+  FeatureEditabilityQueryResponse,
   NamedGeneratedReferenceEntry,
   ProjectHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
@@ -51,6 +52,7 @@ export interface StructurePanelProps {
   readonly bodies: readonly CadBodySnapshot[];
   readonly features: readonly CadFeatureSummary[];
   readonly focusedSketchId?: string;
+  readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
   readonly health: ProjectHealthQueryResponse;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
@@ -83,6 +85,7 @@ export interface StructurePanelProps {
 export function StructurePanel({
   bodies,
   features,
+  featureEditability,
   focusedSketchId,
   generatedReferences,
   geometryStatuses,
@@ -155,6 +158,7 @@ export function StructurePanel({
               key={partNode.part.id}
               generatedReferences={generatedReferences}
               geometryStatuses={geometryStatuses}
+              featureEditability={featureEditability}
               health={health}
               focusedSketchId={focusedSketchId}
               referenceCandidatesByStableId={referenceCandidatesByStableId}
@@ -277,6 +281,7 @@ function ModelStoryPart({
   focusedSketchId,
   generatedReferences,
   geometryStatuses,
+  featureEditability,
   health,
   node,
   referenceCandidatesByStableId,
@@ -290,6 +295,7 @@ function ModelStoryPart({
   readonly focusedSketchId?: string;
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
+  readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly health: ProjectHealthQueryResponse;
   readonly node: StructureLineagePartNode;
   readonly referenceCandidatesByStableId?: ReadonlyMap<
@@ -406,6 +412,7 @@ function ModelStoryPart({
                                 key={featureNode.feature.id}
                                 generatedReferences={generatedReferences}
                                 geometryStatuses={geometryStatuses}
+                                featureEditability={featureEditability}
                                 health={health}
                                 node={featureNode}
                                 referenceCandidatesByStableId={
@@ -449,6 +456,7 @@ function ModelStoryPart({
                 key={featureNode.feature.id}
                 generatedReferences={generatedReferences}
                 geometryStatuses={geometryStatuses}
+                featureEditability={featureEditability}
                 health={health}
                 node={featureNode}
                 referenceCandidatesByStableId={referenceCandidatesByStableId}
@@ -537,6 +545,7 @@ function isFeatureNodeInSelectedPath(
 function ModelStoryFeature({
   generatedReferences,
   geometryStatuses,
+  featureEditability,
   health,
   node,
   referenceCandidatesByStableId,
@@ -549,6 +558,7 @@ function ModelStoryFeature({
 }: {
   readonly generatedReferences?: BodyGeneratedReferencesQueryResponse;
   readonly geometryStatuses?: ReadonlyMap<string, StructureGeometryStatus>;
+  readonly featureEditability?: FeatureEditabilityQueryResponse;
   readonly health: ProjectHealthQueryResponse;
   readonly node: StructureLineageFeatureNode;
   readonly referenceCandidatesByStableId?: ReadonlyMap<
@@ -573,6 +583,7 @@ function ModelStoryFeature({
     kind: "feature",
     id: feature.id
   });
+  const editCue = createFeatureEditCue(feature, selectedId, featureEditability);
 
   return (
     <section className="model-story-feature">
@@ -589,6 +600,11 @@ function ModelStoryFeature({
           {formatFeatureStoryTitle(feature)}
         </span>
         <small>{formatFeatureStoryDetail(feature, units)}</small>
+        {editCue && (
+          <small className={`feature-edit-cue ${editCue.status}`}>
+            {editCue.message}
+          </small>
+        )}
         <HealthStatus status={status} />
         <HealthIssues issues={issues} />
       </button>
@@ -942,6 +958,69 @@ function HealthIssues({ issues }: { readonly issues: readonly string[] }) {
   }
 
   return <small className="error-text inline">{visibleIssues[0]}</small>;
+}
+
+function createFeatureEditCue(
+  feature: StructureLineageFeatureNode["feature"],
+  selectedId: string | undefined,
+  editability: FeatureEditabilityQueryResponse | undefined
+):
+  | {
+      readonly message: string;
+      readonly status: "ready" | "blocked";
+    }
+  | undefined {
+  if (feature.bodyId !== selectedId) {
+    return undefined;
+  }
+
+  if (!editability || editability.featureId !== feature.id) {
+    return {
+      status: "blocked",
+      message: "Inspector edit status unavailable"
+    };
+  }
+
+  if (editability.status === "editable") {
+    const editableFields = editability.fields.filter((field) => field.editable);
+    const fieldList = formatFeatureEditFieldList(editableFields);
+
+    return {
+      status: "ready",
+      message: fieldList
+        ? `Edit in Inspector - ${fieldList}`
+        : "Edit in Inspector"
+    };
+  }
+
+  return {
+    status: "blocked",
+    message: `Inspector edit unavailable - ${getFeatureEditDiagnostic(editability)}`
+  };
+}
+
+function formatFeatureEditFieldList(
+  fields: FeatureEditabilityQueryResponse["fields"]
+): string {
+  const labels = fields.map((field) => field.label).filter(Boolean);
+
+  if (labels.length <= 2) {
+    return labels.join(", ");
+  }
+
+  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+}
+
+function getFeatureEditDiagnostic(
+  editability: FeatureEditabilityQueryResponse
+): string {
+  return (
+    editability.diagnostics.find(
+      (diagnostic) => diagnostic.severity === "blocker"
+    )?.message ??
+    editability.diagnostics[0]?.message ??
+    "Feature edit is not available."
+  );
 }
 
 function formatSketchDetail(sketch: SketchSnapshot): string {
