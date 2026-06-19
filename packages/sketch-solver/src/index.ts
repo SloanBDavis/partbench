@@ -46,11 +46,11 @@ export type SketchSolveConstraintKind =
   | "horizontal"
   | "vertical"
   | "midpoint"
+  | "parallel"
+  | "perpendicular"
   | SketchSolveDeferredConstraintKind;
 
 export type SketchSolveDeferredConstraintKind =
-  | "parallel"
-  | "perpendicular"
   | "tangent"
   | "concentric"
   | "equalLength"
@@ -79,6 +79,8 @@ export type SketchSolveConstraint =
   | SketchSolveHorizontalConstraint
   | SketchSolveVerticalConstraint
   | SketchSolveMidpointConstraint
+  | SketchSolveParallelConstraint
+  | SketchSolvePerpendicularConstraint
   | SketchSolveDeferredConstraint;
 
 export interface SketchSolveFixedPointConstraint {
@@ -115,6 +117,24 @@ export interface SketchSolveMidpointConstraint {
   readonly midpointId: SketchSolverPointId;
   readonly startPointId: SketchSolverPointId;
   readonly endPointId: SketchSolverPointId;
+}
+
+export interface SketchSolveParallelConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "parallel";
+  readonly primaryStartPointId: SketchSolverPointId;
+  readonly primaryEndPointId: SketchSolverPointId;
+  readonly secondaryStartPointId: SketchSolverPointId;
+  readonly secondaryEndPointId: SketchSolverPointId;
+}
+
+export interface SketchSolvePerpendicularConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "perpendicular";
+  readonly primaryStartPointId: SketchSolverPointId;
+  readonly primaryEndPointId: SketchSolverPointId;
+  readonly secondaryStartPointId: SketchSolverPointId;
+  readonly secondaryEndPointId: SketchSolverPointId;
 }
 
 export interface SketchSolveDeferredConstraint {
@@ -221,6 +241,10 @@ interface SolverVariable {
 
 type ResidualEvaluator = (state: readonly number[]) => readonly number[];
 
+type SketchSolveLinePairConstraint =
+  | SketchSolveParallelConstraint
+  | SketchSolvePerpendicularConstraint;
+
 interface ResidualBlock {
   readonly sourceType: "constraint" | "dimension";
   readonly sourceId: string;
@@ -241,8 +265,6 @@ const DEFAULT_SETTINGS: SketchSolveSettings = {
 };
 
 const DEFERRED_CONSTRAINT_KINDS = new Set<SketchSolveDeferredConstraintKind>([
-  "parallel",
-  "perpendicular",
   "tangent",
   "concentric",
   "equalLength",
@@ -273,7 +295,9 @@ export function getSketchSolverCapabilities(): {
       "coincident",
       "horizontal",
       "vertical",
-      "midpoint"
+      "midpoint",
+      "parallel",
+      "perpendicular"
     ],
     supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
     deferredConstraintKinds: [...DEFERRED_CONSTRAINT_KINDS]
@@ -664,6 +688,11 @@ function validateConstraint(
     return;
   }
 
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+    validateLinePairConstraint(constraint, stateAccess, diagnostics);
+    return;
+  }
+
   validatePointTarget(
     constraint.midpointId,
     constraint,
@@ -682,6 +711,90 @@ function validateConstraint(
     stateAccess,
     diagnostics
   );
+}
+
+function validateLinePairConstraint(
+  constraint: SketchSolveLinePairConstraint,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  validatePointTarget(
+    constraint.primaryStartPointId,
+    constraint,
+    stateAccess,
+    diagnostics
+  );
+  validatePointTarget(
+    constraint.primaryEndPointId,
+    constraint,
+    stateAccess,
+    diagnostics
+  );
+  validatePointTarget(
+    constraint.secondaryStartPointId,
+    constraint,
+    stateAccess,
+    diagnostics
+  );
+  validatePointTarget(
+    constraint.secondaryEndPointId,
+    constraint,
+    stateAccess,
+    diagnostics
+  );
+  validateNonZeroLineTarget({
+    constraint,
+    stateAccess,
+    diagnostics,
+    startPointId: constraint.primaryStartPointId,
+    endPointId: constraint.primaryEndPointId,
+    label: "primary line"
+  });
+  validateNonZeroLineTarget({
+    constraint,
+    stateAccess,
+    diagnostics,
+    startPointId: constraint.secondaryStartPointId,
+    endPointId: constraint.secondaryEndPointId,
+    label: "secondary line"
+  });
+}
+
+function validateNonZeroLineTarget({
+  constraint,
+  stateAccess,
+  diagnostics,
+  startPointId,
+  endPointId,
+  label
+}: {
+  readonly constraint: SketchSolveLinePairConstraint;
+  readonly stateAccess: SolverStateAccess;
+  readonly diagnostics: SketchSolveDiagnostic[];
+  readonly startPointId: SketchSolverPointId;
+  readonly endPointId: SketchSolverPointId;
+  readonly label: string;
+}): void {
+  const start = readInitialPoint(stateAccess, startPointId);
+  const end = readInitialPoint(stateAccess, endPointId);
+
+  if (!start || !end) {
+    return;
+  }
+
+  if (distance(start, end) <= 1e-12) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_INVALID_VALUE",
+      severity: "blocker",
+      message: `Parallel/perpendicular constraint ${label} must have non-zero length.`,
+      sourceType: "constraint",
+      sourceId: constraint.id,
+      constraintKind: constraint.kind,
+      targetId: `${startPointId}:${endPointId}`,
+      expected: "non-zero line direction",
+      received: "zero-length line"
+    });
+  }
 }
 
 function validateDimension(
@@ -844,6 +957,10 @@ function createConstraintResidual(
     };
   }
 
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+    return createLinePairResidual(constraint, stateAccess);
+  }
+
   return (state) => {
     const midpoint = readPoint(state, stateAccess, constraint.midpointId);
     const start = readPoint(state, stateAccess, constraint.startPointId);
@@ -851,6 +968,42 @@ function createConstraintResidual(
     return [
       midpoint[0] - (start[0] + end[0]) / 2,
       midpoint[1] - (start[1] + end[1]) / 2
+    ];
+  };
+}
+
+function createLinePairResidual(
+  constraint: SketchSolveLinePairConstraint,
+  stateAccess: SolverStateAccess
+): ResidualEvaluator {
+  return (state) => {
+    const primaryDirection = readLineDirection(
+      state,
+      stateAccess,
+      constraint.primaryStartPointId,
+      constraint.primaryEndPointId
+    );
+    const secondaryDirection = readLineDirection(
+      state,
+      stateAccess,
+      constraint.secondaryStartPointId,
+      constraint.secondaryEndPointId
+    );
+
+    if (!primaryDirection || !secondaryDirection) {
+      return [1];
+    }
+
+    if (constraint.kind === "parallel") {
+      return [
+        primaryDirection[0] * secondaryDirection[1] -
+          primaryDirection[1] * secondaryDirection[0]
+      ];
+    }
+
+    return [
+      primaryDirection[0] * secondaryDirection[0] +
+        primaryDirection[1] * secondaryDirection[1]
     ];
   };
 }
@@ -1167,6 +1320,45 @@ function readPoint(
   }
 
   return [state[index], state[index + 1]];
+}
+
+function readInitialPoint(
+  stateAccess: SolverStateAccess,
+  pointId: SketchSolverPointId
+): SketchSolverVec2 | undefined {
+  const index = stateAccess.pointIndex.get(pointId);
+
+  if (index === undefined) {
+    return undefined;
+  }
+
+  const x = stateAccess.variables[index]?.initial;
+  const y = stateAccess.variables[index + 1]?.initial;
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return undefined;
+  }
+
+  return [x, y];
+}
+
+function readLineDirection(
+  state: readonly number[],
+  stateAccess: SolverStateAccess,
+  startPointId: SketchSolverPointId,
+  endPointId: SketchSolverPointId
+): SketchSolverVec2 | undefined {
+  const start = readPoint(state, stateAccess, startPointId);
+  const end = readPoint(state, stateAccess, endPointId);
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const length = Math.hypot(dx, dy);
+
+  if (!Number.isFinite(length) || length <= 1e-12) {
+    return undefined;
+  }
+
+  return [dx / length, dy / length];
 }
 
 function readScalar(

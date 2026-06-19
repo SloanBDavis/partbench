@@ -391,6 +391,86 @@ function mapConstraintToSketchSolveConstraint({
     };
   }
 
+  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+    const primaryEntity = sketch.entities.get(constraint.primaryLineEntityId);
+    const secondaryEntity = sketch.entities.get(
+      constraint.secondaryLineEntityId
+    );
+
+    if (
+      !primaryEntity ||
+      primaryEntity.kind !== "line" ||
+      !secondaryEntity ||
+      secondaryEntity.kind !== "line"
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Line-pair constraint targets cannot be mapped to solver lines.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryLineEntityId,
+            expected: "two line entities",
+            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
+          })
+        ]
+      };
+    }
+
+    const primaryStartPointId = pointIdForTarget(pointTargetIds, {
+      entityId: primaryEntity.id,
+      role: "start"
+    });
+    const primaryEndPointId = pointIdForTarget(pointTargetIds, {
+      entityId: primaryEntity.id,
+      role: "end"
+    });
+    const secondaryStartPointId = pointIdForTarget(pointTargetIds, {
+      entityId: secondaryEntity.id,
+      role: "start"
+    });
+    const secondaryEndPointId = pointIdForTarget(pointTargetIds, {
+      entityId: secondaryEntity.id,
+      role: "end"
+    });
+
+    if (
+      !primaryStartPointId ||
+      !primaryEndPointId ||
+      !secondaryStartPointId ||
+      !secondaryEndPointId
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Line-pair constraint endpoints cannot be mapped to solver points.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryLineEntityId,
+            expected: "line start and end solver points for both lines",
+            received: "missing endpoint"
+          })
+        ]
+      };
+    }
+
+    return {
+      constraint: {
+        id: constraint.id,
+        kind: constraint.kind,
+        primaryStartPointId,
+        primaryEndPointId,
+        secondaryStartPointId,
+        secondaryEndPointId
+      },
+      diagnostics: []
+    };
+  }
+
   return {
     constraint: {
       id: constraint.id,
@@ -589,8 +669,6 @@ function mapDeferredConstraintKind(
   kind: SketchConstraintSnapshot["kind"]
 ): SketchSolveDeferredConstraintKind {
   if (
-    kind === "parallel" ||
-    kind === "perpendicular" ||
     kind === "tangent" ||
     kind === "concentric" ||
     kind === "equalLength" ||
@@ -601,7 +679,7 @@ function mapDeferredConstraintKind(
     return kind;
   }
 
-  return "parallel";
+  return "tangent";
 }
 
 function pointIdForTarget(

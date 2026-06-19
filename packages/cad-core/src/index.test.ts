@@ -20447,14 +20447,14 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
-  it("reports parallel and perpendicular as explicit solver-package deferred constraints", () => {
+  it("reports parallel and perpendicular as solver-supported line-pair constraints", () => {
     const engine = new CadEngine();
 
     engine.applyBatch([
       {
         op: "sketch.create",
         id: "sketch_1",
-        name: "Deferred solver",
+        name: "Line-pair solver",
         plane: "XY"
       },
       {
@@ -20501,25 +20501,24 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const response = readSketchSolverStatus(engine, "sketch_1");
 
     expect(response.solver).toMatchObject({
-      numericalSolverStatus: "unsupported",
+      numericalSolverStatus: "under-defined",
       numericalSolverEngine: "@web-cad/sketch-solver",
       modelBuilt: true,
       solverRan: true,
-      canSolveNumerically: false,
-      residualCount: 0
+      canSolveNumerically: true,
+      residualCount: 2
     });
+    expect(
+      response.diagnostics.some(
+        (diagnostic) =>
+          diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT" &&
+          (diagnostic.sketchConstraintId === "parallel_lines" ||
+            diagnostic.sketchConstraintId === "perpendicular_lines")
+      )
+    ).toBe(false);
     expect(response.diagnostics).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
-          sketchConstraintId: "parallel_lines",
-          constraintKind: "parallel"
-        }),
-        expect.objectContaining({
-          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
-          sketchConstraintId: "perpendicular_lines",
-          constraintKind: "perpendicular"
-        })
+        expect.objectContaining({ code: "SKETCH_SOLVER_UNDER_DEFINED" })
       ])
     );
     expect(engine.exportProject().schemaVersion).toBe(

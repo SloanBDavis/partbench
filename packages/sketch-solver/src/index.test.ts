@@ -46,7 +46,9 @@ describe("sketch-solver", () => {
         "coincident",
         "horizontal",
         "vertical",
-        "midpoint"
+        "midpoint",
+        "parallel",
+        "perpendicular"
       ],
       supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
       deferredConstraintKinds: expect.arrayContaining([
@@ -58,6 +60,9 @@ describe("sketch-solver", () => {
         "symmetry"
       ])
     });
+    expect(getSketchSolverCapabilities().deferredConstraintKinds).not.toEqual(
+      expect.arrayContaining(["parallel", "perpendicular"])
+    );
   });
 
   it("solves a fixed point and does not mutate input", () => {
@@ -149,6 +154,118 @@ describe("sketch-solver", () => {
     expect(vertical.status).toBe("under-defined");
     expect(point(horizontal.points, "h1")[1]).toBeCloseTo(0, 6);
     expect(point(vertical.points, "v1")[0]).toBeCloseTo(0, 6);
+  });
+
+  it("solves parallel line-pair constraints with fixed anchors and a line length", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [2, 3] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [0, 1]
+        },
+        {
+          id: "parallel_lines",
+          kind: "parallel",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        }
+      ],
+      dimensions: [
+        {
+          id: "secondary_length",
+          kind: "lineLength",
+          startPointId: "secondary_start",
+          endPointId: "secondary_end",
+          value: 3
+        }
+      ]
+    });
+
+    const start = point(result.points, "secondary_start");
+    const end = point(result.points, "secondary_end");
+    expect(result.status).toBe("converged");
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+    expect(end[1]).toBeCloseTo(start[1], 6);
+    expect(Math.hypot(end[0] - start[0], end[1] - start[1])).toBeCloseTo(3, 6);
+  });
+
+  it("solves perpendicular line-pair constraints with fixed anchors and a line length", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [1, 1] },
+        { id: "secondary_end", initial: [3, 3] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [1, 1]
+        },
+        {
+          id: "perpendicular_lines",
+          kind: "perpendicular",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        }
+      ],
+      dimensions: [
+        {
+          id: "secondary_length",
+          kind: "lineLength",
+          startPointId: "secondary_start",
+          endPointId: "secondary_end",
+          value: 2
+        }
+      ]
+    });
+
+    const start = point(result.points, "secondary_start");
+    const end = point(result.points, "secondary_end");
+    expect(result.status).toBe("converged");
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+    expect(end[0]).toBeCloseTo(start[0], 6);
+    expect(Math.hypot(end[0] - start[0], end[1] - start[1])).toBeCloseTo(2, 6);
   });
 
   it("solves line length and point distance dimensions", () => {
@@ -373,6 +490,124 @@ describe("sketch-solver", () => {
     expect(result.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+  });
+
+  it("reports conflicting fixed line-pair constraints structurally", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [0, 4] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [0, 1]
+        },
+        {
+          id: "fix_secondary_end",
+          kind: "fixedPoint",
+          pointId: "secondary_end",
+          value: [0, 4]
+        },
+        {
+          id: "parallel_conflict",
+          kind: "parallel",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+
+    expect(result.status).toBe("conflicting");
+    expect(result.converged).toBe(false);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+  });
+
+  it("reports missing and zero-length line-pair targets as structured failures", () => {
+    const missing = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] }
+      ],
+      constraints: [
+        {
+          id: "parallel_missing",
+          kind: "parallel",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "missing"
+        }
+      ]
+    });
+    const zeroLength = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [0, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [2, 1] }
+      ],
+      constraints: [
+        {
+          id: "perpendicular_zero_length",
+          kind: "perpendicular",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        }
+      ]
+    });
+
+    expect(missing.status).toBe("failed");
+    expect(missing.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sourceType: "constraint",
+          sourceId: "parallel_missing",
+          targetId: "missing"
+        })
+      ])
+    );
+    expect(zeroLength.status).toBe("failed");
+    expect(zeroLength.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "perpendicular_zero_length",
+          constraintKind: "perpendicular"
+        })
       ])
     );
   });

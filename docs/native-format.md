@@ -1503,6 +1503,12 @@ package read/write helpers without changing project source format:
   package layout fields: fixed, coincident, horizontal, vertical, midpoint,
   parallel, perpendicular, line length, and circle radius source records remain
   in the existing document tables; point-distance dimensions remain deferred.
+- V11 Tranche D3A adds pure numerical solver residual support for existing
+  source-backed parallel and perpendicular line constraints. Cad-core maps the
+  existing line-pair source records into the normalized solver package model;
+  solved coordinates remain query output only, no source schema after
+  `web-cad.project.v17` is introduced, and `.wcad` package layout remains
+  unchanged.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over
