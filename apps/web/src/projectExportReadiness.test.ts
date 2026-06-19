@@ -81,6 +81,36 @@ describe("projectExportReadiness", () => {
     ]);
   });
 
+  it("pluralizes visualization body export counts", () => {
+    const display = createProjectExportReadinessDisplay(
+      createExportReadinessResponse(),
+      {
+        status: "supported",
+        available: true,
+        detail:
+          "GLB visualization export is available for ready derived display meshes.",
+        limitation:
+          "Ready derived visualization meshes can be written as a transient GLB artifact.",
+        nextStep:
+          "Download the GLB visualization artifact from the Project panel.",
+        exportableBodyCount: 2,
+        skippedBodyCount: 2,
+        vertexCount: 48,
+        triangleCount: 24
+      }
+    );
+
+    const glbRow = display.formatRows.find((row) => row.id === "glb");
+
+    expect(glbRow?.detail).toBe(
+      "Mesh/GLB visualization export is available for 2 ready visualization bodies."
+    );
+    expect(glbRow?.limitation).toBe(
+      "48 vertices and 24 triangles will be written as display output. 2 bodies skipped: Ready derived visualization meshes can be written as a transient GLB artifact."
+    );
+    expect(glbRow?.limitation).not.toContain("bodyies");
+  });
+
   it("keeps public source and derived boundary wording implementation-neutral", () => {
     const display = createProjectExportReadinessDisplay(
       createExportReadinessResponse()

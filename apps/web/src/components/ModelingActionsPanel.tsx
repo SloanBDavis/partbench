@@ -2646,7 +2646,7 @@ function formatModelingSelectionSummary(
             ? "Result body"
             : context.body.id),
         detail: context.feature
-          ? `${formatFeatureKind(context.feature)} feature`
+          ? formatFeatureBodySummary(context.feature)
           : "Generated body"
       };
     case "generatedReference":
@@ -2657,6 +2657,30 @@ function formatModelingSelectionSummary(
           context.reference.description ??
           formatGeneratedReferenceKind(context.reference.kind)
       };
+  }
+}
+
+function formatFeatureBodySummary(feature: CadFeatureSummary): string {
+  if (feature.kind === "extrude") {
+    return `Extrude ${formatExtrudeOperationModeLabel(feature.operationMode)} result`;
+  }
+
+  return `${formatFeatureKind(feature)} feature`;
+}
+
+function formatExtrudeOperationModeLabel(
+  operationMode: Extract<
+    CadFeatureSummary,
+    { kind: "extrude" }
+  >["operationMode"]
+): string {
+  switch (operationMode) {
+    case "newBody":
+      return "new body";
+    case "cut":
+      return "cut body";
+    case "add":
+      return "add to body";
   }
 }
 

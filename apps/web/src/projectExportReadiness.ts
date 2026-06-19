@@ -93,12 +93,12 @@ function createFormatRow(
       status: visualizationExport.status,
       statusLabel: getExportReadinessStatusLabel(visualizationExport.status),
       detail: visualizationExport.available
-        ? `${format.label} export is available for ${visualizationExport.exportableBodyCount} ready visualization body${visualizationExport.exportableBodyCount === 1 ? "" : "ies"}.`
+        ? `${format.label} export is available for ${formatVisualizationBodyCount(visualizationExport.exportableBodyCount)}.`
         : visualizationExport.detail,
       limitation: visualizationExport.available
         ? `${visualizationExport.vertexCount} vertices and ${visualizationExport.triangleCount} triangles will be written as display output.${
             visualizationExport.skippedBodyCount > 0
-              ? ` ${visualizationExport.skippedBodyCount} body${visualizationExport.skippedBodyCount === 1 ? "" : "ies"} skipped: ${visualizationExport.limitation}`
+              ? ` ${formatBodyCount(visualizationExport.skippedBodyCount)} skipped: ${visualizationExport.limitation}`
               : ""
           }`
         : visualizationExport.limitation,
@@ -136,6 +136,14 @@ function createFormatRow(
           ? "Use the STEP download action from Project/File."
           : "Implement the file writer before enabling downloads."
   };
+}
+
+function formatBodyCount(count: number): string {
+  return `${count} ${count === 1 ? "body" : "bodies"}`;
+}
+
+function formatVisualizationBodyCount(count: number): string {
+  return `${count} ready visualization ${count === 1 ? "body" : "bodies"}`;
 }
 
 function chooseDisplayStatus(

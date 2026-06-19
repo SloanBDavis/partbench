@@ -206,11 +206,79 @@ describe("ModelingActionsPanel", () => {
     );
 
     expect(markup).toContain("Body actions");
+    expect(markup).toContain("Extrude new body result");
     expect(markup).toContain("Source sketch");
     expect(markup).toContain("Source profile");
     expect(markup).toContain("Delete feature");
     expect(markup).toContain("Sketch on face");
     expect(markup).not.toContain("feat_rect");
+  });
+
+  it("includes extrude operation modes in selected body summaries", () => {
+    const scenarios = [
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        operationMode: "cut",
+        expected: "Extrude cut body result"
+      },
+      {
+        bodyId: "body_add",
+        featureId: "feat_add",
+        operationMode: "add",
+        expected: "Extrude add to body result"
+      }
+    ] as const;
+
+    for (const scenario of scenarios) {
+      const body: CadBodySnapshot = {
+        id: scenario.bodyId,
+        kind: "solid",
+        partId: "part_default",
+        featureId: scenario.featureId,
+        name: scenario.bodyId,
+        source: {
+          type: "sketchExtrudeFeature",
+          featureId: scenario.featureId,
+          sketchId: "sketch_1",
+          entityId: "rect_1",
+          profileKind: "rectangle"
+        }
+      };
+      const feature: CadFeatureSummary = {
+        id: scenario.featureId,
+        kind: "extrude",
+        partId: "part_default",
+        bodyId: scenario.bodyId,
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        profileKind: "rectangle",
+        depth: 1,
+        side: "positive",
+        operationMode: scenario.operationMode,
+        targetBodyId: "body_base",
+        source: {
+          type: "sketchEntity",
+          sketchId: "sketch_1",
+          entityId: "rect_1"
+        }
+      };
+      const context = {
+        selectionKind: "body" as const,
+        body,
+        feature
+      };
+      const actions = deriveModelingActions({ context });
+      const markup = renderToStaticMarkup(
+        createElement(ModelingActionsPanel, {
+          actions,
+          context
+        })
+      );
+
+      expect(markup).toContain(scenario.expected);
+      expect(markup).not.toContain("Extrude feature");
+    }
   });
 
   it("renders source axis recovery for selected revolve bodies", () => {
