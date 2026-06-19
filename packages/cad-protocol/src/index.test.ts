@@ -1346,6 +1346,8 @@ describe("cad-protocol", () => {
       solver: {
         engine: "current-direct-evaluator",
         numericalSolverStatus: "deferred",
+        modelBuilt: false,
+        solverRan: false,
         canSolveNumerically: false,
         deterministic: true,
         workerReady: false,

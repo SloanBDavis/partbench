@@ -2410,6 +2410,8 @@ export type CadSketchSolverDiagnosticSeverity =
 
 export type CadSketchSolverDiagnosticCode =
   | "SKETCH_SOLVER_STATUS_READY"
+  | "SKETCH_SOLVER_NUMERICAL_STATUS_READY"
+  | "SKETCH_SOLVER_MODEL_BUILT"
   | "SKETCH_SOLVER_MISSING_TARGET"
   | "SKETCH_SOLVER_UNSUPPORTED_ENTITY"
   | "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
@@ -2602,10 +2604,30 @@ export interface CadSketchSolverSourceContract {
 
 export interface CadSketchSolverEngineSummary {
   readonly engine: "current-direct-evaluator";
-  readonly numericalSolverStatus: "deferred";
-  readonly canSolveNumerically: false;
+  readonly numericalSolverStatus:
+    | "deferred"
+    | "not-run"
+    | "converged"
+    | "under-defined"
+    | "over-defined"
+    | "conflicting"
+    | "failed"
+    | "unsupported";
+  readonly numericalSolverEngine?: "@web-cad/sketch-solver";
+  readonly numericalSolverModelVersion?: "partbench.sketch-solver.v1";
+  readonly modelBuilt: boolean;
+  readonly solverRan: boolean;
+  readonly canSolveNumerically: boolean;
   readonly deterministic: true;
   readonly workerReady: false;
+  readonly variableCount?: number;
+  readonly residualCount?: number;
+  readonly degreesOfFreedomEstimate?: number;
+  readonly iterations?: number;
+  readonly maxResidual?: number;
+  readonly rmsResidual?: number;
+  readonly diagnosticCount?: number;
+  readonly diagnostics?: readonly CadSketchSolverDiagnostic[];
   readonly diagnostic: CadSketchSolverDiagnostic;
 }
 

@@ -1494,12 +1494,17 @@ package read/write helpers without changing project source format:
   `.wcad` layout, commit solved geometry, or introduce `web-cad.project.v17`.
 - V11 Tranche C adds `web-cad.project.v17` for advanced sketch constraint
   source records while keeping `.wcad` package layout unchanged.
+- V11 Tranche D1 connects cad-core `sketch.solverStatus` to the pure solver
+  package through normalized source mapping. The numerical status is query-only:
+  solved coordinates are not committed, no schema changes are introduced, and
+  `.wcad` package layout remains unchanged.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over
   the historical release fixture catalog.
-- V17 source records remain source intent only until later solver-command and
-  numerical-support tranches make them creatable and solved.
+- V17 source records remain source intent only until later solver-command
+  tranches make them creatable and fully solved beyond the current D1
+  unsupported/deferred numerical status.
 
 ## Long-Term Native Package Direction
 

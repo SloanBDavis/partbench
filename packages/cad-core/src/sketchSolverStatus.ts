@@ -2,6 +2,7 @@ import {
   WCAD_PACKAGE_VERSION,
   type CadOpsVersion,
   type CadQueryResponse,
+  type CadSketchSolverEngineSummary,
   type CadSketchProfileCandidateSummary,
   type CadSketchProfileValiditySummary,
   type CadSketchSolverConstraintSummary,
@@ -32,6 +33,10 @@ import {
   type SketchSolverEvaluation,
   type SketchSolverSketch
 } from "./sketchSolver";
+import {
+  runSketchSolverPackageProbe,
+  type SketchSolverPackageProbe
+} from "./sketchSolverPackageMapping";
 
 const SOURCE_BOUNDARY_NOTE =
   "V11 sketch solver status is derived from authoritative sketch entities, dimensions, constraints, profile source, and current project schema metadata.";
@@ -65,6 +70,7 @@ export function createSketchSolverStatusResponse({
   { readonly ok: true; readonly query: "sketch.solverStatus" }
 > {
   const evaluation = evaluateSketch(document, sketch);
+  const solverProbe = runSketchSolverPackageProbe(document, sketch);
   const status = mapEvaluationStatus(evaluation.status);
   const entities = [...sketch.entities.values()].map((entity) =>
     createEntitySummary(sketch.id, entity)
@@ -75,16 +81,17 @@ export function createSketchSolverStatusResponse({
     createDeferredConstraintSummary(sketch.id, kind)
   );
   const profileValidity = createProfileValidity(sketch, evaluation, status);
+  const solverModelDiagnostic = createSolverModelBuildDiagnostic(
+    sketch.id,
+    solverProbe
+  );
+  const numericalSolverDiagnostic = createNumericalSolverDiagnostic(
+    sketch.id,
+    solverProbe
+  );
   const diagnostics = [
-    createDiagnostic({
-      code: "SKETCH_SOLVER_NUMERICAL_SOLVER_DEFERRED",
-      severity: "warning",
-      message:
-        "The V11 numerical sketch solver is not implemented in Tranche A; this query reports current source/evaluator readiness only.",
-      sketchId: sketch.id,
-      expected: "custom 2D numerical solver boundary",
-      received: "current direct sketch evaluator"
-    }),
+    solverModelDiagnostic,
+    numericalSolverDiagnostic,
     createDiagnostic({
       code: "SKETCH_SOLVER_PREVIEW_DEFERRED",
       severity: "info",
@@ -111,6 +118,7 @@ export function createSketchSolverStatusResponse({
     ...evaluation.issues.map((issue) =>
       createDiagnosticFromEvaluationIssue(sketch.id, issue)
     ),
+    ...solverProbe.diagnostics,
     ...profileValidity.diagnostics,
     ...deferredConstraints.map((entry) => entry.diagnostic)
   ];
@@ -124,21 +132,7 @@ export function createSketchSolverStatusResponse({
     plane: evaluation.plane,
     status,
     readiness: chooseReadiness(status),
-    solver: {
-      engine: "current-direct-evaluator",
-      numericalSolverStatus: "deferred",
-      canSolveNumerically: false,
-      deterministic: true,
-      workerReady: false,
-      diagnostic:
-        diagnostics[0] ??
-        createDiagnostic({
-          code: "SKETCH_SOLVER_NOT_RUN",
-          severity: "warning",
-          message: "Sketch solver status did not run.",
-          sketchId: sketch.id
-        })
-    },
+    solver: createSolverEngineSummary(solverProbe, numericalSolverDiagnostic),
     entityCount: entities.length,
     entities,
     dimensionCount: dimensions.length,
@@ -262,6 +256,169 @@ function createDeferredConstraintSummary(
     status: "deferred",
     requiresProjectSchemaMigration: true,
     nextProjectSchemaVersion: "web-cad.project.v17",
+    diagnostic
+  };
+}
+
+function createSolverModelBuildDiagnostic(
+  sketchId: SketchId,
+  probe: SketchSolverPackageProbe
+): CadSketchSolverDiagnostic {
+  if (probe.modelBuilt && probe.model) {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_MODEL_BUILT",
+      severity: "info",
+      message:
+        "Cad-core mapped authoritative sketch source into a normalized @web-cad/sketch-solver model.",
+      sketchId,
+      expected: "document-source-backed normalized solver model",
+      received: `${probe.model.points.length} point variable(s), ${
+        probe.model.scalars?.length ?? 0
+      } scalar variable(s), ${
+        probe.model.constraints?.length ?? 0
+      } constraint(s), ${probe.model.dimensions?.length ?? 0} dimension(s)`
+    });
+  }
+
+  return createDiagnostic({
+    code: "SKETCH_SOLVER_NOT_RUN",
+    severity: "warning",
+    message:
+      "Cad-core could not build a normalized @web-cad/sketch-solver model.",
+    sketchId,
+    expected: "document-source-backed normalized solver model",
+    received: "not built"
+  });
+}
+
+function createNumericalSolverDiagnostic(
+  sketchId: SketchId,
+  probe: SketchSolverPackageProbe
+): CadSketchSolverDiagnostic {
+  const status = probe.result?.status ?? "not-run";
+
+  if (status === "converged") {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_NUMERICAL_STATUS_READY",
+      severity: "info",
+      message:
+        "The normalized sketch source ran through @web-cad/sketch-solver and converged.",
+      sketchId,
+      expected: "converged solver package result",
+      received: status
+    });
+  }
+
+  if (status === "under-defined") {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_UNDER_DEFINED",
+      severity: "warning",
+      message:
+        "The normalized sketch source ran through @web-cad/sketch-solver and remains under-defined.",
+      sketchId,
+      expected:
+        "enough supported constraints or dimensions to define all variables",
+      received: status
+    });
+  }
+
+  if (status === "over-defined") {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_OVER_DEFINED",
+      severity: "warning",
+      message:
+        "The normalized sketch source ran through @web-cad/sketch-solver and appears over-defined.",
+      sketchId,
+      expected: "independent supported constraints and dimensions",
+      received: status
+    });
+  }
+
+  if (status === "conflicting") {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_CONFLICTING",
+      severity: "blocker",
+      message:
+        "The normalized sketch source ran through @web-cad/sketch-solver and has conflicting constraints or dimensions.",
+      sketchId,
+      expected: "converged solver package result",
+      received: status
+    });
+  }
+
+  if (status === "unsupported") {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+      severity: "warning",
+      message:
+        "The normalized sketch source includes constraints that @web-cad/sketch-solver reports as unsupported or deferred.",
+      sketchId,
+      expected: "supported D1 numerical constraint subset",
+      received: status
+    });
+  }
+
+  if (status === "failed") {
+    return createDiagnostic({
+      code: "SKETCH_SOLVER_FAILED",
+      severity: "blocker",
+      message:
+        "The normalized sketch source ran through @web-cad/sketch-solver but did not produce a usable numerical result.",
+      sketchId,
+      expected: "converged, under-defined, over-defined, or unsupported result",
+      received: status
+    });
+  }
+
+  return createDiagnostic({
+    code: "SKETCH_SOLVER_NOT_RUN",
+    severity: "info",
+    message:
+      "The normalized sketch source did not run through @web-cad/sketch-solver.",
+    sketchId,
+    expected: "solver package execution",
+    received: status
+  });
+}
+
+function createSolverEngineSummary(
+  probe: SketchSolverPackageProbe,
+  diagnostic: CadSketchSolverDiagnostic
+): CadSketchSolverEngineSummary {
+  const result = probe.result;
+  const modelVersion = result?.version ?? probe.model?.version;
+  const canSolveNumerically =
+    result !== undefined &&
+    result.status !== "not-run" &&
+    result.status !== "failed" &&
+    result.status !== "unsupported";
+
+  return {
+    engine: "current-direct-evaluator",
+    numericalSolverStatus: result?.status ?? "not-run",
+    ...(modelVersion
+      ? {
+          numericalSolverEngine: "@web-cad/sketch-solver" as const,
+          numericalSolverModelVersion: modelVersion
+        }
+      : {}),
+    modelBuilt: probe.modelBuilt,
+    solverRan: probe.solverRan,
+    canSolveNumerically,
+    deterministic: true,
+    workerReady: false,
+    ...(result
+      ? {
+          variableCount: result.variableCount,
+          residualCount: result.residualCount,
+          degreesOfFreedomEstimate: result.degreesOfFreedomEstimate,
+          iterations: result.iterations,
+          maxResidual: result.maxResidual,
+          rmsResidual: result.rmsResidual
+        }
+      : {}),
+    diagnosticCount: probe.diagnosticCount,
+    diagnostics: probe.diagnostics,
     diagnostic
   };
 }

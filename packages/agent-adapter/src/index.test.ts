@@ -2033,8 +2033,12 @@ describe("agent-adapter", () => {
       readiness: "ready",
       solver: {
         engine: "current-direct-evaluator",
-        numericalSolverStatus: "deferred",
-        canSolveNumerically: false
+        numericalSolverStatus: "under-defined",
+        numericalSolverEngine: "@web-cad/sketch-solver",
+        numericalSolverModelVersion: "partbench.sketch-solver.v1",
+        modelBuilt: true,
+        solverRan: true,
+        canSolveNumerically: true
       },
       entityCount: 1,
       dimensionCount: 1,

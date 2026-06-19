@@ -19820,10 +19820,16 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       readiness: "ready",
       solver: {
         engine: "current-direct-evaluator",
-        numericalSolverStatus: "deferred",
-        canSolveNumerically: false,
+        numericalSolverStatus: "converged",
+        numericalSolverEngine: "@web-cad/sketch-solver",
+        numericalSolverModelVersion: "partbench.sketch-solver.v1",
+        modelBuilt: true,
+        solverRan: true,
+        canSolveNumerically: true,
         deterministic: true,
-        workerReady: false
+        workerReady: false,
+        variableCount: 2,
+        residualCount: 2
       },
       entityCount: 1,
       entities: [
@@ -19922,12 +19928,21 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(response.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          code: "SKETCH_SOLVER_NUMERICAL_SOLVER_DEFERRED",
-          severity: "warning"
+          code: "SKETCH_SOLVER_MODEL_BUILT",
+          severity: "info"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_NUMERICAL_STATUS_READY",
+          severity: "info"
         }),
         expect.objectContaining({
           code: "SKETCH_SOLVER_SCHEMA_V17_DEFERRED",
           severity: "info"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+          sketchDimensionId: "dim_w",
+          received: "rectangle.width"
         }),
         expect.objectContaining({
           code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
@@ -19945,6 +19960,271 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       constraints: response.constraints,
       sourceContract: response.sourceContract
     });
+  });
+
+  it("runs the sketch solver package for mapped point, line, circle, dimension, and constraint source", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "Mapped solver",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [3, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_2",
+        start: [5, 0],
+        end: [5, 2]
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [1, 1],
+        radius: 2
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_mid",
+        point: [1.5, 0]
+      },
+      {
+        op: "sketch.addPoint",
+        sketchId: "sketch_1",
+        id: "point_coincident",
+        point: [5, 0]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_line_start",
+        name: "Fix line start",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "horizontal_line",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        kind: "horizontal",
+        entityId: "line_1"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "vertical_line",
+        name: "Vertical line",
+        sketchId: "sketch_1",
+        kind: "vertical",
+        entityId: "line_2"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "midpoint_line",
+        name: "Midpoint line",
+        sketchId: "sketch_1",
+        kind: "midpoint",
+        lineEntityId: "line_1",
+        target: { entityId: "point_mid", role: "position" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "coincident_point",
+        name: "Coincident point",
+        sketchId: "sketch_1",
+        kind: "coincident",
+        primaryTarget: { entityId: "point_coincident", role: "position" },
+        secondaryTarget: { entityId: "line_2", role: "start" }
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_line_length",
+        name: "Line length",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        value: 3
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_circle_radius",
+        name: "Circle radius",
+        sketchId: "sketch_1",
+        entityId: "circle_1",
+        target: { entityKind: "circle", role: "radius" },
+        value: 2
+      }
+    ]);
+
+    const beforeProject = exportCadProjectJson(engine);
+    const response = readSketchSolverStatus(engine, "sketch_1");
+    const afterProject = exportCadProjectJson(engine);
+
+    expect(response.solver).toMatchObject({
+      numericalSolverStatus: "under-defined",
+      numericalSolverEngine: "@web-cad/sketch-solver",
+      numericalSolverModelVersion: "partbench.sketch-solver.v1",
+      modelBuilt: true,
+      solverRan: true,
+      canSolveNumerically: true,
+      variableCount: 15,
+      residualCount: 10
+    });
+    expect(response.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "fix_line_start",
+          kind: "fixed",
+          supportedByCurrentEvaluator: true
+        }),
+        expect.objectContaining({
+          constraintId: "coincident_point",
+          kind: "coincident",
+          supportedByCurrentEvaluator: true
+        }),
+        expect.objectContaining({
+          constraintId: "horizontal_line",
+          kind: "horizontal",
+          supportedByCurrentEvaluator: true
+        }),
+        expect.objectContaining({
+          constraintId: "vertical_line",
+          kind: "vertical",
+          supportedByCurrentEvaluator: true
+        }),
+        expect.objectContaining({
+          constraintId: "midpoint_line",
+          kind: "midpoint",
+          supportedByCurrentEvaluator: true
+        })
+      ])
+    );
+    expect(response.dimensions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimensionId: "dim_line_length",
+          status: "healthy",
+          effectiveValue: 3
+        }),
+        expect.objectContaining({
+          dimensionId: "dim_circle_radius",
+          status: "healthy",
+          effectiveValue: 2
+        })
+      ])
+    );
+    expect(response.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MODEL_BUILT",
+          received:
+            "7 point variable(s), 1 scalar variable(s), 5 constraint(s), 2 dimension(s)"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNDER_DEFINED",
+          received: "under-defined"
+        })
+      ])
+    );
+    expect(afterProject).toBe(beforeProject);
+    expect(engine.exportProject().schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expectNoDerivedInfraIdentifiers({
+      solver: response.solver,
+      diagnostics: response.diagnostics
+    });
+  });
+
+  it("reports parallel and perpendicular as explicit solver-package deferred constraints", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "Deferred solver",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [2, 0]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_2",
+        start: [0, 1],
+        end: [4, 1]
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_3",
+        start: [1, 0],
+        end: [1, 3]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "parallel_lines",
+        name: "Parallel lines",
+        sketchId: "sketch_1",
+        kind: "parallel",
+        primaryLineEntityId: "line_1",
+        secondaryLineEntityId: "line_2"
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "perpendicular_lines",
+        name: "Perpendicular lines",
+        sketchId: "sketch_1",
+        kind: "perpendicular",
+        primaryLineEntityId: "line_1",
+        secondaryLineEntityId: "line_3"
+      }
+    ]);
+
+    const response = readSketchSolverStatus(engine, "sketch_1");
+
+    expect(response.solver).toMatchObject({
+      numericalSolverStatus: "unsupported",
+      numericalSolverEngine: "@web-cad/sketch-solver",
+      modelBuilt: true,
+      solverRan: true,
+      canSolveNumerically: false,
+      residualCount: 0
+    });
+    expect(response.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+          sketchConstraintId: "parallel_lines",
+          constraintKind: "parallel"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+          sketchConstraintId: "perpendicular_lines",
+          constraintKind: "perpendicular"
+        })
+      ])
+    );
+    expect(engine.exportProject().schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
   });
 
   it("preserves V17 advanced sketch constraint source records and reports them unsupported", () => {

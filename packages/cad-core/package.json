@@ -12,7 +12,8 @@
     }
   },
   "dependencies": {
-    "@web-cad/cad-protocol": "workspace:*"
+    "@web-cad/cad-protocol": "workspace:*",
+    "@web-cad/sketch-solver": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

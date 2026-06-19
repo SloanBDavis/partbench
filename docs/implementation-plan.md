@@ -1847,26 +1847,33 @@ Use these decisions when drafting or implementing V11 tranches:
    and `sketch.solverStatus` reports these records as source-backed but
    unsupported/deferred until later solver-command and numerical support
    tranches.
-4. **Core Constraint Commands And Solver Status** - route coincident,
+4. **Cad-Core Solver Package Mapping And Core Solver Status** - implemented as
+   the first cad-core integration with `packages/sketch-solver`.
+   `sketch.solverStatus` builds a normalized solver-package model from
+   authoritative sketch source for the first supported subset, reports solver
+   package model version, build/run status, numerical solve status, residual
+   counts, and diagnostics, and remains query-only/non-mutating. V16/V17 JSON
+   and `.wcad` behavior are unchanged.
+5. **Core Constraint Commands And Solver Status** - route coincident,
    horizontal, vertical, fixed, distance, radius, midpoint, parallel, and
    perpendicular create/update/delete behavior through CADOps and the unified
    solver status.
-5. **Advanced Geometric Constraints** - add tangent, concentric, equal length,
+6. **Advanced Geometric Constraints** - add tangent, concentric, equal length,
    equal radius, angle, and symmetry with pure solver fixtures and structured
    unsupported/conflict diagnostics.
-6. **Profile Validity And Feature Rebuild Integration** - make solved sketch
+7. **Profile Validity And Feature Rebuild Integration** - make solved sketch
    status feed profile validity, feature editability, dependency graph,
    reference health, and rebuild plan behavior.
-7. **Sketch Editing Product UI** - add compact constraint/dimension/solver
+8. **Sketch Editing Product UI** - add compact constraint/dimension/solver
    controls without reintroducing large debug panels or viewport-blocking
    overlays.
-8. **Drag Solve Preview And Commit** - support endpoint, line, circle-center,
+9. **Drag Solve Preview And Commit** - support endpoint, line, circle-center,
    and radius dragging as non-mutating previews followed by CADOps commits.
-9. **Constraint Inference** - add conservative session-only inference while
+10. **Constraint Inference** - add conservative session-only inference while
    drawing or dragging, with source commits only when accepted through CADOps.
-10. **Agent/MCP Sketch Workflows** - expose solver status, constraint/dimension
+11. **Agent/MCP Sketch Workflows** - expose solver status, constraint/dimension
     edits, dry-runs, and diagnostics through thin wrappers.
-11. **Release Hardening And Long Sketch Smokes** - add stress fixtures,
+12. **Release Hardening And Long Sketch Smokes** - add stress fixtures,
     combined browser workflows, docs cleanup, and a final V11 audit.
 
 ### V11 Scope Guardrails

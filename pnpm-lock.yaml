@@ -84,6 +84,9 @@ importers:
       '@web-cad/cad-protocol':
         specifier: workspace:*
         version: link:../cad-protocol
+      '@web-cad/sketch-solver':
+        specifier: workspace:*
+        version: link:../sketch-solver
 
   packages/cad-protocol: {}
 
@@ -133,6 +136,8 @@ importers:
       '@web-cad/renderer':
         specifier: workspace:*
         version: link:../renderer
+
+  packages/sketch-solver: {}
 
 packages:
 
