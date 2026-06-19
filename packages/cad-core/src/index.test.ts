@@ -20147,6 +20147,306 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("keeps solver status aligned after core constraint and dimension command commits", () => {
+    const engine = new CadEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "Command solver",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_1",
+        id: "circle_1",
+        center: [1, 1],
+        radius: 2
+      }
+    ]);
+
+    const createResult = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "commit",
+      ops: [
+        {
+          op: "sketch.constraint.create",
+          id: "fix_line_start",
+          name: "Fix line start",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "line_1", role: "start" }
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "horizontal_line",
+          name: "Horizontal line",
+          sketchId: "sketch_1",
+          kind: "horizontal",
+          entityId: "line_1"
+        },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_line_length",
+          name: "Line length",
+          sketchId: "sketch_1",
+          entityId: "line_1",
+          target: { entityKind: "line", role: "length" },
+          value: 4
+        },
+        {
+          op: "sketch.constraint.create",
+          id: "fix_circle_center",
+          name: "Fix circle center",
+          sketchId: "sketch_1",
+          kind: "fixed",
+          target: { entityId: "circle_1", role: "center" }
+        },
+        {
+          op: "sketch.dimension.create",
+          id: "dim_circle_radius",
+          name: "Circle radius",
+          sketchId: "sketch_1",
+          entityId: "circle_1",
+          target: { entityKind: "circle", role: "radius" },
+          value: 2
+        }
+      ]
+    });
+
+    expect(createResult).toMatchObject({
+      ok: true,
+      createdSketchConstraintIds: [
+        "fix_line_start",
+        "horizontal_line",
+        "fix_circle_center"
+      ],
+      createdSketchDimensionIds: ["dim_line_length", "dim_circle_radius"]
+    });
+    expect(engine.getTransactions().at(-1)?.diff).toMatchObject({
+      sketchConstraints: {
+        created: expect.arrayContaining([
+          expect.objectContaining({ id: "fix_line_start", kind: "fixed" }),
+          expect.objectContaining({
+            id: "horizontal_line",
+            kind: "horizontal"
+          }),
+          expect.objectContaining({ id: "fix_circle_center", kind: "fixed" })
+        ])
+      },
+      sketchDimensions: {
+        created: expect.arrayContaining([
+          expect.objectContaining({
+            id: "dim_line_length",
+            target: { entityKind: "line", role: "length" }
+          }),
+          expect.objectContaining({
+            id: "dim_circle_radius",
+            target: { entityKind: "circle", role: "radius" }
+          })
+        ])
+      }
+    });
+
+    const convergedStatus = readSketchSolverStatus(engine, "sketch_1");
+    expect(convergedStatus.solver).toMatchObject({
+      numericalSolverStatus: "converged",
+      numericalSolverEngine: "@web-cad/sketch-solver",
+      numericalSolverModelVersion: "partbench.sketch-solver.v1",
+      modelBuilt: true,
+      solverRan: true,
+      canSolveNumerically: true,
+      variableCount: 7,
+      residualCount: 7
+    });
+    expect(convergedStatus.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_NUMERICAL_STATUS_READY",
+          received: "converged"
+        })
+      ])
+    );
+
+    engine.apply({
+      op: "sketch.dimension.rename",
+      id: "dim_line_length",
+      name: "Renamed line length"
+    });
+    engine.apply({
+      op: "sketch.constraint.rename",
+      id: "horizontal_line",
+      name: "Renamed horizontal"
+    });
+    expect(readSketchSolverStatus(engine, "sketch_1").solver).toMatchObject({
+      numericalSolverStatus: "converged",
+      residualCount: 7
+    });
+
+    engine.apply({ op: "sketch.dimension.delete", id: "dim_line_length" });
+    const deletedDimensionStatus = readSketchSolverStatus(engine, "sketch_1");
+    expect(deletedDimensionStatus.solver).toMatchObject({
+      numericalSolverStatus: "under-defined",
+      variableCount: 7,
+      residualCount: 6
+    });
+    expect(deletedDimensionStatus.dimensionCount).toBe(1);
+
+    engine.undo();
+    expect(readSketchSolverStatus(engine, "sketch_1").solver).toMatchObject({
+      numericalSolverStatus: "converged",
+      residualCount: 7
+    });
+    engine.redo();
+    expect(readSketchSolverStatus(engine, "sketch_1").solver).toMatchObject({
+      numericalSolverStatus: "under-defined",
+      residualCount: 6
+    });
+
+    const restored = importCadProject(engine.exportProject());
+    expect(readSketchSolverStatus(restored, "sketch_1").solver).toMatchObject({
+      numericalSolverStatus: "under-defined",
+      residualCount: 6
+    });
+    expect(engine.exportProject().schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expectNoDerivedInfraIdentifiers({
+      solver: deletedDimensionStatus.solver,
+      diagnostics: deletedDimensionStatus.diagnostics
+    });
+  });
+
+  it("keeps solver status unchanged for dry-run and failed core sketch commands", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_1",
+        name: "Dry run solver",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "line_1",
+        start: [0, 0],
+        end: [4, 0]
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "fix_line_start",
+        name: "Fix line start",
+        sketchId: "sketch_1",
+        kind: "fixed",
+        target: { entityId: "line_1", role: "start" }
+      },
+      {
+        op: "sketch.constraint.create",
+        id: "horizontal_line",
+        name: "Horizontal line",
+        sketchId: "sketch_1",
+        kind: "horizontal",
+        entityId: "line_1"
+      },
+      {
+        op: "sketch.dimension.create",
+        id: "dim_line_length",
+        name: "Line length",
+        sketchId: "sketch_1",
+        entityId: "line_1",
+        target: { entityKind: "line", role: "length" },
+        value: 4
+      }
+    ]);
+
+    const beforeProject = exportCadProjectJson(engine);
+    const beforeStatus = readSketchSolverStatus(engine, "sketch_1");
+    expect(beforeStatus.solver).toMatchObject({
+      numericalSolverStatus: "converged",
+      residualCount: 4
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.update",
+            id: "dim_line_length",
+            value: 6
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      modifiedSketchDimensionIds: ["dim_line_length"],
+      modifiedSketchEntityIds: ["line_1"]
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+    expect(readSketchSolverStatus(engine, "sketch_1").solver).toMatchObject(
+      beforeStatus.solver
+    );
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.constraint.create",
+            id: "vertical_conflict",
+            name: "Conflicting vertical",
+            sketchId: "sketch_1",
+            kind: "vertical",
+            entityId: "line_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICTING_SKETCH_CONSTRAINT",
+        sketchConstraintId: "vertical_conflict"
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+    expect(readSketchSolverStatus(engine, "sketch_1").solver).toMatchObject(
+      beforeStatus.solver
+    );
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "sketch.dimension.update",
+            id: "dim_line_length",
+            value: 0
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_SKETCH_DIMENSION" }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+    expect(readSketchSolverStatus(engine, "sketch_1").solver).toMatchObject(
+      beforeStatus.solver
+    );
+  });
+
   it("reports parallel and perpendicular as explicit solver-package deferred constraints", () => {
     const engine = new CadEngine();
 

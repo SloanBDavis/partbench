@@ -1854,10 +1854,15 @@ Use these decisions when drafting or implementing V11 tranches:
    package model version, build/run status, numerical solve status, residual
    counts, and diagnostics, and remains query-only/non-mutating. V16/V17 JSON
    and `.wcad` behavior are unchanged.
-5. **Core Constraint Commands And Solver Status** - route coincident,
-   horizontal, vertical, fixed, distance, radius, midpoint, parallel, and
-   perpendicular create/update/delete behavior through CADOps and the unified
-   solver status.
+5. **Core Constraint Commands And Solver Status** - implemented as the
+   command/status alignment tranche for the current core sketch source subset.
+   Existing CADOps paths for fixed, coincident, horizontal, vertical, midpoint,
+   parallel, perpendicular, line length dimension, and circle radius dimension
+   are covered through solver-status commit, dry-run, failure, undo/redo,
+   JSON/`.wcad`, agent, and MCP paths. Parallel/perpendicular remain
+   source-backed but numerically unsupported/deferred in the pure solver
+   package; point-distance dimensions remain deferred because no durable source
+   target exists yet.
 6. **Advanced Geometric Constraints** - add tangent, concentric, equal length,
    equal radius, angle, and symmetry with pure solver fixtures and structured
    unsupported/conflict diagnostics.

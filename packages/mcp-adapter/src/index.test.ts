@@ -3075,6 +3075,93 @@ describe("mcp-adapter", () => {
         sourceContract: structured.sourceContract
       })
     ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport|gpu/i);
+
+    expect(
+      server.callTool({
+        name: "cad.batch",
+        requestId: "mcp_req_sketch_solver_commit",
+        arguments: {
+          allowCommit: true,
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.constraint.create",
+                id: "mcp_solver_status_fixed_center",
+                name: "Fixed rectangle center",
+                sketchId: "mcp_solver_status_sketch",
+                kind: "fixed",
+                target: {
+                  entityId: "mcp_solver_status_rect",
+                  role: "center"
+                }
+              },
+              {
+                op: "sketch.dimension.create",
+                id: "mcp_solver_status_radius",
+                name: "Circle radius",
+                sketchId: "mcp_solver_status_sketch",
+                entityId: "mcp_solver_status_rect",
+                target: { entityKind: "circle", role: "radius" },
+                value: 2
+              }
+            ]
+          }
+        }
+      })
+    ).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_sketch_solver_commit",
+        createdSketchConstraintIds: ["mcp_solver_status_fixed_center"],
+        createdSketchDimensionIds: ["mcp_solver_status_radius"],
+        modifiedSketchEntityIds: ["mcp_solver_status_rect"]
+      }
+    });
+
+    const committedResult = server.callTool({
+      name: "cad.sketch_solver_status",
+      requestId: "mcp_req_sketch_solver_status_committed",
+      arguments: {
+        sketchId: "mcp_solver_status_sketch"
+      }
+    });
+
+    expect(committedResult).toMatchObject({
+      toolName: "cad.sketch_solver_status",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_sketch_solver_status_committed",
+        query: "sketch.solverStatus",
+        solver: {
+          numericalSolverStatus: "converged",
+          numericalSolverEngine: "@web-cad/sketch-solver",
+          modelBuilt: true,
+          solverRan: true,
+          canSolveNumerically: true,
+          variableCount: 3,
+          residualCount: 3
+        },
+        dimensions: expect.arrayContaining([
+          expect.objectContaining({
+            dimensionId: "mcp_solver_status_radius",
+            effectiveValue: 2,
+            status: "healthy"
+          })
+        ]),
+        constraints: expect.arrayContaining([
+          expect.objectContaining({
+            constraintId: "mcp_solver_status_fixed_center",
+            kind: "fixed",
+            supportedByCurrentEvaluator: true
+          })
+        ])
+      }
+    });
   });
 
   it("returns V10 dependency graph and reference health through MCP tools", () => {

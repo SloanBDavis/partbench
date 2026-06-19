@@ -2067,6 +2067,80 @@ describe("agent-adapter", () => {
         sourceContract: response.sourceContract
       })
     ).not.toMatch(/mesh|occt|opfs|fileHandle|selectionBuffer|viewport|gpu/i);
+
+    expect(
+      executeCadOpsAgentRequest(engine, {
+        requestId: "agent_req_solver_commit",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        permissions: { allowCommit: true },
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.dimension.update",
+              id: "agent_solver_radius",
+              value: 3
+            },
+            {
+              op: "sketch.constraint.create",
+              id: "agent_solver_fixed_center",
+              name: "Fixed circle center",
+              sketchId: "agent_solver_sketch",
+              kind: "fixed",
+              target: { entityId: "agent_solver_circle", role: "center" }
+            }
+          ]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      requestId: "agent_req_solver_commit",
+      createdSketchConstraintIds: ["agent_solver_fixed_center"],
+      modifiedSketchDimensionIds: ["agent_solver_radius"],
+      modifiedSketchEntityIds: ["agent_solver_circle"]
+    });
+
+    const committedStatus = executeCadOpsAgentQueryRequest(engine, {
+      requestId: "agent_req_solver_status_committed",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "sketch.solverStatus",
+          sketchId: "agent_solver_sketch"
+        }
+      }
+    });
+
+    expect(committedStatus).toMatchObject({
+      ok: true,
+      requestId: "agent_req_solver_status_committed",
+      query: "sketch.solverStatus",
+      solver: {
+        numericalSolverStatus: "converged",
+        numericalSolverEngine: "@web-cad/sketch-solver",
+        modelBuilt: true,
+        solverRan: true,
+        canSolveNumerically: true,
+        variableCount: 3,
+        residualCount: 3
+      },
+      dimensions: expect.arrayContaining([
+        expect.objectContaining({
+          dimensionId: "agent_solver_radius",
+          effectiveValue: 3,
+          status: "healthy"
+        })
+      ]),
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "agent_solver_fixed_center",
+          kind: "fixed",
+          supportedByCurrentEvaluator: true
+        })
+      ])
+    });
   });
 
   it("returns one object through adapter query JSON", () => {

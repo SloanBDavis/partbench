@@ -1498,6 +1498,11 @@ package read/write helpers without changing project source format:
   package through normalized source mapping. The numerical status is query-only:
   solved coordinates are not committed, no schema changes are introduced, and
   `.wcad` package layout remains unchanged.
+- V11 Tranche D2 aligns existing core sketch constraint and dimension CADOps
+  command paths with solver-status reporting. It adds no new source schema or
+  package layout fields: fixed, coincident, horizontal, vertical, midpoint,
+  parallel, perpendicular, line length, and circle radius source records remain
+  in the existing document tables; point-distance dimensions remain deferred.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over
