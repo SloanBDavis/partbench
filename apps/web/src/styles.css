@@ -2799,6 +2799,43 @@ button.dimension-status-row {
   min-width: 0;
 }
 
+.generated-reference-browser {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.generated-reference-browser > summary {
+  display: flex;
+  min-width: 0;
+  cursor: pointer;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.generated-reference-browser > summary small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.generated-reference-browser[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.generated-reference-browser > .generated-reference-groups {
+  padding: 8px;
+}
+
 .generated-reference-group {
   min-width: 0;
   overflow: hidden;

@@ -70,7 +70,64 @@ describe("Inspector", () => {
     expect(markup).toContain("Command-ready reference");
     expect(markup).toContain("Stable ID and source");
     expect(markup).toContain("Selected reference");
+    expect(markup).toContain(
+      '<details class="generated-reference-browser"><summary><span>Browse all generated references</span><small>3 references</small></summary>'
+    );
+    expect(markup).toContain(
+      '<details class="generated-reference-group" open=""><summary><span>Faces</span>'
+    );
+    expect(markup.indexOf("Selected reference")).toBeLessThan(
+      markup.indexOf("Browse all generated references")
+    );
     expect(markup).toContain('<optgroup label="Faces">');
+  });
+
+  it("keeps the full generated reference browser collapsed by default", () => {
+    const face = createFace();
+    const edge = createEdge();
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, edge),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, createSelectionReferenceCandidates(face)],
+          [edge.stableId, createSelectionReferenceCandidates(edge)]
+        ]),
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain(
+      '<details class="generated-reference-browser"><summary><span>Browse all generated references</span><small>3 references</small></summary>'
+    );
+    expect(markup).toContain("Choose reference");
+    expect(markup).toContain("Create sketch on face");
+    expect(markup).not.toContain(
+      '<details class="generated-reference-browser" open="">'
+    );
+    expect(markup).not.toContain(
+      '<details class="generated-reference-group" open="">'
+    );
   });
 
   it("renders structured candidate diagnostics for consumed selected references", () => {

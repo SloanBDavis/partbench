@@ -1391,15 +1391,23 @@ function GeneratedReferencesPanel({
               ))}
             </select>
           </label>
-          <GeneratedReferenceGroupsList
-            disabled={disabled}
-            groups={referenceGroups}
-            referenceCandidatesByStableId={referenceCandidatesByStableId}
-            selectedGeneratedReference={selectedGeneratedReference}
-            onSelectReference={selectReference}
-            onUseEdgeForFinish={useEdgeForFinish}
-            onUseFaceForSketch={useFaceForSketch}
-          />
+          <details className="generated-reference-browser">
+            <summary>
+              <span>Browse all generated references</span>
+              <small>
+                {formatReferenceBrowserSummary(referenceItems.length)}
+              </small>
+            </summary>
+            <GeneratedReferenceGroupsList
+              disabled={disabled}
+              groups={referenceGroups}
+              referenceCandidatesByStableId={referenceCandidatesByStableId}
+              selectedGeneratedReference={selectedGeneratedReference}
+              onSelectReference={selectReference}
+              onUseEdgeForFinish={useEdgeForFinish}
+              onUseFaceForSketch={useFaceForSketch}
+            />
+          </details>
         </>
       )}
     </section>
@@ -1510,7 +1518,11 @@ function shouldOpenGeneratedReferenceGroup(
   groupKind: CadGeneratedReference["kind"],
   selectedKind: CadGeneratedReference["kind"] | undefined
 ): boolean {
-  return selectedKind ? groupKind === selectedKind : groupKind === "face";
+  return selectedKind ? groupKind === selectedKind : false;
+}
+
+function formatReferenceBrowserSummary(count: number): string {
+  return `${count} ${count === 1 ? "reference" : "references"}`;
 }
 
 function GeneratedReferenceActionRow({

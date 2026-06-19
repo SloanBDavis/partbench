@@ -97,6 +97,47 @@ describe("StructurePanel", () => {
     expect(markup).not.toContain("generated:face:body_base:startCap");
   });
 
+  it("keeps generated reference tree groups collapsed until a reference is selected", () => {
+    const references = createGeneratedReferences();
+    const face = references.faces[0];
+    const edge = references.edges[0];
+    const markup = renderToStaticMarkup(
+      createElement(StructurePanel, {
+        bodies: [createExtrudeBody("body_base", "feature_base")],
+        features: [createBaseFeature()],
+        generatedReferences: references,
+        health: createHealth(),
+        namedReferences: [],
+        objects: [],
+        parts: [createPart()],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, createSelectionReferenceCandidates(face)],
+          [edge.stableId, createSelectionReferenceCandidates(edge)]
+        ]),
+        selectedId: "body_base",
+        sketches: [createSketch()],
+        units: "mm",
+        onFocusSketch: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelect: () => undefined,
+        onSelectGeneratedReference: () => undefined
+      })
+    );
+
+    expect(markup).toContain(
+      '<details class="model-story-references"><summary class="model-story-references-header"><span>References</span><strong>3</strong></summary>'
+    );
+    expect(markup).not.toContain(
+      '<details class="model-story-references" open="">'
+    );
+    expect(markup).not.toContain(
+      '<details class="model-story-reference-group" open=""><summary><span>Faces</span>'
+    );
+    expect(markup).not.toContain(
+      '<details class="model-story-reference-group" open=""><summary><span>Edges</span>'
+    );
+  });
+
   it("points selected editable feature rows to inspector edit controls", () => {
     const feature = createBaseFeature();
     const markup = renderToStaticMarkup(
