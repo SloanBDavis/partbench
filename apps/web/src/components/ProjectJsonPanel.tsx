@@ -190,26 +190,6 @@ export function ProjectJsonPanel({
           event.currentTarget.value = "";
         }}
       />
-      <section
-        className="project-workflow-section"
-        aria-label="Project contents"
-      >
-        <div className="project-workflow-heading">
-          <h3>Project contents</h3>
-          <span>{workflow.current.sourceLabel}</span>
-        </div>
-        <p className="project-workflow-detail">
-          {workflow.current.sourceDetail}
-        </p>
-        <ProjectSummary
-          title="Current project"
-          summary={workflow.current.summary}
-        />
-      </section>
-      <details className="advanced-options compact project-secondary-details">
-        <summary>Storage availability</summary>
-        <ProjectStorageStatus storageCapabilities={storageCapabilities} />
-      </details>
       {exportReadiness && (
         <ProjectExportReadinessStatus
           disabled={disabled}
@@ -284,6 +264,26 @@ export function ProjectJsonPanel({
           placeholder="Generate, load, or paste Partbench project JSON"
           spellCheck={false}
         />
+      </details>
+      <section
+        className="project-workflow-section"
+        aria-label="Project contents"
+      >
+        <div className="project-workflow-heading">
+          <h3>Project contents</h3>
+          <span>{workflow.current.sourceLabel}</span>
+        </div>
+        <p className="project-workflow-detail">
+          {workflow.current.sourceDetail}
+        </p>
+        <ProjectSummary
+          title="Current project"
+          summary={workflow.current.summary}
+        />
+      </section>
+      <details className="advanced-options compact project-secondary-details">
+        <summary>Storage availability</summary>
+        <ProjectStorageStatus storageCapabilities={storageCapabilities} />
       </details>
       {message && (
         <p
@@ -402,6 +402,23 @@ function ProjectOpfsCacheStatusView({
         <h3>Local mesh cache</h3>
         <span>{getProjectOpfsCacheStatusLabel(status)}</span>
       </div>
+      <div className="button-row compact">
+        <button
+          type="button"
+          onClick={() => void onRefresh()}
+          disabled={disabled}
+        >
+          Refresh cache
+        </button>
+        <button
+          id="project-opfs-cache-clear"
+          type="button"
+          onClick={() => void onClear()}
+          disabled={disabled}
+        >
+          Clear cache
+        </button>
+      </div>
       <p className="project-workflow-detail">
         Optional rebuildable cache for derived visualization data.
       </p>
@@ -420,23 +437,6 @@ function ProjectOpfsCacheStatusView({
           detail={`Health: ${getProjectOpfsCacheHealthLabel(status)}.`}
         />
       </dl>
-      <div className="button-row compact">
-        <button
-          type="button"
-          onClick={() => void onRefresh()}
-          disabled={disabled}
-        >
-          Refresh cache
-        </button>
-        <button
-          id="project-opfs-cache-clear"
-          type="button"
-          onClick={() => void onClear()}
-          disabled={disabled}
-        >
-          Clear cache
-        </button>
-      </div>
       <details className="advanced-options compact">
         <summary>Cache details</summary>
         <dl className="project-workflow-grid">
@@ -494,14 +494,6 @@ function ProjectExportReadinessStatus({
         <h3>Export readiness</h3>
         <span>{display.statusLabel}</span>
       </div>
-      <p className="project-workflow-detail">{display.detail}</p>
-      <dl className="project-workflow-grid">
-        <ProjectWorkflowRow
-          label="Bodies"
-          value={display.bodySummary}
-          detail={display.sourceDetail}
-        />
-      </dl>
       {(stepFormat?.available || visualizationExport) && (
         <div className="button-row compact">
           {stepFormat?.available && (
@@ -534,9 +526,15 @@ function ProjectExportReadinessStatus({
           )}
         </div>
       )}
+      <p className="project-workflow-detail">{display.detail}</p>
       <details className="advanced-options compact">
         <summary>Export diagnostics</summary>
         <dl className="project-workflow-grid">
+          <ProjectWorkflowRow
+            label="Bodies"
+            value={display.bodySummary}
+            detail={display.sourceDetail}
+          />
           <ProjectWorkflowRow
             label="Boundary"
             value={visualizationExport ? "Source + display" : "Source only"}

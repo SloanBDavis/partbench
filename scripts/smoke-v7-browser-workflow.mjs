@@ -253,6 +253,16 @@ async function runV7BrowserWorkflowSmoke(
   await client.send("Runtime.enable", {}, sessionId);
   await client.send("Log.enable", {}, sessionId);
   await client.send("Page.enable", {}, sessionId);
+  await client.send(
+    "Emulation.setDeviceMetricsOverride",
+    {
+      width: 1280,
+      height: 720,
+      deviceScaleFactor: 1,
+      mobile: false
+    },
+    sessionId
+  );
   await client.send("Page.navigate", { url: appUrl }, sessionId);
 
   const result = await client.send(
@@ -1183,6 +1193,29 @@ async function v7BrowserWorkflowSmoke({
     pass(
       "project-file-panel",
       "Project/File panel is primary and reports .wcad workflow, JSON debug/interchange, storage capability, and export readiness"
+    );
+  }
+
+  const projectFileReachability = probeProjectFileActionReachability([
+    "Download STEP",
+    "Clear cache",
+    "Export JSON",
+    "Download JSON",
+    ...(getButtonByText(projectPanel, "Download visualization GLB")
+      ? ["Download visualization GLB"]
+      : [])
+  ]);
+  if (projectFileReachability.ok) {
+    pass(
+      "project-file-action-reachability",
+      "Project/File export/cache/debug actions are reachable inside the right rail",
+      projectFileReachability.detail
+    );
+  } else {
+    fail(
+      "project-file-action-reachability",
+      "Project/File export/cache/debug actions are reachable inside the right rail",
+      projectFileReachability.detail
     );
   }
 
@@ -3140,6 +3173,93 @@ async function v7BrowserWorkflowSmoke({
           ok: false,
           detail: `${panelId} overflowed but did not scroll; overflow-y=${overflowY}, clientHeight=${clientHeight}, scrollHeight=${scrollHeight}.`
         };
+  }
+
+  function probeProjectFileActionReachability(actionLabels) {
+    const scrollContainer = document.querySelector(
+      ".project-file-drawer .project-panel"
+    );
+    const viewport = document.querySelector(".viewport-frame");
+
+    if (!scrollContainer) {
+      return { ok: false, detail: "Project panel scroll container not found." };
+    }
+
+    const issues = [];
+    const details = [];
+    const initialScrollTop = scrollContainer.scrollTop;
+    const initialWindowScrollX = window.scrollX;
+    const initialWindowScrollY = window.scrollY;
+    const overflowY = getComputedStyle(scrollContainer).overflowY;
+    const usesPanelScroll = overflowY === "auto" || overflowY === "scroll";
+    const desktopRailLayout = window.matchMedia("(min-width: 981px)").matches;
+
+    if (desktopRailLayout && !usesPanelScroll) {
+      issues.push(`project panel overflow-y=${overflowY}`);
+    }
+
+    for (const label of actionLabels) {
+      const button = getButtonByText(scrollContainer, label);
+
+      if (!button) {
+        issues.push(`${label} button missing`);
+        continue;
+      }
+
+      button.scrollIntoView({ block: "center", inline: "nearest" });
+
+      const buttonRect = button.getBoundingClientRect();
+      const panelRect = scrollContainer.getBoundingClientRect();
+      const withinPanel = usesPanelScroll
+        ? buttonRect.top >= panelRect.top - 1 &&
+          buttonRect.bottom <= panelRect.bottom + 1 &&
+          buttonRect.left >= panelRect.left - 1 &&
+          buttonRect.right <= panelRect.right + 1
+        : buttonRect.top >= 0 &&
+          buttonRect.bottom <= window.innerHeight + 1 &&
+          buttonRect.left >= 0 &&
+          buttonRect.right <= window.innerWidth + 1;
+
+      if (!withinPanel) {
+        issues.push(
+          `${label} not reachable after scroll: button=${Math.round(
+            buttonRect.top
+          )}-${Math.round(buttonRect.bottom)}, panel=${Math.round(
+            panelRect.top
+          )}-${Math.round(panelRect.bottom)}`
+        );
+      } else {
+        details.push(`${label}@${Math.round(buttonRect.top)}`);
+      }
+    }
+
+    scrollContainer.scrollTop = initialScrollTop;
+    window.scrollTo(initialWindowScrollX, initialWindowScrollY);
+
+    if (viewport) {
+      const viewportRect = viewport.getBoundingClientRect();
+      if (viewportRect.width < 240 || viewportRect.height < 240) {
+        issues.push(
+          `viewport too small after Project/File scroll: ${Math.round(
+            viewportRect.width
+          )}x${Math.round(viewportRect.height)}`
+        );
+      }
+    } else {
+      issues.push("viewport frame missing");
+    }
+
+    return {
+      ok: issues.length === 0,
+      detail:
+        issues.length > 0
+          ? issues.join("; ")
+          : `${details.join("; ")}; projectPanel=${Math.round(
+              scrollContainer.clientHeight
+            )}/${Math.round(
+              scrollContainer.scrollHeight
+            )}; overflow-y=${overflowY}`
+    };
   }
 
   function getDirectLabelText(label) {

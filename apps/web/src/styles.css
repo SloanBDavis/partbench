@@ -2095,8 +2095,8 @@ canvas:active {
 }
 
 .project-file-drawer[open] {
-  height: min(64dvh, 620px);
-  max-height: min(64dvh, 620px);
+  height: min(82dvh, 620px);
+  max-height: min(82dvh, 620px);
 }
 
 .advanced-tools-drawer[open] {
