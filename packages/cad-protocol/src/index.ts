@@ -2501,9 +2501,7 @@ export interface CadSketchSolverConstraintTargetReference {
 
 export type CadSketchSolverDeferredConstraintKind =
   | "tangent"
-  | "concentric"
   | "equalLength"
-  | "equalRadius"
   | "distance"
   | "angle"
   | "symmetry";
@@ -2542,6 +2540,7 @@ export interface CadSketchSolverConstraintSummary {
   readonly status: CadSketchSolverConstraintSupportStatus;
   readonly sourceBacked: boolean;
   readonly supportedByCurrentEvaluator: boolean;
+  readonly supportedByNumericalSolver: boolean;
   readonly targetRefs: readonly CadSketchSolverTargetReference[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];

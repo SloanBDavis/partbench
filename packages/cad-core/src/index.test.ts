@@ -297,6 +297,81 @@ function createV17AdvancedConstraintProject(): CadProject {
   };
 }
 
+function createV17CirclePairConstraintProject(): CadProject {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Circle solver", plane: "XY" },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [0, 0],
+      radius: 2
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_2",
+      center: [3, 1],
+      radius: 4
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_circle_1",
+      name: "Fix first circle center",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "circle_1", role: "center" },
+      coordinate: [0, 0]
+    },
+    {
+      op: "sketch.dimension.create",
+      id: "dim_circle_1_radius",
+      name: "First circle radius",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      target: { entityKind: "circle", role: "radius" },
+      value: 5
+    }
+  ]);
+
+  const project = exportCadProject(engine);
+  const advancedConstraints: SketchConstraintSnapshot[] = [
+    ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
+    {
+      id: "skcon_concentric",
+      name: "Concentric circles",
+      sketchId: "sketch_1",
+      entityId: "circle_2",
+      kind: "concentric",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2"
+    },
+    {
+      id: "skcon_equal_radius",
+      name: "Equal radius circles",
+      sketchId: "sketch_1",
+      entityId: "circle_2",
+      kind: "equalRadius",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2"
+    }
+  ];
+
+  return {
+    ...project,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+    document: {
+      ...project.document,
+      sketchConstraints: advancedConstraints,
+      nextSketchConstraintNumber: 4
+    },
+    history: [],
+    redoStack: []
+  };
+}
+
 function readProjectExportReadiness(
   engine: CadEngine
 ): ProjectExportReadinessQueryResponse {
@@ -19883,7 +19958,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           supportedByCurrentEvaluator: true
         })
       ],
-      deferredConstraintCount: 7,
+      deferredConstraintCount: 5,
       deferredConstraints: expect.arrayContaining([
         expect.objectContaining({
           kind: "tangent",
@@ -20526,7 +20601,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
-  it("preserves V17 advanced sketch constraint source records and reports them unsupported", () => {
+  it("preserves V17 advanced sketch constraint source records and reports remaining deferred kinds unsupported", () => {
     const project = createV17AdvancedConstraintProject();
     const engine = importCadProject(project);
     const exported = engine.exportProject();
@@ -20577,6 +20652,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "current-source",
           sourceBacked: true,
           supportedByCurrentEvaluator: false,
+          supportedByNumericalSolver: false,
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
               code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
@@ -20597,9 +20673,46 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           ])
         }),
         expect.objectContaining({
+          constraintId: "skcon_202",
+          kind: "concentric",
+          supportedByCurrentEvaluator: false,
+          supportedByNumericalSolver: true,
+          targetRefs: expect.arrayContaining([
+            expect.objectContaining({
+              type: "entity",
+              entityId: "circle_1",
+              entityKind: "circle"
+            }),
+            expect.objectContaining({
+              type: "entity",
+              entityId: "circle_2",
+              entityKind: "circle"
+            })
+          ])
+        }),
+        expect.objectContaining({
+          constraintId: "skcon_204",
+          kind: "equalRadius",
+          supportedByCurrentEvaluator: false,
+          supportedByNumericalSolver: true,
+          targetRefs: expect.arrayContaining([
+            expect.objectContaining({
+              type: "entity",
+              entityId: "circle_1",
+              entityKind: "circle"
+            }),
+            expect.objectContaining({
+              type: "entity",
+              entityId: "circle_2",
+              entityKind: "circle"
+            })
+          ])
+        }),
+        expect.objectContaining({
           constraintId: "skcon_206",
           kind: "symmetry",
           supportedByCurrentEvaluator: false,
+          supportedByNumericalSolver: false,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
               type: "point",
@@ -20637,6 +20750,67 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       constraints: response.constraints,
       sourceContract: response.sourceContract
     });
+  });
+
+  it("reports V17 concentric and equal-radius records as numerically supported", () => {
+    const project = createV17CirclePairConstraintProject();
+    const engine = importCadProject(project);
+    const beforeProject = exportCadProjectJson(engine);
+
+    const response = readSketchSolverStatus(engine, "sketch_1");
+
+    expect(response).toMatchObject({
+      query: "sketch.solverStatus",
+      sourceContract: {
+        currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+        emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
+      },
+      solver: {
+        numericalSolverStatus: "converged",
+        numericalSolverEngine: "@web-cad/sketch-solver",
+        modelBuilt: true,
+        solverRan: true,
+        canSolveNumerically: true,
+        variableCount: 6,
+        residualCount: 6
+      },
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "skcon_concentric",
+          kind: "concentric",
+          sourceBacked: true,
+          supportedByNumericalSolver: true
+        }),
+        expect.objectContaining({
+          constraintId: "skcon_equal_radius",
+          kind: "equalRadius",
+          sourceBacked: true,
+          supportedByNumericalSolver: true
+        })
+      ]),
+      deferredConstraintCount: 5
+    });
+    expect(response.deferredConstraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "tangent" }),
+        expect.objectContaining({ kind: "equalLength" }),
+        expect.objectContaining({ kind: "angle" }),
+        expect.objectContaining({ kind: "symmetry" })
+      ])
+    );
+    expect(response.deferredConstraints).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "concentric" }),
+        expect.objectContaining({ kind: "equalRadius" })
+      ])
+    );
+    expect(
+      response.solver.diagnostics?.some(
+        (diagnostic) =>
+          diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
+      )
+    ).toBe(false);
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
   });
 
   it("rejects advanced sketch constraint source records outside V17 or with malformed V17 targets", () => {

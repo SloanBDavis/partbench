@@ -48,13 +48,13 @@ export type SketchSolveConstraintKind =
   | "midpoint"
   | "parallel"
   | "perpendicular"
+  | "concentric"
+  | "equalRadius"
   | SketchSolveDeferredConstraintKind;
 
 export type SketchSolveDeferredConstraintKind =
   | "tangent"
-  | "concentric"
   | "equalLength"
-  | "equalRadius"
   | "angle"
   | "symmetry";
 
@@ -81,6 +81,8 @@ export type SketchSolveConstraint =
   | SketchSolveMidpointConstraint
   | SketchSolveParallelConstraint
   | SketchSolvePerpendicularConstraint
+  | SketchSolveConcentricConstraint
+  | SketchSolveEqualRadiusConstraint
   | SketchSolveDeferredConstraint;
 
 export interface SketchSolveFixedPointConstraint {
@@ -135,6 +137,20 @@ export interface SketchSolvePerpendicularConstraint {
   readonly primaryEndPointId: SketchSolverPointId;
   readonly secondaryStartPointId: SketchSolverPointId;
   readonly secondaryEndPointId: SketchSolverPointId;
+}
+
+export interface SketchSolveConcentricConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "concentric";
+  readonly primaryCenterPointId: SketchSolverPointId;
+  readonly secondaryCenterPointId: SketchSolverPointId;
+}
+
+export interface SketchSolveEqualRadiusConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "equalRadius";
+  readonly primaryRadiusId: SketchSolverScalarId;
+  readonly secondaryRadiusId: SketchSolverScalarId;
 }
 
 export interface SketchSolveDeferredConstraint {
@@ -266,9 +282,7 @@ const DEFAULT_SETTINGS: SketchSolveSettings = {
 
 const DEFERRED_CONSTRAINT_KINDS = new Set<SketchSolveDeferredConstraintKind>([
   "tangent",
-  "concentric",
   "equalLength",
-  "equalRadius",
   "angle",
   "symmetry"
 ]);
@@ -297,7 +311,9 @@ export function getSketchSolverCapabilities(): {
       "vertical",
       "midpoint",
       "parallel",
-      "perpendicular"
+      "perpendicular",
+      "concentric",
+      "equalRadius"
     ],
     supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
     deferredConstraintKinds: [...DEFERRED_CONSTRAINT_KINDS]
@@ -693,6 +709,52 @@ function validateConstraint(
     return;
   }
 
+  if (constraint.kind === "concentric") {
+    validatePointTarget(
+      constraint.primaryCenterPointId,
+      constraint,
+      stateAccess,
+      diagnostics
+    );
+    validatePointTarget(
+      constraint.secondaryCenterPointId,
+      constraint,
+      stateAccess,
+      diagnostics
+    );
+    return;
+  }
+
+  if (constraint.kind === "equalRadius") {
+    validateScalarTarget(
+      constraint.primaryRadiusId,
+      constraint,
+      stateAccess,
+      diagnostics
+    );
+    validateScalarTarget(
+      constraint.secondaryRadiusId,
+      constraint,
+      stateAccess,
+      diagnostics
+    );
+    validatePositiveScalarTarget({
+      constraint,
+      stateAccess,
+      diagnostics,
+      scalarId: constraint.primaryRadiusId,
+      label: "primary radius"
+    });
+    validatePositiveScalarTarget({
+      constraint,
+      stateAccess,
+      diagnostics,
+      scalarId: constraint.secondaryRadiusId,
+      label: "secondary radius"
+    });
+    return;
+  }
+
   validatePointTarget(
     constraint.midpointId,
     constraint,
@@ -877,7 +939,7 @@ function validatePointTarget(
 
 function validateScalarTarget(
   scalarId: SketchSolverScalarId,
-  source: SketchSolveDimension,
+  source: SketchSolveConstraint | SketchSolveDimension,
   stateAccess: SolverStateAccess,
   diagnostics: SketchSolveDiagnostic[]
 ): void {
@@ -886,10 +948,45 @@ function validateScalarTarget(
       code: "SKETCH_SOLVER_MISSING_TARGET",
       severity: "blocker",
       message: `Sketch solve scalar target does not exist: ${scalarId}`,
-      sourceType: "dimension",
+      sourceType: getSourceType(source),
       sourceId: source.id,
       targetId: scalarId,
-      dimensionKind: source.kind
+      ...(isConstraintSource(source) ? { constraintKind: source.kind } : {}),
+      ...(isDimensionSource(source) ? { dimensionKind: source.kind } : {})
+    });
+  }
+}
+
+function validatePositiveScalarTarget({
+  constraint,
+  stateAccess,
+  diagnostics,
+  scalarId,
+  label
+}: {
+  readonly constraint: SketchSolveEqualRadiusConstraint;
+  readonly stateAccess: SolverStateAccess;
+  readonly diagnostics: SketchSolveDiagnostic[];
+  readonly scalarId: SketchSolverScalarId;
+  readonly label: string;
+}): void {
+  const initial = readInitialScalar(stateAccess, scalarId);
+
+  if (initial === undefined) {
+    return;
+  }
+
+  if (initial <= 0) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_INVALID_VALUE",
+      severity: "blocker",
+      message: `Equal-radius constraint ${label} must be positive.`,
+      sourceType: "constraint",
+      sourceId: constraint.id,
+      constraintKind: constraint.kind,
+      targetId: scalarId,
+      expected: "positive radius scalar",
+      received: describeReceived(initial)
     });
   }
 }
@@ -959,6 +1056,29 @@ function createConstraintResidual(
 
   if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
     return createLinePairResidual(constraint, stateAccess);
+  }
+
+  if (constraint.kind === "concentric") {
+    return (state) => {
+      const primary = readPoint(
+        state,
+        stateAccess,
+        constraint.primaryCenterPointId
+      );
+      const secondary = readPoint(
+        state,
+        stateAccess,
+        constraint.secondaryCenterPointId
+      );
+      return [primary[0] - secondary[0], primary[1] - secondary[1]];
+    };
+  }
+
+  if (constraint.kind === "equalRadius") {
+    return (state) => [
+      readScalar(state, stateAccess, constraint.primaryRadiusId) -
+        readScalar(state, stateAccess, constraint.secondaryRadiusId)
+    ];
   }
 
   return (state) => {
@@ -1373,6 +1493,20 @@ function readScalar(
   }
 
   return state[index];
+}
+
+function readInitialScalar(
+  stateAccess: SolverStateAccess,
+  scalarId: SketchSolverScalarId
+): number | undefined {
+  const index = stateAccess.scalarIndex.get(scalarId);
+
+  if (index === undefined) {
+    return undefined;
+  }
+
+  const value = stateAccess.variables[index]?.initial;
+  return Number.isFinite(value) ? value : undefined;
 }
 
 function getMaxResidual(residuals: readonly number[]): number {

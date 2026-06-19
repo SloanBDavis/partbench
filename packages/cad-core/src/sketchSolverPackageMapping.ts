@@ -124,7 +124,8 @@ export function createSketchSolveModelFromCadSource(
     const mapped = mapConstraintToSketchSolveConstraint({
       constraint,
       sketch,
-      pointTargetIds
+      pointTargetIds,
+      scalarIds
     });
 
     if (mapped.constraint) {
@@ -219,11 +220,13 @@ function addPointVariable({
 function mapConstraintToSketchSolveConstraint({
   constraint,
   sketch,
-  pointTargetIds
+  pointTargetIds,
+  scalarIds
 }: {
   readonly constraint: SketchConstraintSnapshot;
   readonly sketch: SketchSolverSketch;
   readonly pointTargetIds: ReadonlyMap<string, string>;
+  readonly scalarIds: ReadonlyMap<SketchEntityId, string>;
 }): {
   readonly constraint?: SketchSolveConstraint;
   readonly diagnostics: readonly CadSketchSolverDiagnostic[];
@@ -471,6 +474,130 @@ function mapConstraintToSketchSolveConstraint({
     };
   }
 
+  if (constraint.kind === "concentric") {
+    const primaryEntity = sketch.entities.get(constraint.primaryCircleEntityId);
+    const secondaryEntity = sketch.entities.get(
+      constraint.secondaryCircleEntityId
+    );
+
+    if (
+      !primaryEntity ||
+      primaryEntity.kind !== "circle" ||
+      !secondaryEntity ||
+      secondaryEntity.kind !== "circle"
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Concentric constraint targets cannot be mapped to solver circles.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryCircleEntityId,
+            expected: "two circle entities",
+            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
+          })
+        ]
+      };
+    }
+
+    const primaryCenterPointId = pointIdForTarget(pointTargetIds, {
+      entityId: primaryEntity.id,
+      role: "center"
+    });
+    const secondaryCenterPointId = pointIdForTarget(pointTargetIds, {
+      entityId: secondaryEntity.id,
+      role: "center"
+    });
+
+    if (!primaryCenterPointId || !secondaryCenterPointId) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Concentric constraint centers cannot be mapped to solver points.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryCircleEntityId,
+            expected: "circle center solver points",
+            received: "missing center point"
+          })
+        ]
+      };
+    }
+
+    return {
+      constraint: {
+        id: constraint.id,
+        kind: "concentric",
+        primaryCenterPointId,
+        secondaryCenterPointId
+      },
+      diagnostics: []
+    };
+  }
+
+  if (constraint.kind === "equalRadius") {
+    const primaryEntity = sketch.entities.get(constraint.primaryCircleEntityId);
+    const secondaryEntity = sketch.entities.get(
+      constraint.secondaryCircleEntityId
+    );
+
+    if (
+      !primaryEntity ||
+      primaryEntity.kind !== "circle" ||
+      !secondaryEntity ||
+      secondaryEntity.kind !== "circle"
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Equal-radius constraint targets cannot be mapped to solver circles.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryCircleEntityId,
+            expected: "two circle entities",
+            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
+          })
+        ]
+      };
+    }
+
+    const primaryRadiusId = scalarIds.get(primaryEntity.id);
+    const secondaryRadiusId = scalarIds.get(secondaryEntity.id);
+
+    if (!primaryRadiusId || !secondaryRadiusId) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Equal-radius constraint radii cannot be mapped to solver scalars.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryCircleEntityId,
+            expected: "circle radius solver scalars",
+            received: "missing radius scalar"
+          })
+        ]
+      };
+    }
+
+    return {
+      constraint: {
+        id: constraint.id,
+        kind: "equalRadius",
+        primaryRadiusId,
+        secondaryRadiusId
+      },
+      diagnostics: []
+    };
+  }
+
   return {
     constraint: {
       id: constraint.id,
@@ -670,9 +797,7 @@ function mapDeferredConstraintKind(
 ): SketchSolveDeferredConstraintKind {
   if (
     kind === "tangent" ||
-    kind === "concentric" ||
     kind === "equalLength" ||
-    kind === "equalRadius" ||
     kind === "angle" ||
     kind === "symmetry"
   ) {

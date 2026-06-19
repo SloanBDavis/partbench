@@ -45,9 +45,7 @@ const DERIVED_BOUNDARY_NOTE =
 
 const DEFERRED_CONSTRAINT_KINDS = [
   "tangent",
-  "concentric",
   "equalLength",
-  "equalRadius",
   "distance",
   "angle",
   "symmetry"
@@ -232,6 +230,9 @@ function createConstraintSummary(
     status: "current-source",
     sourceBacked: true,
     supportedByCurrentEvaluator: constraint.status === "healthy",
+    supportedByNumericalSolver: isConstraintKindSupportedByNumericalSolver(
+      constraint.kind
+    ),
     targetRefs: createConstraintTargets(constraint),
     diagnosticCount: diagnostics.length,
     diagnostics
@@ -531,7 +532,7 @@ function createSourceContract(
         requiresProjectSchemaMigration: !hasV17SourceRecords,
         nextProjectSchemaVersion: "web-cad.project.v17",
         reason: hasV17SourceRecords
-          ? "Tangent, concentric, equal, angle, and symmetry constraints are persisted as V17 source records; numerical solving remains deferred."
+          ? "Tangent, equal-length, angle, and symmetry constraints are persisted as V17 source records but remain numerically deferred; concentric and equal-radius are source-backed and numerically supported."
           : "Tangent, concentric, equal, angle, and symmetry constraints require V17 source records before they can be persisted."
       },
       {
@@ -619,6 +620,22 @@ function chooseReadiness(
     case "redundant":
       return "deferred";
   }
+}
+
+function isConstraintKindSupportedByNumericalSolver(
+  kind: SketchConstraintEntry["kind"]
+): boolean {
+  return (
+    kind === "fixed" ||
+    kind === "coincident" ||
+    kind === "horizontal" ||
+    kind === "vertical" ||
+    kind === "midpoint" ||
+    kind === "parallel" ||
+    kind === "perpendicular" ||
+    kind === "concentric" ||
+    kind === "equalRadius"
+  );
 }
 
 function createEntityTargets(

@@ -32,6 +32,19 @@ function expectPointCloseTo(
   expect(actual[1]).toBeCloseTo(expected[1], precision);
 }
 
+function scalarValue(
+  scalars: readonly { readonly id: string; readonly value: number }[],
+  id: string
+): number {
+  const found = scalars.find((candidate) => candidate.id === id);
+
+  if (!found) {
+    throw new Error(`Missing scalar result: ${id}`);
+  }
+
+  return found.value;
+}
+
 describe("sketch-solver", () => {
   it("exports package status and capabilities without external authority", () => {
     expect(sketchSolverPackage).toEqual({
@@ -48,20 +61,25 @@ describe("sketch-solver", () => {
         "vertical",
         "midpoint",
         "parallel",
-        "perpendicular"
+        "perpendicular",
+        "concentric",
+        "equalRadius"
       ],
       supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
       deferredConstraintKinds: expect.arrayContaining([
         "tangent",
-        "concentric",
         "equalLength",
-        "equalRadius",
         "angle",
         "symmetry"
       ])
     });
     expect(getSketchSolverCapabilities().deferredConstraintKinds).not.toEqual(
-      expect.arrayContaining(["parallel", "perpendicular"])
+      expect.arrayContaining([
+        "parallel",
+        "perpendicular",
+        "concentric",
+        "equalRadius"
+      ])
     );
   });
 
@@ -347,6 +365,124 @@ describe("sketch-solver", () => {
     expect(result.scalars[0]?.value).toBeCloseTo(3, 6);
   });
 
+  it("solves concentric circle center constraints", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "circle_a_center", initial: [0, 0] },
+        { id: "circle_b_center", initial: [3, 2] }
+      ],
+      constraints: [
+        {
+          id: "fix_circle_a",
+          kind: "fixedPoint",
+          pointId: "circle_a_center",
+          value: [0, 0]
+        },
+        {
+          id: "concentric_ab",
+          kind: "concentric",
+          primaryCenterPointId: "circle_a_center",
+          secondaryCenterPointId: "circle_b_center"
+        }
+      ]
+    });
+
+    expect(result.status).toBe("converged");
+    expectPointCloseTo(result.points, "circle_a_center", [0, 0]);
+    expectPointCloseTo(result.points, "circle_b_center", [0, 0]);
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+  });
+
+  it("solves equal-radius circle scalar constraints", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [],
+      scalars: [
+        { id: "circle_a_radius", initial: 2 },
+        { id: "circle_b_radius", initial: 5 }
+      ],
+      constraints: [
+        {
+          id: "equal_radius_ab",
+          kind: "equalRadius",
+          primaryRadiusId: "circle_a_radius",
+          secondaryRadiusId: "circle_b_radius"
+        }
+      ],
+      dimensions: [
+        {
+          id: "circle_a_radius_dim",
+          kind: "circleRadius",
+          radiusId: "circle_a_radius",
+          value: 4
+        }
+      ]
+    });
+
+    expect(result.status).toBe("converged");
+    expect(result.scalars).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "circle_a_radius", value: 4 }),
+        expect.objectContaining({ id: "circle_b_radius", value: 4 })
+      ])
+    );
+  });
+
+  it("solves combined concentric and equal-radius circle constraints deterministically", () => {
+    const model: SketchSolveModel = {
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "circle_a_center", initial: [0, 0] },
+        { id: "circle_b_center", initial: [5, 1] }
+      ],
+      scalars: [
+        { id: "circle_a_radius", initial: 1 },
+        { id: "circle_b_radius", initial: 3 }
+      ],
+      constraints: [
+        {
+          id: "fix_circle_a",
+          kind: "fixedPoint",
+          pointId: "circle_a_center",
+          value: [2, 2]
+        },
+        {
+          id: "concentric_ab",
+          kind: "concentric",
+          primaryCenterPointId: "circle_a_center",
+          secondaryCenterPointId: "circle_b_center"
+        },
+        {
+          id: "equal_radius_ab",
+          kind: "equalRadius",
+          primaryRadiusId: "circle_a_radius",
+          secondaryRadiusId: "circle_b_radius"
+        }
+      ],
+      dimensions: [
+        {
+          id: "circle_a_radius_dim",
+          kind: "circleRadius",
+          radiusId: "circle_a_radius",
+          value: 6
+        }
+      ]
+    };
+
+    const first = solveSketch(model);
+    const second = solveSketch(model);
+
+    expect(first.status).toBe("converged");
+    expect(second.status).toBe("converged");
+    expect(first.points).toEqual(second.points);
+    expect(first.scalars).toEqual(second.scalars);
+    expectPointCloseTo(first.points, "circle_a_center", [2, 2]);
+    expectPointCloseTo(first.points, "circle_b_center", [2, 2]);
+    expect(scalarValue(first.scalars, "circle_a_radius")).toBeCloseTo(6, 6);
+    expect(scalarValue(first.scalars, "circle_b_radius")).toBeCloseTo(6, 6);
+  });
+
   it("solves midpoint constraints", () => {
     const result = solveSketch({
       version: SKETCH_SOLVER_MODEL_VERSION,
@@ -549,6 +685,81 @@ describe("sketch-solver", () => {
     );
   });
 
+  it("reports conflicting fixed concentric and equal-radius constraints structurally", () => {
+    const concentricConflict = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "circle_a_center", initial: [0, 0] },
+        { id: "circle_b_center", initial: [2, 0] }
+      ],
+      constraints: [
+        {
+          id: "fix_circle_a",
+          kind: "fixedPoint",
+          pointId: "circle_a_center",
+          value: [0, 0]
+        },
+        {
+          id: "fix_circle_b",
+          kind: "fixedPoint",
+          pointId: "circle_b_center",
+          value: [2, 0]
+        },
+        {
+          id: "concentric_conflict",
+          kind: "concentric",
+          primaryCenterPointId: "circle_a_center",
+          secondaryCenterPointId: "circle_b_center"
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+    const equalRadiusConflict = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [],
+      scalars: [
+        { id: "circle_a_radius", initial: 1 },
+        { id: "circle_b_radius", initial: 2 }
+      ],
+      constraints: [
+        {
+          id: "equal_radius_conflict",
+          kind: "equalRadius",
+          primaryRadiusId: "circle_a_radius",
+          secondaryRadiusId: "circle_b_radius"
+        }
+      ],
+      dimensions: [
+        {
+          id: "circle_a_radius_dim",
+          kind: "circleRadius",
+          radiusId: "circle_a_radius",
+          value: 1
+        },
+        {
+          id: "circle_b_radius_dim",
+          kind: "circleRadius",
+          radiusId: "circle_b_radius",
+          value: 2
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+
+    expect(concentricConflict.status).toBe("conflicting");
+    expect(equalRadiusConflict.status).toBe("conflicting");
+    expect(concentricConflict.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+    expect(equalRadiusConflict.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+  });
+
   it("reports missing and zero-length line-pair targets as structured failures", () => {
     const missing = solveSketch({
       version: SKETCH_SOLVER_MODEL_VERSION,
@@ -607,6 +818,85 @@ describe("sketch-solver", () => {
           sourceType: "constraint",
           sourceId: "perpendicular_zero_length",
           constraintKind: "perpendicular"
+        })
+      ])
+    );
+  });
+
+  it("reports missing and invalid circle-pair targets as structured failures", () => {
+    const missing = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [{ id: "circle_a_center", initial: [0, 0] }],
+      constraints: [
+        {
+          id: "concentric_missing",
+          kind: "concentric",
+          primaryCenterPointId: "circle_a_center",
+          secondaryCenterPointId: "missing"
+        }
+      ]
+    });
+    const invalidRadius = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [],
+      scalars: [
+        { id: "circle_a_radius", initial: 1 },
+        { id: "circle_b_radius", initial: 0 }
+      ],
+      constraints: [
+        {
+          id: "equal_radius_invalid",
+          kind: "equalRadius",
+          primaryRadiusId: "circle_a_radius",
+          secondaryRadiusId: "circle_b_radius"
+        }
+      ]
+    });
+    const missingRadius = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [],
+      scalars: [{ id: "circle_a_radius", initial: 1 }],
+      constraints: [
+        {
+          id: "equal_radius_missing",
+          kind: "equalRadius",
+          primaryRadiusId: "circle_a_radius",
+          secondaryRadiusId: "missing"
+        }
+      ]
+    });
+
+    expect(missing.status).toBe("failed");
+    expect(missing.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sourceType: "constraint",
+          sourceId: "concentric_missing",
+          targetId: "missing"
+        })
+      ])
+    );
+    expect(invalidRadius.status).toBe("failed");
+    expect(invalidRadius.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "equal_radius_invalid",
+          constraintKind: "equalRadius",
+          targetId: "circle_b_radius"
+        })
+      ])
+    );
+    expect(missingRadius.status).toBe("failed");
+    expect(missingRadius.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sourceType: "constraint",
+          sourceId: "equal_radius_missing",
+          targetId: "missing"
         })
       ])
     );

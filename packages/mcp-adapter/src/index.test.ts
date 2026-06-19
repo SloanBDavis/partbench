@@ -3044,7 +3044,7 @@ describe("mcp-adapter", () => {
           canSolveNumerically: true
         },
         entityCount: 1,
-        deferredConstraintCount: 7,
+        deferredConstraintCount: 5,
         profileValidity: {
           status: "valid",
           validProfileCount: 1
