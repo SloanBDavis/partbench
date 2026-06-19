@@ -27,6 +27,7 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V12,
   CAD_PROJECT_FORMAT_VERSION_V13,
   CAD_PROJECT_FORMAT_VERSION_V14,
+  CAD_PROJECT_FORMAT_VERSION_V17,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -174,6 +175,126 @@ function createCircleExtrudeEngine(): CadEngine {
   ]);
 
   return engine;
+}
+
+function createV17AdvancedConstraintProject(): CadProject {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Solver source", plane: "XY" },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_1",
+      start: [0, 0],
+      end: [3, 0]
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_2",
+      start: [0, 1],
+      end: [2, 2]
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [1, 1],
+      radius: 1
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_2",
+      center: [4, 1],
+      radius: 1.5
+    },
+    {
+      op: "sketch.addPoint",
+      sketchId: "sketch_1",
+      id: "point_1",
+      point: [0, 3]
+    },
+    {
+      op: "sketch.addPoint",
+      sketchId: "sketch_1",
+      id: "point_2",
+      point: [2, 3]
+    }
+  ]);
+
+  const project = exportCadProject(engine);
+  const advancedConstraints: SketchConstraintSnapshot[] = [
+    {
+      id: "skcon_201",
+      name: "Tangent source",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      kind: "tangent",
+      primaryTarget: { entityId: "line_1", entityKind: "line" },
+      secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+    },
+    {
+      id: "skcon_202",
+      name: "Concentric source",
+      sketchId: "sketch_1",
+      entityId: "circle_2",
+      kind: "concentric",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2"
+    },
+    {
+      id: "skcon_203",
+      name: "Equal length source",
+      sketchId: "sketch_1",
+      entityId: "line_2",
+      kind: "equalLength",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2"
+    },
+    {
+      id: "skcon_204",
+      name: "Equal radius source",
+      sketchId: "sketch_1",
+      entityId: "circle_2",
+      kind: "equalRadius",
+      primaryCircleEntityId: "circle_1",
+      secondaryCircleEntityId: "circle_2"
+    },
+    {
+      id: "skcon_205",
+      name: "Angle source",
+      sketchId: "sketch_1",
+      entityId: "line_2",
+      kind: "angle",
+      primaryLineEntityId: "line_1",
+      secondaryLineEntityId: "line_2",
+      angleDegrees: 45
+    },
+    {
+      id: "skcon_206",
+      name: "Symmetry source",
+      sketchId: "sketch_1",
+      entityId: "point_2",
+      kind: "symmetry",
+      primaryTarget: { entityId: "point_1", role: "position" },
+      secondaryTarget: { entityId: "point_2", role: "position" },
+      symmetryLineEntityId: "line_1"
+    }
+  ];
+
+  return {
+    ...project,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+    document: {
+      ...project.document,
+      sketchConstraints: advancedConstraints,
+      nextSketchConstraintNumber: 207
+    },
+    history: [],
+    redoStack: []
+  };
 }
 
 function readProjectExportReadiness(
@@ -19826,6 +19947,166 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("preserves V17 advanced sketch constraint source records and reports them unsupported", () => {
+    const project = createV17AdvancedConstraintProject();
+    const engine = importCadProject(project);
+    const exported = engine.exportProject();
+    const response = readSketchSolverStatus(engine, "sketch_1");
+    const packageReadiness = readProjectPackageReadiness(engine);
+
+    expect(exported.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V17);
+    expect(packageReadiness).toMatchObject({
+      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+      canRepresentCurrentSource: true,
+      requiresProjectSchemaMigration: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_PROJECT_SCHEMA_V17_NOT_REQUIRED",
+          status: "supported",
+          received: CAD_PROJECT_FORMAT_VERSION_V17
+        })
+      ])
+    });
+    expect(exported.document.sketchConstraints).toEqual(
+      project.document.sketchConstraints
+    );
+    expect(response).toMatchObject({
+      ok: true,
+      query: "sketch.solverStatus",
+      status: "unsupported",
+      sourceContract: {
+        currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+        emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+        packageVersion: "partbench.wcad.v1",
+        queryOnly: false,
+        requiresProjectSchemaMigration: false,
+        nextProjectSchemaVersion: "web-cad.project.v17",
+        sourceRecordRequirements: expect.arrayContaining([
+          expect.objectContaining({
+            recordKind: "advancedConstraint",
+            status: "current-source",
+            requiresProjectSchemaMigration: false
+          })
+        ])
+      }
+    });
+    expect(response.constraints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "skcon_201",
+          kind: "tangent",
+          status: "current-source",
+          sourceBacked: true,
+          supportedByCurrentEvaluator: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+              received: "tangent"
+            })
+          ]),
+          targetRefs: expect.arrayContaining([
+            expect.objectContaining({
+              type: "entity",
+              entityId: "line_1",
+              entityKind: "line"
+            }),
+            expect.objectContaining({
+              type: "entity",
+              entityId: "circle_1",
+              entityKind: "circle"
+            })
+          ])
+        }),
+        expect.objectContaining({
+          constraintId: "skcon_206",
+          kind: "symmetry",
+          supportedByCurrentEvaluator: false,
+          targetRefs: expect.arrayContaining([
+            expect.objectContaining({
+              type: "point",
+              entityId: "point_1",
+              role: "position"
+            }),
+            expect.objectContaining({
+              type: "entity",
+              entityId: "line_1",
+              entityKind: "line"
+            })
+          ])
+        })
+      ])
+    );
+    expect(response.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_STATUS_READY",
+          received: CAD_PROJECT_FORMAT_VERSION_V17
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+          received: "tangent"
+        }),
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
+          received: "symmetry"
+        })
+      ])
+    );
+    expectNoDerivedInfraIdentifiers({
+      entities: response.entities,
+      dimensions: response.dimensions,
+      constraints: response.constraints,
+      sourceContract: response.sourceContract
+    });
+  });
+
+  it("rejects advanced sketch constraint source records outside V17 or with malformed V17 targets", () => {
+    const project = createV17AdvancedConstraintProject();
+    const tangentConstraint = project.document.sketchConstraints[0] as Extract<
+      SketchConstraintSnapshot,
+      { readonly kind: "tangent" }
+    >;
+    const malformedTangentConstraint: SketchConstraintSnapshot = {
+      ...tangentConstraint,
+      primaryTarget: {
+        entityId: "circle_1",
+        entityKind: "line"
+      }
+    };
+
+    expectProjectImportError(
+      () =>
+        importCadProject({
+          ...project,
+          schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+        }),
+      {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        path: "$.document.sketchConstraints[0].kind",
+        message: "require web-cad.project.v17"
+      }
+    );
+
+    expectProjectImportError(
+      () =>
+        importCadProject({
+          ...project,
+          document: {
+            ...project.document,
+            sketchConstraints: [
+              malformedTangentConstraint,
+              ...project.document.sketchConstraints.slice(1)
+            ]
+          }
+        }),
+      {
+        code: "INVALID_SKETCH_CONSTRAINT",
+        path: "$.document.sketchConstraints[0].primaryTarget.entityId",
+        message: "must reference a line sketch entity"
+      }
+    );
+  });
+
   it("reports V11 profile validity for open sketches and missing solver targets", () => {
     const engine = new CadEngine();
 
@@ -24839,6 +25120,84 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(changed.sha256).not.toBe(first.sha256);
     expect(JSON.stringify(first)).not.toMatch(
       /fileName|fileHandle|opfsPath|viewport|selection|thumbnail|mesh|exportArtifact|cache/i
+    );
+  });
+
+  it("round-trips V17 advanced sketch solver source through JSON and WCAD", async () => {
+    const project = createV17AdvancedConstraintProject();
+    const parsedJson = parseCadProjectJson(JSON.stringify(project, null, 2));
+    const jsonEngine = importCadProject(parsedJson);
+    const jsonProject = jsonEngine.exportProject();
+
+    expect(parsedJson.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V17);
+    expect(jsonProject.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V17);
+    expect(jsonProject.document.sketchConstraints).toEqual(
+      project.document.sketchConstraints
+    );
+
+    const firstIdentity = createCadProjectSourceIdentity(project);
+    const secondIdentity = createCadProjectSourceIdentity(parsedJson);
+    const changedIdentity = createCadProjectSourceIdentity({
+      ...project,
+      document: {
+        ...project.document,
+        sketchConstraints: [
+          {
+            ...project.document.sketchConstraints[0],
+            name: "Tangent source renamed"
+          },
+          ...project.document.sketchConstraints.slice(1)
+        ]
+      }
+    });
+
+    expect(firstIdentity).toEqual(secondIdentity);
+    expect(changedIdentity.sha256).not.toBe(firstIdentity.sha256);
+    expect(JSON.stringify(firstIdentity)).not.toMatch(
+      /renderer|mesh|occt|gpu|selectionBuffer|opfs|fileHandle|viewport/i
+    );
+
+    const exported = await exportCadProjectToWcad(project);
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(exported.manifest).toMatchObject({
+      packageVersion: "partbench.wcad.v1",
+      document: {
+        path: "document.cbor",
+        schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
+      },
+      sourceIdentity: firstIdentity
+    });
+    expect(read).toMatchObject({
+      ok: true,
+      manifest: {
+        document: {
+          schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
+        }
+      },
+      sourceIdentity: firstIdentity,
+      diagnostics: []
+    });
+
+    if (!read.ok) {
+      throw new Error("Expected V17 WCAD package read to succeed.");
+    }
+
+    expect(read.project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V17);
+    expect(read.project.document.sketchConstraints).toEqual(
+      project.document.sketchConstraints
+    );
+
+    const wcadEngine = await importCadProjectWcad(exported.bytes);
+    expect(wcadEngine.exportProject().schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V17
+    );
+    expect(wcadEngine.exportProject().document.sketchConstraints).toEqual(
+      project.document.sketchConstraints
+    );
+
+    expect(exportCadProject(createRectangleExtrudeEngine()).schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
     );
   });
 

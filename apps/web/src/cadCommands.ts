@@ -4,6 +4,7 @@ import type {
   CadBatchMode,
   CadOp,
   CadParameterSnapshot,
+  CurrentSketchConstraintKind,
   DocumentUnitUpdateMode,
   DocumentUnits,
   DocumentUpdateUnitsOp,
@@ -63,7 +64,6 @@ import type {
   SketchConstraintDeleteOp,
   SketchConstraintEntry,
   SketchConstraintId,
-  SketchConstraintKind,
   SketchConstraintRenameOp,
   SketchEntitySnapshot,
   SketchId,
@@ -147,7 +147,7 @@ export interface SketchDimensionForm {
 export interface SketchConstraintForm {
   readonly id: string;
   readonly name: string;
-  readonly kind: SketchConstraintKind;
+  readonly kind: CurrentSketchConstraintKind;
   readonly targetRole: SketchPointTargetRole;
   readonly coordinateMode: "current" | "custom";
   readonly coordinateX: number;

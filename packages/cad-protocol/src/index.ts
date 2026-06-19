@@ -133,7 +133,7 @@ export type SketchDimensionStatus =
   | "invalid-value"
   | "inconsistent";
 
-export type SketchConstraintKind =
+export type CurrentSketchConstraintKind =
   | "horizontal"
   | "vertical"
   | "fixed"
@@ -142,11 +142,30 @@ export type SketchConstraintKind =
   | "parallel"
   | "perpendicular";
 
+export type AdvancedSketchConstraintKind =
+  | "tangent"
+  | "concentric"
+  | "equalLength"
+  | "equalRadius"
+  | "angle"
+  | "symmetry";
+
+export type SketchConstraintKind =
+  | CurrentSketchConstraintKind
+  | AdvancedSketchConstraintKind;
+
 export type SketchPointTargetRole = "position" | "start" | "end" | "center";
 
 export interface SketchPointTarget {
   readonly entityId: SketchEntityId;
   readonly role: SketchPointTargetRole;
+}
+
+export type SketchCurveConstraintTargetKind = "line" | "circle";
+
+export interface SketchCurveConstraintTarget {
+  readonly entityId: SketchEntityId;
+  readonly entityKind: SketchCurveConstraintTargetKind;
 }
 
 export type SketchDimensionIssueCode =
@@ -784,6 +803,12 @@ export interface CadSketchConstraintRef {
   readonly lineEntityId?: SketchEntityId;
   readonly primaryLineEntityId?: SketchEntityId;
   readonly secondaryLineEntityId?: SketchEntityId;
+  readonly primaryCurveTarget?: SketchCurveConstraintTarget;
+  readonly secondaryCurveTarget?: SketchCurveConstraintTarget;
+  readonly primaryCircleEntityId?: SketchEntityId;
+  readonly secondaryCircleEntityId?: SketchEntityId;
+  readonly angleDegrees?: number;
+  readonly symmetryLineEntityId?: SketchEntityId;
 }
 
 export interface DocumentSemanticDiff {
@@ -1349,7 +1374,13 @@ export type SketchConstraintSnapshot =
   | SketchCoincidentConstraintSnapshot
   | SketchMidpointConstraintSnapshot
   | SketchParallelConstraintSnapshot
-  | SketchPerpendicularConstraintSnapshot;
+  | SketchPerpendicularConstraintSnapshot
+  | SketchTangentConstraintSnapshot
+  | SketchConcentricConstraintSnapshot
+  | SketchEqualLengthConstraintSnapshot
+  | SketchEqualRadiusConstraintSnapshot
+  | SketchAngleConstraintSnapshot
+  | SketchSymmetryConstraintSnapshot;
 
 export interface SketchOrientationConstraintSnapshot {
   readonly id: SketchConstraintId;
@@ -1407,6 +1438,68 @@ export interface SketchPerpendicularConstraintSnapshot {
   readonly kind: "perpendicular";
   readonly primaryLineEntityId: SketchEntityId;
   readonly secondaryLineEntityId: SketchEntityId;
+}
+
+export interface SketchTangentConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "tangent";
+  readonly primaryTarget: SketchCurveConstraintTarget;
+  readonly secondaryTarget: SketchCurveConstraintTarget;
+}
+
+export interface SketchConcentricConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "concentric";
+  readonly primaryCircleEntityId: SketchEntityId;
+  readonly secondaryCircleEntityId: SketchEntityId;
+}
+
+export interface SketchEqualLengthConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "equalLength";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
+}
+
+export interface SketchEqualRadiusConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "equalRadius";
+  readonly primaryCircleEntityId: SketchEntityId;
+  readonly secondaryCircleEntityId: SketchEntityId;
+}
+
+export interface SketchAngleConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "angle";
+  readonly primaryLineEntityId: SketchEntityId;
+  readonly secondaryLineEntityId: SketchEntityId;
+  readonly angleDegrees: number;
+}
+
+export interface SketchSymmetryConstraintSnapshot {
+  readonly id: SketchConstraintId;
+  readonly name: string;
+  readonly sketchId: SketchId;
+  readonly entityId: SketchEntityId;
+  readonly kind: "symmetry";
+  readonly primaryTarget: SketchPointTarget;
+  readonly secondaryTarget: SketchPointTarget;
+  readonly symmetryLineEntityId: SketchEntityId;
 }
 
 export interface SketchDimensionIssue {
@@ -2501,7 +2594,7 @@ export interface CadSketchSolverSourceContract {
   readonly currentProjectSchemaVersion: WcadDocumentSchemaVersion;
   readonly emittedProjectSchemaVersion: WcadDocumentSchemaVersion;
   readonly packageVersion: WcadPackageVersion;
-  readonly queryOnly: true;
+  readonly queryOnly: boolean;
   readonly requiresProjectSchemaMigration: false;
   readonly nextProjectSchemaVersion: "web-cad.project.v17";
   readonly sourceRecordRequirements: readonly CadSketchSolverSourceRecordRequirement[];
@@ -3517,6 +3610,12 @@ export interface CadSketchConstraintHealth {
   readonly lineEntityId?: SketchEntityId;
   readonly primaryLineEntityId?: SketchEntityId;
   readonly secondaryLineEntityId?: SketchEntityId;
+  readonly primaryCurveTarget?: SketchCurveConstraintTarget;
+  readonly secondaryCurveTarget?: SketchCurveConstraintTarget;
+  readonly primaryCircleEntityId?: SketchEntityId;
+  readonly secondaryCircleEntityId?: SketchEntityId;
+  readonly angleDegrees?: number;
+  readonly symmetryLineEntityId?: SketchEntityId;
   readonly currentCoordinate?: Vec2;
   readonly primaryCurrentCoordinate?: Vec2;
   readonly secondaryCurrentCoordinate?: Vec2;

@@ -20,15 +20,16 @@ first authored non-extrude feature source records for `feature.revolve`.
 Schema V15 added source-of-truth circular hole feature records for
 `feature.hole`. Schema V16 added command-first source-of-truth edge-finishing
 feature records for `feature.chamfer` and `feature.fillet`. Current exports use
-`web-cad.project.v16` while the loader still accepts V1 through V15 projects
-through explicit migration. The
+`web-cad.project.v16` unless V11 advanced sketch solver source records are
+present; in that case exports use `web-cad.project.v17`. The loader still
+accepts V1 through V17 projects through explicit validation/migration. The
 `web-cad.project.*` names are retained as compatibility schema identifiers
 after the Partbench product rename; changing them would require a deliberate
 project-format migration. V8 completed the first native package release:
 `.wcad` package v1, File System Access local workflow, OPFS-derived cache, and
-exact STEP export for supported bodies. V11 planning reserves
-`web-cad.project.v17` for full sketch solver source data if and when new
-source-of-truth constraint, dimension, or solver-intent records are added. This
+exact STEP export for supported bodies. V11 Tranche C introduces
+`web-cad.project.v17` for saved advanced sketch constraint source records:
+tangent, concentric, equal length, equal radius, angle, and symmetry. This
 document continues to define the project-format and source/derived rules that
 storage and solver work must preserve.
 
@@ -53,6 +54,7 @@ schemaVersion: web-cad.project.v13
 schemaVersion: web-cad.project.v14
 schemaVersion: web-cad.project.v15
 schemaVersion: web-cad.project.v16
+schemaVersion: web-cad.project.v17
 ```
 
 It is produced by:
@@ -145,8 +147,9 @@ stable result topology is not persisted and does not require
 The current exported JSON shape is:
 
 ```ts
-ProjectV16 {
+ProjectV16OrV17 {
   schemaVersion: "web-cad.project.v16"
+               | "web-cad.project.v17"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -169,6 +172,58 @@ ProjectV16 {
   redoStack: Transaction[]
 }
 ```
+
+V17 is additive over V16. It uses the same top-level document shape and the
+same `.wcad` package version, but allows additional source-backed
+`SketchConstraint` variants in `document.sketchConstraints`:
+
+```ts
+SketchTangentConstraint {
+  id: string
+  name: string
+  sketchId: string
+  entityId: string
+  kind: "tangent"
+  primaryTarget: { entityId: string; entityKind: "line" | "circle" }
+  secondaryTarget: { entityId: string; entityKind: "line" | "circle" }
+}
+
+SketchConcentricConstraint {
+  kind: "concentric"
+  primaryCircleEntityId: string
+  secondaryCircleEntityId: string
+}
+
+SketchEqualLengthConstraint {
+  kind: "equalLength"
+  primaryLineEntityId: string
+  secondaryLineEntityId: string
+}
+
+SketchEqualRadiusConstraint {
+  kind: "equalRadius"
+  primaryCircleEntityId: string
+  secondaryCircleEntityId: string
+}
+
+SketchAngleConstraint {
+  kind: "angle"
+  primaryLineEntityId: string
+  secondaryLineEntityId: string
+  angleDegrees: number
+}
+
+SketchSymmetryConstraint {
+  kind: "symmetry"
+  primaryTarget: SketchPointTarget
+  secondaryTarget: SketchPointTarget
+  symmetryLineEntityId: string
+}
+```
+
+These records are source intent only in V11 Tranche C. They are preserved
+through JSON and `.wcad` round-trips and reported by `sketch.solverStatus`, but
+they are not yet creatable from UI commands and are not numerically solved.
 
 Named generated references are source-of-truth user/agent metadata:
 
@@ -1394,9 +1449,11 @@ previously deferred, and V9 keeps that storage direction unchanged:
   directory-compatible internal layout;
 - required authoritative package entries: `manifest.json`, `document.cbor`,
   and `commands.cbor`;
-- current document schema: still `web-cad.project.v16` unless a future release
-  adds new source-of-truth document data;
-- next document schema if new source data is added: `web-cad.project.v17`;
+- current document schema: `web-cad.project.v16` for ordinary projects and
+  `web-cad.project.v17` when V11 advanced sketch constraint source records are
+  present;
+- next document schema beyond V17 only if another tranche adds new
+  source-of-truth document data;
 - JSON remains explicit debug/interchange, not the primary native package
   encoding;
 - OPFS entries, thumbnails, meshes, exact metadata snapshots, and export
@@ -1431,14 +1488,18 @@ package read/write helpers without changing project source format:
   thin pass-throughs, including the compact V8 project surface. They do not gain
   arbitrary file access or return artifact bytes.
 - V11 Tranche A adds query-only `sketch.solverStatus` source-contract and
-  profile-validity reporting. It continues to emit `web-cad.project.v16` and
-  reserves `web-cad.project.v17` for a later tranche that commits new
-  source-of-truth solver data.
+  profile-validity reporting. It continues to emit `web-cad.project.v16`.
+- V11 Tranche B adds a pure `packages/sketch-solver` numerical foundation that
+  consumes normalized solve models. It does not write project files, change
+  `.wcad` layout, commit solved geometry, or introduce `web-cad.project.v17`.
+- V11 Tranche C adds `web-cad.project.v17` for advanced sketch constraint
+  source records while keeping `.wcad` package layout unchanged.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over
   the historical release fixture catalog.
-- This query-only contract does not introduce `web-cad.project.v17`.
+- V17 source records remain source intent only until later solver-command and
+  numerical-support tranches make them creatable and solved.
 
 ## Long-Term Native Package Direction
 

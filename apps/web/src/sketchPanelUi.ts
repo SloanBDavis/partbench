@@ -2,6 +2,7 @@ import type {
   CadBodySnapshot,
   CadFeatureSummary,
   CadParameterSnapshot,
+  CurrentSketchConstraintKind,
   FeatureExtrudeOperationMode,
   FeatureExtrudeSide,
   SketchConstraintEntry,
@@ -87,7 +88,7 @@ export interface DimensionStatusDisplay {
 }
 
 export interface SketchConstraintKindOption {
-  readonly kind: SketchConstraintKind;
+  readonly kind: CurrentSketchConstraintKind;
   readonly label: string;
 }
 
@@ -468,6 +469,18 @@ export function getSketchConstraintKindLabel(
       return "Parallel";
     case "perpendicular":
       return "Perpendicular";
+    case "tangent":
+      return "Tangent";
+    case "concentric":
+      return "Concentric";
+    case "equalLength":
+      return "Equal length";
+    case "equalRadius":
+      return "Equal radius";
+    case "angle":
+      return "Angle";
+    case "symmetry":
+      return "Symmetry";
   }
 }
 

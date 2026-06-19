@@ -1143,6 +1143,44 @@ function createSketchConstraintHealth(
           secondaryLineEntityId: constraint.secondaryLineEntityId
         }
       : {}),
+    ...(constraint.kind === "tangent"
+      ? {
+          primaryCurveTarget: constraint.primaryTarget,
+          secondaryCurveTarget: constraint.secondaryTarget
+        }
+      : {}),
+    ...(constraint.kind === "concentric"
+      ? {
+          primaryCircleEntityId: constraint.primaryCircleEntityId,
+          secondaryCircleEntityId: constraint.secondaryCircleEntityId
+        }
+      : {}),
+    ...(constraint.kind === "equalLength"
+      ? {
+          primaryLineEntityId: constraint.primaryLineEntityId,
+          secondaryLineEntityId: constraint.secondaryLineEntityId
+        }
+      : {}),
+    ...(constraint.kind === "equalRadius"
+      ? {
+          primaryCircleEntityId: constraint.primaryCircleEntityId,
+          secondaryCircleEntityId: constraint.secondaryCircleEntityId
+        }
+      : {}),
+    ...(constraint.kind === "angle"
+      ? {
+          primaryLineEntityId: constraint.primaryLineEntityId,
+          secondaryLineEntityId: constraint.secondaryLineEntityId,
+          angleDegrees: constraint.angleDegrees
+        }
+      : {}),
+    ...(constraint.kind === "symmetry"
+      ? {
+          primaryTarget: constraint.primaryTarget,
+          secondaryTarget: constraint.secondaryTarget,
+          symmetryLineEntityId: constraint.symmetryLineEntityId
+        }
+      : {}),
     ...(entry.primaryDirection
       ? { primaryDirection: entry.primaryDirection }
       : {}),
@@ -1356,6 +1394,62 @@ function getSketchConstraintAffectedTargets(
       {
         sketchId: constraint.sketchId,
         entityId: constraint.secondaryLineEntityId
+      }
+    ];
+  }
+
+  if (constraint.kind === "tangent") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryTarget.entityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryTarget.entityId
+      }
+    ];
+  }
+
+  if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryCircleEntityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryCircleEntityId
+      }
+    ];
+  }
+
+  if (constraint.kind === "equalLength" || constraint.kind === "angle") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryLineEntityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryLineEntityId
+      }
+    ];
+  }
+
+  if (constraint.kind === "symmetry") {
+    return [
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryTarget.entityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryTarget.entityId
+      },
+      {
+        sketchId: constraint.sketchId,
+        entityId: constraint.symmetryLineEntityId
       }
     ];
   }

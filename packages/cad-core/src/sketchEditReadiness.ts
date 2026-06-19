@@ -1561,6 +1561,32 @@ function getConstraintAffectedEntityIds(
     return [constraint.primaryLineEntityId, constraint.secondaryLineEntityId];
   }
 
+  if (constraint.kind === "tangent") {
+    return [
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId
+    ];
+  }
+
+  if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
+    return [
+      constraint.primaryCircleEntityId,
+      constraint.secondaryCircleEntityId
+    ];
+  }
+
+  if (constraint.kind === "equalLength" || constraint.kind === "angle") {
+    return [constraint.primaryLineEntityId, constraint.secondaryLineEntityId];
+  }
+
+  if (constraint.kind === "symmetry") {
+    return [
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId,
+      constraint.symmetryLineEntityId
+    ];
+  }
+
   return [constraint.entityId];
 }
 

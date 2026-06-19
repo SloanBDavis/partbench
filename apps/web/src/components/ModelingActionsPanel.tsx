@@ -4,9 +4,9 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadReferenceHealthEntry,
+  CurrentSketchConstraintKind,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
-  SketchConstraintKind,
   SketchDimensionTarget,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -1096,7 +1096,7 @@ function ConstraintCreateCard({
   ) => void;
 }) {
   const availableKinds = action?.target?.constraintKinds ?? [];
-  const [kind, setKind] = useState<SketchConstraintKind>(
+  const [kind, setKind] = useState<CurrentSketchConstraintKind>(
     availableKinds[0]?.kind ?? "horizontal"
   );
   const [form, setForm] = useState<SketchConstraintForm>(() => ({
@@ -1131,7 +1131,7 @@ function ConstraintCreateCard({
                 disabled={disabled}
                 onChange={(event) => {
                   const nextKind = event.currentTarget
-                    .value as SketchConstraintKind;
+                    .value as CurrentSketchConstraintKind;
                   setKind(nextKind);
                   setForm({
                     ...form,
@@ -1208,7 +1208,7 @@ function ConstraintTargetFields({
   >;
   readonly disabled: boolean;
   readonly form: SketchConstraintForm;
-  readonly kind: SketchConstraintKind;
+  readonly kind: CurrentSketchConstraintKind;
   readonly onChange: (form: SketchConstraintForm) => void;
 }) {
   if (kind === "horizontal" || kind === "vertical") {
@@ -2517,7 +2517,7 @@ function createEffectiveConstraintForm({
     { readonly selectionKind: "sketchEntity" }
   >;
   readonly form: SketchConstraintForm;
-  readonly kind: SketchConstraintKind;
+  readonly kind: CurrentSketchConstraintKind;
 }): SketchConstraintForm {
   const primaryTarget =
     createSketchPointTargetOptionsForEntity(context.entity).find(
@@ -2585,7 +2585,7 @@ function getConstraintAvailability(
     ModelingSelectionContext,
     { readonly selectionKind: "sketchEntity" }
   >,
-  kind: SketchConstraintKind,
+  kind: CurrentSketchConstraintKind,
   form: SketchConstraintForm
 ): { readonly available: boolean; readonly message?: string } {
   if (kind === "horizontal" || kind === "vertical") {

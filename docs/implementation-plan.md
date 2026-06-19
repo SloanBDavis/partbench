@@ -298,13 +298,15 @@ These constraints remain active:
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
     scopes one of those items.
-35. V11 is planned in `docs/v11.md` as the full sketch solver and parametric
-    sketch UX release. Its center is source-backed constraints and dimensions,
-    custom solver diagnostics, profile validity, drag-solve preview/commit,
-    compact sketch UI, downstream V10 rebuild/reference-health integration, and
-    JSON/`.wcad` round-trips for the new sketch source data. V11 may introduce
-    `web-cad.project.v17` only when new source-of-truth solver data is actually
-    added. Query-only readiness work must not bump the schema. V11 does not
+35. V11 is in progress in `docs/v11.md` as the full sketch solver and
+    parametric sketch UX release. Its center is source-backed constraints and
+    dimensions, custom solver diagnostics, profile validity, drag-solve
+    preview/commit, compact sketch UI, downstream V10 rebuild/reference-health
+    integration, and JSON/`.wcad` round-trips for new sketch source data.
+    Tranches A and B introduced the solver-status contract and pure solver
+    package. Tranche C introduced `web-cad.project.v17` only for V11 advanced
+    sketch constraint source records while ordinary projects continue to export
+    as V16. V11 does not
     scope WebGPU, assemblies, STEP import, persistent B-rep checkpoints, hosted
     collaboration, natural-language command entry, broad new solid modeling
     families, or renderer authority over sketch solving.
@@ -1829,12 +1831,22 @@ Use these decisions when drafting or implementing V11 tranches:
    constraint, dimension, profile-validity, preview, source-contract, and
    diagnostic shapes. It decides the likely V17 source additions but does not
    write V17 because no new source data is committed.
-2. **Solver Package Foundation** - add the custom 2D solver package boundary,
-   normalized solve model, variables, residuals, tolerance constants, solve
-   results, deterministic tests, and structured diagnostics.
-3. **V17 Constraint And Dimension Source Migration** - add migratable
-   source-backed solver records once the first new V11 source data exists.
-   Preserve JSON and `.wcad` round-trips and deterministic source identity.
+2. **Solver Package Foundation** - implemented as `packages/sketch-solver`, a
+   pure dependency-free package with normalized solve models, point/scalar
+   variables, residuals, tolerance constants, deterministic solve results, and
+   structured diagnostics. It supports fixed point, coincident, horizontal,
+   vertical, midpoint, point distance, line length, and circle radius residuals.
+   It does not migrate source data, commit solved geometry, or introduce
+   `web-cad.project.v17`.
+3. **V17 Constraint And Dimension Source Migration** - implemented as the
+   first saved-source migration for V11 advanced constraint intent.
+   `web-cad.project.v17` preserves V16 data and adds source records for
+   tangent, concentric, equal length, equal radius, angle, and symmetry inside
+   `document.sketchConstraints`. JSON and `.wcad` round-trips preserve the
+   records, source identity is deterministic, V16 compatibility remains intact,
+   and `sketch.solverStatus` reports these records as source-backed but
+   unsupported/deferred until later solver-command and numerical support
+   tranches.
 4. **Core Constraint Commands And Solver Status** - route coincident,
    horizontal, vertical, fixed, distance, radius, midpoint, parallel, and
    perpendicular create/update/delete behavior through CADOps and the unified

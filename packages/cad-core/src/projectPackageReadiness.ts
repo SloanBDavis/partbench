@@ -70,8 +70,7 @@ export function createProjectPackageReadiness({
   const schemaSupported = SUPPORTED_DOCUMENT_SCHEMAS.includes(
     documentSchemaVersion
   );
-  const canRepresentCurrentSource =
-    schemaSupported && documentSchemaVersion === "web-cad.project.v16";
+  const canRepresentCurrentSource = schemaSupported;
   const requiresProjectSchemaMigration = !canRepresentCurrentSource;
   const requiredEntries: ProjectPackageReadinessQueryResponse["requiredEntries"] =
     [
@@ -117,11 +116,19 @@ export function createProjectPackageReadiness({
         },
         {
           code: "WCAD_PROJECT_SCHEMA_V17_NOT_REQUIRED",
-          status: canRepresentCurrentSource ? "supported" : "deferred",
-          message: canRepresentCurrentSource
-            ? "The current project source can be represented without web-cad.project.v17."
-            : "A future source schema may be required before this source shape can be represented.",
-          expected: "web-cad.project.v16",
+          status:
+            schemaSupported && documentSchemaVersion === "web-cad.project.v17"
+              ? "supported"
+              : canRepresentCurrentSource
+                ? "supported"
+                : "deferred",
+          message:
+            documentSchemaVersion === "web-cad.project.v17"
+              ? "The current project source uses web-cad.project.v17 because V11 solver source records are present."
+              : canRepresentCurrentSource
+                ? "The current project source can be represented without web-cad.project.v17."
+                : "A future source schema may be required before this source shape can be represented.",
+          expected: "web-cad.project.v16 or web-cad.project.v17",
           received: documentSchemaVersion
         }
       ]

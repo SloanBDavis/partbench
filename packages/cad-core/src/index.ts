@@ -109,6 +109,7 @@ import type {
   SketchConstraintKind,
   SketchConstraintSemanticDiff,
   SketchConstraintSnapshot,
+  SketchCurveConstraintTarget,
   SketchDimensionId,
   SketchDimensionSnapshot,
   SketchDimensionTarget,
@@ -639,7 +640,10 @@ export const CAD_PROJECT_FORMAT_VERSION_V12 = "web-cad.project.v12";
 export const CAD_PROJECT_FORMAT_VERSION_V13 = "web-cad.project.v13";
 export const CAD_PROJECT_FORMAT_VERSION_V14 = "web-cad.project.v14";
 export const CAD_PROJECT_FORMAT_VERSION_V15 = "web-cad.project.v15";
-export const CURRENT_CAD_PROJECT_FORMAT_VERSION = "web-cad.project.v16";
+export const CAD_PROJECT_FORMAT_VERSION_V16 = "web-cad.project.v16";
+export const CAD_PROJECT_FORMAT_VERSION_V17 = "web-cad.project.v17";
+export const CURRENT_CAD_PROJECT_FORMAT_VERSION =
+  CAD_PROJECT_FORMAT_VERSION_V16;
 
 export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V1
@@ -657,7 +661,58 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V13
   | typeof CAD_PROJECT_FORMAT_VERSION_V14
   | typeof CAD_PROJECT_FORMAT_VERSION_V15
+  | typeof CAD_PROJECT_FORMAT_VERSION_V16
+  | typeof CAD_PROJECT_FORMAT_VERSION_V17
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
+
+const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
+  CAD_PROJECT_FORMAT_VERSION_V1,
+  CAD_PROJECT_FORMAT_VERSION_V2,
+  CAD_PROJECT_FORMAT_VERSION_V3,
+  CAD_PROJECT_FORMAT_VERSION_V4,
+  CAD_PROJECT_FORMAT_VERSION_V5,
+  CAD_PROJECT_FORMAT_VERSION_V6,
+  CAD_PROJECT_FORMAT_VERSION_V7,
+  CAD_PROJECT_FORMAT_VERSION_V8,
+  CAD_PROJECT_FORMAT_VERSION_V9,
+  CAD_PROJECT_FORMAT_VERSION_V10,
+  CAD_PROJECT_FORMAT_VERSION_V11,
+  CAD_PROJECT_FORMAT_VERSION_V12,
+  CAD_PROJECT_FORMAT_VERSION_V13,
+  CAD_PROJECT_FORMAT_VERSION_V14,
+  CAD_PROJECT_FORMAT_VERSION_V15,
+  CAD_PROJECT_FORMAT_VERSION_V16,
+  CAD_PROJECT_FORMAT_VERSION_V17
+]);
+
+function getCadProjectFormatVersionForDocument(
+  document: CadDocument | CadDocumentSnapshot
+):
+  | typeof CAD_PROJECT_FORMAT_VERSION_V16
+  | typeof CAD_PROJECT_FORMAT_VERSION_V17 {
+  const sketchConstraints: readonly SketchConstraintSnapshot[] = Array.isArray(
+    document.sketchConstraints
+  )
+    ? document.sketchConstraints
+    : [...document.sketchConstraints.values()];
+
+  return sketchConstraints.some((constraint) =>
+    isAdvancedSketchConstraintKind(constraint.kind)
+  )
+    ? CAD_PROJECT_FORMAT_VERSION_V17
+    : CAD_PROJECT_FORMAT_VERSION_V16;
+}
+
+function isSupportedWcadDocumentSchema(
+  schemaVersion: unknown
+): schemaVersion is
+  | typeof CAD_PROJECT_FORMAT_VERSION_V16
+  | typeof CAD_PROJECT_FORMAT_VERSION_V17 {
+  return (
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V16 ||
+    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17
+  );
+}
 
 export type CadProjectImportErrorCode =
   | "INVALID_JSON"
@@ -1180,13 +1235,16 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
+        const documentSchemaVersion = getCadProjectFormatVersionForDocument(
+          this.#document
+        );
 
         return createProjectExactExport({
           document: this.#document,
           cadOpsVersion: request.version,
           bodies: structure.bodies,
           query: request.query,
-          documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+          documentSchemaVersion,
           currentSourceIdentity: createCadProjectSourceIdentity(
             exportCadProject(this)
           )
@@ -1196,7 +1254,9 @@ export class CadEngine {
       case "project.packageReadiness": {
         return createProjectPackageReadiness({
           cadOpsVersion: request.version,
-          documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+          documentSchemaVersion: getCadProjectFormatVersionForDocument(
+            this.#document
+          ),
           units: this.#document.units
         });
       }
@@ -1384,7 +1444,9 @@ export class CadEngine {
           cadOpsVersion: request.version,
           document: this.#document,
           sketch,
-          currentProjectSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+          currentProjectSchemaVersion: getCadProjectFormatVersionForDocument(
+            this.#document
+          )
         });
       }
 
@@ -1989,9 +2051,10 @@ export class AsyncCadCommandExecutor {
 }
 
 export function exportCadProject(engine: CadEngine): CadProject {
+  const document = engine.createSnapshot();
   return {
-    schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
-    document: engine.createSnapshot(),
+    schemaVersion: getCadProjectFormatVersionForDocument(document),
+    document,
     history: engine.getTransactions(),
     redoStack: engine.getRedoStack()
   };
@@ -2000,21 +2063,21 @@ export function exportCadProject(engine: CadEngine): CadProject {
 export function createCadProjectSourceIdentity(
   project: CadProject
 ): WcadSourceIdentity {
-  if (project.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+  if (!isSupportedWcadDocumentSchema(project.schemaVersion)) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD source identity only supports the current project schema.",
+        "WCAD source identity only supports V16 or V17 project schemas.",
         "$.schemaVersion",
-        CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        `${CAD_PROJECT_FORMAT_VERSION_V16} or ${CAD_PROJECT_FORMAT_VERSION_V17}`,
         project.schemaVersion
       )
     ]);
   }
 
   return createWcadSourceIdentitySync({
-    documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+    documentSchemaVersion: project.schemaVersion,
     units: project.document.units,
     documentBytes: encodeCanonicalCbor(project.document),
     commandsBytes: encodeCanonicalCbor({
@@ -2065,14 +2128,14 @@ export async function exportCadProjectToWcad(
   project: CadProject,
   options: ExportCadProjectWcadOptions = {}
 ): Promise<WcadPackageExportResult> {
-  if (project.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION) {
+  if (!isSupportedWcadDocumentSchema(project.schemaVersion)) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD writer only supports the current project schema.",
+        "WCAD writer only supports V16 or V17 project schemas.",
         "$.schemaVersion",
-        CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        `${CAD_PROJECT_FORMAT_VERSION_V16} or ${CAD_PROJECT_FORMAT_VERSION_V17}`,
         project.schemaVersion
       )
     ]);
@@ -2093,7 +2156,7 @@ export async function exportCadProjectToWcad(
       bytes: commandsBytes
     }),
     createWcadSourceIdentity({
-      documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      documentSchemaVersion: project.schemaVersion,
       units: project.document.units,
       documentBytes,
       commandsBytes
@@ -2112,7 +2175,7 @@ export async function exportCadProjectToWcad(
     units: project.document.units,
     document: {
       ...documentEntry,
-      schemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION
+      schemaVersion: project.schemaVersion
     },
     commands: commandsEntry,
     sourceIdentity
@@ -2167,16 +2230,14 @@ export async function readCadProjectWcad(
     return { ok: false, issues };
   }
 
-  if (
-    manifestValue.document.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION
-  ) {
+  if (!isSupportedWcadDocumentSchema(manifestValue.document.schemaVersion)) {
     issues.push(
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
         "error",
-        "WCAD reader only supports the current project schema.",
+        "WCAD reader only supports V16 or V17 project schemas.",
         "$.document.schemaVersion",
-        CURRENT_CAD_PROJECT_FORMAT_VERSION,
+        `${CAD_PROJECT_FORMAT_VERSION_V16} or ${CAD_PROJECT_FORMAT_VERSION_V17}`,
         manifestValue.document.schemaVersion,
         manifestValue.document.path,
         "document"
@@ -2293,7 +2354,7 @@ export async function readCadProjectWcad(
   }
 
   const sourceIdentity = await createWcadSourceIdentity({
-    documentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+    documentSchemaVersion: manifestValue.document.schemaVersion,
     units: manifestValue.units,
     documentBytes,
     commandsBytes
@@ -10550,6 +10611,44 @@ function sketchConstraintRef(
           primaryLineEntityId: constraint.primaryLineEntityId,
           secondaryLineEntityId: constraint.secondaryLineEntityId
         }
+      : {}),
+    ...(constraint.kind === "tangent"
+      ? {
+          primaryCurveTarget: { ...constraint.primaryTarget },
+          secondaryCurveTarget: { ...constraint.secondaryTarget }
+        }
+      : {}),
+    ...(constraint.kind === "concentric"
+      ? {
+          primaryCircleEntityId: constraint.primaryCircleEntityId,
+          secondaryCircleEntityId: constraint.secondaryCircleEntityId
+        }
+      : {}),
+    ...(constraint.kind === "equalLength"
+      ? {
+          primaryLineEntityId: constraint.primaryLineEntityId,
+          secondaryLineEntityId: constraint.secondaryLineEntityId
+        }
+      : {}),
+    ...(constraint.kind === "equalRadius"
+      ? {
+          primaryCircleEntityId: constraint.primaryCircleEntityId,
+          secondaryCircleEntityId: constraint.secondaryCircleEntityId
+        }
+      : {}),
+    ...(constraint.kind === "angle"
+      ? {
+          primaryLineEntityId: constraint.primaryLineEntityId,
+          secondaryLineEntityId: constraint.secondaryLineEntityId,
+          angleDegrees: constraint.angleDegrees
+        }
+      : {}),
+    ...(constraint.kind === "symmetry"
+      ? {
+          primaryTarget: { ...constraint.primaryTarget },
+          secondaryTarget: { ...constraint.secondaryTarget },
+          symmetryLineEntityId: constraint.symmetryLineEntityId
+        }
       : {})
   };
 }
@@ -11242,6 +11341,80 @@ function cloneSketchConstraintSnapshot(
       kind: constraint.kind,
       primaryLineEntityId: constraint.primaryLineEntityId,
       secondaryLineEntityId: constraint.secondaryLineEntityId
+    };
+  }
+
+  if (constraint.kind === "tangent") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "tangent",
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget }
+    };
+  }
+
+  if (constraint.kind === "concentric") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "concentric",
+      primaryCircleEntityId: constraint.primaryCircleEntityId,
+      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+    };
+  }
+
+  if (constraint.kind === "equalLength") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "equalLength",
+      primaryLineEntityId: constraint.primaryLineEntityId,
+      secondaryLineEntityId: constraint.secondaryLineEntityId
+    };
+  }
+
+  if (constraint.kind === "equalRadius") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "equalRadius",
+      primaryCircleEntityId: constraint.primaryCircleEntityId,
+      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+    };
+  }
+
+  if (constraint.kind === "angle") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "angle",
+      primaryLineEntityId: constraint.primaryLineEntityId,
+      secondaryLineEntityId: constraint.secondaryLineEntityId,
+      angleDegrees: constraint.angleDegrees
+    };
+  }
+
+  if (constraint.kind === "symmetry") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "symmetry",
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget },
+      symmetryLineEntityId: constraint.symmetryLineEntityId
     };
   }
 
@@ -14080,6 +14253,29 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 }
 
 function normalizeCadProject(value: CadProject): CadProject {
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17) {
+    return {
+      ...value,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+      document: {
+        ...value.document,
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        sketchDimensions: value.document.sketchDimensions.map(
+          cloneSketchDimensionSnapshot
+        ),
+        sketchConstraints: value.document.sketchConstraints.map(
+          cloneSketchConstraintSnapshot
+        ),
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        )
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
+    };
+  }
+
   if (
     value.schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
     value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
@@ -14489,24 +14685,7 @@ function validateCadProject(value: unknown): readonly CadProjectImportIssue[] {
       "$.schemaVersion",
       "Project schemaVersion must be a string."
     );
-  } else if (
-    value.schemaVersion !== CURRENT_CAD_PROJECT_FORMAT_VERSION &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V7 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V6 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V5 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V4 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V3 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V2 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V10 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V15 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V14 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V13 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V12 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V11 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V9 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V8 &&
-    value.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V1
-  ) {
+  } else if (!SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.has(value.schemaVersion)) {
     addProjectIssue(
       issues,
       "UNSUPPORTED_PROJECT_VERSION",
@@ -14628,6 +14807,7 @@ function validateCadDocumentSnapshot(
     );
   }
 
+  const isV17Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17;
   const requiresSketches =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -14643,7 +14823,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -14658,7 +14839,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -14672,7 +14854,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
@@ -14685,7 +14868,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
@@ -14696,7 +14880,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
@@ -14706,7 +14891,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
@@ -14715,7 +14901,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
@@ -14723,51 +14910,44 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsMidpointSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsParallelSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsPerpendicularSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsRevolveFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsHoleFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema;
   const allowsEdgeFinishFeatures =
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION || isV17Schema;
+  const allowsAdvancedSketchConstraints = isV17Schema;
   const isKnownProjectVersion =
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V1 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
-    schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION;
+    typeof schemaVersion === "string" &&
+    SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.has(schemaVersion);
   const seenSketchIds = new Set<string>();
   const extrudeFeatureByBodyId = new Map<BodyId, ExtrudeFeatureSnapshot>();
   const authoredFeatureByBodyId = new Map<
@@ -15026,7 +15206,8 @@ function validateCadDocumentSnapshot(
             allowsCoincidentSketchConstraints,
             allowsMidpointSketchConstraints,
             allowsParallelSketchConstraints,
-            allowsPerpendicularSketchConstraints
+            allowsPerpendicularSketchConstraints,
+            allowsAdvancedSketchConstraints
           )
         );
       }
@@ -15689,6 +15870,147 @@ function validateSketchPointTargetSnapshot(
     : undefined;
 }
 
+function validateSketchCurveConstraintTargetSnapshot(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  label: string
+): SketchCurveConstraintTarget | undefined {
+  if (!isRecord(value)) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      `${label} sketch constraint target must be an object.`
+    );
+    return undefined;
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.entityId`,
+      `${label} sketch constraint target entityId must be a non-empty string.`
+    );
+  }
+
+  if (value.entityKind !== "line" && value.entityKind !== "circle") {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      `${path}.entityKind`,
+      `${label} sketch constraint target entityKind must be line or circle.`
+    );
+  }
+
+  return typeof value.entityId === "string" &&
+    (value.entityKind === "line" || value.entityKind === "circle")
+    ? {
+        entityId: value.entityId,
+        entityKind: value.entityKind
+      }
+    : undefined;
+}
+
+function validateStringIdField(
+  value: unknown,
+  path: string,
+  issues: CadProjectImportIssue[],
+  label: string
+): string | undefined {
+  if (typeof value !== "string" || value.length === 0) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      `${label} must be a non-empty string.`
+    );
+    return undefined;
+  }
+
+  return value;
+}
+
+function validateSketchEntityReferenceForImport(args: {
+  readonly entityId: string | undefined;
+  readonly path: string;
+  readonly label: string;
+  readonly sketchId: unknown;
+  readonly expectedKind: SketchEntityKind;
+  readonly sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>;
+  readonly issues: CadProjectImportIssue[];
+}): void {
+  const {
+    entityId,
+    path,
+    label,
+    sketchId,
+    expectedKind,
+    sketchEntityRefs,
+    issues
+  } = args;
+
+  if (!entityId) {
+    return;
+  }
+
+  const entityRef = sketchEntityRefs.get(entityId);
+
+  if (!entityRef) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      `${label} must reference an existing sketch entity.`
+    );
+    return;
+  }
+
+  if (entityRef.sketchId !== sketchId) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      `${label} must belong to the referenced sketch.`
+    );
+  }
+
+  if (entityRef.kind !== expectedKind) {
+    addProjectIssue(
+      issues,
+      "INVALID_SKETCH_CONSTRAINT",
+      path,
+      `${label} must reference a ${expectedKind} sketch entity.`
+    );
+  }
+}
+
+function validateSketchCurveTargetEntityForImport(args: {
+  readonly target: SketchCurveConstraintTarget | undefined;
+  readonly path: string;
+  readonly label: string;
+  readonly sketchId: unknown;
+  readonly sketchEntityRefs: ReadonlyMap<SketchEntityId, SketchEntityImportRef>;
+  readonly issues: CadProjectImportIssue[];
+}): void {
+  const { target, path, label, sketchId, sketchEntityRefs, issues } = args;
+
+  if (!target) {
+    return;
+  }
+
+  validateSketchEntityReferenceForImport({
+    entityId: target.entityId,
+    path: `${path}.entityId`,
+    label,
+    sketchId,
+    expectedKind: target.entityKind,
+    sketchEntityRefs,
+    issues
+  });
+}
+
 function isSketchPointTargetSupportedForImport(
   entityKind: SketchEntityKind,
   target: SketchPointTarget
@@ -15755,7 +16077,8 @@ function validateSketchConstraintSnapshot(
   allowsCoincidentConstraints: boolean,
   allowsMidpointConstraints: boolean,
   allowsParallelConstraints: boolean,
-  allowsPerpendicularConstraints: boolean
+  allowsPerpendicularConstraints: boolean,
+  allowsAdvancedConstraints: boolean
 ): number {
   let maxGeneratedSketchConstraintNumber = 0;
   let entityRef: SketchEntityImportRef | undefined;
@@ -15769,6 +16092,11 @@ function validateSketchConstraintSnapshot(
   let secondaryLineEntityId: string | undefined;
   let primaryLineEntityRef: SketchEntityImportRef | undefined;
   let secondaryLineEntityRef: SketchEntityImportRef | undefined;
+  let primaryCurveTarget: SketchCurveConstraintTarget | undefined;
+  let secondaryCurveTarget: SketchCurveConstraintTarget | undefined;
+  let primaryCircleEntityId: string | undefined;
+  let secondaryCircleEntityId: string | undefined;
+  let symmetryLineEntityId: string | undefined;
 
   if (!isRecord(value)) {
     addProjectIssue(
@@ -15829,7 +16157,7 @@ function validateSketchConstraintSnapshot(
       issues,
       "INVALID_SKETCH_CONSTRAINT",
       `${path}.kind`,
-      "Sketch constraint kind must be horizontal, vertical, fixed, coincident, midpoint, parallel, or perpendicular."
+      "Sketch constraint kind must be horizontal, vertical, fixed, coincident, midpoint, parallel, perpendicular, tangent, concentric, equalLength, equalRadius, angle, or symmetry."
     );
   }
 
@@ -16032,6 +16360,198 @@ function validateSketchConstraintSnapshot(
         `${path}.secondaryLineEntityId`,
         `${label} sketch constraint line targets must be distinct.`
       );
+    }
+  } else if (isAdvancedSketchConstraintKind(value.kind)) {
+    const label = getAdvancedSketchConstraintLabel(value.kind);
+
+    if (!allowsAdvancedConstraints) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH_CONSTRAINT",
+        `${path}.kind`,
+        "Advanced sketch solver constraints require web-cad.project.v17."
+      );
+    }
+
+    if (value.kind === "tangent") {
+      primaryCurveTarget = validateSketchCurveConstraintTargetSnapshot(
+        value.primaryTarget,
+        `${path}.primaryTarget`,
+        issues,
+        label
+      );
+      secondaryCurveTarget = validateSketchCurveConstraintTargetSnapshot(
+        value.secondaryTarget,
+        `${path}.secondaryTarget`,
+        issues,
+        label
+      );
+      entityId = secondaryCurveTarget?.entityId;
+
+      if (
+        typeof value.entityId === "string" &&
+        secondaryCurveTarget &&
+        value.entityId !== secondaryCurveTarget.entityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.entityId`,
+          "Tangent sketch constraint entityId must match secondaryTarget.entityId."
+        );
+      }
+
+      if (
+        primaryCurveTarget &&
+        secondaryCurveTarget &&
+        primaryCurveTarget.entityId === secondaryCurveTarget.entityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryTarget`,
+          "Tangent sketch constraint curve targets must be distinct."
+        );
+      }
+    } else if (value.kind === "concentric" || value.kind === "equalRadius") {
+      primaryCircleEntityId = validateStringIdField(
+        value.primaryCircleEntityId,
+        `${path}.primaryCircleEntityId`,
+        issues,
+        `${label} sketch constraint primaryCircleEntityId`
+      );
+      secondaryCircleEntityId = validateStringIdField(
+        value.secondaryCircleEntityId,
+        `${path}.secondaryCircleEntityId`,
+        issues,
+        `${label} sketch constraint secondaryCircleEntityId`
+      );
+      entityId = secondaryCircleEntityId;
+
+      if (
+        typeof value.entityId === "string" &&
+        secondaryCircleEntityId &&
+        value.entityId !== secondaryCircleEntityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.entityId`,
+          `${label} sketch constraint entityId must match secondaryCircleEntityId.`
+        );
+      }
+
+      if (
+        primaryCircleEntityId &&
+        secondaryCircleEntityId &&
+        primaryCircleEntityId === secondaryCircleEntityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryCircleEntityId`,
+          `${label} sketch constraint circle targets must be distinct.`
+        );
+      }
+    } else if (value.kind === "equalLength" || value.kind === "angle") {
+      primaryLineEntityId = validateStringIdField(
+        value.primaryLineEntityId,
+        `${path}.primaryLineEntityId`,
+        issues,
+        `${label} sketch constraint primaryLineEntityId`
+      );
+      secondaryLineEntityId = validateStringIdField(
+        value.secondaryLineEntityId,
+        `${path}.secondaryLineEntityId`,
+        issues,
+        `${label} sketch constraint secondaryLineEntityId`
+      );
+      entityId = secondaryLineEntityId;
+
+      if (
+        typeof value.entityId === "string" &&
+        secondaryLineEntityId &&
+        value.entityId !== secondaryLineEntityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.entityId`,
+          `${label} sketch constraint entityId must match secondaryLineEntityId.`
+        );
+      }
+
+      if (
+        primaryLineEntityId &&
+        secondaryLineEntityId &&
+        primaryLineEntityId === secondaryLineEntityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryLineEntityId`,
+          `${label} sketch constraint line targets must be distinct.`
+        );
+      }
+
+      if (
+        value.kind === "angle" &&
+        (typeof value.angleDegrees !== "number" ||
+          !Number.isFinite(value.angleDegrees) ||
+          value.angleDegrees <= 0 ||
+          value.angleDegrees >= 180)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.angleDegrees`,
+          "Angle sketch constraint angleDegrees must be a finite number greater than 0 and less than 180."
+        );
+      }
+    } else {
+      primaryTarget = validateSketchPointTargetSnapshot(
+        value.primaryTarget,
+        `${path}.primaryTarget`,
+        issues
+      );
+      secondaryTarget = validateSketchPointTargetSnapshot(
+        value.secondaryTarget,
+        `${path}.secondaryTarget`,
+        issues
+      );
+      symmetryLineEntityId = validateStringIdField(
+        value.symmetryLineEntityId,
+        `${path}.symmetryLineEntityId`,
+        issues,
+        "Symmetry sketch constraint symmetryLineEntityId"
+      );
+      entityId = secondaryTarget?.entityId;
+
+      if (
+        typeof value.entityId === "string" &&
+        secondaryTarget &&
+        value.entityId !== secondaryTarget.entityId
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.entityId`,
+          "Symmetry sketch constraint entityId must match secondaryTarget.entityId."
+        );
+      }
+
+      if (
+        primaryTarget &&
+        secondaryTarget &&
+        sketchPointTargetsEqual(primaryTarget, secondaryTarget)
+      ) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryTarget`,
+          "Symmetry sketch constraint point targets must be distinct."
+        );
+      }
     }
   } else if (typeof value.entityId === "string" && value.entityId.length > 0) {
     entityId = value.entityId;
@@ -16284,6 +16804,153 @@ function validateSketchConstraintSnapshot(
         );
       }
     }
+  }
+
+  if (value.kind === "tangent") {
+    validateSketchCurveTargetEntityForImport({
+      target: primaryCurveTarget,
+      path: `${path}.primaryTarget`,
+      label: "Tangent sketch constraint primaryTarget",
+      sketchId: value.sketchId,
+      sketchEntityRefs,
+      issues
+    });
+    validateSketchCurveTargetEntityForImport({
+      target: secondaryCurveTarget,
+      path: `${path}.secondaryTarget`,
+      label: "Tangent sketch constraint secondaryTarget",
+      sketchId: value.sketchId,
+      sketchEntityRefs,
+      issues
+    });
+  }
+
+  if (value.kind === "concentric" || value.kind === "equalRadius") {
+    const label = value.kind === "concentric" ? "Concentric" : "Equal radius";
+    validateSketchEntityReferenceForImport({
+      entityId: primaryCircleEntityId,
+      path: `${path}.primaryCircleEntityId`,
+      label: `${label} sketch constraint primaryCircleEntityId`,
+      sketchId: value.sketchId,
+      expectedKind: "circle",
+      sketchEntityRefs,
+      issues
+    });
+    validateSketchEntityReferenceForImport({
+      entityId: secondaryCircleEntityId,
+      path: `${path}.secondaryCircleEntityId`,
+      label: `${label} sketch constraint secondaryCircleEntityId`,
+      sketchId: value.sketchId,
+      expectedKind: "circle",
+      sketchEntityRefs,
+      issues
+    });
+  }
+
+  if (value.kind === "equalLength" || value.kind === "angle") {
+    const label = value.kind === "equalLength" ? "Equal length" : "Angle";
+    validateSketchEntityReferenceForImport({
+      entityId: primaryLineEntityId,
+      path: `${path}.primaryLineEntityId`,
+      label: `${label} sketch constraint primaryLineEntityId`,
+      sketchId: value.sketchId,
+      expectedKind: "line",
+      sketchEntityRefs,
+      issues
+    });
+    validateSketchEntityReferenceForImport({
+      entityId: secondaryLineEntityId,
+      path: `${path}.secondaryLineEntityId`,
+      label: `${label} sketch constraint secondaryLineEntityId`,
+      sketchId: value.sketchId,
+      expectedKind: "line",
+      sketchEntityRefs,
+      issues
+    });
+  }
+
+  if (value.kind === "symmetry") {
+    if (primaryTarget) {
+      const primaryEntityRef = sketchEntityRefs.get(primaryTarget.entityId);
+
+      if (!primaryEntityRef) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.primaryTarget.entityId`,
+          "Symmetry sketch constraint primaryTarget must reference an existing sketch entity."
+        );
+      } else {
+        if (primaryEntityRef.sketchId !== value.sketchId) {
+          addProjectIssue(
+            issues,
+            "INVALID_SKETCH_CONSTRAINT",
+            `${path}.primaryTarget.entityId`,
+            "Symmetry sketch constraint primaryTarget must belong to the referenced sketch."
+          );
+        }
+
+        if (
+          !isSketchPointTargetSupportedForImport(
+            primaryEntityRef.kind,
+            primaryTarget
+          )
+        ) {
+          addProjectIssue(
+            issues,
+            "INVALID_SKETCH_CONSTRAINT",
+            `${path}.primaryTarget.role`,
+            "Symmetry sketch constraint primaryTarget role is not supported for this entity."
+          );
+        }
+      }
+    }
+
+    if (secondaryTarget) {
+      const secondaryEntityRef = sketchEntityRefs.get(secondaryTarget.entityId);
+
+      if (!secondaryEntityRef) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH_CONSTRAINT",
+          `${path}.secondaryTarget.entityId`,
+          "Symmetry sketch constraint secondaryTarget must reference an existing sketch entity."
+        );
+      } else {
+        if (secondaryEntityRef.sketchId !== value.sketchId) {
+          addProjectIssue(
+            issues,
+            "INVALID_SKETCH_CONSTRAINT",
+            `${path}.secondaryTarget.entityId`,
+            "Symmetry sketch constraint secondaryTarget must belong to the referenced sketch."
+          );
+        }
+
+        if (
+          !isSketchPointTargetSupportedForImport(
+            secondaryEntityRef.kind,
+            secondaryTarget
+          )
+        ) {
+          addProjectIssue(
+            issues,
+            "INVALID_SKETCH_CONSTRAINT",
+            `${path}.secondaryTarget.role`,
+            "Symmetry sketch constraint secondaryTarget role is not supported for this entity."
+          );
+        }
+      }
+    }
+
+    validateSketchEntityReferenceForImport({
+      entityId: symmetryLineEntityId,
+      path: `${path}.symmetryLineEntityId`,
+      label: "Symmetry sketch constraint symmetryLineEntityId",
+      sketchId: value.sketchId,
+      expectedKind: "line",
+      sketchEntityRefs,
+      issues
+    });
   }
 
   if (
@@ -19952,8 +20619,55 @@ function isSketchConstraintKind(value: unknown): value is SketchConstraintKind {
     value === "coincident" ||
     value === "midpoint" ||
     value === "parallel" ||
-    value === "perpendicular"
+    value === "perpendicular" ||
+    isAdvancedSketchConstraintKind(value)
   );
+}
+
+function isAdvancedSketchConstraintKind(
+  value: unknown
+): value is
+  | "tangent"
+  | "concentric"
+  | "equalLength"
+  | "equalRadius"
+  | "angle"
+  | "symmetry" {
+  return (
+    value === "tangent" ||
+    value === "concentric" ||
+    value === "equalLength" ||
+    value === "equalRadius" ||
+    value === "angle" ||
+    value === "symmetry"
+  );
+}
+
+function getAdvancedSketchConstraintLabel(
+  kind: Extract<
+    SketchConstraintKind,
+    | "tangent"
+    | "concentric"
+    | "equalLength"
+    | "equalRadius"
+    | "angle"
+    | "symmetry"
+  >
+): string {
+  switch (kind) {
+    case "tangent":
+      return "Tangent";
+    case "concentric":
+      return "Concentric";
+    case "equalLength":
+      return "Equal length";
+    case "equalRadius":
+      return "Equal radius";
+    case "angle":
+      return "Angle";
+    case "symmetry":
+      return "Symmetry";
+  }
 }
 
 function isSketchPointTarget(value: unknown): value is SketchPointTarget {

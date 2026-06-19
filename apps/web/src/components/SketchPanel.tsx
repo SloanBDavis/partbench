@@ -3256,10 +3256,28 @@ function sketchConstraintToForm(
     };
   }
 
+  if (constraint.kind === "midpoint") {
+    return {
+      ...defaultSketchConstraintForm,
+      id: "",
+      name: constraint.name,
+      kind: "midpoint",
+      secondaryEntityId: constraint.target.entityId,
+      secondaryTargetRole: constraint.target.role
+    };
+  }
+
+  if (constraint.kind === "horizontal" || constraint.kind === "vertical") {
+    return {
+      ...defaultSketchConstraintForm,
+      name: constraint.name,
+      kind: constraint.kind
+    };
+  }
+
   return {
     ...defaultSketchConstraintForm,
-    name: constraint.name,
-    kind: constraint.kind
+    name: constraint.name
   };
 }
 

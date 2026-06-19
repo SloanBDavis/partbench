@@ -95,10 +95,15 @@ export function createSketchSolverStatusResponse({
       received: "deferred"
     }),
     createDiagnostic({
-      code: "SKETCH_SOLVER_SCHEMA_V17_DEFERRED",
+      code:
+        currentProjectSchemaVersion === "web-cad.project.v17"
+          ? "SKETCH_SOLVER_STATUS_READY"
+          : "SKETCH_SOLVER_SCHEMA_V17_DEFERRED",
       severity: "info",
       message:
-        "V11 source records are documented, but this query-only tranche continues to emit the current project schema.",
+        currentProjectSchemaVersion === "web-cad.project.v17"
+          ? "V11 V17 sketch solver source records are present; numerical solving remains deferred for advanced constraints."
+          : "V11 source records are documented, but this project emits V16 until V17 solver source data is present.",
       sketchId: sketch.id,
       expected: "web-cad.project.v17 only when new source data is committed",
       received: currentProjectSchemaVersion
@@ -353,21 +358,24 @@ function createProfileCandidate(
 function createSourceContract(
   currentProjectSchemaVersion: WcadDocumentSchemaVersion
 ): CadSketchSolverSourceContract {
+  const hasV17SourceRecords =
+    currentProjectSchemaVersion === "web-cad.project.v17";
   return {
     currentProjectSchemaVersion,
     emittedProjectSchemaVersion: currentProjectSchemaVersion,
     packageVersion: WCAD_PACKAGE_VERSION,
-    queryOnly: true,
+    queryOnly: !hasV17SourceRecords,
     requiresProjectSchemaMigration: false,
     nextProjectSchemaVersion: "web-cad.project.v17",
     sourceRecordRequirements: [
       {
         recordKind: "advancedConstraint",
-        status: "v17-required",
-        requiresProjectSchemaMigration: true,
+        status: hasV17SourceRecords ? "current-source" : "v17-required",
+        requiresProjectSchemaMigration: !hasV17SourceRecords,
         nextProjectSchemaVersion: "web-cad.project.v17",
-        reason:
-          "Tangent, concentric, equal, distance, angle, and symmetry constraints require new source records before they can be persisted."
+        reason: hasV17SourceRecords
+          ? "Tangent, concentric, equal, angle, and symmetry constraints are persisted as V17 source records; numerical solving remains deferred."
+          : "Tangent, concentric, equal, angle, and symmetry constraints require V17 source records before they can be persisted."
       },
       {
         recordKind: "constructionGeometry",
@@ -543,6 +551,74 @@ function createConstraintTargets(
         type: "entity",
         sketchId: constraint.sketchId,
         entityId: constraint.secondaryLineEntityId,
+        entityKind: "line"
+      }
+    ];
+  }
+
+  if (constraint.kind === "tangent") {
+    return [
+      constraintTarget,
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryTarget.entityId,
+        entityKind: constraint.primaryTarget.entityKind
+      },
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryTarget.entityId,
+        entityKind: constraint.secondaryTarget.entityKind
+      }
+    ];
+  }
+
+  if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
+    return [
+      constraintTarget,
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryCircleEntityId,
+        entityKind: "circle"
+      },
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryCircleEntityId,
+        entityKind: "circle"
+      }
+    ];
+  }
+
+  if (constraint.kind === "equalLength" || constraint.kind === "angle") {
+    return [
+      constraintTarget,
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.primaryLineEntityId,
+        entityKind: "line"
+      },
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.secondaryLineEntityId,
+        entityKind: "line"
+      }
+    ];
+  }
+
+  if (constraint.kind === "symmetry") {
+    return [
+      constraintTarget,
+      createPointTargetRef(constraint.sketchId, constraint.primaryTarget),
+      createPointTargetRef(constraint.sketchId, constraint.secondaryTarget),
+      {
+        type: "entity",
+        sketchId: constraint.sketchId,
+        entityId: constraint.symmetryLineEntityId,
         entityKind: "line"
       }
     ];

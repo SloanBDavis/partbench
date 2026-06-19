@@ -1,4 +1,5 @@
 import type {
+  AdvancedSketchConstraintKind,
   CadQueryRequest,
   CadQueryResponse,
   ParameterId,
@@ -141,27 +142,7 @@ export function evaluateSketch(
   const drivenEntityIds = [
     ...new Set([
       ...dimensions.map((dimension) => dimension.entityId),
-      ...constraints.flatMap((constraint) =>
-        constraint.kind === "coincident"
-          ? [
-              constraint.entityId,
-              constraint.primaryTarget.entityId,
-              constraint.secondaryTarget.entityId
-            ]
-          : constraint.kind === "midpoint"
-            ? [
-                constraint.entityId,
-                constraint.lineEntityId,
-                constraint.target.entityId
-              ]
-            : isLinePairSketchConstraint(constraint)
-              ? [
-                  constraint.entityId,
-                  constraint.primaryLineEntityId,
-                  constraint.secondaryLineEntityId
-                ]
-              : [constraint.entityId]
-      )
+      ...constraints.flatMap(getSketchConstraintDrivenEntityIds)
     ])
   ];
 
@@ -366,11 +347,38 @@ export function evaluateSketchConstraint(
     );
   }
 
+  if (isAdvancedSketchConstraint(constraint)) {
+    return evaluateAdvancedSketchConstraint(constraint);
+  }
+
   return evaluateOrientationSketchConstraint(
     document,
     constraint,
     evaluatedEntities
   );
+}
+
+function evaluateAdvancedSketchConstraint(
+  constraint: Extract<
+    SketchConstraintSnapshot,
+    { readonly kind: AdvancedSketchConstraintKind }
+  >
+): SketchConstraintEntry {
+  return {
+    ...cloneSketchConstraintSnapshot(constraint),
+    status: "unsupported",
+    issues: [
+      {
+        code: "UNSUPPORTED_TARGET",
+        message: `V17 ${constraint.kind} sketch constraints are source-backed, but numerical solving is deferred.`,
+        sketchId: constraint.sketchId,
+        sketchEntityId: constraint.entityId,
+        sketchConstraintId: constraint.id,
+        expected: "supported current sketch constraint evaluator",
+        received: constraint.kind
+      }
+    ]
+  };
 }
 
 function evaluateOrientationSketchConstraint(
@@ -2862,6 +2870,85 @@ function isLinePairSketchConstraint(
   return constraint.kind === "parallel" || constraint.kind === "perpendicular";
 }
 
+function isAdvancedSketchConstraint(
+  constraint: SketchConstraintSnapshot
+): constraint is Extract<
+  SketchConstraintSnapshot,
+  { readonly kind: AdvancedSketchConstraintKind }
+> {
+  return (
+    constraint.kind === "tangent" ||
+    constraint.kind === "concentric" ||
+    constraint.kind === "equalLength" ||
+    constraint.kind === "equalRadius" ||
+    constraint.kind === "angle" ||
+    constraint.kind === "symmetry"
+  );
+}
+
+function getSketchConstraintDrivenEntityIds(
+  constraint: SketchConstraintSnapshot
+): SketchEntityId[] {
+  if (constraint.kind === "coincident") {
+    return [
+      constraint.entityId,
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId
+    ];
+  }
+
+  if (constraint.kind === "midpoint") {
+    return [
+      constraint.entityId,
+      constraint.lineEntityId,
+      constraint.target.entityId
+    ];
+  }
+
+  if (isLinePairSketchConstraint(constraint)) {
+    return [
+      constraint.entityId,
+      constraint.primaryLineEntityId,
+      constraint.secondaryLineEntityId
+    ];
+  }
+
+  if (constraint.kind === "tangent") {
+    return [
+      constraint.entityId,
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId
+    ];
+  }
+
+  if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
+    return [
+      constraint.entityId,
+      constraint.primaryCircleEntityId,
+      constraint.secondaryCircleEntityId
+    ];
+  }
+
+  if (constraint.kind === "equalLength" || constraint.kind === "angle") {
+    return [
+      constraint.entityId,
+      constraint.primaryLineEntityId,
+      constraint.secondaryLineEntityId
+    ];
+  }
+
+  if (constraint.kind === "symmetry") {
+    return [
+      constraint.entityId,
+      constraint.primaryTarget.entityId,
+      constraint.secondaryTarget.entityId,
+      constraint.symmetryLineEntityId
+    ];
+  }
+
+  return [constraint.entityId];
+}
+
 function getSketchPointTargetCoordinate(
   entity: SketchEntitySnapshot,
   target: SketchPointTarget
@@ -3070,6 +3157,80 @@ function cloneSketchConstraintSnapshot(
       kind: constraint.kind,
       primaryLineEntityId: constraint.primaryLineEntityId,
       secondaryLineEntityId: constraint.secondaryLineEntityId
+    };
+  }
+
+  if (constraint.kind === "tangent") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "tangent",
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget }
+    };
+  }
+
+  if (constraint.kind === "concentric") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "concentric",
+      primaryCircleEntityId: constraint.primaryCircleEntityId,
+      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+    };
+  }
+
+  if (constraint.kind === "equalLength") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "equalLength",
+      primaryLineEntityId: constraint.primaryLineEntityId,
+      secondaryLineEntityId: constraint.secondaryLineEntityId
+    };
+  }
+
+  if (constraint.kind === "equalRadius") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "equalRadius",
+      primaryCircleEntityId: constraint.primaryCircleEntityId,
+      secondaryCircleEntityId: constraint.secondaryCircleEntityId
+    };
+  }
+
+  if (constraint.kind === "angle") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "angle",
+      primaryLineEntityId: constraint.primaryLineEntityId,
+      secondaryLineEntityId: constraint.secondaryLineEntityId,
+      angleDegrees: constraint.angleDegrees
+    };
+  }
+
+  if (constraint.kind === "symmetry") {
+    return {
+      id: constraint.id,
+      name: constraint.name,
+      sketchId: constraint.sketchId,
+      entityId: constraint.entityId,
+      kind: "symmetry",
+      primaryTarget: { ...constraint.primaryTarget },
+      secondaryTarget: { ...constraint.secondaryTarget },
+      symmetryLineEntityId: constraint.symmetryLineEntityId
     };
   }
 
