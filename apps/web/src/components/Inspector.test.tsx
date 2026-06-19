@@ -1,6 +1,7 @@
 import type { CadBodySnapshot, CadFeatureSummary } from "@web-cad/cad-core";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadGeneratedAxisReference,
   CadGeneratedReference,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
@@ -170,6 +171,62 @@ describe("Inspector", () => {
     expect(markup).toContain("Edge finish");
     expect(markup).toContain("Fillet");
     expect(markup).toContain("Create chamfer");
+  });
+
+  it("renders generated references for non-extrude authored bodies", () => {
+    const holeFeature = createHoleFeature();
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createHoleBody(),
+        disabled: false,
+        feature: holeFeature,
+        featureEditability: createFeatureEditability(holeFeature, [
+          {
+            path: "depthMode",
+            label: "Depth mode",
+            valueType: "enum",
+            currentValue: "throughAll",
+            enumValues: ["blind", "throughAll"],
+            editable: true,
+            commitOperation: "feature.updateHole",
+            diagnostics: []
+          }
+        ]),
+        generatedReferences: createHoleGeneratedReferences(),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map(),
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Hole feature");
+    expect(markup).toContain("Generated references");
+    expect(markup).toContain("Hole wall face");
+    expect(markup).toContain("Hole start rim edge");
+    expect(markup).toContain("Hole axis");
+    expect(markup).toContain('<optgroup label="Faces">');
+    expect(markup).toContain('<optgroup label="Edges">');
+    expect(markup).toContain('<optgroup label="Axes">');
+    expect(markup).not.toContain(
+      "Generated references are unavailable for the selected body."
+    );
   });
 
   it("offers feature delete for non-extrude authored bodies", () => {
@@ -450,6 +507,113 @@ function createGeneratedReferences(
     vertices: [],
     axisCount: 0,
     axes: []
+  };
+}
+
+function createHoleGeneratedReferences(): BodyGeneratedReferencesQueryResponse {
+  const face: CadGeneratedFaceReference = {
+    kind: "face",
+    stableId: "generated:face:body_hole:holeWall",
+    label: "Hole wall face",
+    description: "Hole wall",
+    eligibleOperations: ["feature.selectReference"],
+    bodyId: "body_hole",
+    ownerPartId: "part:default",
+    sourceFeatureId: "feat_hole",
+    sourceSketchId: "sketch_1",
+    sourceSketchEntityId: "circle_1",
+    role: "holeWall",
+    geometricSignature: {
+      sourceKind: "hole",
+      profileKind: "circle",
+      sketchPlane: "XY",
+      surfaceType: "cylinder",
+      axis: [0, 0, 1],
+      axisRole: "holeDirection"
+    }
+  };
+  const edge: CadGeneratedEdgeReference = {
+    kind: "edge",
+    stableId: "generated:edge:body_hole:startRim",
+    label: "Hole start rim edge",
+    description: "Hole start rim",
+    eligibleOperations: ["feature.selectReference"],
+    bodyId: "body_hole",
+    ownerPartId: "part:default",
+    sourceFeatureId: "feat_hole",
+    sourceSketchId: "sketch_1",
+    sourceSketchEntityId: "circle_1",
+    role: "startRim",
+    adjacentFaceRoles: ["holeWall"],
+    geometricSignature: {
+      sourceKind: "hole",
+      profileKind: "circle",
+      sketchPlane: "XY",
+      curveType: "circle",
+      positionRole: "startRim"
+    }
+  };
+  const axis: CadGeneratedAxisReference = {
+    kind: "axis",
+    stableId: "generated:axis:body_hole:holeAxis",
+    label: "Hole axis",
+    description: "Hole center axis",
+    eligibleOperations: ["feature.selectReference"],
+    bodyId: "body_hole",
+    ownerPartId: "part:default",
+    sourceFeatureId: "feat_hole",
+    sourceSketchId: "sketch_1",
+    sourceSketchEntityId: "circle_1",
+    role: "holeAxis",
+    geometricSignature: {
+      sourceKind: "hole",
+      profileKind: "circle",
+      sketchPlane: "XY",
+      axis: [0, 0, 1],
+      axisRole: "holeAxis",
+      positionRole: "holeCenter"
+    }
+  };
+
+  return {
+    ok: true,
+    query: "body.generatedReferences",
+    cadOpsVersion: "cadops.v1",
+    body: {
+      kind: "body",
+      stableId: "generated:body:body_hole",
+      label: "Generated body",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      bodyId: "body_hole",
+      ownerPartId: "part:default",
+      sourceFeatureId: "feat_hole",
+      sourceSketchId: "sketch_1",
+      sourceSketchEntityId: "circle_1",
+      profileKind: "circle",
+      geometricSignature: {
+        sourceKind: "hole",
+        profileKind: "circle",
+        sketchPlane: "XY",
+        profile: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 0.5
+        },
+        axis: [0, 0, 1],
+        axisRole: "holeDirection"
+      }
+    },
+    faceCount: 1,
+    faces: [face],
+    edgeCount: 1,
+    edges: [edge],
+    vertexCount: 0,
+    vertices: [],
+    axisCount: 1,
+    axes: [axis]
   };
 }
 

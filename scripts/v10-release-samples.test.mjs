@@ -18,8 +18,9 @@ describe("V10 release edit/rebuild smoke runner", () => {
     });
     expect(result.editCheckCount).toBeGreaterThanOrEqual(30);
     expect(result.rebuildCheckCount).toBeGreaterThanOrEqual(15);
+    expect(result.referenceHealthCheckCount).toBeGreaterThanOrEqual(72);
     expect(result.repairCheckCount).toBeGreaterThanOrEqual(7);
-    expect(result.roundTripCheckCount).toBeGreaterThanOrEqual(48);
+    expect(result.roundTripCheckCount).toBeGreaterThanOrEqual(60);
     expect(result.samples.map((sample) => sample.id)).toEqual([
       "v10-extrude-edit-attached-sketch",
       "v10-c2-feature-lifecycle-edits",
@@ -69,10 +70,10 @@ describe("V10 release edit/rebuild smoke runner", () => {
       [
         "V10 release edit/rebuild smoke passed",
         "samples: 3 passed, 0 failed, 3 total",
-        `checks: ${result.editCheckCount} edit, ${result.rebuildCheckCount} rebuild, ${result.repairCheckCount} repair, ${result.roundTripCheckCount} round-trip`,
-        "- pass v10-extrude-edit-attached-sketch | edits 14 | rebuild pending/2 bodies | repairs 0 | round-trips 16",
-        "- pass v10-c2-feature-lifecycle-edits | edits 30 | rebuild repair-needed/7 bodies | repairs 0 | round-trips 16",
-        "- pass v10-named-reference-repair-roundtrip | edits 9 | rebuild pending/1 bodies | repairs 7 | round-trips 16"
+        `checks: ${result.editCheckCount} edit, ${result.rebuildCheckCount} rebuild, ${result.referenceHealthCheckCount} reference-health, ${result.repairCheckCount} repair, ${result.roundTripCheckCount} round-trip`,
+        "- pass v10-extrude-edit-attached-sketch | edits 14 | rebuild pending/2 bodies | health 18 | repairs 0 | round-trips 20",
+        "- pass v10-c2-feature-lifecycle-edits | edits 30 | rebuild repair-needed/7 bodies | health 36 | repairs 0 | round-trips 20",
+        "- pass v10-named-reference-repair-roundtrip | edits 9 | rebuild pending/1 bodies | health 18 | repairs 7 | round-trips 20"
       ].join("\n")
     );
   });

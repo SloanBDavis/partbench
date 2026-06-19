@@ -6,6 +6,7 @@ import type {
   ProjectHealthQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectSummaryQueryResponse,
+  ReferenceHealthQueryResponse,
   ReferenceListNamedQueryResponse,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -256,6 +257,29 @@ describe("V10 release sample fixtures", () => {
         );
         expect(editability.requiresProjectSchemaMigration).toBe(false);
       }
+
+      for (const expectation of fixture.expectedReferenceHealth) {
+        const health = readReferenceHealth(restored, expectation.target);
+        const entry = findExpectedReferenceHealthEntry(health, expectation);
+
+        expect(health.status).toBe(expectation.expectedStatus);
+        expect(health.target).toEqual(expectation.target);
+        expect(health.referenceHealthCount).toBe(health.referenceHealth.length);
+        expect(entry).toBeDefined();
+        expect(entry).toMatchObject({
+          status: expectation.expectedStatus,
+          commandable: expectation.expectedCommandable
+        });
+        if (expectation.expectedCommandable) {
+          expect(entry?.commandOperations.length).toBeGreaterThan(0);
+        } else {
+          expect(entry?.commandOperations.length).toBe(0);
+        }
+        expect(entry?.consumedByFeatureId).toBe(
+          expectation.expectedConsumedByFeatureId
+        );
+        expect(health.requiresProjectSchemaMigration).toBe(false);
+      }
     });
   }
 });
@@ -353,6 +377,55 @@ function readProjectRebuildPlan(
   }
 
   return response;
+}
+
+function readReferenceHealth(
+  engine: CadEngine,
+  target: V10ReleaseSampleFixture["expectedReferenceHealth"][number]["target"]
+): ReferenceHealthQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "reference.health", target }
+  });
+
+  if (!response.ok || response.query !== "reference.health") {
+    throw new Error("Expected reference.health response.");
+  }
+
+  return response;
+}
+
+function findExpectedReferenceHealthEntry(
+  response: ReferenceHealthQueryResponse,
+  expectation: V10ReleaseSampleFixture["expectedReferenceHealth"][number]
+): ReferenceHealthQueryResponse["referenceHealth"][number] | undefined {
+  const target = expectation.target;
+
+  if (target.type === "namedReference") {
+    return response.referenceHealth.find(
+      (entry) => entry.referenceName === target.name
+    );
+  }
+
+  if (target.type === "generatedReference") {
+    return response.referenceHealth.find(
+      (entry) =>
+        entry.bodyId === target.bodyId &&
+        entry.stableId === target.stableId &&
+        (target.expectedKind === undefined ||
+          entry.kind === target.expectedKind)
+    );
+  }
+
+  if (target.type === "body") {
+    return response.referenceHealth.find(
+      (entry) => entry.bodyId === target.bodyId
+    );
+  }
+
+  return response.referenceHealth.find(
+    (entry) => entry.label === expectation.targetLabel
+  );
 }
 
 function readNamedReferences(

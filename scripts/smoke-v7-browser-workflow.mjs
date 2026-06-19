@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm, stat } from "node:fs/promises";
+import { register } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createV7BrowserWorkflowSmokeResult,
   formatV7BrowserWorkflowSmokeSummary,
@@ -17,6 +18,7 @@ import {
 /* global Blob, clearTimeout, DataTransfer, document, Event, File, getComputedStyle, HTMLDetailsElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement, KeyboardEvent, MouseEvent, Node, PointerEvent, TextDecoder, window */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const loaderPath = new URL("./ts-source-loader.mjs", import.meta.url);
 const appDistDir = join(repoRoot, "apps/web/dist");
 const appHtmlPath = join(appDistDir, "index.html");
 const smokeTimeoutMs = 30_000;
@@ -217,6 +219,9 @@ async function runV7BrowserWorkflowSmoke(
   const { sessionId } = attached;
   const exceptions = [];
   const consoleErrors = [];
+  const v10C2ProjectJson = requireV10Workflow
+    ? await createV10C2ReleaseSampleProjectJson()
+    : undefined;
 
   client.on("Runtime.exceptionThrown", (params) => {
     exceptions.push(
@@ -259,6 +264,7 @@ async function runV7BrowserWorkflowSmoke(
         requireDerivedMeshCache,
         requireGlbDownload,
         requireV10Workflow,
+        v10C2ProjectJson,
         timeoutMs
       })})`
     },
@@ -312,6 +318,24 @@ async function runV7BrowserWorkflowSmoke(
     consoleErrors,
     exceptions
   });
+}
+
+async function createV10C2ReleaseSampleProjectJson() {
+  register(loaderPath, import.meta.url);
+  const cadCorePath = pathToFileURL(
+    resolve(repoRoot, "packages/cad-core/src/index.ts")
+  );
+  const cadCore = await import(cadCorePath.href);
+  const engine = new cadCore.CadEngine();
+  const response = engine.executeBatch(
+    cadCore.createV10ReleaseSampleBatch("v10-c2-feature-lifecycle-edits")
+  );
+
+  if (!response.ok) {
+    throw new Error("Could not build V10 C2 release sample project JSON.");
+  }
+
+  return cadCore.exportCadProjectJson(engine);
 }
 
 async function runNarrowViewportSmoke(client, sessionId, timeoutMs) {
@@ -384,6 +408,7 @@ async function v7BrowserWorkflowSmoke({
   requireDerivedMeshCache,
   requireGlbDownload,
   requireV10Workflow,
+  v10C2ProjectJson,
   timeoutMs
 }) {
   const ids = {
@@ -1423,6 +1448,10 @@ async function v7BrowserWorkflowSmoke({
     getDiagnosticText()
   );
 
+  if (requireV10Workflow) {
+    await runV10C2InspectorFeatureEditSmoke(v10C2ProjectJson);
+  }
+
   if (requireGlbDownload) {
     await waitFor(() => {
       const requiredGlbButton = getButtonByText(
@@ -1699,6 +1728,281 @@ async function v7BrowserWorkflowSmoke({
       "stale named reference is repaired through the browser workflow",
       replacementLabel
     );
+  }
+
+  async function runV10C2InspectorFeatureEditSmoke(projectJson) {
+    if (!projectJson) {
+      fail(
+        "v10-c2-inspector-feature-edits",
+        "revolve, hole, chamfer, and fillet feature edits commit through Inspector controls",
+        "V10 C2 release sample project JSON was not available."
+      );
+      return;
+    }
+
+    openDetailsBySummary(document.body, "Project/File");
+    let projectPanel = getSectionByAriaLabel("Project");
+    loadProjectJsonFileIntoInput(
+      projectPanel,
+      projectJson,
+      "v10-c2-browser-fixture.json"
+    );
+    await waitFor(
+      () =>
+        includesText(
+          getSectionByAriaLabel("Project"),
+          "Loaded v10-c2-browser-fixture.json"
+        ) && includesText(getSectionByAriaLabel("Project"), "Ready to import"),
+      "loaded V10 C2 browser fixture JSON"
+    );
+    projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Import JSON");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          "V10 C2 revolve body"
+        ) &&
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          "V10 C2 hole result"
+        ) &&
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          "V10 C2 chamfer result"
+        ) &&
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          "V10 C2 fillet result"
+        ),
+      "imported V10 C2 browser fixture"
+    );
+
+    await selectC2ImportedBody("V10 C2 hole result", "Hole feature");
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        includesText(inspector, "Generated references") &&
+        includesText(inspector, "Hole wall face") &&
+        includesText(inspector, "Hole start rim edge") &&
+        includesText(inspector, "Hole axis") &&
+        !includesText(
+          modeling,
+          "Generated references are unavailable for the selected body"
+        );
+
+      if (!ready) {
+        throw new Error(
+          [
+            `inspector=${compactText(inspector.textContent, 360)}`,
+            `modeling=${compactText(modeling.textContent, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V10 C2 non-extrude generated references in Inspector");
+    pass(
+      "v10-non-extrude-generated-reference-routing",
+      "hole generated references route from cad-core into Inspector and Modeling surfaces",
+      compactText(getElementByAriaLabel("Inspector").textContent, 280)
+    );
+
+    await selectC2ImportedBody("V10 C2 revolve body", "Revolve feature");
+    await waitForEditorControlEnabled("Revolve feature", "Angle (deg)");
+    const revolveEditor = getInspectorCommandCardByHeading("Revolve feature");
+    setFieldByLabel(revolveEditor, "Angle (deg)", "180");
+    await clickEnabledButtonInScope(revolveEditor, "Apply revolve");
+    await waitFor(() => {
+      const editor = getInspectorCommandCardByHeading("Revolve feature");
+      const control = getControlByLabel(editor, "Angle (deg)");
+      const ready =
+        control instanceof HTMLInputElement &&
+        !control.disabled &&
+        control.value === "180" &&
+        includesText(getElementByAriaLabel("Inspector"), "180 deg");
+
+      if (!ready) {
+        throw new Error(compactText(editor.textContent, 420));
+      }
+
+      return true;
+    }, "V10 C2 revolve Inspector edit committed");
+
+    await selectC2ImportedBody("V10 C2 hole result", "Hole feature");
+    await waitForEditorControlEnabled("Hole feature", "Depth mode");
+    await waitForEditorControlEnabled("Hole feature", "Direction");
+    const holeEditor = getInspectorCommandCardByHeading("Hole feature");
+    setSelectByLabel(holeEditor, "Depth mode", "throughAll");
+    setSelectByLabel(holeEditor, "Direction", "positive");
+    await clickEnabledButtonInScope(holeEditor, "Apply hole");
+    await waitFor(() => {
+      const editor = getInspectorCommandCardByHeading("Hole feature");
+      const depthMode = getControlByLabel(editor, "Depth mode");
+      const direction = getControlByLabel(editor, "Direction");
+      const ready =
+        depthMode instanceof HTMLSelectElement &&
+        direction instanceof HTMLSelectElement &&
+        !depthMode.disabled &&
+        !direction.disabled &&
+        depthMode.value === "throughAll" &&
+        direction.value === "positive" &&
+        includesText(getElementByAriaLabel("Inspector"), "Through all");
+
+      if (!ready) {
+        throw new Error(compactText(editor.textContent, 420));
+      }
+
+      return true;
+    }, "V10 C2 hole Inspector edit committed");
+
+    await selectC2ImportedBody("V10 C2 chamfer result", "Chamfer feature");
+    await waitForEditorControlEnabled("Chamfer feature", "Distance (mm)");
+    const chamferEditor = getInspectorCommandCardByHeading("Chamfer feature");
+    setFieldByLabel(chamferEditor, "Distance (mm)", "0.55");
+    await clickEnabledButtonInScope(chamferEditor, "Apply chamfer");
+    await waitFor(() => {
+      const editor = getInspectorCommandCardByHeading("Chamfer feature");
+      const control = getControlByLabel(editor, "Distance (mm)");
+      const ready =
+        control instanceof HTMLInputElement &&
+        !control.disabled &&
+        control.value === "0.55" &&
+        includesText(getElementByAriaLabel("Inspector"), "0.55 mm");
+
+      if (!ready) {
+        throw new Error(compactText(editor.textContent, 420));
+      }
+
+      return true;
+    }, "V10 C2 chamfer Inspector edit committed");
+
+    await selectC2ImportedBody("V10 C2 fillet result", "Fillet feature");
+    await waitForEditorControlEnabled("Fillet feature", "Radius (mm)");
+    const filletEditor = getInspectorCommandCardByHeading("Fillet feature");
+    setFieldByLabel(filletEditor, "Radius (mm)", "0.5");
+    await clickEnabledButtonInScope(filletEditor, "Apply fillet");
+    await waitFor(() => {
+      const editor = getInspectorCommandCardByHeading("Fillet feature");
+      const control = getControlByLabel(editor, "Radius (mm)");
+      const ready =
+        control instanceof HTMLInputElement &&
+        !control.disabled &&
+        control.value === "0.5" &&
+        includesText(getElementByAriaLabel("Inspector"), "0.5 mm");
+
+      if (!ready) {
+        throw new Error(compactText(editor.textContent, 420));
+      }
+
+      return true;
+    }, "V10 C2 fillet Inspector edit committed");
+
+    pass(
+      "v10-c2-inspector-feature-edits",
+      "revolve, hole, chamfer, and fillet feature edits commit through Inspector controls",
+      compactText(getElementByAriaLabel("Model structure").textContent, 300)
+    );
+  }
+
+  async function selectC2ImportedBody(bodyName, editorTitle) {
+    openTreePanel();
+    clickModelStoryBodyRowByTitle(bodyName);
+    await waitFor(() => {
+      const button = queryModelStoryBodyRowByTitle(bodyName);
+
+      if (!button?.classList.contains("selected")) {
+        throw new Error(`Body row ${bodyName} is not selected.`);
+      }
+
+      return true;
+    }, `selected model story body row ${bodyName}`);
+    openSelectionPanel();
+    await waitFor(() => {
+      getInspectorCommandCardByHeading(editorTitle);
+
+      return true;
+    }, `selected ${bodyName}`);
+  }
+
+  function clickModelStoryBodyRowByTitle(title) {
+    const button = queryModelStoryBodyRowByTitle(title);
+
+    if (!button) {
+      throw new Error(`Could not find model story body row titled ${title}.`);
+    }
+
+    clickEnabledButton(button, title);
+  }
+
+  function queryModelStoryBodyRowByTitle(title) {
+    const structure = getElementByAriaLabel("Model structure");
+    return [...structure.querySelectorAll("button.model-story-row.body")].find(
+      (candidate) =>
+        normalize(
+          candidate.querySelector(".model-story-title")?.textContent
+        ) === title
+    );
+  }
+
+  async function waitForEditorControlEnabled(editorTitle, label) {
+    await waitFor(() => {
+      const editor = getInspectorCommandCardByHeading(editorTitle);
+      const control = getControlByLabel(editor, label);
+
+      if (
+        (control instanceof HTMLInputElement ||
+          control instanceof HTMLSelectElement ||
+          control instanceof HTMLTextAreaElement) &&
+        control.disabled
+      ) {
+        throw new Error(
+          `${editorTitle} ${label} is disabled. scope=${compactText(
+            editor.textContent,
+            360
+          )}`
+        );
+      }
+
+      return true;
+    }, `${editorTitle} ${label} enabled`);
+  }
+
+  async function clickEnabledButtonInScope(scope, text) {
+    await waitFor(() => {
+      const button = getButtonByText(scope, text);
+
+      if (!button || button.disabled) {
+        throw new Error(
+          `${text} is not enabled. scope=${compactText(scope.textContent, 420)}`
+        );
+      }
+
+      return true;
+    }, `${text} enabled`);
+    clickButton(scope, text);
+  }
+
+  function getInspectorCommandCardByHeading(heading) {
+    const inspector = getElementByAriaLabel("Inspector");
+    const card = [...inspector.querySelectorAll(".command-card")].find(
+      (candidate) => getCommandCardOwnHeading(candidate) === heading
+    );
+
+    if (!card) {
+      throw new Error(`Could not find Inspector card ${heading}.`);
+    }
+
+    return card;
+  }
+
+  function getCommandCardOwnHeading(card) {
+    const heading = [...card.children]
+      .find((child) => child.classList.contains("command-card-heading"))
+      ?.querySelector("h3");
+
+    return heading ? normalize(heading.textContent) : undefined;
   }
 
   async function createV10RectangleNewBody({

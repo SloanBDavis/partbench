@@ -9,6 +9,7 @@ import type {
   CadGeneratedEntityKind,
   CadOp,
   CadRebuildPlanStatus,
+  CadReferenceHealthTarget,
   CadReferenceHealthStatus,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation,
@@ -1225,8 +1226,10 @@ export interface V10ReleaseSampleRebuildExpectation {
 
 export interface V10ReleaseSampleReferenceHealthExpectation {
   readonly targetLabel: string;
+  readonly target: CadReferenceHealthTarget;
   readonly expectedStatus: CadReferenceHealthStatus;
   readonly expectedCommandable: boolean;
+  readonly expectedConsumedByFeatureId?: string;
 }
 
 export interface V10ReleaseSampleFixture {
@@ -1303,6 +1306,7 @@ export const V10_RELEASE_SAMPLE_FIXTURES = [
     expectedReferenceHealth: [
       {
         targetLabel: "V10 attached top face",
+        target: { type: "namedReference", name: "V10 attached top face" },
         expectedStatus: "active",
         expectedCommandable: true
       }
@@ -1429,13 +1433,19 @@ export const V10_RELEASE_SAMPLE_FIXTURES = [
     expectedReferenceHealth: [
       {
         targetLabel: "V10 C2 hole wall",
+        target: { type: "namedReference", name: "V10 C2 hole wall" },
         expectedStatus: "active",
         expectedCommandable: true
       },
       {
         targetLabel: "V10 C2 fillet source edge",
-        expectedStatus: "active",
-        expectedCommandable: true
+        target: {
+          type: "namedReference",
+          name: "V10 C2 fillet source edge"
+        },
+        expectedStatus: "consumed",
+        expectedCommandable: false,
+        expectedConsumedByFeatureId: "v10_c2_fillet_feature"
       }
     ],
     knownLimitations: [
@@ -1641,6 +1651,7 @@ export const V10_RELEASE_SAMPLE_FIXTURES = [
     expectedReferenceHealth: [
       {
         targetLabel: "V10 repair face",
+        target: { type: "namedReference", name: "V10 repair face" },
         expectedStatus: "active",
         expectedCommandable: true
       }

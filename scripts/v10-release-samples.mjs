@@ -27,6 +27,10 @@ export async function runV10ReleaseSampleSmoke(cadCore, options = {}) {
       (sum, sample) => sum + sample.rebuildCheckCount,
       0
     ),
+    referenceHealthCheckCount: samples.reduce(
+      (sum, sample) => sum + sample.referenceHealthCheckCount,
+      0
+    ),
     repairCheckCount: samples.reduce(
       (sum, sample) => sum + sample.repairCheckCount,
       0
@@ -65,12 +69,12 @@ export function formatV10ReleaseSampleSmokeSummary(result) {
   const lines = [
     `V10 release edit/rebuild smoke ${result.ok ? "passed" : "failed"}`,
     `samples: ${result.passedCount} passed, ${result.failedCount} failed, ${result.sampleCount} total`,
-    `checks: ${result.editCheckCount} edit, ${result.rebuildCheckCount} rebuild, ${result.repairCheckCount} repair, ${result.roundTripCheckCount} round-trip`
+    `checks: ${result.editCheckCount} edit, ${result.rebuildCheckCount} rebuild, ${result.referenceHealthCheckCount} reference-health, ${result.repairCheckCount} repair, ${result.roundTripCheckCount} round-trip`
   ];
 
   for (const sample of result.samples) {
     lines.push(
-      `- ${sample.status} ${sample.id} | edits ${sample.editCheckCount} | rebuild ${sample.rebuild.status}/${sample.rebuild.lifecycleBodyCount} bodies | repairs ${sample.repairCheckCount} | round-trips ${sample.roundTripCheckCount}`
+      `- ${sample.status} ${sample.id} | edits ${sample.editCheckCount} | rebuild ${sample.rebuild.status}/${sample.rebuild.lifecycleBodyCount} bodies | health ${sample.referenceHealthCheckCount} | repairs ${sample.repairCheckCount} | round-trips ${sample.roundTripCheckCount}`
     );
 
     for (const failure of sample.failures) {
@@ -108,6 +112,7 @@ async function evaluateV10Fixture(cadCore, fixture) {
 
   let editCheckCount = 0;
   let rebuildCheckCount = 0;
+  let referenceHealthCheckCount = 0;
   let repairCheckCount = 0;
   let roundTripCheckCount = 0;
   let rebuild = createEmptyRebuildSummary();
@@ -136,6 +141,19 @@ async function evaluateV10Fixture(cadCore, fixture) {
     } catch (error) {
       failures.push(
         `initial rebuild verification threw: ${formatError(error)}`
+      );
+    }
+
+    try {
+      referenceHealthCheckCount += verifyExpectedReferenceHealth(
+        engine,
+        fixture,
+        failures,
+        `${fixture.id}.initialReferenceHealth`
+      );
+    } catch (error) {
+      failures.push(
+        `initial reference health verification threw: ${formatError(error)}`
       );
     }
 
@@ -189,6 +207,19 @@ async function evaluateV10Fixture(cadCore, fixture) {
     } catch (error) {
       failures.push(`V10 fixture chain threw: ${formatError(error)}`);
     }
+
+    try {
+      referenceHealthCheckCount += verifyExpectedReferenceHealth(
+        engine,
+        fixture,
+        failures,
+        `${fixture.id}.finalReferenceHealth`
+      );
+    } catch (error) {
+      failures.push(
+        `final reference health verification threw: ${formatError(error)}`
+      );
+    }
   }
 
   const sample = {
@@ -197,6 +228,7 @@ async function evaluateV10Fixture(cadCore, fixture) {
     status: failures.length > 0 ? "fail" : "pass",
     editCheckCount,
     rebuildCheckCount,
+    referenceHealthCheckCount,
     repairCheckCount,
     roundTripCheckCount,
     rebuild,
@@ -748,6 +780,125 @@ function verifyInitialRebuildPlan(engine, fixture, failures) {
   return 2;
 }
 
+function verifyExpectedReferenceHealth(engine, fixture, failures, label) {
+  let checkCount = 0;
+
+  for (const expectation of fixture.expectedReferenceHealth) {
+    const response = readQuery(engine, {
+      query: "reference.health",
+      target: expectation.target
+    });
+    const expectationLabel = `${label}.${expectation.targetLabel}`;
+    const entry = findExpectedReferenceHealthEntry(response, expectation);
+
+    checkEqual(
+      failures,
+      `${expectationLabel}.status`,
+      expectation.expectedStatus,
+      response.status
+    );
+    checkEqual(
+      failures,
+      `${expectationLabel}.target`,
+      stableJson(expectation.target),
+      stableJson(response.target)
+    );
+    checkEqual(
+      failures,
+      `${expectationLabel}.referenceHealthCount`,
+      response.referenceHealth.length,
+      response.referenceHealthCount
+    );
+    checkEqual(failures, `${expectationLabel}.entry`, true, Boolean(entry));
+
+    if (entry) {
+      checkEqual(
+        failures,
+        `${expectationLabel}.entry.status`,
+        expectation.expectedStatus,
+        entry.status
+      );
+      checkEqual(
+        failures,
+        `${expectationLabel}.entry.commandable`,
+        expectation.expectedCommandable,
+        entry.commandable
+      );
+      checkEqual(
+        failures,
+        `${expectationLabel}.entry.commandOperations`,
+        expectation.expectedCommandable,
+        entry.commandOperations.length > 0
+      );
+      checkEqual(
+        failures,
+        `${expectationLabel}.entry.consumedByFeatureId`,
+        expectation.expectedConsumedByFeatureId,
+        entry.consumedByFeatureId
+      );
+    }
+
+    if (!expectation.expectedCommandable && entry) {
+      checkEqual(
+        failures,
+        `${expectationLabel}.entry.noCommandOperations`,
+        0,
+        entry.commandOperations.length
+      );
+    }
+
+    if (expectation.expectedCommandable && entry) {
+      checkEqual(
+        failures,
+        `${expectationLabel}.entry.hasCommandOperations`,
+        true,
+        entry.commandOperations.length > 0
+      );
+    }
+
+    checkEqual(
+      failures,
+      `${expectationLabel}.requiresProjectSchemaMigration`,
+      false,
+      response.requiresProjectSchemaMigration
+    );
+    checkNoBoundaryLeaks(failures, expectationLabel, JSON.stringify(response));
+    checkCount += 9;
+  }
+
+  return checkCount;
+}
+
+function findExpectedReferenceHealthEntry(response, expectation) {
+  const target = expectation.target;
+
+  if (target.type === "namedReference") {
+    return response.referenceHealth.find(
+      (entry) => entry.referenceName === target.name
+    );
+  }
+
+  if (target.type === "generatedReference") {
+    return response.referenceHealth.find(
+      (entry) =>
+        entry.bodyId === target.bodyId &&
+        entry.stableId === target.stableId &&
+        (target.expectedKind === undefined ||
+          entry.kind === target.expectedKind)
+    );
+  }
+
+  if (target.type === "body") {
+    return response.referenceHealth.find(
+      (entry) => entry.bodyId === target.bodyId
+    );
+  }
+
+  return response.referenceHealth.find(
+    (entry) => entry.label === expectation.targetLabel
+  );
+}
+
 function checkRebuildPlan(failures, label, fixture, plan) {
   checkEqual(
     failures,
@@ -833,6 +984,12 @@ async function verifySourceRoundTrip({ cadCore, engine, failures, label }) {
     );
     checkEqual(
       failures,
+      `${label}.wcad.manifestDocumentSchema`,
+      cadCore.CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      exported.manifest.document.schemaVersion
+    );
+    checkEqual(
+      failures,
       `${label}.wcadRoundTrip`,
       stableJson(parsed),
       stableJson(importedProject)
@@ -852,11 +1009,22 @@ async function verifySourceRoundTrip({ cadCore, engine, failures, label }) {
         project: read.project
       })
     );
+    checkEqual(
+      failures,
+      `${label}.wcadMetadata.excludesV17`,
+      false,
+      JSON.stringify({
+        manifest: exported.manifest,
+        sourceIdentity: exported.sourceIdentity,
+        project: read.project,
+        importedProject
+      }).includes("web-cad.project.v17")
+    );
   }
 
   checkNoBoundaryLeaks(failures, `${label}.projectJson`, json);
 
-  return { checkCount: read.ok ? 8 : 4 };
+  return { checkCount: read.ok ? 10 : 4 };
 }
 
 function checkTransactionFeatureEffects(failures, label, result, expected) {

@@ -1293,16 +1293,13 @@ export function App() {
   const selectedFeatureEditability = readFeatureEditability(
     selectedFeature?.id
   );
-  const selectedBodyGeneratedReferences =
-    selectedFeature?.kind === "extrude"
-      ? readBodyGeneratedReferences(selectedBody?.id)
-      : {};
+  const selectedBodyGeneratedReferences = readBodyGeneratedReferences(
+    selectedBody?.id
+  );
   const selectedGeneratedReferenceMeasurements =
-    selectedFeature?.kind === "extrude"
-      ? readGeneratedReferenceMeasurements(
-          selectedBodyGeneratedReferences.references
-        )
-      : undefined;
+    readGeneratedReferenceMeasurements(
+      selectedBodyGeneratedReferences.references
+    );
   const selectedBodyMeasurements = selectedBody
     ? readBodyMeasurements(selectedBody.id)
     : {};

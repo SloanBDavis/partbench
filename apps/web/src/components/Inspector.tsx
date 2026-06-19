@@ -642,7 +642,7 @@ function BodyInspector({
           units={units}
         />
       )}
-      {feature?.kind === "extrude" && (
+      {(generatedReferences || generatedReferencesError) && (
         <GeneratedReferencesPanel
           key={`${body.id}-${generatedReferences?.faceCount ?? 0}-${generatedReferences?.edgeCount ?? 0}-${generatedReferences?.vertexCount ?? 0}-${generatedReferences?.axisCount ?? 0}`}
           body={body}
@@ -1011,7 +1011,7 @@ function GeneratedReferencesPanel({
   readonly bodyId: string;
   readonly disabled: boolean;
   readonly error?: string;
-  readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
+  readonly feature?: CadFeatureSummary;
   readonly measurementByStableId?: ReadonlyMap<
     string,
     GeneratedReferenceMeasurementDisplay
@@ -1792,7 +1792,7 @@ function EdgeFinishEditor({
 }: {
   readonly body: CadBodySnapshot;
   readonly disabled: boolean;
-  readonly feature: Extract<CadFeatureSummary, { readonly kind: "extrude" }>;
+  readonly feature?: CadFeatureSummary;
   readonly namedReferences: readonly NamedGeneratedReferenceEntry[];
   readonly onCreateEdgeFinish: (
     operation: EdgeFinishOperation,

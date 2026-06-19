@@ -61,7 +61,9 @@ export const V10_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v10-feature-edit-commit",
   "v10-reference-health-after-edit",
   "v10-named-reference-repair-browser",
-  "v10-repaired-reference-wcad-roundtrip"
+  "v10-repaired-reference-wcad-roundtrip",
+  "v10-non-extrude-generated-reference-routing",
+  "v10-c2-inspector-feature-edits"
 ]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({
