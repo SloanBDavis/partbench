@@ -1049,7 +1049,7 @@ export class CadMcpServer {
     if (!isReferenceHealthToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.reference_health expects optional arguments shaped as { target?: { type: 'all' } | { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' } | { type: 'namedReference', name: string } }."
+        "cad.reference_health expects optional arguments shaped as { target?: { type: 'all' } | { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' | 'axis' } | { type: 'namedReference', name: string } }."
       );
     }
 
@@ -1078,7 +1078,7 @@ export class CadMcpServer {
     if (!isSelectionReferenceCandidatesToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.selection_reference_candidates expects arguments shaped as { selection: { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' } | { type: 'namedReference', name: string }, requiredOperation?: string }."
+        "cad.selection_reference_candidates expects arguments shaped as { selection: { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' | 'axis' } | { type: 'namedReference', name: string }, requiredOperation?: string }."
       );
     }
 
@@ -1548,7 +1548,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.body_generated_references",
     description:
-      "Returns read-only generated body, face, edge, and vertex references for an authored sketch-extrude body.",
+      "Returns read-only generated body, face, edge, vertex, and axis references for a supported source-authored body.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1564,7 +1564,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.resolve_generated_reference",
     description:
-      "Resolves one generated reference stable ID for an authored sketch-extrude body.",
+      "Resolves one generated body, face, edge, vertex, or axis reference stable ID for a supported source-authored body.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1673,7 +1673,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
                 },
                 expectedKind: {
                   type: "string",
-                  enum: ["body", "face", "edge", "vertex"],
+                  enum: ["body", "face", "edge", "vertex", "axis"],
                   description:
                     "Optional expected generated reference entity kind."
                 }
@@ -1735,7 +1735,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
                 },
                 expectedKind: {
                   type: "string",
-                  enum: ["body", "face", "edge", "vertex"],
+                  enum: ["body", "face", "edge", "vertex", "axis"],
                   description:
                     "Optional expected generated reference entity kind."
                 }

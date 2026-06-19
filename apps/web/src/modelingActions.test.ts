@@ -199,15 +199,19 @@ describe("modeling action helpers", () => {
       "rectangle",
       "newBody"
     );
+    const face = createFace();
     const references = createGeneratedReferences({
-      faces: [createFace()]
+      faces: [face]
     });
     const actions = deriveModelingActions({
       context: {
         selectionKind: "body",
         body,
         feature,
-        generatedReferences: references
+        generatedReferences: references,
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, createSelectionReferenceCandidates(face)]
+        ])
       }
     });
 
@@ -223,6 +227,31 @@ describe("modeling action helpers", () => {
         featureId: "feat_rect",
         eligibleFaceStableIds: ["generated:face:body_rect:startCap"]
       }
+    });
+  });
+
+  it("does not enable generated face body actions without reference candidate query results", () => {
+    const face = createFace();
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "body",
+        body: createBody("body_rect", "feat_rect"),
+        feature: createExtrudeFeature(
+          "feat_rect",
+          "body_rect",
+          "rectangle",
+          "newBody"
+        ),
+        generatedReferences: createGeneratedReferences({
+          faces: [face]
+        })
+      }
+    });
+
+    expect(actionById(actions, "sketch.createOnFace")).toMatchObject({
+      available: false,
+      reason: "Create sketch on face requires a command-ready reference query.",
+      target: { eligibleFaceStableIds: [] }
     });
   });
 
@@ -254,7 +283,9 @@ describe("modeling action helpers", () => {
     const eligibleActions = deriveModelingActions({
       context: {
         selectionKind: "generatedReference",
-        reference: eligibleFace
+        reference: eligibleFace,
+        selectionReferenceCandidates:
+          createSelectionReferenceCandidates(eligibleFace)
       }
     });
 
@@ -305,7 +336,8 @@ describe("modeling action helpers", () => {
           "body_rect",
           "rectangle",
           "newBody"
-        )
+        ),
+        selectionReferenceCandidates: createSelectionReferenceCandidates(edge)
       }
     });
 
@@ -429,7 +461,9 @@ describe("modeling action helpers", () => {
           "body_rect",
           "rectangle",
           "newBody"
-        )
+        ),
+        selectionReferenceCandidates:
+          createSelectionReferenceCandidates(unsupportedEdge)
       }
     });
 

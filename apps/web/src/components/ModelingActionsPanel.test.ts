@@ -310,6 +310,12 @@ describe("ModelingActionsPanel", () => {
         entityId: "rect_1"
       }
     };
+    const startFace = createFace({ label: "Start cap", role: "startCap" });
+    const endFace = createFace({
+      stableId: "generated:face:body_rect:endCap",
+      label: "End cap",
+      role: "endCap"
+    });
     const generatedReferences: BodyGeneratedReferencesQueryResponse = {
       ok: true,
       query: "body.generatedReferences",
@@ -333,14 +339,7 @@ describe("ModelingActionsPanel", () => {
         }
       },
       faceCount: 2,
-      faces: [
-        createFace({ label: "Start cap", role: "startCap" }),
-        createFace({
-          stableId: "generated:face:body_rect:endCap",
-          label: "End cap",
-          role: "endCap"
-        })
-      ],
+      faces: [startFace, endFace],
       edgeCount: 0,
       edges: [],
       vertexCount: 0,
@@ -352,7 +351,11 @@ describe("ModelingActionsPanel", () => {
       selectionKind: "body" as const,
       body,
       feature,
-      generatedReferences
+      generatedReferences,
+      referenceCandidatesByStableId: new Map([
+        [startFace.stableId, createSelectionReferenceCandidates(startFace)],
+        [endFace.stableId, createSelectionReferenceCandidates(endFace)]
+      ])
     };
     const actions = deriveModelingActions({ context });
     const markup = renderToStaticMarkup(

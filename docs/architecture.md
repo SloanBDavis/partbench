@@ -926,9 +926,9 @@ The local MCP server should bind to `127.0.0.1`, require a per-session token, en
 ## 20. What Codex should build first
 
 This section is historical initial-build guidance. The implementation has now
-progressed through the completed V9 viewport-native CAD interaction release
-candidate; follow `docs/implementation-plan.md` and `docs/v10.md` for current
-V10 planning work.
+progressed through the completed V10 editable feature history and stable
+modeling references release; follow `docs/implementation-plan.md` for the
+current implementation source of truth.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
 

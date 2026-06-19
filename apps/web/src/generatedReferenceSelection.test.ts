@@ -365,6 +365,15 @@ describe("generated reference selection helpers", () => {
     );
     expect(
       getSelectionReferenceOperationStatus(
+        undefined,
+        "feature.attachSketchPlane"
+      )
+    ).toEqual({
+      available: false,
+      message: "Create sketch on face requires a command-ready reference query."
+    });
+    expect(
+      getSelectionReferenceOperationStatus(
         resolvedResponse,
         "feature.attachSketchPlane"
       )

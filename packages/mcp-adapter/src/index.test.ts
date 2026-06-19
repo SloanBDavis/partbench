@@ -43,6 +43,25 @@ describe("mcp-adapter", () => {
     expect(
       tools.find((tool) => tool.name === "cad.project_summary")?.description
     ).toContain("V7 release summary");
+    expect(
+      tools.find((tool) => tool.name === "cad.body_generated_references")
+        ?.description
+    ).toContain("axis");
+    expect(
+      tools.find((tool) => tool.name === "cad.resolve_generated_reference")
+        ?.description
+    ).toContain("axis");
+    expect(
+      JSON.stringify(
+        tools.find((tool) => tool.name === "cad.reference_health")?.inputSchema
+      )
+    ).toContain('"axis"');
+    expect(
+      JSON.stringify(
+        tools.find((tool) => tool.name === "cad.selection_reference_candidates")
+          ?.inputSchema
+      )
+    ).toContain('"axis"');
   });
 
   it("runs cad.batch dry-run without mutating the document", () => {

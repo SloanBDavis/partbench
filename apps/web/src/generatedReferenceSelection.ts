@@ -172,7 +172,10 @@ export function getSelectionReferenceOperationStatus(
   operation: CadSelectionReferenceOperation
 ): SelectionReferenceOperationStatus {
   if (!response) {
-    return { available: true };
+    return {
+      available: false,
+      message: `${formatSelectionReferenceOperationLabel(operation)} requires a command-ready reference query.`
+    };
   }
 
   const candidate = getSelectionReferenceCandidateForOperation(
