@@ -2042,7 +2042,7 @@ describe("agent-adapter", () => {
       },
       entityCount: 1,
       dimensionCount: 1,
-      deferredConstraintCount: 3,
+      deferredConstraintCount: 1,
       profileValidity: {
         status: "valid",
         validProfileCount: 1

@@ -2499,10 +2499,7 @@ export interface CadSketchSolverConstraintTargetReference {
   readonly kind: SketchConstraintKind;
 }
 
-export type CadSketchSolverDeferredConstraintKind =
-  | "tangent"
-  | "distance"
-  | "symmetry";
+export type CadSketchSolverDeferredConstraintKind = "distance";
 
 export interface CadSketchSolverEntitySummary {
   readonly sketchId: SketchId;

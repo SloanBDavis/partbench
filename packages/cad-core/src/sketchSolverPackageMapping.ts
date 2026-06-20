@@ -3,7 +3,6 @@ import {
   solveSketch,
   type SketchSolveConstraint,
   type SketchSolveConstraintKind,
-  type SketchSolveDeferredConstraintKind,
   type SketchSolveDiagnostic,
   type SketchSolveDimension,
   type SketchSolveModel,
@@ -394,6 +393,145 @@ function mapConstraintToSketchSolveConstraint({
     };
   }
 
+  if (constraint.kind === "tangent") {
+    const primaryEntity = sketch.entities.get(
+      constraint.primaryTarget.entityId
+    );
+    const secondaryEntity = sketch.entities.get(
+      constraint.secondaryTarget.entityId
+    );
+    const lineEntity =
+      primaryEntity?.kind === "line"
+        ? primaryEntity
+        : secondaryEntity?.kind === "line"
+          ? secondaryEntity
+          : undefined;
+    const circleEntity =
+      primaryEntity?.kind === "circle"
+        ? primaryEntity
+        : secondaryEntity?.kind === "circle"
+          ? secondaryEntity
+          : undefined;
+
+    if (!lineEntity || !circleEntity) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+            message:
+              "Tangent constraints currently map to the numerical solver only for one line and one circle target.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.entityId,
+            expected: "line-circle tangent targets",
+            received: `${primaryEntity?.kind ?? "missing"}:${secondaryEntity?.kind ?? "missing"}`
+          })
+        ]
+      };
+    }
+
+    const lineStartPointId = pointIdForTarget(pointTargetIds, {
+      entityId: lineEntity.id,
+      role: "start"
+    });
+    const lineEndPointId = pointIdForTarget(pointTargetIds, {
+      entityId: lineEntity.id,
+      role: "end"
+    });
+    const circleCenterPointId = pointIdForTarget(pointTargetIds, {
+      entityId: circleEntity.id,
+      role: "center"
+    });
+    const circleRadiusId = scalarIds.get(circleEntity.id);
+
+    if (
+      !lineStartPointId ||
+      !lineEndPointId ||
+      !circleCenterPointId ||
+      !circleRadiusId
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Tangent constraint targets cannot be mapped to solver line endpoints, circle center, and circle radius.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.entityId,
+            expected: "line endpoints, circle center point, and radius scalar",
+            received: "missing tangent solver target"
+          })
+        ]
+      };
+    }
+
+    return {
+      constraint: {
+        id: constraint.id,
+        kind: "tangent",
+        lineStartPointId,
+        lineEndPointId,
+        circleCenterPointId,
+        circleRadiusId
+      },
+      diagnostics: []
+    };
+  }
+
+  if (constraint.kind === "symmetry") {
+    const primaryPointId = pointIdForTarget(
+      pointTargetIds,
+      constraint.primaryTarget
+    );
+    const secondaryPointId = pointIdForTarget(
+      pointTargetIds,
+      constraint.secondaryTarget
+    );
+    const lineStartPointId = pointIdForTarget(pointTargetIds, {
+      entityId: constraint.symmetryLineEntityId,
+      role: "start"
+    });
+    const lineEndPointId = pointIdForTarget(pointTargetIds, {
+      entityId: constraint.symmetryLineEntityId,
+      role: "end"
+    });
+
+    if (
+      !primaryPointId ||
+      !secondaryPointId ||
+      !lineStartPointId ||
+      !lineEndPointId
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_MISSING_TARGET",
+            message:
+              "Symmetry constraint targets cannot be mapped to solver points and a symmetry line.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.entityId,
+            expected: "two solver point targets and line start/end points",
+            received: "missing symmetry solver target"
+          })
+        ]
+      };
+    }
+
+    return {
+      constraint: {
+        id: constraint.id,
+        kind: "symmetry",
+        primaryPointId,
+        secondaryPointId,
+        lineStartPointId,
+        lineEndPointId
+      },
+      diagnostics: []
+    };
+  }
+
   if (
     constraint.kind === "parallel" ||
     constraint.kind === "perpendicular" ||
@@ -635,12 +773,18 @@ function mapConstraintToSketchSolveConstraint({
   }
 
   return {
-    constraint: {
-      id: constraint.id,
-      kind: mapDeferredConstraintKind(constraint.kind),
-      targetIds: getConstraintTargetIds(constraint)
-    },
-    diagnostics: []
+    diagnostics: [
+      createMappingDiagnostic({
+        code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+        message:
+          "Constraint target cannot be mapped to the numerical solver model.",
+        sketchId: constraint.sketchId,
+        sketchConstraintId: constraint.id,
+        sketchEntityId: constraint.entityId,
+        expected: "supported V11 solver constraint source",
+        received: constraint.kind
+      })
+    ]
   };
 }
 
@@ -792,52 +936,6 @@ function mapDimensionToSketchSolveDimension({
   };
 }
 
-function getConstraintTargetIds(
-  constraint: SketchConstraintSnapshot
-): readonly string[] {
-  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
-    return [constraint.primaryLineEntityId, constraint.secondaryLineEntityId];
-  }
-
-  if (constraint.kind === "tangent") {
-    return [
-      constraint.primaryTarget.entityId,
-      constraint.secondaryTarget.entityId
-    ];
-  }
-
-  if (constraint.kind === "concentric" || constraint.kind === "equalRadius") {
-    return [
-      constraint.primaryCircleEntityId,
-      constraint.secondaryCircleEntityId
-    ];
-  }
-
-  if (constraint.kind === "equalLength" || constraint.kind === "angle") {
-    return [constraint.primaryLineEntityId, constraint.secondaryLineEntityId];
-  }
-
-  if (constraint.kind === "symmetry") {
-    return [
-      constraint.primaryTarget.entityId,
-      constraint.secondaryTarget.entityId,
-      constraint.symmetryLineEntityId
-    ];
-  }
-
-  return [constraint.entityId];
-}
-
-function mapDeferredConstraintKind(
-  kind: SketchConstraintSnapshot["kind"]
-): SketchSolveDeferredConstraintKind {
-  if (kind === "tangent" || kind === "symmetry") {
-    return kind;
-  }
-
-  return "tangent";
-}
-
 function pointIdForTarget(
   pointTargetIds: ReadonlyMap<string, string>,
   target: SketchPointTarget
@@ -917,7 +1015,9 @@ function createDiagnosticFromSketchSolveDiagnostic(
       : {}),
     ...(constraintKind ? { constraintKind } : {}),
     expected: diagnostic.expected,
-    received: diagnostic.received ?? diagnostic.targetId
+    received:
+      diagnostic.received ??
+      (diagnostic.targetId ? "unmapped solver target" : undefined)
   };
 }
 

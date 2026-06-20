@@ -52,9 +52,11 @@ export type SketchSolveConstraintKind =
   | "equalRadius"
   | "equalLength"
   | "angle"
+  | "tangent"
+  | "symmetry"
   | SketchSolveDeferredConstraintKind;
 
-export type SketchSolveDeferredConstraintKind = "tangent" | "symmetry";
+export type SketchSolveDeferredConstraintKind = never;
 
 export type SketchSolveDimensionKind =
   | "pointDistance"
@@ -83,6 +85,8 @@ export type SketchSolveConstraint =
   | SketchSolveEqualRadiusConstraint
   | SketchSolveEqualLengthConstraint
   | SketchSolveAngleConstraint
+  | SketchSolveTangentConstraint
+  | SketchSolveSymmetryConstraint
   | SketchSolveDeferredConstraint;
 
 export interface SketchSolveFixedPointConstraint {
@@ -170,6 +174,24 @@ export interface SketchSolveAngleConstraint {
   readonly secondaryStartPointId: SketchSolverPointId;
   readonly secondaryEndPointId: SketchSolverPointId;
   readonly angleDegrees: number;
+}
+
+export interface SketchSolveTangentConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "tangent";
+  readonly lineStartPointId: SketchSolverPointId;
+  readonly lineEndPointId: SketchSolverPointId;
+  readonly circleCenterPointId: SketchSolverPointId;
+  readonly circleRadiusId: SketchSolverScalarId;
+}
+
+export interface SketchSolveSymmetryConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "symmetry";
+  readonly primaryPointId: SketchSolverPointId;
+  readonly secondaryPointId: SketchSolverPointId;
+  readonly lineStartPointId: SketchSolverPointId;
+  readonly lineEndPointId: SketchSolverPointId;
 }
 
 export interface SketchSolveDeferredConstraint {
@@ -282,6 +304,11 @@ type SketchSolveLinePairConstraint =
   | SketchSolveEqualLengthConstraint
   | SketchSolveAngleConstraint;
 
+type SketchSolveLineTargetConstraint =
+  | SketchSolveLinePairConstraint
+  | SketchSolveTangentConstraint
+  | SketchSolveSymmetryConstraint;
+
 interface ResidualBlock {
   readonly sourceType: "constraint" | "dimension";
   readonly sourceId: string;
@@ -301,10 +328,7 @@ const DEFAULT_SETTINGS: SketchSolveSettings = {
   finiteDifferenceStep: 1e-6
 };
 
-const DEFERRED_CONSTRAINT_KINDS = new Set<SketchSolveDeferredConstraintKind>([
-  "tangent",
-  "symmetry"
-]);
+const DEFERRED_CONSTRAINT_KINDS = new Set<SketchSolveDeferredConstraintKind>();
 
 export function createDefaultSketchSolveSettings(
   overrides: Partial<SketchSolveSettings> = {}
@@ -334,7 +358,9 @@ export function getSketchSolverCapabilities(): {
       "concentric",
       "equalRadius",
       "equalLength",
-      "angle"
+      "angle",
+      "tangent",
+      "symmetry"
     ],
     supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
     deferredConstraintKinds: [...DEFERRED_CONSTRAINT_KINDS]
@@ -784,6 +810,102 @@ function validateConstraint(
     return;
   }
 
+  if (constraint.kind === "tangent") {
+    const hasLineStart = validatePointTargetField(
+      constraint,
+      "lineStartPointId",
+      constraint.lineStartPointId,
+      stateAccess,
+      diagnostics
+    );
+    const hasLineEnd = validatePointTargetField(
+      constraint,
+      "lineEndPointId",
+      constraint.lineEndPointId,
+      stateAccess,
+      diagnostics
+    );
+    validatePointTargetField(
+      constraint,
+      "circleCenterPointId",
+      constraint.circleCenterPointId,
+      stateAccess,
+      diagnostics
+    );
+    const hasRadius = validateScalarTargetField(
+      constraint,
+      "circleRadiusId",
+      constraint.circleRadiusId,
+      stateAccess,
+      diagnostics
+    );
+
+    if (hasLineStart && hasLineEnd) {
+      validateNonZeroLineTarget({
+        constraint,
+        stateAccess,
+        diagnostics,
+        startPointId: constraint.lineStartPointId,
+        endPointId: constraint.lineEndPointId,
+        label: "tangent line"
+      });
+    }
+
+    if (hasRadius) {
+      validatePositiveScalarTarget({
+        constraint,
+        stateAccess,
+        diagnostics,
+        scalarId: constraint.circleRadiusId,
+        label: "circle radius"
+      });
+    }
+    return;
+  }
+
+  if (constraint.kind === "symmetry") {
+    const hasLineStart = validatePointTargetField(
+      constraint,
+      "lineStartPointId",
+      constraint.lineStartPointId,
+      stateAccess,
+      diagnostics
+    );
+    const hasLineEnd = validatePointTargetField(
+      constraint,
+      "lineEndPointId",
+      constraint.lineEndPointId,
+      stateAccess,
+      diagnostics
+    );
+    validatePointTargetField(
+      constraint,
+      "primaryPointId",
+      constraint.primaryPointId,
+      stateAccess,
+      diagnostics
+    );
+    validatePointTargetField(
+      constraint,
+      "secondaryPointId",
+      constraint.secondaryPointId,
+      stateAccess,
+      diagnostics
+    );
+
+    if (hasLineStart && hasLineEnd) {
+      validateNonZeroLineTarget({
+        constraint,
+        stateAccess,
+        diagnostics,
+        startPointId: constraint.lineStartPointId,
+        endPointId: constraint.lineEndPointId,
+        label: "symmetry line"
+      });
+    }
+    return;
+  }
+
   validatePointTarget(
     constraint.midpointId,
     constraint,
@@ -859,7 +981,7 @@ function validateNonZeroLineTarget({
   endPointId,
   label
 }: {
-  readonly constraint: SketchSolveLinePairConstraint;
+  readonly constraint: SketchSolveLineTargetConstraint;
   readonly stateAccess: SolverStateAccess;
   readonly diagnostics: SketchSolveDiagnostic[];
   readonly startPointId: SketchSolverPointId;
@@ -989,6 +1111,32 @@ function validatePointTarget(
   }
 }
 
+function validatePointTargetField(
+  source: SketchSolveConstraint,
+  fieldName: string,
+  pointId: SketchSolverPointId,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): boolean {
+  if (!isValidTargetId(pointId)) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_INVALID_VALUE",
+      severity: "blocker",
+      message: `Sketch solve point target field ${fieldName} must be a non-empty string.`,
+      sourceType: "constraint",
+      sourceId: source.id,
+      constraintKind: source.kind,
+      targetId: fieldName,
+      expected: "non-empty point id",
+      received: describeReceived(pointId)
+    });
+    return false;
+  }
+
+  validatePointTarget(pointId, source, stateAccess, diagnostics);
+  return stateAccess.pointIndex.has(pointId);
+}
+
 function validateScalarTarget(
   scalarId: SketchSolverScalarId,
   source: SketchSolveConstraint | SketchSolveDimension,
@@ -1009,6 +1157,32 @@ function validateScalarTarget(
   }
 }
 
+function validateScalarTargetField(
+  source: SketchSolveConstraint,
+  fieldName: string,
+  scalarId: SketchSolverScalarId,
+  stateAccess: SolverStateAccess,
+  diagnostics: SketchSolveDiagnostic[]
+): boolean {
+  if (!isValidTargetId(scalarId)) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_INVALID_VALUE",
+      severity: "blocker",
+      message: `Sketch solve scalar target field ${fieldName} must be a non-empty string.`,
+      sourceType: "constraint",
+      sourceId: source.id,
+      constraintKind: source.kind,
+      targetId: fieldName,
+      expected: "non-empty scalar id",
+      received: describeReceived(scalarId)
+    });
+    return false;
+  }
+
+  validateScalarTarget(scalarId, source, stateAccess, diagnostics);
+  return stateAccess.scalarIndex.has(scalarId);
+}
+
 function validatePositiveScalarTarget({
   constraint,
   stateAccess,
@@ -1016,7 +1190,9 @@ function validatePositiveScalarTarget({
   scalarId,
   label
 }: {
-  readonly constraint: SketchSolveEqualRadiusConstraint;
+  readonly constraint:
+    | SketchSolveEqualRadiusConstraint
+    | SketchSolveTangentConstraint;
   readonly stateAccess: SolverStateAccess;
   readonly diagnostics: SketchSolveDiagnostic[];
   readonly scalarId: SketchSolverScalarId;
@@ -1032,7 +1208,9 @@ function validatePositiveScalarTarget({
     diagnostics.push({
       code: "SKETCH_SOLVER_INVALID_VALUE",
       severity: "blocker",
-      message: `Equal-radius constraint ${label} must be positive.`,
+      message: `${formatConstraintKindForMessage(
+        constraint.kind
+      )} constraint ${label} must be positive.`,
       sourceType: "constraint",
       sourceId: constraint.id,
       constraintKind: constraint.kind,
@@ -1136,6 +1314,83 @@ function createConstraintResidual(
       readScalar(state, stateAccess, constraint.primaryRadiusId) -
         readScalar(state, stateAccess, constraint.secondaryRadiusId)
     ];
+  }
+
+  if (constraint.kind === "tangent") {
+    return (state) => {
+      const lineDirection = readLineDirection(
+        state,
+        stateAccess,
+        constraint.lineStartPointId,
+        constraint.lineEndPointId
+      );
+
+      if (!lineDirection) {
+        return [1];
+      }
+
+      const lineStart = readPoint(
+        state,
+        stateAccess,
+        constraint.lineStartPointId
+      );
+      const center = readPoint(
+        state,
+        stateAccess,
+        constraint.circleCenterPointId
+      );
+      const radius = readScalar(state, stateAccess, constraint.circleRadiusId);
+      const centerOffset: SketchSolverVec2 = [
+        center[0] - lineStart[0],
+        center[1] - lineStart[1]
+      ];
+      const signedDistance =
+        lineDirection[0] * centerOffset[1] - lineDirection[1] * centerOffset[0];
+
+      return [Math.abs(signedDistance) - radius];
+    };
+  }
+
+  if (constraint.kind === "symmetry") {
+    return (state) => {
+      const lineDirection = readLineDirection(
+        state,
+        stateAccess,
+        constraint.lineStartPointId,
+        constraint.lineEndPointId
+      );
+
+      if (!lineDirection) {
+        return [1, 1];
+      }
+
+      const lineStart = readPoint(
+        state,
+        stateAccess,
+        constraint.lineStartPointId
+      );
+      const primary = readPoint(state, stateAccess, constraint.primaryPointId);
+      const secondary = readPoint(
+        state,
+        stateAccess,
+        constraint.secondaryPointId
+      );
+      const normal: SketchSolverVec2 = [-lineDirection[1], lineDirection[0]];
+      const midpoint: SketchSolverVec2 = [
+        (primary[0] + secondary[0]) / 2,
+        (primary[1] + secondary[1]) / 2
+      ];
+      const midpointOffset: SketchSolverVec2 = [
+        midpoint[0] - lineStart[0],
+        midpoint[1] - lineStart[1]
+      ];
+
+      return [
+        midpointOffset[0] * normal[0] + midpointOffset[1] * normal[1],
+        (primary[0] - secondary[0]) * lineDirection[0] +
+          (primary[1] - secondary[1]) * lineDirection[1]
+      ];
+    };
   }
 
   return (state) => {
@@ -1633,6 +1888,10 @@ function isFiniteVec2(value: unknown): value is SketchSolverVec2 {
   );
 }
 
+function isValidTargetId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 function isDeferredConstraint(
   constraint: SketchSolveConstraint
 ): constraint is SketchSolveDeferredConstraint {
@@ -1669,6 +1928,14 @@ function cleanNumber(value: number): number {
   }
 
   return Math.abs(value) < 1e-12 ? 0 : Number(value.toPrecision(12));
+}
+
+function formatConstraintKindForMessage(
+  kind: SketchSolveConstraintKind
+): string {
+  return kind
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (character) => character.toUpperCase());
 }
 
 function describeReceived(value: unknown): string {

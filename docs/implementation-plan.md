@@ -1884,9 +1884,14 @@ Use these decisions when drafting or implementing V11 tranches:
    supported while keeping source mutation deferred. This adds no UI, no
    advanced constraint creation commands, no solved-geometry commits, no schema
    after `web-cad.project.v17`, and no `.wcad` package layout change.
-9. **Remaining Advanced Geometric Constraints** - add tangent and symmetry with
-   pure solver fixtures and structured
-   unsupported/conflict diagnostics.
+9. **Tangent And Symmetry Numerical Solver Support** - implemented as the
+   fourth D3 solver expansion. `packages/sketch-solver` now supports
+   line-circle tangent residuals and point-pair symmetry residuals, cad-core
+   maps supported V17 tangent/symmetry records into the normalized solver
+   model, and unsupported tangent target combinations remain structured
+   diagnostics. This adds no UI, no advanced constraint creation commands, no
+   solved-geometry commits, no schema after `web-cad.project.v17`, and no
+   `.wcad` package layout change.
 10. **Profile Validity And Feature Rebuild Integration** - make solved sketch
    status feed profile validity, feature editability, dependency graph,
    reference health, and rebuild plan behavior.

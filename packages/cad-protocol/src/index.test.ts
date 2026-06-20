@@ -1413,16 +1413,16 @@ describe("cad-protocol", () => {
       deferredConstraintCount: 1,
       deferredConstraints: [
         {
-          kind: "tangent",
+          kind: "distance",
           status: "deferred",
           requiresProjectSchemaMigration: true,
           nextProjectSchemaVersion: "web-cad.project.v17",
           diagnostic: {
             code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
             severity: "info",
-            message: "Tangent is deferred.",
+            message: "Distance is deferred.",
             sketchId: "sketch_1",
-            constraintKind: "tangent"
+            constraintKind: "distance"
           }
         }
       ],

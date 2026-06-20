@@ -1521,13 +1521,20 @@ package read/write helpers without changing project source format:
   solved coordinates remain query output only, no source schema after
   `web-cad.project.v17` is introduced, and `.wcad` package layout remains
   unchanged.
+- V11 Tranche D3D adds pure numerical solver residual support for V17
+  source-backed line-circle tangent and point-pair symmetry constraints.
+  Cad-core maps supported tangent/symmetry records into line endpoint, point,
+  circle-center, and radius variables; solved values remain query output only,
+  no source schema after `web-cad.project.v17` is introduced, and `.wcad`
+  package layout remains unchanged. Unsupported tangent target combinations
+  such as line-line or circle-circle remain structured diagnostics.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over
   the historical release fixture catalog.
-- V17 tangent and symmetry records remain source intent only until later
-  solver-command tranches make them creatable and numerically supported beyond
-  the current D3C numerical subset.
+- V17 advanced constraint records remain source intent only until later
+  solver-command tranches make them creatable through CADOps; D3D only reports
+  numerical status from persisted source.
 
 ## Long-Term Native Package Direction
 

@@ -107,10 +107,12 @@ describe("sketch-solver", () => {
         "concentric",
         "equalRadius",
         "equalLength",
-        "angle"
+        "angle",
+        "tangent",
+        "symmetry"
       ],
       supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
-      deferredConstraintKinds: expect.arrayContaining(["tangent", "symmetry"])
+      deferredConstraintKinds: []
     });
     expect(getSketchSolverCapabilities().deferredConstraintKinds).not.toEqual(
       expect.arrayContaining([
@@ -119,7 +121,9 @@ describe("sketch-solver", () => {
         "concentric",
         "equalRadius",
         "equalLength",
-        "angle"
+        "angle",
+        "tangent",
+        "symmetry"
       ])
     );
   });
@@ -717,6 +721,181 @@ describe("sketch-solver", () => {
     expect(scalarValue(first.scalars, "circle_b_radius")).toBeCloseTo(6, 6);
   });
 
+  it("solves line-circle tangent constraints with a radius scalar", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [4, 0] },
+        { id: "circle_center", initial: [2, 3] }
+      ],
+      scalars: [{ id: "circle_radius", initial: 1 }],
+      constraints: [
+        {
+          id: "fix_line_start",
+          kind: "fixedPoint",
+          pointId: "line_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_line_end",
+          kind: "fixedPoint",
+          pointId: "line_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_circle_center",
+          kind: "fixedPoint",
+          pointId: "circle_center",
+          value: [2, 3]
+        },
+        {
+          id: "tangent_line_circle",
+          kind: "tangent",
+          lineStartPointId: "line_start",
+          lineEndPointId: "line_end",
+          circleCenterPointId: "circle_center",
+          circleRadiusId: "circle_radius"
+        }
+      ]
+    });
+
+    expect(result.status).toBe("converged");
+    expect(result.residualCount).toBe(7);
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+    expectPointCloseTo(result.points, "circle_center", [2, 3]);
+    expect(scalarValue(result.scalars, "circle_radius")).toBeCloseTo(3, 6);
+  });
+
+  it("solves symmetry constraints across a line", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "axis_start", initial: [0, -1] },
+        { id: "axis_end", initial: [0, 1] },
+        { id: "primary", initial: [2, 3] },
+        { id: "secondary", initial: [-1, 4] }
+      ],
+      constraints: [
+        {
+          id: "fix_axis_start",
+          kind: "fixedPoint",
+          pointId: "axis_start",
+          value: [0, -1]
+        },
+        {
+          id: "fix_axis_end",
+          kind: "fixedPoint",
+          pointId: "axis_end",
+          value: [0, 1]
+        },
+        {
+          id: "fix_primary",
+          kind: "fixedPoint",
+          pointId: "primary",
+          value: [2, 3]
+        },
+        {
+          id: "symmetry_primary_secondary",
+          kind: "symmetry",
+          primaryPointId: "primary",
+          secondaryPointId: "secondary",
+          lineStartPointId: "axis_start",
+          lineEndPointId: "axis_end"
+        }
+      ]
+    });
+
+    expect(result.status).toBe("converged");
+    expect(result.residualCount).toBe(8);
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+    expectPointCloseTo(result.points, "secondary", [-2, 3]);
+  });
+
+  it("solves tangent and symmetry constraints deterministically without mutating input", () => {
+    const model: SketchSolveModel = {
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [4, 0] },
+        { id: "circle_center", initial: [2, 2] },
+        { id: "axis_start", initial: [0, -1] },
+        { id: "axis_end", initial: [0, 1] },
+        { id: "primary", initial: [1, 1] },
+        { id: "secondary", initial: [-0.5, 2] }
+      ],
+      scalars: [{ id: "circle_radius", initial: 1 }],
+      constraints: [
+        {
+          id: "fix_line_start",
+          kind: "fixedPoint",
+          pointId: "line_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_line_end",
+          kind: "fixedPoint",
+          pointId: "line_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_circle_center",
+          kind: "fixedPoint",
+          pointId: "circle_center",
+          value: [2, 2]
+        },
+        {
+          id: "tangent_line_circle",
+          kind: "tangent",
+          lineStartPointId: "line_start",
+          lineEndPointId: "line_end",
+          circleCenterPointId: "circle_center",
+          circleRadiusId: "circle_radius"
+        },
+        {
+          id: "fix_axis_start",
+          kind: "fixedPoint",
+          pointId: "axis_start",
+          value: [0, -1]
+        },
+        {
+          id: "fix_axis_end",
+          kind: "fixedPoint",
+          pointId: "axis_end",
+          value: [0, 1]
+        },
+        {
+          id: "fix_primary",
+          kind: "fixedPoint",
+          pointId: "primary",
+          value: [1, 1]
+        },
+        {
+          id: "symmetry_primary_secondary",
+          kind: "symmetry",
+          primaryPointId: "primary",
+          secondaryPointId: "secondary",
+          lineStartPointId: "axis_start",
+          lineEndPointId: "axis_end"
+        }
+      ]
+    };
+    const before = JSON.parse(JSON.stringify(model));
+
+    const first = solveSketch(model);
+    const second = solveSketch(model);
+
+    expect(first.status).toBe("converged");
+    expect(second.status).toBe("converged");
+    expect(first.points).toEqual(second.points);
+    expect(first.scalars).toEqual(second.scalars);
+    expect(first.maxResidual).toBe(second.maxResidual);
+    expect(first.iterations).toBe(second.iterations);
+    expect(model).toEqual(before);
+    expect(scalarValue(first.scalars, "circle_radius")).toBeCloseTo(2, 6);
+    expectPointCloseTo(first.points, "secondary", [-1, 1]);
+  });
+
   it("solves midpoint constraints", () => {
     const result = solveSketch({
       version: SKETCH_SOLVER_MODEL_VERSION,
@@ -1272,6 +1451,326 @@ describe("sketch-solver", () => {
     );
   });
 
+  it("reports missing, invalid, and degenerate tangent targets as structured failures", () => {
+    const missing = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [4, 0] },
+        { id: "circle_center", initial: [2, 1] }
+      ],
+      scalars: [{ id: "circle_radius", initial: 1 }],
+      constraints: [
+        {
+          id: "tangent_missing",
+          kind: "tangent",
+          lineStartPointId: "line_start",
+          lineEndPointId: "missing",
+          circleCenterPointId: "circle_center",
+          circleRadiusId: "circle_radius"
+        }
+      ]
+    });
+    const zeroLength = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [0, 0] },
+        { id: "circle_center", initial: [2, 1] }
+      ],
+      scalars: [{ id: "circle_radius", initial: 1 }],
+      constraints: [
+        {
+          id: "tangent_zero_length",
+          kind: "tangent",
+          lineStartPointId: "line_start",
+          lineEndPointId: "line_end",
+          circleCenterPointId: "circle_center",
+          circleRadiusId: "circle_radius"
+        }
+      ]
+    });
+    const invalidRadius = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [4, 0] },
+        { id: "circle_center", initial: [2, 1] }
+      ],
+      scalars: [{ id: "circle_radius", initial: 0 }],
+      constraints: [
+        {
+          id: "tangent_invalid_radius",
+          kind: "tangent",
+          lineStartPointId: "line_start",
+          lineEndPointId: "line_end",
+          circleCenterPointId: "circle_center",
+          circleRadiusId: "circle_radius"
+        }
+      ]
+    });
+    const invalidShape = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [4, 0] }
+      ],
+      constraints: [
+        {
+          id: "tangent_legacy_targets",
+          kind: "tangent",
+          targetIds: ["line_start", "line_end"]
+        }
+      ]
+    } as unknown as SketchSolveModel);
+
+    expect(missing.status).toBe("failed");
+    expect(missing.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sourceType: "constraint",
+          sourceId: "tangent_missing",
+          targetId: "missing",
+          constraintKind: "tangent"
+        })
+      ])
+    );
+    expect(zeroLength.status).toBe("failed");
+    expect(zeroLength.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "tangent_zero_length",
+          constraintKind: "tangent",
+          targetId: "line_start:line_end"
+        })
+      ])
+    );
+    expect(invalidRadius.status).toBe("failed");
+    expect(invalidRadius.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "tangent_invalid_radius",
+          constraintKind: "tangent",
+          targetId: "circle_radius"
+        })
+      ])
+    );
+    expect(invalidShape.status).toBe("failed");
+    expect(invalidShape.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "tangent_legacy_targets",
+          constraintKind: "tangent",
+          targetId: "lineStartPointId"
+        })
+      ])
+    );
+  });
+
+  it("reports missing and zero-length symmetry targets as structured failures", () => {
+    const missing = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "axis_start", initial: [0, -1] },
+        { id: "axis_end", initial: [0, 1] },
+        { id: "primary", initial: [2, 3] }
+      ],
+      constraints: [
+        {
+          id: "symmetry_missing",
+          kind: "symmetry",
+          primaryPointId: "primary",
+          secondaryPointId: "missing",
+          lineStartPointId: "axis_start",
+          lineEndPointId: "axis_end"
+        }
+      ]
+    });
+    const zeroLength = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "axis_start", initial: [0, 0] },
+        { id: "axis_end", initial: [0, 0] },
+        { id: "primary", initial: [2, 3] },
+        { id: "secondary", initial: [-2, 3] }
+      ],
+      constraints: [
+        {
+          id: "symmetry_zero_length",
+          kind: "symmetry",
+          primaryPointId: "primary",
+          secondaryPointId: "secondary",
+          lineStartPointId: "axis_start",
+          lineEndPointId: "axis_end"
+        }
+      ]
+    });
+    const invalidShape = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "axis_start", initial: [0, -1] },
+        { id: "axis_end", initial: [0, 1] }
+      ],
+      constraints: [
+        {
+          id: "symmetry_legacy_targets",
+          kind: "symmetry",
+          targetIds: ["axis_start", "axis_end"]
+        }
+      ]
+    } as unknown as SketchSolveModel);
+
+    expect(missing.status).toBe("failed");
+    expect(missing.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sourceType: "constraint",
+          sourceId: "symmetry_missing",
+          targetId: "missing",
+          constraintKind: "symmetry"
+        })
+      ])
+    );
+    expect(zeroLength.status).toBe("failed");
+    expect(zeroLength.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "symmetry_zero_length",
+          constraintKind: "symmetry",
+          targetId: "axis_start:axis_end"
+        })
+      ])
+    );
+    expect(invalidShape.status).toBe("failed");
+    expect(invalidShape.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "symmetry_legacy_targets",
+          constraintKind: "symmetry",
+          targetId: "lineStartPointId"
+        })
+      ])
+    );
+  });
+
+  it("reports conflicting fixed tangent and symmetry constraints structurally", () => {
+    const tangentConflict = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "line_start", initial: [0, 0] },
+        { id: "line_end", initial: [4, 0] },
+        { id: "circle_center", initial: [2, 3] }
+      ],
+      scalars: [{ id: "circle_radius", initial: 1 }],
+      constraints: [
+        {
+          id: "fix_line_start",
+          kind: "fixedPoint",
+          pointId: "line_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_line_end",
+          kind: "fixedPoint",
+          pointId: "line_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_circle_center",
+          kind: "fixedPoint",
+          pointId: "circle_center",
+          value: [2, 3]
+        },
+        {
+          id: "tangent_conflict",
+          kind: "tangent",
+          lineStartPointId: "line_start",
+          lineEndPointId: "line_end",
+          circleCenterPointId: "circle_center",
+          circleRadiusId: "circle_radius"
+        }
+      ],
+      dimensions: [
+        {
+          id: "circle_radius_dim",
+          kind: "circleRadius",
+          radiusId: "circle_radius",
+          value: 1
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+    const symmetryConflict = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "axis_start", initial: [0, -1] },
+        { id: "axis_end", initial: [0, 1] },
+        { id: "primary", initial: [2, 3] },
+        { id: "secondary", initial: [-2, 4] }
+      ],
+      constraints: [
+        {
+          id: "fix_axis_start",
+          kind: "fixedPoint",
+          pointId: "axis_start",
+          value: [0, -1]
+        },
+        {
+          id: "fix_axis_end",
+          kind: "fixedPoint",
+          pointId: "axis_end",
+          value: [0, 1]
+        },
+        {
+          id: "fix_primary",
+          kind: "fixedPoint",
+          pointId: "primary",
+          value: [2, 3]
+        },
+        {
+          id: "fix_secondary",
+          kind: "fixedPoint",
+          pointId: "secondary",
+          value: [-2, 4]
+        },
+        {
+          id: "symmetry_conflict",
+          kind: "symmetry",
+          primaryPointId: "primary",
+          secondaryPointId: "secondary",
+          lineStartPointId: "axis_start",
+          lineEndPointId: "axis_end"
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+
+    expect(tangentConflict.status).toBe("conflicting");
+    expect(symmetryConflict.status).toBe("conflicting");
+    expect(tangentConflict.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+    expect(symmetryConflict.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+  });
+
   it("reports over-defined but consistent constraints separately from conflicts", () => {
     const result = solveSketch({
       version: SKETCH_SOLVER_MODEL_VERSION,
@@ -1296,30 +1795,6 @@ describe("sketch-solver", () => {
     expect(result.diagnostics).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: "SKETCH_SOLVER_OVER_DEFINED" })
-      ])
-    );
-  });
-
-  it("reports deferred unsupported constraints instead of ignoring them", () => {
-    const result = solveSketch({
-      version: SKETCH_SOLVER_MODEL_VERSION,
-      points: [
-        { id: "a", initial: [0, 0] },
-        { id: "b", initial: [1, 1] }
-      ],
-      constraints: [{ id: "tangent_1", kind: "tangent", targetIds: ["a", "b"] }]
-    });
-
-    expect(result.status).toBe("unsupported");
-    expect(result.iterations).toBe(0);
-    expect(result.diagnostics).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
-          sourceType: "constraint",
-          sourceId: "tangent_1",
-          constraintKind: "tangent"
-        })
       ])
     );
   });

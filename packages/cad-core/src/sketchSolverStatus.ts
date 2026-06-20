@@ -44,9 +44,7 @@ const DERIVED_BOUNDARY_NOTE =
   "Renderer meshes, OCCT indexes, GPU buffers, selection-buffer ids, viewport pixels, OPFS paths, file handles, and export artifacts are excluded from public sketch solver identities.";
 
 const DEFERRED_CONSTRAINT_KINDS = [
-  "tangent",
-  "distance",
-  "symmetry"
+  "distance"
 ] as const satisfies readonly CadSketchSolverDeferredConstraintKind[];
 
 export interface CreateSketchSolverStatusResponseOptions {
@@ -228,9 +226,8 @@ function createConstraintSummary(
     status: "current-source",
     sourceBacked: true,
     supportedByCurrentEvaluator: constraint.status === "healthy",
-    supportedByNumericalSolver: isConstraintKindSupportedByNumericalSolver(
-      constraint.kind
-    ),
+    supportedByNumericalSolver:
+      isConstraintSupportedByNumericalSolver(constraint),
     targetRefs: createConstraintTargets(constraint),
     diagnosticCount: diagnostics.length,
     diagnostics
@@ -530,7 +527,7 @@ function createSourceContract(
         requiresProjectSchemaMigration: !hasV17SourceRecords,
         nextProjectSchemaVersion: "web-cad.project.v17",
         reason: hasV17SourceRecords
-          ? "Tangent and symmetry constraints are persisted as V17 source records but remain numerically deferred; concentric, equal-radius, equal-length, and angle constraints are source-backed and numerically supported."
+          ? "Tangent, concentric, equal-radius, equal-length, angle, and symmetry constraints are persisted as V17 source records and are numerically supported by the solver package where their source target combination is supported."
           : "Tangent, concentric, equal, angle, and symmetry constraints require V17 source records before they can be persisted."
       },
       {
@@ -620,9 +617,19 @@ function chooseReadiness(
   }
 }
 
-function isConstraintKindSupportedByNumericalSolver(
-  kind: SketchConstraintEntry["kind"]
+function isConstraintSupportedByNumericalSolver(
+  constraint: SketchConstraintEntry
 ): boolean {
+  if (constraint.kind === "tangent") {
+    return (
+      (constraint.primaryTarget.entityKind === "line" &&
+        constraint.secondaryTarget.entityKind === "circle") ||
+      (constraint.primaryTarget.entityKind === "circle" &&
+        constraint.secondaryTarget.entityKind === "line")
+    );
+  }
+
+  const kind = constraint.kind;
   return (
     kind === "fixed" ||
     kind === "coincident" ||
@@ -634,7 +641,8 @@ function isConstraintKindSupportedByNumericalSolver(
     kind === "concentric" ||
     kind === "equalRadius" ||
     kind === "equalLength" ||
-    kind === "angle"
+    kind === "angle" ||
+    kind === "symmetry"
   );
 }
 

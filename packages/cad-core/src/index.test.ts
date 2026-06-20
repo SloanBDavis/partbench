@@ -457,6 +457,243 @@ function createV17LinePairConstraintProject(): CadProject {
   };
 }
 
+function createV17TangentConstraintProject(
+  targetOrder: "line-circle" | "circle-line" = "line-circle"
+): CadProject {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_1",
+      name: "Tangent solver",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_1",
+      start: [0, 0],
+      end: [4, 0]
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [2, 2],
+      radius: 1
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_line_start",
+      name: "Fix tangent line start",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "start" },
+      coordinate: [0, 0]
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_line_end",
+      name: "Fix tangent line end",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "end" },
+      coordinate: [4, 0]
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "horizontal_line",
+      name: "Horizontal tangent line",
+      sketchId: "sketch_1",
+      kind: "horizontal",
+      entityId: "line_1"
+    },
+    {
+      op: "sketch.dimension.create",
+      id: "dim_circle_radius",
+      name: "Tangent circle radius",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      target: { entityKind: "circle", role: "radius" },
+      value: 2
+    }
+  ]);
+
+  const project = exportCadProject(engine);
+  const primaryTarget =
+    targetOrder === "line-circle"
+      ? ({ entityId: "line_1", entityKind: "line" } as const)
+      : ({ entityId: "circle_1", entityKind: "circle" } as const);
+  const secondaryTarget =
+    targetOrder === "line-circle"
+      ? ({ entityId: "circle_1", entityKind: "circle" } as const)
+      : ({ entityId: "line_1", entityKind: "line" } as const);
+  const advancedConstraints: SketchConstraintSnapshot[] = [
+    ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
+    {
+      id: "skcon_tangent",
+      name: "Line circle tangent",
+      sketchId: "sketch_1",
+      entityId: secondaryTarget.entityId,
+      kind: "tangent",
+      primaryTarget,
+      secondaryTarget
+    }
+  ];
+
+  return {
+    ...project,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+    document: {
+      ...project.document,
+      sketchConstraints: advancedConstraints,
+      nextSketchConstraintNumber: 6
+    },
+    history: [],
+    redoStack: []
+  };
+}
+
+function createV17UnsupportedTangentConstraintProject(): CadProject {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_1",
+      name: "Tangent solver",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_1",
+      start: [0, 0],
+      end: [4, 0]
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_2",
+      start: [0, 1],
+      end: [4, 1]
+    }
+  ]);
+
+  const project = exportCadProject(engine);
+  const advancedConstraints: SketchConstraintSnapshot[] = [
+    ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
+    {
+      id: "skcon_tangent",
+      name: "Unsupported line tangent",
+      sketchId: "sketch_1",
+      entityId: "line_2",
+      kind: "tangent",
+      primaryTarget: { entityId: "line_1", entityKind: "line" },
+      secondaryTarget: { entityId: "line_2", entityKind: "line" }
+    }
+  ];
+
+  return {
+    ...project,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+    document: {
+      ...project.document,
+      sketchConstraints: advancedConstraints,
+      nextSketchConstraintNumber: 2
+    },
+    history: [],
+    redoStack: []
+  };
+}
+
+function createV17SymmetryConstraintProject(): CadProject {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_1",
+      name: "Symmetry solver",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_1",
+      start: [0, 0],
+      end: [0, 4]
+    },
+    {
+      op: "sketch.addPoint",
+      sketchId: "sketch_1",
+      id: "point_1",
+      point: [2, 1]
+    },
+    {
+      op: "sketch.addPoint",
+      sketchId: "sketch_1",
+      id: "point_2",
+      point: [-1, 3]
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_line_start",
+      name: "Fix symmetry line start",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "start" },
+      coordinate: [0, 0]
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_line_end",
+      name: "Fix symmetry line end",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "end" },
+      coordinate: [0, 4]
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_primary_point",
+      name: "Fix primary symmetry point",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "point_1", role: "position" },
+      coordinate: [2, 1]
+    }
+  ]);
+
+  const project = exportCadProject(engine);
+  const advancedConstraints: SketchConstraintSnapshot[] = [
+    ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
+    {
+      id: "skcon_symmetry",
+      name: "Symmetric points",
+      sketchId: "sketch_1",
+      entityId: "point_2",
+      kind: "symmetry",
+      primaryTarget: { entityId: "point_1", role: "position" },
+      secondaryTarget: { entityId: "point_2", role: "position" },
+      symmetryLineEntityId: "line_1"
+    }
+  ];
+
+  return {
+    ...project,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+    document: {
+      ...project.document,
+      sketchConstraints: advancedConstraints,
+      nextSketchConstraintNumber: 7
+    },
+    history: [],
+    redoStack: []
+  };
+}
+
 function readProjectExportReadiness(
   engine: CadEngine
 ): ProjectExportReadinessQueryResponse {
@@ -20043,18 +20280,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           supportedByCurrentEvaluator: true
         })
       ],
-      deferredConstraintCount: 3,
+      deferredConstraintCount: 1,
       deferredConstraints: expect.arrayContaining([
         expect.objectContaining({
-          kind: "tangent",
+          kind: "distance",
           status: "deferred",
           requiresProjectSchemaMigration: true,
           nextProjectSchemaVersion: "web-cad.project.v17"
-        }),
-        expect.objectContaining({
-          kind: "symmetry",
-          status: "deferred",
-          requiresProjectSchemaMigration: true
         })
       ]),
       profileValidity: {
@@ -20106,7 +20338,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
-          constraintKind: "tangent"
+          constraintKind: "distance"
         })
       ])
     );
@@ -20686,7 +20918,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
-  it("preserves V17 advanced sketch constraint source records and reports remaining deferred kinds unsupported", () => {
+  it("preserves V17 advanced sketch constraint source records and distinguishes direct evaluator from numerical support", () => {
     const project = createV17AdvancedConstraintProject();
     const engine = importCadProject(project);
     const exported = engine.exportProject();
@@ -20737,7 +20969,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "current-source",
           sourceBacked: true,
           supportedByCurrentEvaluator: false,
-          supportedByNumericalSolver: false,
+          supportedByNumericalSolver: true,
           diagnostics: expect.arrayContaining([
             expect.objectContaining({
               code: "SKETCH_SOLVER_UNSUPPORTED_ENTITY",
@@ -20833,7 +21065,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           constraintId: "skcon_206",
           kind: "symmetry",
           supportedByCurrentEvaluator: false,
-          supportedByNumericalSolver: false,
+          supportedByNumericalSolver: true,
           targetRefs: expect.arrayContaining([
             expect.objectContaining({
               type: "point",
@@ -20909,20 +21141,19 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           supportedByNumericalSolver: true
         })
       ]),
-      deferredConstraintCount: 3
+      deferredConstraintCount: 1
     });
     expect(response.deferredConstraints).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "tangent" }),
-        expect.objectContaining({ kind: "symmetry" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ kind: "distance" })])
     );
     expect(response.deferredConstraints).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "concentric" }),
         expect.objectContaining({ kind: "equalRadius" }),
         expect.objectContaining({ kind: "equalLength" }),
-        expect.objectContaining({ kind: "angle" })
+        expect.objectContaining({ kind: "angle" }),
+        expect.objectContaining({ kind: "tangent" }),
+        expect.objectContaining({ kind: "symmetry" })
       ])
     );
     expect(
@@ -20970,18 +21201,17 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           supportedByNumericalSolver: true
         })
       ]),
-      deferredConstraintCount: 3
+      deferredConstraintCount: 1
     });
     expect(response.deferredConstraints).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "tangent" }),
-        expect.objectContaining({ kind: "symmetry" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ kind: "distance" })])
     );
     expect(response.deferredConstraints).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "equalLength" }),
-        expect.objectContaining({ kind: "angle" })
+        expect.objectContaining({ kind: "angle" }),
+        expect.objectContaining({ kind: "tangent" }),
+        expect.objectContaining({ kind: "symmetry" })
       ])
     );
     expect(
@@ -20990,6 +21220,138 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
       )
     ).toBe(false);
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+  });
+
+  it("reports V17 line-circle tangent records as numerically supported without mutating source", () => {
+    for (const targetOrder of ["line-circle", "circle-line"] as const) {
+      const project = createV17TangentConstraintProject(targetOrder);
+      const engine = importCadProject(project);
+      const beforeProject = exportCadProjectJson(engine);
+
+      const response = readSketchSolverStatus(engine, "sketch_1");
+
+      expect(response).toMatchObject({
+        query: "sketch.solverStatus",
+        status: "unsupported",
+        sourceContract: {
+          currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+          emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
+        },
+        solver: {
+          numericalSolverStatus: "converged",
+          numericalSolverEngine: "@web-cad/sketch-solver",
+          modelBuilt: true,
+          solverRan: true,
+          canSolveNumerically: true,
+          variableCount: 7,
+          residualCount: 7
+        },
+        constraints: expect.arrayContaining([
+          expect.objectContaining({
+            constraintId: "skcon_tangent",
+            kind: "tangent",
+            sourceBacked: true,
+            supportedByCurrentEvaluator: false,
+            supportedByNumericalSolver: true
+          })
+        ]),
+        deferredConstraintCount: 1
+      });
+      expect(response.deferredConstraints).toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: "distance" })])
+      );
+      expect(
+        response.solver.diagnostics?.some(
+          (diagnostic) =>
+            diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
+        )
+      ).toBe(false);
+      expect(JSON.stringify(response)).not.toMatch(
+        /line_1:start|line_1:end|circle_1:center|circle_1:radius/
+      );
+      expect(exportCadProjectJson(engine)).toBe(beforeProject);
+    }
+  });
+
+  it("reports unsupported V17 tangent target combinations structurally", () => {
+    const project = createV17UnsupportedTangentConstraintProject();
+    const engine = importCadProject(project);
+    const beforeProject = exportCadProjectJson(engine);
+
+    const response = readSketchSolverStatus(engine, "sketch_1");
+
+    expect(response).toMatchObject({
+      query: "sketch.solverStatus",
+      status: "unsupported",
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "skcon_tangent",
+          kind: "tangent",
+          supportedByCurrentEvaluator: false,
+          supportedByNumericalSolver: false
+        })
+      ])
+    });
+    expect(response.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+          sketchConstraintId: "skcon_tangent",
+          expected: "line-circle tangent targets",
+          received: "line:line"
+        })
+      ])
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+  });
+
+  it("reports V17 symmetry records as numerically supported without mutating source", () => {
+    const project = createV17SymmetryConstraintProject();
+    const engine = importCadProject(project);
+    const beforeProject = exportCadProjectJson(engine);
+
+    const response = readSketchSolverStatus(engine, "sketch_1");
+
+    expect(response).toMatchObject({
+      query: "sketch.solverStatus",
+      status: "unsupported",
+      sourceContract: {
+        currentProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+        emittedProjectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V17
+      },
+      solver: {
+        numericalSolverStatus: "converged",
+        numericalSolverEngine: "@web-cad/sketch-solver",
+        modelBuilt: true,
+        solverRan: true,
+        canSolveNumerically: true,
+        variableCount: 8,
+        residualCount: 8
+      },
+      constraints: expect.arrayContaining([
+        expect.objectContaining({
+          constraintId: "skcon_symmetry",
+          kind: "symmetry",
+          sourceBacked: true,
+          supportedByCurrentEvaluator: false,
+          supportedByNumericalSolver: true
+        })
+      ]),
+      deferredConstraintCount: 1
+    });
+    expect(response.deferredConstraints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "distance" })])
+    );
+    expect(
+      response.solver.diagnostics?.some(
+        (diagnostic) =>
+          diagnostic.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT"
+      )
+    ).toBe(false);
+    expect(JSON.stringify(response)).not.toMatch(
+      /point_1:position|point_2:position|line_1:start|line_1:end/
+    );
     expect(exportCadProjectJson(engine)).toBe(beforeProject);
   });
 
