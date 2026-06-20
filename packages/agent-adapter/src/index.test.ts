@@ -2070,6 +2070,97 @@ describe("agent-adapter", () => {
 
     expect(
       executeCadOpsAgentRequest(engine, {
+        requestId: "agent_req_solver_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "sketch.dimension.update",
+              id: "agent_solver_radius",
+              value: 3
+            },
+            {
+              op: "sketch.constraint.create",
+              id: "agent_solver_fixed_center",
+              name: "Fixed circle center",
+              sketchId: "agent_solver_sketch",
+              kind: "fixed",
+              target: { entityId: "agent_solver_circle", role: "center" }
+            }
+          ]
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      requestId: "agent_req_solver_dry_run",
+      mode: "dryRun",
+      createdSketchConstraintIds: ["agent_solver_fixed_center"],
+      modifiedSketchDimensionIds: ["agent_solver_radius"],
+      modifiedSketchEntityIds: ["agent_solver_circle"],
+      review: {
+        requestedMode: "dryRun",
+        effectiveIntent: "dryRun",
+        commitGate: {
+          blocked: false,
+          permissionProvided: false
+        }
+      }
+    });
+
+    expect(
+      executeCadOpsAgentQueryRequest(engine, {
+        requestId: "agent_req_solver_dimension_after_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.dimension.get",
+            id: "agent_solver_radius"
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.dimension.get",
+      dimension: {
+        id: "agent_solver_radius",
+        effectiveValue: 2
+      }
+    });
+
+    expect(
+      executeCadOpsAgentQueryRequest(engine, {
+        requestId: "agent_req_solver_status_after_dry_run",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "sketch.solverStatus",
+            sketchId: "agent_solver_sketch"
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "sketch.solverStatus",
+      solver: {
+        numericalSolverStatus: "under-defined"
+      },
+      dimensionCount: 1,
+      constraintCount: 0,
+      dimensions: [
+        expect.objectContaining({
+          dimensionId: "agent_solver_radius",
+          effectiveValue: 2
+        })
+      ],
+      constraints: []
+    });
+
+    expect(
+      executeCadOpsAgentRequest(engine, {
         requestId: "agent_req_solver_commit",
         adapterVersion: "web-cad.agent-adapter.v1",
         permissions: { allowCommit: true },

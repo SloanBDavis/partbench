@@ -3079,6 +3079,99 @@ describe("mcp-adapter", () => {
     expect(
       server.callTool({
         name: "cad.batch",
+        requestId: "mcp_req_sketch_solver_dry_run",
+        arguments: {
+          batch: {
+            version: "cadops.v1",
+            mode: "dryRun",
+            ops: [
+              {
+                op: "sketch.constraint.create",
+                id: "mcp_solver_status_fixed_center",
+                name: "Fixed rectangle center",
+                sketchId: "mcp_solver_status_sketch",
+                kind: "fixed",
+                target: {
+                  entityId: "mcp_solver_status_rect",
+                  role: "center"
+                }
+              },
+              {
+                op: "sketch.dimension.create",
+                id: "mcp_solver_status_radius",
+                name: "Circle radius",
+                sketchId: "mcp_solver_status_sketch",
+                entityId: "mcp_solver_status_rect",
+                target: { entityKind: "circle", role: "radius" },
+                value: 2
+              }
+            ]
+          }
+        }
+      })
+    ).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_sketch_solver_dry_run",
+        mode: "dryRun",
+        createdSketchConstraintIds: ["mcp_solver_status_fixed_center"],
+        createdSketchDimensionIds: ["mcp_solver_status_radius"],
+        modifiedSketchEntityIds: ["mcp_solver_status_rect"],
+        review: {
+          requestedMode: "dryRun",
+          effectiveIntent: "dryRun",
+          commitGate: {
+            blocked: false,
+            permissionProvided: false
+          }
+        }
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.sketch_dimension_get",
+        requestId: "mcp_req_sketch_solver_dimension_after_dry_run",
+        arguments: { id: "mcp_solver_status_radius" }
+      })
+    ).toMatchObject({
+      toolName: "cad.sketch_dimension_get",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        query: "sketch.dimension.get",
+        error: {
+          code: "SKETCH_DIMENSION_NOT_FOUND"
+        }
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.sketch_solver_status",
+        requestId: "mcp_req_sketch_solver_status_after_dry_run",
+        arguments: {
+          sketchId: "mcp_solver_status_sketch"
+        }
+      })
+    ).toMatchObject({
+      toolName: "cad.sketch_solver_status",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "sketch.solverStatus",
+        solver: {
+          numericalSolverStatus: "under-defined"
+        },
+        dimensionCount: 0
+      }
+    });
+
+    expect(
+      server.callTool({
+        name: "cad.batch",
         requestId: "mcp_req_sketch_solver_commit",
         arguments: {
           allowCommit: true,

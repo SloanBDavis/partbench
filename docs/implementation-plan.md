@@ -1926,8 +1926,13 @@ Use these decisions when drafting or implementing V11 tranches:
    through existing `sketch.constraint.create` CADOps paths, ignored candidates
    do not mutate source, and no renderer/private IDs or schema changes are
    introduced.
-14. **Agent/MCP Sketch Workflows** - expose solver status, constraint/dimension
-    edits, dry-runs, and diagnostics through thin wrappers.
+14. **Agent/MCP Sketch Workflows** - implemented as wrapper parity for V11
+    sketch workflows. Agent and MCP surfaces expose solver status,
+    sketch dimensions, dimension lookup, sketch evaluation, sketch edit
+    readiness, and constraint/dimension dry-run or commit behavior through
+    existing cad-core/CADOps paths. Dry-run tests prove proposed sketch edits do
+    not mutate source before commit, and wrappers do not add solver authority or
+    leak renderer/private IDs.
 15. **Release Hardening And Long Sketch Smokes** - add stress fixtures,
     combined browser workflows, docs cleanup, and a final V11 audit.
 
