@@ -120,6 +120,7 @@ import { Inspector } from "./components/Inspector";
 import { ModelingActionsPanel } from "./components/ModelingActionsPanel";
 import { ProjectJsonPanel } from "./components/ProjectJsonPanel";
 import { SketchPanel } from "./components/SketchPanel";
+import { SketchViewportDragOverlay } from "./components/SketchViewportDragOverlay";
 import { StructurePanel } from "./components/StructurePanel";
 import { ViewportContextualCommandSurface } from "./components/ViewportContextualCommandSurface";
 import {
@@ -1429,6 +1430,13 @@ export function App() {
     features: projectStructure.features,
     preferredBodyId: selectedBody?.id
   });
+  const sketchViewportDragTarget =
+    modelingSelectionContext.selectionKind === "sketchEntity"
+      ? {
+          entityId: modelingSelectionContext.entity.id,
+          sketch: modelingSelectionContext.sketch
+        }
+      : undefined;
   const selectedMeasurements = useMemo<
     ObjectMeasurementsSnapshot | undefined
   >(() => {
@@ -2057,6 +2065,21 @@ export function App() {
       [buildUpdateSketchEntityOp(sketchId, entity)],
       () => selectedId
     );
+  }
+
+  async function previewSketchEntityUpdate(
+    sketchId: string,
+    entity: SketchEntitySnapshot
+  ): Promise<boolean> {
+    const response = await commandExecutor.executeBatch(
+      buildBatch(
+        "dryRun",
+        [buildUpdateSketchEntityOp(sketchId, entity)],
+        WEB_UI_ACTOR
+      )
+    );
+
+    return response.ok;
   }
 
   async function deleteSketchEntity(sketchId: string, entityId: string) {
@@ -3252,6 +3275,24 @@ export function App() {
           onHover={hoverViewportPick}
           onSelect={selectViewportPick}
           onCancelTransientState={clearViewportTransientState}
+          sketchOverlay={({ camera, size }) =>
+            sketchViewportDragTarget ? (
+              <SketchViewportDragOverlay
+                camera={camera}
+                disabled={commandPending}
+                displayFrame={sketchDisplayState.frames.get(
+                  sketchViewportDragTarget.sketch.id
+                )}
+                selectedEntityId={sketchViewportDragTarget.entityId}
+                size={size}
+                sketch={sketchViewportDragTarget.sketch}
+                onCommitEntity={(sketchId, entity) =>
+                  void updateSketchEntity(sketchId, entity)
+                }
+                onPreviewEntity={previewSketchEntityUpdate}
+              />
+            ) : null
+          }
         />
 
         <div className="right-rail" aria-label="Project and modeling tools">

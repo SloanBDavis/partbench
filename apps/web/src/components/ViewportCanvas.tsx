@@ -47,6 +47,7 @@ export function ViewportCanvas({
   onCancelTransientState,
   primitives,
   selectedId,
+  sketchOverlay,
   status,
   visualStates
 }: {
@@ -57,6 +58,10 @@ export function ViewportCanvas({
   readonly onCancelTransientState?: () => void;
   readonly primitives: readonly RenderPrimitive[];
   readonly selectedId?: string;
+  readonly sketchOverlay?: (viewport: {
+    readonly camera: RenderCamera;
+    readonly size: ViewportSize;
+  }) => ReactNode;
   readonly status?: ViewportCanvasStatus;
   readonly visualStates?: readonly RenderVisualStateInput[];
 }) {
@@ -281,6 +286,7 @@ export function ViewportCanvas({
             <span>{status.detail}</span>
           </div>
         ) : null}
+        {sketchOverlay?.({ camera, size })}
         <canvas
           ref={canvasRef}
           aria-label="3D scene viewport"

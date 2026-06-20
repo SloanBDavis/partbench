@@ -1593,6 +1593,60 @@ button.model-story-row:hover,
   border-color: rgba(180, 35, 24, 0.45);
 }
 
+.sketch-drag-overlay {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.sketch-drag-handle {
+  fill: #ffffff;
+  stroke: var(--accent-strong);
+  stroke-width: 2;
+  cursor: grab;
+  pointer-events: auto;
+  filter: drop-shadow(0 2px 5px rgba(42, 52, 43, 0.24));
+}
+
+.sketch-drag-handle:active {
+  cursor: grabbing;
+}
+
+.sketch-drag-handle-line {
+  fill: #ecf4ee;
+}
+
+.sketch-drag-handle-circleRadius {
+  fill: #f8f1dc;
+}
+
+.sketch-drag-preview {
+  fill: none;
+  stroke: var(--accent-strong);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
+.sketch-drag-preview-pending {
+  opacity: 0.55;
+}
+
+.sketch-drag-preview-invalid {
+  stroke: var(--danger);
+}
+
+circle.sketch-drag-preview {
+  fill: rgba(47, 133, 90, 0.12);
+}
+
+circle.sketch-drag-preview-invalid {
+  fill: rgba(180, 35, 24, 0.12);
+}
+
 canvas {
   display: block;
   width: 100%;

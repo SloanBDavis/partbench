@@ -1909,8 +1909,16 @@ Use these decisions when drafting or implementing V11 tranches:
    the right-rail modeling context shows a compact Sketch status card for
    selected sketches/entities. This does not add commands, viewport overlays,
    debug walls, schema changes, or React-side solver authority.
-12. **Drag Solve Preview And Commit** - support endpoint, line, circle-center,
-   and radius dragging as non-mutating previews followed by CADOps commits.
+12. **Drag Solve Preview And Commit** - implemented as the first direct
+   viewport sketch manipulation slice. Selected point, line, and circle sketch
+   entities show compact viewport handles; point, line endpoint, whole-line
+   translate, circle center, and circle radius drags preview in session-only UI
+   state; candidate preview entities are validated through existing CADOps
+   dry-run `sketch.updateEntity` batches; pointer-up commits moved valid
+   previews through the same CADOps path. Unsupported rectangles produce no
+   handles and remain non-mutating. This adds no persisted tool state, no
+   solved geometry commit, no renderer authority, and no schema after
+   `web-cad.project.v17`.
 13. **Constraint Inference** - add conservative session-only inference while
    drawing or dragging, with source commits only when accepted through CADOps.
 14. **Agent/MCP Sketch Workflows** - expose solver status, constraint/dimension

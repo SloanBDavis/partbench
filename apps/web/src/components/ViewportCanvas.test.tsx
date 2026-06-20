@@ -92,6 +92,31 @@ describe("ViewportCanvas", () => {
     expect(markup).not.toContain("Viewport selection diagnostics");
   });
 
+  it("hosts sketch overlays inside the viewport frame without adding panels", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ViewportCanvas, {
+        primitives: [],
+        meshes: [],
+        selectedId: "sketch_line",
+        sketchOverlay: () =>
+          createElement(
+            "svg",
+            {
+              "aria-label": "Sketch drag handles",
+              className: "sketch-drag-overlay"
+            },
+            createElement("circle", { "aria-label": "Drag Start point" })
+          ),
+        onSelect: () => undefined
+      })
+    );
+
+    expect(markup).toContain('aria-label="Sketch drag handles"');
+    expect(markup).toContain("sketch-drag-overlay");
+    expect(markup).not.toContain("Viewport reference candidates");
+    expect(markup).not.toContain("Viewport selection diagnostics");
+  });
+
   it("marks the viewport frame when status and contextual controls share the model area", () => {
     const markup = renderToStaticMarkup(
       createElement(ViewportCanvas, {
