@@ -1919,8 +1919,13 @@ Use these decisions when drafting or implementing V11 tranches:
    handles and remain non-mutating. This adds no persisted tool state, no
    solved geometry commit, no renderer authority, and no schema after
    `web-cad.project.v17`.
-13. **Constraint Inference** - add conservative session-only inference while
-   drawing or dragging, with source commits only when accepted through CADOps.
+13. **Constraint Inference** - implemented as a conservative session-only
+   inference affordance for source-backed line constraints. Selected line
+   entities can surface compact `horizontal`, `vertical`, `parallel`, and
+   `perpendicular` candidates in the Sketches panel; accepted candidates commit
+   through existing `sketch.constraint.create` CADOps paths, ignored candidates
+   do not mutate source, and no renderer/private IDs or schema changes are
+   introduced.
 14. **Agent/MCP Sketch Workflows** - expose solver status, constraint/dimension
     edits, dry-runs, and diagnostics through thin wrappers.
 15. **Release Hardening And Long Sketch Smokes** - add stress fixtures,

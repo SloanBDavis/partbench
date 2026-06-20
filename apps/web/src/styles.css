@@ -2525,6 +2525,7 @@ canvas:active {
 
 .compact-definition-list,
 .dimension-status-list,
+.constraint-inference-list,
 .dimension-issue-list {
   display: grid;
   gap: 6px;
@@ -2586,6 +2587,58 @@ button.dimension-status-row {
   overflow-wrap: anywhere;
   color: var(--ink);
   font-size: 0.82rem;
+}
+
+.constraint-inference-list {
+  padding: 7px;
+  border: 1px solid rgba(64, 119, 104, 0.32);
+  border-radius: 7px;
+  background: rgba(240, 249, 246, 0.76);
+}
+
+.constraint-inference-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.constraint-inference-heading strong {
+  color: var(--ink);
+  font-size: 0.76rem;
+}
+
+.constraint-inference-heading span {
+  color: var(--quiet);
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.constraint-inference-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 0;
+  padding: 7px 8px;
+  border-color: rgba(64, 119, 104, 0.32);
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+}
+
+.constraint-inference-row strong {
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.constraint-inference-row span {
+  color: var(--quiet);
+  font-size: 0.68rem;
+  font-weight: 750;
 }
 
 .dimension-issue-list {

@@ -91,6 +91,60 @@ describe("SketchPanel", () => {
     expect(markup).not.toContain("sourceBoundaryNote");
     expect(markup).not.toContain("derivedBoundaryNote");
   });
+
+  it("renders session-only constraint inference for selected line entities", () => {
+    const line: SketchSnapshot["entities"][number] = {
+      id: "line_1",
+      kind: "line",
+      start: [0, 0],
+      end: [4, 0.1]
+    };
+    const sketch: SketchSnapshot = {
+      id: "sketch_1",
+      name: "Sketch 1",
+      plane: "XY",
+      entities: [line]
+    };
+    const markup = renderToStaticMarkup(
+      createElement(SketchPanel, {
+        disabled: false,
+        sketches: [sketch],
+        parameters: [],
+        features: [],
+        sketchDimensionsBySketchId: new Map([[sketch.id, []]]),
+        sketchEvaluationsBySketchId: new Map([
+          [sketch.id, createEmptyEvaluation(sketch)]
+        ]),
+        sketchSolverStatusesBySketchId: new Map([
+          [sketch.id, createSolverStatus()]
+        ]),
+        onCreateSketch: () => undefined,
+        onCreateParameter: () => undefined,
+        onApplyParameterEdit: () => undefined,
+        onDeleteParameter: () => undefined,
+        onRenameSketch: () => undefined,
+        onDeleteSketch: () => undefined,
+        onAddEntity: () => undefined,
+        onUpdateEntity: () => undefined,
+        onDeleteEntity: () => undefined,
+        onCreateDimension: () => undefined,
+        onApplyDimensionEdit: () => undefined,
+        onDeleteDimension: () => undefined,
+        onCreateConstraint: () => undefined,
+        onApplyConstraintEdit: () => undefined,
+        onDeleteConstraint: () => undefined,
+        onExtrudeEntity: () => undefined,
+        onRevolveEntity: () => undefined,
+        onHoleEntity: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Inferred constraints");
+    expect(markup).toContain("Session only until accepted");
+    expect(markup).toContain("Horizontal");
+    expect(markup).not.toContain("renderer");
+    expect(markup).not.toContain("selection-buffer");
+  });
 });
 
 function createEvaluation(
@@ -112,6 +166,28 @@ function createEvaluation(
     dimensions: [dimension],
     constraintCount: 1,
     constraints: [constraint],
+    issueCount: 0,
+    issues: []
+  };
+}
+
+function createEmptyEvaluation(
+  sketch: SketchSnapshot
+): SketchEvaluationQueryResponse {
+  return {
+    ok: true,
+    query: "sketch.evaluation",
+    cadOpsVersion: "cadops.v1",
+    sketchId: sketch.id,
+    sketchName: sketch.name,
+    plane: sketch.plane,
+    status: "healthy",
+    drivenEntityCount: sketch.entities.length,
+    drivenEntityIds: sketch.entities.map((entity) => entity.id),
+    dimensionCount: 0,
+    dimensions: [],
+    constraintCount: 0,
+    constraints: [],
     issueCount: 0,
     issues: []
   };

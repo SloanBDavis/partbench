@@ -87,6 +87,10 @@ import {
   sketchEntityFormToEntity,
   validateSketchEntityForm
 } from "../sketchEntityForms";
+import {
+  createSketchConstraintInferenceCandidates,
+  type SketchConstraintInferenceCandidate
+} from "../sketchConstraintInference";
 
 export interface SketchPanelProps {
   readonly disabled: boolean;
@@ -547,6 +551,15 @@ export function SketchPanel({
       ),
     [selectedEntity, selectedSketch, selectedSketchConstraints]
   );
+  const constraintInferenceCandidates = useMemo(
+    () =>
+      createSketchConstraintInferenceCandidates({
+        entity: selectedEntity,
+        sketchEntities: selectedSketch?.entities ?? [],
+        constraints: selectedSketchConstraints
+      }),
+    [selectedEntity, selectedSketch, selectedSketchConstraints]
+  );
   const secondaryConstraintTargetOptions =
     selectedCreateConstraintKind === "midpoint"
       ? midpointTargetOptions
@@ -844,6 +857,16 @@ export function SketchPanel({
       selectedEntity.id,
       effectiveConstraintCreateForm
     );
+  }
+
+  function acceptConstraintInference(
+    candidate: SketchConstraintInferenceCandidate
+  ) {
+    if (!selectedSketch || !selectedEntity) {
+      return;
+    }
+
+    onCreateConstraint(selectedSketch.id, selectedEntity.id, candidate.form);
   }
 
   function applyParameterEdit() {
@@ -1284,6 +1307,7 @@ export function SketchPanel({
                       coincidentTargetOptions={coincidentTargetOptions}
                       midpointTargetOptions={midpointTargetOptions}
                       parallelTargetOptions={parallelTargetOptions}
+                      inferenceCandidates={constraintInferenceCandidates}
                       createForm={effectiveConstraintCreateForm}
                       selectedConstraint={selectedConstraint}
                       selectedConstraintId={selectedConstraint?.id}
@@ -1301,6 +1325,7 @@ export function SketchPanel({
                         })
                       }
                       onCreateConstraint={createConstraint}
+                      onAcceptInference={acceptConstraintInference}
                       onApplyConstraintEdit={applyConstraintEdit}
                       onDeleteConstraint={onDeleteConstraint}
                     />
@@ -2468,6 +2493,7 @@ function SketchConstraintControls({
   coincidentTargetOptions,
   midpointTargetOptions,
   parallelTargetOptions,
+  inferenceCandidates,
   createForm,
   selectedConstraint,
   selectedConstraintId,
@@ -2476,6 +2502,7 @@ function SketchConstraintControls({
   onSelectConstraint,
   onEditFormChange,
   onCreateConstraint,
+  onAcceptInference,
   onApplyConstraintEdit,
   onDeleteConstraint
 }: {
@@ -2508,6 +2535,7 @@ function SketchConstraintControls({
     readonly label: string;
   }[];
   readonly parallelTargetOptions: readonly SketchLineTargetOption[];
+  readonly inferenceCandidates: readonly SketchConstraintInferenceCandidate[];
   readonly createForm: SketchConstraintForm;
   readonly selectedConstraint: SketchConstraintEntry | undefined;
   readonly selectedConstraintId: string | undefined;
@@ -2516,6 +2544,9 @@ function SketchConstraintControls({
   readonly onSelectConstraint: (constraintId: string | undefined) => void;
   readonly onEditFormChange: (form: SketchConstraintForm) => void;
   readonly onCreateConstraint: () => void;
+  readonly onAcceptInference: (
+    candidate: SketchConstraintInferenceCandidate
+  ) => void;
   readonly onApplyConstraintEdit: () => void;
   readonly onDeleteConstraint: (constraintId: string) => void;
 }) {
@@ -2605,6 +2636,30 @@ function SketchConstraintControls({
         <p className="project-message compact">
           Supported constraint targets for this entity are already constrained.
         </p>
+      )}
+
+      {inferenceCandidates.length > 0 && (
+        <div
+          className="constraint-inference-list"
+          aria-label="Constraint inference candidates"
+        >
+          <div className="constraint-inference-heading">
+            <strong>Inferred constraints</strong>
+            <span>Session only until accepted</span>
+          </div>
+          {inferenceCandidates.map((candidate) => (
+            <button
+              key={candidate.id}
+              type="button"
+              className="constraint-inference-row"
+              disabled={disabled}
+              onClick={() => onAcceptInference(candidate)}
+            >
+              <strong>{candidate.label}</strong>
+              <span>{candidate.detail}</span>
+            </button>
+          ))}
+        </div>
       )}
 
       {mode === "create" && availableKinds.length > 0 && (
