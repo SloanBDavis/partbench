@@ -177,6 +177,182 @@ function createCircleExtrudeEngine(): CadEngine {
   return engine;
 }
 
+function createV17TangentRectangleProfileProject(): CadProject {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [0, 0],
+      width: 4,
+      height: 2
+    },
+    {
+      op: "sketch.addLine",
+      sketchId: "sketch_1",
+      id: "line_1",
+      start: [-3, 0],
+      end: [3, 0]
+    },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [0, 2],
+      radius: 2
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_rect_center",
+      name: "Fix rectangle center",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "rect_1", role: "center" }
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_line_start",
+      name: "Fix tangent line start",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "start" }
+    },
+    {
+      op: "sketch.constraint.create",
+      id: "fix_line_end",
+      name: "Fix tangent line end",
+      sketchId: "sketch_1",
+      kind: "fixed",
+      target: { entityId: "line_1", role: "end" }
+    },
+    {
+      op: "sketch.dimension.create",
+      id: "dim_circle_radius",
+      name: "Tangent circle radius",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      target: { entityKind: "circle", role: "radius" },
+      value: 2
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 3
+    },
+    {
+      op: "reference.nameGenerated",
+      name: "top_face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    }
+  ]);
+
+  const project = exportCadProject(engine);
+  const advancedConstraints: SketchConstraintSnapshot[] = [
+    ...(project.document.sketchConstraints as SketchConstraintSnapshot[]),
+    {
+      id: "skcon_tangent",
+      name: "Line circle tangent",
+      sketchId: "sketch_1",
+      entityId: "circle_1",
+      kind: "tangent",
+      primaryTarget: { entityId: "line_1", entityKind: "line" },
+      secondaryTarget: { entityId: "circle_1", entityKind: "circle" }
+    }
+  ];
+
+  return {
+    ...project,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V17,
+    document: {
+      ...project.document,
+      sketchConstraints: advancedConstraints,
+      nextSketchConstraintNumber: 5
+    },
+    history: [],
+    redoStack: []
+  };
+}
+
+function createStaleProfileExtrudeEngine(): CadEngine {
+  return new CadEngine(
+    createCadDocument(
+      [],
+      "mm",
+      [
+        [
+          "sketch_1",
+          {
+            id: "sketch_1",
+            name: "Profile",
+            plane: "XY",
+            entities: new Map<string, SketchEntitySnapshot>([
+              [
+                "rect_1",
+                {
+                  id: "rect_1",
+                  kind: "rectangle",
+                  center: [0, 0],
+                  width: 4,
+                  height: 2
+                }
+              ]
+            ])
+          }
+        ]
+      ],
+      [],
+      [
+        [
+          "dim_stale",
+          {
+            id: "dim_stale",
+            name: "Stale line length",
+            sketchId: "sketch_1",
+            entityId: "missing_line",
+            target: { entityKind: "line", role: "length" },
+            valueSource: { type: "literal", value: 2 }
+          }
+        ]
+      ],
+      [],
+      [
+        [
+          "feat_rect_1",
+          {
+            id: "feat_rect_1",
+            kind: "extrude",
+            sketchId: "sketch_1",
+            entityId: "rect_1",
+            profileKind: "rectangle",
+            depth: 3,
+            side: "positive",
+            operationMode: "newBody",
+            bodyId: "body_rect_1"
+          }
+        ]
+      ],
+      [
+        [
+          "top_face",
+          {
+            name: "top_face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face"
+          }
+        ]
+      ]
+    )
+  );
+}
+
 function createV17AdvancedConstraintProject(): CadProject {
   const engine = new CadEngine();
 
@@ -21352,6 +21528,205 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(JSON.stringify(response)).not.toMatch(
       /point_1:position|point_2:position|line_1:start|line_1:end/
     );
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+  });
+
+  it("feeds numerical solver support into closed source profile feature readiness", () => {
+    const engine = importCadProject(createV17TangentRectangleProfileProject());
+    const beforeProject = exportCadProjectJson(engine);
+
+    const solverStatus = readSketchSolverStatus(engine, "sketch_1");
+    expect(solverStatus).toMatchObject({
+      query: "sketch.solverStatus",
+      status: "unsupported",
+      solver: {
+        numericalSolverEngine: "@web-cad/sketch-solver",
+        modelBuilt: true,
+        solverRan: true,
+        canSolveNumerically: true
+      },
+      profileValidity: {
+        status: "valid",
+        validProfileCount: 2,
+        profiles: expect.arrayContaining([
+          expect.objectContaining({
+            entityId: "rect_1",
+            profileKind: "rectangle",
+            closed: true,
+            featureReady: true
+          })
+        ])
+      }
+    });
+
+    expect(readFeatureEditability(engine, "feat_rect_1")).toMatchObject({
+      status: "editable",
+      rebuildReadiness: { status: "ready" }
+    });
+    expect(
+      readReferenceHealth(engine, { type: "namedReference", name: "top_face" })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          commandable: true,
+          referenceName: "top_face"
+        })
+      ]
+    });
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "ready",
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "active",
+          commandReady: true
+        })
+      ])
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeProject);
+  });
+
+  it("routes stale source profile health into V10 rebuild and reference surfaces", () => {
+    const engine = createStaleProfileExtrudeEngine();
+    const beforeProject = exportCadProjectJson(engine);
+
+    expect(readSketchSolverStatus(engine, "sketch_1")).toMatchObject({
+      profileValidity: {
+        status: "invalid",
+        profiles: expect.arrayContaining([
+          expect.objectContaining({
+            entityId: "rect_1",
+            profileKind: "rectangle",
+            closed: true,
+            featureReady: false
+          })
+        ])
+      },
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_MISSING_TARGET",
+          sketchDimensionId: "dim_stale",
+          sketchEntityId: "missing_line"
+        })
+      ])
+    });
+
+    expect(readFeatureEditability(engine, "feat_rect_1")).toMatchObject({
+      status: "blocked",
+      rebuildReadiness: {
+        status: "blocked",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "FEATURE_EDIT_UNSUPPORTED",
+            sketchId: "sketch_1",
+            sketchEntityId: "rect_1",
+            expected: "feature-ready source sketch profile",
+            received: "invalid:rectangle"
+          })
+        ])
+      }
+    });
+
+    const referenceHealth = readReferenceHealth(engine, {
+      type: "generatedReference",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    expect(referenceHealth).toMatchObject({
+      status: "stale",
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          source: "generatedReference",
+          commandable: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "REFERENCE_STALE",
+              sketchId: "sketch_1",
+              sketchEntityId: "rect_1"
+            })
+          ])
+        })
+      ])
+    });
+
+    expect(
+      readReferenceHealth(engine, { type: "namedReference", name: "top_face" })
+    ).toMatchObject({
+      status: "stale",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          commandable: false,
+          referenceName: "top_face",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "REFERENCE_STALE" })
+          ])
+        })
+      ]
+    });
+
+    expect(readProjectDependencyGraph(engine)).toMatchObject({
+      nodes: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "feature",
+          featureId: "feat_rect_1",
+          status: "stale"
+        }),
+        expect.objectContaining({
+          kind: "body",
+          bodyId: "body_rect_1",
+          status: "stale"
+        }),
+        expect.objectContaining({
+          kind: "namedReference",
+          referenceName: "top_face",
+          status: "stale"
+        })
+      ])
+    });
+
+    expect(readProjectRebuildPlan(engine)).toMatchObject({
+      status: "repair-needed",
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "stale",
+          rebuildRequired: true,
+          commandReady: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({ code: "REBUILD_SOURCE_STALE" })
+          ])
+        })
+      ])
+    });
+
+    expect(
+      readSketchEditReadiness(engine, {
+        editKind: "entity.dimension.update",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        value: 5
+      })
+    ).toMatchObject({
+      status: "missing",
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "stale",
+          commandReady: false
+        })
+      ]),
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          status: "stale"
+        })
+      ])
+    });
+
     expect(exportCadProjectJson(engine)).toBe(beforeProject);
   });
 

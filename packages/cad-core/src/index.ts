@@ -161,6 +161,10 @@ import {
 import { createSketchEditReadinessResponse } from "./sketchEditReadiness";
 import { createSketchSolverStatusResponse } from "./sketchSolverStatus";
 import {
+  createSketchProfileHealthEntries,
+  createSketchProfileLifecycleEffects
+} from "./sketchProfileHealth";
+import {
   createProjectExactExport,
   createProjectExportReadiness
 } from "./projectExportReadiness";
@@ -1103,6 +1107,10 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
+        const sketchProfileHealth = createSketchProfileHealthEntries({
+          document: this.#document,
+          features: structure.features
+        });
 
         return createFeatureEditabilityResponse({
           cadOpsVersion: request.version,
@@ -1112,7 +1120,8 @@ export class CadEngine {
           document: this.#document,
           features: structure.features,
           bodies: structure.bodies,
-          namedReferences: [...this.#document.namedReferences.values()]
+          namedReferences: [...this.#document.namedReferences.values()],
+          sketchProfileHealth
         });
       }
 
@@ -1181,6 +1190,10 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
+        const sketchProfileHealth = createSketchProfileHealthEntries({
+          document: this.#document,
+          features: structure.features
+        });
 
         return createProjectDependencyGraph({
           cadOpsVersion: request.version,
@@ -1188,7 +1201,8 @@ export class CadEngine {
           document: this.#document,
           features: structure.features,
           bodies: structure.bodies,
-          namedReferences: [...this.#document.namedReferences.values()]
+          namedReferences: [...this.#document.namedReferences.values()],
+          sketchProfileHealth
         });
       }
 
@@ -1197,6 +1211,10 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
+        const sketchProfileHealth = createSketchProfileHealthEntries({
+          document: this.#document,
+          features: structure.features
+        });
         const referenceHealth = createReferenceHealth({
           cadOpsVersion: request.version,
           ownerPartId: DEFAULT_PART_ID,
@@ -1204,6 +1222,7 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
+          sketchProfileHealth,
           target: { type: "all" }
         });
         return createProjectRebuildPlan({
@@ -1211,9 +1230,12 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           referenceHealth: referenceHealth.referenceHealth,
-          lifecycleEffects: createCurrentLifecycleEffects(
-            this.#history.map((entry) => entry.transaction)
-          )
+          lifecycleEffects: [
+            ...createCurrentLifecycleEffects(
+              this.#history.map((entry) => entry.transaction)
+            ),
+            ...createSketchProfileLifecycleEffects(sketchProfileHealth)
+          ]
         });
       }
 
@@ -1394,6 +1416,10 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
+        const sketchProfileHealth = createSketchProfileHealthEntries({
+          document: this.#document,
+          features: structure.features
+        });
         const referenceHealth = createReferenceHealth({
           cadOpsVersion: request.version,
           ownerPartId: DEFAULT_PART_ID,
@@ -1401,6 +1427,7 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
+          sketchProfileHealth,
           target: { type: "all" }
         });
         const rebuildPlan = createProjectRebuildPlan({
@@ -1408,9 +1435,12 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           referenceHealth: referenceHealth.referenceHealth,
-          lifecycleEffects: createCurrentLifecycleEffects(
-            this.#history.map((entry) => entry.transaction)
-          )
+          lifecycleEffects: [
+            ...createCurrentLifecycleEffects(
+              this.#history.map((entry) => entry.transaction)
+            ),
+            ...createSketchProfileLifecycleEffects(sketchProfileHealth)
+          ]
         });
 
         return createSketchEditReadinessResponse({
@@ -1822,6 +1852,10 @@ export class CadEngine {
           this.#document,
           this.#history.map((entry) => entry.transaction)
         );
+        const sketchProfileHealth = createSketchProfileHealthEntries({
+          document: this.#document,
+          features: structure.features
+        });
 
         return createReferenceHealth({
           cadOpsVersion: request.version,
@@ -1830,6 +1864,7 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
+          sketchProfileHealth,
           target: request.query.target
         });
       }

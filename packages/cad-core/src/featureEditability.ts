@@ -31,6 +31,11 @@ import {
   createBodyGeneratedReferences,
   type GeneratedReferencesDocument
 } from "./generatedReferences";
+import {
+  createFeatureProfileEditDiagnostic,
+  findSketchProfileHealthEntry,
+  type SketchProfileHealthEntry
+} from "./sketchProfileHealth";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -46,6 +51,7 @@ export interface CreateFeatureEditabilityResponseOptions {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
+  readonly sketchProfileHealth?: readonly SketchProfileHealthEntry[];
 }
 
 export function createFeatureEditabilityResponse(
@@ -154,6 +160,9 @@ function createExtrudeEditabilityResponse(
     body
   );
   const blockingDiagnostics: CadFeatureEditDiagnostic[] = [];
+  blockingDiagnostics.push(
+    ...createProfileBlockingDiagnostics(options, feature.id)
+  );
 
   if (body?.consumedByFeatureId && !scopedRebuildConsumer) {
     blockingDiagnostics.push(
@@ -360,6 +369,9 @@ function createRevolveEditabilityResponse(
     body?.consumedByFeatureId,
     "feature.updateRevolve"
   );
+  blockingDiagnostics.push(
+    ...createProfileBlockingDiagnostics(options, feature.id)
+  );
 
   if (feature.operationMode !== "newBody") {
     blockingDiagnostics.push(
@@ -404,6 +416,20 @@ function createRevolveEditabilityResponse(
   });
 }
 
+function createProfileBlockingDiagnostics(
+  options: CreateFeatureEditabilityResponseOptions,
+  featureId: FeatureId
+): readonly CadFeatureEditDiagnostic[] {
+  const profileHealth = findSketchProfileHealthEntry(
+    options.sketchProfileHealth ?? [],
+    featureId
+  );
+
+  return profileHealth && profileHealth.status !== "ready"
+    ? [createFeatureProfileEditDiagnostic(profileHealth)]
+    : [];
+}
+
 function createHoleEditabilityResponse(
   options: CreateFeatureEditabilityResponseOptions,
   feature: Extract<CadFeatureSummary, { readonly kind: "hole" }>
@@ -419,6 +445,9 @@ function createHoleEditabilityResponse(
     feature.bodyId,
     body?.consumedByFeatureId,
     "feature.updateHole"
+  );
+  blockingDiagnostics.push(
+    ...createProfileBlockingDiagnostics(options, feature.id)
   );
 
   if (targetBody?.consumedByFeatureId !== feature.id) {

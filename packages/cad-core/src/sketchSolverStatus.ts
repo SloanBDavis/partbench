@@ -54,6 +54,26 @@ export interface CreateSketchSolverStatusResponseOptions {
   readonly currentProjectSchemaVersion: WcadDocumentSchemaVersion;
 }
 
+export interface CreateSketchProfileValidityFromSourceOptions {
+  readonly document: SketchSolverDocument;
+  readonly sketch: SketchSolverSketch;
+}
+
+export function createSketchProfileValidityFromSource({
+  document,
+  sketch
+}: CreateSketchProfileValidityFromSourceOptions): CadSketchProfileValiditySummary {
+  const evaluation = evaluateSketch(document, sketch);
+  const solverProbe = runSketchSolverPackageProbe(document, sketch);
+
+  return createSketchProfileValidity(
+    sketch,
+    evaluation,
+    mapEvaluationStatus(evaluation.status),
+    solverProbe
+  );
+}
+
 export function createSketchSolverStatusResponse({
   cadOpsVersion,
   document,
@@ -74,7 +94,12 @@ export function createSketchSolverStatusResponse({
   const deferredConstraints = DEFERRED_CONSTRAINT_KINDS.map((kind) =>
     createDeferredConstraintSummary(sketch.id, kind)
   );
-  const profileValidity = createProfileValidity(sketch, evaluation, status);
+  const profileValidity = createSketchProfileValidity(
+    sketch,
+    evaluation,
+    status,
+    solverProbe
+  );
   const solverModelDiagnostic = createSolverModelBuildDiagnostic(
     sketch.id,
     solverProbe
@@ -103,7 +128,7 @@ export function createSketchSolverStatusResponse({
       severity: "info",
       message:
         currentProjectSchemaVersion === "web-cad.project.v17"
-          ? "V11 V17 sketch solver source records are present; numerical solving remains deferred for advanced constraints."
+          ? "V11 V17 sketch solver source records are present; supported advanced constraint target combinations can run through the numerical solver."
           : "V11 source records are documented, but this project emits V16 until V17 solver source data is present.",
       sketchId: sketch.id,
       expected: "web-cad.project.v17 only when new source data is committed",
@@ -419,11 +444,13 @@ function createSolverEngineSummary(
   };
 }
 
-function createProfileValidity(
+function createSketchProfileValidity(
   sketch: SketchSolverSketch,
   evaluation: SketchSolverEvaluation,
-  status: CadSketchSolverStatus
+  status: CadSketchSolverStatus,
+  solverProbe: SketchSolverPackageProbe
 ): CadSketchProfileValiditySummary {
+  const effectiveStatus = chooseProfileValidityStatus(status, solverProbe);
   const blockerStatus = new Set<CadSketchSolverStatus>([
     "missing-target",
     "conflicting",
@@ -432,7 +459,11 @@ function createProfileValidity(
     "over-defined"
   ]);
   const profiles = [...sketch.entities.values()].map((entity) =>
-    createProfileCandidate(sketch.id, entity, !blockerStatus.has(status))
+    createProfileCandidate(
+      sketch.id,
+      entity,
+      !blockerStatus.has(effectiveStatus)
+    )
   );
   const validProfileCount = profiles.filter(
     (profile) => profile.featureReady
@@ -467,6 +498,58 @@ function createProfileValidity(
     diagnosticCount: diagnostics.length,
     diagnostics
   };
+}
+
+function chooseProfileValidityStatus(
+  status: CadSketchSolverStatus,
+  solverProbe: SketchSolverPackageProbe
+): CadSketchSolverStatus {
+  const blockingDiagnostic = solverProbe.diagnostics.find((diagnostic) =>
+    [
+      "SKETCH_SOLVER_MISSING_TARGET",
+      "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT",
+      "SKETCH_SOLVER_FAILED",
+      "SKETCH_SOLVER_CONFLICTING",
+      "SKETCH_SOLVER_OVER_DEFINED"
+    ].includes(diagnostic.code)
+  );
+
+  if (blockingDiagnostic?.code === "SKETCH_SOLVER_MISSING_TARGET") {
+    return "missing-target";
+  }
+
+  if (blockingDiagnostic?.code === "SKETCH_SOLVER_UNSUPPORTED_CONSTRAINT") {
+    return "unsupported";
+  }
+
+  if (blockingDiagnostic?.code === "SKETCH_SOLVER_OVER_DEFINED") {
+    return "over-defined";
+  }
+
+  if (blockingDiagnostic?.code === "SKETCH_SOLVER_CONFLICTING") {
+    return "conflicting";
+  }
+
+  if (blockingDiagnostic) {
+    return "failed";
+  }
+
+  const numericalStatus = solverProbe.result?.status;
+
+  if (numericalStatus === "converged" || numericalStatus === "under-defined") {
+    return status === "fully-defined" ? status : "solved";
+  }
+
+  if (
+    numericalStatus === "over-defined" ||
+    numericalStatus === "conflicting" ||
+    numericalStatus === "failed" ||
+    numericalStatus === "unsupported"
+  ) {
+    return numericalStatus;
+  }
+
+  return status;
 }
 
 function createProfileCandidate(

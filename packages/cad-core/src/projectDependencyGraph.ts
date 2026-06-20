@@ -32,6 +32,10 @@ import {
   type GeneratedReferencesFeature,
   type GeneratedReferencesSketch
 } from "./generatedReferences";
+import {
+  findSketchProfileHealthEntry,
+  type SketchProfileHealthEntry
+} from "./sketchProfileHealth";
 
 const SOURCE_BOUNDARY_NOTE =
   "Dependency graph and reference health are derived from authoritative document source features, bodies, sketches, generated references, and named references.";
@@ -45,6 +49,7 @@ export interface CreateProjectDependencyGraphOptions {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
+  readonly sketchProfileHealth?: readonly SketchProfileHealthEntry[];
 }
 
 export interface CreateReferenceHealthOptions extends CreateProjectDependencyGraphOptions {
@@ -187,7 +192,7 @@ function buildDependencyGraph(
       id: featureNodeId(feature.id),
       kind: "feature",
       label: `${feature.kind} ${feature.id}`,
-      status: featureStatus(feature, options.bodies),
+      status: featureStatus(feature, options),
       featureId: feature.id,
       featureKind: feature.kind
     });
@@ -200,7 +205,7 @@ function buildDependencyGraph(
       id: bodyNodeId(body.id),
       kind: "body",
       label: body.name ?? body.id,
-      status: bodyStatus.get(body.id) ?? bodyStatusFromSnapshot(body),
+      status: bodyStatus.get(body.id) ?? bodyStatusFromSnapshot(options, body),
       bodyId: body.id,
       featureId: body.featureId,
       bodySourceType: body.source.type
@@ -439,6 +444,14 @@ function createGeneratedReferenceHealth(
   reference: CadGeneratedReference
 ): CadReferenceHealthEntry {
   const consumedByFeatureId = body.consumedByFeatureId;
+  const profileHealth = findSketchProfileHealthEntry(
+    options.sketchProfileHealth ?? [],
+    body.featureId
+  );
+  const profileStatus = profileHealth
+    ? referenceStatusFromProfileHealth(profileHealth)
+    : undefined;
+  const status = consumedByFeatureId ? "consumed" : (profileStatus ?? "active");
   const diagnostics = consumedByFeatureId
     ? [
         createDiagnostic({
@@ -452,16 +465,22 @@ function createGeneratedReferenceHealth(
           received: consumedByFeatureId
         })
       ]
-    : [];
+    : profileHealth && profileHealth.status !== "ready"
+      ? [
+          createProfileHealthReferenceDiagnostic({
+            profileHealth,
+            body,
+            stableId: reference.stableId
+          })
+        ]
+      : [];
 
   return {
     source: "generatedReference",
-    status: consumedByFeatureId ? "consumed" : "active",
-    commandable: consumedByFeatureId === undefined,
+    status,
+    commandable: status === "active",
     commandOperations:
-      consumedByFeatureId === undefined
-        ? createReferenceCommandOperations(reference)
-        : [],
+      status === "active" ? createReferenceCommandOperations(reference) : [],
     label: reference.label,
     bodyId: body.id,
     stableId: reference.stableId,
@@ -679,6 +698,14 @@ function createNamedReferenceHealth(
   }
 
   const consumedByFeatureId = body.consumedByFeatureId;
+  const profileHealth = findSketchProfileHealthEntry(
+    options.sketchProfileHealth ?? [],
+    body.featureId
+  );
+  const profileStatus = profileHealth
+    ? referenceStatusFromProfileHealth(profileHealth)
+    : undefined;
+  const status = consumedByFeatureId ? "consumed" : (profileStatus ?? "active");
   const diagnostics = consumedByFeatureId
     ? [
         createDiagnostic({
@@ -693,14 +720,23 @@ function createNamedReferenceHealth(
           received: consumedByFeatureId
         })
       ]
-    : [];
+    : profileHealth && profileHealth.status !== "ready"
+      ? [
+          createProfileHealthReferenceDiagnostic({
+            profileHealth,
+            body,
+            stableId: reference.stableId,
+            referenceName: reference.name
+          })
+        ]
+      : [];
 
   return createNamedReferenceEntry({
     reference,
-    status: consumedByFeatureId ? "consumed" : "active",
-    commandable: consumedByFeatureId === undefined,
+    status,
+    commandable: status === "active",
     commandOperations:
-      consumedByFeatureId === undefined
+      status === "active"
         ? createReferenceCommandOperations(resolved.reference)
         : [],
     label: reference.name,
@@ -1092,11 +1128,73 @@ function unsupportedBodyReferenceMessage(body: CadBodySnapshot): string {
   return `Body ${body.id} does not expose source-semantic generated references in this tranche.`;
 }
 
+function referenceStatusFromProfileHealth(
+  profileHealth: SketchProfileHealthEntry
+): CadReferenceHealthStatus {
+  if (profileHealth.status === "missing") {
+    return "missing";
+  }
+
+  if (profileHealth.status === "unsupported") {
+    return "unsupported";
+  }
+
+  if (profileHealth.status === "stale") {
+    return "stale";
+  }
+
+  return "active";
+}
+
+function createProfileHealthReferenceDiagnostic({
+  profileHealth,
+  body,
+  stableId,
+  referenceName
+}: {
+  readonly profileHealth: SketchProfileHealthEntry;
+  readonly body: CadBodySnapshot;
+  readonly stableId: string;
+  readonly referenceName?: NamedReferenceName;
+}): CadReferenceHealthDiagnostic {
+  const status = referenceStatusFromProfileHealth(profileHealth);
+
+  return createDiagnostic({
+    code:
+      status === "missing"
+        ? "REFERENCE_TARGET_MISSING"
+        : status === "unsupported"
+          ? "REFERENCE_UNSUPPORTED"
+          : "REFERENCE_STALE",
+    severity: status === "missing" ? "blocker" : "warning",
+    status,
+    message: profileHealth.message,
+    bodyId: body.id,
+    stableId,
+    referenceName,
+    featureId: profileHealth.featureId,
+    sketchId: profileHealth.sketchId,
+    sketchEntityId: profileHealth.sketchEntityId,
+    expected: profileHealth.expected,
+    received: profileHealth.received
+  });
+}
+
 function bodyStatusFromSnapshot(
+  options: CreateProjectDependencyGraphOptions,
   body: CadBodySnapshot
 ): CadReferenceHealthStatus {
   if (body.consumedByFeatureId) {
     return "consumed";
+  }
+
+  const profileHealth = findSketchProfileHealthEntry(
+    options.sketchProfileHealth ?? [],
+    body.featureId
+  );
+
+  if (profileHealth && profileHealth.status !== "ready") {
+    return referenceStatusFromProfileHealth(profileHealth);
   }
 
   if (body.source.type === "sketchExtrudeFeature") {
@@ -1108,12 +1206,23 @@ function bodyStatusFromSnapshot(
 
 function featureStatus(
   feature: CadFeatureSummary,
-  bodies: readonly CadBodySnapshot[]
+  options: CreateProjectDependencyGraphOptions
 ): CadReferenceHealthStatus {
-  const body = bodies.find((candidate) => candidate.featureId === feature.id);
+  const body = options.bodies.find(
+    (candidate) => candidate.featureId === feature.id
+  );
 
   if (body?.consumedByFeatureId) {
     return "consumed";
+  }
+
+  const profileHealth = findSketchProfileHealthEntry(
+    options.sketchProfileHealth ?? [],
+    feature.id
+  );
+
+  if (profileHealth && profileHealth.status !== "ready") {
+    return referenceStatusFromProfileHealth(profileHealth);
   }
 
   if (feature.kind === "extrude") {

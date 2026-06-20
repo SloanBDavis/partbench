@@ -221,9 +221,10 @@ SketchSymmetryConstraint {
 }
 ```
 
-These records are source intent only in V11 Tranche C. They are preserved
-through JSON and `.wcad` round-trips and reported by `sketch.solverStatus`, but
-they are not yet creatable from UI commands and are not numerically solved.
+These records are source intent introduced by V11 Tranche C. They are preserved
+through JSON and `.wcad` round-trips and reported by `sketch.solverStatus`.
+Later D3 tranches add numerical support for supported target combinations, but
+the advanced records are still not yet creatable from UI commands.
 
 Named generated references are source-of-truth user/agent metadata:
 

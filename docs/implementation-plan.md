@@ -1892,9 +1892,15 @@ Use these decisions when drafting or implementing V11 tranches:
    diagnostics. This adds no UI, no advanced constraint creation commands, no
    solved-geometry commits, no schema after `web-cad.project.v17`, and no
    `.wcad` package layout change.
-10. **Profile Validity And Feature Rebuild Integration** - make solved sketch
-   status feed profile validity, feature editability, dependency graph,
-   reference health, and rebuild plan behavior.
+10. **Profile Validity And Feature Rebuild Integration** - implemented as the
+   V11/V10 query bridge. `sketch.solverStatus` profile validity now accounts
+   for supported numerical solver results without committing solved geometry.
+   Cad-core derives source-profile health for current source features and feeds
+   it into `feature.editability`, `project.dependencyGraph`,
+   `reference.health`, `project.rebuildPlan`, and `sketch.editReadiness`.
+   Stale/missing/unsupported profiles return structured diagnostics and
+   non-commandable downstream references while preserving V16/V17 source and
+   `.wcad` package behavior.
 11. **Sketch Editing Product UI** - add compact constraint/dimension/solver
    controls without reintroducing large debug panels or viewport-blocking
    overlays.
