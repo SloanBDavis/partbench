@@ -65,6 +65,9 @@ import {
   createSketchPointTargetOptionsForEntity,
   formatSketchConstraintStatus,
   formatSketchDimensionStatus,
+  formatSketchProfileValidity,
+  formatSketchSolverDiagnostic,
+  formatSketchSolverStatus,
   getAddOperationStatus,
   getCutOperationStatus,
   getHoleOperationStatus,
@@ -72,6 +75,7 @@ import {
   getRevolveOperationStatus,
   getSketchConstraintKindLabel,
   getSketchDimensionTargetLabel,
+  getSketchSolverStatusDisplay,
   type BooleanTargetBodyOption
 } from "../sketchPanelUi";
 
@@ -270,6 +274,11 @@ export function ModelingActionsPanel({
         {summary.detail && <small>{summary.detail}</small>}
       </div>
 
+      {(context.selectionKind === "sketch" ||
+        context.selectionKind === "sketchEntity") && (
+        <SketchSolverStatusCard context={context} />
+      )}
+
       <SelectionReferenceContractCard context={context} />
 
       {onCreateSketch && (
@@ -419,6 +428,65 @@ function getActiveSketchFromContext(
   }
 
   return undefined;
+}
+
+function SketchSolverStatusCard({
+  context
+}: {
+  readonly context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "sketch" | "sketchEntity" }
+  >;
+}) {
+  const solverStatus = context.solverStatus;
+  const display = getSketchSolverStatusDisplay(solverStatus);
+  const primaryDiagnostic = solverStatus?.diagnostics.find(
+    (diagnostic) => diagnostic.severity !== "info"
+  );
+
+  return (
+    <section className="workbench-card compact sketch-status-card">
+      <div className="workbench-card-heading">
+        <h3>Sketch status</h3>
+        <small
+          className={`health-text health-${display.tone}`}
+          title={display.detail}
+        >
+          {display.label}
+        </small>
+      </div>
+      <dl className="compact-definition-list">
+        <div>
+          <dt>Dimensions</dt>
+          <dd>{solverStatus?.dimensionCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>Constraints</dt>
+          <dd>{solverStatus?.constraintCount ?? 0}</dd>
+        </div>
+        <div>
+          <dt>Profiles</dt>
+          <dd>
+            {solverStatus ? formatSketchProfileValidity(solverStatus) : "0/0"}
+          </dd>
+        </div>
+      </dl>
+      <p
+        className={
+          display.tone === "error"
+            ? "error-text compact"
+            : "project-message compact"
+        }
+      >
+        {formatSketchSolverStatus(solverStatus)}
+      </p>
+      {primaryDiagnostic && (
+        <p className="project-message compact">
+          {formatSketchSolverDiagnostic(primaryDiagnostic)}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function SelectionReferenceContractCard({

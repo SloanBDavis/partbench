@@ -6,6 +6,7 @@ import type {
   SketchDimensionEntry,
   SketchDimensionTarget,
   SketchEvaluationQueryResponse,
+  SketchSolverStatusQueryResponse,
   SketchEntityId,
   SketchEntityKind,
   SketchEntitySnapshot,
@@ -41,6 +42,7 @@ import {
   createAvailableSketchConstraintKindOptions,
   createAvailableSketchDimensionTargetOptions,
   createSketchEntityListItems,
+  createSketchEntityIntentSummary,
   createRevolveAxisOptions,
   createSketchPointTargetOptionsForEntity,
   formatSketchDimensionEffectiveValue,
@@ -61,6 +63,10 @@ import {
   getSketchConstraintStatusDisplay,
   getSketchDimensionStatusDisplay,
   getSketchEvaluationStatusDisplay,
+  formatSketchProfileValidity,
+  formatSketchSolverDiagnostic,
+  formatSketchSolverStatus,
+  getSketchSolverStatusDisplay,
   getParameterDimensionUsageCount,
   getSketchDimensionTargetLabel,
   getSketchEntityOptionLabel,
@@ -93,6 +99,10 @@ export interface SketchPanelProps {
   readonly sketchEvaluationsBySketchId: ReadonlyMap<
     string,
     SketchEvaluationQueryResponse
+  >;
+  readonly sketchSolverStatusesBySketchId: ReadonlyMap<
+    string,
+    SketchSolverStatusQueryResponse
   >;
   readonly displayStatuses?: ReadonlyMap<string, SketchDisplayStatus>;
   readonly addTargetBodies?: readonly BooleanTargetBodyOption[];
@@ -226,6 +236,7 @@ export function SketchPanel({
   parameters,
   sketchDimensionsBySketchId,
   sketchEvaluationsBySketchId,
+  sketchSolverStatusesBySketchId,
   addTargetBodies = [],
   cutTargetBodies = [],
   holeTargetBodies = [],
@@ -303,6 +314,9 @@ export function SketchPanel({
   const selectedSketchEvaluation = selectedSketch
     ? sketchEvaluationsBySketchId.get(selectedSketch.id)
     : undefined;
+  const selectedSketchSolverStatus = selectedSketch
+    ? sketchSolverStatusesBySketchId.get(selectedSketch.id)
+    : undefined;
   const selectedSketchDimensions = useMemo(() => {
     if (!selectedSketch) {
       return [];
@@ -345,6 +359,20 @@ export function SketchPanel({
         })
       ),
     [features, selectedSketch]
+  );
+  const entityIntentSummaries = useMemo(
+    () =>
+      new Map(
+        (selectedSketch?.entities ?? []).map((entity) => [
+          entity.id,
+          createSketchEntityIntentSummary(
+            entity.id,
+            selectedSketchDimensions,
+            selectedSketchEvaluation?.constraints ?? []
+          )
+        ])
+      ),
+    [selectedSketch, selectedSketchDimensions, selectedSketchEvaluation]
   );
   const selectedEntityDimensions = useMemo(
     () =>
@@ -1045,7 +1073,10 @@ export function SketchPanel({
                 </section>
               )}
 
-              <SketchEvaluationSummary evaluation={selectedSketchEvaluation} />
+              <SketchEvaluationSummary
+                evaluation={selectedSketchEvaluation}
+                solverStatus={selectedSketchSolverStatus}
+              />
 
               <section className="entity-picker" aria-label="Sketch entities">
                 <div className="command-card-heading">
@@ -1110,6 +1141,12 @@ export function SketchPanel({
                   >
                     {entityListItems.map((item) => {
                       const usageLabel = entityUsageLabels.get(item.id);
+                      const intentSummary = entityIntentSummaries.get(item.id);
+                      const hasIntentSummary =
+                        intentSummary !== undefined &&
+                        intentSummary.dimensionCount +
+                          intentSummary.constraintCount >
+                          0;
 
                       return (
                         <li key={item.id}>
@@ -1127,6 +1164,11 @@ export function SketchPanel({
                             {usageLabel && (
                               <small className="entity-usage">
                                 {usageLabel}
+                              </small>
+                            )}
+                            {hasIntentSummary && (
+                              <small className="entity-usage">
+                                {intentSummary?.label}
                               </small>
                             )}
                           </button>
@@ -1830,12 +1872,19 @@ export function SketchPanel({
 }
 
 function SketchEvaluationSummary({
-  evaluation
+  evaluation,
+  solverStatus
 }: {
   readonly evaluation: SketchEvaluationQueryResponse | undefined;
+  readonly solverStatus: SketchSolverStatusQueryResponse | undefined;
 }) {
   const statusDisplay = getSketchEvaluationStatusDisplay(evaluation);
+  const solverDisplay = getSketchSolverStatusDisplay(solverStatus);
   const issues = evaluation?.issues.slice(0, 3) ?? [];
+  const solverDiagnostics =
+    solverStatus?.diagnostics
+      .filter((diagnostic) => diagnostic.severity !== "info")
+      .slice(0, 3) ?? [];
 
   return (
     <section className="entity-editor" aria-label="Sketch evaluation">
@@ -1861,6 +1910,21 @@ function SketchEvaluationSummary({
           <dt>Driven entities</dt>
           <dd>{evaluation?.drivenEntityCount ?? 0}</dd>
         </div>
+        <div>
+          <dt>Solver</dt>
+          <dd
+            className={`health-text health-${solverDisplay.tone}`}
+            title={solverDisplay.detail}
+          >
+            {solverDisplay.label}
+          </dd>
+        </div>
+        <div>
+          <dt>Profiles</dt>
+          <dd>
+            {solverStatus ? formatSketchProfileValidity(solverStatus) : "0/0"}
+          </dd>
+        </div>
       </dl>
       <p
         className={
@@ -1871,6 +1935,15 @@ function SketchEvaluationSummary({
       >
         {formatSketchEvaluationStatus(evaluation)}
       </p>
+      <p
+        className={
+          solverDisplay.tone === "error"
+            ? "error-text compact"
+            : "project-message compact"
+        }
+      >
+        {formatSketchSolverStatus(solverStatus)}
+      </p>
       {issues.length > 0 && (
         <ul className="dimension-issue-list">
           {issues.map((issue) => (
@@ -1879,6 +1952,26 @@ function SketchEvaluationSummary({
             </li>
           ))}
         </ul>
+      )}
+      {solverDiagnostics.length > 0 && (
+        <details className="advanced-options compact">
+          <summary>Solver diagnostics</summary>
+          <ul className="dimension-issue-list">
+            {solverDiagnostics.map((diagnostic, index) => (
+              <li
+                key={`${diagnostic.code}:${index}:${
+                  diagnostic.sketchConstraintId ??
+                  diagnostic.sketchDimensionId ??
+                  diagnostic.sketchEntityId ??
+                  diagnostic.sketchId ??
+                  diagnostic.message
+                }`}
+              >
+                {formatSketchSolverDiagnostic(diagnostic)}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </section>
   );

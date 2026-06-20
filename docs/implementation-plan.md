@@ -1901,9 +1901,14 @@ Use these decisions when drafting or implementing V11 tranches:
    Stale/missing/unsupported profiles return structured diagnostics and
    non-commandable downstream references while preserving V16/V17 source and
    `.wcad` package behavior.
-11. **Sketch Editing Product UI** - add compact constraint/dimension/solver
-   controls without reintroducing large debug panels or viewport-blocking
-   overlays.
+11. **Sketch Editing Product UI** - implemented as a compact, query-driven UI
+   integration:
+   the app reads `sketch.solverStatus` through cad-core, the Sketches panel
+   shows solver/profile status and inspectable diagnostics inside the existing
+   Evaluation section, sketch entity rows show dimension/constraint intent, and
+   the right-rail modeling context shows a compact Sketch status card for
+   selected sketches/entities. This does not add commands, viewport overlays,
+   debug walls, schema changes, or React-side solver authority.
 12. **Drag Solve Preview And Commit** - support endpoint, line, circle-center,
    and radius dragging as non-mutating previews followed by CADOps commits.
 13. **Constraint Inference** - add conservative session-only inference while

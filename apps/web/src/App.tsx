@@ -40,6 +40,7 @@ import type {
   SketchDimensionTarget,
   SketchConstraintEntry,
   SketchEvaluationQueryResponse,
+  SketchSolverStatusQueryResponse,
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchSnapshot
@@ -742,6 +743,25 @@ function readSketchEvaluationsBySketchId(
   return evaluationsBySketchId;
 }
 
+function readSketchSolverStatusesBySketchId(
+  sketches: readonly { readonly id: string }[]
+): ReadonlyMap<string, SketchSolverStatusQueryResponse> {
+  const statusesBySketchId = new Map<string, SketchSolverStatusQueryResponse>();
+
+  for (const sketch of sketches) {
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "sketch.solverStatus", sketchId: sketch.id }
+    });
+
+    if (response.ok && response.query === "sketch.solverStatus") {
+      statusesBySketchId.set(sketch.id, response);
+    }
+  }
+
+  return statusesBySketchId;
+}
+
 function readBodyMeasurements(bodyId: string | undefined): {
   readonly measurements?: BodyMeasurementsSnapshot;
   readonly error?: string;
@@ -870,6 +890,7 @@ function createModelingSelectionContext({
   selectedSketchContext,
   sketchDimensionsBySketchId,
   sketchEvaluationsBySketchId,
+  sketchSolverStatusesBySketchId,
   sketches
 }: {
   readonly focusedSketchId?: string;
@@ -893,6 +914,10 @@ function createModelingSelectionContext({
   readonly sketchEvaluationsBySketchId: ReadonlyMap<
     string,
     SketchEvaluationQueryResponse
+  >;
+  readonly sketchSolverStatusesBySketchId: ReadonlyMap<
+    string,
+    SketchSolverStatusQueryResponse
   >;
   readonly sketches: readonly SketchSnapshot[];
 }): ModelingSelectionContext {
@@ -925,6 +950,7 @@ function createModelingSelectionContext({
       selectedSketchContext,
       sketchDimensionsBySketchId,
       sketchEvaluationsBySketchId,
+      sketchSolverStatusesBySketchId,
       sketches
     }) ?? { selectionKind: "none" }
   );
@@ -936,6 +962,7 @@ function createSketchModelingSelectionContext({
   selectedSketchContext,
   sketchDimensionsBySketchId,
   sketchEvaluationsBySketchId,
+  sketchSolverStatusesBySketchId,
   sketches
 }: {
   readonly focusedSketchId?: string;
@@ -949,6 +976,10 @@ function createSketchModelingSelectionContext({
     string,
     SketchEvaluationQueryResponse
   >;
+  readonly sketchSolverStatusesBySketchId: ReadonlyMap<
+    string,
+    SketchSolverStatusQueryResponse
+  >;
   readonly sketches: readonly SketchSnapshot[];
 }): ModelingSelectionContext | undefined {
   if (selectedSketchContext) {
@@ -961,6 +992,7 @@ function createSketchModelingSelectionContext({
 
     if (sketch && entity) {
       const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
+      const solverStatus = sketchSolverStatusesBySketchId.get(sketch.id);
 
       return {
         selectionKind: "sketchEntity",
@@ -968,12 +1000,17 @@ function createSketchModelingSelectionContext({
         entity,
         dimensions:
           evaluation?.dimensions ?? sketchDimensionsBySketchId.get(sketch.id),
-        constraints: evaluation?.constraints
+        constraints: evaluation?.constraints,
+        solverStatus
       };
     }
 
     if (sketch) {
-      return { selectionKind: "sketch", sketch };
+      return {
+        selectionKind: "sketch",
+        sketch,
+        solverStatus: sketchSolverStatusesBySketchId.get(sketch.id)
+      };
     }
   }
 
@@ -984,6 +1021,7 @@ function createSketchModelingSelectionContext({
           selectedId === createSketchEntitySelectionId(sketch.id, entity.id)
         ) {
           const evaluation = sketchEvaluationsBySketchId.get(sketch.id);
+          const solverStatus = sketchSolverStatusesBySketchId.get(sketch.id);
 
           return {
             selectionKind: "sketchEntity",
@@ -992,13 +1030,18 @@ function createSketchModelingSelectionContext({
             dimensions:
               evaluation?.dimensions ??
               sketchDimensionsBySketchId.get(sketch.id),
-            constraints: evaluation?.constraints
+            constraints: evaluation?.constraints,
+            solverStatus
           };
         }
       }
 
       if (selectedId === createSketchSelectionId(sketch.id)) {
-        return { selectionKind: "sketch", sketch };
+        return {
+          selectionKind: "sketch",
+          sketch,
+          solverStatus: sketchSolverStatusesBySketchId.get(sketch.id)
+        };
       }
     }
   }
@@ -1008,7 +1051,11 @@ function createSketchModelingSelectionContext({
     : undefined;
 
   return focusedSketch
-    ? { selectionKind: "sketch", sketch: focusedSketch }
+    ? {
+        selectionKind: "sketch",
+        sketch: focusedSketch,
+        solverStatus: sketchSolverStatusesBySketchId.get(focusedSketch.id)
+      }
     : undefined;
 }
 
@@ -1337,6 +1384,8 @@ export function App() {
   const parameters = readParameters();
   const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
   const sketchEvaluationsBySketchId = readSketchEvaluationsBySketchId(sketches);
+  const sketchSolverStatusesBySketchId =
+    readSketchSolverStatusesBySketchId(sketches);
   const selectedGeneratedReferenceState = getGeneratedReferenceSelectionState(
     selectedGeneratedReference,
     selectedBodyGeneratedReferences.references,
@@ -1371,6 +1420,7 @@ export function App() {
     selectedSketchContext,
     sketchDimensionsBySketchId,
     sketchEvaluationsBySketchId,
+    sketchSolverStatusesBySketchId,
     sketches
   });
   const modelingActions = deriveModelingActions({
@@ -3356,6 +3406,9 @@ export function App() {
                     parameters={parameters}
                     sketchDimensionsBySketchId={sketchDimensionsBySketchId}
                     sketchEvaluationsBySketchId={sketchEvaluationsBySketchId}
+                    sketchSolverStatusesBySketchId={
+                      sketchSolverStatusesBySketchId
+                    }
                     addTargetBodies={addTargetBodyOptions}
                     cutTargetBodies={cutTargetBodyOptions}
                     holeTargetBodies={holeTargetBodyOptions}

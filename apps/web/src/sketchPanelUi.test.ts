@@ -5,6 +5,7 @@ import type {
   SketchConstraintEntry,
   SketchDimensionEntry,
   SketchEvaluationQueryResponse,
+  SketchSolverStatusQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import {
@@ -23,6 +24,7 @@ import {
   createParameterBindingOptions,
   createRevolveAxisOptions,
   createSketchEntityListItems,
+  createSketchEntityIntentSummary,
   createSketchEntitySelectionId,
   createSketchPointTargetOptionsForEntity,
   createSketchDimensionTargetOptions,
@@ -35,6 +37,9 @@ import {
   formatSketchDimensionValueSource,
   formatSketchEvaluationIssue,
   formatSketchEvaluationStatus,
+  formatSketchProfileValidity,
+  formatSketchSolverDiagnostic,
+  formatSketchSolverStatus,
   getAddOperationStatus,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
@@ -48,6 +53,7 @@ import {
   getSketchDimensionTargetValue,
   getSketchEntityOptionLabel,
   getSketchEvaluationStatusDisplay,
+  getSketchSolverStatusDisplay,
   isSketchConstraintRelatedToEntity,
   isExtrudableSketchEntity,
   isHoleSketchEntity,
@@ -885,6 +891,82 @@ describe("sketch panel UI helpers", () => {
     });
   });
 
+  it("formats sketch solver status and entity intent compactly", () => {
+    const solverStatus = createSolverStatus({
+      status: "under-defined",
+      numericalSolverStatus: "under-defined",
+      dimensionCount: 1,
+      constraintCount: 2,
+      validProfileCount: 1,
+      profileCount: 1
+    });
+    const failedStatus = createSolverStatus({
+      status: "conflicting",
+      numericalSolverStatus: "conflicting",
+      diagnostics: [
+        {
+          code: "SKETCH_SOLVER_CONFLICTING",
+          severity: "blocker",
+          message: "Line length conflicts with fixed endpoints.",
+          sketchId: "sketch_1",
+          sketchConstraintId: "constraint_conflict"
+        }
+      ]
+    });
+    const dimension: SketchDimensionEntry = {
+      id: "dim_length",
+      name: "Length",
+      sketchId: "sketch_1",
+      entityId: "line_1",
+      target: { entityKind: "line", role: "length" },
+      valueSource: { type: "literal", value: 4 },
+      status: "healthy",
+      issues: [],
+      effectiveValue: 4
+    };
+    const constraint: SketchConstraintEntry = {
+      id: "constraint_horizontal",
+      name: "Horizontal",
+      sketchId: "sketch_1",
+      kind: "horizontal",
+      entityId: "line_1",
+      status: "healthy",
+      issues: []
+    };
+
+    expect(formatSketchProfileValidity(solverStatus)).toBe(
+      "1/1 feature-ready profile"
+    );
+    expect(formatSketchSolverStatus(solverStatus)).toBe(
+      "Numerical under-defined · 1/1 feature-ready profile"
+    );
+    expect(getSketchSolverStatusDisplay(solverStatus)).toEqual({
+      label: "Under-defined",
+      detail: "Numerical under-defined · 1/1 feature-ready profile",
+      tone: "warning"
+    });
+    expect(formatSketchSolverStatus(failedStatus)).toBe(
+      "Conflicting · 1 diagnostic · 0/0 unsupported profiles"
+    );
+    expect(formatSketchSolverDiagnostic(failedStatus.diagnostics[0])).toBe(
+      "constraint_conflict: Line length conflicts with fixed endpoints."
+    );
+    expect(
+      createSketchEntityIntentSummary("line_1", [dimension], [constraint])
+    ).toEqual({
+      dimensionCount: 1,
+      constraintCount: 1,
+      label: "1 dim · 1 constraint"
+    });
+    expect(createSketchEntityIntentSummary("point_1", [dimension], [])).toEqual(
+      {
+        dimensionCount: 0,
+        constraintCount: 0,
+        label: "No dimensions or constraints"
+      }
+    );
+  });
+
   it("offers active rectangle newBody authored bodies as add targets", () => {
     const features: CadFeatureSummary[] = [
       createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
@@ -1254,6 +1336,95 @@ function createSketch(
     plane: "XY",
     entities: [],
     ...overrides
+  };
+}
+
+function createSolverStatus({
+  status = "solved",
+  numericalSolverStatus = "converged",
+  dimensionCount = 0,
+  constraintCount = 0,
+  validProfileCount = 0,
+  profileCount = 0,
+  diagnostics = []
+}: {
+  readonly status?: SketchSolverStatusQueryResponse["status"];
+  readonly numericalSolverStatus?: SketchSolverStatusQueryResponse["solver"]["numericalSolverStatus"];
+  readonly dimensionCount?: number;
+  readonly constraintCount?: number;
+  readonly validProfileCount?: number;
+  readonly profileCount?: number;
+  readonly diagnostics?: SketchSolverStatusQueryResponse["diagnostics"];
+} = {}): SketchSolverStatusQueryResponse {
+  return {
+    ok: true,
+    query: "sketch.solverStatus",
+    cadOpsVersion: "cadops.v1",
+    sketchId: "sketch_1",
+    sketchName: "Sketch 1",
+    plane: "XY",
+    status,
+    readiness:
+      status === "conflicting" || status === "failed" ? "blocked" : "ready",
+    solver: {
+      engine: "current-direct-evaluator",
+      numericalSolverStatus,
+      numericalSolverEngine: "@web-cad/sketch-solver",
+      numericalSolverModelVersion: "partbench.sketch-solver.v1",
+      modelBuilt: true,
+      solverRan: numericalSolverStatus !== "not-run",
+      canSolveNumerically:
+        numericalSolverStatus !== "failed" &&
+        numericalSolverStatus !== "unsupported" &&
+        numericalSolverStatus !== "not-run" &&
+        numericalSolverStatus !== "deferred",
+      deterministic: true,
+      workerReady: false,
+      diagnostic: {
+        code: "SKETCH_SOLVER_NUMERICAL_STATUS_READY",
+        severity: "info",
+        message: "Numerical solver status is available.",
+        sketchId: "sketch_1"
+      }
+    },
+    entityCount: 0,
+    entities: [],
+    dimensionCount,
+    dimensions: [],
+    constraintCount,
+    constraints: [],
+    deferredConstraintCount: 0,
+    deferredConstraints: [],
+    profileValidity: {
+      status: validProfileCount > 0 ? "valid" : "unsupported",
+      profileCount,
+      validProfileCount,
+      profiles: [],
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    preview: {
+      status: "deferred",
+      willMutateDocument: false,
+      supportedPreviewKinds: [],
+      deferredPreviewKinds: ["entity.drag"],
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    sourceContract: {
+      currentProjectSchemaVersion: "web-cad.project.v16",
+      emittedProjectSchemaVersion: "web-cad.project.v16",
+      packageVersion: "partbench.wcad.v1",
+      queryOnly: true,
+      requiresProjectSchemaMigration: false,
+      nextProjectSchemaVersion: "web-cad.project.v17",
+      sourceRecordRequirements: []
+    },
+    diagnosticCount: diagnostics.length,
+    diagnostics,
+    sourceBoundaryNote: "source",
+    derivedBoundaryNote: "derived",
+    requiresProjectSchemaMigration: false
   };
 }
 

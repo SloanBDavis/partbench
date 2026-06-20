@@ -8,6 +8,7 @@ import type {
   CadReferenceHealthEntry,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse,
+  SketchSolverStatusQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import { createElement } from "react";
@@ -30,7 +31,14 @@ describe("ModelingActionsPanel", () => {
     const context = {
       selectionKind: "sketchEntity" as const,
       sketch,
-      entity: rectangle
+      entity: rectangle,
+      solverStatus: createSolverStatus({
+        status: "under-defined",
+        dimensionCount: 1,
+        constraintCount: 2,
+        validProfileCount: 1,
+        profileCount: 1
+      })
     };
     const actions = deriveModelingActions({ context });
     const markup = renderToStaticMarkup(
@@ -41,6 +49,9 @@ describe("ModelingActionsPanel", () => {
     );
 
     expect(markup).toContain("Rectangle in Sketch 1");
+    expect(markup).toContain("Sketch status");
+    expect(markup).toContain("Under-defined");
+    expect(markup).toContain("1/1 feature-ready profile");
     expect(markup).toContain("Edit Rectangle");
     expect(markup).toContain("Driving dimension");
     expect(markup).toContain("Create feature");
@@ -716,6 +727,88 @@ function createSketch(
     plane: "XY",
     entities,
     ...(attachment ? { attachment } : {})
+  };
+}
+
+function createSolverStatus({
+  status = "solved",
+  numericalSolverStatus = "converged",
+  dimensionCount = 0,
+  constraintCount = 0,
+  validProfileCount = 0,
+  profileCount = 0
+}: {
+  readonly status?: SketchSolverStatusQueryResponse["status"];
+  readonly numericalSolverStatus?: SketchSolverStatusQueryResponse["solver"]["numericalSolverStatus"];
+  readonly dimensionCount?: number;
+  readonly constraintCount?: number;
+  readonly validProfileCount?: number;
+  readonly profileCount?: number;
+} = {}): SketchSolverStatusQueryResponse {
+  return {
+    ok: true,
+    query: "sketch.solverStatus",
+    cadOpsVersion: "cadops.v1",
+    sketchId: "sketch_1",
+    sketchName: "Sketch 1",
+    plane: "XY",
+    status,
+    readiness: "ready",
+    solver: {
+      engine: "current-direct-evaluator",
+      numericalSolverStatus,
+      numericalSolverEngine: "@web-cad/sketch-solver",
+      numericalSolverModelVersion: "partbench.sketch-solver.v1",
+      modelBuilt: true,
+      solverRan: true,
+      canSolveNumerically: true,
+      deterministic: true,
+      workerReady: false,
+      diagnostic: {
+        code: "SKETCH_SOLVER_NUMERICAL_STATUS_READY",
+        severity: "info",
+        message: "Numerical solver status is available.",
+        sketchId: "sketch_1"
+      }
+    },
+    entityCount: 0,
+    entities: [],
+    dimensionCount,
+    dimensions: [],
+    constraintCount,
+    constraints: [],
+    deferredConstraintCount: 0,
+    deferredConstraints: [],
+    profileValidity: {
+      status: validProfileCount > 0 ? "valid" : "unsupported",
+      profileCount,
+      validProfileCount,
+      profiles: [],
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    preview: {
+      status: "deferred",
+      willMutateDocument: false,
+      supportedPreviewKinds: [],
+      deferredPreviewKinds: ["entity.drag"],
+      diagnosticCount: 0,
+      diagnostics: []
+    },
+    sourceContract: {
+      currentProjectSchemaVersion: "web-cad.project.v16",
+      emittedProjectSchemaVersion: "web-cad.project.v16",
+      packageVersion: "partbench.wcad.v1",
+      queryOnly: true,
+      requiresProjectSchemaMigration: false,
+      nextProjectSchemaVersion: "web-cad.project.v17",
+      sourceRecordRequirements: []
+    },
+    diagnosticCount: 0,
+    diagnostics: [],
+    sourceBoundaryNote: "source",
+    derivedBoundaryNote: "derived",
+    requiresProjectSchemaMigration: false
   };
 }
 

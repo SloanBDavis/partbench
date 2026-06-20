@@ -14,6 +14,7 @@ import type {
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchId,
+  SketchSolverStatusQueryResponse,
   SketchSnapshot
 } from "@web-cad/cad-protocol";
 import {
@@ -138,13 +139,18 @@ export interface ModelingActionDescriptor {
 
 export type ModelingSelectionContext =
   | { readonly selectionKind: "none" }
-  | { readonly selectionKind: "sketch"; readonly sketch: SketchSnapshot }
+  | {
+      readonly selectionKind: "sketch";
+      readonly sketch: SketchSnapshot;
+      readonly solverStatus?: SketchSolverStatusQueryResponse;
+    }
   | {
       readonly selectionKind: "sketchEntity";
       readonly sketch: SketchSnapshot;
       readonly entity: SketchEntitySnapshot;
       readonly dimensions?: readonly SketchDimensionEntry[];
       readonly constraints?: readonly SketchConstraintEntry[];
+      readonly solverStatus?: SketchSolverStatusQueryResponse;
     }
   | {
       readonly selectionKind: "body";

@@ -10,8 +10,11 @@ import type {
   SketchDimensionEntry,
   SketchDimensionStatus,
   SketchDimensionTarget,
+  SketchSolverStatusQueryResponse,
   SketchEvaluationIssue,
   SketchEvaluationQueryResponse,
+  CadSketchSolverDiagnostic,
+  CadSketchSolverStatus,
   SketchEntityId,
   SketchEntityKind,
   SketchId,
@@ -118,6 +121,12 @@ export interface SketchEntityListItem {
   readonly selected: boolean;
 }
 
+export interface SketchEntityIntentSummary {
+  readonly dimensionCount: number;
+  readonly constraintCount: number;
+  readonly label: string;
+}
+
 export function chooseSketchPanelSelection(
   sketches: readonly SketchSnapshot[],
   currentSketchId: SketchId | undefined,
@@ -194,6 +203,33 @@ export function createSketchEntityListItems(
     detail: getSketchEntityListDetail(entity),
     selected: entity.id === selectedEntityId
   }));
+}
+
+export function createSketchEntityIntentSummary(
+  entityId: SketchEntityId,
+  dimensions: readonly SketchDimensionEntry[],
+  constraints: readonly SketchConstraintEntry[]
+): SketchEntityIntentSummary {
+  const dimensionCount = dimensions.filter(
+    (dimension) => dimension.entityId === entityId
+  ).length;
+  const constraintCount = constraints.filter((constraint) =>
+    isSketchConstraintRelatedToEntity(constraint, entityId)
+  ).length;
+  const parts = [
+    dimensionCount > 0
+      ? `${dimensionCount} dim${dimensionCount === 1 ? "" : "s"}`
+      : undefined,
+    constraintCount > 0
+      ? `${constraintCount} constraint${constraintCount === 1 ? "" : "s"}`
+      : undefined
+  ].filter((part): part is string => part !== undefined);
+
+  return {
+    dimensionCount,
+    constraintCount,
+    label: parts.length > 0 ? parts.join(" · ") : "No dimensions or constraints"
+  };
 }
 
 export function getSketchEntityOptionLabel(
@@ -934,6 +970,73 @@ export function getSketchEvaluationStatusDisplay(
   };
 }
 
+export function formatSketchSolverStatus(
+  status: SketchSolverStatusQueryResponse | undefined
+): string {
+  if (!status) {
+    return "Solver status unavailable";
+  }
+
+  const profileText = formatSketchProfileValidity(status);
+  const solverText = status.solver.solverRan
+    ? `Numerical ${formatSketchNumericalSolverStatus(
+        status.solver.numericalSolverStatus
+      )}`
+    : "Numerical solver not run";
+
+  if (
+    status.status === "solved" ||
+    status.status === "fully-defined" ||
+    status.status === "under-defined"
+  ) {
+    return `${solverText} · ${profileText}`;
+  }
+
+  return `${getSketchSolverStatusLabel(status.status)} · ${
+    status.diagnosticCount
+  } diagnostic${status.diagnosticCount === 1 ? "" : "s"} · ${profileText}`;
+}
+
+export function getSketchSolverStatusDisplay(
+  status: SketchSolverStatusQueryResponse | undefined
+): DimensionStatusDisplay {
+  return {
+    label: status ? getSketchSolverStatusLabel(status.status) : "Unavailable",
+    detail: formatSketchSolverStatus(status),
+    tone: status ? getSketchSolverStatusTone(status.status) : "warning"
+  };
+}
+
+export function formatSketchProfileValidity(
+  status: SketchSolverStatusQueryResponse
+): string {
+  const profile = status.profileValidity;
+  const profileLabel =
+    profile.status === "valid"
+      ? "feature-ready"
+      : profile.status === "invalid"
+        ? "invalid"
+        : profile.status === "not-evaluated"
+          ? "not evaluated"
+          : "unsupported";
+
+  return `${profile.validProfileCount}/${profile.profileCount} ${profileLabel} ${
+    profile.profileCount === 1 ? "profile" : "profiles"
+  }`;
+}
+
+export function formatSketchSolverDiagnostic(
+  diagnostic: CadSketchSolverDiagnostic
+): string {
+  const subject =
+    diagnostic.sketchConstraintId ??
+    diagnostic.sketchDimensionId ??
+    diagnostic.sketchEntityId ??
+    diagnostic.sketchId;
+
+  return subject ? `${subject}: ${diagnostic.message}` : diagnostic.message;
+}
+
 export function formatSketchEvaluationIssue(
   issue: SketchEvaluationIssue
 ): string {
@@ -945,6 +1048,74 @@ export function formatSketchEvaluationIssue(
     issue.sketchId;
 
   return subject ? `${subject}: ${issue.message}` : issue.message;
+}
+
+function getSketchSolverStatusLabel(status: CadSketchSolverStatus): string {
+  switch (status) {
+    case "not-run":
+      return "Not run";
+    case "solved":
+      return "Solved";
+    case "fully-defined":
+      return "Fully defined";
+    case "under-defined":
+      return "Under-defined";
+    case "over-defined":
+      return "Over-defined";
+    case "conflicting":
+      return "Conflicting";
+    case "redundant":
+      return "Redundant";
+    case "failed":
+      return "Failed";
+    case "unsupported":
+      return "Unsupported";
+    case "missing-target":
+      return "Missing target";
+  }
+}
+
+function getSketchSolverStatusTone(
+  status: CadSketchSolverStatus
+): DimensionStatusDisplay["tone"] {
+  switch (status) {
+    case "solved":
+    case "fully-defined":
+      return "healthy";
+    case "not-run":
+    case "under-defined":
+    case "redundant":
+    case "unsupported":
+      return "warning";
+    case "over-defined":
+    case "conflicting":
+    case "failed":
+    case "missing-target":
+      return "error";
+  }
+}
+
+function formatSketchNumericalSolverStatus(
+  status: SketchSolverStatusQueryResponse["solver"]["numericalSolverStatus"]
+): string {
+  switch (status) {
+    case "converged":
+      return "converged";
+    case "under-defined":
+      return "under-defined";
+    case "over-defined":
+      return "over-defined";
+    case "conflicting":
+      return "conflicting";
+    case "failed":
+      return "failed";
+    case "unsupported":
+      return "unsupported";
+    case "deferred":
+      return "deferred";
+    case "not-run":
+      return "not run";
+  }
 }
 
 export function getSketchDimensionStatusLabel(
