@@ -45,9 +45,7 @@ const DERIVED_BOUNDARY_NOTE =
 
 const DEFERRED_CONSTRAINT_KINDS = [
   "tangent",
-  "equalLength",
   "distance",
-  "angle",
   "symmetry"
 ] as const satisfies readonly CadSketchSolverDeferredConstraintKind[];
 
@@ -532,7 +530,7 @@ function createSourceContract(
         requiresProjectSchemaMigration: !hasV17SourceRecords,
         nextProjectSchemaVersion: "web-cad.project.v17",
         reason: hasV17SourceRecords
-          ? "Tangent, equal-length, angle, and symmetry constraints are persisted as V17 source records but remain numerically deferred; concentric and equal-radius are source-backed and numerically supported."
+          ? "Tangent and symmetry constraints are persisted as V17 source records but remain numerically deferred; concentric, equal-radius, equal-length, and angle constraints are source-backed and numerically supported."
           : "Tangent, concentric, equal, angle, and symmetry constraints require V17 source records before they can be persisted."
       },
       {
@@ -634,7 +632,9 @@ function isConstraintKindSupportedByNumericalSolver(
     kind === "parallel" ||
     kind === "perpendicular" ||
     kind === "concentric" ||
-    kind === "equalRadius"
+    kind === "equalRadius" ||
+    kind === "equalLength" ||
+    kind === "angle"
   );
 }
 

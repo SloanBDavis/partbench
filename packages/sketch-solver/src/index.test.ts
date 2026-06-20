@@ -45,6 +45,48 @@ function scalarValue(
   return found.value;
 }
 
+function pointDistance(
+  points: readonly SketchSolvePointResult[],
+  startId: string,
+  endId: string
+): number {
+  const start = point(points, startId);
+  const end = point(points, endId);
+  return Math.hypot(end[0] - start[0], end[1] - start[1]);
+}
+
+function normalizedLineDot(
+  points: readonly SketchSolvePointResult[],
+  primaryStartId: string,
+  primaryEndId: string,
+  secondaryStartId: string,
+  secondaryEndId: string
+): number {
+  const primaryStart = point(points, primaryStartId);
+  const primaryEnd = point(points, primaryEndId);
+  const secondaryStart = point(points, secondaryStartId);
+  const secondaryEnd = point(points, secondaryEndId);
+  const primaryLength = Math.hypot(
+    primaryEnd[0] - primaryStart[0],
+    primaryEnd[1] - primaryStart[1]
+  );
+  const secondaryLength = Math.hypot(
+    secondaryEnd[0] - secondaryStart[0],
+    secondaryEnd[1] - secondaryStart[1]
+  );
+
+  if (primaryLength === 0 || secondaryLength === 0) {
+    throw new Error("Cannot compare zero-length solver lines.");
+  }
+
+  return (
+    ((primaryEnd[0] - primaryStart[0]) / primaryLength) *
+      ((secondaryEnd[0] - secondaryStart[0]) / secondaryLength) +
+    ((primaryEnd[1] - primaryStart[1]) / primaryLength) *
+      ((secondaryEnd[1] - secondaryStart[1]) / secondaryLength)
+  );
+}
+
 describe("sketch-solver", () => {
   it("exports package status and capabilities without external authority", () => {
     expect(sketchSolverPackage).toEqual({
@@ -63,22 +105,21 @@ describe("sketch-solver", () => {
         "parallel",
         "perpendicular",
         "concentric",
-        "equalRadius"
+        "equalRadius",
+        "equalLength",
+        "angle"
       ],
       supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
-      deferredConstraintKinds: expect.arrayContaining([
-        "tangent",
-        "equalLength",
-        "angle",
-        "symmetry"
-      ])
+      deferredConstraintKinds: expect.arrayContaining(["tangent", "symmetry"])
     });
     expect(getSketchSolverCapabilities().deferredConstraintKinds).not.toEqual(
       expect.arrayContaining([
         "parallel",
         "perpendicular",
         "concentric",
-        "equalRadius"
+        "equalRadius",
+        "equalLength",
+        "angle"
       ])
     );
   });
@@ -284,6 +325,199 @@ describe("sketch-solver", () => {
     expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
     expect(end[0]).toBeCloseTo(start[0], 6);
     expect(Math.hypot(end[0] - start[0], end[1] - start[1])).toBeCloseTo(2, 6);
+  });
+
+  it("solves equal-length line constraints with fixed anchors and orientation", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [2, 3] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [0, 1]
+        },
+        {
+          id: "horizontal_secondary",
+          kind: "horizontal",
+          startPointId: "secondary_start",
+          endPointId: "secondary_end"
+        },
+        {
+          id: "equal_length_lines",
+          kind: "equalLength",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        }
+      ]
+    });
+
+    expect(result.status).toBe("converged");
+    expect(result.residualCount).toBe(8);
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+    expectPointCloseTo(result.points, "secondary_end", [4, 1]);
+    expect(
+      pointDistance(result.points, "secondary_start", "secondary_end")
+    ).toBeCloseTo(
+      pointDistance(result.points, "primary_start", "primary_end"),
+      6
+    );
+  });
+
+  it("solves angle line constraints with fixed anchors and a line length", () => {
+    const result = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [2, 2] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [0, 1]
+        },
+        {
+          id: "angle_lines",
+          kind: "angle",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end",
+          angleDegrees: 60
+        }
+      ],
+      dimensions: [
+        {
+          id: "secondary_length",
+          kind: "lineLength",
+          startPointId: "secondary_start",
+          endPointId: "secondary_end",
+          value: 3
+        }
+      ]
+    });
+
+    expect(result.status).toBe("converged");
+    expect(result.residualCount).toBe(8);
+    expect(result.maxResidual).toBeLessThanOrEqual(result.settings.tolerance);
+    expect(
+      pointDistance(result.points, "secondary_start", "secondary_end")
+    ).toBeCloseTo(3, 6);
+    expect(
+      normalizedLineDot(
+        result.points,
+        "primary_start",
+        "primary_end",
+        "secondary_start",
+        "secondary_end"
+      )
+    ).toBeCloseTo(Math.cos(Math.PI / 3), 6);
+  });
+
+  it("solves combined fixed, equal-length, and angle line constraints deterministically", () => {
+    const model: SketchSolveModel = {
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [1, 1] },
+        { id: "secondary_end", initial: [2, 4] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [1, 1]
+        },
+        {
+          id: "equal_length_lines",
+          kind: "equalLength",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        },
+        {
+          id: "angle_lines",
+          kind: "angle",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end",
+          angleDegrees: 60
+        }
+      ]
+    };
+
+    const first = solveSketch(model);
+    const second = solveSketch(model);
+
+    expect(first.status).toBe("converged");
+    expect(second.status).toBe("converged");
+    expect(first.points).toEqual(second.points);
+    expect(first.maxResidual).toBe(second.maxResidual);
+    expect(first.iterations).toBe(second.iterations);
+    expect(
+      pointDistance(first.points, "secondary_start", "secondary_end")
+    ).toBeCloseTo(4, 6);
+    expect(
+      normalizedLineDot(
+        first.points,
+        "primary_start",
+        "primary_end",
+        "secondary_start",
+        "secondary_end"
+      )
+    ).toBeCloseTo(Math.cos(Math.PI / 3), 6);
   });
 
   it("solves line length and point distance dimensions", () => {
@@ -685,6 +919,111 @@ describe("sketch-solver", () => {
     );
   });
 
+  it("reports conflicting fixed equal-length and angle constraints structurally", () => {
+    const equalLengthConflict = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [2, 1] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [0, 1]
+        },
+        {
+          id: "fix_secondary_end",
+          kind: "fixedPoint",
+          pointId: "secondary_end",
+          value: [2, 1]
+        },
+        {
+          id: "equal_length_conflict",
+          kind: "equalLength",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end"
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+    const angleConflict = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [0, 4] }
+      ],
+      constraints: [
+        {
+          id: "fix_primary_start",
+          kind: "fixedPoint",
+          pointId: "primary_start",
+          value: [0, 0]
+        },
+        {
+          id: "fix_primary_end",
+          kind: "fixedPoint",
+          pointId: "primary_end",
+          value: [4, 0]
+        },
+        {
+          id: "fix_secondary_start",
+          kind: "fixedPoint",
+          pointId: "secondary_start",
+          value: [0, 1]
+        },
+        {
+          id: "fix_secondary_end",
+          kind: "fixedPoint",
+          pointId: "secondary_end",
+          value: [0, 4]
+        },
+        {
+          id: "angle_conflict",
+          kind: "angle",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end",
+          angleDegrees: 45
+        }
+      ],
+      settings: { maxIterations: 20 }
+    });
+
+    expect(equalLengthConflict.status).toBe("conflicting");
+    expect(angleConflict.status).toBe("conflicting");
+    expect(equalLengthConflict.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+    expect(angleConflict.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "SKETCH_SOLVER_CONFLICTING" })
+      ])
+    );
+  });
+
   it("reports conflicting fixed concentric and equal-radius constraints structurally", () => {
     const concentricConflict = solveSketch({
       version: SKETCH_SOLVER_MODEL_VERSION,
@@ -798,6 +1137,26 @@ describe("sketch-solver", () => {
         }
       ]
     });
+    const invalidAngle = solveSketch({
+      version: SKETCH_SOLVER_MODEL_VERSION,
+      points: [
+        { id: "primary_start", initial: [0, 0] },
+        { id: "primary_end", initial: [4, 0] },
+        { id: "secondary_start", initial: [0, 1] },
+        { id: "secondary_end", initial: [2, 2] }
+      ],
+      constraints: [
+        {
+          id: "angle_invalid",
+          kind: "angle",
+          primaryStartPointId: "primary_start",
+          primaryEndPointId: "primary_end",
+          secondaryStartPointId: "secondary_start",
+          secondaryEndPointId: "secondary_end",
+          angleDegrees: 180
+        }
+      ]
+    });
 
     expect(missing.status).toBe("failed");
     expect(missing.diagnostics).toEqual(
@@ -818,6 +1177,17 @@ describe("sketch-solver", () => {
           sourceType: "constraint",
           sourceId: "perpendicular_zero_length",
           constraintKind: "perpendicular"
+        })
+      ])
+    );
+    expect(invalidAngle.status).toBe("failed");
+    expect(invalidAngle.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "SKETCH_SOLVER_INVALID_VALUE",
+          sourceType: "constraint",
+          sourceId: "angle_invalid",
+          constraintKind: "angle"
         })
       ])
     );

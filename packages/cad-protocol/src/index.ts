@@ -2501,9 +2501,7 @@ export interface CadSketchSolverConstraintTargetReference {
 
 export type CadSketchSolverDeferredConstraintKind =
   | "tangent"
-  | "equalLength"
   | "distance"
-  | "angle"
   | "symmetry";
 
 export interface CadSketchSolverEntitySummary {

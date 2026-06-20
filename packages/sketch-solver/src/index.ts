@@ -50,13 +50,11 @@ export type SketchSolveConstraintKind =
   | "perpendicular"
   | "concentric"
   | "equalRadius"
-  | SketchSolveDeferredConstraintKind;
-
-export type SketchSolveDeferredConstraintKind =
-  | "tangent"
   | "equalLength"
   | "angle"
-  | "symmetry";
+  | SketchSolveDeferredConstraintKind;
+
+export type SketchSolveDeferredConstraintKind = "tangent" | "symmetry";
 
 export type SketchSolveDimensionKind =
   | "pointDistance"
@@ -83,6 +81,8 @@ export type SketchSolveConstraint =
   | SketchSolvePerpendicularConstraint
   | SketchSolveConcentricConstraint
   | SketchSolveEqualRadiusConstraint
+  | SketchSolveEqualLengthConstraint
+  | SketchSolveAngleConstraint
   | SketchSolveDeferredConstraint;
 
 export interface SketchSolveFixedPointConstraint {
@@ -151,6 +151,25 @@ export interface SketchSolveEqualRadiusConstraint {
   readonly kind: "equalRadius";
   readonly primaryRadiusId: SketchSolverScalarId;
   readonly secondaryRadiusId: SketchSolverScalarId;
+}
+
+export interface SketchSolveEqualLengthConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "equalLength";
+  readonly primaryStartPointId: SketchSolverPointId;
+  readonly primaryEndPointId: SketchSolverPointId;
+  readonly secondaryStartPointId: SketchSolverPointId;
+  readonly secondaryEndPointId: SketchSolverPointId;
+}
+
+export interface SketchSolveAngleConstraint {
+  readonly id: SketchSolverConstraintId;
+  readonly kind: "angle";
+  readonly primaryStartPointId: SketchSolverPointId;
+  readonly primaryEndPointId: SketchSolverPointId;
+  readonly secondaryStartPointId: SketchSolverPointId;
+  readonly secondaryEndPointId: SketchSolverPointId;
+  readonly angleDegrees: number;
 }
 
 export interface SketchSolveDeferredConstraint {
@@ -259,7 +278,9 @@ type ResidualEvaluator = (state: readonly number[]) => readonly number[];
 
 type SketchSolveLinePairConstraint =
   | SketchSolveParallelConstraint
-  | SketchSolvePerpendicularConstraint;
+  | SketchSolvePerpendicularConstraint
+  | SketchSolveEqualLengthConstraint
+  | SketchSolveAngleConstraint;
 
 interface ResidualBlock {
   readonly sourceType: "constraint" | "dimension";
@@ -282,8 +303,6 @@ const DEFAULT_SETTINGS: SketchSolveSettings = {
 
 const DEFERRED_CONSTRAINT_KINDS = new Set<SketchSolveDeferredConstraintKind>([
   "tangent",
-  "equalLength",
-  "angle",
   "symmetry"
 ]);
 
@@ -313,7 +332,9 @@ export function getSketchSolverCapabilities(): {
       "parallel",
       "perpendicular",
       "concentric",
-      "equalRadius"
+      "equalRadius",
+      "equalLength",
+      "angle"
     ],
     supportedDimensionKinds: ["pointDistance", "lineLength", "circleRadius"],
     deferredConstraintKinds: [...DEFERRED_CONSTRAINT_KINDS]
@@ -704,8 +725,16 @@ function validateConstraint(
     return;
   }
 
-  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+  if (
+    constraint.kind === "parallel" ||
+    constraint.kind === "perpendicular" ||
+    constraint.kind === "equalLength" ||
+    constraint.kind === "angle"
+  ) {
     validateLinePairConstraint(constraint, stateAccess, diagnostics);
+    if (constraint.kind === "angle") {
+      validateAngleConstraint(constraint, diagnostics);
+    }
     return;
   }
 
@@ -848,13 +877,36 @@ function validateNonZeroLineTarget({
     diagnostics.push({
       code: "SKETCH_SOLVER_INVALID_VALUE",
       severity: "blocker",
-      message: `Parallel/perpendicular constraint ${label} must have non-zero length.`,
+      message: `Line-pair constraint ${label} must have non-zero length.`,
       sourceType: "constraint",
       sourceId: constraint.id,
       constraintKind: constraint.kind,
       targetId: `${startPointId}:${endPointId}`,
       expected: "non-zero line direction",
       received: "zero-length line"
+    });
+  }
+}
+
+function validateAngleConstraint(
+  constraint: SketchSolveAngleConstraint,
+  diagnostics: SketchSolveDiagnostic[]
+): void {
+  if (
+    !Number.isFinite(constraint.angleDegrees) ||
+    constraint.angleDegrees <= 0 ||
+    constraint.angleDegrees >= 180
+  ) {
+    diagnostics.push({
+      code: "SKETCH_SOLVER_INVALID_VALUE",
+      severity: "blocker",
+      message:
+        "Angle constraint value must be finite and greater than 0 degrees and less than 180 degrees.",
+      sourceType: "constraint",
+      sourceId: constraint.id,
+      constraintKind: constraint.kind,
+      expected: "finite angleDegrees > 0 and < 180",
+      received: describeReceived(constraint.angleDegrees)
     });
   }
 }
@@ -1054,7 +1106,12 @@ function createConstraintResidual(
     };
   }
 
-  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+  if (
+    constraint.kind === "parallel" ||
+    constraint.kind === "perpendicular" ||
+    constraint.kind === "equalLength" ||
+    constraint.kind === "angle"
+  ) {
     return createLinePairResidual(constraint, stateAccess);
   }
 
@@ -1121,9 +1178,44 @@ function createLinePairResidual(
       ];
     }
 
+    if (constraint.kind === "perpendicular") {
+      return [
+        primaryDirection[0] * secondaryDirection[0] +
+          primaryDirection[1] * secondaryDirection[1]
+      ];
+    }
+
+    if (constraint.kind === "angle") {
+      return [
+        primaryDirection[0] * secondaryDirection[0] +
+          primaryDirection[1] * secondaryDirection[1] -
+          Math.cos((constraint.angleDegrees * Math.PI) / 180)
+      ];
+    }
+
+    const primaryStart = readPoint(
+      state,
+      stateAccess,
+      constraint.primaryStartPointId
+    );
+    const primaryEnd = readPoint(
+      state,
+      stateAccess,
+      constraint.primaryEndPointId
+    );
+    const secondaryStart = readPoint(
+      state,
+      stateAccess,
+      constraint.secondaryStartPointId
+    );
+    const secondaryEnd = readPoint(
+      state,
+      stateAccess,
+      constraint.secondaryEndPointId
+    );
     return [
-      primaryDirection[0] * secondaryDirection[0] +
-        primaryDirection[1] * secondaryDirection[1]
+      distance(primaryStart, primaryEnd) -
+        distance(secondaryStart, secondaryEnd)
     ];
   };
 }

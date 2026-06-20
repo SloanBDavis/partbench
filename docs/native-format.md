@@ -1515,13 +1515,19 @@ package read/write helpers without changing project source format:
   solver variables; solved coordinates/radii remain query output only, no
   source schema after `web-cad.project.v17` is introduced, and `.wcad` package
   layout remains unchanged.
+- V11 Tranche D3C adds pure numerical solver residual support for V17
+  source-backed equal-length and angle line constraints. Cad-core maps existing
+  line-pair source records into endpoint variables plus finite angle targets;
+  solved coordinates remain query output only, no source schema after
+  `web-cad.project.v17` is introduced, and `.wcad` package layout remains
+  unchanged.
 - `pnpm smoke:v8-release-samples` validates `.wcad` round-trip,
   JSON-to-WCAD compatibility, corrupted package diagnostics, exact STEP
   supported/unsupported paths, and source/derived/file-handle separation over
   the historical release fixture catalog.
-- V17 source records remain source intent only until later solver-command
-  tranches make them creatable and fully solved beyond the current D3B
-  numerical subset.
+- V17 tangent and symmetry records remain source intent only until later
+  solver-command tranches make them creatable and numerically supported beyond
+  the current D3C numerical subset.
 
 ## Long-Term Native Package Direction
 

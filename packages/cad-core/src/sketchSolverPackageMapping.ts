@@ -394,7 +394,12 @@ function mapConstraintToSketchSolveConstraint({
     };
   }
 
-  if (constraint.kind === "parallel" || constraint.kind === "perpendicular") {
+  if (
+    constraint.kind === "parallel" ||
+    constraint.kind === "perpendicular" ||
+    constraint.kind === "equalLength" ||
+    constraint.kind === "angle"
+  ) {
     const primaryEntity = sketch.entities.get(constraint.primaryLineEntityId);
     const secondaryEntity = sketch.entities.get(
       constraint.secondaryLineEntityId
@@ -461,15 +466,46 @@ function mapConstraintToSketchSolveConstraint({
       };
     }
 
+    if (
+      constraint.kind === "angle" &&
+      !Number.isFinite(constraint.angleDegrees)
+    ) {
+      return {
+        diagnostics: [
+          createMappingDiagnostic({
+            code: "SKETCH_SOLVER_FAILED",
+            message:
+              "Angle constraint target cannot be mapped with a non-finite angle value.",
+            sketchId: constraint.sketchId,
+            sketchConstraintId: constraint.id,
+            sketchEntityId: constraint.primaryLineEntityId,
+            expected: "finite angle value in degrees",
+            received: String(constraint.angleDegrees)
+          })
+        ]
+      };
+    }
+
     return {
-      constraint: {
-        id: constraint.id,
-        kind: constraint.kind,
-        primaryStartPointId,
-        primaryEndPointId,
-        secondaryStartPointId,
-        secondaryEndPointId
-      },
+      constraint:
+        constraint.kind === "angle"
+          ? {
+              id: constraint.id,
+              kind: "angle",
+              primaryStartPointId,
+              primaryEndPointId,
+              secondaryStartPointId,
+              secondaryEndPointId,
+              angleDegrees: cleanSketchNumber(constraint.angleDegrees)
+            }
+          : {
+              id: constraint.id,
+              kind: constraint.kind,
+              primaryStartPointId,
+              primaryEndPointId,
+              secondaryStartPointId,
+              secondaryEndPointId
+            },
       diagnostics: []
     };
   }
@@ -795,12 +831,7 @@ function getConstraintTargetIds(
 function mapDeferredConstraintKind(
   kind: SketchConstraintSnapshot["kind"]
 ): SketchSolveDeferredConstraintKind {
-  if (
-    kind === "tangent" ||
-    kind === "equalLength" ||
-    kind === "angle" ||
-    kind === "symmetry"
-  ) {
+  if (kind === "tangent" || kind === "symmetry") {
     return kind;
   }
 
