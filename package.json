@@ -16,6 +16,7 @@
     "smoke:v8-wcad-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs",
     "smoke:v9-viewport-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs",
     "smoke:v10-browser-workflow": "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v10-workflow --require-derived-mesh-cache",
+    "smoke:v11-release-samples": "node scripts/smoke-v11-release-samples.mjs",
     "smoke:v10-release-samples": "node scripts/smoke-v10-release-samples.mjs",
     "smoke:v8-release-samples": "node scripts/smoke-v8-release-samples.mjs",
     "smoke:v7-release-samples": "node scripts/smoke-v8-release-samples.mjs",

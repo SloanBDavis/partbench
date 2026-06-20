@@ -352,6 +352,9 @@ and focused packages:
 - `scripts/smoke-v7-release-samples.mjs` and
   `scripts/v7-release-samples.mjs` - deterministic non-browser V7 release
   sample acceptance smoke over cad-core source/query fixtures.
+- `scripts/smoke-v11-release-samples.mjs` and
+  `scripts/v11-release-samples.mjs` - deterministic non-browser V11 sketch
+  solver release smoke over cad-core source/query/edit/rebuild/package chains.
 - `scripts/smoke-occt-browser.mjs` and `scripts/occt-smoke` - non-gating
   browser smoke/metrics runner for the OCCT worker path.
 
@@ -380,6 +383,7 @@ pnpm lint
 pnpm format:check
 pnpm smoke:v7-release-samples
 pnpm smoke:v10-release-samples
+pnpm smoke:v11-release-samples
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
@@ -437,6 +441,22 @@ the V10 release fixtures, verifies long edit -> rebuild -> reference health ->
 repair chains, checks JSON and `.wcad` round-trips, and rejects renderer, mesh,
 OCCT, OPFS, file-handle, selection-buffer, GPU/pixel, viewport-state, or schema
 V17 leaks from public sample/source outputs.
+
+V11 release sample sketch solver smoke:
+
+```sh
+pnpm smoke:v11-release-samples
+```
+
+The smoke is deterministic, non-browser, and CADOps/cad-core-only. It runs a
+long current-source sketch chain through create -> constrain/dimension -> solve
+status -> feature -> dry-run non-mutation -> committed dimension edit -> rebuild
+and reference queries -> JSON/`.wcad` round-trip. It also imports a V17
+advanced-constraint source chain so tangent, concentric, equal length, equal
+radius, angle, and symmetry numerical-support status is covered without adding
+unsupported advanced constraint creation commands. Public smoke output rejects
+renderer, mesh, OCCT, OPFS, file-handle, selection-buffer, GPU/pixel,
+viewport-state, solver-matrix, and residual-cache identifiers.
 
 Compatibility browser workflow smokes:
 
