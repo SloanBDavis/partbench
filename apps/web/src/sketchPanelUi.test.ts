@@ -1095,12 +1095,7 @@ describe("sketch panel UI helpers", () => {
 
     expect(getCutOperationStatus(undefined, targets)).toEqual({
       available: false,
-      message: "Select a rectangle profile to cut an existing body."
-    });
-    expect(getCutOperationStatus(circle, targets)).toEqual({
-      available: false,
-      message:
-        "Cut currently supports rectangle profiles only. This profile can still create a new body."
+      message: "Select a rectangle or circle profile to cut an existing body."
     });
     expect(getCutOperationStatus(rectangle, [])).toEqual({
       available: false,
@@ -1108,6 +1103,10 @@ describe("sketch panel UI helpers", () => {
         "Create an active rectangle or circle new body before using Cut body."
     });
     expect(getCutOperationStatus(rectangle, targets)).toEqual({
+      available: true,
+      message: "1 eligible cut target body."
+    });
+    expect(getCutOperationStatus(circle, targets)).toEqual({
       available: true,
       message: "1 eligible cut target body."
     });
@@ -1224,18 +1223,18 @@ describe("sketch panel UI helpers", () => {
 
     expect(getAddOperationStatus(undefined, targets)).toEqual({
       available: false,
-      message: "Select a rectangle profile to add to an existing body."
-    });
-    expect(getAddOperationStatus(circle, targets)).toEqual({
-      available: false,
       message:
-        "Add currently supports rectangle profiles and rectangle targets only. This profile can still create a new body."
+        "Select a rectangle or circle profile to add to an existing body."
     });
     expect(getAddOperationStatus(rectangle, [])).toEqual({
       available: false,
       message: "Create an active rectangle new body before using Add to body."
     });
     expect(getAddOperationStatus(rectangle, targets)).toEqual({
+      available: true,
+      message: "1 eligible add target body."
+    });
+    expect(getAddOperationStatus(circle, targets)).toEqual({
       available: true,
       message: "1 eligible add target body."
     });

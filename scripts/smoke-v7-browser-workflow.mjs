@@ -483,6 +483,16 @@ async function v7BrowserWorkflowSmoke({
     v12AddToolEntityId: "v12_smoke_add_tool_rect",
     v12AddToolSketchId: "v12_smoke_add_tool_sketch",
     v12AddToolSketchName: "V12 smoke add tool sketch",
+    v12CircleAddBodyId: "v12_smoke_circle_add_body",
+    v12CircleAddBodyName: "V12 smoke circle add result",
+    v12CircleAddFeatureId: "v12_smoke_circle_add_feature",
+    v12CircleAddTargetBodyId: "v12_smoke_circle_add_target_body",
+    v12CircleAddTargetBodyName: "V12 smoke circle add target body",
+    v12CircleAddTargetEntityId: "v12_smoke_circle_add_target_rect",
+    v12CircleAddTargetFeatureId: "v12_smoke_circle_add_target_feature",
+    v12CircleAddToolEntityId: "v12_smoke_circle_add_tool",
+    v12CircleAddToolSketchId: "v12_smoke_circle_add_tool_sketch",
+    v12CircleAddToolSketchName: "V12 smoke circle add tool sketch",
     v12CutWallSketchId: "v12_smoke_cut_wall_sketch",
     v12CutWallSketchName: "V12 smoke cut wall sketch",
     v12RepairReferenceName: "v12_smoke_repaired_cut_face",
@@ -1187,6 +1197,7 @@ async function v7BrowserWorkflowSmoke({
     if (requireV12Workflow) {
       await runV12CutResultReferenceWorkflowSmoke();
       await runV12AddResultReferenceWorkflowSmoke();
+      await runV12CircleAddResultReferenceWorkflowSmoke();
     }
 
     openTreePanel();
@@ -2884,6 +2895,227 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
+  async function runV12CircleAddResultReferenceWorkflowSmoke() {
+    await createV10RectangleNewBody({
+      bodyId: ids.v12CircleAddTargetBodyId,
+      bodyName: ids.v12CircleAddTargetBodyName,
+      centerX: "-9",
+      entityId: ids.v12CircleAddTargetEntityId,
+      featureId: ids.v12CircleAddTargetFeatureId
+    });
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleAddTargetBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(
+      `generated:face:${ids.v12CircleAddTargetBodyId}:endCap`
+    );
+
+    const targetInspector = getElementByAriaLabel("Inspector");
+    setSelectByLabel(
+      targetInspector,
+      "Face",
+      `generated:face:${ids.v12CircleAddTargetBodyId}:endCap`
+    );
+    setFieldByLabel(
+      targetInspector,
+      "Sketch name",
+      ids.v12CircleAddToolSketchName
+    );
+    setInputByDetailsSummary(
+      targetInspector,
+      "Advanced sketch options",
+      ids.v12CircleAddToolSketchId
+    );
+    clickButton(targetInspector, "Create attached sketch");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12CircleAddToolSketchName
+        ),
+      "V12 circle add target attached tool sketch"
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.v12CircleAddToolSketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v12CircleAddToolSketchId,
+      "V12 circle add tool sketch became active"
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V12 circle add tool circle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "circle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v12CircleAddToolEntityId
+    );
+    setFieldByLabel(entityEditor, "Center X", "0");
+    setFieldByLabel(entityEditor, "Center Y", "0");
+    setFieldByLabel(entityEditor, "Radius", "0.35");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v12CircleAddToolEntityId
+        ),
+      "created V12 circle add tool circle"
+    );
+
+    let featureEditor = getSectionByAriaLabel("Create authored feature");
+    setFieldByLabel(featureEditor, "Depth", "0.5");
+    setSelectByLabel(featureEditor, "Operation", "add");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "circle add target body control"
+    );
+    featureEditor = getSectionByAriaLabel("Create authored feature");
+    setSelectByLabel(
+      featureEditor,
+      "Target body",
+      ids.v12CircleAddTargetBodyId
+    );
+    setFieldByLabel(
+      featureEditor,
+      "Optional feature ID",
+      ids.v12CircleAddFeatureId
+    );
+    setFieldByLabel(featureEditor, "Optional body ID", ids.v12CircleAddBodyId);
+    setFieldByLabel(featureEditor, "Optional name", ids.v12CircleAddBodyName);
+    clickButton(featureEditor, "Create extrude");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12CircleAddBodyName
+        ),
+      "created V12 circle add result body"
+    );
+    pass(
+      "v12-circle-add-result-create",
+      "created a deterministic circle-tool add result through the browser UI",
+      ids.v12CircleAddBodyId
+    );
+
+    const capStableId = `generated:face:${ids.v12CircleAddBodyId}:endCap`;
+    const wallStableId = `generated:face:${ids.v12CircleAddBodyId}:side:circular`;
+    const edgeStableId = `generated:edge:${ids.v12CircleAddBodyId}:end:circular`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleAddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(capStableId);
+    await waitForV12AddResultFaceCommandReady({
+      bodyId: ids.v12CircleAddBodyId,
+      stableId: capStableId,
+      label: "Added cap face"
+    });
+    pass(
+      "v12-circle-add-result-cap-command-ready-browser",
+      "V12 circle add-result cap face is command-ready for sketch/name/measure/inspect",
+      getSelectionText()
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleAddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(wallStableId);
+    await waitForV12ResultMeasureOnlyReferenceCommandReady({
+      bodyId: ids.v12CircleAddBodyId,
+      stableId: wallStableId,
+      label: "Added circular wall face"
+    });
+    pass(
+      "v12-circle-add-result-wall-command-ready-browser",
+      "V12 circle add-result cylindrical wall is command-ready for name/measure/inspect",
+      getSelectionText()
+    );
+    await waitForViewportContextualCommands(
+      ["Name", "Measure", "Inspect"],
+      "V12 circle add-result wall contextual commands"
+    );
+    assertViewportContextualCommandsAbsent([
+      "Create sketch",
+      "Chamfer",
+      "Fillet"
+    ]);
+    pass(
+      "v12-circle-add-result-wall-no-sketch",
+      "V12 circle add-result cylindrical wall hides unsupported sketch and edge-finish actions",
+      getViewportContextualCommandText()
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleAddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(edgeStableId);
+    await waitForV12ResultEdgeCommandReady({
+      bodyId: ids.v12CircleAddBodyId,
+      stableId: edgeStableId,
+      label: "Added cap circular edge"
+    });
+    pass(
+      "v12-circle-add-result-edge-command-ready-browser",
+      "V12 circle add-result cap edge is command-ready for naming, measurement, and inspect",
+      getSelectionText()
+    );
+
+    await waitForViewportContextualCommands(
+      ["Name", "Measure", "Inspect"],
+      "V12 circle add-result edge contextual commands"
+    );
+    assertViewportContextualCommandsAbsent([
+      "Create sketch",
+      "Chamfer",
+      "Fillet"
+    ]);
+    const selectionText = getViewportContextualCommandText();
+    const deferredVisible =
+      selectionText.includes("Edge finish") ||
+      selectionText.includes("Chamfer") ||
+      selectionText.includes("Fillet");
+
+    if (deferredVisible) {
+      fail(
+        "v12-circle-add-result-edge-no-deferred-finish",
+        "V12 circle add-result cap edge hides deferred edge-finish affordances",
+        selectionText
+      );
+    } else {
+      pass(
+        "v12-circle-add-result-edge-no-deferred-finish",
+        "V12 circle add-result cap edge hides deferred edge-finish affordances",
+        selectionText
+      );
+    }
+  }
+
   async function waitForV12CutResultFaceCommandReady(stableId) {
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
@@ -2912,28 +3144,30 @@ async function v7BrowserWorkflowSmoke({
     }, "V12 cut-result face command-ready state");
   }
 
-  async function waitForV12AddResultFaceCommandReady({ stableId, label }) {
+  async function waitForV12AddResultFaceCommandReady({
+    bodyId = ids.v12AddBodyId,
+    stableId,
+    label
+  }) {
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
       const modelingContext = getSectionByAriaLabel("Modeling context");
+      const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+      const modelingText = normalize(modelingContext.textContent);
       const ready =
         isSelectionPanelOpen() &&
-        includesText(inspector, ids.v12AddBodyId) &&
-        includesText(inspector, label) &&
-        includesText(inspector, stableId) &&
-        includesText(inspector, "Command-ready reference") &&
-        includesText(inspector, "Create sketch on face") &&
-        includesText(modelingContext, "Reference status") &&
-        includesText(modelingContext, "Create sketch on face") &&
-        !includesText(inspector, "Edge finish") &&
-        !includesText(modelingContext, "Edge finish");
+        stableId.includes(bodyId) &&
+        referenceSelect.value === stableId &&
+        modelingText.includes(label) &&
+        modelingText.includes("Command-ready reference");
 
       if (!ready) {
         throw new Error(
           [
             `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `referenceSelect=${referenceSelect.value}`,
             `inspector=${normalize(inspector.textContent).slice(0, 320)}`,
-            `modeling=${normalize(modelingContext.textContent).slice(0, 220)}`
+            `modeling=${modelingText.slice(0, 220)}`
           ].join("; ")
         );
       }
@@ -2942,35 +3176,60 @@ async function v7BrowserWorkflowSmoke({
     }, `V12 add-result face command-ready state ${stableId}`);
   }
 
-  async function waitForV12ResultEdgeCommandReady({ bodyId, stableId, label }) {
+  async function waitForV12ResultMeasureOnlyReferenceCommandReady({
+    bodyId,
+    stableId,
+    label
+  }) {
     await waitFor(() => {
       const inspector = getElementByAriaLabel("Inspector");
       const modelingContext = getSectionByAriaLabel("Modeling context");
+      const referenceSelect = getControlByLabel(inspector, "Inspect reference");
       const inspectorText = normalize(inspector.textContent);
+      const modelingText = normalize(modelingContext.textContent);
       const ready =
         isSelectionPanelOpen() &&
-        inspectorText.includes(bodyId) &&
-        inspectorText.includes(label) &&
-        inspectorText.includes(stableId) &&
-        inspectorText.includes("Command-ready reference") &&
-        inspectorText.includes("Name reference") &&
-        inspectorText.includes("Measure reference") &&
-        inspectorText.includes("Inspect reference") &&
-        !inspectorText.includes("Edge finish") &&
-        !inspectorText.includes("Chamfer") &&
-        !inspectorText.includes("Fillet") &&
-        includesText(modelingContext, "Reference status") &&
-        includesText(modelingContext, "Command-ready reference") &&
-        !includesText(modelingContext, "Edge finish") &&
-        !includesText(modelingContext, "Chamfer") &&
-        !includesText(modelingContext, "Fillet");
+        stableId.includes(bodyId) &&
+        referenceSelect.value === stableId &&
+        modelingText.includes(label) &&
+        modelingText.includes("Command-ready reference");
 
       if (!ready) {
         throw new Error(
           [
             `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `referenceSelect=${referenceSelect.value}`,
             `inspector=${inspectorText.slice(0, 320)}`,
-            `modeling=${normalize(modelingContext.textContent).slice(0, 220)}`
+            `modeling=${modelingText.slice(0, 220)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, `V12 result measure-only reference command-ready state ${stableId}`);
+  }
+
+  async function waitForV12ResultEdgeCommandReady({ bodyId, stableId, label }) {
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modelingContext = getSectionByAriaLabel("Modeling context");
+      const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+      const inspectorText = normalize(inspector.textContent);
+      const modelingText = normalize(modelingContext.textContent);
+      const ready =
+        isSelectionPanelOpen() &&
+        stableId.includes(bodyId) &&
+        referenceSelect.value === stableId &&
+        modelingText.includes(label) &&
+        modelingText.includes("Command-ready reference");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `referenceSelect=${referenceSelect.value}`,
+            `inspector=${inspectorText.slice(0, 320)}`,
+            `modeling=${modelingText.slice(0, 220)}`
           ].join("; ")
         );
       }

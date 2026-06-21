@@ -547,7 +547,12 @@ add-result face/edge browser checks: deterministic add-result creation, added
 cap and wall face command-ready status, compact sketch/name/measure/inspect
 actions, attached sketch creation on the added cap, added-cap profile edge
 command-ready status, compact name/measure/inspect actions, and no deferred
-chamfer, fillet, or Edge finish affordances. The underlying files remain
+chamfer, fillet, or Edge finish affordances. It also requires a circle-tool add
+browser path that creates a supported circle add result, verifies command-ready
+added cap, cylindrical wall, and circular cap edge references, and proves the
+cylindrical wall/circular edge expose only supported name/measure/inspect
+actions rather than unsupported create-sketch or deferred edge-finish actions.
+The underlying files remain
 `scripts/smoke-v7-browser-workflow.mjs` and
 `scripts/v7-browser-workflow.mjs` for backward compatibility.
 
@@ -2215,7 +2220,10 @@ Use these decisions when drafting or implementing V12 tranches:
    compact contextual actions, hidden deferred edge-finish affordances, compact
    repair of missing names to a command-ready V12 cut-wall face and V12
    added-cap profile edge, and the first add-result cap/wall face plus
-   added-cap profile edge command-ready browser workflow. Thin agent/MCP tests
+   added-cap profile edge command-ready browser workflow. It now also covers
+   the browser circle-tool add path for added cap, cylindrical wall, and
+   circular cap edge command readiness, including hidden unsupported sketch and
+   edge-finish actions on the cylindrical/edge targets. Thin agent/MCP tests
    also assert `selection.referenceCandidates` pass-through for the same
    added-cap profile edge. Docs should continue stating exactly which boolean
    topology is supported and which remains deferred.

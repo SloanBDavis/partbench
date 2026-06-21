@@ -87,6 +87,49 @@ describe("viewport contextual commands", () => {
     });
   });
 
+  it("hides unsupported generated-face sketch actions from viewport commands", () => {
+    const face = createFace({
+      stableId: "generated:face:body_add:side:circular",
+      label: "Added circular wall face",
+      bodyId: "body_add",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      role: "side:circular",
+      geometricSignature: {
+        profileKind: "circle",
+        sketchPlane: "XY",
+        extrudeSide: "positive",
+        depth: 1,
+        surfaceType: "cylinder"
+      }
+    });
+    const candidates = createSelectionReferenceCandidates(face, {
+      commandOperations: [
+        "reference.nameGenerated",
+        "feature.measureReference",
+        "feature.selectReference"
+      ]
+    });
+    const actions = createGeneratedReferenceActions(face, candidates);
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: actions,
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "generatedReference",
+        commandOperations: candidates.candidates[0].commandOperations
+      }),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectionReferenceCandidates: candidates
+    });
+
+    expect(surface.actions.map((action) => action.id)).toEqual([
+      "reference.name",
+      "feature.measureReference",
+      "feature.selectReference"
+    ]);
+  });
+
   it("derives selected generated edge commands and routes safe edge-finish defaults", () => {
     const edge = createEdge();
     const candidates = createSelectionReferenceCandidates(edge);

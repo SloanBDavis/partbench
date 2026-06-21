@@ -287,6 +287,14 @@ function createActionsFromModeling(
           })
         ];
       case "sketch.createOnFace":
+        if (
+          selectionDisplay.selectionKind !== "body" &&
+          !action.available &&
+          !isBlockingCommandReadinessReason(action.reason)
+        ) {
+          return [];
+        }
+
         return [
           createActionFromModeling(action, {
             label:
@@ -301,6 +309,11 @@ function createActionsFromModeling(
         return [];
     }
   });
+}
+
+function isBlockingCommandReadinessReason(reason: string | undefined): boolean {
+  const normalized = reason?.toLowerCase() ?? "";
+  return normalized.includes("consumed");
 }
 
 function createActionFromModeling(

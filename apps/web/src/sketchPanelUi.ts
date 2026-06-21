@@ -1285,15 +1285,16 @@ export function getAddOperationStatus(
   if (!entity) {
     return {
       available: false,
-      message: "Select a rectangle profile to add to an existing body."
+      message:
+        "Select a rectangle or circle profile to add to an existing body."
     };
   }
 
-  if (entity.kind !== "rectangle") {
+  if (entity.kind !== "rectangle" && entity.kind !== "circle") {
     return {
       available: false,
       message:
-        "Add currently supports rectangle profiles and rectangle targets only. This profile can still create a new body."
+        "Add currently supports rectangle or circle profiles and rectangle targets only. This profile can still create a new body."
     };
   }
 
@@ -1320,15 +1321,15 @@ export function getCutOperationStatus(
   if (!entity) {
     return {
       available: false,
-      message: "Select a rectangle profile to cut an existing body."
+      message: "Select a rectangle or circle profile to cut an existing body."
     };
   }
 
-  if (entity.kind !== "rectangle") {
+  if (entity.kind !== "rectangle" && entity.kind !== "circle") {
     return {
       available: false,
       message:
-        "Cut currently supports rectangle profiles only. This profile can still create a new body."
+        "Cut currently supports rectangle or circle profiles only. This profile can still create a new body."
     };
   }
 

@@ -82,7 +82,13 @@ export const V12_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v12-add-result-edge-command-ready-browser",
   "v12-add-result-edge-contextual-actions",
   "v12-add-result-edge-no-deferred-finish",
-  "v12-add-result-edge-repair-browser"
+  "v12-add-result-edge-repair-browser",
+  "v12-circle-add-result-create",
+  "v12-circle-add-result-cap-command-ready-browser",
+  "v12-circle-add-result-wall-command-ready-browser",
+  "v12-circle-add-result-wall-no-sketch",
+  "v12-circle-add-result-edge-command-ready-browser",
+  "v12-circle-add-result-edge-no-deferred-finish"
 ]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({
