@@ -117,7 +117,9 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 - `docs/archive/v4.md` - archived V4 constrained sketch solving milestone.
 - `docs/v10.md` - completed V10 editable feature history and stable modeling
   references release record.
-- `docs/v11.md` - planned V11 full sketch solver and parametric sketch UX
+- `docs/v11.md` - completed V11 full sketch solver and parametric sketch UX
+  release record.
+- `docs/v12.md` - completed V12 stable boolean topology and result references
   release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
@@ -159,11 +161,12 @@ protocol/package migration.
   and currently backs primitive tessellation, rectangle/circle extrudes, narrow
   rectangle-tool add/cut derived meshes, supported V6 result meshes, and derived
   exact metadata where available.
-- Sketches, rectangle/circle extrude features, sketches attached to generated
-  planar face references, parameters, driving sketch dimensions, supported
-  constraints, and V6 feature intent are source-of-truth data, but there is no
-  general sketch solver, automatic profile recognition, broad feature editing,
-  or full topology naming yet.
+- Sketches, rectangle/circle extrude features, sketches attached to supported
+  generated planar face references, parameters, driving sketch dimensions,
+  supported constraints, editable source-feature history, reference health, and
+  stable supported boolean-result references are source-of-truth/model-authority
+  data. Arbitrary topology naming, broad result-body topology identity, and
+  persistent exact B-rep checkpoints remain deferred.
 - V8 completed the local CAD foundation: native `.wcad` package workflow, File
   System Access open/save, OPFS-derived mesh cache, and exact STEP export for
   supported bodies.
@@ -171,10 +174,14 @@ protocol/package migration.
   renderer-agnostic hit candidates, semantic selection resolution,
   command-ready viewport selections, contextual tools, and inspect/measure
   workflows for the supported current semantic subset.
-- V10 is planned as the editable feature history and stable modeling references
-  release: feature editability, dependency/rebuild diagnostics,
-  consumed/replacement body lifecycle, reference health/repair semantics, and
-  source-semantic topology expansion where defensible.
-- No broad stable topology, STEP import, production WebGPU renderer,
+- V10 completed editable feature history and stable modeling references:
+  feature editability, dependency/rebuild diagnostics, consumed/replacement body
+  lifecycle, reference health/repair semantics, and source-semantic topology
+  expansion where defensible.
+- V11 completed the supported sketch solver and parametric sketch UX release.
+- V12 completed stable boolean topology and result references for the supported
+  rectangle/circle cut/add subset, with unsupported topology kept as structured
+  diagnostics.
+- No arbitrary stable topology, STEP import, production WebGPU renderer,
   assemblies, hosted collaboration, production MCP auth, or natural-language
   command parsing is implemented unless scoped into a later release.

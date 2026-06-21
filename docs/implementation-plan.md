@@ -11,7 +11,7 @@ Use this document for day-to-day implementation decisions. Use
 archived V4 constrained sketch solving milestone, `docs/v10.md` for the
 completed editable feature history and stable modeling references release
 record, `docs/v11.md` for the completed full sketch solver and parametric
-sketch UX release record, `docs/v12.md` for the planned stable boolean topology
+sketch UX release record, `docs/v12.md` for the completed stable boolean topology
 and result references release record, `docs/native-format.md` for
 project-format direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size
 findings. V7, V8, and V9 are completed historical releases whose details are
@@ -311,7 +311,7 @@ These constraints remain active:
     not scope WebGPU, assemblies, STEP import, persistent B-rep checkpoints,
     hosted collaboration, natural-language command entry, broad new solid
     modeling families, or renderer authority over sketch solving.
-36. V12 is in progress in `docs/v12.md` as the stable boolean topology and
+36. V12 is complete in `docs/v12.md` as the stable boolean topology and
     result references release. Its center is source-semantic generated topology
     for supported cut/add boolean result bodies, command-ready result
     faces/edges, reference health/repair through edits, compact product
@@ -340,9 +340,10 @@ These constraints remain active:
     creation and fresh driving dimension creation. Tranche F1 keeps browser
     product surfaces compact by surfacing only semantic-reference-advertised
     actions. Tranche G2 adds browser smoke coverage for cut-result face/edge
-    and add-result face/edge reference workflows, while the deterministic V12
-    source smoke covers rectangle cut, rectangle add, and circle tool boolean
-    reference chains.
+    and add-result face/edge reference workflows, including circle-tool cut/add
+    wall/cap/rim/edge browser checks, while the deterministic V12 source smoke
+    covers rectangle cut, rectangle add, and circle tool boolean reference
+    chains.
     V12 should not introduce broad arbitrary topology naming, persistent exact
     B-rep checkpoints, WebGPU, STEP import, assemblies, broad new modeling
     commands, or a new saved-project schema unless a tranche explicitly adds new
@@ -408,7 +409,7 @@ Compatibility identifiers retained during the Partbench rename:
   release. `web-cad.project.v8` is also an older saved-project schema version,
   not the V8 release. If a future release adds new source-of-truth document
   data after V11, the next saved schema should be `web-cad.project.v18`. The
-  planned V12 release does not require V18 for query-derived boolean topology.
+  completed V12 release does not require V18 for query-derived boolean topology.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Current Scripts
@@ -2081,7 +2082,7 @@ Do not combine these in one V11 tranche unless explicitly approved:
 
 ## V12 Stable Boolean Topology And Result References Release
 
-V12 is planned in `docs/v12.md`. It is the release that should turn supported
+V12 is complete in `docs/v12.md`. It is the release that turns supported
 cut/add boolean result bodies from visually valid but semantically ambiguous
 into command-ready result topology where source semantics prove identity:
 
@@ -2190,7 +2191,7 @@ Use these decisions when drafting or implementing V12 tranches:
    references plus conservative non-command-ready result body lifecycle,
    including the circular add cap edge source/query path.
    Broader browser repair polish, dependency/rebuild UI consumption, and
-   remaining solver-backed edit paths remain planned.
+   remaining solver-backed edit paths are explicitly deferred beyond V12.
 6. **Product Integration** - F1 is implemented as compact UI surfacing for the
    current V12 subset. Tree, Selection, Inspector, Modeling, and current
    viewport contextual actions consume V12 references through
