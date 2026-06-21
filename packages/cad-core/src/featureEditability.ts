@@ -92,7 +92,7 @@ export function createFeatureEditabilityResponse(
         code: "FEATURE_EDIT_UNSUPPORTED",
         severity: "blocker",
         message:
-          "Primitive compatibility features are scene-object source, not V10 editable source features.",
+          "Primitive compatibility features are scene-object source and cannot be edited with feature-history controls.",
         featureId: feature.id,
         bodyId: feature.bodyId,
         expected: "authored source feature",
@@ -184,7 +184,7 @@ function createExtrudeEditabilityResponse(
         code: "AMBIGUOUS_RESULT_TOPOLOGY",
         severity: "blocker",
         message:
-          "V10 Tranche A does not claim command-ready edit/rebuild references for boolean extrude result topology.",
+          "This boolean result feature cannot be edited safely yet because its body-level result topology is only partially proven. Select a command-ready result face or edge for reference operations, or edit the original source feature.",
         featureId: feature.id,
         bodyId: feature.bodyId,
         targetBodyId: feature.targetBodyId,
@@ -384,7 +384,7 @@ function createRevolveEditabilityResponse(
         code: "AMBIGUOUS_RESULT_TOPOLOGY",
         severity: "blocker",
         message:
-          "V10 Tranche C2 does not claim command-ready edit/rebuild references for non-newBody revolve result topology.",
+          "This revolve result feature cannot be edited safely yet because downstream result topology is not command-ready.",
         featureId: feature.id,
         bodyId: feature.bodyId,
         targetBodyId: feature.targetBodyId,
@@ -630,7 +630,7 @@ function createSourceParameterEditabilityResponse(args: {
               code: "FEATURE_EDIT_UNSUPPORTED",
               severity: "warning",
               message:
-                "Reference retargeting is deferred; only scalar/source parameter edits are supported in V10 Tranche C2.",
+                "Reference retargeting is not supported here; only scalar/source parameter edits are available.",
               featureId: args.feature.id,
               bodyId: args.feature.bodyId,
               fieldPath: field.path
@@ -932,7 +932,7 @@ function createDeferredSourceFeatureResponse(
     createDiagnostic({
       code: "FEATURE_EDIT_COMMIT_DEFERRED",
       severity: "warning",
-      message: `V10 Tranche A can describe ${feature.kind} source fields, but committed edit/rebuild is deferred.`,
+      message: `This ${feature.kind} feature has describable source fields, but committed editing is not supported yet.`,
       featureId: feature.id,
       bodyId: feature.bodyId,
       expected: "query-only editability contract",
@@ -950,7 +950,7 @@ function createDeferredSourceFeatureResponse(
       code: "REFERENCE_HEALTH_DEFERRED",
       severity: "warning",
       message:
-        "Generated and named reference survival is reported as repair-needed or unsupported until V10 rebuild/repair work lands.",
+        "Generated and named reference survival requires explicit repair support for this source feature type.",
       featureId: feature.id,
       bodyId: feature.bodyId
     })

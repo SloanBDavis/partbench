@@ -271,10 +271,12 @@ describe("Inspector", () => {
       })
     );
 
-    expect(markup).toContain("Feature edit unavailable");
+    expect(markup).toContain("Feature parameters unavailable");
+    expect(markup).toContain("Unsupported");
     expect(markup).toContain(
       "Boolean result topology cannot be edited safely."
     );
+    expect(markup).not.toContain("Tranche");
   });
 
   it("plumbs selected generated edges into inspector edge-finish affordances", () => {

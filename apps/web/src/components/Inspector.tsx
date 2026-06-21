@@ -75,6 +75,7 @@ import {
 import {
   createSelectedGeneratedReference,
   createSelectionReferenceCandidateSummaries,
+  formatSelectionReferenceIssue,
   formatSelectionReferenceOperationLabel,
   formatSelectionReferenceStatus,
   getGeneratedReferenceSelectionState,
@@ -738,7 +739,7 @@ function formatFeatureEditCalloutTitle(
 
   return editability.status === "editable"
     ? "Feature edits ready"
-    : "Feature edit unavailable";
+    : "Feature parameters unavailable";
 }
 
 function formatFeatureEditCalloutDetail(
@@ -1044,7 +1045,7 @@ function SelectionReferenceContractPanel({
   const issues =
     primary && primary.issues.length > 0
       ? primary.issues
-      : response.issues.map((issue) => issue.message);
+      : response.issues.map(formatSelectionReferenceIssue);
 
   return (
     <section className="command-card nested reference-contract">
@@ -2649,7 +2650,7 @@ function formatFeatureEditStatus(
     ? "Missing"
     : editability.status === "unsupported"
       ? "Unsupported"
-      : "Blocked";
+      : "Not editable";
 }
 
 function getFeatureEditDiagnostic(

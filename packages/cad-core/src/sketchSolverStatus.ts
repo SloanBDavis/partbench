@@ -114,8 +114,7 @@ export function createSketchSolverStatusResponse({
     createDiagnostic({
       code: "SKETCH_SOLVER_PREVIEW_DEFERRED",
       severity: "info",
-      message:
-        "Drag and edit preview result shapes are typed, but solver-backed preview execution is deferred to a later V11 tranche.",
+      message: "Solver-backed drag and edit previews are not available yet.",
       sketchId: sketch.id,
       expected: "non-mutating solve preview",
       received: "deferred"
@@ -175,8 +174,7 @@ export function createSketchSolverStatusResponse({
         createDiagnostic({
           code: "SKETCH_SOLVER_PREVIEW_DEFERRED",
           severity: "info",
-          message:
-            "V11 Tranche A defines preview result shapes but does not execute drag or dimension solve previews.",
+          message: "Drag and dimension solve previews are not available yet.",
           sketchId: sketch.id
         })
       ]

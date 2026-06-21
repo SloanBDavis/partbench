@@ -2105,7 +2105,7 @@ describe("cad-protocol", () => {
               code: "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL",
               severity: "warning",
               message:
-                "Some boolean result roles are source-semantic, but unproven roles remain ambiguous until a later V12 tranche proves them."
+                "Some boolean result roles are source-semantic, but unproven roles remain ambiguous until explicit topology support proves them."
             },
             {
               code: "BOOLEAN_RESULT_REFERENCES_PARTIAL_COMMAND_READY",
@@ -2662,7 +2662,7 @@ describe("cad-protocol", () => {
           code: "AMBIGUOUS_SELECTION_TOPOLOGY",
           status: "ambiguous",
           message:
-            "Boolean result body body_cut does not yet have stable command-ready generated topology.",
+            "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting.",
           bodyId: "body_cut",
           featureId: "feat_cut",
           expected: "authored rectangle/circle newBody extrude",

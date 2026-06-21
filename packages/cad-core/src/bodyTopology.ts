@@ -262,7 +262,7 @@ function createBooleanRoleDerivationDiagnostic(
       code: "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL",
       severity: "warning",
       message:
-        "Some boolean result roles are source-semantic, but unproven roles remain ambiguous until a later V12 tranche proves them."
+        "Some boolean result roles are source-semantic, but unproven roles remain ambiguous until explicit topology support proves them."
     };
   }
 

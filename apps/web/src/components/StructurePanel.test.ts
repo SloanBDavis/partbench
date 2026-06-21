@@ -198,7 +198,7 @@ describe("StructurePanel", () => {
     );
 
     expect(markup).toContain(
-      "Inspector edit unavailable - Consumed result features cannot be edited safely."
+      "Edit unavailable - Consumed result features cannot be edited safely."
     );
   });
 

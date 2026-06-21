@@ -7129,7 +7129,7 @@ function updateExtrudeFeature(
   if (feature.operationMode !== "newBody") {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${featureId} cannot be edited through feature.updateExtrude because ${feature.operationMode} result topology is not command-ready in V10 Tranche C1.`,
+      message: `Feature ${featureId} cannot be edited through feature.updateExtrude because ${feature.operationMode} result topology is not editable as a body-level feature result yet.`,
       opIndex,
       featureId,
       bodyId: feature.bodyId,
@@ -7339,7 +7339,7 @@ function updateRevolveFeature(
   if (feature.operationMode !== "newBody") {
     throwValidationError({
       code: "FEATURE_NOT_EDITABLE",
-      message: `Feature ${feature.id} cannot be edited through feature.updateRevolve because ${feature.operationMode} result topology is not command-ready in V10 Tranche C2.`,
+      message: `Feature ${feature.id} cannot be edited through feature.updateRevolve because ${feature.operationMode} result topology is not editable as a body-level feature result yet.`,
       opIndex,
       featureId: feature.id,
       bodyId: feature.bodyId,
@@ -10161,11 +10161,16 @@ function createCommandabilityIssues(
   requiredOperation: CadSelectionReferenceOperation | undefined
 ): readonly CadSelectionReferenceIssue[] {
   if (operations.length === 0) {
+    const message =
+      reference.kind === "body"
+        ? "This result body is visible, but body-level modeling commands are not available. Select a command-ready face or edge on the result for sketching, naming, measuring, or inspecting."
+        : `Selected ${reference.kind} reference has no command-ready operations.`;
+
     return [
       createSelectionIssue(
         "NON_COMMANDABLE_SELECTION_TARGET",
         "non-commandable",
-        `Selected ${reference.kind} reference has no command-ready operations.`,
+        message,
         {
           bodyId: reference.bodyId,
           stableId: reference.stableId
@@ -10242,7 +10247,7 @@ function createBodyReferenceUnavailableIssue(
       return createSelectionIssue(
         "AMBIGUOUS_SELECTION_TOPOLOGY",
         "ambiguous",
-        `Boolean result body ${body.id} does not yet have stable command-ready generated topology.`,
+        `Boolean result body ${body.id} is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting.`,
         {
           bodyId: body.id,
           stableId,
@@ -10269,7 +10274,7 @@ function createBodyReferenceUnavailableIssue(
   return createSelectionIssue(
     "AMBIGUOUS_SELECTION_TOPOLOGY",
     "ambiguous",
-    `Body ${body.id} does not yet have stable command-ready generated topology for V7 selection.`,
+    `Body ${body.id} does not expose stable command-ready generated references yet.`,
     {
       bodyId: body.id,
       stableId,

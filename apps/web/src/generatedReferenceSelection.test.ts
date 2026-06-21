@@ -269,7 +269,7 @@ describe("generated reference selection helpers", () => {
           code: "AMBIGUOUS_SELECTION_TOPOLOGY",
           status: "ambiguous",
           message:
-            "Boolean result body body_cut does not yet have stable command-ready generated topology.",
+            "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting.",
           bodyId: "body_cut",
           featureId: "feat_cut"
         }
@@ -284,10 +284,10 @@ describe("generated reference selection helpers", () => {
         tone: "blocked",
         title: "Selection topology ambiguous",
         detail:
-          "Boolean result body body_cut does not yet have stable command-ready generated topology.",
+          "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting.",
         commandOperations: [],
         issues: [
-          "Boolean result body body_cut does not yet have stable command-ready generated topology."
+          "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting."
         ]
       }
     ]);

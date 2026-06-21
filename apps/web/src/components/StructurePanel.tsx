@@ -995,7 +995,7 @@ function createFeatureEditCue(
 
   return {
     status: "blocked",
-    message: `Inspector edit unavailable - ${getFeatureEditDiagnostic(editability)}`
+    message: `Edit unavailable - ${getFeatureEditDiagnostic(editability)}`
   };
 }
 
