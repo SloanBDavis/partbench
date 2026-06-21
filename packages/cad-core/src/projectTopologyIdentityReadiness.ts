@@ -79,9 +79,9 @@ export function createProjectTopologyIdentityReadiness({
     createCapability(
       "matchingEngine",
       "Topology matching engine",
-      "deferred",
-      "TOPOLOGY_MATCHING_ENGINE_DEFERRED",
-      "Snapshot-to-snapshot matching with scored evidence and confidence is not implemented in this tranche."
+      "supported",
+      "TOPOLOGY_MATCHING_ENGINE_READY",
+      "Snapshot-to-snapshot matching with scored evidence, confidence, and explicit ambiguity/repair diagnostics is available as a non-mutating query."
     ),
     createCapability(
       "repairCommands",

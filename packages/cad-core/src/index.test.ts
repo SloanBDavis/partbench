@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   CadBodyDerivedExactMetadataSnapshot,
+  CadBodyExactTopologySnapshot,
   CadBatch,
   CadQueryRequest,
   WcadManifestV2,
@@ -12,6 +13,7 @@ import type {
   ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
+  TopologyMatchSnapshotsQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
   CadReferenceHealthTarget,
@@ -270,6 +272,83 @@ function createV18CheckpointFixture(): {
   };
 
   return { project, checkpointPayload };
+}
+
+function createTopologySnapshot(
+  entities: readonly {
+    readonly localId: string;
+    readonly kind: string;
+    readonly signature: string;
+  }[]
+): CadBodyExactTopologySnapshot {
+  const counts = {
+    bodyCount: entities.filter((entity) => entity.kind === "body").length,
+    solidCount: entities.filter((entity) => entity.kind === "solid").length,
+    faceCount: entities.filter((entity) => entity.kind === "face").length,
+    wireCount: entities.filter((entity) => entity.kind === "wire").length,
+    edgeCount: entities.filter((entity) => entity.kind === "edge").length,
+    vertexCount: entities.filter((entity) => entity.kind === "vertex").length,
+    loopCount: entities.filter((entity) => entity.kind === "loop").length,
+    coedgeCount: entities.filter((entity) => entity.kind === "coedge").length,
+    axisCount: entities.filter((entity) => entity.kind === "axis").length
+  };
+
+  return {
+    source: "kernel-derived",
+    status: "ready",
+    entityCounts: counts,
+    entityCount: entities.length,
+    entities: entities.map((entity) => ({
+      localId: entity.localId,
+      kind: entity.kind as CadBodyExactTopologySnapshot["entities"][number]["kind"],
+      source: "kernel-derived" as const,
+      signature: entity.signature
+    })),
+    unsupportedEntityKinds: [],
+    adjacencyAvailable: true,
+    signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+    signature: entities.map((entity) => entity.signature).join("|"),
+    diagnostics: []
+  };
+}
+
+function createTopologyMatchSnapshotInput({
+  checkpointId,
+  bodyId,
+  sourceFeatureId = "feature_1",
+  entities,
+  sourceIdentitySha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}: {
+  readonly checkpointId: string;
+  readonly bodyId: string;
+  readonly sourceFeatureId?: string;
+  readonly entities: readonly {
+    readonly localId: string;
+    readonly kind: string;
+    readonly signature: string;
+  }[];
+  readonly sourceIdentitySha?: string;
+}) {
+  return {
+    checkpointId,
+    bodyId,
+    sourceFeatureId,
+    sourceIdentity: {
+      algorithm: "partbench-source-v1" as const,
+      sha256: sourceIdentitySha
+    },
+    topologySnapshot: createTopologySnapshot(entities)
+  };
+}
+
+function readTopologyMatchSnapshots(
+  response: ReturnType<CadEngine["executeQuery"]>
+): TopologyMatchSnapshotsQueryResponse {
+  if (!response.ok || response.query !== "topology.matchSnapshots") {
+    throw new Error("Expected topology.matchSnapshots response.");
+  }
+
+  return response;
 }
 
 function createV17TangentRectangleProfileProject(): CadProject {
@@ -29915,8 +29994,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "matchingEngine",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "v18SourceContract",
@@ -29968,6 +30047,165 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).not.toContain("partbench.wcad.v2");
   });
 
+  it("matches topology snapshots exactly without mutating document source", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const previous = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_old",
+      bodyId: "body_rect_1",
+      entities: [
+        { localId: "face_old_1", kind: "face", signature: "face:top" },
+        { localId: "edge_old_1", kind: "edge", signature: "edge:left" }
+      ]
+    });
+    const candidate = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_new",
+      bodyId: "body_rect_1",
+      entities: [
+        { localId: "face_new_1", kind: "face", signature: "face:top" },
+        { localId: "edge_new_1", kind: "edge", signature: "edge:left" }
+      ]
+    });
+    const response = readTopologyMatchSnapshots(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "topology.matchSnapshots",
+          previous,
+          candidates: [candidate]
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      status: "active",
+      candidateSnapshotCount: 1,
+      resultCount: 2,
+      mutatesSource: false
+    });
+    expect(response.matchResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          previousCheckpointEntityId: "face_old_1",
+          candidateCheckpointEntityId: "face_new_1",
+          entityKind: "face",
+          state: "active",
+          confidence: "exact",
+          confidenceScore: 1
+        }),
+        expect.objectContaining({
+          previousCheckpointEntityId: "edge_old_1",
+          candidateCheckpointEntityId: "edge_new_1",
+          entityKind: "edge",
+          state: "active",
+          confidence: "exact"
+        })
+      ])
+    );
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("reports deleted, split, merged, ambiguous, low-confidence, and kind-mismatch topology matches", () => {
+    const engine = new CadEngine();
+    const previous = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_old",
+      bodyId: "body_a",
+      entities: [
+        { localId: "face_exact", kind: "face", signature: "sig_exact" },
+        { localId: "axis_deleted", kind: "axis", signature: "sig_deleted" },
+        { localId: "edge_split", kind: "edge", signature: "sig_split" },
+        { localId: "edge_merge_a", kind: "edge", signature: "sig_merge" },
+        { localId: "edge_merge_b", kind: "edge", signature: "sig_merge" },
+        {
+          localId: "face_ambiguous",
+          kind: "face",
+          signature: "sig_ambiguous"
+        },
+        { localId: "vertex_low", kind: "vertex", signature: "sig_low" },
+        { localId: "edge_kind", kind: "edge", signature: "sig_kind" }
+      ]
+    });
+    const candidate = createTopologyMatchSnapshotInput({
+      checkpointId: "checkpoint_new",
+      bodyId: "body_a",
+      sourceFeatureId: "feature_1",
+      entities: [
+        { localId: "face_exact_new", kind: "face", signature: "sig_exact" },
+        { localId: "edge_split_new_a", kind: "edge", signature: "sig_split" },
+        { localId: "edge_split_new_b", kind: "edge", signature: "sig_split" },
+        { localId: "edge_merge_new", kind: "edge", signature: "sig_merge" },
+        { localId: "face_amb_a", kind: "face", signature: "sig_amb_a" },
+        { localId: "face_amb_b", kind: "face", signature: "sig_amb_b" },
+        { localId: "vertex_low_new", kind: "vertex", signature: "sig_other" },
+        { localId: "face_kind_new", kind: "face", signature: "sig_kind" }
+      ],
+      sourceIdentitySha:
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    });
+    const response = readTopologyMatchSnapshots(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "topology.matchSnapshots",
+          previous,
+          candidates: [candidate]
+        }
+      })
+    );
+    const byPreviousEntity = new Map(
+      response.matchResults.map((result) => [
+        result.previousCheckpointEntityId,
+        result
+      ])
+    );
+
+    expect(byPreviousEntity.get("face_exact")).toMatchObject({
+      state: "active",
+      confidence: "exact"
+    });
+    expect(byPreviousEntity.get("axis_deleted")).toMatchObject({
+      state: "deleted",
+      confidence: "none",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_DELETED" })
+      ])
+    });
+    expect(byPreviousEntity.get("edge_split")).toMatchObject({
+      state: "split",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_SPLIT" })
+      ])
+    });
+    expect(byPreviousEntity.get("edge_merge_a")).toMatchObject({
+      state: "merged",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_MERGED" })
+      ])
+    });
+    expect(byPreviousEntity.get("face_ambiguous")).toMatchObject({
+      state: "ambiguous",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_AMBIGUOUS" })
+      ])
+    });
+    expect(byPreviousEntity.get("vertex_low")).toMatchObject({
+      state: "repair-needed",
+      confidence: "low",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_LOW_CONFIDENCE" })
+      ])
+    });
+    expect(byPreviousEntity.get("edge_kind")).toMatchObject({
+      state: "repair-needed",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_KIND_MISMATCH" })
+      ])
+    });
+  });
+
   it("rejects malformed project.packageReadiness query payloads", () => {
     const engine = new CadEngine();
     const response = engine.executeQuery({
@@ -30000,6 +30238,29 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(response).toMatchObject({
       ok: false,
       query: "project.topologyIdentityReadiness",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects malformed topology.matchSnapshots query payloads", () => {
+    const engine = new CadEngine();
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.matchSnapshots",
+        previous: {
+          bodyId: "body_1",
+          topologySnapshot: { source: "renderer" }
+        },
+        candidates: []
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "topology.matchSnapshots",
       error: {
         code: "INVALID_QUERY"
       }

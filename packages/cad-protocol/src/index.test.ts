@@ -3,6 +3,7 @@ import type {
   CadAxisAlignedBounds,
   CadBatch,
   CadBatchValidationError,
+  CadBodyExactTopologySnapshot,
   CadBodySnapshot,
   CadExtrudeFeatureSummary,
   CadGeneratedEdgeReference,
@@ -45,6 +46,7 @@ import type {
   SketchEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
+  TopologyMatchSnapshotsQueryResponse,
   WcadManifestV1,
   WcadManifestV2,
   WcadPackageValidationIssue,
@@ -677,6 +679,131 @@ describe("cad-protocol", () => {
     expect(JSON.stringify(manifest)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
     );
+  });
+
+  it("types non-mutating topology snapshot matching requests and responses", () => {
+    const topologySnapshot: CadBodyExactTopologySnapshot = {
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "checkpoint-local:face:1",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face-signature"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "snapshot-signature",
+      diagnostics: []
+    };
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "topology.matchSnapshots",
+        previous: {
+          checkpointId: "checkpoint_old",
+          bodyId: "body_1",
+          topologySnapshot
+        },
+        candidates: [
+          {
+            checkpointId: "checkpoint_new",
+            bodyId: "body_1",
+            topologySnapshot
+          }
+        ]
+      }
+    };
+    const response: TopologyMatchSnapshotsQueryResponse = {
+      ok: true,
+      query: "topology.matchSnapshots",
+      cadOpsVersion: "cadops.v1",
+      status: "active",
+      previousSnapshot: {
+        checkpointId: "checkpoint_old",
+        bodyId: "body_1",
+        entityKinds: ["face"],
+        entityCount: 1,
+        status: "active",
+        diagnostics: []
+      },
+      candidateSnapshotCount: 1,
+      candidateSnapshots: [
+        {
+          checkpointId: "checkpoint_new",
+          bodyId: "body_1",
+          entityKinds: ["face"],
+          entityCount: 1,
+          status: "active",
+          diagnostics: []
+        }
+      ],
+      resultCount: 1,
+      matchResults: [
+        {
+          previousCheckpointId: "checkpoint_old",
+          candidateCheckpointId: "checkpoint_new",
+          previousCheckpointEntityId: "checkpoint-local:face:1",
+          candidateCheckpointEntityId: "checkpoint-local:face:1",
+          entityKind: "face",
+          state: "active",
+          confidence: "exact",
+          confidenceScore: 1,
+          evidenceCount: 1,
+          evidence: [
+            {
+              kind: "geometrySignature",
+              confidence: "exact",
+              message: "Exact signature match.",
+              previousValue: "face-signature",
+              candidateValue: "face-signature"
+            }
+          ],
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "TOPOLOGY_MATCH_EXACT",
+              status: "supported",
+              severity: "info",
+              message: "Matched."
+            }
+          ]
+        }
+      ],
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "TOPOLOGY_MATCH_EXACT",
+          status: "supported",
+          severity: "info",
+          message: "Matched."
+        }
+      ],
+      sourceBoundaryNote: "Authoritative snapshot input only.",
+      derivedBoundaryNote: "Private renderer IDs excluded.",
+      mutatesSource: false
+    };
+
+    expect(request.query.query).toBe("topology.matchSnapshots");
+    expect(response.matchResults[0]?.previousCheckpointEntityId).toBe(
+      "checkpoint-local:face:1"
+    );
+    expect(response.mutatesSource).toBe(false);
   });
 
   it("types supported scene commands", () => {

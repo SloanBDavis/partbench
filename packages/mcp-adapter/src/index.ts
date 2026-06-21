@@ -20,7 +20,8 @@ import type {
   CadReferenceHealthTarget,
   CadSketchEditProposal,
   CadSelectionReferenceInput,
-  CadSelectionReferenceOperation
+  CadSelectionReferenceOperation,
+  CadTopologyMatchSnapshotInput
 } from "@web-cad/cad-protocol";
 
 const SHA256_HEX_PATTERN = "^[a-f0-9]{64}$";
@@ -36,6 +37,7 @@ export type CadMcpToolName =
   | "cad.project_dependency_graph"
   | "cad.project_rebuild_plan"
   | "cad.project_topology_identity_readiness"
+  | "cad.topology_match_snapshots"
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
@@ -190,6 +192,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.project_topology_identity_readiness") {
       return this.#callProjectTopologyIdentityReadiness(request);
+    }
+
+    if (request.name === "cad.topology_match_snapshots") {
+      return this.#callTopologyMatchSnapshots(request);
     }
 
     if (request.name === "cad.project_export_readiness") {
@@ -578,6 +584,34 @@ export class CadMcpServer {
         query: {
           version: "cadops.v1",
           query: { query: "project.topologyIdentityReadiness" }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callTopologyMatchSnapshots(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isTopologyMatchSnapshotsArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.topology_match_snapshots requires previous and candidates snapshot inputs."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "topology.matchSnapshots",
+            previous: request.arguments.previous,
+            candidates: request.arguments.candidates
+          }
         }
       })
     );
@@ -1369,6 +1403,23 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
       type: "object",
       additionalProperties: false,
       properties: {}
+    }
+  },
+  {
+    name: "cad.topology_match_snapshots",
+    description:
+      "Runs V13 non-mutating exact topology snapshot matching and returns confidence, evidence, ambiguity, split/merge, deletion, and repair diagnostics.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["previous", "candidates"],
+      properties: {
+        previous: { type: "object" },
+        candidates: {
+          type: "array",
+          items: { type: "object" }
+        }
+      }
     }
   },
   {
@@ -2572,6 +2623,31 @@ function isSketchPointTarget(value: unknown): value is {
       value.role === "start" ||
       value.role === "end" ||
       value.role === "center")
+  );
+}
+
+function isTopologyMatchSnapshotsArguments(value: unknown): value is {
+  readonly previous: CadTopologyMatchSnapshotInput;
+  readonly candidates: readonly CadTopologyMatchSnapshotInput[];
+} {
+  return (
+    isRecord(value) &&
+    isTopologyMatchSnapshotInputShape(value.previous) &&
+    Array.isArray(value.candidates) &&
+    value.candidates.every(isTopologyMatchSnapshotInputShape)
+  );
+}
+
+function isTopologyMatchSnapshotInputShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.snapshotId === undefined || typeof value.snapshotId === "string") &&
+    (value.checkpointId === undefined ||
+      typeof value.checkpointId === "string") &&
+    typeof value.bodyId === "string" &&
+    (value.sourceFeatureId === undefined ||
+      typeof value.sourceFeatureId === "string") &&
+    isRecord(value.topologySnapshot)
   );
 }
 

@@ -2369,10 +2369,13 @@ Use these decisions when drafting or implementing V13 tranches:
    compatibility, and keep `.wcad` v1 read/write compatibility. Geometry-boundary
    B-rep checkpoint byte creation and Project/File checkpoint status remain for
    later V13 tranches.
-5. **Topology Matching Engine** - snapshot-to-snapshot matching with source
-   lineage, signatures, geometry, adjacency, kernel evidence where available,
-   and structured confidence/evidence output for active/replaced/split/merged/
-   deleted/ambiguous/repair-needed states.
+5. **Implemented: Topology Matching Engine** - `topology.matchSnapshots`
+   performs non-mutating snapshot-to-snapshot matching with source lineage,
+   signature, checkpoint source identity, confidence, evidence, and structured
+   diagnostics for active/replaced/split/merged/deleted/ambiguous/
+   repair-needed/kind-mismatch states. Agent and MCP wrappers pass through the
+   same cad-core query. Richer geometry/adjacency scoring waits for richer
+   checkpoint descriptors.
 6. **Reference Health And Rebuild Integration** - existing reference,
    dependency, rebuild, editability, and semantic-diff surfaces consume topology
    matching and report topology-anchor effects consistently.

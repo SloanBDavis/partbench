@@ -49,6 +49,7 @@ import type {
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
+  TopologyMatchSnapshotsQueryResponse,
   SketchEditReadinessQueryResponse,
   SketchSolverStatusQueryResponse,
   CadProjectSummaryExportSummary,
@@ -338,6 +339,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectDependencyGraphQueryResponse
   | CadOpsAgentProjectRebuildPlanQueryResponse
   | CadOpsAgentProjectTopologyIdentityReadinessQueryResponse
+  | CadOpsAgentTopologyMatchSnapshotsQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
   | CadOpsAgentProjectExactExportQueryResponse
   | CadOpsAgentProjectPackageReadinessQueryResponse
@@ -482,6 +484,15 @@ export interface CadOpsAgentProjectRebuildPlanQueryResponse extends Omit<
 
 export interface CadOpsAgentProjectTopologyIdentityReadinessQueryResponse extends Omit<
   ProjectTopologyIdentityReadinessQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentTopologyMatchSnapshotsQueryResponse extends Omit<
+  TopologyMatchSnapshotsQueryResponse,
   "ok"
 > {
   readonly ok: true;
@@ -772,6 +783,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.dependencyGraph"
     | "project.rebuildPlan"
     | "project.topologyIdentityReadiness"
+    | "topology.matchSnapshots"
     | "project.exportReadiness"
     | "project.exportExact"
     | "project.packageReadiness"
@@ -2343,6 +2355,27 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "topology.matchSnapshots") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      status: response.status,
+      previousSnapshot: response.previousSnapshot,
+      candidateSnapshotCount: response.candidateSnapshotCount,
+      candidateSnapshots: response.candidateSnapshots,
+      resultCount: response.resultCount,
+      matchResults: response.matchResults,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      mutatesSource: response.mutatesSource
+    };
+  }
+
   if (response.query === "project.exportReadiness") {
     return {
       ok: true,
@@ -3117,6 +3150,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.topologyIdentityReadiness" &&
         Object.keys(value.query).length === 1) ||
+      (value.query.query === "topology.matchSnapshots" &&
+        isTopologyMatchSnapshotsQueryShape(value.query)) ||
       (value.query.query === "project.exportReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportExact" &&
@@ -3354,6 +3389,31 @@ function isProjectExactExportQuery(value: Record<string, unknown>): boolean {
         value.bodyIds.every((bodyId) => typeof bodyId === "string"))) &&
     (value.sourceIdentity === undefined ||
       isWcadSourceIdentityInput(value.sourceIdentity))
+  );
+}
+
+function isTopologyMatchSnapshotsQueryShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.query === "topology.matchSnapshots" &&
+    isTopologyMatchSnapshotInputShape(value.previous) &&
+    Array.isArray(value.candidates) &&
+    value.candidates.every(isTopologyMatchSnapshotInputShape)
+  );
+}
+
+function isTopologyMatchSnapshotInputShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.snapshotId === undefined || typeof value.snapshotId === "string") &&
+    (value.checkpointId === undefined ||
+      typeof value.checkpointId === "string") &&
+    typeof value.bodyId === "string" &&
+    (value.sourceFeatureId === undefined ||
+      typeof value.sourceFeatureId === "string") &&
+    (value.sourceIdentity === undefined ||
+      isWcadSourceIdentityInput(value.sourceIdentity)) &&
+    isRecord(value.topologySnapshot)
   );
 }
 

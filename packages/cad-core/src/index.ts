@@ -71,6 +71,7 @@ import type {
   CadSketchRef,
   CadTransactionStatus,
   CadTopologyIdentitySourceSnapshot,
+  CadTopologyMatchSnapshotInput,
   ConeDimensions,
   CylinderDimensions,
   DocumentSemanticDiff,
@@ -188,6 +189,7 @@ import {
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
 import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentityReadiness";
+import { createTopologyMatchSnapshotsResponse } from "./topologyMatching";
 import {
   collectWcadV2CheckpointSourceEntries,
   createWcadV2CheckpointEntryPaths,
@@ -1323,6 +1325,13 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()]
+        });
+      }
+
+      case "topology.matchSnapshots": {
+        return createTopologyMatchSnapshotsResponse({
+          cadOpsVersion: request.version,
+          query: request.query
         });
       }
 
@@ -4890,6 +4899,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.dependencyGraph":
     case "project.rebuildPlan":
     case "project.topologyIdentityReadiness":
+    case "topology.matchSnapshots":
     case "project.exportReadiness":
     case "project.exportExact":
     case "project.packageReadiness":
@@ -4938,6 +4948,12 @@ function isCadQuery(value: unknown): boolean {
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "topology.matchSnapshots":
+      return (
+        isCadTopologyMatchSnapshotInput(value.previous) &&
+        Array.isArray(value.candidates) &&
+        value.candidates.every(isCadTopologyMatchSnapshotInput)
+      );
     case "project.exportExact":
       return isProjectExactExportQuery(value);
     case "project.health":
@@ -5008,6 +5024,26 @@ function isCadQuery(value: unknown): boolean {
     default:
       return false;
   }
+}
+
+function isCadTopologyMatchSnapshotInput(
+  value: unknown
+): value is CadTopologyMatchSnapshotInput {
+  return (
+    isRecord(value) &&
+    (value.snapshotId === undefined || typeof value.snapshotId === "string") &&
+    (value.checkpointId === undefined ||
+      typeof value.checkpointId === "string") &&
+    typeof value.bodyId === "string" &&
+    (value.sourceFeatureId === undefined ||
+      typeof value.sourceFeatureId === "string") &&
+    (value.sourceIdentity === undefined ||
+      (isRecord(value.sourceIdentity) &&
+        value.sourceIdentity.algorithm === WCAD_SOURCE_IDENTITY_ALGORITHM &&
+        typeof value.sourceIdentity.sha256 === "string" &&
+        SHA256_HEX_PATTERN.test(value.sourceIdentity.sha256))) &&
+    isCadBodyExactTopologySnapshot(value.topologySnapshot)
+  );
 }
 
 function isCadFeatureEditProposal(value: unknown): boolean {

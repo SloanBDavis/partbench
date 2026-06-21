@@ -17,6 +17,7 @@ describe("mcp-adapter", () => {
       "cad.project_dependency_graph",
       "cad.project_rebuild_plan",
       "cad.project_topology_identity_readiness",
+      "cad.topology_match_snapshots",
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
@@ -1246,6 +1247,88 @@ describe("mcp-adapter", () => {
     expect(JSON.stringify(result.structuredContent)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
+  });
+
+  it("matches topology snapshots through cad.topology_match_snapshots", () => {
+    const server = new CadMcpServer();
+    const topologySnapshot = {
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "face_old",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face-signature"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "snapshot-signature",
+      diagnostics: []
+    };
+    const result = server.callTool({
+      name: "cad.topology_match_snapshots",
+      requestId: "mcp_req_topology_match",
+      arguments: {
+        previous: {
+          checkpointId: "checkpoint_old",
+          bodyId: "body_1",
+          topologySnapshot
+        },
+        candidates: [
+          {
+            checkpointId: "checkpoint_new",
+            bodyId: "body_1",
+            topologySnapshot: {
+              ...topologySnapshot,
+              entities: [
+                {
+                  localId: "face_new",
+                  kind: "face",
+                  source: "kernel-derived",
+                  signature: "face-signature"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.topology_match_snapshots",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_topology_match",
+        query: "topology.matchSnapshots",
+        status: "active",
+        resultCount: 1,
+        mutatesSource: false,
+        matchResults: [
+          expect.objectContaining({
+            state: "active",
+            confidence: "exact",
+            previousCheckpointEntityId: "face_old",
+            candidateCheckpointEntityId: "face_new"
+          })
+        ]
+      }
+    });
   });
 
   it("returns compact V8 package, cache, export, and file boundary surface through cad.v8_project_surface", () => {
@@ -4206,6 +4289,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_dependency_graph" },
           { name: "cad.project_rebuild_plan" },
           { name: "cad.project_topology_identity_readiness" },
+          { name: "cad.topology_match_snapshots" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },

@@ -1069,6 +1069,7 @@ export type CadQueryKind =
   | "project.dependencyGraph"
   | "project.rebuildPlan"
   | "project.topologyIdentityReadiness"
+  | "topology.matchSnapshots"
   | "project.exportReadiness"
   | "project.exportExact"
   | "project.packageReadiness"
@@ -1104,6 +1105,7 @@ export type CadQuery =
   | ProjectDependencyGraphQuery
   | ProjectRebuildPlanQuery
   | ProjectTopologyIdentityReadinessQuery
+  | TopologyMatchSnapshotsQuery
   | ProjectExportReadinessQuery
   | ProjectExactExportQuery
   | ProjectPackageReadinessQuery
@@ -1170,6 +1172,21 @@ export interface ProjectRebuildPlanQuery {
 
 export interface ProjectTopologyIdentityReadinessQuery {
   readonly query: "project.topologyIdentityReadiness";
+}
+
+export interface CadTopologyMatchSnapshotInput {
+  readonly snapshotId?: string;
+  readonly checkpointId?: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity?: WcadSourceIdentity;
+  readonly topologySnapshot: CadBodyExactTopologySnapshot;
+}
+
+export interface TopologyMatchSnapshotsQuery {
+  readonly query: "topology.matchSnapshots";
+  readonly previous: CadTopologyMatchSnapshotInput;
+  readonly candidates: readonly CadTopologyMatchSnapshotInput[];
 }
 
 export interface ProjectExportReadinessQuery {
@@ -2914,7 +2931,17 @@ export type CadTopologyIdentityDiagnosticCode =
   | "TOPOLOGY_PACKAGE_V2_CONTRACT_READY"
   | "TOPOLOGY_PACKAGE_V2_CHECKPOINT_INVALID"
   | "TOPOLOGY_SCHEMA_V18_DEFERRED"
-  | "TOPOLOGY_PACKAGE_V2_DEFERRED";
+  | "TOPOLOGY_PACKAGE_V2_DEFERRED"
+  | "TOPOLOGY_MATCH_EXACT"
+  | "TOPOLOGY_MATCH_REPLACED"
+  | "TOPOLOGY_MATCH_SPLIT"
+  | "TOPOLOGY_MATCH_MERGED"
+  | "TOPOLOGY_MATCH_AMBIGUOUS"
+  | "TOPOLOGY_MATCH_DELETED"
+  | "TOPOLOGY_MATCH_LOW_CONFIDENCE"
+  | "TOPOLOGY_MATCH_KIND_MISMATCH"
+  | "TOPOLOGY_MATCH_UNSUPPORTED"
+  | "TOPOLOGY_MATCHING_ENGINE_READY";
 
 export type CadTopologyIdentityState =
   | "active"
@@ -3024,6 +3051,10 @@ export interface CadTopologyMatchResult {
   readonly anchorId?: string;
   readonly previousStableId?: string;
   readonly candidateStableId?: string;
+  readonly previousCheckpointId?: string;
+  readonly candidateCheckpointId?: string;
+  readonly previousCheckpointEntityId?: string;
+  readonly candidateCheckpointEntityId?: string;
   readonly entityKind: CadTopologyEntityKind;
   readonly state: CadTopologyIdentityState;
   readonly confidence: CadTopologyMatchConfidence;
@@ -4631,6 +4662,7 @@ export type CadQueryResponse =
   | ProjectDependencyGraphQueryResponse
   | ProjectRebuildPlanQueryResponse
   | ProjectTopologyIdentityReadinessQueryResponse
+  | TopologyMatchSnapshotsQueryResponse
   | ProjectExportReadinessQueryResponse
   | ProjectExactExportQueryResponse
   | ProjectPackageReadinessQueryResponse
@@ -4821,6 +4853,23 @@ export interface ProjectTopologyIdentityReadinessQueryResponse {
   readonly capabilities: readonly CadTopologyIdentityCapabilityReadiness[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface TopologyMatchSnapshotsQueryResponse {
+  readonly ok: true;
+  readonly query: "topology.matchSnapshots";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadTopologyIdentityState;
+  readonly previousSnapshot: CadTopologySnapshotDescriptor;
+  readonly candidateSnapshotCount: number;
+  readonly candidateSnapshots: readonly CadTopologySnapshotDescriptor[];
+  readonly resultCount: number;
+  readonly matchResults: readonly CadTopologyMatchResult[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
 }
 
 export interface ProjectExportReadinessQueryResponse {

@@ -2686,7 +2686,7 @@ describe("agent-adapter", () => {
         }),
         expect.objectContaining({
           capability: "matchingEngine",
-          status: "deferred"
+          status: "supported"
         })
       ]),
       diagnostics: expect.arrayContaining([
@@ -2699,6 +2699,89 @@ describe("agent-adapter", () => {
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
+  });
+
+  it("passes topology snapshot matching queries through the adapter", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const topologySnapshot = {
+      source: "kernel-derived" as const,
+      status: "ready" as const,
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "face_old",
+          kind: "face" as const,
+          source: "kernel-derived" as const,
+          signature: "face-signature"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1" as const,
+      signature: "snapshot-signature",
+      diagnostics: []
+    };
+    const response = adapter.query({
+      requestId: "agent_topology_match",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "topology.matchSnapshots",
+          previous: {
+            checkpointId: "checkpoint_old",
+            bodyId: "body_1",
+            topologySnapshot
+          },
+          candidates: [
+            {
+              checkpointId: "checkpoint_new",
+              bodyId: "body_1",
+              topologySnapshot: {
+                ...topologySnapshot,
+                entities: [
+                  {
+                    localId: "face_new",
+                    kind: "face" as const,
+                    source: "kernel-derived" as const,
+                    signature: "face-signature"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_match",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "topology.matchSnapshots",
+      status: "active",
+      resultCount: 1,
+      mutatesSource: false,
+      matchResults: [
+        expect.objectContaining({
+          state: "active",
+          confidence: "exact",
+          previousCheckpointEntityId: "face_old",
+          candidateCheckpointEntityId: "face_new"
+        })
+      ]
+    });
   });
 
   it("returns a compact V8 Agent/MCP package and export surface", () => {
