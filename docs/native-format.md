@@ -733,13 +733,16 @@ as source intent only: no B-rep, mesh result, OCCT topology ID, or renderer
 cache is persisted. `feature.hole` consumes one active authored target body and
 creates one authored result body, matching the add/cut result-body model. Blind
 holes require a positive finite `depth`; through-all holes must omit `depth`.
-The current V6 Phase D slices validate and round-trip the source model and can
+The current implementation validates and round-trips the source model and can
 rebuild supported hole result meshes as derived geometry through the
 geometry-worker path. Supported hole result bodies can also report
 kernel-derived exact metadata through read-only derived snapshots when the
 target rectangle/circle authored extrude source and circular tool placement are
-available. Generated references for hole result bodies and exact topology
-naming are not implemented yet.
+available. Supported authored hole result bodies expose deterministic generated
+references for the result body, cylindrical `holeWall` face, `startRim` edge,
+and `holeAxis` where current source semantics prove them. Hole terminal/exit
+rims and arbitrary result topology remain unsupported until deliberately
+scoped.
 Chamfer and fillet features reference one generated edge on an active authored
 rectangle or circle `newBody` extrude target body. V16 stores these records as
 source intent only: no B-rep, mesh result, OCCT topology ID, renderer cache, or
@@ -765,7 +768,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16 Storage Decision
+## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16/V17 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -830,7 +833,14 @@ command-first chamfer/fillet feature records carry target body ID, one
 generated or named edge reference, distance/radius, and result body ID. That
 edge-finishing source intent cannot be represented by the V15
 extrude/revolve/hole feature shape, so it introduced `web-cad.project.v16`.
-Current exports therefore use `web-cad.project.v16`.
+Ordinary current exports therefore use `web-cad.project.v16`.
+
+V11 advanced sketch solver constraint records carry tangent, concentric,
+equal-length, equal-radius, angle, and symmetry source intent that cannot be
+represented by the V16 constraint shape without changing meaning. That
+persisted intent introduced `web-cad.project.v17`. Current exports use
+`web-cad.project.v17` only when those V11 advanced sketch constraint source
+records are present.
 
 The loader accepts:
 
@@ -851,6 +861,7 @@ web-cad.project.v13
 web-cad.project.v14
 web-cad.project.v15
 web-cad.project.v16
+web-cad.project.v17
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -900,6 +911,15 @@ features are a V14 source shape and are rejected in V13 documents.
 Schema V14 projects migrate with authored revolve features intact. Hole
 features are a V15 source shape and are rejected in V14 documents.
 
+Schema V15 projects migrate with authored hole features intact. Chamfer and
+fillet features are a V16 source shape and are rejected in V15 documents.
+
+Schema V16 projects migrate with authored chamfer/fillet features intact. V11
+advanced sketch solver constraints are a V17 source shape and are rejected in
+V16 documents.
+
+Schema V17 projects migrate with V11 advanced sketch solver constraints intact.
+
 The derived mapping is deterministic:
 
 ```text
@@ -946,8 +966,9 @@ The current source of truth is:
   literal values, and parameter bindings
 - sketch constraint IDs, names, source sketch/entity references, supported
   constraint kind, fixed coordinates, explicit point targets, midpoint
-  line/target references, and parallel/perpendicular primary/secondary line
-  references
+  line/target references, parallel/perpendicular primary/secondary line
+  references, and V17 tangent/concentric/equal-length/equal-radius/angle/
+  symmetry source targets where present
 - `document.nextSketchNumber`
 - `document.nextSketchEntityNumber`
 - `document.nextParameterNumber`
@@ -988,7 +1009,7 @@ summaries include the source sketch/entity, profile kind, same-sketch axis line,
 angle, operation mode, and authored body ID. Hole, chamfer, and fillet summaries
 include their target-consuming source inputs and authored result body IDs.
 
-The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16 compatibility bridge:
+The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16/V17 compatibility bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -1121,18 +1142,60 @@ identity, it may pass that snapshot into the read-only query. Matching snapshots
 upgrade exact geometry/measurement availability to `kernel-derived`; stale,
 unsupported, failed, or unavailable-binding snapshots are reported as structured
 status/issues. Primitive compatibility bodies return `unsupported` snapshots,
-and current boolean result bodies still do not claim generated semantic
-topology roles. Boolean result bodies may report matching kernel-derived exact
-metadata while keeping `topologyAvailable: false` until boolean topology naming
-is deliberately scoped. Authored revolve bodies may also report matching
-kernel-derived exact metadata while keeping generated references unsupported
-until stable revolve topology roles are deliberately scoped. This query is
-read-only derived data; it does not persist OCCT state, B-rep data, mesh data,
-topology indexes, kernel metadata, or a new source-of-truth project field.
-Authored hole result bodies may report matching kernel-derived exact metadata
-while keeping generated references and semantic topology unavailable until
-stable hole topology roles are deliberately scoped. Derived metadata-only
-changes do not require a schema version.
+and unsupported boolean result topology remains diagnostic-only until a tranche
+deliberately scopes the corresponding source-semantic role. Boolean result
+bodies may report matching kernel-derived exact metadata while keeping
+`topologyAvailable: false` until boolean topology naming is deliberately
+scoped. V12 Tranche A adds an optional `booleanTopology`
+readiness block to `body.topology` for authored add/cut extrude result bodies.
+That block records `partbench.boolean-topology.v1`, source semantic inputs,
+boolean result roles, derived exact validation status, and structured
+diagnostics. V12 Tranche B adds derived readiness IDs, labels, and source-role
+names for proven source-semantic cut-wall face roles on direct
+command-supported rectangle cut results (`side:uMin`, `side:uMax`, `side:vMin`,
+and `side:vMax`). It also derives proven source-semantic rectangle add wall
+face roles for the same side names and one add cap role (`endCap`) when the
+add result targets a supported rectangle `newBody`, plus added-cap profile edge
+roles (`end:uMin`, `end:uMax`, `end:vMin`, and `end:vMax`). Unproven
+carried/split target faces, add seam/base edges, terminal faces, rim roles,
+split roles, and intersection topology remain deferred. The circle tool slice
+also derives source-semantic circle cut-wall/rim roles
+(`side:circular`, `start:circular`, and `end:circular`) and circle add-wall/
+cap/cap-edge roles (`side:circular`, `endCap`, and `end:circular`) for
+supported circle tool profiles. V12 Tranche C promotes those direct rectangle
+cut-wall, rectangle add wall/cap, circle cut-wall, and circle add wall/cap face
+roles to command-ready generated references using existing result-body-scoped
+stable IDs such as
+`generated:face:body_cut_1:side:uMin`,
+`generated:face:body_add_1:side:uMin`, and
+`generated:face:body_add_1:endCap`; generated signatures carry derived extrude
+operation mode and target body context. The boolean result body reference
+remains a non-commandable container. V12 Tranche D1 adds four
+source-semantic rectangle cut-wall profile edge references, using IDs such as
+`generated:edge:body_cut_1:longitudinal:uMin:vMin`; those edges are selectable,
+nameable through the existing selected-reference path, and measurable, but are
+not eligible for chamfer/fillet until the edge-finish command/runtime supports
+boolean-result targets. V12 D2 adds source-semantic rectangle added-cap profile
+edge references, using IDs such as `generated:edge:body_add_1:end:uMin`; those
+edges are likewise selectable, nameable through the existing selected-reference
+path, and measurable, while add seam/base and target-carried edge topology stays
+deferred. The circle tool slice adds generated edge IDs such as
+`generated:edge:body_cut_1:end:circular` and
+`generated:edge:body_add_1:end:circular` for supported circular cut rims and
+added-cap profile edges. The block and generated reference outputs are derived
+query data and do not persist topology maps, exact B-rep data, renderer IDs,
+OCCT IDs, mesh IDs, or a new project schema. Authored
+revolve bodies may also report matching kernel-derived exact metadata while
+keeping generated references unsupported until stable revolve topology roles
+are deliberately scoped. This query is read-only derived data; it does not
+persist OCCT state, B-rep data, mesh data, topology indexes, kernel metadata, or
+a new source-of-truth project field.
+Supported authored hole result bodies may expose source-semantic generated
+references for body, `holeWall`, `startRim`, and `holeAxis` roles, while
+matching kernel-derived exact metadata remains optional read-only validation
+data. Unsupported hole terminal/exit rims and arbitrary hole result topology
+stay diagnostic until deliberately scoped. Derived metadata-only changes do not
+require a schema version.
 Authored chamfer and fillet result bodies may report matching kernel-derived
 exact metadata for the supported rectangle-edge subset while keeping generated
 references and semantic topology unavailable until stable edge-finish topology
@@ -1168,7 +1231,7 @@ named-reference lookup results, or exact B-rep data.
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v16`
+that cannot be faithfully represented by the current `web-cad.project.v17`
 document shape.
 
 V6 introduced `web-cad.project.v14` when `feature.revolve` added the first
@@ -1180,14 +1243,16 @@ edge-finishing source intent. Exact-kernel metadata, topology snapshots,
 measurement outputs, mesh results, semantic selection/reference candidate query
 outputs, and UI selection state remain derived and do not justify a schema
 version by themselves.
+V11 introduced `web-cad.project.v17` when advanced sketch solver constraints
+became persisted source-of-truth data. Query-derived boolean topology readiness,
+generated-reference candidates, derived exact signatures, and V12 release-smoke
+metadata do not justify another schema version by themselves.
 
 Likely triggers:
 
 - explicit authored parts with names/origins beyond the derived default part;
 - future source-of-truth sketch profiles, solver state, expression records, or
-  constraint families beyond current V13
-  horizontal/vertical/fixed/coincident/midpoint/parallel/perpendicular
-  constraints;
+  constraint families beyond current V17 sketch constraints;
 - additional feature records that require new persisted inputs beyond current
   extrude/revolve/hole, such as sweep, loft, shell, patterns, or edit
   features;
@@ -1195,9 +1260,10 @@ Likely triggers:
   required rebuild inputs;
 - persisted durable topological references beyond the current semantic named
   generated references, such as exact topology-backed faces, edges, vertices,
-  sketches, and features;
+  explicit topology anchor records, manual topology repair records, sketches,
+  and features;
 - assembly definitions, instances, mates, or material overrides;
-- project-level materials/named views that are not represented by V16;
+- project-level materials/named views that are not represented by V17;
   or
 - a command-log representation that cannot be preserved with current transaction
   history.
@@ -1206,14 +1272,17 @@ When any future source records become real source data, the next format should
 be explicit:
 
 ```text
-schemaVersion: web-cad.project.v17
+schemaVersion: web-cad.project.v18
 ```
 
-That format should include a migration from older accepted versions, not silent
-shape guessing. Current `web-cad.project.v16` preserves V1-V15 import
-compatibility and adds only the currently implemented revolve, hole, chamfer,
-and fillet source records. It does not persist B-rep checkpoints, OCCT topology
-IDs, exact metadata query results, or tessellated mesh caches.
+`web-cad.project.v17` is already used for V11 advanced sketch constraint source
+records. If another future release adds source-of-truth data after V17, the
+next format should be `web-cad.project.v18` and should include a migration from
+older accepted versions, not silent shape guessing. Current
+`web-cad.project.v17` preserves V1-V16 import compatibility and adds only the
+currently implemented advanced sketch constraint source records beyond V16. It
+does not persist B-rep checkpoints, OCCT topology IDs, exact metadata query
+results, generated-reference query output, or tessellated mesh caches.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
@@ -1230,16 +1299,19 @@ constraints became persisted source-of-truth data. V6 Phase B introduced
 source-of-truth data. V6 Phase D introduced `web-cad.project.v15` when authored
 hole feature intent became persisted source-of-truth data. V6 Phase E core
 introduced `web-cad.project.v16` when authored chamfer/fillet feature intent
-became persisted source-of-truth data. Query-only
-solver/evaluator summaries
+became persisted source-of-truth data. V11 Tranche C introduced
+`web-cad.project.v17` when tangent, concentric, equal-length, equal-radius,
+angle, and symmetry sketch constraints became persisted source-of-truth data.
+Query-only solver/evaluator summaries
 such as `sketch.evaluation`, dependency health, generated-reference labels,
 derived measurements, and renderer display frames should remain rebuildable
 query/cache data and should not trigger a format version by themselves.
 
-Future V7 or later slices should introduce another project format only if they
-add persisted source-of-truth data that cannot be represented by the current V16
+Future slices should introduce another project format only if they add
+persisted source-of-truth data that cannot be represented by the current V17
 feature and constraint records. Solver/evaluator status, reference-candidate
-status, export-readiness status, release-smoke metadata, and exact-kernel query
+status, export-readiness status, boolean topology readiness, generated
+boolean-reference query results, release-smoke metadata, and exact-kernel query
 results should remain derived query/cache data.
 
 ## Rebuildable Cache
@@ -1438,6 +1510,27 @@ silently accepting ambiguous shapes. A migration should:
 6. Report structured migration errors with paths.
 
 Do not add more migration branches before another real format exists.
+
+## V12 Stable Boolean Topology Storage Decision
+
+The planned V12 stable boolean topology release does not, by default, introduce
+a new saved-project schema. Boolean topology readiness, generated boolean
+reference candidates, labels, measurements, derived exact signatures, reference
+health, repair eligibility, and release-smoke metadata are query-derived until a
+tranche explicitly adds new source-of-truth data.
+
+Do not confuse the V12 release with `web-cad.project.v12`; that schema
+identifier already means persisted parallel-line sketch constraints from an
+older release. If a V12 implementation tranche adds source-of-truth topology
+anchor records, manual topology repair records, or persistent exact B-rep
+checkpoint source data, the next document schema should be
+`web-cad.project.v18`.
+
+The `.wcad` package version remains `partbench.wcad.v1` unless V12 changes the
+package layout. A future `web-cad.project.v18` document can be stored inside the
+existing `document.cbor` entry if only document source fields change. A package
+layout change should be reserved for authoritative new package entries, such as
+source B-rep checkpoints, not for derived topology query output.
 
 ## V8 Native Package Direction
 

@@ -183,7 +183,7 @@ export function formatNamedReferenceRepairBatchError(
   return `${error.code}: ${error.message}${details}`;
 }
 
-function isRepairableNamedReferenceHealth(
+export function isRepairableNamedReferenceHealth(
   status: CadReferenceHealthStatus | undefined
 ): boolean {
   return (

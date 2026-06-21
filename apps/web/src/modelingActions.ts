@@ -605,14 +605,53 @@ function createGeneratedReferenceActions(
   }
 
   if (context.reference.kind === "edge") {
-    return [
-      nameAction,
-      createEdgeFinishAction(context, selection, "chamfer"),
-      createEdgeFinishAction(context, selection, "fillet")
-    ];
+    return [nameAction, ...createEdgeFinishActions(context, selection)];
   }
 
   return [nameAction];
+}
+
+function createEdgeFinishActions(
+  context: Extract<
+    ModelingSelectionContext,
+    { readonly selectionKind: "generatedReference" }
+  >,
+  selection: ModelingActionSelectionMetadata
+): readonly ModelingActionDescriptor[] {
+  const actions: ModelingActionDescriptor[] = [];
+
+  if (
+    isSelectionReferenceOperationAdvertised(
+      context.selectionReferenceCandidates,
+      "feature.chamfer"
+    )
+  ) {
+    actions.push(createEdgeFinishAction(context, selection, "chamfer"));
+  }
+
+  if (
+    isSelectionReferenceOperationAdvertised(
+      context.selectionReferenceCandidates,
+      "feature.fillet"
+    )
+  ) {
+    actions.push(createEdgeFinishAction(context, selection, "fillet"));
+  }
+
+  return actions;
+}
+
+function isSelectionReferenceOperationAdvertised(
+  response: SelectionReferenceCandidatesQueryResponse | undefined,
+  operation: CadSelectionReferenceOperation
+): boolean {
+  if (!response) {
+    return false;
+  }
+
+  return response.candidates.some((candidate) =>
+    candidate.commandOperations.includes(operation)
+  );
 }
 
 function createGeneratedFaceSketchAction(

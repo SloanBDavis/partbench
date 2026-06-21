@@ -11,6 +11,7 @@ The current implementation source of truth is:
 - `docs/archive/v4.md`
 - `docs/v10.md`
 - `docs/v11.md`
+- `docs/v12.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.

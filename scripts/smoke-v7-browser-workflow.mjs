@@ -99,10 +99,14 @@ function parseSmokeOptions(args, env) {
   const requireV10Workflow = isTruthy(
     env.PARTBENCH_V10_BROWSER_WORKFLOW_REQUIRED
   );
+  const requireV12Workflow = isTruthy(
+    env.PARTBENCH_V12_BROWSER_WORKFLOW_REQUIRED
+  );
 
   let nextRequireGlbDownload = requireGlbDownload;
   let nextRequireDerivedMeshCache = requireDerivedMeshCache;
   let nextRequireV10Workflow = requireV10Workflow;
+  let nextRequireV12Workflow = requireV12Workflow;
 
   for (const arg of args) {
     if (arg === "--require-glb" || arg === "--require-glb-download") {
@@ -135,13 +139,24 @@ function parseSmokeOptions(args, env) {
       continue;
     }
 
+    if (arg === "--require-v12-workflow") {
+      nextRequireV12Workflow = true;
+      continue;
+    }
+
+    if (arg === "--no-require-v12-workflow") {
+      nextRequireV12Workflow = false;
+      continue;
+    }
+
     throw new Error(`Unknown option ${arg}`);
   }
 
   return {
     requireGlbDownload: nextRequireGlbDownload,
     requireDerivedMeshCache: nextRequireDerivedMeshCache,
-    requireV10Workflow: nextRequireV10Workflow
+    requireV10Workflow: nextRequireV10Workflow,
+    requireV12Workflow: nextRequireV12Workflow
   };
 }
 
@@ -206,7 +221,8 @@ async function runV7BrowserWorkflowSmoke(
   {
     requireGlbDownload = false,
     requireDerivedMeshCache = false,
-    requireV10Workflow = false
+    requireV10Workflow = false,
+    requireV12Workflow = false
   } = {}
 ) {
   const target = await client.send("Target.createTarget", {
@@ -274,6 +290,7 @@ async function runV7BrowserWorkflowSmoke(
         requireDerivedMeshCache,
         requireGlbDownload,
         requireV10Workflow,
+        requireV12Workflow,
         v10C2ProjectJson,
         timeoutMs
       })})`
@@ -323,7 +340,8 @@ async function runV7BrowserWorkflowSmoke(
     requiredCheckIds: getV7BrowserWorkflowRequiredCheckIds({
       requireDerivedMeshCache,
       requireGlbDownload,
-      requireV10Workflow
+      requireV10Workflow,
+      requireV12Workflow
     }),
     consoleErrors,
     exceptions
@@ -418,6 +436,7 @@ async function v7BrowserWorkflowSmoke({
   requireDerivedMeshCache,
   requireGlbDownload,
   requireV10Workflow,
+  requireV12Workflow,
   v10C2ProjectJson,
   timeoutMs
 }) {
@@ -447,6 +466,30 @@ async function v7BrowserWorkflowSmoke({
     v10StaleBodyName: "V10 smoke stale source body",
     v10StaleEntityId: "v10_smoke_stale_rect",
     v10StaleFeatureId: "v10_smoke_stale_feature",
+    v12AddBodyId: "v12_smoke_add_body",
+    v12AddBodyName: "V12 smoke add result",
+    v12AddCapSketchId: "v12_smoke_add_cap_sketch",
+    v12AddCapSketchName: "V12 smoke add cap sketch",
+    v12AddFeatureId: "v12_smoke_add_feature",
+    v12AddRepairReferenceName: "v12_smoke_repaired_add_edge",
+    v12AddRepairStaleBodyId: "v12_smoke_stale_add_edge_body",
+    v12AddRepairStaleBodyName: "V12 smoke stale add edge source",
+    v12AddRepairStaleEntityId: "v12_smoke_stale_add_edge_rect",
+    v12AddRepairStaleFeatureId: "v12_smoke_stale_add_edge_feature",
+    v12AddTargetBodyId: "v12_smoke_add_target_body",
+    v12AddTargetBodyName: "V12 smoke add target body",
+    v12AddTargetEntityId: "v12_smoke_add_target_rect",
+    v12AddTargetFeatureId: "v12_smoke_add_target_feature",
+    v12AddToolEntityId: "v12_smoke_add_tool_rect",
+    v12AddToolSketchId: "v12_smoke_add_tool_sketch",
+    v12AddToolSketchName: "V12 smoke add tool sketch",
+    v12CutWallSketchId: "v12_smoke_cut_wall_sketch",
+    v12CutWallSketchName: "V12 smoke cut wall sketch",
+    v12RepairReferenceName: "v12_smoke_repaired_cut_face",
+    v12RepairStaleBodyId: "v12_smoke_stale_repair_body",
+    v12RepairStaleBodyName: "V12 smoke stale repair source",
+    v12RepairStaleEntityId: "v12_smoke_stale_repair_rect",
+    v12RepairStaleFeatureId: "v12_smoke_stale_repair_feature",
     wcadFileName: "v8-browser-workflow-roundtrip.wcad",
     sketchId: "v7_smoke_sketch"
   };
@@ -1140,6 +1183,11 @@ async function v7BrowserWorkflowSmoke({
       "created a deterministic cut to exercise consumed-reference diagnostics",
       ids.cutBodyId
     );
+
+    if (requireV12Workflow) {
+      await runV12CutResultReferenceWorkflowSmoke();
+      await runV12AddResultReferenceWorkflowSmoke();
+    }
 
     openTreePanel();
     clickButtonContaining(
@@ -2188,6 +2236,749 @@ async function v7BrowserWorkflowSmoke({
     }, "consumed body structured diagnostics");
   }
 
+  async function runV12CutResultReferenceWorkflowSmoke() {
+    const faceStableId = `generated:face:${ids.cutBodyId}:side:uMin`;
+    const edgeStableId = `generated:edge:${ids.cutBodyId}:longitudinal:uMin:vMin`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.cutBodyName
+    );
+    openSelectionPanel();
+
+    await selectGeneratedReferenceByStableId(faceStableId);
+    await waitForV12CutResultFaceCommandReady(faceStableId);
+    pass(
+      "v12-cut-result-face-command-ready-browser",
+      "V12 cut-result face is command-ready in Selection and Modeling",
+      getSelectionText()
+    );
+
+    await waitForViewportContextualCommands(
+      ["Create sketch", "Name", "Measure", "Inspect"],
+      "V12 cut-result face contextual commands"
+    );
+    pass(
+      "v12-cut-result-face-contextual-actions",
+      "V12 cut-result face exposes compact create-sketch/name/measure/inspect actions",
+      getViewportContextualCommandText()
+    );
+
+    const inspector = getElementByAriaLabel("Inspector");
+    setSelectByLabel(inspector, "Face", faceStableId);
+    setFieldByLabel(inspector, "Sketch name", ids.v12CutWallSketchName);
+    setInputByDetailsSummary(
+      inspector,
+      "Advanced sketch options",
+      ids.v12CutWallSketchId
+    );
+    clickButton(inspector, "Create attached sketch");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12CutWallSketchName
+        ),
+      "V12 cut-result face attached sketch"
+    );
+    pass(
+      "v12-cut-result-face-attached-sketch",
+      "V12 cut-result face creates an attached sketch through the browser UI",
+      ids.v12CutWallSketchId
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.cutBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(edgeStableId);
+    await waitForV12ResultEdgeCommandReady({
+      bodyId: ids.cutBodyId,
+      stableId: edgeStableId,
+      label: "Cut wall profile edge uMin/vMin"
+    });
+    pass(
+      "v12-cut-result-edge-command-ready-browser",
+      "V12 cut-result edge is command-ready for naming, measurement, and inspect",
+      getSelectionText()
+    );
+
+    await waitForViewportContextualCommands(
+      ["Name", "Measure", "Inspect"],
+      "V12 cut-result edge contextual commands"
+    );
+    assertViewportContextualCommandsAbsent(["Chamfer", "Fillet"]);
+    pass(
+      "v12-cut-result-edge-contextual-actions",
+      "V12 cut-result edge exposes compact name/measure/inspect actions",
+      getViewportContextualCommandText()
+    );
+
+    const selectionText = getSelectionText();
+    const deferredVisible =
+      selectionText.includes("Edge finish") ||
+      selectionText.includes("Chamfer") ||
+      selectionText.includes("Fillet");
+
+    if (deferredVisible) {
+      fail(
+        "v12-cut-result-edge-no-deferred-finish",
+        "V12 cut-result edge hides deferred edge-finish affordances",
+        selectionText
+      );
+    } else {
+      pass(
+        "v12-cut-result-edge-no-deferred-finish",
+        "V12 cut-result edge hides deferred edge-finish affordances",
+        selectionText
+      );
+    }
+
+    await runV12NamedReferenceRepairSmoke(faceStableId);
+  }
+
+  async function runV12NamedReferenceRepairSmoke(faceStableId) {
+    await createV10RectangleNewBody({
+      bodyId: ids.v12RepairStaleBodyId,
+      bodyName: ids.v12RepairStaleBodyName,
+      centerX: "9",
+      entityId: ids.v12RepairStaleEntityId,
+      featureId: ids.v12RepairStaleFeatureId
+    });
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12RepairStaleBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v12RepairStaleBodyId,
+      "selected V12 stale repair-source body before naming"
+    );
+    selectFirstGeneratedFaceFromInspector(ids.v12RepairStaleBodyId);
+    await waitForGeneratedReferenceCommandReady(
+      ids.v12RepairStaleBodyId,
+      "V12 stale repair-source generated face command-ready before naming"
+    );
+    const staleInspector = getElementByAriaLabel("Inspector");
+    setFieldByLabel(
+      staleInspector,
+      "Name this reference",
+      ids.v12RepairReferenceName
+    );
+    clickButton(staleInspector, "Save name");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          "Names for this reference"
+        ) &&
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          ids.v12RepairReferenceName
+        ),
+      "named V12 stale-source generated face"
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12RepairStaleBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v12RepairStaleBodyId,
+      "selected V12 stale repair-source body before feature delete"
+    );
+    const deleteInspector = getElementByAriaLabel("Inspector");
+    clickButton(deleteInspector, "Delete feature");
+    await waitFor(
+      () =>
+        Boolean(
+          getButtonByText(
+            getElementByAriaLabel("Inspector"),
+            "Confirm delete feature"
+          )
+        ),
+      "armed V12 stale repair-source feature delete confirmation"
+    );
+    clickButton(getElementByAriaLabel("Inspector"), "Confirm delete feature");
+    await waitFor(() => {
+      const structure = getElementByAriaLabel("Model structure");
+      const ready =
+        !includesText(structure, ids.v12RepairStaleBodyName) &&
+        includesText(structure, ids.v12RepairReferenceName);
+
+      if (!ready) {
+        throw new Error(compactText(structure.textContent, 520));
+      }
+
+      return true;
+    }, "V12 named reference became missing after deleting its source feature");
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.cutBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(faceStableId);
+    await waitForV12CutResultFaceCommandReady(faceStableId);
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12RepairReferenceName
+    );
+    await waitFor(
+      () => isTreePanelOpen(),
+      "V12 missing named reference selection keeps preferred tree tab"
+    );
+    openSelectionPanel();
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        includesText(
+          currentInspector,
+          `Repair ${ids.v12RepairReferenceName}`
+        ) &&
+        includesText(currentInspector, "Repair name") &&
+        includesText(currentModeling, `Repair ${ids.v12RepairReferenceName}`) &&
+        includesText(currentModeling, "Repair name");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `inspector=${compactText(currentInspector.textContent, 360)}`,
+            `modeling=${compactText(currentModeling.textContent, 300)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V12 named reference repair affordance for cut-result face");
+    clickButton(getElementByAriaLabel("Inspector"), "Repair name");
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const ready =
+        includesText(currentInspector, "Names for this reference") &&
+        includesText(currentInspector, ids.v12RepairReferenceName) &&
+        !includesText(currentInspector, `Repair ${ids.v12RepairReferenceName}`);
+
+      if (!ready) {
+        throw new Error(compactText(currentInspector.textContent, 520));
+      }
+
+      return true;
+    }, "V12 named reference repaired to active cut-result face");
+    pass(
+      "v12-named-reference-repair-browser",
+      "missing named reference is repaired to a command-ready V12 cut-result face",
+      getSelectionText()
+    );
+  }
+
+  async function runV12AddResultReferenceWorkflowSmoke() {
+    await createV10RectangleNewBody({
+      bodyId: ids.v12AddTargetBodyId,
+      bodyName: ids.v12AddTargetBodyName,
+      centerX: "-3",
+      entityId: ids.v12AddTargetEntityId,
+      featureId: ids.v12AddTargetFeatureId
+    });
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddTargetBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(
+      `generated:face:${ids.v12AddTargetBodyId}:endCap`
+    );
+
+    const targetInspector = getElementByAriaLabel("Inspector");
+    setSelectByLabel(
+      targetInspector,
+      "Face",
+      `generated:face:${ids.v12AddTargetBodyId}:endCap`
+    );
+    setFieldByLabel(targetInspector, "Sketch name", ids.v12AddToolSketchName);
+    setInputByDetailsSummary(
+      targetInspector,
+      "Advanced sketch options",
+      ids.v12AddToolSketchId
+    );
+    clickButton(targetInspector, "Create attached sketch");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12AddToolSketchName
+        ),
+      "V12 add target attached tool sketch"
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.v12AddToolSketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v12AddToolSketchId,
+      "V12 add tool sketch became active"
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Rectangle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V12 add tool rectangle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "rectangle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v12AddToolEntityId
+    );
+    setFieldByLabel(entityEditor, "Width", "0.5");
+    setFieldByLabel(entityEditor, "Height", "0.5");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v12AddToolEntityId
+        ),
+      "created V12 add tool rectangle"
+    );
+
+    let featureEditor = getSectionByAriaLabel("Create authored feature");
+    setFieldByLabel(featureEditor, "Depth", "0.5");
+    setSelectByLabel(featureEditor, "Operation", "add");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "add target body control"
+    );
+    featureEditor = getSectionByAriaLabel("Create authored feature");
+    setSelectByLabel(featureEditor, "Target body", ids.v12AddTargetBodyId);
+    setFieldByLabel(featureEditor, "Optional feature ID", ids.v12AddFeatureId);
+    setFieldByLabel(featureEditor, "Optional body ID", ids.v12AddBodyId);
+    setFieldByLabel(featureEditor, "Optional name", ids.v12AddBodyName);
+    clickButton(featureEditor, "Create extrude");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12AddBodyName
+        ),
+      "created V12 add result body"
+    );
+    pass(
+      "v12-add-result-create",
+      "created a deterministic add result for V12 browser reference checks",
+      ids.v12AddBodyId
+    );
+
+    const capStableId = `generated:face:${ids.v12AddBodyId}:endCap`;
+    const wallStableId = `generated:face:${ids.v12AddBodyId}:side:uMin`;
+    const edgeStableId = `generated:edge:${ids.v12AddBodyId}:end:uMin`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(capStableId);
+    await waitForV12AddResultFaceCommandReady({
+      stableId: capStableId,
+      label: "Added cap face"
+    });
+    pass(
+      "v12-add-result-cap-command-ready-browser",
+      "V12 add-result cap face is command-ready in Selection and Modeling",
+      getSelectionText()
+    );
+
+    await waitForViewportContextualCommands(
+      ["Create sketch", "Name", "Measure", "Inspect"],
+      "V12 add-result cap contextual commands"
+    );
+    assertViewportContextualCommandsAbsent(["Chamfer", "Fillet"]);
+    pass(
+      "v12-add-result-cap-contextual-actions",
+      "V12 add-result cap face exposes compact create-sketch/name/measure/inspect actions",
+      getViewportContextualCommandText()
+    );
+
+    const addInspector = getElementByAriaLabel("Inspector");
+    setSelectByLabel(addInspector, "Face", capStableId);
+    setFieldByLabel(addInspector, "Sketch name", ids.v12AddCapSketchName);
+    setInputByDetailsSummary(
+      addInspector,
+      "Advanced sketch options",
+      ids.v12AddCapSketchId
+    );
+    clickButton(addInspector, "Create attached sketch");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12AddCapSketchName
+        ),
+      "V12 add-result cap attached sketch"
+    );
+    pass(
+      "v12-add-result-cap-attached-sketch",
+      "V12 add-result cap face creates an attached sketch through the browser UI",
+      ids.v12AddCapSketchId
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(wallStableId);
+    await waitForV12AddResultFaceCommandReady({
+      stableId: wallStableId,
+      label: "Added wall face uMin"
+    });
+    pass(
+      "v12-add-result-wall-command-ready-browser",
+      "V12 add-result wall face is command-ready in Selection and Modeling",
+      getSelectionText()
+    );
+
+    await waitForViewportContextualCommands(
+      ["Create sketch", "Name", "Measure", "Inspect"],
+      "V12 add-result wall contextual commands"
+    );
+    assertViewportContextualCommandsAbsent(["Chamfer", "Fillet"]);
+    pass(
+      "v12-add-result-wall-contextual-actions",
+      "V12 add-result wall face exposes compact create-sketch/name/measure/inspect actions",
+      getViewportContextualCommandText()
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(edgeStableId);
+    await waitForV12ResultEdgeCommandReady({
+      bodyId: ids.v12AddBodyId,
+      stableId: edgeStableId,
+      label: "Added cap profile edge uMin"
+    });
+    pass(
+      "v12-add-result-edge-command-ready-browser",
+      "V12 add-result cap edge is command-ready for naming, measurement, and inspect",
+      getSelectionText()
+    );
+
+    await waitForViewportContextualCommands(
+      ["Name", "Measure", "Inspect"],
+      "V12 add-result edge contextual commands"
+    );
+    assertViewportContextualCommandsAbsent(["Chamfer", "Fillet"]);
+    pass(
+      "v12-add-result-edge-contextual-actions",
+      "V12 add-result cap edge exposes compact name/measure/inspect actions",
+      getViewportContextualCommandText()
+    );
+
+    const selectionText = getSelectionText();
+    const deferredVisible =
+      selectionText.includes("Edge finish") ||
+      selectionText.includes("Chamfer") ||
+      selectionText.includes("Fillet");
+
+    if (deferredVisible) {
+      fail(
+        "v12-add-result-edge-no-deferred-finish",
+        "V12 add-result cap edge hides deferred edge-finish affordances",
+        selectionText
+      );
+    } else {
+      pass(
+        "v12-add-result-edge-no-deferred-finish",
+        "V12 add-result cap edge hides deferred edge-finish affordances",
+        selectionText
+      );
+    }
+
+    await runV12AddResultEdgeRepairSmoke(edgeStableId);
+  }
+
+  async function runV12AddResultEdgeRepairSmoke(edgeStableId) {
+    const staleEdgeStableId = `generated:edge:${ids.v12AddRepairStaleBodyId}:start:uMin`;
+
+    await createV10RectangleNewBody({
+      bodyId: ids.v12AddRepairStaleBodyId,
+      bodyName: ids.v12AddRepairStaleBodyName,
+      centerX: "-6",
+      entityId: ids.v12AddRepairStaleEntityId,
+      featureId: ids.v12AddRepairStaleFeatureId
+    });
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddRepairStaleBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(staleEdgeStableId);
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const ready =
+        includesText(inspector, ids.v12AddRepairStaleBodyId) &&
+        includesText(inspector, staleEdgeStableId) &&
+        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, "Name reference");
+
+      if (!ready) {
+        throw new Error(compactText(inspector.textContent, 420));
+      }
+
+      return true;
+    }, "V12 stale add-edge source selected before naming");
+
+    const staleInspector = getElementByAriaLabel("Inspector");
+    setFieldByLabel(
+      staleInspector,
+      "Name this reference",
+      ids.v12AddRepairReferenceName
+    );
+    clickButton(staleInspector, "Save name");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          ids.v12AddRepairReferenceName
+        ) &&
+        includesText(
+          getElementByAriaLabel("Inspector"),
+          "Names for this reference"
+        ),
+      "named V12 stale add-edge source"
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddRepairStaleBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v12AddRepairStaleBodyId,
+      "selected V12 stale add-edge repair source before feature delete"
+    );
+    const deleteInspector = getElementByAriaLabel("Inspector");
+    clickButton(deleteInspector, "Delete feature");
+    await waitFor(
+      () =>
+        Boolean(
+          getButtonByText(
+            getElementByAriaLabel("Inspector"),
+            "Confirm delete feature"
+          )
+        ),
+      "armed V12 stale add-edge source feature delete confirmation"
+    );
+    clickButton(getElementByAriaLabel("Inspector"), "Confirm delete feature");
+    await waitFor(() => {
+      const structure = getElementByAriaLabel("Model structure");
+      const ready =
+        !includesText(structure, ids.v12AddRepairStaleBodyName) &&
+        includesText(structure, ids.v12AddRepairReferenceName);
+
+      if (!ready) {
+        throw new Error(compactText(structure.textContent, 520));
+      }
+
+      return true;
+    }, "V12 add-edge named reference became missing after deleting source");
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(edgeStableId);
+    await waitForV12ResultEdgeCommandReady({
+      bodyId: ids.v12AddBodyId,
+      stableId: edgeStableId,
+      label: "Added cap profile edge uMin"
+    });
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12AddRepairReferenceName
+    );
+    await waitFor(
+      () => isTreePanelOpen(),
+      "V12 add-edge missing named reference selection keeps preferred tree tab"
+    );
+    openSelectionPanel();
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const currentModeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        includesText(
+          currentInspector,
+          `Repair ${ids.v12AddRepairReferenceName}`
+        ) &&
+        includesText(currentInspector, "Repair name") &&
+        includesText(
+          currentModeling,
+          `Repair ${ids.v12AddRepairReferenceName}`
+        ) &&
+        includesText(currentModeling, "Repair name");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `inspector=${compactText(currentInspector.textContent, 360)}`,
+            `modeling=${compactText(currentModeling.textContent, 300)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V12 named reference repair affordance for add-result edge");
+    clickButton(getElementByAriaLabel("Inspector"), "Repair name");
+    await waitFor(() => {
+      const currentInspector = getElementByAriaLabel("Inspector");
+      const ready =
+        includesText(currentInspector, "Names for this reference") &&
+        includesText(currentInspector, ids.v12AddRepairReferenceName) &&
+        !includesText(
+          currentInspector,
+          `Repair ${ids.v12AddRepairReferenceName}`
+        );
+
+      if (!ready) {
+        throw new Error(compactText(currentInspector.textContent, 520));
+      }
+
+      return true;
+    }, "V12 named reference repaired to active add-result edge");
+    pass(
+      "v12-add-result-edge-repair-browser",
+      "missing named reference is repaired to a command-ready V12 add-result edge",
+      getSelectionText()
+    );
+  }
+
+  async function waitForV12CutResultFaceCommandReady(stableId) {
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modelingContext = getSectionByAriaLabel("Modeling context");
+      const ready =
+        isSelectionPanelOpen() &&
+        includesText(inspector, ids.cutBodyId) &&
+        includesText(inspector, "Cut wall face uMin") &&
+        includesText(inspector, stableId) &&
+        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, "Create sketch on face") &&
+        includesText(modelingContext, "Reference status") &&
+        includesText(modelingContext, "Create sketch on face");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `inspector=${normalize(inspector.textContent).slice(0, 260)}`,
+            `modeling=${normalize(modelingContext.textContent).slice(0, 180)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V12 cut-result face command-ready state");
+  }
+
+  async function waitForV12AddResultFaceCommandReady({ stableId, label }) {
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modelingContext = getSectionByAriaLabel("Modeling context");
+      const ready =
+        isSelectionPanelOpen() &&
+        includesText(inspector, ids.v12AddBodyId) &&
+        includesText(inspector, label) &&
+        includesText(inspector, stableId) &&
+        includesText(inspector, "Command-ready reference") &&
+        includesText(inspector, "Create sketch on face") &&
+        includesText(modelingContext, "Reference status") &&
+        includesText(modelingContext, "Create sketch on face") &&
+        !includesText(inspector, "Edge finish") &&
+        !includesText(modelingContext, "Edge finish");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `inspector=${normalize(inspector.textContent).slice(0, 320)}`,
+            `modeling=${normalize(modelingContext.textContent).slice(0, 220)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, `V12 add-result face command-ready state ${stableId}`);
+  }
+
+  async function waitForV12ResultEdgeCommandReady({ bodyId, stableId, label }) {
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modelingContext = getSectionByAriaLabel("Modeling context");
+      const inspectorText = normalize(inspector.textContent);
+      const ready =
+        isSelectionPanelOpen() &&
+        inspectorText.includes(bodyId) &&
+        inspectorText.includes(label) &&
+        inspectorText.includes(stableId) &&
+        inspectorText.includes("Command-ready reference") &&
+        inspectorText.includes("Name reference") &&
+        inspectorText.includes("Measure reference") &&
+        inspectorText.includes("Inspect reference") &&
+        !inspectorText.includes("Edge finish") &&
+        !inspectorText.includes("Chamfer") &&
+        !inspectorText.includes("Fillet") &&
+        includesText(modelingContext, "Reference status") &&
+        includesText(modelingContext, "Command-ready reference") &&
+        !includesText(modelingContext, "Edge finish") &&
+        !includesText(modelingContext, "Chamfer") &&
+        !includesText(modelingContext, "Fillet");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `inspector=${inspectorText.slice(0, 320)}`,
+            `modeling=${normalize(modelingContext.textContent).slice(0, 220)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, `V12 result edge command-ready state ${stableId}`);
+  }
+
   function assertViewportHasNoSelectionDetails() {
     const viewport = getElementByAriaLabel("3D viewport");
     const obsoleteDetailSurface = viewport.querySelector(
@@ -2537,6 +3328,23 @@ async function v7BrowserWorkflowSmoke({
     }, label);
   }
 
+  function assertViewportContextualCommandsAbsent(labels) {
+    const surface = getViewportContextualCommandSurface(
+      getElementByAriaLabel("3D viewport")
+    );
+    const text = normalize(surface.textContent);
+    const presentLabels = labels.filter((label) => text.includes(label));
+
+    if (presentLabels.length > 0) {
+      throw new Error(
+        `Unexpected contextual command labels: ${presentLabels.join(", ")} in ${compactText(
+          surface.textContent,
+          260
+        )}`
+      );
+    }
+  }
+
   function clickViewportContextualCommand(label) {
     const viewport = getElementByAriaLabel("3D viewport");
     const surface = getViewportContextualCommandSurface(viewport);
@@ -2725,6 +3533,33 @@ async function v7BrowserWorkflowSmoke({
 
     setSelectByLabel(inspector, "Inspect reference", faceOption.value);
     return normalize(faceOption.textContent);
+  }
+
+  async function selectGeneratedReferenceByStableId(stableId) {
+    let optionLabel = "";
+
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const referenceSelect = getControlByLabel(inspector, "Inspect reference");
+      const option = [...referenceSelect.querySelectorAll("option")].find(
+        (candidate) => candidate.value === stableId
+      );
+
+      if (!option) {
+        throw new Error(
+          `Could not find generated reference option ${stableId}: ${compactText(
+            referenceSelect.textContent,
+            520
+          )}`
+        );
+      }
+
+      optionLabel = normalize(option.textContent);
+      setSelectByLabel(inspector, "Inspect reference", stableId);
+      return true;
+    }, `generated reference option ${stableId}`);
+
+    return optionLabel;
   }
 
   function getExportReadinessText() {

@@ -429,12 +429,50 @@ describe("modeling action helpers", () => {
     expect(actionById(actions, "reference.name")).toMatchObject({
       available: true
     });
-    expect(actionById(actions, "feature.chamfer")).toMatchObject({
-      available: false,
-      reason: "Chamfer is not command-ready for this selection."
-    });
+    expect(actions.some((action) => action.id === "feature.chamfer")).toBe(
+      false
+    );
     expect(actionById(actions, "feature.fillet")).toMatchObject({
       available: true
+    });
+  });
+
+  it("keeps deferred V12 cut-wall edge finish operations out of compact actions", () => {
+    const edge = createEdge({
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      label: "Cut wall profile edge uMin/vMin",
+      bodyId: "body_cut",
+      sourceFeatureId: "feat_cut",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      role: "longitudinal:uMin:vMin"
+    });
+    const actions = deriveModelingActions({
+      context: {
+        selectionKind: "generatedReference",
+        reference: edge,
+        body: createBody("body_cut", "feat_cut"),
+        feature: createExtrudeFeature(
+          "feat_cut",
+          "body_cut",
+          "rectangle",
+          "cut"
+        ),
+        selectionReferenceCandidates: createSelectionReferenceCandidates(edge)
+      }
+    });
+
+    expect(actions.map((action) => action.id)).toEqual(["reference.name"]);
+    expect(actionById(actions, "reference.name")).toMatchObject({
+      available: true,
+      target: {
+        bodyId: "body_cut",
+        generatedReferenceStableId:
+          "generated:edge:body_cut:longitudinal:uMin:vMin",
+        generatedReferenceKind: "edge"
+      }
     });
   });
 

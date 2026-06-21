@@ -1689,13 +1689,13 @@ describe("mcp-adapter", () => {
           ops: [
             {
               op: "feature.extrude",
-              id: "feat_cut",
-              bodyId: "body_cut",
+              id: "feat_add",
+              bodyId: "body_add",
               targetBodyId: "body_seed_unsupported",
               sketchId: "sketch_unsupported",
               entityId: "circle_unsupported",
               depth: 3,
-              operationMode: "cut"
+              operationMode: "add"
             }
           ]
         }
@@ -1897,6 +1897,44 @@ describe("mcp-adapter", () => {
         ok: true,
         createdFeatureIds: ["feat_add"],
         createdBodyIds: ["body_add"]
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.selection_reference_candidates",
+        requestId: "mcp_req_add_edge_selection_refs",
+        arguments: {
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_add",
+            stableId: "generated:edge:body_add:end:uMin",
+            expectedKind: "edge"
+          },
+          requiredOperation: "feature.measureReference"
+        }
+      })
+    ).toMatchObject({
+      toolName: "cad.selection_reference_candidates",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        query: "selection.referenceCandidates",
+        status: "resolved",
+        candidateCount: 1,
+        candidates: [
+          expect.objectContaining({
+            commandable: true,
+            commandOperations: expect.arrayContaining([
+              "reference.nameGenerated",
+              "feature.measureReference",
+              "feature.selectReference"
+            ]),
+            reference: expect.objectContaining({
+              kind: "edge",
+              role: "end:uMin"
+            })
+          })
+        ]
       }
     });
   });

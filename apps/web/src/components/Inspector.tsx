@@ -85,7 +85,8 @@ import {
 } from "../generatedReferenceSelection";
 import {
   createNamedReferenceRepairUiState,
-  formatNamedReferenceRepairHealthStatus
+  formatNamedReferenceRepairHealthStatus,
+  isRepairableNamedReferenceHealth
 } from "../namedReferenceRepairUi";
 import {
   formatDimensions,
@@ -1168,6 +1169,15 @@ function GeneratedReferencesPanel({
   });
   const [edgeFinishOperation, setEdgeFinishOperation] =
     useState<EdgeFinishOperation>("chamfer");
+  const canShowEdgeFinishEditor =
+    hasSelectionReferenceOperation(
+      selectionReferenceCandidates,
+      "feature.chamfer"
+    ) ||
+    hasSelectionReferenceOperation(
+      selectionReferenceCandidates,
+      "feature.fillet"
+    );
   const sketchOnFaceForm = selectedFace
     ? buildSketchOnFaceForm(bodyId, selectedFace, draft)
     : undefined;
@@ -1347,21 +1357,23 @@ function GeneratedReferencesPanel({
             state={selectedReferenceState}
             units={units}
           />
-          <EdgeFinishEditor
-            key={`edge-finish-${
-              selectedReferenceState.status === "selected"
-                ? selectedReferenceState.reference.stableId
-                : selectedReferenceState.status
-            }-${edgeFinishOperation}`}
-            body={body}
-            disabled={disabled}
-            feature={feature}
-            namedReferences={selectedNamedReferences}
-            onCreateEdgeFinish={onCreateEdgeFinish}
-            preferredOperation={edgeFinishOperation}
-            selectionReferenceCandidates={selectionReferenceCandidates}
-            state={selectedReferenceState}
-          />
+          {canShowEdgeFinishEditor && (
+            <EdgeFinishEditor
+              key={`edge-finish-${
+                selectedReferenceState.status === "selected"
+                  ? selectedReferenceState.reference.stableId
+                  : selectedReferenceState.status
+              }-${edgeFinishOperation}`}
+              body={body}
+              disabled={disabled}
+              feature={feature}
+              namedReferences={selectedNamedReferences}
+              onCreateEdgeFinish={onCreateEdgeFinish}
+              preferredOperation={edgeFinishOperation}
+              selectionReferenceCandidates={selectionReferenceCandidates}
+              state={selectedReferenceState}
+            />
+          )}
           <label>
             Inspect reference
             <select
@@ -1512,6 +1524,17 @@ function getFirstUnavailableReferenceOperationMessage(
       )
     )
     .find((status) => !status.available)?.message;
+}
+
+function hasSelectionReferenceOperation(
+  response: SelectionReferenceCandidatesQueryResponse | undefined,
+  operation: CadSelectionReferenceOperation
+): boolean {
+  return (
+    response?.candidates.some((candidate) =>
+      candidate.commandOperations.includes(operation)
+    ) ?? false
+  );
 }
 
 function shouldOpenGeneratedReferenceGroup(
@@ -2093,8 +2116,12 @@ function NamedReferencesPanel({
     return null;
   }
 
-  const staleCount = references.filter(
-    (reference) => reference.status === "stale"
+  const repairableCount = references.filter(
+    (reference) =>
+      reference.status === "stale" ||
+      isRepairableNamedReferenceHealth(
+        healthByName?.get(reference.name)?.status
+      )
   ).length;
 
   return (
@@ -2102,7 +2129,9 @@ function NamedReferencesPanel({
       <div className="command-card-heading">
         <h3>Named references</h3>
         <span>
-          {staleCount > 0 ? `${staleCount} stale` : references.length}
+          {repairableCount > 0
+            ? `${repairableCount} repairable`
+            : references.length}
         </span>
       </div>
       <ul className="reference-list compact named-reference-list">
@@ -2112,6 +2141,9 @@ function NamedReferencesPanel({
           const contractResponse = candidatesByName?.get(reference.name);
           const contractIssues =
             contractResponse?.issues.map((issue) => issue.message) ?? [];
+          const isRepairable =
+            reference.status === "stale" ||
+            isRepairableNamedReferenceHealth(health?.status);
           const isSelected =
             selectedNamedReferenceName === reference.name ||
             (selectedGeneratedReference?.bodyId === reference.bodyId &&
@@ -2130,7 +2162,7 @@ function NamedReferencesPanel({
               <small>{formatNamedReferenceTarget(reference)}</small>
               <small
                 className={
-                  status.tone === "stale" || health?.status === "repair-needed"
+                  status.tone === "stale" || isRepairable
                     ? "error-text inline"
                     : undefined
                 }
@@ -2159,7 +2191,7 @@ function NamedReferencesPanel({
                 <small className="error-text inline">{contractIssues[0]}</small>
               )}
               {selectedNamedReferenceName === reference.name &&
-                reference.status === "stale" && (
+                isRepairable && (
                   <small>
                     Select a replacement{" "}
                     {formatGeneratedReferenceKind(reference.kind).toLowerCase()}{" "}
@@ -2172,9 +2204,7 @@ function NamedReferencesPanel({
                   disabled={disabled}
                   onClick={() => onInspectNamedReference(reference.name)}
                 >
-                  {reference.status === "stale"
-                    ? "Select for repair"
-                    : "Inspect"}
+                  {isRepairable ? "Select for repair" : "Inspect"}
                 </button>
                 <button
                   type="button"

@@ -130,6 +130,51 @@ describe("viewport contextual commands", () => {
     );
   });
 
+  it("does not surface deferred V12 cut-wall edge-finish commands", () => {
+    const edge = createEdge({
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      label: "Cut wall profile edge uMin/vMin",
+      bodyId: "body_cut",
+      sourceFeatureId: "feat_cut",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      role: "longitudinal:uMin:vMin"
+    });
+    const candidates = createSelectionReferenceCandidates(edge, {
+      commandOperations: [
+        "reference.nameGenerated",
+        "feature.measureReference",
+        "feature.selectReference"
+      ]
+    });
+    const actions = createGeneratedReferenceActions(edge, candidates);
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: actions,
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "generatedReference",
+        title: "Edge: Cut wall profile edge uMin/vMin",
+        commandOperations: candidates.candidates[0].commandOperations
+      }),
+      selectedGeneratedReferenceState: createSelectedReferenceState(edge),
+      selectionReferenceCandidates: candidates
+    });
+
+    expect(actions.map((action) => action.id)).toEqual(["reference.name"]);
+    expect(surface.actions.map((action) => action.id)).toEqual([
+      "reference.name",
+      "feature.measureReference",
+      "feature.selectReference"
+    ]);
+    expect(
+      surface.actions.some((action) => action.id === "feature.chamfer")
+    ).toBe(false);
+    expect(
+      surface.actions.some((action) => action.id === "feature.fillet")
+    ).toBe(false);
+  });
+
   it("derives named-reference inspect and measure actions from reference candidates", () => {
     const face = createFace();
     const candidates = createSelectionReferenceCandidates(face, {

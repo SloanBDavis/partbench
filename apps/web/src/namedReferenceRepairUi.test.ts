@@ -1,5 +1,6 @@
 import type {
   CadBatchValidationError,
+  CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadReferenceHealthEntry,
@@ -13,7 +14,8 @@ import type { SelectedGeneratedReference } from "./generatedReferenceSelection";
 import {
   createNamedReferenceHealthByName,
   createNamedReferenceRepairUiState,
-  formatNamedReferenceRepairBatchError
+  formatNamedReferenceRepairBatchError,
+  isRepairableNamedReferenceHealth
 } from "./namedReferenceRepairUi";
 
 describe("namedReferenceRepairUi", () => {
@@ -38,6 +40,86 @@ describe("namedReferenceRepairUi", () => {
     expect(state.status === "ready" ? state.message : "").toContain(
       "Repair Mounting face"
     );
+  });
+
+  it("offers repair for query-proven add-result edge targets", () => {
+    const edge = createAddCapEdge();
+    const state = createNamedReferenceRepairUiState({
+      namedReferences: [
+        createNamedReference({
+          name: "Mounting edge",
+          bodyId: "body_source",
+          stableId: "generated:edge:body_source:end:uMin",
+          kind: "edge"
+        })
+      ],
+      namedReferenceHealthByName: new Map([
+        [
+          "Mounting edge",
+          {
+            ...createHealthEntry("repair-needed"),
+            label: "Mounting edge",
+            kind: "edge",
+            referenceName: "Mounting edge",
+            stableId: "generated:edge:body_source:end:uMin"
+          }
+        ]
+      ]),
+      selectedNamedReferenceName: "Mounting edge",
+      selectedGeneratedReference: selectReference(edge),
+      selectionReferenceCandidates: createSelectionReferenceCandidates(edge)
+    });
+
+    expect(state).toMatchObject({
+      status: "ready",
+      healthStatus: "repair-needed",
+      target: {
+        bodyId: "body_add",
+        stableId: "generated:edge:body_add:end:uMin",
+        kind: "edge"
+      }
+    });
+    expect(state.status === "ready" ? state.message : "").toContain(
+      "Repair Mounting edge"
+    );
+  });
+
+  it("offers repair for resolved named references with repairable health", () => {
+    const face = createFace();
+    const state = createNamedReferenceRepairUiState({
+      namedReferences: [
+        {
+          ...createNamedReference(),
+          status: "resolved",
+          reference: createFace()
+        }
+      ],
+      namedReferenceHealthByName: new Map([
+        ["Mounting face", createHealthEntry("missing")]
+      ]),
+      selectedNamedReferenceName: "Mounting face",
+      selectedGeneratedReference: selectReference(face),
+      selectionReferenceCandidates: createSelectionReferenceCandidates(face)
+    });
+
+    expect(state).toMatchObject({
+      status: "ready",
+      healthStatus: "missing",
+      target: {
+        bodyId: "body_rect",
+        stableId: "generated:face:body_rect:endCap",
+        kind: "face"
+      }
+    });
+  });
+
+  it("shares the same repairable health statuses across repair surfaces", () => {
+    expect(isRepairableNamedReferenceHealth("stale")).toBe(true);
+    expect(isRepairableNamedReferenceHealth("missing")).toBe(true);
+    expect(isRepairableNamedReferenceHealth("repair-needed")).toBe(true);
+    expect(isRepairableNamedReferenceHealth("active")).toBe(false);
+    expect(isRepairableNamedReferenceHealth("unsupported")).toBe(false);
+    expect(isRepairableNamedReferenceHealth(undefined)).toBe(false);
   });
 
   it("blocks repair when the selected target has not been proven by selection.referenceCandidates", () => {
@@ -219,6 +301,33 @@ function createFace(): CadGeneratedFaceReference {
       extrudeSide: "positive",
       depth: 2,
       surfaceType: "plane"
+    }
+  };
+}
+
+function createAddCapEdge(): CadGeneratedEdgeReference {
+  return {
+    kind: "edge",
+    stableId: "generated:edge:body_add:end:uMin",
+    label: "Added cap profile edge uMin",
+    eligibleOperations: ["feature.measureReference", "feature.selectReference"],
+    bodyId: "body_add",
+    ownerPartId: "part:default",
+    sourceFeatureId: "feat_add",
+    sourceSketchId: "sketch_add",
+    sourceSketchEntityId: "rect_add",
+    role: "end:uMin",
+    adjacentFaceRoles: ["endCap", "side:uMin"],
+    geometricSignature: {
+      profileKind: "rectangle",
+      sketchPlane: "XY",
+      extrudeSide: "positive",
+      depth: 2,
+      sourceKind: "extrude",
+      extrudeOperationMode: "add",
+      targetBodyId: "body_rect",
+      curveType: "line",
+      axisRole: "addedCapProfile:uMin"
     }
   };
 }

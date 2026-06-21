@@ -1211,6 +1211,50 @@ describe("agent-adapter", () => {
         expect.objectContaining({ id: "body_add", featureId: "feat_add" })
       ])
     });
+    expect(
+      executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+        requestId: "agent_add_edge_selection_refs",
+        adapterVersion: "web-cad.agent-adapter.v1",
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "selection.referenceCandidates",
+            selection: {
+              type: "generatedReference",
+              bodyId: "body_add",
+              stableId: "generated:edge:body_add:end:uMin",
+              expectedKind: "edge"
+            },
+            requiredOperation: "feature.measureReference"
+          }
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]),
+          target: {
+            type: "generatedReference",
+            bodyId: "body_add",
+            stableId: "generated:edge:body_add:end:uMin",
+            kind: "edge"
+          },
+          reference: expect.objectContaining({
+            kind: "edge",
+            role: "end:uMin"
+          })
+        })
+      ]
+    });
   });
 
   it("passes rectangle cut extrudes through JSON batch dry-run and commit", () => {

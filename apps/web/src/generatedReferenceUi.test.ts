@@ -196,12 +196,27 @@ describe("generated reference UI helpers", () => {
         label: "Chamfer",
         available: true,
         status: "Eligible edge"
-      },
+      }
+    ]);
+
+    expect(
+      createGeneratedReferenceActionStatuses(
+        createEdge({
+          stableId: "generated:edge:body_1:longitudinal:uMin:vMin",
+          label: "Cut wall profile edge uMin/vMin",
+          role: "longitudinal:uMin:vMin",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        })
+      )
+    ).toEqual([
       {
-        id: "feature.fillet",
-        label: "Fillet",
-        available: false,
-        status: "Reference is not eligible for fillet."
+        id: "reference.name",
+        label: "Name reference",
+        available: true,
+        status: "Available"
       }
     ]);
   });

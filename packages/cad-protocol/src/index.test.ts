@@ -2017,6 +2017,152 @@ describe("cad-protocol", () => {
     });
   });
 
+  it("types V12 boolean result topology readiness on body topology responses", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "body.topology",
+      cadOpsVersion: "cadops.v1",
+      topology: {
+        bodyId: "body_cut",
+        units: "mm",
+        status: "ambiguous",
+        sourceKind: "authoredExtrude",
+        sourceIdentity: {
+          bodyId: "body_cut",
+          sourceKind: "authoredExtrude",
+          signature:
+            "body-topology-source:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          units: "mm",
+          featureId: "feat_cut",
+          operationMode: "cut",
+          targetBodyId: "body_target",
+          sourceSketchId: "sketch_tool",
+          sourceSketchEntityId: "rect_tool",
+          profileKind: "rectangle"
+        },
+        topologyModel: "none",
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        exactMeasurementsAvailable: false,
+        measurementConfidence: "none",
+        booleanTopology: {
+          contractVersion: "partbench.boolean-topology.v1",
+          status: "partial",
+          commandReady: false,
+          sourceSemanticsAvailable: true,
+          derivedExactValidationStatus: "notProvided",
+          sourceInputs: {
+            featureId: "feat_cut",
+            resultBodyId: "body_cut",
+            operationMode: "cut",
+            targetBodyId: "body_target",
+            toolSketchId: "sketch_tool",
+            toolSketchEntityId: "rect_tool",
+            toolProfileKind: "rectangle"
+          },
+          roleReadiness: [
+            {
+              role: "booleanResultBody",
+              entityKind: "body",
+              status: "proven",
+              commandReady: false,
+              roleStableId: "boolean-role:body:body_cut:result",
+              label: "Boolean result body",
+              message:
+                "Boolean result body identity is source-backed, but generated topology roles are not command-ready yet."
+            },
+            {
+              role: "cutWallFace",
+              entityKind: "face",
+              status: "command-ready",
+              commandReady: true,
+              roleStableId: "generated:face:body_cut:side:uMin",
+              label: "Cut wall face uMin",
+              sourceRole: "side:uMin",
+              message:
+                "This boolean result face role is command-ready through the V12 generated-reference path."
+            },
+            {
+              role: "cutWallProfileEdge",
+              entityKind: "edge",
+              status: "command-ready",
+              commandReady: true,
+              roleStableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+              label: "Cut wall profile edge uMin/vMin",
+              sourceRole: "longitudinal:uMin:vMin",
+              message:
+                "This boolean result edge role is command-ready for selection, naming, and measurement through the V12 generated-reference path."
+            }
+          ],
+          diagnostics: [
+            {
+              code: "BOOLEAN_TOPOLOGY_MATCHING_DEFERRED",
+              severity: "blocking",
+              message:
+                "General boolean result topology matching remains deferred for unproven carried, split, terminal, and rim roles."
+            },
+            {
+              code: "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL",
+              severity: "warning",
+              message:
+                "Some boolean result roles are source-semantic, but unproven roles remain ambiguous until a later V12 tranche proves them."
+            },
+            {
+              code: "BOOLEAN_RESULT_REFERENCES_PARTIAL_COMMAND_READY",
+              severity: "warning",
+              message:
+                "Some boolean result face and edge roles are command-ready, while unproven boolean topology remains diagnostic-only."
+            }
+          ]
+        },
+        issues: [
+          {
+            code: "AMBIGUOUS_BODY_TOPOLOGY",
+            message:
+              "Stable generated topology references are ambiguous for authored boolean result bodies until boolean topology matching is implemented.",
+            bodyId: "body_cut",
+            featureId: "feat_cut"
+          }
+        ]
+      }
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        topologyAvailable: false,
+        booleanTopology: {
+          contractVersion: "partbench.boolean-topology.v1",
+          status: "partial",
+          commandReady: false,
+          sourceInputs: {
+            operationMode: "cut"
+          },
+          roleReadiness: [
+            {
+              role: "booleanResultBody",
+              status: "proven",
+              commandReady: false
+            },
+            {
+              role: "cutWallFace",
+              status: "command-ready",
+              commandReady: true,
+              sourceRole: "side:uMin"
+            },
+            {
+              role: "cutWallProfileEdge",
+              status: "command-ready",
+              commandReady: true,
+              sourceRole: "longitudinal:uMin:vMin"
+            }
+          ]
+        }
+      }
+    });
+  });
+
   it("types primitive feature summaries", () => {
     const feature: CadPrimitiveFeatureSummary = {
       id: "feature:torus_1",

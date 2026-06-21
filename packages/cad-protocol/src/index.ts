@@ -2939,6 +2939,7 @@ export interface CadGeneratedReferenceSignature {
   readonly targetBodyId?: BodyId;
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly sketchPlane: SketchPlane;
+  readonly extrudeOperationMode?: FeatureExtrudeOperationMode;
   readonly extrudeSide?: FeatureExtrudeSide;
   readonly depth?: number;
   readonly revolveAxis?: FeatureRevolveAxis;
@@ -3896,6 +3897,105 @@ export type CadBodyTopologyMeasurementConfidence =
   | "source-analytic"
   | "kernel-derived";
 
+export type CadBooleanResultTopologyOperationMode = "add" | "cut";
+
+export type CadBooleanResultTopologyStatus =
+  | "unsupported"
+  | "ambiguous"
+  | "partial"
+  | "ready";
+
+export type CadBooleanResultTopologyDerivedExactValidationStatus =
+  | "notProvided"
+  | "available"
+  | "stale"
+  | "unsupported"
+  | "failed"
+  | "unavailable";
+
+export type CadBooleanResultTopologyRoleEntityKind =
+  | "body"
+  | "face"
+  | "edge"
+  | "vertex";
+
+export type CadBooleanResultTopologyRoleStatus =
+  | "planned"
+  | "unsupported"
+  | "ambiguous"
+  | "proven"
+  | "command-ready";
+
+export type CadBooleanResultTopologyRole =
+  | "booleanResultBody"
+  | "targetCarriedFace"
+  | "targetModifiedFace"
+  | "targetSplitFace"
+  | "cutWallFace"
+  | "cutStartRimEdge"
+  | "cutTerminalFace"
+  | "cutTerminalRimEdge"
+  | "cutExitRimEdge"
+  | "cutWallProfileEdge"
+  | "addedWallFace"
+  | "addedCapFace"
+  | "addSeamEdge"
+  | "addProfileEdge"
+  | "targetCarriedEdge"
+  | "targetSplitEdge"
+  | "intersectionVertex";
+
+export type CadBooleanResultTopologyDiagnosticCode =
+  | "BOOLEAN_TOPOLOGY_MATCHING_DEFERRED"
+  | "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL"
+  | "BOOLEAN_ROLE_DERIVATION_DEFERRED"
+  | "BOOLEAN_RESULT_REFERENCES_PARTIAL_COMMAND_READY"
+  | "BOOLEAN_RESULT_REFERENCES_NOT_COMMAND_READY"
+  | "BOOLEAN_EXACT_VALIDATION_NOT_PROVIDED"
+  | "BOOLEAN_EXACT_VALIDATION_AVAILABLE"
+  | "BOOLEAN_EXACT_VALIDATION_STALE"
+  | "BOOLEAN_EXACT_VALIDATION_UNSUPPORTED"
+  | "BOOLEAN_EXACT_VALIDATION_FAILED"
+  | "BOOLEAN_EXACT_VALIDATION_UNAVAILABLE";
+
+export interface CadBooleanResultTopologyDiagnostic {
+  readonly code: CadBooleanResultTopologyDiagnosticCode;
+  readonly severity: "info" | "warning" | "blocking";
+  readonly message: string;
+}
+
+export interface CadBooleanResultTopologyRoleReadiness {
+  readonly role: CadBooleanResultTopologyRole;
+  readonly entityKind: CadBooleanResultTopologyRoleEntityKind;
+  readonly status: CadBooleanResultTopologyRoleStatus;
+  readonly commandReady: boolean;
+  readonly roleStableId?: string;
+  readonly label?: string;
+  readonly sourceRole?: string;
+  readonly message: string;
+}
+
+export interface CadBooleanResultTopologySourceInputs {
+  readonly featureId: FeatureId;
+  readonly resultBodyId: BodyId;
+  readonly operationMode: CadBooleanResultTopologyOperationMode;
+  readonly targetBodyId?: BodyId;
+  readonly toolSketchId?: SketchId;
+  readonly toolSketchEntityId?: SketchEntityId;
+  readonly toolProfileKind?: FeatureExtrudeProfileKind;
+}
+
+export interface CadBooleanResultTopologyReadiness {
+  readonly contractVersion: "partbench.boolean-topology.v1";
+  readonly status: CadBooleanResultTopologyStatus;
+  readonly commandReady: boolean;
+  readonly sourceSemanticsAvailable: boolean;
+  readonly derivedExactValidationStatus: CadBooleanResultTopologyDerivedExactValidationStatus;
+  readonly sourceInputs: CadBooleanResultTopologySourceInputs;
+  readonly roleReadiness: readonly CadBooleanResultTopologyRoleReadiness[];
+  readonly diagnostics: readonly CadBooleanResultTopologyDiagnostic[];
+}
+
 export type CadBodyTopologyIssueCode =
   | "UNSUPPORTED_BODY_TOPOLOGY"
   | "STALE_BODY_TOPOLOGY"
@@ -4002,6 +4102,7 @@ export interface CadBodyTopologySnapshot {
   readonly exactMeasurementsAvailable: boolean;
   readonly measurementConfidence: CadBodyTopologyMeasurementConfidence;
   readonly exactMetadata?: CadBodyExactMetadataSnapshot;
+  readonly booleanTopology?: CadBooleanResultTopologyReadiness;
   readonly faceCount?: number;
   readonly edgeCount?: number;
   readonly vertexCount?: number;

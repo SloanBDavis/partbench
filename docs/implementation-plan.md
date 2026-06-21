@@ -4,17 +4,18 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-19.
+Last updated: 2026-06-20.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
 archived V4 constrained sketch solving milestone, `docs/v10.md` for the
 completed editable feature history and stable modeling references release
-record, `docs/v11.md` for the planned full sketch solver and parametric sketch
-UX release record, `docs/native-format.md` for project-format direction, and
-`docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, and V9 are
-completed historical releases whose details are now condensed in this plan
-instead of maintained as separate release documents.
+record, `docs/v11.md` for the completed full sketch solver and parametric
+sketch UX release record, `docs/v12.md` for the planned stable boolean topology
+and result references release record, `docs/native-format.md` for
+project-format direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size
+findings. V7, V8, and V9 are completed historical releases whose details are
+now condensed in this plan instead of maintained as separate release documents.
 
 ## Active Rules
 
@@ -51,10 +52,12 @@ These constraints remain active:
     should not mix schema migration, broad UI workflow changes, stable reference
     expansion, unrelated new modeling commands, persistent B-rep checkpoints,
     WebGPU, assemblies, STEP import, or hosted collaboration without explicit
-    approval. V11 is the explicit scope for sketch solver expansion. Completed
-    V8, V9, and V10 tranche records below remain historical release records and
-    compatibility guardrails. Do not re-open those releases unless the user
-    explicitly asks for a maintenance or regression-fix tranche.
+    approval. V11 is complete as the explicit sketch solver expansion scope.
+    V12 is the explicit implementation scope for stable boolean topology and result
+    references. Completed V8, V9, V10, and V11 tranche records below remain
+    historical release records and compatibility guardrails. Do not re-open
+    those releases unless the user explicitly asks for a maintenance or
+    regression-fix tranche.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -298,18 +301,52 @@ These constraints remain active:
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
     scopes one of those items.
-35. V11 is in progress in `docs/v11.md` as the full sketch solver and
-    parametric sketch UX release. Its center is source-backed constraints and
-    dimensions, custom solver diagnostics, profile validity, drag-solve
-    preview/commit, compact sketch UI, downstream V10 rebuild/reference-health
-    integration, and JSON/`.wcad` round-trips for new sketch source data.
-    Tranches A and B introduced the solver-status contract and pure solver
-    package. Tranche C introduced `web-cad.project.v17` only for V11 advanced
-    sketch constraint source records while ordinary projects continue to export
-    as V16. V11 does not
-    scope WebGPU, assemblies, STEP import, persistent B-rep checkpoints, hosted
-    collaboration, natural-language command entry, broad new solid modeling
-    families, or renderer authority over sketch solving.
+35. V11 is complete in `docs/v11.md` as the full sketch solver and parametric
+    sketch UX release. Its center is source-backed constraints and dimensions,
+    custom solver diagnostics, profile validity, drag-solve preview/commit,
+    compact sketch UI, downstream V10 rebuild/reference-health integration,
+    agent/MCP parity, and JSON/`.wcad` round-trips for new sketch source data.
+    V11 introduced `web-cad.project.v17` only for advanced sketch constraint
+    source records while ordinary projects continue to export as V16. It does
+    not scope WebGPU, assemblies, STEP import, persistent B-rep checkpoints,
+    hosted collaboration, natural-language command entry, broad new solid
+    modeling families, or renderer authority over sketch solving.
+36. V12 is in progress in `docs/v12.md` as the stable boolean topology and
+    result references release. Its center is source-semantic generated topology
+    for supported cut/add boolean result bodies, command-ready result
+    faces/edges, reference health/repair through edits, compact product
+    integration, and release smokes for cut/add result workflows. Tranches A-D1
+    are implemented for the first rectangle cut subset: typed
+    `body.topology.booleanTopology` readiness, source-semantic cut-wall face
+    roles, command-ready generated face references that can be selected, named,
+    measured, and used for `sketch.createOnFace`, command-ready cut-wall
+    profile edge references, and command-ready rectangle added-cap profile edge
+    references for selection, naming, and measurement. The current add-face
+    source/query slice also exposes command-ready rectangle add wall/cap face
+    references for selection, naming, measurement, and `sketch.createOnFace`.
+    The circle tool source/query slice admits supported circle cut/add tool
+    profiles and exposes command-ready circle cut-wall/rim references plus
+    circle add-wall/cap/cap-edge references, with cylindrical faces and circle
+    edges limited to selection, naming, and measurement while planar added caps
+    can still host sketches.
+    Tranche E1 is implemented for scoped upstream
+    source-extrude edits: semantic diffs report supported V12 cut-wall
+    face/edge generated and named references as active while unproven result
+    topology still reports ambiguous replacement; supported rectangle add
+    wall/cap face references now receive the same active effects. The current
+    edit-effects slice extends that behavior to supported source
+    `sketch.updateEntity` profile edits and `sketch.dimension.update` driving
+    dimension edits, plus source-affecting solver-backed midpoint constraint
+    creation and fresh driving dimension creation. Tranche F1 keeps browser
+    product surfaces compact by surfacing only semantic-reference-advertised
+    actions. Tranche G2 adds browser smoke coverage for cut-result face/edge
+    and add-result face/edge reference workflows, while the deterministic V12
+    source smoke covers rectangle cut, rectangle add, and circle tool boolean
+    reference chains.
+    V12 should not introduce broad arbitrary topology naming, persistent exact
+    B-rep checkpoints, WebGPU, STEP import, assemblies, broad new modeling
+    commands, or a new saved-project schema unless a tranche explicitly adds new
+    source-of-truth topology anchor data.
 
 ## Current Repo State
 
@@ -346,6 +383,9 @@ and focused packages:
   exact-metadata, revolve, hole, and edge-finish geometry facade around the
   isolated OCCT path.
 - `packages/geometry-worker` - async geometry worker request/response boundary.
+- `packages/sketch-solver` - pure TypeScript 2D sketch solver package for V11
+  normalized solve models, constraints, dimensions, diagnostics, and
+  deterministic numerical results.
 - `packages/agent-adapter` - structured adapter over CADOps batch/query APIs.
 - `packages/mcp-adapter` - MCP tool wrapper over the structured adapter.
 - `packages/mcp-stdio-server` - minimal stdio JSON-RPC MCP transport.
@@ -362,12 +402,13 @@ Compatibility identifiers retained during the Partbench rename:
 
 - `@web-cad/*` workspace package names remain stable to avoid broad import and
   lockfile churn.
-- `web-cad.project.v1` through `web-cad.project.v16` remain project-format schema
+- `web-cad.project.v1` through `web-cad.project.v17` remain project-format schema
   identifiers. Renaming them would be a storage migration.
 - `web-cad.project.v7` is an older saved-project schema version, not the V7
   release. `web-cad.project.v8` is also an older saved-project schema version,
   not the V8 release. If a future release adds new source-of-truth document
-  data, the next saved schema should be `web-cad.project.v17`.
+  data after V11, the next saved schema should be `web-cad.project.v18`. The
+  planned V12 release does not require V18 for query-derived boolean topology.
 - `web-cad.agent-adapter.v1` remains the adapter protocol identifier.
 
 ## Current Scripts
@@ -384,11 +425,13 @@ pnpm format:check
 pnpm smoke:v7-release-samples
 pnpm smoke:v10-release-samples
 pnpm smoke:v11-release-samples
+pnpm smoke:v12-release-samples
 pnpm smoke:v7-browser-workflow
 pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
 pnpm smoke:v9-viewport-workflow
 pnpm smoke:v10-browser-workflow
+pnpm smoke:v12-browser-workflow
 ```
 
 Derived geometry is enabled by default for local Vite serve:
@@ -466,6 +509,7 @@ pnpm smoke:v7-browser-workflow:derived
 pnpm smoke:v8-wcad-workflow
 pnpm smoke:v9-viewport-workflow
 pnpm smoke:v10-browser-workflow
+pnpm smoke:v12-browser-workflow
 ```
 
 The default smoke follows the existing built-app/static-server/CDP pattern. It
@@ -492,7 +536,18 @@ package, `.wcad` model round-trip, and viewport usability in addition to the
 existing workflow checks. The V9-named `pnpm smoke:v9-viewport-workflow` script
 is a release-clarity alias over the same compatibility runner, with derived
 geometry enabled so the current V8 `.wcad`/STEP/GLB surfaces and V9 direct
-viewport checks are represented together. The underlying files remain
+viewport checks are represented together. The V12-named
+`pnpm smoke:v12-browser-workflow` script builds with derived geometry enabled
+and requires supported cut-result face/edge browser checks: command-ready
+cut-wall face selection, compact sketch/name/measure/inspect actions, attached
+sketch creation on the result face, command-ready cut-wall profile edge
+selection, compact name/measure/inspect actions, and no deferred chamfer,
+fillet, or Edge finish affordances for V12 edges. It also requires the first
+add-result face/edge browser checks: deterministic add-result creation, added
+cap and wall face command-ready status, compact sketch/name/measure/inspect
+actions, attached sketch creation on the added cap, added-cap profile edge
+command-ready status, compact name/measure/inspect actions, and no deferred
+chamfer, fillet, or Edge finish affordances. The underlying files remain
 `scripts/smoke-v7-browser-workflow.mjs` and
 `scripts/v7-browser-workflow.mjs` for backward compatibility.
 
@@ -509,6 +564,16 @@ Current Partbench can:
 - create, rename, and delete source-of-truth horizontal/vertical line
   orientation constraints, fixed/coincident/midpoint point constraints, and
   parallel/perpendicular line constraints through CADOps;
+- preserve V17 advanced sketch constraint source records for tangent,
+  concentric, equal length, equal radius, angle, and symmetry constraints;
+- query `sketch.solverStatus` through cad-core, agent, and MCP surfaces for
+  source-backed sketch entities, constraints, dimensions, profile validity,
+  numerical solver diagnostics, under-defined/fully-defined/over-defined/
+  conflicting state, and V17 advanced constraint status;
+- run the pure `packages/sketch-solver` numerical solver for the current V11
+  supported constraint and dimension subset without mutating document source;
+- use compact sketch solver/status UI, viewport sketch drag handles, and
+  conservative constraint inference while keeping sketch edits command-backed;
 - create rectangle/circle extrude features as new bodies;
 - edit authored extrude depth and side;
 - edit source rectangle/circle profile values through `sketch.updateEntity`;
@@ -576,8 +641,8 @@ Current Partbench can:
 - use compact UI workflows and a first feature-tree/product workflow for
   supported Extrude, Revolve, Hole, Chamfer, and Fillet operations without
   offering known-unsupported targets as valid;
-- save/load current `web-cad.project.v16` JSON with migrations from older
-  accepted schemas, while the Project panel shows draft source, schema/
+- save/load current `web-cad.project.v16` and `web-cad.project.v17` JSON with
+  migrations from older accepted schemas, while the Project panel shows draft source, schema/
   migration status, structured validation issues, replacement/history impact,
   same-document-source detection before import, native `.wcad` project-file
   state, app-layer save/open capability status, and JSON debug/interchange
@@ -592,12 +657,12 @@ baseline. It is not yet a full CAD system.
 
 Current limitations:
 
-- There is no general sketch solver yet. V11 now scopes that work. Current
-  constraints are limited to horizontal/vertical line orientation,
-  fixed/coincident/midpoint point relationships, and parallel/perpendicular
-  line relationships.
-- Sketch dimensions currently drive only rectangle width/height, circle radius,
-  and line length through a direct evaluator path.
+- The V11 sketch solver is implemented for the planned supported constraint
+  subset, but there is still no parameter expression language, imported curve
+  constraints, ellipse/spline solving, or broad advanced-constraint creation UI.
+- Sketch dimensions currently drive rectangle width/height, circle radius, line
+  length, and supported solver-backed source edits. Broader dimension families
+  remain deferred.
 - There is no parameter expression language.
 - There is no broad feature graph beyond current authored extrudes, scoped
   booleans, revolve, hole, and rectangle-edge chamfer/fillet workflows.
@@ -607,6 +672,10 @@ Current limitations:
   V6 revolve, hole, chamfer, and fillet result bodies also keep generated
   references unsupported unless a future stable topological naming design is
   explicitly implemented.
+- V12 now scopes the next stable-reference expansion: supported cut/add boolean
+  result bodies should gain command-ready generated topology where source
+  semantics prove identity, without promoting raw OCCT or renderer topology IDs
+  to public stable references.
 - Feature tree, inspector, modeling workflow, agents, MCP, and the left
   `Selection` tab consume semantic selections that the UI already exposes. The
   current viewport supports body/object-granularity pick intent for current
@@ -1312,10 +1381,11 @@ Use these decisions when maintaining V8 behavior:
 - the user-visible native extension is `.wcad`;
 - the first package version is `partbench.wcad.v1`;
 - package version is separate from project schema version;
-- current document source remains `web-cad.project.v16` unless a future release
-  adds new source-of-truth document data;
-- if new source data is added, the next project schema is
-  `web-cad.project.v17` with explicit migrations;
+- current document source remains `web-cad.project.v16` for ordinary projects
+  and `web-cad.project.v17` when V11 advanced sketch constraint source records
+  are present;
+- if new source data is added after V17, the next project schema is
+  `web-cad.project.v18` with explicit migrations;
 - a V8 `.wcad` package is ZIP-compatible and directory-compatible;
 - required package source entries are `manifest.json`, `document.cbor`, and
   `commands.cbor`;
@@ -1789,7 +1859,7 @@ Do not combine these in one V10 tranche unless explicitly approved:
 
 ## V11 Full Sketch Solver And Parametric Sketch UX Release
 
-V11 is planned in `docs/v11.md`. It is the release that turns the current
+V11 is complete in `docs/v11.md`. It is the release that turned the earlier
 limited sketch dimensions and constraint evaluator into a solver-backed
 parametric sketch workflow:
 
@@ -1816,8 +1886,8 @@ V11 is organized around these pillars:
   dependency graph, reference health, and rebuild plan contracts;
 - JSON and `.wcad` round-trips for new sketch source data;
 - thin agent/MCP access to the same solve, edit, and diagnostic surfaces;
-- long combined browser smokes for create -> constrain -> solve -> feature ->
-  rebuild -> save/open workflows.
+- deterministic long release smokes plus targeted browser QA for create ->
+  constrain -> solve -> feature -> rebuild -> save/open workflows.
 
 ### V11 Answered Decisions
 
@@ -1953,8 +2023,15 @@ Use these decisions when drafting or implementing V11 tranches:
     existing cad-core/CADOps paths. Dry-run tests prove proposed sketch edits do
     not mutate source before commit, and wrappers do not add solver authority or
     leak renderer/private IDs.
-15. **Release Hardening And Long Sketch Smokes** - add stress fixtures,
-    combined browser workflows, docs cleanup, and a final V11 audit.
+15. **Release Hardening And Long Sketch Smokes** - implemented as deterministic
+    V11 release smoke coverage. `pnpm smoke:v11-release-samples` runs a long
+    current-source sketch chain through create -> constrain/dimension -> solve
+    status -> feature -> dry-run non-mutation -> committed dimension edit ->
+    rebuild/reference queries -> JSON/`.wcad` round-trip, plus an imported V17
+    advanced-constraint source chain. Script tests assert summary counts and
+    source/derived/session boundary separation. Targeted browser QA covered
+    sketch drag and inference workflows without adding a fragile broad V11-only
+    browser runner.
 
 ### V11 Scope Guardrails
 
@@ -1992,6 +2069,167 @@ Do not combine these in one V11 tranche unless explicitly approved:
 - Hosted collaboration.
 - Production MCP auth/permission system.
 - Natural-language command entry.
+
+## V12 Stable Boolean Topology And Result References Release
+
+V12 is planned in `docs/v12.md`. It is the release that should turn supported
+cut/add boolean result bodies from visually valid but semantically ambiguous
+into command-ready result topology where source semantics prove identity:
+
+```text
+authored source features -> boolean result body lifecycle ->
+semantic result topology roles -> command-ready generated references ->
+reference health/repair -> viewport and UI consumption
+```
+
+### V12 Release Pillars
+
+V12 is organized around these pillars:
+
+- typed boolean result topology roles, readiness, provenance, and diagnostics;
+- source-semantic generated references for supported cut/add boolean result
+  bodies;
+- command-ready result face references for sketch-on-face, naming, measure, and
+  inspect workflows;
+- command-ready result edge/rim references only where source role and lineage
+  are proven;
+- rebuild/edit/reference-health integration using the existing V10 category
+  vocabulary;
+- compact Tree/Selection/Inspector/Modeling and viewport consumption without
+  viewport-blocking diagnostics;
+- deterministic source/query and browser smokes for cut -> select/name/sketch
+  -> edit -> rebuild -> repair -> JSON/`.wcad`, plus circle tool cut/add
+  source/query coverage.
+
+### V12 Answered Decisions
+
+Use these decisions when drafting or implementing V12 tranches:
+
+- V12 is a stable boolean topology/modeling-authority release, not a renderer,
+  storage, or broad new modeling-feature release;
+- generated-reference stable IDs must come from public source semantics such as
+  result body ID, creating feature ID, operation mode, target/source role, tool
+  sketch/profile entity ID, and semantic role, never from OCCT or renderer
+  topology indexes;
+- derived exact metadata and opaque signatures may validate role health but are
+  not public stable IDs or source truth by themselves;
+- query-derived boolean topology and generated-reference candidates do not
+  require a saved-project schema bump;
+- `web-cad.project.v18` is reserved only if a V12 tranche persists new
+  source-of-truth topology anchors, manual topology repair records, or exact
+  B-rep/checkpoint source data;
+- `.wcad` package version `partbench.wcad.v1` remains unchanged unless package
+  layout changes, such as adding authoritative B-rep checkpoint entries;
+- consumed target bodies remain consumed lifecycle inputs, while active
+  downstream commands should target supported result-body references;
+- unsupported or ambiguous topology must remain structured diagnostics instead
+  of silently retargeting or using display/kernel IDs.
+
+### V12 Proposed Tranche Sequence
+
+1. **Boolean Topology Contract And Readiness** - implemented as the first typed
+   protocol/core slice. It adds boolean result topology roles, provenance,
+   derived exact validation status, readiness, and diagnostics to
+   `body.topology.booleanTopology` for current add/cut result bodies. Matching
+   derived exact metadata updates validation status only; it does not become
+   topology authority.
+2. **Source-Semantic Boolean Role Derivation** - implemented as the first role
+   mapper. Boolean result bodies now expose deterministic source-backed
+   readiness IDs, and direct command-supported rectangle cut results derive
+   proven source-semantic cut-wall face roles (`side:uMin`, `side:uMax`,
+   `side:vMin`, and `side:vMax`).
+3. **Command-Ready Boolean Face References** - implemented as the first visible
+   product unlock. Generated-reference resolution,
+   `selection.referenceCandidates`, `reference.nameGenerated`, and
+   `sketch.createOnFace` now support the command-supported rectangle cut-wall
+   face subset through stable IDs such as
+   `generated:face:body_cut_1:side:uMin`. The same query path now supports the
+   first rectangle add face subset: added wall faces such as
+   `generated:face:body_add_1:side:uMin` and the added cap face
+   `generated:face:body_add_1:endCap`. The boolean result body reference is
+   exposed only as a non-commandable container. Add seams/profile edges, split
+   regions, terminal faces, rim edges, and intersection topology remain
+   deferred or ambiguous.
+4. **Boolean Edge And Rim References** - D1 is implemented for the first
+   source-proven edge subset. Direct rectangle cut results expose four
+   command-ready cut-wall profile edges using stable IDs such as
+   `generated:edge:body_cut_1:longitudinal:uMin:vMin`; they can be selected,
+   named, and measured, but chamfer/fillet remains deferred until the command
+   validator and derived geometry pipeline can support boolean-result
+   edge-finish targets. Start/terminal/exit rim edges, add result edges, split
+   edges, and intersection vertices remain ambiguous.
+5. **Rebuild, Edit, And Reference Health Integration** - E1 is implemented for
+   scoped upstream source-extrude edits on direct rectangle cut chains. Semantic
+   diffs report supported V12 cut-wall face/edge generated and named references
+   as active, and `reference.health` keeps those named references commandable
+   after the edit. The current add-face source/query slice extends the same
+   active generated/named reference effects to supported rectangle add wall/cap
+   faces. The current edit-effects slice also covers supported source
+   `sketch.updateEntity` profile edits and `sketch.dimension.update` driving
+   dimension edits for the direct downstream boolean subset; the current
+   source-affecting solver edit slice adds midpoint `sketch.constraint.create`
+   and fresh `sketch.dimension.create` coverage for the same active V12
+   reference effects. The source/query repair slice proves explicit
+   `reference.repairName` retargeting from missing names to command-ready V12
+   cut-wall face/edge, added wall/cap face, and added-cap edge targets.
+   Compact browser repair surfacing is covered for a missing name repaired to a
+   command-ready V12 cut-wall face. The query-alignment slice updates
+   `feature.editability` so supported direct cut/add downstream result
+   generated/named references appear as active reference changes while the broad
+   result body keeps its `AMBIGUOUS_RESULT_TOPOLOGY` diagnostic; dependency
+   graph and rebuild plan coverage is locked in for active V12 result
+   references plus conservative non-command-ready result body lifecycle,
+   including the circular add cap edge source/query path.
+   Broader browser repair polish, dependency/rebuild UI consumption, and
+   remaining solver-backed edit paths remain planned.
+6. **Product Integration** - F1 is implemented as compact UI surfacing for the
+   current V12 subset. Tree, Selection, Inspector, Modeling, and current
+   viewport contextual actions consume V12 references through
+   `selection.referenceCandidates`; supported cut-wall faces expose
+   sketch/name/measure/inspect actions, supported cut-wall profile edges expose
+   name/measure/inspect actions, and deferred chamfer/fillet/Edge finish
+   affordances remain hidden until the semantic reference contract advertises
+   them.
+7. **Release Samples, Smokes, And Documentation Hardening** - G1 is implemented
+   as `pnpm smoke:v12-release-samples`, a deterministic source/query smoke for
+   rectangle cut result topology, face/edge references, selection, naming,
+   measurement, deferred edge-finish boundaries, upstream source-edit reference
+   effects, named-reference health, explicit repair from missing names to
+   command-ready cut-wall face/edge targets, and JSON/`.wcad` round-trips. It
+   also covers dependency graph, rebuild plan, and feature editability
+   alignment for supported cut refs. It now also covers the first rectangle add
+   face/edge reference chain for topology readiness, added wall/cap face and
+   added-cap profile edge references, selection, naming, attached sketch
+   creation, measurement, upstream edit effects, source sketch/dimension edit
+   effects, solver-backed source create effects, health, explicit repair from
+   missing names to command-ready added wall/cap faces and added-cap edge
+   targets, dependency graph/rebuild plan/feature editability alignment, and
+   round-trips. It now also covers a
+   circle tool cut/add chain for command admission, circle cut-wall/rim
+   references, circle add-wall/cap/cap-edge references, selection, naming,
+   measurement, planar added-cap sketch attachment, rejected sketch attachment
+   on circular/edge targets, circle add cap edge health/rebuild/editability
+   alignment, and round-trips. G2 is
+   implemented as `pnpm smoke:v12-browser-workflow`, a focused browser smoke for
+   cut-result face/edge command-ready status, face-attached sketch creation,
+   compact contextual actions, hidden deferred edge-finish affordances, compact
+   repair of missing names to a command-ready V12 cut-wall face and V12
+   added-cap profile edge, and the first add-result cap/wall face plus
+   added-cap profile edge command-ready browser workflow. Thin agent/MCP tests
+   also assert `selection.referenceCandidates` pass-through for the same
+   added-cap profile edge. Docs should continue stating exactly which boolean
+   topology is supported and which remains deferred.
+
+### V12 Scope Guardrails
+
+Do not combine these in one V12 tranche unless explicitly approved:
+
+- source schema migration and broad UI workflow changes;
+- stable boolean topology expansion and unrelated new modeling commands;
+- boolean topology work and persistent B-rep checkpoints;
+- boolean topology work and WebGPU renderer/selection-buffer replacement;
+- boolean topology work and STEP import or assemblies;
+- boolean topology work and arbitrary topology naming for every OCCT result.
 
 ## Definition of Done
 

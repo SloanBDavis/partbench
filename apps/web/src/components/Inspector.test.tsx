@@ -327,6 +327,79 @@ describe("Inspector", () => {
     expect(markup).toContain("Create chamfer");
   });
 
+  it("keeps V12 cut-wall edges inspectable without deferred edge-finish affordances", () => {
+    const face = createFace();
+    const edge = createEdge({
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      label: "Cut wall profile edge uMin/vMin",
+      bodyId: "body_cut",
+      sourceFeatureId: "feat_cut",
+      role: "longitudinal:uMin:vMin",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ]
+    });
+    const edgeCandidates = createSelectionReferenceCandidates(edge, {
+      commandOperations: [
+        "reference.nameGenerated",
+        "feature.measureReference",
+        "feature.selectReference"
+      ]
+    });
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody({ id: "body_cut", featureId: "feat_cut" }),
+        disabled: false,
+        feature: createFeature({
+          id: "feat_cut",
+          bodyId: "body_cut",
+          operationMode: "cut"
+        }),
+        generatedReferences: createGeneratedReferences(face, edge, {
+          bodyId: "body_cut",
+          sourceFeatureId: "feat_cut"
+        }),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [edge.stableId, edgeCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_cut",
+          stableId: edge.stableId,
+          kind: "edge"
+        },
+        selectionReferenceCandidates: edgeCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Selected reference");
+    expect(markup).toContain("Cut wall profile edge uMin/vMin");
+    expect(markup).toContain("Reference status");
+    expect(markup).toContain("Command-ready reference");
+    expect(markup).not.toContain("Edge finish");
+    expect(markup).not.toContain("Chamfer");
+    expect(markup).not.toContain("Fillet");
+  });
+
   it("renders generated references for non-extrude authored bodies", () => {
     const holeFeature = createHoleFeature();
     const markup = renderToStaticMarkup(
@@ -507,9 +580,72 @@ describe("Inspector", () => {
     expect(markup).toContain("Repair name");
     expect(markup).toContain("Named reference needs a new target.");
   });
+
+  it("shows health-driven repair action for selected resolved named references", () => {
+    const face = createFace();
+    const edge = createEdge();
+    const faceCandidates = createSelectionReferenceCandidates(face);
+    const missingReference: NamedGeneratedReferenceEntry = {
+      name: "Result face",
+      kind: "face",
+      bodyId: "body_cut",
+      stableId: "generated:face:body_cut:side:uMin",
+      status: "resolved",
+      reference: face
+    };
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, edge),
+        namedReferences: [missingReference],
+        namedReferenceHealthByName: new Map([
+          [
+            "Result face",
+            createNamedReferenceHealth(missingReference, "missing")
+          ]
+        ]),
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: face.bodyId,
+          stableId: face.stableId,
+          kind: face.kind
+        },
+        selectedNamedReferenceName: "Result face",
+        selectionReferenceCandidates: faceCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("1 repairable");
+    expect(markup).toContain("Missing");
+    expect(markup).toContain("Select for repair");
+    expect(markup).toContain("Select a replacement face reference");
+    expect(markup).toContain("Repair Result face");
+  });
 });
 
-function createBody(): CadBodySnapshot {
+function createBody(overrides: Partial<CadBodySnapshot> = {}): CadBodySnapshot {
   return {
     id: "body_rect",
     kind: "solid",
@@ -521,14 +657,16 @@ function createBody(): CadBodySnapshot {
       sketchId: "sketch_1",
       entityId: "rect_1",
       profileKind: "rectangle"
-    }
+    },
+    ...overrides
   };
 }
 
-function createFeature(): Extract<
-  CadFeatureSummary,
-  { readonly kind: "extrude" }
-> {
+function createFeature(
+  overrides: Partial<
+    Extract<CadFeatureSummary, { readonly kind: "extrude" }>
+  > = {}
+): Extract<CadFeatureSummary, { readonly kind: "extrude" }> {
   return {
     id: "feat_rect",
     kind: "extrude",
@@ -544,7 +682,8 @@ function createFeature(): Extract<
       type: "sketchEntity",
       sketchId: "sketch_1",
       entityId: "rect_1"
-    }
+    },
+    ...overrides
   };
 }
 
@@ -645,23 +784,30 @@ function createFeatureEditability(
 
 function createGeneratedReferences(
   face: CadGeneratedFaceReference,
-  edge: CadGeneratedEdgeReference
+  edge: CadGeneratedEdgeReference,
+  overrides: {
+    readonly bodyId?: string;
+    readonly sourceFeatureId?: string;
+  } = {}
 ): BodyGeneratedReferencesQueryResponse {
+  const bodyId = overrides.bodyId ?? "body_rect";
+  const sourceFeatureId = overrides.sourceFeatureId ?? "feat_rect";
+
   return {
     ok: true,
     query: "body.generatedReferences",
     cadOpsVersion: "cadops.v1",
     body: {
       kind: "body",
-      stableId: "generated:body:body_rect",
+      stableId: `generated:body:${bodyId}`,
       label: "Generated body",
       eligibleOperations: [
         "feature.measureReference",
         "feature.selectReference"
       ],
-      bodyId: "body_rect",
+      bodyId,
       ownerPartId: "part:default",
-      sourceFeatureId: "feat_rect",
+      sourceFeatureId,
       sourceSketchId: "sketch_1",
       sourceSketchEntityId: "rect_1",
       profileKind: "rectangle",
@@ -809,7 +955,9 @@ function createFace(): CadGeneratedFaceReference {
   };
 }
 
-function createEdge(): CadGeneratedEdgeReference {
+function createEdge(
+  overrides: Partial<CadGeneratedEdgeReference> = {}
+): CadGeneratedEdgeReference {
   return {
     kind: "edge",
     stableId: "generated:edge:body_rect:start:uMin",
@@ -831,7 +979,8 @@ function createEdge(): CadGeneratedEdgeReference {
     geometricSignature: {
       ...createSignature(),
       curveType: "line"
-    }
+    },
+    ...overrides
   };
 }
 
@@ -845,11 +994,12 @@ function createSignature() {
 }
 
 function createNamedReferenceHealth(
-  reference: NamedGeneratedReferenceEntry
+  reference: NamedGeneratedReferenceEntry,
+  status: CadReferenceHealthEntry["status"] = "repair-needed"
 ): CadReferenceHealthEntry {
   return {
     source: "namedReference",
-    status: "repair-needed",
+    status,
     commandable: false,
     commandOperations: [],
     label: reference.name,
@@ -871,8 +1021,11 @@ function createNamedReferenceHealth(
       {
         code: "REFERENCE_REPAIR_NEEDED",
         severity: "warning",
-        status: "repair-needed",
-        message: "Named reference needs a new target.",
+        status,
+        message:
+          status === "missing"
+            ? "Named reference target is missing."
+            : "Named reference needs a new target.",
         bodyId: reference.bodyId,
         stableId: reference.stableId,
         referenceName: reference.name

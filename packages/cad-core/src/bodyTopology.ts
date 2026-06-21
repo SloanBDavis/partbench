@@ -1,6 +1,9 @@
 import type {
   BodyId,
   CadBodyDerivedExactMetadataSnapshot,
+  CadBooleanResultTopologyDerivedExactValidationStatus,
+  CadBooleanResultTopologyReadiness,
+  CadBooleanResultTopologyRoleReadiness,
   CadBodyTopologyIssue,
   CadBodyTopologyIssueCode,
   CadBodyTopologySnapshot,
@@ -179,13 +182,584 @@ function createAuthoredFeatureTopology(
     }
   ];
 
-  return createUnsupportedTopologySnapshot({
+  const unsupportedTopology = createUnsupportedTopologySnapshot({
     bodyId,
     units,
     sourceIdentity,
     issues,
     status: feature.operationMode === "newBody" ? "stale" : "ambiguous"
   });
+
+  if (feature.operationMode !== "newBody") {
+    return {
+      ...unsupportedTopology,
+      booleanTopology: createBooleanResultTopologyReadiness({
+        bodyId,
+        feature,
+        derivedExactValidationStatus: "notProvided"
+      })
+    };
+  }
+
+  return unsupportedTopology;
+}
+
+function createBooleanResultTopologyReadiness(input: {
+  readonly bodyId: BodyId;
+  readonly feature: Extract<GeneratedReferencesFeature, { kind: "extrude" }>;
+  readonly derivedExactValidationStatus: CadBooleanResultTopologyDerivedExactValidationStatus;
+}): CadBooleanResultTopologyReadiness {
+  const operationMode = input.feature.operationMode === "add" ? "add" : "cut";
+  const roleReadiness = createBooleanRoleReadiness({
+    bodyId: input.bodyId,
+    operationMode,
+    profileKind: input.feature.profileKind
+  });
+  const hasSourceTopologyRole = roleReadiness.some(
+    (role) =>
+      role.entityKind !== "body" &&
+      (role.status === "proven" || role.status === "command-ready")
+  );
+  const hasCommandReadyTopologyRole = roleReadiness.some(
+    (role) => role.entityKind !== "body" && role.commandReady
+  );
+
+  return {
+    contractVersion: "partbench.boolean-topology.v1",
+    status: hasSourceTopologyRole ? "partial" : "ambiguous",
+    commandReady: false,
+    sourceSemanticsAvailable: true,
+    derivedExactValidationStatus: input.derivedExactValidationStatus,
+    sourceInputs: {
+      featureId: input.feature.id,
+      resultBodyId: input.bodyId,
+      operationMode,
+      targetBodyId: input.feature.targetBodyId,
+      toolSketchId: input.feature.sketchId,
+      toolSketchEntityId: input.feature.entityId,
+      toolProfileKind: input.feature.profileKind
+    },
+    roleReadiness,
+    diagnostics: [
+      {
+        code: "BOOLEAN_TOPOLOGY_MATCHING_DEFERRED",
+        severity: "blocking",
+        message:
+          "General boolean result topology matching remains deferred for unproven carried, split, terminal, and rim roles."
+      },
+      createBooleanRoleDerivationDiagnostic(hasSourceTopologyRole),
+      createBooleanResultReferenceDiagnostic(hasCommandReadyTopologyRole),
+      createBooleanExactValidationDiagnostic(input.derivedExactValidationStatus)
+    ]
+  };
+}
+
+function createBooleanRoleDerivationDiagnostic(
+  hasProvenTopologyRole: boolean
+): CadBooleanResultTopologyReadiness["diagnostics"][number] {
+  if (hasProvenTopologyRole) {
+    return {
+      code: "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL",
+      severity: "warning",
+      message:
+        "Some boolean result roles are source-semantic, but unproven roles remain ambiguous until a later V12 tranche proves them."
+    };
+  }
+
+  return {
+    code: "BOOLEAN_ROLE_DERIVATION_DEFERRED",
+    severity: "blocking",
+    message:
+      "Boolean result face and edge roles are deferred until source-semantic role derivation is implemented."
+  };
+}
+
+function createBooleanResultReferenceDiagnostic(
+  hasCommandReadyTopologyRole: boolean
+): CadBooleanResultTopologyReadiness["diagnostics"][number] {
+  if (hasCommandReadyTopologyRole) {
+    return {
+      code: "BOOLEAN_RESULT_REFERENCES_PARTIAL_COMMAND_READY",
+      severity: "warning",
+      message:
+        "Some boolean result face and edge roles are command-ready, while unproven boolean topology remains diagnostic-only."
+    };
+  }
+
+  return {
+    code: "BOOLEAN_RESULT_REFERENCES_NOT_COMMAND_READY",
+    severity: "blocking",
+    message:
+      "Boolean result body generated topology remains non-commandable for reference-consuming commands."
+  };
+}
+
+function createBooleanExactValidationDiagnostic(
+  status: CadBooleanResultTopologyDerivedExactValidationStatus
+): CadBooleanResultTopologyReadiness["diagnostics"][number] {
+  switch (status) {
+    case "notProvided":
+      return {
+        code: "BOOLEAN_EXACT_VALIDATION_NOT_PROVIDED",
+        severity: "info",
+        message:
+          "No derived exact metadata snapshot was provided for boolean topology validation."
+      };
+    case "available":
+      return {
+        code: "BOOLEAN_EXACT_VALIDATION_AVAILABLE",
+        severity: "info",
+        message:
+          "Derived exact metadata is available for validation, but it is not command-ready topology authority."
+      };
+    case "stale":
+      return {
+        code: "BOOLEAN_EXACT_VALIDATION_STALE",
+        severity: "warning",
+        message:
+          "Derived exact metadata is stale for the current boolean result source identity."
+      };
+    case "unsupported":
+      return {
+        code: "BOOLEAN_EXACT_VALIDATION_UNSUPPORTED",
+        severity: "warning",
+        message:
+          "Derived exact metadata is unsupported for this boolean result topology validation."
+      };
+    case "failed":
+      return {
+        code: "BOOLEAN_EXACT_VALIDATION_FAILED",
+        severity: "warning",
+        message:
+          "Derived exact metadata failed for this boolean result topology validation."
+      };
+    case "unavailable":
+      return {
+        code: "BOOLEAN_EXACT_VALIDATION_UNAVAILABLE",
+        severity: "warning",
+        message:
+          "Derived exact metadata bindings are unavailable for this boolean result topology validation."
+      };
+  }
+}
+
+function createBooleanRoleReadiness(input: {
+  readonly bodyId: BodyId;
+  readonly operationMode: "add" | "cut";
+  readonly profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"];
+}): readonly CadBooleanResultTopologyRoleReadiness[] {
+  const common: CadBooleanResultTopologyRoleReadiness[] = [
+    {
+      role: "booleanResultBody",
+      entityKind: "body",
+      status: "proven",
+      commandReady: false,
+      roleStableId: `boolean-role:body:${input.bodyId}:result`,
+      label: "Boolean result body",
+      message:
+        "Boolean result body identity is source-backed, but generated topology roles are not command-ready yet."
+    },
+    {
+      role: "targetCarriedFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Target carried face roles require boolean topology matching before they can be command-ready."
+    },
+    {
+      role: "targetModifiedFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Target modified face roles require boolean topology matching before they can be command-ready."
+    },
+    {
+      role: "targetCarriedEdge",
+      entityKind: "edge",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Target carried edge roles require boolean topology matching before they can be command-ready."
+    }
+  ];
+
+  if (input.operationMode === "add") {
+    return [
+      ...common,
+      ...createAddedWallFaceRoleReadiness(input.bodyId, input.profileKind),
+      ...createAddedCapFaceRoleReadiness(input.bodyId, input.profileKind),
+      ...createAddProfileEdgeRoleReadiness(input.bodyId, input.profileKind),
+      {
+        role: "addSeamEdge",
+        entityKind: "edge",
+        status: "ambiguous",
+        commandReady: false,
+        message:
+          "Add seam edge roles are deferred until V12 role derivation proves source-semantic identity."
+      },
+      ...(input.profileKind === "rectangle"
+        ? []
+        : [
+            {
+              role: "addProfileEdge" as const,
+              entityKind: "edge" as const,
+              status: "ambiguous" as const,
+              commandReady: false,
+              message:
+                "Add profile edge roles are deferred until V12 role derivation proves source-semantic identity."
+            }
+          ])
+    ];
+  }
+
+  return [
+    ...common,
+    {
+      role: "targetSplitFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Target split face roles are deferred until V12 role derivation proves source-semantic identity."
+    },
+    ...createCutWallFaceRoleReadiness(input.bodyId, input.profileKind),
+    ...createCutStartRimEdgeRoleReadiness(input.bodyId, input.profileKind),
+    {
+      role: "cutTerminalFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Cut terminal face roles are deferred until V12 role derivation proves source-semantic identity."
+    },
+    ...createCutTerminalRimEdgeRoleReadiness(input.bodyId, input.profileKind),
+    {
+      role: "cutExitRimEdge",
+      entityKind: "edge",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Cut exit rim edge roles are deferred until V12 role derivation proves source-semantic identity."
+    },
+    ...createCutWallProfileEdgeRoleReadiness(input.bodyId, input.profileKind),
+    {
+      role: "targetSplitEdge",
+      entityKind: "edge",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Target split edge roles are deferred until V12 role derivation proves source-semantic identity."
+    },
+    {
+      role: "intersectionVertex",
+      entityKind: "vertex",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Intersection vertex roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createAddedWallFaceRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "rectangle") {
+    return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
+      (sourceRole) =>
+        createCommandReadyBooleanFaceRole({
+          bodyId,
+          role: "addedWallFace",
+          sourceRole,
+          label: `Added wall face ${sourceRole.replace("side:", "")}`
+        })
+    );
+  }
+
+  if (profileKind === "circle") {
+    return [
+      createCommandReadyBooleanFaceRole({
+        bodyId,
+        role: "addedWallFace",
+        sourceRole: "side:circular",
+        label: "Added circular wall face"
+      })
+    ];
+  }
+
+  return [
+    {
+      role: "addedWallFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Added wall face roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createAddedCapFaceRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "rectangle") {
+    return [
+      createCommandReadyBooleanFaceRole({
+        bodyId,
+        role: "addedCapFace",
+        sourceRole: "endCap",
+        label: "Added cap face"
+      })
+    ];
+  }
+
+  if (profileKind === "circle") {
+    return [
+      createCommandReadyBooleanFaceRole({
+        bodyId,
+        role: "addedCapFace",
+        sourceRole: "endCap",
+        label: "Added cap face"
+      })
+    ];
+  }
+
+  return [
+    {
+      role: "addedCapFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Added cap face roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createCutWallFaceRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "rectangle") {
+    return ["side:uMin", "side:uMax", "side:vMin", "side:vMax"].map(
+      (sourceRole) =>
+        createCommandReadyBooleanFaceRole({
+          bodyId,
+          role: "cutWallFace",
+          sourceRole,
+          label: `Cut wall face ${sourceRole.replace("side:", "")}`
+        })
+    );
+  }
+
+  if (profileKind === "circle") {
+    return [
+      createCommandReadyBooleanFaceRole({
+        bodyId,
+        role: "cutWallFace",
+        sourceRole: "side:circular",
+        label: "Cut circular wall face"
+      })
+    ];
+  }
+
+  return [
+    {
+      role: "cutWallFace",
+      entityKind: "face",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Cut wall face roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createCommandReadyBooleanFaceRole(input: {
+  readonly bodyId: BodyId;
+  readonly role: "cutWallFace" | "addedWallFace" | "addedCapFace";
+  readonly sourceRole: string;
+  readonly label: string;
+}): CadBooleanResultTopologyRoleReadiness {
+  return {
+    role: input.role,
+    entityKind: "face",
+    status: "command-ready",
+    commandReady: true,
+    roleStableId: `generated:face:${input.bodyId}:${input.sourceRole}`,
+    label: input.label,
+    sourceRole: input.sourceRole,
+    message:
+      "This boolean result face role is command-ready through the V12 generated-reference path."
+  };
+}
+
+function createCutWallProfileEdgeRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "rectangle") {
+    return [
+      "longitudinal:uMin:vMin",
+      "longitudinal:uMin:vMax",
+      "longitudinal:uMax:vMin",
+      "longitudinal:uMax:vMax"
+    ].map((sourceRole) =>
+      createCommandReadyBooleanEdgeRole({
+        bodyId,
+        role: "cutWallProfileEdge",
+        sourceRole,
+        label: `Cut wall profile edge ${sourceRole
+          .replace("longitudinal:", "")
+          .replace(":", "/")}`
+      })
+    );
+  }
+
+  return [
+    {
+      role: "cutWallProfileEdge",
+      entityKind: "edge",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Cut wall profile edge roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createCutStartRimEdgeRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "circle") {
+    return [
+      createCommandReadyBooleanEdgeRole({
+        bodyId,
+        role: "cutStartRimEdge",
+        sourceRole: "start:circular",
+        label: "Cut start circular rim edge"
+      })
+    ];
+  }
+
+  return [
+    {
+      role: "cutStartRimEdge",
+      entityKind: "edge",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Cut start rim edge roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createCutTerminalRimEdgeRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "circle") {
+    return [
+      createCommandReadyBooleanEdgeRole({
+        bodyId,
+        role: "cutTerminalRimEdge",
+        sourceRole: "end:circular",
+        label: "Cut terminal circular rim edge"
+      })
+    ];
+  }
+
+  return [
+    {
+      role: "cutTerminalRimEdge",
+      entityKind: "edge",
+      status: "ambiguous",
+      commandReady: false,
+      message:
+        "Cut terminal rim edge roles are deferred until V12 role derivation proves source-semantic identity."
+    }
+  ];
+}
+
+function createCommandReadyBooleanEdgeRole(input: {
+  readonly bodyId: BodyId;
+  readonly role:
+    | "cutWallProfileEdge"
+    | "cutStartRimEdge"
+    | "cutTerminalRimEdge"
+    | "addProfileEdge";
+  readonly sourceRole: string;
+  readonly label: string;
+}): CadBooleanResultTopologyRoleReadiness {
+  return {
+    role: input.role,
+    entityKind: "edge",
+    status: "command-ready",
+    commandReady: true,
+    roleStableId: `generated:edge:${input.bodyId}:${input.sourceRole}`,
+    label: input.label,
+    sourceRole: input.sourceRole,
+    message:
+      "This boolean result edge role is command-ready for selection, naming, and measurement through the V12 generated-reference path."
+  };
+}
+
+function createAddProfileEdgeRoleReadiness(
+  bodyId: BodyId,
+  profileKind: Extract<
+    GeneratedReferencesFeature,
+    { kind: "extrude" }
+  >["profileKind"]
+): readonly CadBooleanResultTopologyRoleReadiness[] {
+  if (profileKind === "rectangle") {
+    return ["end:uMin", "end:uMax", "end:vMin", "end:vMax"].map((sourceRole) =>
+      createCommandReadyBooleanEdgeRole({
+        bodyId,
+        role: "addProfileEdge",
+        sourceRole,
+        label: `Added cap profile edge ${sourceRole.replace("end:", "")}`
+      })
+    );
+  }
+
+  if (profileKind === "circle") {
+    return [
+      createCommandReadyBooleanEdgeRole({
+        bodyId,
+        role: "addProfileEdge",
+        sourceRole: "end:circular",
+        label: "Added cap circular edge"
+      })
+    ];
+  }
+
+  return [];
 }
 
 function createUnsupportedAuthoredFeatureTopology(
@@ -497,6 +1071,10 @@ function applyDerivedExactMetadata(
 
     return {
       ...topology,
+      booleanTopology: updateBooleanExactValidationStatus(
+        topology.booleanTopology,
+        "available"
+      ),
       exactGeometryAvailable: true,
       exactMeasurementsAvailable: true,
       measurementConfidence: "kernel-derived",
@@ -533,6 +1111,10 @@ function applyDerivedExactMetadataIssue(
   return {
     ...topology,
     status: issue.status,
+    booleanTopology: updateBooleanExactValidationStatus(
+      topology.booleanTopology,
+      getBooleanExactValidationStatusForTopologyIssue(issue.status)
+    ),
     exactGeometryAvailable: false,
     issues: [
       ...topology.issues,
@@ -546,6 +1128,44 @@ function applyDerivedExactMetadataIssue(
       }
     ]
   };
+}
+
+function updateBooleanExactValidationStatus(
+  readiness: CadBooleanResultTopologyReadiness | undefined,
+  status: CadBooleanResultTopologyDerivedExactValidationStatus
+): CadBooleanResultTopologyReadiness | undefined {
+  if (!readiness) {
+    return undefined;
+  }
+
+  return {
+    ...readiness,
+    derivedExactValidationStatus: status,
+    diagnostics: [
+      ...readiness.diagnostics.filter(
+        (diagnostic) => !diagnostic.code.startsWith("BOOLEAN_EXACT_VALIDATION_")
+      ),
+      createBooleanExactValidationDiagnostic(status)
+    ]
+  };
+}
+
+function getBooleanExactValidationStatusForTopologyIssue(
+  status: CadBodyTopologySnapshot["status"]
+): CadBooleanResultTopologyDerivedExactValidationStatus {
+  switch (status) {
+    case "healthy":
+    case "ambiguous":
+      return "available";
+    case "stale":
+      return "stale";
+    case "unsupported":
+      return "unsupported";
+    case "kernel-failed":
+      return "failed";
+    case "unavailable-binding":
+      return "unavailable";
+  }
 }
 
 function getDerivedExactMetadataIssueCode(

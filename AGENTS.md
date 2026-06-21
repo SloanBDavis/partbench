@@ -14,7 +14,8 @@ The current implementation source of truth is:
 - `docs/implementation-plan.md`
 - `docs/archive/v4.md` — archived V4 constrained sketch solving milestone
 - `docs/v10.md` — completed V10 editable feature history and stable modeling references release record
-- `docs/v11.md` — planned V11 full sketch solver and parametric sketch UX release record
+- `docs/v11.md` — completed V11 full sketch solver and parametric sketch UX release record
+- `docs/v12.md` — planned V12 stable boolean topology and result references release record
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 

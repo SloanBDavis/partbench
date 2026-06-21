@@ -303,7 +303,7 @@ function createLifecycleDiagnostics(
       code: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS",
       severity: "warning",
       status: "repair-needed",
-      message: `Result body ${body.id} has ambiguous topology until explicit repair semantics are implemented.`,
+      message: `Result body ${body.id} still has unproven broad topology; use supported command-ready generated references or explicit repair for proven result references.`,
       bodyId: body.id,
       featureId: body.featureId,
       ...("targetBodyId" in body.source

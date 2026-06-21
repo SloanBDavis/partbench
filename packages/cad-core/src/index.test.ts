@@ -5295,15 +5295,20 @@ describe("cad-core", () => {
     expect(ambiguousSelection).toMatchObject({
       ok: true,
       query: "selection.referenceCandidates",
-      status: "ambiguous",
-      candidateCount: 0,
+      status: "non-commandable",
+      candidateCount: 1,
       issues: [
         {
-          code: "AMBIGUOUS_SELECTION_TOPOLOGY",
-          status: "ambiguous",
-          bodyId: "body_cut",
-          featureId: "feat_cut"
+          code: "NON_COMMANDABLE_SELECTION_TARGET",
+          status: "non-commandable",
+          bodyId: "body_cut"
         }
+      ],
+      candidates: [
+        expect.objectContaining({
+          commandable: false,
+          commandOperations: []
+        })
       ]
     });
     expect(consumedSelection).toMatchObject({
@@ -6343,9 +6348,126 @@ describe("cad-core", () => {
       }
     ]);
 
+    expect(
+      cutAddEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferences",
+          bodyId: "body_cut_result"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      body: {
+        stableId: "generated:body:body_cut_result",
+        eligibleOperations: []
+      },
+      faceCount: 4,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_cut_result:side:uMin",
+          label: "Cut wall face uMin",
+          eligibleOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.selectReference"
+          ])
+        })
+      ]),
+      edgeCount: 4,
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:edge:body_cut_result:longitudinal:uMin:vMin",
+          label: "Cut wall profile edge uMin/vMin",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        })
+      ]),
+      vertexCount: 0
+    });
+    expect(
+      readReferenceHealth(cutAddEngine, {
+        type: "body",
+        bodyId: "body_cut_result"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:body:body_cut_result",
+          commandable: false,
+          commandOperations: []
+        }),
+        expect.objectContaining({
+          stableId: "generated:face:body_cut_result:side:uMin",
+          commandable: true
+        })
+      ])
+    });
+
+    expect(
+      addEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferences",
+          bodyId: "body_add_result"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      body: {
+        stableId: "generated:body:body_add_result",
+        eligibleOperations: []
+      },
+      faceCount: 5,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_add_result:endCap",
+          label: "Added cap face",
+          eligibleOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.selectReference"
+          ])
+        }),
+        expect.objectContaining({
+          stableId: "generated:face:body_add_result:side:uMin",
+          label: "Added wall face uMin"
+        })
+      ]),
+      edgeCount: 4,
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:edge:body_add_result:end:uMin",
+          label: "Added cap profile edge uMin",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        })
+      ])
+    });
+    expect(
+      readReferenceHealth(addEngine, {
+        type: "body",
+        bodyId: "body_add_result"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:body:body_add_result",
+          commandable: false,
+          commandOperations: []
+        }),
+        expect.objectContaining({
+          stableId: "generated:face:body_add_result:endCap",
+          commandable: true
+        })
+      ])
+    });
+
     for (const [engine, bodyId, expectedStatus] of [
-      [cutAddEngine, "body_cut_result", "ambiguous"],
-      [addEngine, "body_add_result", "ambiguous"],
       [createRectangleChamferEngine(), "body_chamfer_1", "repair-needed"],
       [createRectangleFilletEngine(), "body_fillet_1", "repair-needed"]
     ] as const) {
@@ -7127,8 +7249,8 @@ describe("cad-core", () => {
         name: "Top face",
         bodyId: "body_cut",
         stableId: "generated:face:body_cut:endCap",
-        code: "UNSUPPORTED_BODY_REFERENCES",
-        received: "cut extrude result"
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        received: "generated:face:body_cut:endCap"
       },
       {
         name: "Top face",
@@ -9177,9 +9299,19 @@ describe("cad-core", () => {
       ])
     });
     expect(cutReferences).toMatchObject({
-      ok: false,
+      ok: true,
       query: "body.generatedReferences",
-      error: { code: "UNSUPPORTED_BODY_REFERENCES", bodyId: "body_cut" }
+      body: {
+        stableId: "generated:body:body_cut",
+        eligibleOperations: []
+      },
+      faceCount: 4,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_cut:side:uMin",
+          label: "Cut wall face uMin"
+        })
+      ])
     });
     expect(cutHealth).toMatchObject({
       ok: true,
@@ -9852,21 +9984,23 @@ describe("cad-core", () => {
     expect(ambiguousResult).toMatchObject({
       query: "reference.health",
       target: { type: "body", bodyId: "body_cut_1" },
-      status: "ambiguous",
-      referenceHealth: [
+      status: "active",
+      referenceHealth: expect.arrayContaining([
         expect.objectContaining({
-          source: "body",
-          status: "ambiguous",
+          source: "generatedReference",
+          stableId: "generated:body:body_cut_1",
+          status: "active",
           commandable: false,
-          bodyId: "body_cut_1",
-          diagnostics: [
-            expect.objectContaining({
-              code: "REFERENCE_TOPOLOGY_AMBIGUOUS",
-              status: "ambiguous"
-            })
-          ]
+          bodyId: "body_cut_1"
+        }),
+        expect.objectContaining({
+          source: "generatedReference",
+          stableId: "generated:face:body_cut_1:side:uMin",
+          status: "active",
+          commandable: true,
+          bodyId: "body_cut_1"
         })
-      ]
+      ])
     });
     expect(editability.status).toBe("editable");
     expect(editability.referenceChanges).toEqual(
@@ -10649,7 +10783,7 @@ describe("cad-core", () => {
     ).toMatchObject({ status: "consumed" });
     expect(
       readReferenceHealth(engine, { type: "body", bodyId: "body_cut_1" })
-    ).toMatchObject({ status: "ambiguous" });
+    ).toMatchObject({ status: "active" });
     expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
   });
 
@@ -10737,7 +10871,7 @@ describe("cad-core", () => {
         sourceBodyId: "body_rect_1",
         resultFeatureId: "feat_add_1",
         resultBodyId: "body_add_1",
-        expectedHealth: "ambiguous"
+        expectedHealth: "active"
       },
       {
         engine: holeEngine,
@@ -10796,7 +10930,7 @@ describe("cad-core", () => {
           status: "ready",
           commitDeferred: false,
           diagnostics:
-            testCase.expectedHealth === "active"
+            testCase.expectedPlanStatus === "ready"
               ? []
               : expect.arrayContaining([
                   expect.objectContaining({
@@ -11592,7 +11726,7 @@ describe("cad-core", () => {
         expect.objectContaining({
           bodyId: "body_cut_1",
           primaryState: "repair-needed",
-          referenceHealthStatus: "ambiguous"
+          referenceHealthStatus: "active"
         })
       ]),
       referenceEffects: expect.arrayContaining([
@@ -11602,8 +11736,9 @@ describe("cad-core", () => {
           targetFeatureId: "feat_cut_1"
         }),
         expect.objectContaining({
-          category: "ambiguous",
-          bodyId: "body_cut_1"
+          category: "active",
+          bodyId: "body_cut_1",
+          stableId: "generated:face:body_cut_1:side:uMin"
         })
       ]),
       diagnostics: expect.arrayContaining([
@@ -11612,7 +11747,7 @@ describe("cad-core", () => {
           bodyId: "body_rect_1"
         }),
         expect.objectContaining({
-          code: "SKETCH_EDIT_AMBIGUOUS_DOWNSTREAM",
+          code: "SKETCH_EDIT_NON_REBUILDABLE",
           bodyId: "body_cut_1"
         })
       ])
@@ -13557,7 +13692,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("returns ambiguous derived topology status for boolean result bodies", () => {
+  it("reports V12 add boolean topology readiness with command-ready added face references", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -13600,6 +13735,86 @@ describe("cad-core", () => {
         topologyAvailable: false,
         exactGeometryAvailable: false,
         exactMeasurementsAvailable: false,
+        booleanTopology: {
+          contractVersion: "partbench.boolean-topology.v1",
+          status: "partial",
+          commandReady: false,
+          sourceSemanticsAvailable: true,
+          derivedExactValidationStatus: "notProvided",
+          sourceInputs: {
+            featureId: "feat_add_1",
+            resultBodyId: "body_add_1",
+            operationMode: "add",
+            targetBodyId: "body_rect_1",
+            toolSketchId: "sketch_1",
+            toolSketchEntityId: "tool_rect_1",
+            toolProfileKind: "rectangle"
+          },
+          roleReadiness: expect.arrayContaining([
+            expect.objectContaining({
+              role: "booleanResultBody",
+              entityKind: "body",
+              status: "proven",
+              commandReady: false
+            }),
+            expect.objectContaining({
+              role: "booleanResultBody",
+              roleStableId: "boolean-role:body:body_add_1:result",
+              label: "Boolean result body"
+            }),
+            expect.objectContaining({
+              role: "addedWallFace",
+              entityKind: "face",
+              status: "command-ready",
+              roleStableId: "generated:face:body_add_1:side:uMin",
+              label: "Added wall face uMin",
+              sourceRole: "side:uMin",
+              commandReady: true
+            }),
+            expect.objectContaining({
+              role: "addedCapFace",
+              entityKind: "face",
+              status: "command-ready",
+              roleStableId: "generated:face:body_add_1:endCap",
+              label: "Added cap face",
+              sourceRole: "endCap",
+              commandReady: true
+            }),
+            expect.objectContaining({
+              role: "addProfileEdge",
+              entityKind: "edge",
+              status: "command-ready",
+              roleStableId: "generated:edge:body_add_1:end:uMin",
+              label: "Added cap profile edge uMin",
+              sourceRole: "end:uMin",
+              commandReady: true
+            }),
+            expect.objectContaining({
+              role: "addSeamEdge",
+              entityKind: "edge",
+              status: "ambiguous",
+              commandReady: false
+            })
+          ]),
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "BOOLEAN_TOPOLOGY_MATCHING_DEFERRED",
+              severity: "blocking"
+            }),
+            expect.objectContaining({
+              code: "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL",
+              severity: "warning"
+            }),
+            expect.objectContaining({
+              code: "BOOLEAN_RESULT_REFERENCES_PARTIAL_COMMAND_READY",
+              severity: "warning"
+            }),
+            expect.objectContaining({
+              code: "BOOLEAN_EXACT_VALIDATION_NOT_PROVIDED",
+              severity: "info"
+            })
+          ])
+        },
         issues: [
           {
             code: "AMBIGUOUS_BODY_TOPOLOGY",
@@ -13611,7 +13826,1874 @@ describe("cad-core", () => {
     });
   });
 
-  it("reports derived exact metadata for supported boolean result bodies without generated topology references", () => {
+  it("reports V12 cut boolean topology readiness with command-ready cut wall face references", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topology", bodyId: "body_cut_1" }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topology",
+      topology: {
+        bodyId: "body_cut_1",
+        status: "ambiguous",
+        topologyAvailable: false,
+        exactGeometryAvailable: false,
+        booleanTopology: {
+          contractVersion: "partbench.boolean-topology.v1",
+          status: "partial",
+          commandReady: false,
+          derivedExactValidationStatus: "notProvided",
+          sourceInputs: {
+            featureId: "feat_cut_1",
+            resultBodyId: "body_cut_1",
+            operationMode: "cut",
+            targetBodyId: "body_rect_1",
+            toolSketchEntityId: "tool_rect_1"
+          },
+          roleReadiness: expect.arrayContaining([
+            expect.objectContaining({
+              role: "booleanResultBody",
+              entityKind: "body",
+              status: "proven",
+              roleStableId: "boolean-role:body:body_cut_1:result",
+              label: "Boolean result body",
+              commandReady: false
+            }),
+            expect.objectContaining({
+              role: "cutWallFace",
+              entityKind: "face",
+              status: "command-ready",
+              roleStableId: "generated:face:body_cut_1:side:uMin",
+              label: "Cut wall face uMin",
+              sourceRole: "side:uMin",
+              commandReady: true
+            }),
+            expect.objectContaining({
+              role: "cutStartRimEdge",
+              entityKind: "edge",
+              status: "ambiguous",
+              commandReady: false
+            }),
+            expect.objectContaining({
+              role: "cutWallProfileEdge",
+              entityKind: "edge",
+              status: "command-ready",
+              roleStableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+              label: "Cut wall profile edge uMin/vMin",
+              sourceRole: "longitudinal:uMin:vMin",
+              commandReady: true
+            }),
+            expect.objectContaining({
+              role: "intersectionVertex",
+              entityKind: "vertex",
+              status: "ambiguous",
+              commandReady: false
+            })
+          ]),
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "BOOLEAN_SOURCE_ROLE_DERIVATION_PARTIAL",
+              severity: "warning"
+            }),
+            expect.objectContaining({
+              code: "BOOLEAN_RESULT_REFERENCES_PARTIAL_COMMAND_READY",
+              severity: "warning"
+            })
+          ])
+        }
+      }
+    });
+
+    if (!response.ok || response.query !== "body.topology") {
+      throw new Error("Expected successful body topology response");
+    }
+
+    const cutWallRoles =
+      response.topology.booleanTopology?.roleReadiness.filter(
+        (role) => role.role === "cutWallFace"
+      ) ?? [];
+
+    expect(cutWallRoles).toHaveLength(4);
+    expect(cutWallRoles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "command-ready",
+          commandReady: true,
+          sourceRole: "side:uMin"
+        }),
+        expect.objectContaining({
+          status: "command-ready",
+          commandReady: true,
+          sourceRole: "side:uMax"
+        }),
+        expect.objectContaining({
+          status: "command-ready",
+          commandReady: true,
+          sourceRole: "side:vMin"
+        }),
+        expect.objectContaining({
+          status: "command-ready",
+          commandReady: true,
+          sourceRole: "side:vMax"
+        })
+      ])
+    );
+  });
+
+  it("uses V12 command-ready rectangle cut wall faces for selection naming and sketch attachment", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const stableId = "generated:face:body_cut_1:side:uMin";
+    const edgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.generatedReferences", bodyId: "body_cut_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: {
+        stableId: "generated:body:body_cut_1",
+        eligibleOperations: []
+      },
+      faceCount: 4,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId,
+          label: "Cut wall face uMin",
+          role: "side:uMin",
+          eligibleOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]),
+          geometricSignature: expect.objectContaining({
+            sourceKind: "extrude",
+            targetBodyId: "body_rect_1",
+            extrudeOperationMode: "cut",
+            surfaceType: "plane",
+            normalRole: "cutWall:side:uMin"
+          })
+        })
+      ]),
+      edgeCount: 4,
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: edgeStableId,
+          label: "Cut wall profile edge uMin/vMin",
+          role: "longitudinal:uMin:vMin",
+          adjacentFaceRoles: ["side:uMin", "side:vMin"],
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          geometricSignature: expect.objectContaining({
+            sourceKind: "extrude",
+            targetBodyId: "body_rect_1",
+            extrudeOperationMode: "cut",
+            curveType: "line",
+            axisRole: "cutWallProfile:longitudinal:uMin:vMin"
+          })
+        })
+      ]),
+      vertexCount: 0
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.resolveGeneratedReference",
+          bodyId: "body_cut_1",
+          stableId
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.resolveGeneratedReference",
+      kind: "face",
+      reference: {
+        stableId,
+        label: "Cut wall face uMin"
+      }
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_cut_1",
+            stableId,
+            expectedKind: "face"
+          },
+          requiredOperation: "feature.attachSketchPlane"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.attachSketchPlane",
+            "feature.selectReference"
+          ]),
+          target: {
+            type: "generatedReference",
+            bodyId: "body_cut_1",
+            stableId,
+            kind: "face"
+          }
+        })
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_cut_1",
+            stableId: edgeStableId,
+            expectedKind: "edge"
+          },
+          requiredOperation: "feature.measureReference"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          target: {
+            type: "generatedReference",
+            bodyId: "body_cut_1",
+            stableId: edgeStableId,
+            kind: "edge"
+          }
+        })
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_cut_1",
+            stableId: edgeStableId,
+            expectedKind: "edge"
+          },
+          requiredOperation: "feature.chamfer"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "non-commandable",
+      candidateCount: 1,
+      issues: [
+        expect.objectContaining({
+          code: "NON_COMMANDABLE_SELECTION_TARGET",
+          expected: "feature.chamfer"
+        })
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_cut_1",
+          stableId: edgeStableId
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "edge",
+      measurements: {
+        kind: "edge",
+        role: "longitudinal:uMin:vMin",
+        length: 3,
+        curveType: "line",
+        axisRole: "cutWallProfile:longitudinal:uMin:vMin"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "cut_wall_u_min",
+            bodyId: "body_cut_1",
+            stableId
+          },
+          {
+            op: "reference.nameGenerated",
+            name: "cut_corner_u_min_v_min",
+            bodyId: "body_cut_1",
+            stableId: edgeStableId
+          },
+          {
+            op: "sketch.createOnFace",
+            id: "sketch_on_cut_wall",
+            name: "Sketch on cut wall",
+            referenceName: "cut_wall_u_min"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      createdSketchIds: ["sketch_on_cut_wall"]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "reference.resolveNamed",
+          name: "cut_corner_u_min_v_min"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "reference.resolveNamed",
+      target: {
+        name: "cut_corner_u_min_v_min",
+        bodyId: "body_cut_1",
+        stableId: edgeStableId,
+        kind: "edge"
+      },
+      reference: {
+        stableId: edgeStableId,
+        label: "Cut wall profile edge uMin/vMin"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            id: "feat_deferred_cut_chamfer",
+            bodyId: "body_deferred_cut_chamfer",
+            targetBodyId: "body_cut_1",
+            edgeStableId,
+            distance: 0.1
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        op: "feature.chamfer",
+        bodyId: "body_cut_1",
+        expected: "active rectangle/circle newBody extrude target body"
+      }
+    });
+
+    const targetEdit = engine.apply({
+      op: "feature.updateExtrude",
+      id: "feat_rect_1",
+      depth: 4
+    });
+
+    expect(targetEdit).toMatchObject({
+      transaction: {
+        diff: {
+          features: {
+            modified: expect.arrayContaining([
+              expect.objectContaining({ id: "feat_rect_1" }),
+              expect.objectContaining({ id: "feat_cut_1" })
+            ]),
+            bodiesModified: expect.arrayContaining([
+              expect.objectContaining({ id: "body_rect_1" }),
+              expect.objectContaining({ id: "body_cut_1" })
+            ]),
+            referenceEffects: expect.arrayContaining([
+              expect.objectContaining({
+                category: "active",
+                bodyId: "body_cut_1",
+                stableId,
+                kind: "face",
+                sourceFeatureId: "feat_rect_1",
+                targetFeatureId: "feat_cut_1"
+              }),
+              expect.objectContaining({
+                category: "active",
+                bodyId: "body_cut_1",
+                stableId: edgeStableId,
+                kind: "edge",
+                sourceFeatureId: "feat_rect_1",
+                targetFeatureId: "feat_cut_1"
+              }),
+              expect.objectContaining({
+                category: "active",
+                bodyId: "body_cut_1",
+                stableId,
+                kind: "face",
+                referenceName: "cut_wall_u_min",
+                sourceFeatureId: "feat_rect_1",
+                targetFeatureId: "feat_cut_1"
+              }),
+              expect.objectContaining({
+                category: "active",
+                bodyId: "body_cut_1",
+                stableId: edgeStableId,
+                kind: "edge",
+                referenceName: "cut_corner_u_min_v_min",
+                sourceFeatureId: "feat_rect_1",
+                targetFeatureId: "feat_cut_1"
+              }),
+              expect.objectContaining({
+                category: "replaced",
+                bodyId: "body_cut_1",
+                diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+              })
+            ])
+          }
+        }
+      }
+    });
+
+    expect(
+      readReferenceHealth(engine, {
+        type: "namedReference",
+        name: "cut_corner_u_min_v_min"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: edgeStableId,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        })
+      ]
+    });
+
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "cut_wall_u_min" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "reference.resolveNamed",
+      target: {
+        name: "cut_wall_u_min",
+        bodyId: "body_cut_1",
+        stableId,
+        kind: "face"
+      },
+      reference: {
+        stableId,
+        label: "Cut wall face uMin"
+      }
+    });
+
+    expect(engine.exportProject().schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expect(
+      engine.getDocument().sketches.get("sketch_on_cut_wall")?.attachment
+    ).toMatchObject({
+      kind: "generatedFace",
+      bodyId: "body_cut_1",
+      faceStableId: stableId,
+      faceRole: "side:uMin",
+      sourceFeatureId: "feat_cut_1",
+      sourceSketchEntityId: "tool_rect_1"
+    });
+  });
+
+  it("repairs stale named references to command-ready V12 boolean result references", () => {
+    const cutEngine = createRectangleExtrudeEngine();
+    const cutFaceStableId = "generated:face:body_cut_1:side:uMin";
+    const cutEdgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+    cutEngine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "feat_stale_cut_source",
+        bodyId: "body_stale_cut_source",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 1,
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "repair_cut_face",
+        bodyId: "body_stale_cut_source",
+        stableId: "generated:face:body_stale_cut_source:endCap"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "repair_cut_edge",
+        bodyId: "body_stale_cut_source",
+        stableId: "generated:edge:body_stale_cut_source:start:uMin"
+      },
+      {
+        op: "feature.delete",
+        id: "feat_stale_cut_source"
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "repair_cut_tool_sketch",
+        name: "Repair cut tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "repair_cut_tool_sketch",
+        id: "repair_cut_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "repair_cut_tool_sketch",
+        entityId: "repair_cut_tool_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const cutRepair = cutEngine.applyBatch([
+      {
+        op: "reference.repairName",
+        name: "repair_cut_face",
+        bodyId: "body_cut_1",
+        stableId: cutFaceStableId
+      },
+      {
+        op: "reference.repairName",
+        name: "repair_cut_edge",
+        bodyId: "body_cut_1",
+        stableId: cutEdgeStableId
+      }
+    ]);
+
+    expect(cutRepair.transaction.diff.references).toMatchObject({
+      namedRepaired: [
+        expect.objectContaining({
+          after: {
+            name: "repair_cut_face",
+            bodyId: "body_cut_1",
+            stableId: cutFaceStableId,
+            kind: "face"
+          }
+        }),
+        expect.objectContaining({
+          after: {
+            name: "repair_cut_edge",
+            bodyId: "body_cut_1",
+            stableId: cutEdgeStableId,
+            kind: "edge"
+          }
+        })
+      ]
+    });
+    expect(
+      readReferenceHealth(cutEngine, {
+        type: "namedReference",
+        name: "repair_cut_edge"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          bodyId: "body_cut_1",
+          stableId: cutEdgeStableId,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ])
+        })
+      ]
+    });
+
+    const addEngine = createRectangleExtrudeEngine();
+    const addCapStableId = "generated:face:body_add_1:endCap";
+    const addWallStableId = "generated:face:body_add_1:side:uMin";
+    const addEdgeStableId = "generated:edge:body_add_1:end:uMin";
+
+    addEngine.applyBatch([
+      {
+        op: "feature.extrude",
+        id: "feat_stale_add_source",
+        bodyId: "body_stale_add_source",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 1,
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "repair_add_face",
+        bodyId: "body_stale_add_source",
+        stableId: "generated:face:body_stale_add_source:endCap"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "repair_add_wall",
+        bodyId: "body_stale_add_source",
+        stableId: "generated:face:body_stale_add_source:side:uMin"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "repair_add_edge",
+        bodyId: "body_stale_add_source",
+        stableId: "generated:edge:body_stale_add_source:end:uMin"
+      },
+      {
+        op: "feature.delete",
+        id: "feat_stale_add_source"
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "repair_add_tool_sketch",
+        name: "Repair add tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "repair_add_tool_sketch",
+        id: "repair_add_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "repair_add_tool_sketch",
+        entityId: "repair_add_tool_rect",
+        depth: 1,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    expect(
+      addEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [
+          {
+            op: "reference.repairName",
+            name: "repair_add_face",
+            bodyId: "body_add_1",
+            stableId: addCapStableId
+          },
+          {
+            op: "reference.repairName",
+            name: "repair_add_wall",
+            bodyId: "body_add_1",
+            stableId: addWallStableId
+          },
+          {
+            op: "reference.repairName",
+            name: "repair_add_edge",
+            bodyId: "body_add_1",
+            stableId: addEdgeStableId
+          }
+        ]
+      })
+    ).toMatchObject({ ok: true, mode: "dryRun" });
+
+    const addRepair = addEngine.applyBatch([
+      {
+        op: "reference.repairName",
+        name: "repair_add_face",
+        bodyId: "body_add_1",
+        stableId: addCapStableId
+      },
+      {
+        op: "reference.repairName",
+        name: "repair_add_wall",
+        bodyId: "body_add_1",
+        stableId: addWallStableId
+      },
+      {
+        op: "reference.repairName",
+        name: "repair_add_edge",
+        bodyId: "body_add_1",
+        stableId: addEdgeStableId
+      }
+    ]);
+
+    expect(addRepair.transaction.diff.references).toMatchObject({
+      namedRepaired: [
+        {
+          before: {
+            name: "repair_add_face",
+            bodyId: "body_stale_add_source",
+            stableId: "generated:face:body_stale_add_source:endCap",
+            kind: "face"
+          },
+          after: {
+            name: "repair_add_face",
+            bodyId: "body_add_1",
+            stableId: addCapStableId,
+            kind: "face"
+          }
+        },
+        {
+          before: {
+            name: "repair_add_wall",
+            bodyId: "body_stale_add_source",
+            stableId: "generated:face:body_stale_add_source:side:uMin",
+            kind: "face"
+          },
+          after: {
+            name: "repair_add_wall",
+            bodyId: "body_add_1",
+            stableId: addWallStableId,
+            kind: "face"
+          }
+        },
+        {
+          before: {
+            name: "repair_add_edge",
+            bodyId: "body_stale_add_source",
+            stableId: "generated:edge:body_stale_add_source:end:uMin",
+            kind: "edge"
+          },
+          after: {
+            name: "repair_add_edge",
+            bodyId: "body_add_1",
+            stableId: addEdgeStableId,
+            kind: "edge"
+          }
+        }
+      ]
+    });
+    expect(
+      addEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: { type: "namedReference", name: "repair_add_face" },
+          requiredOperation: "feature.attachSketchPlane"
+        }
+      })
+    ).toMatchObject({
+      status: "resolved",
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          target: {
+            type: "generatedReference",
+            bodyId: "body_add_1",
+            stableId: addCapStableId,
+            kind: "face",
+            referenceName: "repair_add_face"
+          }
+        })
+      ]
+    });
+    expect(
+      addEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: { type: "namedReference", name: "repair_add_wall" },
+          requiredOperation: "feature.measureReference"
+        }
+      })
+    ).toMatchObject({
+      status: "resolved",
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          target: expect.objectContaining({
+            bodyId: "body_add_1",
+            stableId: addWallStableId,
+            kind: "face",
+            referenceName: "repair_add_wall"
+          })
+        })
+      ]
+    });
+    expect(
+      addEngine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: { type: "namedReference", name: "repair_add_edge" },
+          requiredOperation: "feature.measureReference"
+        }
+      })
+    ).toMatchObject({
+      status: "resolved",
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          target: expect.objectContaining({
+            bodyId: "body_add_1",
+            stableId: addEdgeStableId,
+            kind: "edge",
+            referenceName: "repair_add_edge"
+          })
+        })
+      ]
+    });
+    expect(exportCadProjectJson(addEngine)).not.toContain(
+      "web-cad.project.v17"
+    );
+  });
+
+  it("aligns dependency graph rebuild plan and editability for V12 boolean result references", () => {
+    const cutEngine = createRectangleExtrudeEngine();
+    const cutFaceStableId = "generated:face:body_cut_1:side:uMin";
+    const cutEdgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+    cutEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "cut_tool_sketch",
+        name: "Cut tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "cut_tool_sketch",
+        id: "cut_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "cut_tool_sketch",
+        entityId: "cut_tool_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "cut_wall_u_min",
+        bodyId: "body_cut_1",
+        stableId: cutFaceStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "cut_edge_u_min_v_min",
+        bodyId: "body_cut_1",
+        stableId: cutEdgeStableId
+      }
+    ]);
+
+    const cutGraph = readProjectDependencyGraph(cutEngine);
+    const cutPlan = readProjectRebuildPlan(cutEngine);
+    const cutEditability = readFeatureEditability(cutEngine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 4
+    });
+
+    expect(cutGraph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `generated-reference:body_cut_1:${cutFaceStableId}`,
+          kind: "generatedReference",
+          status: "active",
+          generatedReferenceKind: "face",
+          featureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          id: `generated-reference:body_cut_1:${cutEdgeStableId}`,
+          kind: "generatedReference",
+          status: "active",
+          generatedReferenceKind: "edge",
+          featureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          id: "named-reference:cut_wall_u_min",
+          kind: "namedReference",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "named-reference:cut_edge_u_min_v_min",
+          kind: "namedReference",
+          status: "active"
+        })
+      ])
+    );
+    expect(cutGraph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "generates",
+          from: "body:body_cut_1",
+          to: `generated-reference:body_cut_1:${cutFaceStableId}`
+        }),
+        expect.objectContaining({
+          kind: "generates",
+          from: "body:body_cut_1",
+          to: `generated-reference:body_cut_1:${cutEdgeStableId}`
+        }),
+        expect.objectContaining({
+          kind: "names",
+          from: "named-reference:cut_wall_u_min",
+          to: `generated-reference:body_cut_1:${cutFaceStableId}`
+        }),
+        expect.objectContaining({
+          kind: "names",
+          from: "named-reference:cut_edge_u_min_v_min",
+          to: `generated-reference:body_cut_1:${cutEdgeStableId}`
+        })
+      ])
+    );
+    expect(cutGraph.referenceHealth).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "generatedReference",
+          status: "active",
+          commandable: true,
+          bodyId: "body_cut_1",
+          stableId: cutFaceStableId,
+          commandOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.measureReference"
+          ])
+        }),
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          referenceName: "cut_edge_u_min_v_min",
+          stableId: cutEdgeStableId,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        })
+      ])
+    );
+    expect(cutPlan).toMatchObject({
+      status: "repair-needed",
+      affected: {
+        featureIds: expect.arrayContaining(["feat_rect_1", "feat_cut_1"]),
+        bodyIds: expect.arrayContaining(["body_rect_1", "body_cut_1"])
+      },
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_cut_1",
+          primaryState: "repair-needed",
+          referenceHealthStatus: "active",
+          commandReady: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "REBUILD_RESULT_TOPOLOGY_AMBIGUOUS",
+              message: expect.stringContaining(
+                "supported command-ready generated references"
+              )
+            })
+          ])
+        })
+      ])
+    });
+    expect(cutPlan.affected.generatedReferenceCount).toBeGreaterThanOrEqual(9);
+    expect(cutPlan.affected.namedReferenceCount).toBeGreaterThanOrEqual(2);
+    expect(cutEditability.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_cut_1",
+          stableId: cutFaceStableId,
+          kind: "face",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_cut_1",
+          stableId: cutEdgeStableId,
+          kind: "edge",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "replaced",
+          bodyId: "body_cut_1",
+          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+        })
+      ])
+    );
+
+    const addEngine = createRectangleExtrudeEngine();
+    const addCapStableId = "generated:face:body_add_1:endCap";
+    const addWallStableId = "generated:face:body_add_1:side:uMin";
+    const addEdgeStableId = "generated:edge:body_add_1:end:uMin";
+
+    addEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "add_tool_sketch",
+        name: "Add tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "add_tool_sketch",
+        id: "add_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "add_tool_sketch",
+        entityId: "add_tool_rect",
+        depth: 1,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_cap",
+        bodyId: "body_add_1",
+        stableId: addCapStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_wall",
+        bodyId: "body_add_1",
+        stableId: addWallStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_cap_edge",
+        bodyId: "body_add_1",
+        stableId: addEdgeStableId
+      }
+    ]);
+
+    const addGraph = readProjectDependencyGraph(addEngine);
+    const addPlan = readProjectRebuildPlan(addEngine);
+    const addEditability = readFeatureEditability(addEngine, "feat_rect_1", {
+      kind: "extrude",
+      depth: 4
+    });
+
+    expect(addGraph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: `generated-reference:body_add_1:${addCapStableId}`,
+          kind: "generatedReference",
+          status: "active",
+          generatedReferenceKind: "face",
+          featureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          id: `generated-reference:body_add_1:${addWallStableId}`,
+          kind: "generatedReference",
+          status: "active",
+          generatedReferenceKind: "face",
+          featureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          id: `generated-reference:body_add_1:${addEdgeStableId}`,
+          kind: "generatedReference",
+          status: "active",
+          generatedReferenceKind: "edge",
+          featureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          id: "named-reference:add_cap",
+          kind: "namedReference",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "named-reference:add_wall",
+          kind: "namedReference",
+          status: "active"
+        }),
+        expect.objectContaining({
+          id: "named-reference:add_cap_edge",
+          kind: "namedReference",
+          status: "active"
+        })
+      ])
+    );
+    expect(addGraph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "generates",
+          from: "body:body_add_1",
+          to: `generated-reference:body_add_1:${addEdgeStableId}`
+        }),
+        expect.objectContaining({
+          kind: "names",
+          from: "named-reference:add_cap_edge",
+          to: `generated-reference:body_add_1:${addEdgeStableId}`
+        })
+      ])
+    );
+    expect(addGraph.referenceHealth).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "generatedReference",
+          status: "active",
+          commandable: true,
+          bodyId: "body_add_1",
+          stableId: addEdgeStableId,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        }),
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          referenceName: "add_cap_edge",
+          stableId: addEdgeStableId,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        })
+      ])
+    );
+    expect(addPlan).toMatchObject({
+      status: "repair-needed",
+      affected: {
+        featureIds: expect.arrayContaining(["feat_rect_1", "feat_add_1"]),
+        bodyIds: expect.arrayContaining(["body_rect_1", "body_add_1"])
+      },
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_add_1",
+          primaryState: "repair-needed",
+          referenceHealthStatus: "active",
+          commandReady: false
+        })
+      ])
+    });
+    expect(addPlan.affected.generatedReferenceCount).toBeGreaterThanOrEqual(6);
+    expect(addPlan.affected.namedReferenceCount).toBeGreaterThanOrEqual(3);
+    expect(addEditability.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_add_1",
+          stableId: addCapStableId,
+          kind: "face",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_add_1",
+          stableId: addWallStableId,
+          kind: "face",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_add_1",
+          stableId: addEdgeStableId,
+          kind: "edge",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "add_cap_edge",
+          stableId: addEdgeStableId
+        }),
+        expect.objectContaining({
+          category: "replaced",
+          bodyId: "body_add_1",
+          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+        })
+      ])
+    );
+    expect(
+      /mesh|occt|opfs|fileHandle|selectionBuffer|viewport|topologyIndex/i.test(
+        JSON.stringify({
+          cutGraph: {
+            nodes: cutGraph.nodes,
+            edges: cutGraph.edges,
+            referenceHealth: cutGraph.referenceHealth
+          },
+          cutPlan: {
+            bodyLifecycles: cutPlan.bodyLifecycles,
+            affected: cutPlan.affected
+          },
+          cutEditability: cutEditability.referenceChanges,
+          addGraph: {
+            nodes: addGraph.nodes,
+            edges: addGraph.edges,
+            referenceHealth: addGraph.referenceHealth
+          },
+          addPlan: {
+            bodyLifecycles: addPlan.bodyLifecycles,
+            affected: addPlan.affected
+          },
+          addEditability: addEditability.referenceChanges
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("reports V12 boolean reference effects across source sketch profile edits", () => {
+    const cutEngine = createRectangleExtrudeEngine();
+    const cutFaceStableId = "generated:face:body_cut_1:side:uMin";
+    const cutEdgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+    cutEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "cut_tool_sketch",
+        name: "Cut tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "cut_tool_sketch",
+        id: "cut_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "cut_tool_sketch",
+        entityId: "cut_tool_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "cut_wall_u_min",
+        bodyId: "body_cut_1",
+        stableId: cutFaceStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "cut_edge_u_min_v_min",
+        bodyId: "body_cut_1",
+        stableId: cutEdgeStableId
+      }
+    ]);
+
+    const cutEdit = cutEngine.apply({
+      op: "sketch.updateEntity",
+      sketchId: "sketch_1",
+      entity: {
+        id: "rect_1",
+        kind: "rectangle",
+        center: [0, 0],
+        width: 5,
+        height: 2
+      }
+    });
+
+    expect(cutEdit.transaction.diff.features).toMatchObject({
+      modified: expect.arrayContaining([
+        expect.objectContaining({ id: "feat_rect_1" }),
+        expect.objectContaining({ id: "feat_cut_1" })
+      ]),
+      bodiesModified: expect.arrayContaining([
+        expect.objectContaining({ id: "body_rect_1" }),
+        expect.objectContaining({ id: "body_cut_1" })
+      ]),
+      referenceEffects: expect.arrayContaining([
+        expect.objectContaining({
+          category: "consumed",
+          bodyId: "body_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_cut_1",
+          stableId: cutFaceStableId,
+          kind: "face",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_cut_1",
+          stableId: cutEdgeStableId,
+          kind: "edge",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "cut_wall_u_min",
+          stableId: cutFaceStableId
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "cut_edge_u_min_v_min",
+          stableId: cutEdgeStableId
+        }),
+        expect.objectContaining({
+          category: "replaced",
+          bodyId: "body_cut_1",
+          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+        })
+      ]),
+      lifecycleEffects: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "consumed",
+          targetFeatureId: "feat_cut_1"
+        }),
+        expect.objectContaining({
+          bodyId: "body_cut_1",
+          primaryState: "replacement",
+          diagnosticCode: "REBUILD_RESULT_REPAIR_NEEDED"
+        })
+      ])
+    });
+    expect(
+      readReferenceHealth(cutEngine, {
+        type: "namedReference",
+        name: "cut_edge_u_min_v_min"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: cutEdgeStableId
+        })
+      ]
+    });
+
+    const addEngine = createRectangleExtrudeEngine();
+    const addCapStableId = "generated:face:body_add_1:endCap";
+    const addWallStableId = "generated:face:body_add_1:side:uMin";
+
+    addEngine.applyBatch([
+      {
+        op: "sketch.dimension.create",
+        id: "source_width",
+        name: "Source width",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        target: { entityKind: "rectangle", role: "width" },
+        value: 4
+      },
+      {
+        op: "sketch.createOnFace",
+        id: "add_tool_sketch",
+        name: "Add tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "add_tool_sketch",
+        id: "add_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "add_tool_sketch",
+        entityId: "add_tool_rect",
+        depth: 1,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_cap",
+        bodyId: "body_add_1",
+        stableId: addCapStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_wall",
+        bodyId: "body_add_1",
+        stableId: addWallStableId
+      }
+    ]);
+
+    const addEdit = addEngine.apply({
+      op: "sketch.dimension.update",
+      id: "source_width",
+      value: 5
+    });
+
+    expect(addEdit.transaction.diff.features).toMatchObject({
+      modified: expect.arrayContaining([
+        expect.objectContaining({ id: "feat_rect_1" }),
+        expect.objectContaining({ id: "feat_add_1" })
+      ]),
+      bodiesModified: expect.arrayContaining([
+        expect.objectContaining({ id: "body_rect_1" }),
+        expect.objectContaining({ id: "body_add_1" })
+      ]),
+      referenceEffects: expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_add_1",
+          stableId: addCapStableId,
+          kind: "face",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          bodyId: "body_add_1",
+          stableId: addWallStableId,
+          kind: "face",
+          sourceFeatureId: "feat_rect_1",
+          targetFeatureId: "feat_add_1"
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "add_cap",
+          stableId: addCapStableId
+        }),
+        expect.objectContaining({
+          category: "active",
+          referenceName: "add_wall",
+          stableId: addWallStableId
+        }),
+        expect.objectContaining({
+          category: "replaced",
+          bodyId: "body_add_1",
+          diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+        })
+      ])
+    });
+    expect(
+      readReferenceHealth(addEngine, {
+        type: "namedReference",
+        name: "add_cap"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: addCapStableId,
+          commandOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.measureReference"
+          ])
+        })
+      ]
+    });
+    expect(
+      /mesh|occt|opfs|fileHandle|selectionBuffer|viewport/i.test(
+        JSON.stringify([
+          cutEdit.transaction.diff.features?.referenceEffects,
+          addEdit.transaction.diff.features?.referenceEffects
+        ])
+      )
+    ).toBe(false);
+  });
+
+  it("reports V12 boolean reference effects across solver-backed constraint and dimension creates", () => {
+    const cutEngine = createRectangleExtrudeEngine();
+    const cutFaceStableId = "generated:face:body_cut_1:side:uMin";
+    const cutEdgeStableId = "generated:edge:body_cut_1:longitudinal:uMin:vMin";
+
+    cutEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "cut_tool_sketch",
+        name: "Cut tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "cut_tool_sketch",
+        id: "cut_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "cut_tool_sketch",
+        entityId: "cut_tool_rect",
+        depth: 1,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "cut_wall_u_min",
+        bodyId: "body_cut_1",
+        stableId: cutFaceStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "cut_edge_u_min_v_min",
+        bodyId: "body_cut_1",
+        stableId: cutEdgeStableId
+      },
+      {
+        op: "sketch.addLine",
+        sketchId: "sketch_1",
+        id: "source_midline",
+        start: [2, 4],
+        end: [6, 8]
+      }
+    ]);
+
+    const constraintCreate = cutEngine.apply({
+      op: "sketch.constraint.create",
+      id: "source_rect_midpoint",
+      name: "Source rectangle midpoint",
+      sketchId: "sketch_1",
+      kind: "midpoint",
+      lineEntityId: "source_midline",
+      target: { entityId: "rect_1", role: "center" }
+    });
+
+    expect(constraintCreate.transaction.diff).toMatchObject({
+      sketchConstraints: {
+        created: [
+          expect.objectContaining({
+            id: "source_rect_midpoint",
+            kind: "midpoint"
+          })
+        ]
+      },
+      sketches: {
+        entitiesModified: expect.arrayContaining([
+          expect.objectContaining({
+            sketchId: "sketch_1",
+            id: "rect_1",
+            kind: "rectangle"
+          })
+        ])
+      },
+      features: {
+        modified: expect.arrayContaining([
+          expect.objectContaining({ id: "feat_rect_1" }),
+          expect.objectContaining({ id: "feat_cut_1" })
+        ]),
+        bodiesModified: expect.arrayContaining([
+          expect.objectContaining({ id: "body_rect_1" }),
+          expect.objectContaining({ id: "body_cut_1" })
+        ]),
+        referenceEffects: expect.arrayContaining([
+          expect.objectContaining({
+            category: "active",
+            bodyId: "body_cut_1",
+            stableId: cutFaceStableId,
+            kind: "face",
+            sourceFeatureId: "feat_rect_1",
+            targetFeatureId: "feat_cut_1"
+          }),
+          expect.objectContaining({
+            category: "active",
+            bodyId: "body_cut_1",
+            stableId: cutEdgeStableId,
+            kind: "edge",
+            sourceFeatureId: "feat_rect_1",
+            targetFeatureId: "feat_cut_1"
+          }),
+          expect.objectContaining({
+            category: "active",
+            referenceName: "cut_wall_u_min",
+            stableId: cutFaceStableId
+          }),
+          expect.objectContaining({
+            category: "active",
+            referenceName: "cut_edge_u_min_v_min",
+            stableId: cutEdgeStableId
+          }),
+          expect.objectContaining({
+            category: "replaced",
+            bodyId: "body_cut_1",
+            diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+          })
+        ])
+      }
+    });
+    expect(
+      readReferenceHealth(cutEngine, {
+        type: "namedReference",
+        name: "cut_edge_u_min_v_min"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: cutEdgeStableId
+        })
+      ]
+    });
+
+    const addEngine = createRectangleExtrudeEngine();
+    const addCapStableId = "generated:face:body_add_1:endCap";
+    const addWallStableId = "generated:face:body_add_1:side:uMin";
+
+    addEngine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "add_tool_sketch",
+        name: "Add tool sketch",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "add_tool_sketch",
+        id: "add_tool_rect",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_add_1",
+        bodyId: "body_add_1",
+        sketchId: "add_tool_sketch",
+        entityId: "add_tool_rect",
+        depth: 1,
+        operationMode: "add",
+        targetBodyId: "body_rect_1"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_cap",
+        bodyId: "body_add_1",
+        stableId: addCapStableId
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "add_wall",
+        bodyId: "body_add_1",
+        stableId: addWallStableId
+      }
+    ]);
+
+    const dimensionCreate = addEngine.apply({
+      op: "sketch.dimension.create",
+      id: "source_width_dimension",
+      name: "Source width",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      target: { entityKind: "rectangle", role: "width" },
+      value: 5
+    });
+
+    expect(dimensionCreate.transaction.diff).toMatchObject({
+      sketchDimensions: {
+        created: [
+          expect.objectContaining({
+            id: "source_width_dimension",
+            entityId: "rect_1"
+          })
+        ]
+      },
+      sketches: {
+        entitiesModified: expect.arrayContaining([
+          expect.objectContaining({
+            sketchId: "sketch_1",
+            id: "rect_1",
+            kind: "rectangle"
+          })
+        ])
+      },
+      features: {
+        modified: expect.arrayContaining([
+          expect.objectContaining({ id: "feat_rect_1" }),
+          expect.objectContaining({ id: "feat_add_1" })
+        ]),
+        bodiesModified: expect.arrayContaining([
+          expect.objectContaining({ id: "body_rect_1" }),
+          expect.objectContaining({ id: "body_add_1" })
+        ]),
+        referenceEffects: expect.arrayContaining([
+          expect.objectContaining({
+            category: "active",
+            bodyId: "body_add_1",
+            stableId: addCapStableId,
+            kind: "face",
+            sourceFeatureId: "feat_rect_1",
+            targetFeatureId: "feat_add_1"
+          }),
+          expect.objectContaining({
+            category: "active",
+            bodyId: "body_add_1",
+            stableId: addWallStableId,
+            kind: "face",
+            sourceFeatureId: "feat_rect_1",
+            targetFeatureId: "feat_add_1"
+          }),
+          expect.objectContaining({
+            category: "active",
+            referenceName: "add_cap",
+            stableId: addCapStableId
+          }),
+          expect.objectContaining({
+            category: "active",
+            referenceName: "add_wall",
+            stableId: addWallStableId
+          }),
+          expect.objectContaining({
+            category: "replaced",
+            bodyId: "body_add_1",
+            diagnosticCode: "AMBIGUOUS_RESULT_TOPOLOGY"
+          })
+        ])
+      }
+    });
+    expect(
+      readReferenceHealth(addEngine, {
+        type: "namedReference",
+        name: "add_cap"
+      })
+    ).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "namedReference",
+          status: "active",
+          commandable: true,
+          stableId: addCapStableId
+        })
+      ]
+    });
+    expectNoDerivedInfraIdentifiers({
+      constraintEffects: constraintCreate.transaction.diff.features,
+      dimensionEffects: dimensionCreate.transaction.diff.features
+    });
+    expect(exportCadProjectJson(cutEngine)).not.toContain(
+      "web-cad.project.v18"
+    );
+    expect(exportCadProjectJson(addEngine)).not.toContain(
+      "web-cad.project.v18"
+    );
+  });
+
+  it("reports derived exact metadata for supported boolean result bodies with V12 add face references", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.applyBatch([
@@ -13665,6 +15747,18 @@ describe("cad-core", () => {
         exactGeometryAvailable: true,
         exactMeasurementsAvailable: true,
         measurementConfidence: "kernel-derived",
+        booleanTopology: {
+          contractVersion: "partbench.boolean-topology.v1",
+          status: "partial",
+          commandReady: false,
+          derivedExactValidationStatus: "available",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "BOOLEAN_EXACT_VALIDATION_AVAILABLE",
+              severity: "info"
+            })
+          ])
+        },
         exactMetadata: {
           status: "healthy",
           volume: 30,
@@ -16956,9 +19050,192 @@ describe("cad-core", () => {
       ])
     });
     expect(references).toMatchObject({
-      ok: false,
+      ok: true,
       query: "body.generatedReferences",
-      error: { code: "UNSUPPORTED_BODY_REFERENCES", bodyId: "body_add" }
+      body: {
+        stableId: "generated:body:body_add",
+        label: "Boolean add result body",
+        eligibleOperations: []
+      },
+      faceCount: 5,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_add:side:uMin",
+          label: "Added wall face uMin",
+          role: "side:uMin",
+          eligibleOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ]),
+          geometricSignature: expect.objectContaining({
+            sourceKind: "extrude",
+            targetBodyId: "body_rect_1",
+            extrudeOperationMode: "add",
+            surfaceType: "plane",
+            normalRole: "addedWall:side:uMin"
+          })
+        }),
+        expect.objectContaining({
+          stableId: "generated:face:body_add:endCap",
+          label: "Added cap face",
+          role: "endCap",
+          geometricSignature: expect.objectContaining({
+            extrudeOperationMode: "add",
+            surfaceType: "plane",
+            normalRole: "addedCap:endCap"
+          })
+        })
+      ]),
+      edgeCount: 4,
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:edge:body_add:end:uMin",
+          label: "Added cap profile edge uMin",
+          role: "end:uMin",
+          adjacentFaceRoles: ["endCap", "side:uMin"],
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          geometricSignature: expect.objectContaining({
+            sourceKind: "extrude",
+            targetBodyId: "body_rect_1",
+            extrudeOperationMode: "add",
+            curveType: "line",
+            axisRole: "addedCapProfile:uMin"
+          })
+        })
+      ]),
+      vertexCount: 0
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_add",
+            stableId: "generated:face:body_add:endCap",
+            expectedKind: "face"
+          },
+          requiredOperation: "feature.attachSketchPlane"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ])
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: {
+            type: "generatedReference",
+            bodyId: "body_add",
+            stableId: "generated:edge:body_add:end:uMin",
+            expectedKind: "edge"
+          },
+          requiredOperation: "feature.measureReference"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ])
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_add",
+          stableId: "generated:face:body_add:endCap"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "face",
+      measurements: {
+        kind: "face",
+        role: "endCap",
+        area: 8
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_add",
+          stableId: "generated:edge:body_add:end:uMin"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "edge",
+      measurements: {
+        kind: "edge",
+        role: "end:uMin",
+        length: 2
+      }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "add_cap_face",
+            bodyId: "body_add",
+            stableId: "generated:face:body_add:endCap"
+          },
+          {
+            op: "reference.nameGenerated",
+            name: "add_cap_edge",
+            bodyId: "body_add",
+            stableId: "generated:edge:body_add:end:uMin"
+          },
+          {
+            op: "sketch.createOnFace",
+            id: "sketch_on_add_cap",
+            name: "Sketch on add cap",
+            referenceName: "add_cap_face"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: true,
+      createdSketchIds: ["sketch_on_add_cap"]
     });
     expect(measurements).toMatchObject({
       ok: false,
@@ -17000,6 +19277,7 @@ describe("cad-core", () => {
       targetBodyId: "body_rect_1"
     });
 
+    restored.undo();
     restored.undo();
     const undoneStructure = restored.executeQuery({
       version: "cadops.v1",
@@ -17301,12 +19579,19 @@ describe("cad-core", () => {
       ])
     });
     expect(references).toMatchObject({
-      ok: false,
+      ok: true,
       query: "body.generatedReferences",
-      error: {
-        code: "UNSUPPORTED_BODY_REFERENCES",
-        bodyId: "body_circle_cut"
-      }
+      body: {
+        stableId: "generated:body:body_circle_cut",
+        eligibleOperations: []
+      },
+      faceCount: 4,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_circle_cut:side:uMin",
+          label: "Cut wall face uMin"
+        })
+      ])
     });
     expect(targetMeasurements).toMatchObject({
       ok: true,
@@ -17423,7 +19708,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("rejects cut features for unsupported profiles and consumed targets", () => {
+  it("supports circle cut tools and rejects consumed cut targets", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.apply({
@@ -17436,7 +19721,7 @@ describe("cad-core", () => {
 
     const circleTool = engine.executeBatch({
       version: "cadops.v1",
-      mode: "dryRun",
+      mode: "commit",
       ops: [
         {
           op: "feature.extrude",
@@ -17450,25 +19735,145 @@ describe("cad-core", () => {
         }
       ]
     });
-
-    expect(circleTool).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode"
+    const circleCutReferences = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferences",
+        bodyId: "body_circle_cut"
+      }
+    });
+    const circleCutWallSelection = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "generatedReference",
+          bodyId: "body_circle_cut",
+          stableId: "generated:face:body_circle_cut:side:circular",
+          expectedKind: "face"
+        },
+        requiredOperation: "feature.measureReference"
+      }
+    });
+    const circleCutWallMeasurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_circle_cut",
+        stableId: "generated:face:body_circle_cut:side:circular"
+      }
+    });
+    const circleCutRimMeasurements = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.generatedReferenceMeasurements",
+        bodyId: "body_circle_cut",
+        stableId: "generated:edge:body_circle_cut:end:circular"
       }
     });
 
-    engine.apply({
-      op: "feature.extrude",
-      id: "feat_cut",
-      bodyId: "body_cut",
-      targetBodyId: "body_rect_1",
-      sketchId: "sketch_1",
-      entityId: "rect_1",
-      depth: 1,
-      operationMode: "cut"
+    expect(circleTool).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_cut"],
+      createdBodyIds: ["body_circle_cut"]
     });
+    expect(circleCutReferences).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      body: {
+        stableId: "generated:body:body_circle_cut",
+        eligibleOperations: []
+      },
+      faceCount: 1,
+      faces: [
+        expect.objectContaining({
+          stableId: "generated:face:body_circle_cut:side:circular",
+          label: "Cut circular wall face",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          geometricSignature: expect.objectContaining({
+            profileKind: "circle",
+            extrudeOperationMode: "cut",
+            surfaceType: "cylinder",
+            axisRole: "cutWall:side:circular"
+          })
+        })
+      ],
+      edgeCount: 2,
+      edges: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:edge:body_circle_cut:start:circular",
+          label: "Cut start circular rim edge",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ]
+        }),
+        expect.objectContaining({
+          stableId: "generated:edge:body_circle_cut:end:circular",
+          label: "Cut terminal circular rim edge"
+        })
+      ])
+    });
+    expect(circleCutWallSelection).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidates: [
+        expect.objectContaining({
+          commandable: true,
+          commandOperations: expect.arrayContaining([
+            "reference.nameGenerated",
+            "feature.measureReference",
+            "feature.selectReference"
+          ])
+        })
+      ]
+    });
+    expect(circleCutWallMeasurements).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "face",
+      measurements: {
+        kind: "face",
+        role: "side:circular",
+        surfaceType: "cylinder",
+        axisRole: "cutWall:side:circular"
+      }
+    });
+    if (
+      circleCutWallMeasurements.ok &&
+      circleCutWallMeasurements.query ===
+        "body.generatedReferenceMeasurements" &&
+      circleCutWallMeasurements.measurements.kind === "face"
+    ) {
+      expect(circleCutWallMeasurements.measurements.area).toBeCloseTo(
+        2 * Math.PI
+      );
+    }
+    expect(circleCutRimMeasurements).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "edge",
+      measurements: {
+        kind: "edge",
+        role: "end:circular",
+        curveType: "circle",
+        axisRole: "cutTerminalRim:circular"
+      }
+    });
+    if (
+      circleCutRimMeasurements.ok &&
+      circleCutRimMeasurements.query ===
+        "body.generatedReferenceMeasurements" &&
+      circleCutRimMeasurements.measurements.kind === "edge"
+    ) {
+      expect(circleCutRimMeasurements.measurements.length).toBeCloseTo(
+        2 * Math.PI
+      );
+    }
 
     const consumedTarget = engine.executeBatch({
       version: "cadops.v1",
@@ -17509,7 +19914,7 @@ describe("cad-core", () => {
     });
   });
 
-  it("rejects add features for unsupported profiles and consumed targets", () => {
+  it("supports circle add tools and rejects unsupported add targets", () => {
     const engine = createRectangleExtrudeEngine();
 
     engine.apply({
@@ -17522,7 +19927,7 @@ describe("cad-core", () => {
 
     const circleTool = engine.executeBatch({
       version: "cadops.v1",
-      mode: "dryRun",
+      mode: "commit",
       ops: [
         {
           op: "feature.extrude",
@@ -17537,10 +19942,81 @@ describe("cad-core", () => {
       ]
     });
     expect(circleTool).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        path: "$.ops[0].operationMode"
+      ok: true,
+      createdFeatureIds: ["feat_circle_add"],
+      createdBodyIds: ["body_circle_add"]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferences",
+          bodyId: "body_circle_add"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      faceCount: 2,
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_circle_add:side:circular",
+          label: "Added circular wall face",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          geometricSignature: expect.objectContaining({
+            profileKind: "circle",
+            extrudeOperationMode: "add",
+            surfaceType: "cylinder",
+            axisRole: "addedWall:side:circular"
+          })
+        }),
+        expect.objectContaining({
+          stableId: "generated:face:body_circle_add:endCap",
+          label: "Added cap face",
+          eligibleOperations: expect.arrayContaining([
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ])
+        })
+      ]),
+      edgeCount: 1,
+      edges: [
+        expect.objectContaining({
+          stableId: "generated:edge:body_circle_add:end:circular",
+          label: "Added cap circular edge",
+          eligibleOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          geometricSignature: expect.objectContaining({
+            curveType: "circle",
+            axisRole: "addedCapProfile:circular"
+          })
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferenceMeasurements",
+          bodyId: "body_circle_add",
+          stableId: "generated:edge:body_circle_add:end:circular"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferenceMeasurements",
+      kind: "edge",
+      measurements: {
+        kind: "edge",
+        role: "end:circular",
+        curveType: "circle",
+        axisRole: "addedCapProfile:circular"
       }
     });
 
@@ -17575,17 +20051,6 @@ describe("cad-core", () => {
         code: "UNSUPPORTED_FEATURE_OPERATION",
         path: "$.ops[0].operationMode"
       }
-    });
-
-    engine.apply({
-      op: "feature.extrude",
-      id: "feat_add",
-      bodyId: "body_add",
-      targetBodyId: "body_rect_1",
-      sketchId: "sketch_1",
-      entityId: "rect_1",
-      depth: 1,
-      operationMode: "add"
     });
 
     const consumedTarget = engine.executeBatch({
@@ -19067,14 +21532,37 @@ describe("cad-core", () => {
       error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
     });
     expect(toolEdit).toMatchObject({
-      ok: false,
-      error: { code: "UNSUPPORTED_FEATURE_OPERATION" }
+      ok: true
     });
     expect(engine.getDocument().features.get("feat_rect_1")).toMatchObject({
       profileKind: "rectangle"
     });
     expect(engine.getDocument().features.get("feat_add")).toMatchObject({
-      profileKind: "rectangle"
+      profileKind: "circle"
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "body.generatedReferences",
+          bodyId: "body_add"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.generatedReferences",
+      faces: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_add:side:circular",
+          label: "Added circular wall face"
+        })
+      ]),
+      edges: [
+        expect.objectContaining({
+          stableId: "generated:edge:body_add:end:circular",
+          label: "Added cap circular edge"
+        })
+      ]
     });
   });
 

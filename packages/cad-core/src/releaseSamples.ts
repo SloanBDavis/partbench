@@ -576,17 +576,17 @@ export const V7_RELEASE_SAMPLE_FIXTURES = [
       },
       {
         selection: { type: "body", bodyId: CONSUMED_RESULT_BODY_ID },
-        expectedStatus: "ambiguous",
-        expectedCandidateCount: 0,
+        expectedStatus: "non-commandable",
+        expectedCandidateCount: 1,
         expectedCommandableCount: 0
       }
     ],
     expectedReferenceSummary: {
       namedReferenceCount: 1,
       semanticBodySelectionCount: 2,
-      generatedReferenceBodyCount: 0,
-      generatedReferenceCount: 0,
-      commandableReferenceCount: 0
+      generatedReferenceBodyCount: 1,
+      generatedReferenceCount: 9,
+      commandableReferenceCount: 8
     },
     expectedExportReadiness: {
       status: "deferred",

@@ -323,6 +323,11 @@ function createExtrudeEditabilityResponse(
   });
   const resultReferenceChanges = scopedRebuildConsumer
     ? [
+        ...createScopedResultActiveReferenceChanges({
+          options,
+          sourceFeature: feature,
+          consumingFeature: scopedRebuildConsumer
+        }),
         createReferenceChange({
           category:
             scopedRebuildConsumer.kind === "hole" ? "active" : "replaced",
@@ -762,7 +767,7 @@ function getScopedSourceExtrudeRebuildConsumer(
   if (
     consumer.kind === "extrude" &&
     consumer.operationMode === "cut" &&
-    consumer.profileKind === "rectangle" &&
+    isBooleanToolProfileSupportedForConsumingFeature(consumer) &&
     isSourceExtrudeProfileSupportedForConsumingFeature(feature)
   ) {
     return consumer;
@@ -771,7 +776,7 @@ function getScopedSourceExtrudeRebuildConsumer(
   if (
     consumer.kind === "extrude" &&
     consumer.operationMode === "add" &&
-    consumer.profileKind === "rectangle" &&
+    isBooleanToolProfileSupportedForConsumingFeature(consumer) &&
     feature.profileKind === "rectangle"
   ) {
     return consumer;
@@ -785,6 +790,15 @@ function isSourceExtrudeProfileSupportedForConsumingFeature(
 ): boolean {
   return (
     feature.profileKind === "rectangle" || feature.profileKind === "circle"
+  );
+}
+
+function isBooleanToolProfileSupportedForConsumingFeature(
+  feature: Exclude<CadFeatureSummary, { readonly kind: "primitive" }>
+): boolean {
+  return (
+    "profileKind" in feature &&
+    (feature.profileKind === "rectangle" || feature.profileKind === "circle")
   );
 }
 
@@ -840,6 +854,71 @@ function createRepairNeededResultReferenceChanges(
         "Result-body generated references remain repair-needed for this feature family."
     })
   ];
+}
+
+function createScopedResultActiveReferenceChanges(args: {
+  readonly options: CreateFeatureEditabilityResponseOptions;
+  readonly sourceFeature: Extract<
+    CadFeatureSummary,
+    { readonly kind: "extrude" }
+  >;
+  readonly consumingFeature: Exclude<
+    CadFeatureSummary,
+    { readonly kind: "primitive" }
+  >;
+}): readonly CadFeatureReferenceChangeSummary[] {
+  if (
+    args.consumingFeature.kind !== "extrude" ||
+    (args.consumingFeature.operationMode !== "cut" &&
+      args.consumingFeature.operationMode !== "add")
+  ) {
+    return [];
+  }
+
+  const references = createBodyGeneratedReferences(
+    args.options.document,
+    args.consumingFeature.bodyId,
+    "part:default"
+  );
+  const commandReadyReferences = listGeneratedReferences(references).filter(
+    (reference) => reference.eligibleOperations.length > 0
+  );
+  const commandReadyStableIds = new Set(
+    commandReadyReferences.map((reference) => reference.stableId)
+  );
+  const generatedReferenceChanges = commandReadyReferences.map((reference) =>
+    createReferenceChange({
+      category: "active",
+      bodyId: args.consumingFeature.bodyId,
+      stableId: reference.stableId,
+      kind: reference.kind,
+      sourceFeatureId: args.sourceFeature.id,
+      targetFeatureId: args.consumingFeature.id,
+      message:
+        "Source-semantic result generated reference remains active after downstream source-model revalidation."
+    })
+  );
+  const namedReferenceChanges = args.options.namedReferences
+    .filter(
+      (reference) =>
+        reference.bodyId === args.consumingFeature.bodyId &&
+        commandReadyStableIds.has(reference.stableId)
+    )
+    .map((reference) =>
+      createNamedReferenceChange({
+        name: reference.name,
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        kind: reference.kind,
+        category: "active",
+        sourceFeatureId: args.sourceFeature.id,
+        targetFeatureId: args.consumingFeature.id,
+        message:
+          "Source-semantic result named reference remains active after downstream source-model revalidation."
+      })
+    );
+
+  return [...generatedReferenceChanges, ...namedReferenceChanges];
 }
 
 function createDeferredSourceFeatureResponse(

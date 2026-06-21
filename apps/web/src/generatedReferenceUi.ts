@@ -242,10 +242,13 @@ export function createGeneratedReferenceActionStatuses(
   }
 
   if (reference.kind === "edge") {
-    actions.push(
-      createOperationActionStatus(reference, "feature.chamfer"),
-      createOperationActionStatus(reference, "feature.fillet")
-    );
+    if (reference.eligibleOperations.includes("feature.chamfer")) {
+      actions.push(createOperationActionStatus(reference, "feature.chamfer"));
+    }
+
+    if (reference.eligibleOperations.includes("feature.fillet")) {
+      actions.push(createOperationActionStatus(reference, "feature.fillet"));
+    }
   }
 
   return actions;

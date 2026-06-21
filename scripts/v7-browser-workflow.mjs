@@ -65,11 +65,31 @@ export const V10_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v10-non-extrude-generated-reference-routing",
   "v10-c2-inspector-feature-edits"
 ]);
+export const V12_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
+  "v12-cut-result-face-command-ready-browser",
+  "v12-cut-result-face-contextual-actions",
+  "v12-cut-result-face-attached-sketch",
+  "v12-cut-result-edge-command-ready-browser",
+  "v12-cut-result-edge-contextual-actions",
+  "v12-cut-result-edge-no-deferred-finish",
+  "v12-named-reference-repair-browser",
+  "v12-add-result-create",
+  "v12-add-result-cap-command-ready-browser",
+  "v12-add-result-cap-contextual-actions",
+  "v12-add-result-cap-attached-sketch",
+  "v12-add-result-wall-command-ready-browser",
+  "v12-add-result-wall-contextual-actions",
+  "v12-add-result-edge-command-ready-browser",
+  "v12-add-result-edge-contextual-actions",
+  "v12-add-result-edge-no-deferred-finish",
+  "v12-add-result-edge-repair-browser"
+]);
 
 export function getV7BrowserWorkflowRequiredCheckIds({
   requireGlbDownload = false,
   requireDerivedMeshCache = false,
-  requireV10Workflow = false
+  requireV10Workflow = false,
+  requireV12Workflow = false
 } = {}) {
   const requiredCheckIds = [...V7_BROWSER_WORKFLOW_REQUIRED_CHECK_IDS];
 
@@ -89,6 +109,14 @@ export function getV7BrowserWorkflowRequiredCheckIds({
 
   if (requireV10Workflow) {
     for (const id of V10_BROWSER_WORKFLOW_CHECK_IDS) {
+      if (!requiredCheckIds.includes(id)) {
+        requiredCheckIds.push(id);
+      }
+    }
+  }
+
+  if (requireV12Workflow) {
+    for (const id of V12_BROWSER_WORKFLOW_CHECK_IDS) {
       if (!requiredCheckIds.includes(id)) {
         requiredCheckIds.push(id);
       }

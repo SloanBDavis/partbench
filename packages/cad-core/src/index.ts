@@ -3611,7 +3611,8 @@ function applyOperation(
         ownerPartId: DEFAULT_PART_ID,
         bodyId: op.bodyId,
         stableId: op.stableId,
-        bodyExists: (bodyId) => documentBodyExists(state, bodyId)
+        bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+        requiredOperation: "feature.selectReference"
       });
 
       if (!validation.ok) {
@@ -6664,6 +6665,13 @@ function updateSketchEntityAndDependents(
     pushBodyModified(diff, bodyRef(updated));
   }
 
+  pushSketchSourceRebuildEffectsForDependentFeatures(
+    state,
+    updatedFeatures,
+    downstreamFeatures,
+    diff
+  );
+
   applyDependentSketchConstraints(
     state,
     sketch.id,
@@ -6672,6 +6680,45 @@ function updateSketchEntityAndDependents(
     opIndex,
     propagation
   );
+}
+
+function pushSketchSourceRebuildEffectsForDependentFeatures(
+  state: MutableDocumentState,
+  updatedFeatures: readonly Feature[],
+  downstreamFeatures: readonly Feature[],
+  diff: MutableSemanticDiff
+): void {
+  for (const sourceFeature of updatedFeatures) {
+    if (sourceFeature.kind !== "extrude") {
+      continue;
+    }
+
+    for (const downstreamFeature of downstreamFeatures) {
+      if (!isTargetConsumingFeature(downstreamFeature)) {
+        continue;
+      }
+
+      if (downstreamFeature.targetBodyId !== sourceFeature.bodyId) {
+        continue;
+      }
+
+      pushFeatureReferenceEffects(
+        diff,
+        createScopedSourceExtrudeRebuildReferenceEffects(
+          state,
+          sourceFeature,
+          downstreamFeature
+        )
+      );
+      pushFeatureLifecycleEffects(
+        diff,
+        createScopedSourceExtrudeRebuildLifecycleEffects(
+          sourceFeature,
+          downstreamFeature
+        )
+      );
+    }
+  }
 }
 
 function updateDependentFeatureForSketchEntity(
@@ -8012,8 +8059,73 @@ function createScopedSourceExtrudeRebuildReferenceEffects(
   return [
     ...targetGeneratedReferences,
     ...targetNamedReferences,
+    ...createScopedResultActiveReferenceEffects(
+      state,
+      sourceFeature,
+      consumingFeature
+    ),
     resultReplacement
   ];
+}
+
+function createScopedResultActiveReferenceEffects(
+  state: MutableDocumentState,
+  sourceFeature: ExtrudeFeature,
+  consumingFeature: TargetConsumingFeature
+): readonly CadFeatureReferenceChangeSummary[] {
+  if (
+    consumingFeature.kind !== "extrude" ||
+    (consumingFeature.operationMode !== "cut" &&
+      consumingFeature.operationMode !== "add")
+  ) {
+    return [];
+  }
+
+  const references = createBodyGeneratedReferences(
+    state,
+    consumingFeature.bodyId,
+    DEFAULT_PART_ID
+  );
+
+  if (!references) {
+    return [];
+  }
+
+  const commandReadyReferences = listGeneratedReferences(references).filter(
+    (reference) => reference.eligibleOperations.length > 0
+  );
+  const commandReadyStableIds = new Set(
+    commandReadyReferences.map((reference) => reference.stableId)
+  );
+  const generatedEffects = commandReadyReferences.map((reference) => ({
+    category: "active" as const,
+    bodyId: consumingFeature.bodyId,
+    stableId: reference.stableId,
+    kind: reference.kind,
+    sourceFeatureId: sourceFeature.id,
+    targetFeatureId: consumingFeature.id,
+    message:
+      "Source-semantic result generated reference remains active after downstream source-model revalidation."
+  }));
+  const namedEffects = [...state.namedReferences.values()]
+    .filter(
+      (reference) =>
+        reference.bodyId === consumingFeature.bodyId &&
+        commandReadyStableIds.has(reference.stableId)
+    )
+    .map((reference) => ({
+      category: "active" as const,
+      bodyId: reference.bodyId,
+      stableId: reference.stableId,
+      kind: reference.kind,
+      referenceName: reference.name,
+      sourceFeatureId: sourceFeature.id,
+      targetFeatureId: consumingFeature.id,
+      message:
+        "Source-semantic result named reference remains active after downstream source-model revalidation."
+    }));
+
+  return [...generatedEffects, ...namedEffects];
 }
 
 function createScopedSourceExtrudeRebuildLifecycleEffects(
@@ -8172,6 +8284,12 @@ function isSupportedAddTargetProfileKind(
   profileKind: FeatureExtrudeProfileKind
 ): boolean {
   return profileKind === "rectangle";
+}
+
+function isSupportedBooleanToolProfileKind(
+  profileKind: FeatureExtrudeProfileKind
+): boolean {
+  return profileKind === "rectangle" || profileKind === "circle";
 }
 
 function isPrimitiveBodyId(state: MutableDocumentState, id: BodyId): boolean {
@@ -9166,7 +9284,7 @@ function assertSupportedExtrudeOperation(
     operationMode === "cut" &&
     targetBodyId &&
     targetFeature?.kind === "extrude" &&
-    profileKind === "rectangle" &&
+    isSupportedBooleanToolProfileKind(profileKind) &&
     isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
     targetFeature.operationMode === "newBody" &&
     !hasBlockingConsumingFeature
@@ -9178,7 +9296,7 @@ function assertSupportedExtrudeOperation(
     operationMode === "add" &&
     targetBodyId &&
     targetFeature?.kind === "extrude" &&
-    profileKind === "rectangle" &&
+    isSupportedBooleanToolProfileKind(profileKind) &&
     isSupportedAddTargetProfileKind(targetFeature.profileKind) &&
     targetFeature.operationMode === "newBody" &&
     !hasBlockingConsumingFeature
@@ -9188,12 +9306,12 @@ function assertSupportedExtrudeOperation(
 
   const expected =
     operationMode === "add"
-      ? "add with rectangle source and active rectangle newBody target"
-      : "cut with rectangle source and active rectangle/circle newBody target";
+      ? "add with rectangle/circle source and active rectangle newBody target"
+      : "cut with rectangle/circle source and active rectangle/circle newBody target";
   const message =
     operationMode === "add"
-      ? "Add extrudes currently support rectangle tools fusing with one active rectangle newBody target body."
-      : "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.";
+      ? "Add extrudes currently support rectangle or circle tools fusing with one active rectangle newBody target body."
+      : "Cut extrudes currently support rectangle or circle tools cutting one active rectangle or circle newBody target body.";
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
@@ -9986,10 +10104,14 @@ function createSingleSelectionReferenceCandidate(options: {
   readonly issues: readonly CadSelectionReferenceIssue[];
 } {
   const consumedIssues = createConsumedSelectionIssues(options.body);
+  const namingOperations: readonly CadSelectionReferenceOperation[] =
+    options.reference.eligibleOperations.includes("feature.selectReference")
+      ? ["reference.nameGenerated"]
+      : [];
   const baseOperations: readonly CadSelectionReferenceOperation[] =
     consumedIssues.length > 0
       ? []
-      : ["reference.nameGenerated", ...options.reference.eligibleOperations];
+      : [...namingOperations, ...options.reference.eligibleOperations];
   const operationIssues =
     consumedIssues.length === 0
       ? createCommandabilityIssues(
@@ -11846,10 +11968,7 @@ function createProjectSummaryReferenceSummary(
     generatedReferenceBodyCount += 1;
 
     for (const reference of listGeneratedReferences(references)) {
-      const operations: readonly CadSelectionReferenceOperation[] = [
-        "reference.nameGenerated",
-        ...reference.eligibleOperations
-      ];
+      const operations = createGeneratedReferenceCommandOperations(reference);
 
       generatedReferenceCount += 1;
       referenceKindCounts[reference.kind] += 1;
@@ -11891,6 +12010,14 @@ function listGeneratedReferences(
     ...references.vertices,
     ...references.axes
   ];
+}
+
+function createGeneratedReferenceCommandOperations(
+  reference: CadGeneratedReference
+): readonly CadSelectionReferenceOperation[] {
+  return reference.eligibleOperations.includes("feature.selectReference")
+    ? ["reference.nameGenerated", ...reference.eligibleOperations]
+    : [...reference.eligibleOperations];
 }
 
 function createZeroReferenceKindCounts(): Record<
@@ -17752,7 +17879,7 @@ function isSupportedBooleanExtrudeCombination(
   target: ExtrudeFeatureSnapshot
 ): boolean {
   if (
-    feature.profileKind !== "rectangle" ||
+    !isSupportedBooleanToolProfileKind(feature.profileKind) ||
     target.operationMode !== "newBody"
   ) {
     return false;

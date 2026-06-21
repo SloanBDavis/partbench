@@ -691,6 +691,48 @@ describe("ModelingActionsPanel", () => {
     expect(markup).not.toContain("generated:edge:body_rect:start:uMin");
   });
 
+  it("keeps deferred V12 cut-wall edge finish controls out of the modeling surface", () => {
+    const reference = createEdge({
+      stableId: "generated:edge:body_cut:longitudinal:uMin:vMin",
+      label: "Cut wall profile edge uMin/vMin",
+      role: "longitudinal:uMin:vMin",
+      eligibleOperations: [
+        "feature.measureReference",
+        "feature.selectReference"
+      ]
+    });
+    const selectionReferenceCandidates = createSelectionReferenceCandidates(
+      reference,
+      {
+        commandOperations: [
+          "reference.nameGenerated",
+          "feature.measureReference",
+          "feature.selectReference"
+        ]
+      }
+    );
+    const context = {
+      selectionKind: "generatedReference",
+      reference,
+      selectionReferenceCandidates
+    } as const;
+    const actions = deriveModelingActions({ context });
+    const markup = renderToStaticMarkup(
+      createElement(ModelingActionsPanel, {
+        actions,
+        context
+      })
+    );
+
+    expect(actions.map((action) => action.id)).toEqual(["reference.name"]);
+    expect(markup).toContain("Name reference");
+    expect(markup).toContain("Reference status");
+    expect(markup).toContain("Command-ready reference");
+    expect(markup).not.toContain("Edge finish");
+    expect(markup).not.toContain("Chamfer");
+    expect(markup).not.toContain("Fillet");
+  });
+
   it("defaults attached sketch cuts inward from the selected face", () => {
     const attachedSketch = createSketch("sketch_face_1", "Face sketch", [], {
       kind: "generatedFace",

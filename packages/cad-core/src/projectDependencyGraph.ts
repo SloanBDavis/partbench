@@ -474,13 +474,14 @@ function createGeneratedReferenceHealth(
           })
         ]
       : [];
+  const commandOperations =
+    status === "active" ? createReferenceCommandOperations(reference) : [];
 
   return {
     source: "generatedReference",
     status,
-    commandable: status === "active",
-    commandOperations:
-      status === "active" ? createReferenceCommandOperations(reference) : [],
+    commandable: commandOperations.length > 0,
+    commandOperations,
     label: reference.label,
     bodyId: body.id,
     stableId: reference.stableId,
@@ -1032,7 +1033,9 @@ function createReferenceDependencies(args: {
 function createReferenceCommandOperations(
   reference: CadGeneratedReference
 ): readonly CadSelectionReferenceOperation[] {
-  return ["reference.nameGenerated", ...reference.eligibleOperations];
+  return reference.eligibleOperations.includes("feature.selectReference")
+    ? ["reference.nameGenerated", ...reference.eligibleOperations]
+    : [...reference.eligibleOperations];
 }
 
 function listGeneratedReferences(

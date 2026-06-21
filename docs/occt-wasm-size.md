@@ -1,6 +1,6 @@
 # OCCT/WASM Load-Size Investigation
 
-Last updated: 2026-05-20.
+Last updated: 2026-06-20.
 
 This note tracks the current OCCT/WASM load-size position and the near-term
 recommendation. It does not change the production app architecture.
@@ -383,3 +383,21 @@ project still needs explicit handling for:
 - custom OCCT build symbol coverage for `BRepAlgoAPI_Fuse`,
   `BRepAlgoAPI_Cut`, `BRepPrimAPI_MakeBox`, `BRepPrimAPI_MakeCylinder`,
   tessellation, and shape traversal.
+
+For the planned V12 stable boolean topology release, OCCT should remain
+evidence and validation infrastructure rather than public reference authority.
+V12 implementation should track:
+
+- whether each supported boolean result role is proven from authored source
+  semantics before any derived exact metadata is considered;
+- derived exact face/edge counts, bounds, areas, normals, axes, and opaque
+  signatures that can validate source-semantic roles without becoming stable
+  IDs;
+- empty, invalid, tolerance-sensitive, near-coplanar, and unexpectedly split
+  results that must stay ambiguous or repair-needed;
+- performance of role validation on realistic feature/body workloads; and
+- custom build symbol coverage for any additional traversal or shape-analysis
+  bindings needed to validate V12 roles.
+
+Raw OCCT shape handles, traversal indexes, face/edge/vertex ordinals, mesh
+indexes, and renderer IDs must not become public generated-reference stable IDs.

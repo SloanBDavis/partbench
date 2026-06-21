@@ -2287,6 +2287,10 @@ function GeneratedReferenceWorkbench({
   const [name, setName] = useState(context.reference.label);
   const selectedReference = createSelectedGeneratedReference(context.reference);
   const nameAction = actions.find((action) => action.id === "reference.name");
+  const hasEdgeFinishActions = actions.some(
+    (action) =>
+      action.id === "feature.chamfer" || action.id === "feature.fillet"
+  );
   const canSaveName =
     name.trim().length > 0 && (nameAction ? nameAction.available : true);
   const repairReference = namedReferences.find(
@@ -2399,7 +2403,7 @@ function GeneratedReferenceWorkbench({
           onSelectSketch={onSelectSketch}
         />
       )}
-      {context.reference.kind === "edge" && (
+      {context.reference.kind === "edge" && hasEdgeFinishActions && (
         <EdgeReferenceWorkbench
           actions={actions}
           body={context.body}
