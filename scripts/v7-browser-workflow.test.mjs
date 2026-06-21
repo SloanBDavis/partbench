@@ -262,6 +262,8 @@ describe("V7 browser workflow smoke summary", () => {
       "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs";
     const v10BrowserRunner =
       "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v10-workflow --require-derived-mesh-cache";
+    const v12BrowserRunner =
+      "VITE_ENABLE_DERIVED_GEOMETRY=true pnpm build && node scripts/smoke-v7-browser-workflow.mjs --require-v12-workflow";
 
     expect(packageJson.scripts["smoke:v8-wcad-workflow"]).toBe(
       compatibilityBrowserRunner
@@ -271,6 +273,9 @@ describe("V7 browser workflow smoke summary", () => {
     );
     expect(packageJson.scripts["smoke:v10-browser-workflow"]).toBe(
       v10BrowserRunner
+    );
+    expect(packageJson.scripts["smoke:v12-browser-workflow"]).toBe(
+      v12BrowserRunner
     );
   });
 });

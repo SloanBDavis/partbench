@@ -396,6 +396,10 @@ and focused packages:
 - `scripts/smoke-v11-release-samples.mjs` and
   `scripts/v11-release-samples.mjs` - deterministic non-browser V11 sketch
   solver release smoke over cad-core source/query/edit/rebuild/package chains.
+- `scripts/smoke-v12-release-samples.mjs` and
+  `scripts/v12-release-samples.mjs` - deterministic non-browser V12 stable
+  boolean topology/reference smoke over rectangle and circle tool cut/add
+  chains.
 - `scripts/smoke-occt-browser.mjs` and `scripts/occt-smoke` - non-gating
   browser smoke/metrics runner for the OCCT worker path.
 
