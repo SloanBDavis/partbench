@@ -51,6 +51,7 @@ describe("mcp-adapter", () => {
       "cad.object_measurements",
       "cad.body_measurements",
       "cad.body_topology",
+      "cad.body_topology_identity",
       "cad.project_extents",
       "cad.sketch_get",
       "cad.sketch_edit_readiness",
@@ -769,6 +770,81 @@ describe("mcp-adapter", () => {
         }
       }
     });
+  });
+
+  it("returns body topology identity candidates through cad.body_topology_identity", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_body_topology_identity",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_identity",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_identity",
+              id: "rect_identity",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_identity",
+              bodyId: "body_identity",
+              sketchId: "sketch_identity",
+              entityId: "rect_identity",
+              depth: 3
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.body_topology_identity",
+      requestId: "mcp_req_body_topology_identity",
+      arguments: { bodyId: "body_identity" }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.body_topology_identity",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_body_topology_identity",
+        cadOpsVersion: "cadops.v1",
+        query: "body.topologyIdentity",
+        bodyId: "body_identity",
+        status: "missing",
+        mutatesSource: false,
+        candidates: expect.arrayContaining([
+          expect.objectContaining({
+            stableId: "generated:body:body_identity",
+            kind: "body",
+            status: "candidate"
+          }),
+          expect.objectContaining({
+            stableId: "generated:face:body_identity:endCap",
+            kind: "face",
+            status: "candidate"
+          })
+        ])
+      }
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
   });
 
   it("accepts sphere batches and exposes sphere measurements", () => {
@@ -4449,6 +4525,7 @@ describe("mcp-adapter", () => {
           { name: "cad.object_measurements" },
           { name: "cad.body_measurements" },
           { name: "cad.body_topology" },
+          { name: "cad.body_topology_identity" },
           { name: "cad.project_extents" },
           { name: "cad.sketch_get" },
           { name: "cad.sketch_edit_readiness" },

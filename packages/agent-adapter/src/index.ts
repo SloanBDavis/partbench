@@ -18,6 +18,7 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBodyExactMetadataSnapshot,
   CadBodySnapshot,
+  BodyTopologyIdentityQueryResponse,
   CadBodyTopologySnapshot,
   CadDependencyHealthStatus,
   CadExportBodyReadiness,
@@ -347,6 +348,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentObjectGetQueryResponse
   | CadOpsAgentObjectMeasurementsQueryResponse
   | CadOpsAgentBodyTopologyQueryResponse
+  | CadOpsAgentBodyTopologyIdentityQueryResponse
   | CadOpsAgentBodyMeasurementsQueryResponse
   | CadOpsAgentProjectExtentsQueryResponse
   | CadOpsAgentSketchGetQueryResponse
@@ -587,6 +589,15 @@ export interface CadOpsAgentBodyTopologyQueryResponse {
   readonly topology: CadBodyTopologySnapshot;
 }
 
+export interface CadOpsAgentBodyTopologyIdentityQueryResponse extends Omit<
+  BodyTopologyIdentityQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
 export interface CadOpsAgentProjectExtentsQueryResponse {
   readonly ok: true;
   readonly requestId: string;
@@ -791,6 +802,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "object.get"
     | "object.measurements"
     | "body.topology"
+    | "body.topologyIdentity"
     | "body.measurements"
     | "project.extents"
     | "sketch.get"
@@ -2508,6 +2520,14 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "body.topologyIdentity") {
+    return {
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      ...response
+    };
+  }
+
   if (response.query === "body.measurements") {
     return {
       ok: true,
@@ -3220,6 +3240,14 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         typeof value.query.id === "string") ||
       (value.query.query === "body.topology" &&
         typeof value.query.bodyId === "string" &&
+        (value.query.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(
+            value.query.derivedExactMetadata
+          ))) ||
+      (value.query.query === "body.topologyIdentity" &&
+        typeof value.query.bodyId === "string" &&
+        (value.query.checkpointId === undefined ||
+          typeof value.query.checkpointId === "string") &&
         (value.query.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(
             value.query.derivedExactMetadata

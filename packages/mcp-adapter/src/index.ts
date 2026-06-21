@@ -46,6 +46,7 @@ export type CadMcpToolName =
   | "cad.project_sketches"
   | "cad.object_measurements"
   | "cad.body_topology"
+  | "cad.body_topology_identity"
   | "cad.body_measurements"
   | "cad.project_extents"
   | "cad.sketch_get"
@@ -225,6 +226,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.body_topology") {
       return this.#callBodyTopology(request);
+    }
+
+    if (request.name === "cad.body_topology_identity") {
+      return this.#callBodyTopologyIdentity(request);
     }
 
     if (request.name === "cad.body_measurements") {
@@ -826,6 +831,35 @@ export class CadMcpServer {
           query: {
             query: "body.topology",
             bodyId: request.arguments.bodyId,
+            derivedExactMetadata: request.arguments.derivedExactMetadata
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callBodyTopologyIdentity(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isBodyTopologyIdentityToolArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.body_topology_identity expects arguments shaped as { bodyId: string, checkpointId?: string, derivedExactMetadata?: object }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "body.topologyIdentity",
+            bodyId: request.arguments.bodyId,
+            checkpointId: request.arguments.checkpointId,
             derivedExactMetadata: request.arguments.derivedExactMetadata
           }
         }
@@ -1613,6 +1647,32 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.body_topology_identity",
+    description:
+      "Returns V13 non-mutating topology identity candidates for generated references on one body, optionally binding them to a topology checkpoint and derived exact topology snapshot.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Body ID to inspect for topology identity candidates."
+        },
+        checkpointId: {
+          type: "string",
+          description:
+            "Optional topology checkpoint source record to use as identity context."
+        },
+        derivedExactMetadata: {
+          type: "object",
+          description:
+            "Optional derived exact metadata snapshot for this body. This is read-only cache evidence and is not persisted."
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_extents",
     description:
       "Returns aggregate derived extents and approximate volume for the current CAD document.",
@@ -2095,6 +2155,22 @@ function isBodyTopologyToolArguments(value: unknown): value is {
     isRecord(value) &&
     typeof value.bodyId === "string" &&
     value.bodyId !== "" &&
+    (value.derivedExactMetadata === undefined ||
+      isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+  );
+}
+
+function isBodyTopologyIdentityToolArguments(value: unknown): value is {
+  readonly bodyId: string;
+  readonly checkpointId?: string;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.bodyId === "string" &&
+    value.bodyId !== "" &&
+    (value.checkpointId === undefined ||
+      (typeof value.checkpointId === "string" && value.checkpointId !== "")) &&
     (value.derivedExactMetadata === undefined ||
       isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
   );

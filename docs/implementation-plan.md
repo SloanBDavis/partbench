@@ -2404,10 +2404,18 @@ Use these decisions when drafting or implementing V13 tranches:
    topology-anchor targets, checkpoint payload byte generation, checkpoint
    payload entity validation, and command-time topology-anchor eligibility
    remain later V13 work.
-8. **Apply Identity To Existing Result Feature Families** - existing extrude,
-   cut/add boolean, revolve, hole, chamfer, and fillet result bodies flow
-   through the checkpoint/snapshot/anchor/matcher path. V12 source-semantic
-   references become high-confidence evidence in the shared system.
+8. **Implemented, first query slice: Apply Identity To Existing Result Feature
+   Families** - `body.topologyIdentity` now derives non-mutating topology
+   identity candidates from authoritative source, generated-reference
+   contracts, optional checkpoint source records, and caller-provided derived
+   exact topology snapshots. Supported generated references on current
+   rectangle/circle extrudes, cut/add result bodies, revolve axes, and hole
+   faces/edges/axes can bind to exact snapshot entities by deterministic
+   semantic signatures. Chamfer and fillet result bodies remain status-only;
+   the query does not invent generated face/edge candidates where current
+   source semantics do not prove them. Automatic anchor creation, command
+   eligibility, UI repair affordances, and checkpoint payload generation remain
+   later V13 work.
 9. **Command Eligibility For Topology Anchors** - existing commands consume
    topology-anchor references where validators and runtime prove support:
    sketch-on-face for planar anchors, chamfer/fillet for supported edge

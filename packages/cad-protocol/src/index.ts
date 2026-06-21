@@ -1167,6 +1167,7 @@ export type CadQueryKind =
   | "body.generatedReferences"
   | "body.resolveGeneratedReference"
   | "body.topology"
+  | "body.topologyIdentity"
   | "body.measurements"
   | "body.generatedReferenceMeasurements"
   | "reference.listNamed"
@@ -1203,6 +1204,7 @@ export type CadQuery =
   | BodyGeneratedReferencesQuery
   | BodyResolveGeneratedReferenceQuery
   | BodyTopologyQuery
+  | BodyTopologyIdentityQuery
   | BodyMeasurementsQuery
   | BodyGeneratedReferenceMeasurementsQuery
   | ReferenceListNamedQuery
@@ -1351,6 +1353,13 @@ export interface BodyResolveGeneratedReferenceQuery {
 export interface BodyTopologyQuery {
   readonly query: "body.topology";
   readonly bodyId: BodyId;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
+}
+
+export interface BodyTopologyIdentityQuery {
+  readonly query: "body.topologyIdentity";
+  readonly bodyId: BodyId;
+  readonly checkpointId?: string;
   readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
 }
 
@@ -3129,6 +3138,28 @@ export interface CadTopologySnapshotDescriptor {
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
 }
 
+export type CadTopologyGeneratedReferenceCandidateStatus =
+  | "bound"
+  | "candidate"
+  | "missing"
+  | "unsupported"
+  | "ambiguous";
+
+export interface CadTopologyGeneratedReferenceCandidate {
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly checkpointId?: string;
+  readonly checkpointEntityId?: string;
+  readonly status: CadTopologyGeneratedReferenceCandidateStatus;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly sourceSemanticRole?: string;
+  readonly geometrySignature?: string;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
 export interface CadTopologyAnchorDescriptor {
   readonly anchorId: string;
   readonly entityKind: CadTopologyAnchorEntityKind;
@@ -4804,6 +4835,7 @@ export type CadQueryResponse =
   | BodyGeneratedReferencesQueryResponse
   | BodyResolveGeneratedReferenceQueryResponse
   | BodyTopologyQueryResponse
+  | BodyTopologyIdentityQueryResponse
   | BodyMeasurementsQueryResponse
   | BodyGeneratedReferenceMeasurementsQueryResponse
   | ReferenceListNamedQueryResponse
@@ -5238,6 +5270,26 @@ export interface BodyTopologyQueryResponse {
   readonly query: "body.topology";
   readonly cadOpsVersion: CadOpsVersion;
   readonly topology: CadBodyTopologySnapshot;
+}
+
+export interface BodyTopologyIdentityQueryResponse {
+  readonly ok: true;
+  readonly query: "body.topologyIdentity";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly bodyId: BodyId;
+  readonly status: CadTopologyIdentityState;
+  readonly checkpointId?: string;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity?: WcadSourceIdentity;
+  readonly snapshot?: CadTopologyMatchSnapshotInput;
+  readonly descriptor: CadTopologySnapshotDescriptor;
+  readonly candidateCount: number;
+  readonly candidates: readonly CadTopologyGeneratedReferenceCandidate[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
 }
 
 export interface BodyMeasurementsQueryResponse {

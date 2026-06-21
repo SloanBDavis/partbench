@@ -1858,6 +1858,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "body.topologyIdentity", bodyId: "body_1" }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "body.measurements", bodyId: "body_1" }
       },
       {
@@ -1911,12 +1915,74 @@ describe("cad-protocol", () => {
       "body.generatedReferences",
       "body.resolveGeneratedReference",
       "body.topology",
+      "body.topologyIdentity",
       "body.measurements",
       "reference.listNamed",
       "reference.resolveNamed",
       "selection.referenceCandidates",
       "transaction.history"
     ]);
+  });
+
+  it("types body topology identity query responses", () => {
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "body.topologyIdentity",
+        bodyId: "body_1",
+        checkpointId: "checkpoint_1"
+      }
+    };
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "body.topologyIdentity",
+      cadOpsVersion: "cadops.v1",
+      bodyId: "body_1",
+      status: "active",
+      checkpointId: "checkpoint_1",
+      sourceFeatureId: "feat_1",
+      descriptor: {
+        snapshotId: "snapshot_1",
+        checkpointId: "checkpoint_1",
+        bodyId: "body_1",
+        sourceFeatureId: "feat_1",
+        entityKinds: ["face", "edge"],
+        entityCount: 2,
+        status: "active",
+        diagnostics: []
+      },
+      candidateCount: 1,
+      candidates: [
+        {
+          stableId: "generated:face:body_1:endCap",
+          kind: "face",
+          bodyId: "body_1",
+          sourceFeatureId: "feat_1",
+          checkpointId: "checkpoint_1",
+          checkpointEntityId: "snapshot-local:face:0",
+          status: "bound",
+          confidence: "exact",
+          sourceSemanticRole: "endCap",
+          geometrySignature: "generated-reference:v13:test",
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote: "Derived from document source.",
+      derivedBoundaryNote: "Renderer ids are excluded.",
+      mutatesSource: false
+    };
+
+    expect(request.query.query).toBe("body.topologyIdentity");
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topologyIdentity",
+      candidateCount: 1,
+      candidates: [{ status: "bound", confidence: "exact" }],
+      mutatesSource: false
+    });
   });
 
   it("types V4 sketch completeness status responses", () => {

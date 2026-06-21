@@ -1608,42 +1608,55 @@ function createExactMetadataSnapshot(input: {
   readonly edgeCount?: number;
   readonly vertexCount?: number;
   readonly includeTopologySnapshot?: boolean;
+  readonly topologySnapshotStatus?: CadBodyExactTopologySnapshot["status"];
+  readonly topologyEntities?: CadBodyExactTopologySnapshot["entities"];
 }): CadBodyDerivedExactMetadataSnapshot {
+  const topologyEntities = input.topologyEntities ?? [
+    {
+      localId: "snapshot-local:body:0",
+      kind: "body" as const,
+      source: "kernel-derived" as const,
+      signature: "topology-body-test"
+    },
+    ...Array.from({ length: 33 }, (_, index) => ({
+      localId: `snapshot-local:face:${index}`,
+      kind: "face" as const,
+      source: "kernel-derived" as const,
+      signature: `topology-face-test-${index}`
+    }))
+  ];
+  const countEntities = (
+    kind: CadBodyExactTopologySnapshot["entities"][number]["kind"]
+  ) => topologyEntities.filter((entity) => entity.kind === kind).length;
   const topologySnapshot = input.includeTopologySnapshot
     ? {
         source: "kernel-derived" as const,
-        status: "partial" as const,
+        status: input.topologySnapshotStatus ?? ("partial" as const),
         entityCounts: {
-          bodyCount: 1,
-          solidCount: 1,
-          faceCount: input.faceCount ?? 6,
-          wireCount: 6,
-          edgeCount: input.edgeCount ?? 12,
-          vertexCount: input.vertexCount ?? 8,
-          loopCount: 0,
-          coedgeCount: 0,
-          axisCount: 0
+          bodyCount: input.topologyEntities ? countEntities("body") : 1,
+          solidCount: input.topologyEntities ? countEntities("solid") : 1,
+          faceCount: input.topologyEntities
+            ? countEntities("face")
+            : (input.faceCount ?? 6),
+          wireCount: input.topologyEntities ? countEntities("wire") : 6,
+          edgeCount: input.topologyEntities
+            ? countEntities("edge")
+            : (input.edgeCount ?? 12),
+          vertexCount: input.topologyEntities
+            ? countEntities("vertex")
+            : (input.vertexCount ?? 8),
+          loopCount: input.topologyEntities ? countEntities("loop") : 0,
+          coedgeCount: input.topologyEntities ? countEntities("coedge") : 0,
+          axisCount: input.topologyEntities ? countEntities("axis") : 0
         },
-        entityCount:
-          2 +
-          (input.faceCount ?? 6) +
-          6 +
-          (input.edgeCount ?? 12) +
-          (input.vertexCount ?? 8),
-        entities: [
-          {
-            localId: "snapshot-local:body:0",
-            kind: "body" as const,
-            source: "kernel-derived" as const,
-            signature: "topology-body-test"
-          },
-          ...Array.from({ length: 33 }, (_, index) => ({
-            localId: `snapshot-local:face:${index}`,
-            kind: "face" as const,
-            source: "kernel-derived" as const,
-            signature: `topology-face-test-${index}`
-          }))
-        ],
+        entityCount: input.topologyEntities
+          ? input.topologyEntities.length
+          : 2 +
+            (input.faceCount ?? 6) +
+            6 +
+            (input.edgeCount ?? 12) +
+            (input.vertexCount ?? 8),
+        entities: topologyEntities,
         unsupportedEntityKinds: ["loop", "coedge", "axis"] as const,
         adjacencyAvailable: false,
         signatureAlgorithm: "partbench-derived-topology-snapshot-v1" as const,
@@ -14390,6 +14403,166 @@ describe("cad-core", () => {
         })
       ])
     );
+  });
+
+  it("bridges V12 generated references into V13 topology identity candidates without mutating source", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const beforeJson = exportCadProjectJson(engine);
+    const candidateSeed = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: "body_cut_1" }
+    });
+
+    if (!candidateSeed.ok || candidateSeed.query !== "body.topologyIdentity") {
+      throw new Error("Expected body.topologyIdentity seed response.");
+    }
+
+    const cutWallCandidate = candidateSeed.candidates.find(
+      (candidate) =>
+        candidate.stableId === "generated:face:body_cut_1:side:uMin"
+    );
+
+    expect(cutWallCandidate).toMatchObject({
+      kind: "face",
+      status: "candidate",
+      confidence: "none",
+      sourceSemanticRole: "side:uMin"
+    });
+    expect(cutWallCandidate?.geometrySignature).toMatch(
+      /^generated-reference:v13:[a-f0-9]{64}$/
+    );
+
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
+      engine,
+      "body_cut_1"
+    );
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topologyIdentity",
+        bodyId: "body_cut_1",
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_cut_1",
+          sourceIdentitySignature,
+          includeTopologySnapshot: true,
+          topologySnapshotStatus: "ready",
+          topologyEntities: [
+            {
+              localId: "snapshot-local:face:cut-wall-u-min",
+              kind: "face",
+              source: "kernel-derived",
+              signature: cutWallCandidate?.geometrySignature ?? ""
+            }
+          ]
+        })
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "body.topologyIdentity",
+      cadOpsVersion: "cadops.v1",
+      bodyId: "body_cut_1",
+      mutatesSource: false,
+      snapshot: {
+        bodyId: "body_cut_1",
+        sourceFeatureId: "feat_cut_1",
+        topologySnapshot: { status: "ready" }
+      },
+      descriptor: {
+        bodyId: "body_cut_1",
+        status: "active",
+        entityKinds: ["face"],
+        entityCount: 1
+      },
+      candidates: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:face:body_cut_1:side:uMin",
+          kind: "face",
+          sourceFeatureId: "feat_cut_1",
+          checkpointEntityId: "snapshot-local:face:cut-wall-u-min",
+          status: "bound",
+          confidence: "exact"
+        }),
+        expect.objectContaining({
+          stableId: "generated:edge:body_cut_1:longitudinal:uMin:vMin",
+          kind: "edge",
+          status: "missing"
+        })
+      ])
+    });
+
+    if (!response.ok || response.query !== "body.topologyIdentity") {
+      throw new Error("Expected body topology identity response.");
+    }
+
+    expect(response.candidateCount).toBeGreaterThan(1);
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("does not invent generated topology candidates for edge finishing result bodies", () => {
+    const chamferEngine = createRectangleChamferEngine();
+    const filletEngine = createRectangleFilletEngine();
+
+    expect(
+      chamferEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topologyIdentity", bodyId: "body_chamfer_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topologyIdentity",
+      bodyId: "body_chamfer_1",
+      status: "missing",
+      candidateCount: 0,
+      candidates: [],
+      mutatesSource: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED"
+        })
+      ])
+    });
+
+    expect(
+      filletEngine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "body.topologyIdentity", bodyId: "body_fillet_1" }
+      })
+    ).toMatchObject({
+      ok: true,
+      query: "body.topologyIdentity",
+      bodyId: "body_fillet_1",
+      status: "missing",
+      candidateCount: 0,
+      candidates: [],
+      mutatesSource: false
+    });
   });
 
   it("uses V12 command-ready rectangle cut wall faces for selection naming and sketch attachment", () => {

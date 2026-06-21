@@ -155,6 +155,7 @@ import {
 } from "./generatedReferences";
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
+import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import { createFeatureEditabilityResponse } from "./featureEditability";
 import {
@@ -1697,6 +1698,36 @@ export class CadEngine {
           cadOpsVersion: request.version,
           topology: topology.topology
         };
+      }
+
+      case "body.topologyIdentity": {
+        const { bodyId } = request.query;
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const topologyIdentity = createBodyTopologyIdentity({
+          cadOpsVersion: request.version,
+          document: this.#document,
+          bodyId,
+          units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
+          checkpointId: request.query.checkpointId,
+          derivedExactMetadata: request.query.derivedExactMetadata,
+          bodyExists: (candidateBodyId) =>
+            structure.bodies.some((body) => body.id === candidateBodyId)
+        });
+
+        if (!topologyIdentity.ok) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: topologyIdentity.error
+          };
+        }
+
+        return topologyIdentity.response;
       }
 
       case "body.measurements": {
@@ -5219,6 +5250,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "body.generatedReferences":
     case "body.resolveGeneratedReference":
     case "body.topology":
+    case "body.topologyIdentity":
     case "body.measurements":
     case "body.generatedReferenceMeasurements":
     case "reference.listNamed":
@@ -5308,6 +5340,14 @@ function isCadQuery(value: unknown): boolean {
     case "body.topology":
       return (
         typeof value.bodyId === "string" &&
+        (value.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+      );
+    case "body.topologyIdentity":
+      return (
+        typeof value.bodyId === "string" &&
+        (value.checkpointId === undefined ||
+          typeof value.checkpointId === "string") &&
         (value.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
       );

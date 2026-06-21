@@ -3348,6 +3348,52 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("passes body topology identity candidate queries through the adapter", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_body_identity",
+      entityId: "rect_body_identity",
+      featureId: "feat_body_identity",
+      bodyId: "body_identity"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_body_topology_identity",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "body.topologyIdentity", bodyId: "body_identity" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_body_topology_identity",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "body.topologyIdentity",
+      bodyId: "body_identity",
+      status: "missing",
+      mutatesSource: false,
+      candidates: expect.arrayContaining([
+        expect.objectContaining({
+          stableId: "generated:body:body_identity",
+          kind: "body",
+          status: "candidate"
+        }),
+        expect.objectContaining({
+          stableId: "generated:face:body_identity:endCap",
+          kind: "face",
+          status: "candidate"
+        })
+      ])
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
+  });
+
   it("accepts sphere commands and exposes sphere measurements through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 
