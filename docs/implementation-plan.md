@@ -2368,7 +2368,8 @@ Use these decisions when drafting or implementing V13 tranches:
    source identity, hash/length metadata, topology/signature CBOR
    compatibility, and keep `.wcad` v1 read/write compatibility. Geometry-boundary
    B-rep checkpoint byte creation and Project/File checkpoint status remain for
-   later V13 tranches.
+   later V13 tranches. Command-backed checkpoint metadata creation is handled by
+   the G command slice.
 5. **Implemented: Topology Matching Engine** - `topology.matchSnapshots`
    performs non-mutating snapshot-to-snapshot matching with source lineage,
    signature, checkpoint source identity, confidence, evidence, and structured
@@ -2388,17 +2389,21 @@ Use these decisions when drafting or implementing V13 tranches:
    MCP wrappers pass through the same evidence without gaining matching or
    repair authority. Committed anchor creation/repair is handled by the G first
    command slice; command-time topology retargeting remains later V13 work.
-7. **Implemented, first command slice: Topology Anchor And Repair Commands** -
-   protocol, cad-core, agent, and MCP batch paths support
-   `topology.anchor.create` and `topology.anchor.repair`. Anchor creation records
-   source-backed V18 topology anchors against existing checkpoint records;
-   anchor repair appends explicit repair records and retargets the anchor to a
-   replacement checkpoint entity. Both commands support dry-run/commit through
-   CADOps, emit topology-anchor semantic diffs, participate in undo/redo and
-   transaction-history summaries, and preserve source-boundary validation. UI
-   repair affordances, named-reference repair to topology-anchor targets,
-   checkpoint creation commands, checkpoint payload entity validation, and
-   command-time topology-anchor eligibility remain later V13 work.
+7. **Implemented, first command slice: Topology Checkpoint, Anchor, And Repair
+   Commands** - protocol, cad-core, agent, and MCP batch paths support
+   `topology.checkpoint.create`, `topology.anchor.create`, and
+   `topology.anchor.repair`. Checkpoint creation records metadata-only V18
+   checkpoint source records with canonical `.wcad` v2 entry paths,
+   caller-supplied source identity, and explicit active/stale/missing/failed/
+   unsupported status. Anchor creation records source-backed V18 topology
+   anchors against existing checkpoint records; anchor repair appends explicit
+   repair records and retargets the anchor to a replacement checkpoint entity.
+   These commands support dry-run/commit through CADOps, emit semantic diffs,
+   participate in undo/redo and transaction-history summaries, and preserve
+   source-boundary validation. UI repair affordances, named-reference repair to
+   topology-anchor targets, checkpoint payload byte generation, checkpoint
+   payload entity validation, and command-time topology-anchor eligibility
+   remain later V13 work.
 8. **Apply Identity To Existing Result Feature Families** - existing extrude,
    cut/add boolean, revolve, hole, chamfer, and fillet result bodies flow
    through the checkpoint/snapshot/anchor/matcher path. V12 source-semantic

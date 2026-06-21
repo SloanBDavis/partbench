@@ -126,6 +126,11 @@ export function validateTopologyIdentitySourceSnapshot(
   validateRecordArray(value.checkpoints, "checkpoint", issues);
   validateRecordArray(value.anchors, "anchor", issues);
   validateRecordArray(value.repairs, "repair", issues);
+  if (Array.isArray(value.checkpoints)) {
+    value.checkpoints.forEach((checkpoint) =>
+      validateCheckpointSourceRecord(checkpoint, issues)
+    );
+  }
   validateTopologyIdentitySourceLinks(value, issues);
 
   return issues;
@@ -672,6 +677,213 @@ function validateTopologyIdentitySourceLinks(
       }
     }
   }
+}
+
+function validateCheckpointSourceRecord(
+  value: unknown,
+  issues: CadTopologyIdentityDiagnostic[]
+): void {
+  if (!isRecord(value)) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        "Topology checkpoint source record must be an object."
+      )
+    );
+    return;
+  }
+
+  const checkpointId =
+    typeof value.checkpointId === "string" ? value.checkpointId : undefined;
+
+  if (!checkpointId || !isValidCheckpointId(checkpointId)) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        "Topology checkpoint source record id must be package-safe.",
+        {
+          checkpointId,
+          expected: "package-safe checkpoint id",
+          received: typeof value.checkpointId
+        }
+      )
+    );
+    return;
+  }
+
+  if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} must target an existing source body id.`,
+        {
+          checkpointId,
+          expected: "body id",
+          received: typeof value.bodyId
+        }
+      )
+    );
+  }
+
+  if (
+    value.sourceFeatureId !== undefined &&
+    (typeof value.sourceFeatureId !== "string" ||
+      value.sourceFeatureId.length === 0)
+  ) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} sourceFeatureId must be a non-empty string when present.`,
+        {
+          checkpointId,
+          expected: "feature id",
+          received: typeof value.sourceFeatureId
+        }
+      )
+    );
+  }
+
+  if (!isWcadSourceIdentity(value.sourceIdentity)) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} must include a valid source identity.`,
+        {
+          checkpointId,
+          expected: WCAD_SOURCE_IDENTITY_ALGORITHM,
+          received: typeof value.sourceIdentity
+        }
+      )
+    );
+  }
+
+  if (value.packageVersion !== CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} must use the topology package version.`,
+        {
+          checkpointId,
+          expected: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+          received:
+            typeof value.packageVersion === "string"
+              ? value.packageVersion
+              : typeof value.packageVersion
+        }
+      )
+    );
+  }
+
+  if (
+    value.projectSchemaVersion !== CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION
+  ) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} must target web-cad.project.v18.`,
+        {
+          checkpointId,
+          expected: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+          received:
+            typeof value.projectSchemaVersion === "string"
+              ? value.projectSchemaVersion
+              : typeof value.projectSchemaVersion
+        }
+      )
+    );
+  }
+
+  const expectedPaths = createWcadV2CheckpointEntryPaths(checkpointId);
+  validateCheckpointSourcePath(
+    value.brepEntryPath,
+    expectedPaths.brep,
+    checkpointId,
+    issues
+  );
+  validateCheckpointSourcePath(
+    value.topologyEntryPath,
+    expectedPaths.topology,
+    checkpointId,
+    issues
+  );
+  validateCheckpointSourcePath(
+    value.signatureEntryPath,
+    expectedPaths.signature,
+    checkpointId,
+    issues
+  );
+
+  if (!isCheckpointSourceStatus(value.status)) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} has an invalid source status.`,
+        {
+          checkpointId,
+          expected: "active, stale, missing, failed, or unsupported",
+          received:
+            typeof value.status === "string"
+              ? value.status
+              : typeof value.status
+        }
+      )
+    );
+  }
+
+  if (!Array.isArray(value.diagnostics)) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} diagnostics must be an array.`,
+        {
+          checkpointId,
+          expected: "diagnostic array",
+          received: typeof value.diagnostics
+        }
+      )
+    );
+  }
+}
+
+function validateCheckpointSourcePath(
+  value: unknown,
+  expected: string,
+  checkpointId: string,
+  issues: CadTopologyIdentityDiagnostic[]
+): void {
+  if (value !== expected) {
+    issues.push(
+      createTopologyDiagnostic(
+        "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+        "error",
+        `Topology checkpoint ${checkpointId} source path must match its checkpoint id.`,
+        {
+          checkpointId,
+          expected,
+          received: typeof value === "string" ? value : typeof value
+        }
+      )
+    );
+  }
+}
+
+function isCheckpointSourceStatus(value: unknown): boolean {
+  return (
+    value === "active" ||
+    value === "stale" ||
+    value === "missing" ||
+    value === "failed" ||
+    value === "unsupported"
+  );
 }
 
 function collectUniqueTopologyIds(args: {

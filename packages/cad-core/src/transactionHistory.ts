@@ -83,6 +83,7 @@ function createOperationSummaries(
   let createdNamedReferenceIndex = 0;
   let repairedNamedReferenceIndex = 0;
   let deletedNamedReferenceIndex = 0;
+  let createdTopologyCheckpointIndex = 0;
   let createdTopologyAnchorIndex = 0;
   let repairedTopologyAnchorIndex = 0;
   let createdParameterIndex = 0;
@@ -136,6 +137,12 @@ function createOperationSummaries(
       op.op === "reference.deleteName"
         ? transaction.diff.references?.namedDeleted?.[
             deletedNamedReferenceIndex++
+          ]
+        : undefined;
+    const createdTopologyCheckpointRef =
+      op.op === "topology.checkpoint.create"
+        ? transaction.diff.references?.topologyCheckpointsCreated?.[
+            createdTopologyCheckpointIndex++
           ]
         : undefined;
     const createdTopologyAnchorRef =
@@ -766,6 +773,16 @@ function createOperationSummaries(
         });
       }
 
+      case "topology.checkpoint.create": {
+        return createReferenceOperationSummary({
+          op: op.op,
+          label: `Create topology checkpoint ${op.checkpointId}`,
+          bodyId: op.bodyId,
+          checkpointId: op.checkpointId,
+          featureId: createdTopologyCheckpointRef?.sourceFeatureId
+        });
+      }
+
       case "topology.anchor.create": {
         return createReferenceOperationSummary({
           op: op.op,
@@ -948,6 +965,7 @@ function createReferenceOperationSummary(
     ...(summary.generatedReferenceKind
       ? { generatedReferenceKind: summary.generatedReferenceKind }
       : {}),
+    ...(summary.featureId ? { featureId: summary.featureId } : {}),
     ...(summary.topologyAnchorId
       ? { topologyAnchorId: summary.topologyAnchorId }
       : {}),
@@ -1070,6 +1088,9 @@ function cloneReferenceSemanticDiff(
     ...(diff.namedCreated ? { namedCreated: [...diff.namedCreated] } : {}),
     ...(diff.namedRepaired ? { namedRepaired: [...diff.namedRepaired] } : {}),
     ...(diff.namedDeleted ? { namedDeleted: [...diff.namedDeleted] } : {}),
+    ...(diff.topologyCheckpointsCreated
+      ? { topologyCheckpointsCreated: [...diff.topologyCheckpointsCreated] }
+      : {}),
     ...(diff.topologyAnchorsCreated
       ? { topologyAnchorsCreated: [...diff.topologyAnchorsCreated] }
       : {}),

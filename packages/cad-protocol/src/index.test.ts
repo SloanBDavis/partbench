@@ -1240,6 +1240,17 @@ describe("cad-protocol", () => {
         name: "Mounting face"
       },
       {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_1",
+        bodyId: "body_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        status: "active"
+      },
+      {
         op: "topology.anchor.create",
         anchorId: "anchor_face_1",
         entityKind: "face",
@@ -1297,6 +1308,7 @@ describe("cad-protocol", () => {
       "reference.nameGenerated",
       "reference.repairName",
       "reference.deleteName",
+      "topology.checkpoint.create",
       "topology.anchor.create",
       "topology.anchor.repair"
     ]);
@@ -1339,6 +1351,22 @@ describe("cad-protocol", () => {
       op: "reference.repairName",
       name: "Mounting face"
     });
+    const topologyCheckpointCreateOp: CadOp = {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_1",
+      bodyId: "body_1",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1",
+        sha256:
+          "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      status: "missing"
+    };
+    expect(topologyCheckpointCreateOp).toMatchObject({
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_1",
+      status: "missing"
+    });
     const topologyAnchorCreateOp: CadOp = {
       op: "topology.anchor.create",
       anchorId: "anchor_face_1",
@@ -1369,6 +1397,18 @@ describe("cad-protocol", () => {
       modified: [],
       deleted: [],
       references: {
+        topologyCheckpointsCreated: [
+          {
+            checkpointId: "checkpoint_1",
+            bodyId: "body_1",
+            sourceIdentity: {
+              algorithm: "partbench-source-v1",
+              sha256:
+                "3333333333333333333333333333333333333333333333333333333333333333"
+            },
+            status: "active"
+          }
+        ],
         topologyAnchorsCreated: [
           {
             anchorId: "anchor_face_1",

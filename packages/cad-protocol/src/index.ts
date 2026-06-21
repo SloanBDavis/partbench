@@ -284,6 +284,7 @@ export type CadOp =
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
   | ReferenceDeleteNameOp
+  | TopologyCheckpointCreateOp
   | TopologyAnchorCreateOp
   | TopologyAnchorRepairOp;
 
@@ -702,6 +703,19 @@ export interface ReferenceDeleteNameOp {
   readonly name: NamedReferenceName;
 }
 
+export interface TopologyCheckpointCreateOp {
+  readonly op: "topology.checkpoint.create";
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly status: Extract<
+    CadTopologyIdentityState,
+    "active" | "stale" | "missing" | "failed" | "unsupported"
+  >;
+  readonly diagnostics?: readonly CadTopologyIdentityDiagnostic[];
+}
+
 export interface TopologyAnchorCreateOp {
   readonly op: "topology.anchor.create";
   readonly anchorId: string;
@@ -819,6 +833,17 @@ export interface CadNamedReferenceRef {
   readonly kind: CadGeneratedEntityKind;
 }
 
+export interface CadTopologyCheckpointRef {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly status: Extract<
+    CadTopologyIdentityState,
+    "active" | "stale" | "missing" | "failed" | "unsupported"
+  >;
+}
+
 export interface CadTopologyAnchorRef {
   readonly anchorId: string;
   readonly entityKind: CadTopologyAnchorEntityKind;
@@ -903,6 +928,7 @@ export interface ReferenceSemanticDiff {
   readonly namedCreated?: readonly CadNamedReferenceRef[];
   readonly namedRepaired?: readonly CadNamedReferenceRepairRef[];
   readonly namedDeleted?: readonly CadNamedReferenceRef[];
+  readonly topologyCheckpointsCreated?: readonly CadTopologyCheckpointRef[];
   readonly topologyAnchorsCreated?: readonly CadTopologyAnchorRef[];
   readonly topologyAnchorsRepaired?: readonly CadTopologyAnchorRepairRef[];
 }
@@ -997,10 +1023,12 @@ export type CadBatchValidationErrorCode =
   | "INVALID_REFERENCE_NAME"
   | "NAMED_REFERENCE_ALREADY_EXISTS"
   | "NAMED_REFERENCE_NOT_FOUND"
+  | "TOPOLOGY_CHECKPOINT_ALREADY_EXISTS"
   | "TOPOLOGY_ANCHOR_ALREADY_EXISTS"
   | "TOPOLOGY_ANCHOR_NOT_FOUND"
   | "TOPOLOGY_CHECKPOINT_NOT_FOUND"
   | "TOPOLOGY_REPAIR_ALREADY_EXISTS"
+  | "INVALID_TOPOLOGY_CHECKPOINT"
   | "INVALID_TOPOLOGY_ANCHOR"
   | "INVALID_TOPOLOGY_REPAIR"
   | "FEATURE_ALREADY_EXISTS"

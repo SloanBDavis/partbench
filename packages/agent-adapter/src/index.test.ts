@@ -192,6 +192,73 @@ describe("agent-adapter", () => {
     expect(engine.getDocument().objects.size).toBe(0);
   });
 
+  it("passes topology checkpoint creation through cad.batch with review labels", () => {
+    const engine = new CadEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "rect_1",
+        center: [0, 0],
+        width: 2,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_rect_1",
+        bodyId: "body_rect_1",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        depth: 1
+      }
+    ]);
+    const op = {
+      op: "topology.checkpoint.create" as const,
+      checkpointId: "checkpoint_agent_1",
+      bodyId: "body_rect_1",
+      sourceIdentity: {
+        algorithm: "partbench-source-v1" as const,
+        sha256:
+          "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      status: "missing" as const
+    };
+
+    const response = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_topology_checkpoint",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [op]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      mode: "commit",
+      review: {
+        operations: [
+          expect.objectContaining({
+            op: "topology.checkpoint.create",
+            intent: "create",
+            bodyId: "body_rect_1",
+            label:
+              "Create topology checkpoint checkpoint_agent_1 for body_rect_1"
+          })
+        ]
+      }
+    });
+    expect(engine.getDocument().topologyIdentity?.checkpoints).toEqual([
+      expect.objectContaining({
+        checkpointId: "checkpoint_agent_1",
+        status: "missing"
+      })
+    ]);
+  });
+
   it("passes topology anchor commands through cad.batch with review labels", () => {
     const engine = createTopologyAnchorEngine();
     const op = {

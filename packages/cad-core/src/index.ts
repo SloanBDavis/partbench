@@ -100,6 +100,8 @@ import type {
   CadTopologyAnchorRef,
   CadTopologyAnchorRepairRef,
   CadTopologyAnchorSourceRecord,
+  CadTopologyCheckpointRef,
+  CadTopologyCheckpointSourceRecord,
   CadTopologyRepairSourceRecord,
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
@@ -3687,6 +3689,7 @@ type MutableReferenceSemanticDiff = {
   namedCreated: CadNamedReferenceRef[];
   namedRepaired: CadNamedReferenceRepairRef[];
   namedDeleted: CadNamedReferenceRef[];
+  topologyCheckpointsCreated: CadTopologyCheckpointRef[];
   topologyAnchorsCreated: CadTopologyAnchorRef[];
   topologyAnchorsRepaired: CadTopologyAnchorRepairRef[];
 };
@@ -4665,6 +4668,103 @@ function applyOperation(
       return;
     }
 
+    case "topology.checkpoint.create": {
+      const topologyIdentity = ensureTopologyIdentitySource(state);
+
+      if (
+        topologyIdentity.checkpoints.some(
+          (checkpoint) => checkpoint.checkpointId === op.checkpointId
+        )
+      ) {
+        throwValidationError({
+          code: "TOPOLOGY_CHECKPOINT_ALREADY_EXISTS",
+          message: `Topology checkpoint already exists: ${op.checkpointId}`,
+          opIndex,
+          checkpointId: op.checkpointId,
+          path: operationPath(opIndex, "checkpointId"),
+          expected: "unique topology checkpoint id",
+          received: op.checkpointId
+        });
+      }
+
+      let checkpointPaths: ReturnType<typeof createWcadV2CheckpointEntryPaths>;
+      try {
+        checkpointPaths = createWcadV2CheckpointEntryPaths(op.checkpointId);
+      } catch {
+        throwValidationError({
+          code: "INVALID_TOPOLOGY_CHECKPOINT",
+          message: `Topology checkpoint id is not package-safe: ${op.checkpointId}`,
+          opIndex,
+          checkpointId: op.checkpointId,
+          path: operationPath(opIndex, "checkpointId"),
+          expected: "package-safe topology checkpoint id",
+          received: op.checkpointId
+        });
+      }
+
+      if (!documentBodyExists(state, op.bodyId)) {
+        throwValidationError({
+          code: "BODY_NOT_FOUND",
+          message: `Body does not exist: ${op.bodyId}`,
+          opIndex,
+          bodyId: op.bodyId,
+          path: operationPath(opIndex, "bodyId"),
+          expected: "existing body",
+          received: op.bodyId
+        });
+      }
+
+      const sourceFeature = op.sourceFeatureId
+        ? state.features.get(op.sourceFeatureId)
+        : findFeatureByBodyId(state.features, op.bodyId);
+
+      if (op.sourceFeatureId && !sourceFeature) {
+        throwValidationError({
+          code: "FEATURE_NOT_FOUND",
+          message: `Feature does not exist: ${op.sourceFeatureId}`,
+          opIndex,
+          featureId: op.sourceFeatureId,
+          path: operationPath(opIndex, "sourceFeatureId"),
+          expected: "existing feature",
+          received: op.sourceFeatureId
+        });
+      }
+
+      if (sourceFeature && sourceFeature.bodyId !== op.bodyId) {
+        throwValidationError({
+          code: "INVALID_TOPOLOGY_CHECKPOINT",
+          message: `Topology checkpoint body ${op.bodyId} does not match feature body ${sourceFeature.bodyId}.`,
+          opIndex,
+          bodyId: op.bodyId,
+          featureId: sourceFeature.id,
+          path: operationPath(opIndex, "bodyId"),
+          expected: sourceFeature.bodyId,
+          received: op.bodyId
+        });
+      }
+
+      const checkpoint: CadTopologyCheckpointSourceRecord = {
+        checkpointId: op.checkpointId,
+        bodyId: op.bodyId,
+        ...(sourceFeature ? { sourceFeatureId: sourceFeature.id } : {}),
+        sourceIdentity: op.sourceIdentity,
+        packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+        projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+        brepEntryPath: checkpointPaths.brep,
+        topologyEntryPath: checkpointPaths.topology,
+        signatureEntryPath: checkpointPaths.signature,
+        status: op.status,
+        diagnostics: op.diagnostics ?? []
+      };
+
+      state.topologyIdentity = {
+        ...topologyIdentity,
+        checkpoints: [...topologyIdentity.checkpoints, checkpoint]
+      };
+      pushTopologyCheckpointCreated(diff, checkpoint);
+      return;
+    }
+
     case "topology.anchor.create": {
       const topologyIdentity = ensureTopologyIdentitySource(state);
 
@@ -5007,6 +5107,7 @@ function isCadOperationKind(value: string): boolean {
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
+    case "topology.checkpoint.create":
     case "topology.anchor.create":
     case "topology.anchor.repair":
       return true;
@@ -5322,6 +5423,16 @@ function isTopologyIdentityState(value: unknown): boolean {
     value === "unsupported" ||
     value === "failed" ||
     value === "deferred"
+  );
+}
+
+function isTopologyCheckpointStatus(value: unknown): boolean {
+  return (
+    value === "active" ||
+    value === "stale" ||
+    value === "missing" ||
+    value === "failed" ||
+    value === "unsupported"
   );
 }
 
@@ -12108,6 +12219,20 @@ function namedReferenceRef(
   };
 }
 
+function topologyCheckpointRef(
+  checkpoint: CadTopologyCheckpointSourceRecord
+): CadTopologyCheckpointRef {
+  return {
+    checkpointId: checkpoint.checkpointId,
+    bodyId: checkpoint.bodyId,
+    ...(checkpoint.sourceFeatureId
+      ? { sourceFeatureId: checkpoint.sourceFeatureId }
+      : {}),
+    sourceIdentity: checkpoint.sourceIdentity,
+    status: checkpoint.status
+  };
+}
+
 function topologyAnchorRef(
   anchor: CadTopologyAnchorSourceRecord
 ): CadTopologyAnchorRef {
@@ -12363,6 +12488,15 @@ function pushNamedReferenceDeleted(
   ensureReferenceDiff(diff).namedDeleted.push(namedReferenceRef(reference));
 }
 
+function pushTopologyCheckpointCreated(
+  diff: MutableSemanticDiff,
+  checkpoint: CadTopologyCheckpointSourceRecord
+): void {
+  ensureReferenceDiff(diff).topologyCheckpointsCreated.push(
+    topologyCheckpointRef(checkpoint)
+  );
+}
+
 function pushTopologyAnchorCreated(
   diff: MutableSemanticDiff,
   anchor: CadTopologyAnchorSourceRecord
@@ -12393,6 +12527,7 @@ function ensureReferenceDiff(
     namedCreated: [],
     namedRepaired: [],
     namedDeleted: [],
+    topologyCheckpointsCreated: [],
     topologyAnchorsCreated: [],
     topologyAnchorsRepaired: []
   };
@@ -21755,6 +21890,20 @@ function isCadOp(value: unknown): value is CadOp {
     return typeof value.name === "string";
   }
 
+  if (value.op === "topology.checkpoint.create") {
+    return (
+      isNonEmptyString(value.checkpointId) &&
+      isNonEmptyString(value.bodyId) &&
+      (value.sourceFeatureId === undefined ||
+        isNonEmptyString(value.sourceFeatureId)) &&
+      isWcadSourceIdentityInput(value.sourceIdentity) &&
+      isTopologyCheckpointStatus(value.status) &&
+      (value.diagnostics === undefined ||
+        (Array.isArray(value.diagnostics) &&
+          value.diagnostics.every(isTopologyIdentityDiagnosticShape)))
+    );
+  }
+
   if (value.op === "topology.anchor.create") {
     return (
       isNonEmptyString(value.anchorId) &&
@@ -22005,6 +22154,9 @@ function isReferenceSemanticDiff(
     (value.namedDeleted === undefined ||
       (Array.isArray(value.namedDeleted) &&
         value.namedDeleted.every(isCadNamedReferenceRef))) &&
+    (value.topologyCheckpointsCreated === undefined ||
+      (Array.isArray(value.topologyCheckpointsCreated) &&
+        value.topologyCheckpointsCreated.every(isCadTopologyCheckpointRef))) &&
     (value.topologyAnchorsCreated === undefined ||
       (Array.isArray(value.topologyAnchorsCreated) &&
         value.topologyAnchorsCreated.every(isCadTopologyAnchorRef))) &&
@@ -22185,6 +22337,20 @@ function isCadNamedReferenceRepairRef(
     isRecord(value) &&
     isCadNamedReferenceRef(value.before) &&
     isCadNamedReferenceRef(value.after)
+  );
+}
+
+function isCadTopologyCheckpointRef(
+  value: unknown
+): value is CadTopologyCheckpointRef {
+  return (
+    isRecord(value) &&
+    typeof value.checkpointId === "string" &&
+    typeof value.bodyId === "string" &&
+    (value.sourceFeatureId === undefined ||
+      typeof value.sourceFeatureId === "string") &&
+    isWcadSourceIdentityInput(value.sourceIdentity) &&
+    isTopologyCheckpointStatus(value.status)
   );
 }
 

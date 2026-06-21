@@ -2032,6 +2032,17 @@ function createOperationReview(
         referenceName: op.name
       };
 
+    case "topology.checkpoint.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create topology checkpoint ${op.checkpointId} for ${op.bodyId}`
+        ),
+        bodyId: op.bodyId
+      };
+
     case "topology.anchor.create":
       return {
         ...operationReviewBase(
@@ -3518,6 +3529,16 @@ function isTopologyIdentityState(value: unknown): boolean {
   );
 }
 
+function isTopologyCheckpointStatus(value: unknown): boolean {
+  return (
+    value === "active" ||
+    value === "stale" ||
+    value === "missing" ||
+    value === "failed" ||
+    value === "unsupported"
+  );
+}
+
 function isTopologyMatchConfidence(value: unknown): boolean {
   return (
     value === "none" ||
@@ -4200,6 +4221,18 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "reference.deleteName") {
     return typeof value.name === "string";
+  }
+
+  if (value.op === "topology.checkpoint.create") {
+    return (
+      typeof value.checkpointId === "string" &&
+      typeof value.bodyId === "string" &&
+      (value.sourceFeatureId === undefined ||
+        typeof value.sourceFeatureId === "string") &&
+      isWcadSourceIdentityInput(value.sourceIdentity) &&
+      isTopologyCheckpointStatus(value.status) &&
+      (value.diagnostics === undefined || Array.isArray(value.diagnostics))
+    );
   }
 
   if (value.op === "topology.anchor.create") {

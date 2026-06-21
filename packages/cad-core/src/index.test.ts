@@ -30664,6 +30664,248 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("creates topology checkpoints with dry-run safety, semantic diffs, undo, and redo", () => {
+    const engine = createRectangleExtrudeEngine();
+    const sourceIdentity = {
+      algorithm: "partbench-source-v1" as const,
+      sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+    };
+    const op = {
+      op: "topology.checkpoint.create" as const,
+      checkpointId: "checkpoint_created_1",
+      bodyId: "body_rect_1",
+      sourceFeatureId: "feat_rect_1",
+      sourceIdentity,
+      status: "missing" as const,
+      diagnostics: [
+        {
+          code: "TOPOLOGY_CHECKPOINT_PERSISTENCE_DEFERRED" as const,
+          status: "deferred" as const,
+          severity: "warning" as const,
+          message:
+            "Checkpoint payload bytes will be supplied by WCAD v2 export."
+        }
+      ]
+    };
+    const beforeJson = exportCadProjectJson(engine);
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [op]
+    });
+
+    expect(dryRun.ok).toBe(true);
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    const result = engine.apply(op);
+    const paths = createWcadV2CheckpointEntryPaths("checkpoint_created_1");
+
+    expect(result.transaction.diff.references).toMatchObject({
+      topologyCheckpointsCreated: [
+        {
+          checkpointId: "checkpoint_created_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          sourceIdentity,
+          status: "missing"
+        }
+      ]
+    });
+    expect(engine.getDocument().topologyIdentity?.checkpoints).toEqual([
+      expect.objectContaining({
+        checkpointId: "checkpoint_created_1",
+        bodyId: "body_rect_1",
+        sourceFeatureId: "feat_rect_1",
+        packageVersion: "partbench.wcad.v2",
+        projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+        brepEntryPath: paths.brep,
+        topologyEntryPath: paths.topology,
+        signatureEntryPath: paths.signature,
+        status: "missing"
+      })
+    ]);
+    expect(
+      validateTopologyIdentitySourceSnapshot(
+        engine.getDocument().topologyIdentity
+      )
+    ).toEqual([]);
+    expect(exportCadProject(engine).schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V18
+    );
+
+    const history = readTransactionHistory(engine);
+    expect(history.transactions.at(-1)?.ops[0]).toMatchObject({
+      op: "topology.checkpoint.create",
+      label: "Create topology checkpoint checkpoint_created_1",
+      bodyId: "body_rect_1",
+      featureId: "feat_rect_1",
+      checkpointId: "checkpoint_created_1"
+    });
+
+    engine.undo();
+    expect(engine.getDocument().topologyIdentity?.checkpoints ?? []).toEqual(
+      []
+    );
+    engine.redo();
+    expect(engine.getDocument().topologyIdentity?.checkpoints).toEqual([
+      expect.objectContaining({ checkpointId: "checkpoint_created_1" })
+    ]);
+  });
+
+  it("round-trips command-created topology checkpoints before anchor creation", () => {
+    const engine = createRectangleExtrudeEngine();
+    const sourceIdentity = {
+      algorithm: "partbench-source-v1" as const,
+      sha256: "3333333333333333333333333333333333333333333333333333333333333333"
+    };
+
+    engine.apply({
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_history_1",
+      bodyId: "body_rect_1",
+      sourceIdentity,
+      status: "active"
+    });
+    engine.apply({
+      op: "topology.anchor.create",
+      anchorId: "anchor_history_face_1",
+      entityKind: "face",
+      bodyId: "body_rect_1",
+      checkpointId: "checkpoint_history_1",
+      checkpointEntityId: "checkpoint-local-face-1",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    expect(restored.getDocument().topologyIdentity).toMatchObject({
+      checkpoints: [
+        expect.objectContaining({
+          checkpointId: "checkpoint_history_1",
+          status: "active"
+        })
+      ],
+      anchors: [
+        expect.objectContaining({
+          anchorId: "anchor_history_face_1",
+          checkpointId: "checkpoint_history_1"
+        })
+      ]
+    });
+    expect(
+      readTransactionHistory(restored).transactions.at(-2)?.ops[0]
+    ).toMatchObject({
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_history_1"
+    });
+  });
+
+  it("rejects invalid topology checkpoint commands without mutation", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      { op: "sketch.create", id: "sketch_other", name: "Other", plane: "XY" },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_other",
+        id: "circle_other",
+        center: [0, 0],
+        radius: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_other",
+        bodyId: "body_other",
+        sketchId: "sketch_other",
+        entityId: "circle_other",
+        depth: 1
+      }
+    ]);
+    const sourceIdentity = {
+      algorithm: "partbench-source-v1" as const,
+      sha256: "4444444444444444444444444444444444444444444444444444444444444444"
+    };
+    const op = {
+      op: "topology.checkpoint.create" as const,
+      checkpointId: "checkpoint_valid_1",
+      bodyId: "body_rect_1",
+      sourceIdentity,
+      status: "active" as const
+    };
+
+    engine.apply(op);
+    const beforeInvalidJson = exportCadProjectJson(engine);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [op]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "TOPOLOGY_CHECKPOINT_ALREADY_EXISTS" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [{ ...op, checkpointId: "../bad_checkpoint" }]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_TOPOLOGY_CHECKPOINT" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            ...op,
+            checkpointId: "checkpoint_missing_body",
+            bodyId: "missing_body"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "BODY_NOT_FOUND" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            ...op,
+            checkpointId: "checkpoint_missing_feature",
+            sourceFeatureId: "missing_feature"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "FEATURE_NOT_FOUND" }
+    });
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            ...op,
+            checkpointId: "checkpoint_wrong_feature_body",
+            sourceFeatureId: "feat_other"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_TOPOLOGY_CHECKPOINT" }
+    });
+
+    expect(exportCadProjectJson(engine)).toBe(beforeInvalidJson);
+  });
+
   it("creates topology anchors with dry-run safety, semantic diffs, undo, and redo", () => {
     const engine = createTopologyCheckpointEngine();
     const op = {
