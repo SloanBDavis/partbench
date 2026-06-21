@@ -53,6 +53,50 @@ export function getExtrudeSideForOperationMode(
   return currentSide === "negative" ? "positive" : currentSide;
 }
 
+export function getPreferredBooleanTargetBodyId(
+  targetBodies: readonly BooleanTargetBodyOption[],
+  preferredBodyId: string | undefined
+): string | undefined {
+  return (
+    targetBodies.find((body) => body.bodyId === preferredBodyId)?.bodyId ??
+    targetBodies[0]?.bodyId
+  );
+}
+
+export function getInitialSketchExtrudeOperationMode(
+  sketch: SketchSnapshot | undefined,
+  entity: SketchEntitySnapshot | undefined,
+  cutTargetBodies: readonly BooleanTargetBodyOption[]
+): FeatureExtrudeOperationMode {
+  if (
+    sketch?.attachment &&
+    isExtrudableSketchEntity(entity) &&
+    cutTargetBodies.some((body) => body.bodyId === sketch.attachment?.bodyId)
+  ) {
+    return "cut";
+  }
+
+  return "newBody";
+}
+
+export function getAttachedSketchBooleanTargetHint(
+  sketch: SketchSnapshot | undefined,
+  entity: SketchEntitySnapshot | undefined,
+  cutTargetBodies: readonly BooleanTargetBodyOption[]
+): string | undefined {
+  if (!sketch?.attachment || !isExtrudableSketchEntity(entity)) {
+    return undefined;
+  }
+
+  if (
+    cutTargetBodies.some((body) => body.bodyId === sketch.attachment?.bodyId)
+  ) {
+    return undefined;
+  }
+
+  return "This sketch is attached to a result body face. Cut/Add can target active source bodies only, so this sketch can create a new body for now.";
+}
+
 export interface RevolveAxisOption {
   readonly entityId: SketchEntityId;
   readonly label: string;

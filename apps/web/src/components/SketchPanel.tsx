@@ -47,10 +47,14 @@ import {
   createSketchPointTargetOptionsForEntity,
   formatSketchDimensionEffectiveValue,
   getAddOperationStatus,
+  getAttachedSketchBooleanTargetHint,
   getCutOperationStatus,
   getHoleOperationStatus,
   getDefaultSketchEntityKind,
   getDefaultSketchPointTargetRole,
+  getExtrudeSideForOperationMode,
+  getInitialSketchExtrudeOperationMode,
+  getPreferredBooleanTargetBodyId,
   getRevolveOperationStatus,
   createParameterBindingOptions,
   formatSketchEvaluationIssue,
@@ -215,6 +219,40 @@ const defaultExtrudeForm: FeatureExtrudeForm = {
   side: "positive",
   operationMode: "newBody"
 };
+
+function createInitialExtrudeFormForSelection(
+  sketch: SketchSnapshot | undefined,
+  entity: SketchEntitySnapshot | undefined,
+  cutTargetBodies: readonly BooleanTargetBodyOption[]
+): FeatureExtrudeForm {
+  if (!sketch || !entity) {
+    return defaultExtrudeForm;
+  }
+
+  const operationMode = getInitialSketchExtrudeOperationMode(
+    sketch,
+    entity,
+    cutTargetBodies
+  );
+  const targetBodyId =
+    operationMode === "cut"
+      ? getPreferredBooleanTargetBodyId(
+          cutTargetBodies,
+          sketch.attachment?.bodyId
+        )
+      : undefined;
+
+  return {
+    ...defaultExtrudeForm,
+    operationMode,
+    side: getExtrudeSideForOperationMode(
+      sketch,
+      operationMode,
+      defaultExtrudeForm.side
+    ),
+    ...(targetBodyId ? { targetBodyId } : {})
+  };
+}
 
 const defaultRevolveForm: FeatureRevolveForm = {
   id: "",
@@ -646,8 +684,6 @@ export function SketchPanel({
     selectedSketch && renameDraft?.sketchId === selectedSketch.id
       ? renameDraft.name
       : (selectedSketch?.name ?? "");
-  const [extrudeForm, setExtrudeForm] =
-    useState<FeatureExtrudeForm>(defaultExtrudeForm);
   const [revolveForm, setRevolveForm] =
     useState<FeatureRevolveForm>(defaultRevolveForm);
   const [holeForm, setHoleForm] = useState<FeatureHoleForm>(defaultHoleForm);
@@ -663,6 +699,31 @@ export function SketchPanel({
   const selectedHoleEntity = isHoleSketchEntity(selectedEntity)
     ? selectedEntity
     : undefined;
+  const attachedCutTargetBodyId = selectedSketch?.attachment
+    ? cutTargetBodies.find(
+        (body) => body.bodyId === selectedSketch.attachment?.bodyId
+      )?.bodyId
+    : undefined;
+  const extrudeFormSelectionKey =
+    selectedSketch && selectedExtrudeEntity
+      ? `${selectedSketch.id}:${selectedExtrudeEntity.id}:${
+          attachedCutTargetBodyId ?? "no-attached-cut-target"
+        }`
+      : undefined;
+  const [extrudeFormDraft, setExtrudeFormDraft] = useState<{
+    readonly key: string | undefined;
+    readonly form: FeatureExtrudeForm;
+  }>({ key: undefined, form: defaultExtrudeForm });
+  const extrudeForm =
+    extrudeFormDraft.key === extrudeFormSelectionKey
+      ? extrudeFormDraft.form
+      : createInitialExtrudeFormForSelection(
+          selectedSketch,
+          selectedExtrudeEntity,
+          cutTargetBodies
+        );
+  const setExtrudeForm = (form: FeatureExtrudeForm) =>
+    setExtrudeFormDraft({ key: extrudeFormSelectionKey, form });
   const activeFeatureCreateMode =
     featureCreateMode === "hole" && !selectedHoleEntity
       ? "extrude"
@@ -686,6 +747,11 @@ export function SketchPanel({
     extrudeForm.operationMode === "add" ? addStatus : cutStatus;
   const canCreateBoolean =
     extrudeForm.operationMode === "add" ? canCreateAdd : canCreateCut;
+  const attachedSketchBooleanTargetHint = getAttachedSketchBooleanTargetHint(
+    selectedSketch,
+    selectedExtrudeEntity,
+    cutTargetBodies
+  );
   const revolveAxisOptions = useMemo(
     () => createRevolveAxisOptions(selectedSketch),
     [selectedSketch]
@@ -1809,7 +1875,8 @@ export function SketchPanel({
                                   : extrudeForm.operationMode === "cut" &&
                                       selectedBooleanTarget
                                     ? "Creates a cut result body. The target stays in structure as consumed."
-                                    : booleanStatus.message}
+                                    : (attachedSketchBooleanTargetHint ??
+                                      booleanStatus.message)}
                               </p>
                             )}
                             <details className="advanced-options">

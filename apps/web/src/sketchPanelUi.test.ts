@@ -41,10 +41,13 @@ import {
   formatSketchSolverDiagnostic,
   formatSketchSolverStatus,
   getAddOperationStatus,
+  getAttachedSketchBooleanTargetHint,
   getCutOperationStatus,
   getDefaultSketchEntityKind,
   getHoleOperationStatus,
+  getInitialSketchExtrudeOperationMode,
   getRevolveOperationStatus,
+  getPreferredBooleanTargetBodyId,
   getParameterDimensionUsageCount,
   getSketchConstraintKindLabel,
   getSketchConstraintStatusDisplay,
@@ -1026,6 +1029,92 @@ describe("sketch panel UI helpers", () => {
         detail: "Circle new body / 1 mm / positive / body_circle"
       }
     ]);
+  });
+
+  it("defaults attached sketch extrudes to cut when the attached body is an eligible target", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    };
+    const sketch = createSketch("sketch_attached", {
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_rect",
+        faceStableId: "generated:face:body_rect:side:uMin",
+        sourceFeatureId: "feat_rect",
+        sourceSketchId: "sketch_source",
+        sourceSketchEntityId: "rect_source",
+        faceRole: "side:uMin"
+      },
+      entities: [rectangle]
+    });
+    const targets = [
+      {
+        bodyId: "body_other",
+        featureId: "feat_other",
+        profileKind: "rectangle" as const,
+        label: "Other target",
+        detail: "Rectangle new body / 1 / positive"
+      },
+      {
+        bodyId: "body_rect",
+        featureId: "feat_rect",
+        profileKind: "rectangle" as const,
+        label: "Attached target",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ];
+
+    expect(
+      getInitialSketchExtrudeOperationMode(sketch, rectangle, targets)
+    ).toBe("cut");
+    expect(
+      getPreferredBooleanTargetBodyId(targets, sketch.attachment?.bodyId)
+    ).toBe("body_rect");
+    expect(getAttachedSketchBooleanTargetHint(sketch, rectangle, targets)).toBe(
+      undefined
+    );
+  });
+
+  it("keeps attached result sketches as new body when chained boolean targets are unsupported", () => {
+    const rectangle: SketchSnapshot["entities"][number] = {
+      id: "rect_1",
+      kind: "rectangle",
+      center: [0, 0],
+      width: 1,
+      height: 1
+    };
+    const sketch = createSketch("sketch_result_face", {
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_boolean_result",
+        faceStableId: "generated:face:body_boolean_result:side:uMin",
+        sourceFeatureId: "feat_cut",
+        sourceSketchId: "sketch_source",
+        sourceSketchEntityId: "rect_source",
+        faceRole: "side:uMin"
+      },
+      entities: [rectangle]
+    });
+    const targets = [
+      {
+        bodyId: "body_other",
+        featureId: "feat_other",
+        profileKind: "rectangle" as const,
+        label: "Other target",
+        detail: "Rectangle new body / 1 / positive"
+      }
+    ];
+
+    expect(
+      getInitialSketchExtrudeOperationMode(sketch, rectangle, targets)
+    ).toBe("newBody");
+    expect(getAttachedSketchBooleanTargetHint(sketch, rectangle, targets)).toBe(
+      "This sketch is attached to a result body face. Cut/Add can target active source bodies only, so this sketch can create a new body for now."
+    );
   });
 
   it("offers active rectangle and circle newBody authored bodies as hole targets", () => {
