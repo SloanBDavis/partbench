@@ -16,6 +16,7 @@ describe("mcp-adapter", () => {
       "cad.project_health",
       "cad.project_dependency_graph",
       "cad.project_rebuild_plan",
+      "cad.project_topology_identity_readiness",
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
@@ -1160,6 +1161,90 @@ describe("mcp-adapter", () => {
     });
     expect(JSON.stringify(result.structuredContent)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|opfsPath|fileHandle|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("returns V13 topology identity readiness through cad.project_topology_identity_readiness", () => {
+    const server = new CadMcpServer();
+
+    server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_topology_identity_seed",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_topology_identity_ready",
+              name: "Topology identity sketch",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_topology_identity_ready",
+              id: "rect_topology_identity_ready",
+              center: [0, 0],
+              width: 2,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_topology_identity_ready",
+              bodyId: "body_topology_identity_ready",
+              sketchId: "sketch_topology_identity_ready",
+              entityId: "rect_topology_identity_ready",
+              depth: 1.5
+            }
+          ]
+        }
+      }
+    });
+
+    const result = server.callTool({
+      name: "cad.project_topology_identity_readiness",
+      requestId: "mcp_req_topology_identity_readiness"
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.project_topology_identity_readiness",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_topology_identity_readiness",
+        query: "project.topologyIdentityReadiness",
+        contractVersion: "partbench.topology-identity.v1",
+        status: "deferred",
+        currentDocumentSchemaVersion: "web-cad.project.v16",
+        plannedProjectSchemaVersion: "web-cad.project.v18",
+        currentPackageVersion: "partbench.wcad.v1",
+        plannedPackageVersion: "partbench.wcad.v2",
+        currentFeatureCount: 1,
+        currentBodyCount: 1,
+        anchorCount: 0,
+        checkpointCount: 0,
+        capabilities: expect.arrayContaining([
+          expect.objectContaining({
+            capability: "protocolVocabulary",
+            status: "supported"
+          }),
+          expect.objectContaining({
+            capability: "snapshotExtraction",
+            status: "deferred"
+          })
+        ]),
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED",
+            status: "supported"
+          })
+        ])
+      }
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
   });
 
@@ -4120,6 +4205,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_health" },
           { name: "cad.project_dependency_graph" },
           { name: "cad.project_rebuild_plan" },
+          { name: "cad.project_topology_identity_readiness" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },
@@ -4228,6 +4314,19 @@ describe("mcp-adapter", () => {
       })
     ).toMatchObject({
       toolName: "cad.selection_reference_candidates",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: { code: "INVALID_ARGUMENTS" }
+      }
+    });
+    expect(
+      server.callTool({
+        name: "cad.project_topology_identity_readiness",
+        arguments: { fileHandle: "not-source" }
+      })
+    ).toMatchObject({
+      toolName: "cad.project_topology_identity_readiness",
       isError: true,
       structuredContent: {
         ok: false,

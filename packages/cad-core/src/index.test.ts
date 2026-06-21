@@ -11,6 +11,7 @@ import type {
   ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
   CadReferenceHealthTarget,
   CadSketchEditProposal,
@@ -1032,6 +1033,21 @@ function readProjectPackageReadiness(
 
   if (!response.ok || response.query !== "project.packageReadiness") {
     throw new Error("Expected project.packageReadiness response.");
+  }
+
+  return response;
+}
+
+function readProjectTopologyIdentityReadiness(
+  engine: CadEngine
+): ProjectTopologyIdentityReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.topologyIdentityReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.topologyIdentityReadiness") {
+    throw new Error("Expected project.topologyIdentityReadiness response.");
   }
 
   return response;
@@ -29231,6 +29247,111 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
   });
 
+  it("reports V13 topology identity readiness without creating anchors or checkpoints", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const readiness = readProjectTopologyIdentityReadiness(engine);
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "project.topologyIdentityReadiness",
+      contractVersion: "partbench.topology-identity.v1",
+      status: "deferred",
+      currentDocumentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
+      plannedProjectSchemaVersion: "web-cad.project.v18",
+      currentPackageVersion: "partbench.wcad.v1",
+      plannedPackageVersion: "partbench.wcad.v2",
+      requiresProjectSchemaMigration: false,
+      requiresPackageVersionMigration: false,
+      currentFeatureCount: 1,
+      currentBodyCount: 1,
+      currentNamedReferenceCount: 0,
+      snapshotDescriptorCount: 0,
+      anchorCount: 0,
+      checkpointCount: 0,
+      matchResultCount: 0,
+      repairCandidateCount: 0,
+      supportedEntityKinds: [
+        "body",
+        "face",
+        "loop",
+        "wire",
+        "coedge",
+        "edge",
+        "vertex",
+        "axis"
+      ],
+      capabilities: expect.arrayContaining([
+        expect.objectContaining({
+          capability: "protocolVocabulary",
+          status: "supported",
+          available: true
+        }),
+        expect.objectContaining({
+          capability: "snapshotExtraction",
+          status: "deferred",
+          available: false
+        }),
+        expect.objectContaining({
+          capability: "checkpointPersistence",
+          status: "deferred",
+          available: false
+        }),
+        expect.objectContaining({
+          capability: "matchingEngine",
+          status: "deferred",
+          available: false
+        }),
+        expect.objectContaining({
+          capability: "v18SourceContract",
+          status: "deferred",
+          available: false
+        }),
+        expect.objectContaining({
+          capability: "wcadV2Package",
+          status: "deferred",
+          available: false
+        })
+      ]),
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "TOPOLOGY_IDENTITY_CONTRACT_READY",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          code: "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          code: "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
+          status: "deferred"
+        }),
+        expect.objectContaining({
+          code: "TOPOLOGY_SCHEMA_V18_DEFERRED",
+          status: "deferred"
+        }),
+        expect.objectContaining({
+          code: "TOPOLOGY_PACKAGE_V2_DEFERRED",
+          status: "deferred"
+        })
+      ])
+    });
+
+    const publicText = JSON.stringify(readiness);
+    expect(publicText).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(exportCadProjectJson(engine)).not.toContain(
+      "project.topologyIdentityReadiness"
+    );
+    expect(exportCadProjectJson(engine)).not.toContain(
+      "partbench.topology-identity.v1"
+    );
+    expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v18");
+    expect(exportCadProjectJson(engine)).not.toContain("partbench.wcad.v2");
+  });
+
   it("rejects malformed project.packageReadiness query payloads", () => {
     const engine = new CadEngine();
     const response = engine.executeQuery({
@@ -29244,6 +29365,25 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(response).toMatchObject({
       ok: false,
       query: "project.packageReadiness",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects malformed project.topologyIdentityReadiness query payloads", () => {
+    const engine = new CadEngine();
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "project.topologyIdentityReadiness",
+        fileHandle: "not-source"
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "project.topologyIdentityReadiness",
       error: {
         code: "INVALID_QUERY"
       }

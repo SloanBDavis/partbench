@@ -178,6 +178,7 @@ import {
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
+import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentityReadiness";
 import { SHA256_HEX_PATTERN } from "./sha256";
 import { readZipStore, writeZipStore } from "./wcadZip";
 
@@ -1236,6 +1237,23 @@ export class CadEngine {
             ),
             ...createSketchProfileLifecycleEffects(sketchProfileHealth)
           ]
+        });
+      }
+
+      case "project.topologyIdentityReadiness": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+
+        return createProjectTopologyIdentityReadiness({
+          cadOpsVersion: request.version,
+          documentSchemaVersion: getCadProjectFormatVersionForDocument(
+            this.#document
+          ),
+          features: structure.features,
+          bodies: structure.bodies,
+          namedReferences: [...this.#document.namedReferences.values()]
         });
       }
 
@@ -3955,6 +3973,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.health":
     case "project.dependencyGraph":
     case "project.rebuildPlan":
+    case "project.topologyIdentityReadiness":
     case "project.exportReadiness":
     case "project.exportExact":
     case "project.packageReadiness":
@@ -3996,6 +4015,7 @@ function isCadQuery(value: unknown): boolean {
     case "project.structure":
     case "project.dependencyGraph":
     case "project.rebuildPlan":
+    case "project.topologyIdentityReadiness":
     case "project.exportReadiness":
     case "project.packageReadiness":
     case "project.sketches":

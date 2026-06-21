@@ -48,6 +48,7 @@ import type {
   ProjectDependencyGraphQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse,
   SketchEditReadinessQueryResponse,
   SketchSolverStatusQueryResponse,
   CadProjectSummaryExportSummary,
@@ -336,6 +337,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentProjectHealthQueryResponse
   | CadOpsAgentProjectDependencyGraphQueryResponse
   | CadOpsAgentProjectRebuildPlanQueryResponse
+  | CadOpsAgentProjectTopologyIdentityReadinessQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
   | CadOpsAgentProjectExactExportQueryResponse
   | CadOpsAgentProjectPackageReadinessQueryResponse
@@ -471,6 +473,15 @@ export interface CadOpsAgentProjectDependencyGraphQueryResponse extends Omit<
 
 export interface CadOpsAgentProjectRebuildPlanQueryResponse extends Omit<
   ProjectRebuildPlanQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentProjectTopologyIdentityReadinessQueryResponse extends Omit<
+  ProjectTopologyIdentityReadinessQueryResponse,
   "ok"
 > {
   readonly ok: true;
@@ -760,6 +771,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "project.health"
     | "project.dependencyGraph"
     | "project.rebuildPlan"
+    | "project.topologyIdentityReadiness"
     | "project.exportReadiness"
     | "project.exportExact"
     | "project.packageReadiness"
@@ -2293,6 +2305,44 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "project.topologyIdentityReadiness") {
+    return {
+      ok: true,
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      cadOpsVersion: response.cadOpsVersion,
+      query: response.query,
+      contractVersion: response.contractVersion,
+      status: response.status,
+      currentDocumentSchemaVersion: response.currentDocumentSchemaVersion,
+      plannedProjectSchemaVersion: response.plannedProjectSchemaVersion,
+      currentPackageVersion: response.currentPackageVersion,
+      plannedPackageVersion: response.plannedPackageVersion,
+      requiresProjectSchemaMigration: response.requiresProjectSchemaMigration,
+      requiresPackageVersionMigration: response.requiresPackageVersionMigration,
+      sourceBoundaryNote: response.sourceBoundaryNote,
+      derivedBoundaryNote: response.derivedBoundaryNote,
+      supportedEntityKinds: response.supportedEntityKinds,
+      currentFeatureCount: response.currentFeatureCount,
+      currentBodyCount: response.currentBodyCount,
+      currentNamedReferenceCount: response.currentNamedReferenceCount,
+      snapshotDescriptorCount: response.snapshotDescriptorCount,
+      snapshots: response.snapshots,
+      anchorCount: response.anchorCount,
+      anchors: response.anchors,
+      checkpointCount: response.checkpointCount,
+      checkpoints: response.checkpoints,
+      matchResultCount: response.matchResultCount,
+      matchResults: response.matchResults,
+      repairCandidateCount: response.repairCandidateCount,
+      repairCandidates: response.repairCandidates,
+      capabilityCount: response.capabilityCount,
+      capabilities: response.capabilities,
+      diagnosticCount: response.diagnosticCount,
+      diagnostics: response.diagnostics
+    };
+  }
+
   if (response.query === "project.exportReadiness") {
     return {
       ok: true,
@@ -3064,6 +3114,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.dependencyGraph" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.rebuildPlan" &&
+        Object.keys(value.query).length === 1) ||
+      (value.query.query === "project.topologyIdentityReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.exportReadiness" &&
         Object.keys(value.query).length === 1) ||

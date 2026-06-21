@@ -30,8 +30,14 @@ import type {
   CadViewportTwoTargetMeasurementResult,
   CadViewportTwoTargetMeasurementState,
   CadViewportTwoTargetMeasurementTarget,
+  CadTopologyAnchorDescriptor,
+  CadTopologyCheckpointMetadata,
+  CadTopologyIdentityState,
+  CadTopologyMatchResult,
+  CadTopologyRepairCandidate,
   HoleFeatureSnapshot,
   ProjectPackageReadinessQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse,
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   ProjectSummaryQueryResponse,
@@ -50,6 +56,9 @@ import {
   WCAD_PACKAGE_EXTENSION,
   WCAD_PACKAGE_VERSION,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
+  CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
+  CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+  CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
   protocolPackage
 } from "./index";
 
@@ -380,6 +389,170 @@ describe("cad-protocol", () => {
     expect(manifest.packageVersion).toBe(WCAD_PACKAGE_VERSION);
     expect(manifest.cache?.policy).toBe("optional-rebuildable");
     expect(issue.code).toBe("WCAD_STALE_CACHE_ENTRY");
+  });
+
+  it("types the V13 topology identity readiness and vocabulary contracts", () => {
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: { query: "project.topologyIdentityReadiness" }
+    };
+    const states: readonly CadTopologyIdentityState[] = [
+      "active",
+      "replaced",
+      "split",
+      "merged",
+      "consumed",
+      "deleted",
+      "ambiguous",
+      "stale",
+      "missing",
+      "repair-needed",
+      "unsupported",
+      "failed",
+      "deferred"
+    ];
+    const anchor: CadTopologyAnchorDescriptor = {
+      anchorId: "anchor_1",
+      entityKind: "face",
+      bodyId: "body_1",
+      sourceFeatureId: "feature_1",
+      stableId: "face:endCap",
+      sourceSemanticRole: "endCap",
+      signatureHash: "signature_hash",
+      state: "deferred",
+      diagnostics: []
+    };
+    const checkpoint: CadTopologyCheckpointMetadata = {
+      checkpointId: "checkpoint_1",
+      bodyId: "body_1",
+      sourceIdentity: {
+        algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+        sha256:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      },
+      projectSchemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+      packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+      brepEntryId: "checkpoint_brep_1",
+      topologyEntryId: "checkpoint_topology_1",
+      signatureEntryId: "checkpoint_signature_1",
+      status: "deferred",
+      diagnostics: []
+    };
+    const match: CadTopologyMatchResult = {
+      entityKind: "face",
+      state: "repair-needed",
+      confidence: "medium",
+      confidenceScore: 0.55,
+      evidenceCount: 1,
+      evidence: [
+        {
+          kind: "sourceSemanticRole",
+          confidence: "high",
+          message: "Semantic role matches."
+        }
+      ],
+      diagnosticCount: 0,
+      diagnostics: []
+    };
+    const repair: CadTopologyRepairCandidate = {
+      anchorId: "anchor_1",
+      target: {
+        type: "generatedReference",
+        bodyId: "body_1",
+        stableId: "face:endCap",
+        kind: "face"
+      },
+      entityKind: "face",
+      state: "repair-needed",
+      confidence: "medium",
+      evidence: match.evidence,
+      diagnostics: []
+    };
+    const response: ProjectTopologyIdentityReadinessQueryResponse = {
+      ok: true,
+      query: "project.topologyIdentityReadiness",
+      cadOpsVersion: "cadops.v1",
+      contractVersion: CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
+      status: "deferred",
+      currentDocumentSchemaVersion: "web-cad.project.v17",
+      plannedProjectSchemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+      currentPackageVersion: WCAD_PACKAGE_VERSION,
+      plannedPackageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+      requiresProjectSchemaMigration: false,
+      requiresPackageVersionMigration: false,
+      sourceBoundaryNote: "Authoritative document source only.",
+      derivedBoundaryNote: "Private renderer/kernel/browser IDs excluded.",
+      supportedEntityKinds: [
+        "body",
+        "face",
+        "loop",
+        "wire",
+        "coedge",
+        "edge",
+        "vertex",
+        "axis"
+      ],
+      currentFeatureCount: 1,
+      currentBodyCount: 1,
+      currentNamedReferenceCount: 0,
+      snapshotDescriptorCount: 1,
+      snapshots: [
+        {
+          bodyId: "body_1",
+          sourceFeatureId: "feature_1",
+          entityKinds: ["face", "edge", "vertex"],
+          status: "deferred",
+          diagnostics: []
+        }
+      ],
+      anchorCount: 1,
+      anchors: [anchor],
+      checkpointCount: 1,
+      checkpoints: [checkpoint],
+      matchResultCount: 1,
+      matchResults: [match],
+      repairCandidateCount: 1,
+      repairCandidates: [repair],
+      capabilityCount: 1,
+      capabilities: [
+        {
+          capability: "protocolVocabulary",
+          label: "Topology identity protocol vocabulary",
+          status: "supported",
+          available: true,
+          sourceBoundaryNote: "Authoritative document source only.",
+          derivedBoundaryNote: "Private renderer/kernel/browser IDs excluded.",
+          diagnostics: [
+            {
+              code: "TOPOLOGY_IDENTITY_CONTRACT_READY",
+              status: "supported",
+              severity: "info",
+              message: "Topology identity contract is typed."
+            }
+          ]
+        }
+      ],
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "TOPOLOGY_IDENTITY_CONTRACT_READY",
+          status: "supported",
+          severity: "info",
+          message: "Topology identity contract is typed."
+        }
+      ]
+    };
+
+    expect(request.query.query).toBe("project.topologyIdentityReadiness");
+    expect(states).toContain("consumed");
+    expect(states).toContain("failed");
+    expect(response.contractVersion).toBe(
+      CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION
+    );
+    expect(response.plannedProjectSchemaVersion).toBe("web-cad.project.v18");
+    expect(response.plannedPackageVersion).toBe("partbench.wcad.v2");
+    expect(response.anchors[0]?.entityKind).toBe("face");
+    expect(response.checkpoints[0]).not.toHaveProperty("brepEntryPath");
   });
 
   it("types supported scene commands", () => {
@@ -989,6 +1162,10 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: { query: "project.topologyIdentityReadiness" }
+      },
+      {
+        version: "cadops.v1",
         query: {
           query: "project.health",
           derivedExactMetadata: [
@@ -1141,6 +1318,7 @@ describe("cad-protocol", () => {
       "project.structure",
       "project.health",
       "project.packageReadiness",
+      "project.topologyIdentityReadiness",
       "project.health",
       "project.sketches",
       "object.get",

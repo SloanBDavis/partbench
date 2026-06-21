@@ -27,6 +27,10 @@ export type WcadSourceIdentityAlgorithm = "partbench-source-v1";
 export type WcadDocumentSchemaVersion =
   | "web-cad.project.v16"
   | "web-cad.project.v17";
+export type CadTopologyIdentityContractVersion =
+  "partbench.topology-identity.v1";
+export type CadTopologyIdentityProjectSchemaVersion = "web-cad.project.v18";
+export type CadTopologyIdentityPackageVersion = "partbench.wcad.v2";
 export type WcadPackageEntryRole =
   | "manifest"
   | "document"
@@ -57,6 +61,12 @@ export const WCAD_SOURCE_IDENTITY_ALGORITHM: WcadSourceIdentityAlgorithm =
 export const WCAD_MANIFEST_ENTRY_PATH = "manifest.json";
 export const WCAD_DOCUMENT_ENTRY_PATH = "document.cbor";
 export const WCAD_COMMANDS_ENTRY_PATH = "commands.cbor";
+export const CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION: CadTopologyIdentityContractVersion =
+  "partbench.topology-identity.v1";
+export const CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION: CadTopologyIdentityProjectSchemaVersion =
+  "web-cad.project.v18";
+export const CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION: CadTopologyIdentityPackageVersion =
+  "partbench.wcad.v2";
 
 export type Vec2 = readonly [number, number];
 export type Vec3 = readonly [number, number, number];
@@ -1052,6 +1062,7 @@ export type CadQueryKind =
   | "project.health"
   | "project.dependencyGraph"
   | "project.rebuildPlan"
+  | "project.topologyIdentityReadiness"
   | "project.exportReadiness"
   | "project.exportExact"
   | "project.packageReadiness"
@@ -1086,6 +1097,7 @@ export type CadQuery =
   | ProjectHealthQuery
   | ProjectDependencyGraphQuery
   | ProjectRebuildPlanQuery
+  | ProjectTopologyIdentityReadinessQuery
   | ProjectExportReadinessQuery
   | ProjectExactExportQuery
   | ProjectPackageReadinessQuery
@@ -1148,6 +1160,10 @@ export interface ProjectDependencyGraphQuery {
 
 export interface ProjectRebuildPlanQuery {
   readonly query: "project.rebuildPlan";
+}
+
+export interface ProjectTopologyIdentityReadinessQuery {
+  readonly query: "project.topologyIdentityReadiness";
 }
 
 export interface ProjectExportReadinessQuery {
@@ -2854,6 +2870,194 @@ export type CadGeneratedEntityKind =
   | "vertex"
   | "axis";
 
+export type CadTopologyEntityKind =
+  | CadGeneratedEntityKind
+  | "loop"
+  | "wire"
+  | "coedge";
+
+export type CadTopologyAnchorEntityKind = Extract<
+  CadTopologyEntityKind,
+  "body" | "face" | "edge" | "vertex" | "axis"
+>;
+
+export type CadTopologyIdentityCapabilityId =
+  | "protocolVocabulary"
+  | "snapshotExtraction"
+  | "anchorPersistence"
+  | "checkpointPersistence"
+  | "matchingEngine"
+  | "repairCommands"
+  | "commandEligibility"
+  | "v18SourceContract"
+  | "wcadV2Package";
+
+export type CadTopologyIdentityDiagnosticCode =
+  | "TOPOLOGY_IDENTITY_CONTRACT_READY"
+  | "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED"
+  | "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED"
+  | "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED"
+  | "TOPOLOGY_CHECKPOINT_PERSISTENCE_DEFERRED"
+  | "TOPOLOGY_MATCHING_ENGINE_DEFERRED"
+  | "TOPOLOGY_REPAIR_COMMANDS_DEFERRED"
+  | "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED"
+  | "TOPOLOGY_SCHEMA_V18_DEFERRED"
+  | "TOPOLOGY_PACKAGE_V2_DEFERRED";
+
+export type CadTopologyIdentityState =
+  | "active"
+  | "replaced"
+  | "split"
+  | "merged"
+  | "consumed"
+  | "deleted"
+  | "ambiguous"
+  | "stale"
+  | "missing"
+  | "repair-needed"
+  | "unsupported"
+  | "failed"
+  | "deferred";
+
+export type CadTopologyMatchConfidence =
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "exact";
+
+export type CadTopologyMatchEvidenceKind =
+  | "sourceLineage"
+  | "checkpointSourceIdentity"
+  | "entityKind"
+  | "surfaceType"
+  | "curveType"
+  | "geometrySignature"
+  | "bounds"
+  | "centroid"
+  | "normal"
+  | "axis"
+  | "radius"
+  | "area"
+  | "length"
+  | "adjacency"
+  | "neighborAnchors"
+  | "kernelChangeHint"
+  | "sourceSemanticRole";
+
+export interface CadTopologyIdentityDiagnostic {
+  readonly code: CadTopologyIdentityDiagnosticCode;
+  readonly status: WcadReadinessStatus;
+  readonly severity: "info" | "warning" | "error";
+  readonly message: string;
+  readonly entityKind?: CadTopologyEntityKind;
+  readonly bodyId?: BodyId;
+  readonly featureId?: FeatureId;
+  readonly checkpointId?: string;
+  readonly anchorId?: string;
+  readonly expected?: string;
+  readonly received?: string;
+}
+
+export interface CadTopologySnapshotDescriptor {
+  readonly snapshotId?: string;
+  readonly checkpointId?: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity?: WcadSourceIdentity;
+  readonly entityKinds: readonly CadTopologyEntityKind[];
+  readonly entityCount?: number;
+  readonly status: CadTopologyIdentityState;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyAnchorDescriptor {
+  readonly anchorId: string;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly bodyId?: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly stableId?: string;
+  readonly sourceSemanticRole?: string;
+  readonly checkpointId?: string;
+  readonly signatureHash?: string;
+  readonly state: CadTopologyIdentityState;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyCheckpointMetadata {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly projectSchemaVersion: CadTopologyIdentityProjectSchemaVersion;
+  readonly packageVersion: CadTopologyIdentityPackageVersion;
+  readonly brepEntryId: string;
+  readonly topologyEntryId: string;
+  readonly signatureEntryId: string;
+  readonly byteLength?: number;
+  readonly sha256?: string;
+  readonly status: CadTopologyIdentityState;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyMatchEvidence {
+  readonly kind: CadTopologyMatchEvidenceKind;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly message: string;
+  readonly weight?: number;
+  readonly previousValue?: string | number;
+  readonly candidateValue?: string | number;
+}
+
+export interface CadTopologyMatchResult {
+  readonly anchorId?: string;
+  readonly previousStableId?: string;
+  readonly candidateStableId?: string;
+  readonly entityKind: CadTopologyEntityKind;
+  readonly state: CadTopologyIdentityState;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly confidenceScore?: number;
+  readonly evidenceCount: number;
+  readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export type CadTopologyRepairCandidateTarget =
+  | {
+      readonly type: "topologyAnchor";
+      readonly anchorId: string;
+    }
+  | {
+      readonly type: "generatedReference";
+      readonly bodyId: BodyId;
+      readonly stableId: string;
+      readonly kind: CadTopologyAnchorEntityKind;
+    };
+
+export interface CadTopologyRepairCandidate {
+  readonly anchorId: string;
+  readonly target: CadTopologyRepairCandidateTarget;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly state: Extract<
+    CadTopologyIdentityState,
+    "replaced" | "split" | "merged" | "ambiguous" | "repair-needed"
+  >;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly confidenceScore?: number;
+  readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyIdentityCapabilityReadiness {
+  readonly capability: CadTopologyIdentityCapabilityId;
+  readonly label: string;
+  readonly status: WcadReadinessStatus;
+  readonly available: boolean;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
 export type CadGeneratedExtrudeFaceRole =
   | "startCap"
   | "endCap"
@@ -4259,6 +4463,7 @@ export type CadQueryResponse =
   | ProjectHealthQueryResponse
   | ProjectDependencyGraphQueryResponse
   | ProjectRebuildPlanQueryResponse
+  | ProjectTopologyIdentityReadinessQueryResponse
   | ProjectExportReadinessQueryResponse
   | ProjectExactExportQueryResponse
   | ProjectPackageReadinessQueryResponse
@@ -4415,6 +4620,40 @@ export interface ProjectRebuildPlanQueryResponse {
   readonly sourceBoundaryNote: string;
   readonly derivedBoundaryNote: string;
   readonly requiresProjectSchemaMigration: false;
+}
+
+export interface ProjectTopologyIdentityReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "project.topologyIdentityReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly contractVersion: CadTopologyIdentityContractVersion;
+  readonly status: WcadReadinessStatus;
+  readonly currentDocumentSchemaVersion: WcadDocumentSchemaVersion;
+  readonly plannedProjectSchemaVersion: CadTopologyIdentityProjectSchemaVersion;
+  readonly currentPackageVersion: WcadPackageVersion;
+  readonly plannedPackageVersion: CadTopologyIdentityPackageVersion;
+  readonly requiresProjectSchemaMigration: false;
+  readonly requiresPackageVersionMigration: false;
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly supportedEntityKinds: readonly CadTopologyEntityKind[];
+  readonly currentFeatureCount: number;
+  readonly currentBodyCount: number;
+  readonly currentNamedReferenceCount: number;
+  readonly snapshotDescriptorCount: number;
+  readonly snapshots: readonly CadTopologySnapshotDescriptor[];
+  readonly anchorCount: number;
+  readonly anchors: readonly CadTopologyAnchorDescriptor[];
+  readonly checkpointCount: number;
+  readonly checkpoints: readonly CadTopologyCheckpointMetadata[];
+  readonly matchResultCount: number;
+  readonly matchResults: readonly CadTopologyMatchResult[];
+  readonly repairCandidateCount: number;
+  readonly repairCandidates: readonly CadTopologyRepairCandidate[];
+  readonly capabilityCount: number;
+  readonly capabilities: readonly CadTopologyIdentityCapabilityReadiness[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
 }
 
 export interface ProjectExportReadinessQueryResponse {

@@ -2639,6 +2639,68 @@ describe("agent-adapter", () => {
     );
   });
 
+  it("returns V13 topology identity readiness through adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter();
+
+    seedExtrudeFeature(adapter, {
+      sketchId: "sketch_topology_identity",
+      entityId: "rect_topology_identity",
+      featureId: "feat_topology_identity",
+      bodyId: "body_topology_identity"
+    });
+
+    const response = adapter.query({
+      requestId: "agent_topology_identity_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: { query: "project.topologyIdentityReadiness" }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_identity_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      cadOpsVersion: "cadops.v1",
+      query: "project.topologyIdentityReadiness",
+      contractVersion: "partbench.topology-identity.v1",
+      status: "deferred",
+      currentDocumentSchemaVersion: "web-cad.project.v16",
+      plannedProjectSchemaVersion: "web-cad.project.v18",
+      currentPackageVersion: "partbench.wcad.v1",
+      plannedPackageVersion: "partbench.wcad.v2",
+      requiresProjectSchemaMigration: false,
+      requiresPackageVersionMigration: false,
+      currentFeatureCount: 1,
+      currentBodyCount: 1,
+      snapshotDescriptorCount: 0,
+      anchorCount: 0,
+      checkpointCount: 0,
+      matchResultCount: 0,
+      repairCandidateCount: 0,
+      capabilities: expect.arrayContaining([
+        expect.objectContaining({
+          capability: "protocolVocabulary",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          capability: "matchingEngine",
+          status: "deferred"
+        })
+      ]),
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED",
+          status: "supported"
+        })
+      ])
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+  });
+
   it("returns a compact V8 Agent/MCP package and export surface", () => {
     const adapter = new CadOpsAgentAdapter();
 
@@ -4451,6 +4513,24 @@ describe("agent-adapter", () => {
           requestId: "bad_query_request",
           adapterVersion: "web-cad.agent-adapter.v1",
           prompt: "what objects are in this model?"
+        })
+      )
+    ).toThrow("Invalid CADOps agent adapter query request.");
+  });
+
+  it("rejects topology identity readiness query payloads with extra fields", () => {
+    expect(() =>
+      parseCadOpsAgentQueryRequestJson(
+        JSON.stringify({
+          requestId: "bad_topology_identity_query",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          query: {
+            version: "cadops.v1",
+            query: {
+              query: "project.topologyIdentityReadiness",
+              fileHandle: "not-source"
+            }
+          }
         })
       )
     ).toThrow("Invalid CADOps agent adapter query request.");
