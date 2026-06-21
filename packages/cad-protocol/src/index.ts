@@ -1143,6 +1143,7 @@ export interface FeatureEditabilityQuery {
   readonly query: "feature.editability";
   readonly featureId: FeatureId;
   readonly proposedEdit?: CadFeatureEditProposal;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface ProjectSummaryQuery {
@@ -1164,10 +1165,12 @@ export interface ProjectHealthQuery {
 
 export interface ProjectDependencyGraphQuery {
   readonly query: "project.dependencyGraph";
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface ProjectRebuildPlanQuery {
   readonly query: "project.rebuildPlan";
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface ProjectTopologyIdentityReadinessQuery {
@@ -1293,6 +1296,7 @@ export interface ReferenceResolveNamedQuery {
 export interface ReferenceHealthQuery {
   readonly query: "reference.health";
   readonly target?: CadReferenceHealthTarget;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface SelectionReferenceCandidatesQuery {
@@ -2108,6 +2112,9 @@ export interface CadFeatureReferenceChangeSummary {
   readonly bodyId?: BodyId;
   readonly stableId?: string;
   readonly kind?: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
+  readonly matchConfidence?: CadTopologyMatchConfidence;
   readonly referenceName?: NamedReferenceName;
   /** Feature whose source edit or output owns the reported reference effect. */
   readonly sourceFeatureId?: FeatureId;
@@ -2183,6 +2190,9 @@ export interface CadBodyLifecycleSummary {
   readonly consumedByFeatureId?: FeatureId;
   readonly targetBodyId?: BodyId;
   readonly referenceHealthStatus?: CadReferenceHealthStatus;
+  readonly topologyAnchorCount?: number;
+  readonly topologyMatchCount?: number;
+  readonly topologyMatchStates?: readonly CadTopologyIdentityState[];
   readonly rebuildRequired: boolean;
   readonly derivedRebuildPending: boolean;
   readonly commandReady: boolean;
@@ -2675,6 +2685,9 @@ export type CadReferenceHealthDiagnosticCode =
   | "REFERENCE_STALE"
   | "REFERENCE_BODY_CONSUMED"
   | "REFERENCE_TOPOLOGY_AMBIGUOUS"
+  | "REFERENCE_TOPOLOGY_CHECKPOINT_MISSING"
+  | "REFERENCE_TOPOLOGY_MATCH_REPLACED"
+  | "REFERENCE_TOPOLOGY_MATCH_REPAIR_NEEDED"
   | "REFERENCE_TARGET_MISSING"
   | "REFERENCE_UNSUPPORTED"
   | "REFERENCE_REPAIR_NEEDED"
@@ -2687,7 +2700,8 @@ export type CadDependencyGraphNodeKind =
   | "feature"
   | "body"
   | "generatedReference"
-  | "namedReference";
+  | "namedReference"
+  | "topologyAnchor";
 
 export type CadDependencyGraphEdgeKind =
   | "contains"
@@ -2696,6 +2710,7 @@ export type CadDependencyGraphEdgeKind =
   | "targets"
   | "consumes"
   | "generates"
+  | "anchors"
   | "names"
   | "dependsOn";
 
@@ -2711,8 +2726,11 @@ export interface CadDependencyGraphNode {
   readonly featureId?: FeatureId;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly generatedReferenceKind?: CadGeneratedEntityKind;
+  readonly topologyEntityKind?: CadTopologyAnchorEntityKind;
   readonly featureKind?: CadFeatureSummary["kind"];
   readonly bodySourceType?: CadBodySource["type"];
 }
@@ -2727,6 +2745,8 @@ export interface CadDependencyGraphEdge {
   readonly targetFeatureId?: FeatureId;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly referenceName?: NamedReferenceName;
 }
 
@@ -2741,6 +2761,8 @@ export interface CadReferenceHealthDiagnostic {
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly stableId?: string;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly expected?: string;
   readonly received?: string;
@@ -2750,7 +2772,8 @@ export type CadReferenceHealthTarget =
   | CadReferenceHealthAllTarget
   | CadReferenceHealthBodyTarget
   | CadReferenceHealthGeneratedReferenceTarget
-  | CadReferenceHealthNamedReferenceTarget;
+  | CadReferenceHealthNamedReferenceTarget
+  | CadReferenceHealthTopologyAnchorTarget;
 
 export interface CadReferenceHealthAllTarget {
   readonly type: "all";
@@ -2773,6 +2796,11 @@ export interface CadReferenceHealthNamedReferenceTarget {
   readonly name: NamedReferenceName;
 }
 
+export interface CadReferenceHealthTopologyAnchorTarget {
+  readonly type: "topologyAnchor";
+  readonly anchorId: string;
+}
+
 export interface CadReferenceHealthDependencies {
   readonly sketchIds: readonly SketchId[];
   readonly sketchEntityIds: readonly SketchEntityId[];
@@ -2780,12 +2808,15 @@ export interface CadReferenceHealthDependencies {
   readonly bodyIds: readonly BodyId[];
   readonly generatedReferenceStableIds: readonly string[];
   readonly namedReferenceNames: readonly NamedReferenceName[];
+  readonly topologyAnchorIds?: readonly string[];
+  readonly checkpointIds?: readonly string[];
 }
 
 export type CadReferenceHealthSource =
   | "body"
   | "generatedReference"
-  | "namedReference";
+  | "namedReference"
+  | "topologyAnchor";
 
 export interface CadReferenceHealthEntry {
   readonly source: CadReferenceHealthSource;
@@ -2796,6 +2827,11 @@ export interface CadReferenceHealthEntry {
   readonly bodyId?: BodyId;
   readonly stableId?: string;
   readonly kind?: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
+  readonly topologyEntityKind?: CadTopologyAnchorEntityKind;
+  readonly checkpointId?: string;
+  readonly matchConfidence?: CadTopologyMatchConfidence;
+  readonly matchState?: CadTopologyIdentityState;
   readonly referenceName?: NamedReferenceName;
   readonly sourceFeatureId?: FeatureId;
   readonly consumedByFeatureId?: FeatureId;

@@ -14,6 +14,8 @@ import type {
   CadReferenceHealthStatus,
   CadReferenceHealthTarget,
   CadSelectionReferenceOperation,
+  CadTopologyIdentitySourceSnapshot,
+  CadTopologyMatchResult,
   FeatureId,
   NamedGeneratedReferenceSnapshot,
   NamedReferenceName,
@@ -36,6 +38,7 @@ import {
   findSketchProfileHealthEntry,
   type SketchProfileHealthEntry
 } from "./sketchProfileHealth";
+import { createTopologyAnchorReferenceHealthEntries } from "./topologyReferenceHealth";
 
 const SOURCE_BOUNDARY_NOTE =
   "Dependency graph and reference health are derived from authoritative document source features, bodies, sketches, generated references, and named references.";
@@ -50,6 +53,7 @@ export interface CreateProjectDependencyGraphOptions {
   readonly bodies: readonly CadBodySnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly sketchProfileHealth?: readonly SketchProfileHealthEntry[];
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface CreateReferenceHealthOptions extends CreateProjectDependencyGraphOptions {
@@ -63,6 +67,7 @@ export interface DependencyGraphDocument extends GeneratedReferencesDocument {
     NamedReferenceName,
     NamedGeneratedReferenceSnapshot
   >;
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
 }
 
 export interface DependencyGraphSketch extends GeneratedReferencesSketch {
@@ -137,6 +142,7 @@ function buildDependencyGraph(
   const bodyStatus = new Map<BodyId, CadReferenceHealthStatus>();
   const generatedStatus = new Map<string, CadReferenceHealthStatus>();
   const namedStatus = new Map<NamedReferenceName, CadReferenceHealthStatus>();
+  const topologyAnchorStatus = new Map<string, CadReferenceHealthStatus>();
 
   for (const entry of referenceHealth) {
     if (entry.bodyId) {
@@ -155,6 +161,10 @@ function buildDependencyGraph(
 
     if (entry.referenceName) {
       namedStatus.set(entry.referenceName, entry.status);
+    }
+
+    if (entry.topologyAnchorId) {
+      topologyAnchorStatus.set(entry.topologyAnchorId, entry.status);
     }
   }
 
@@ -303,6 +313,63 @@ function buildDependencyGraph(
     }
   }
 
+  for (const entry of referenceHealth) {
+    if (entry.source !== "topologyAnchor" || !entry.topologyAnchorId) {
+      continue;
+    }
+
+    addNode(nodes, {
+      id: topologyAnchorNodeId(entry.topologyAnchorId),
+      kind: "topologyAnchor",
+      label: entry.label,
+      status: topologyAnchorStatus.get(entry.topologyAnchorId) ?? entry.status,
+      bodyId: entry.bodyId,
+      stableId: entry.stableId,
+      topologyAnchorId: entry.topologyAnchorId,
+      checkpointId: entry.checkpointId,
+      topologyEntityKind: entry.topologyEntityKind,
+      ...(entry.sourceFeatureId ? { featureId: entry.sourceFeatureId } : {})
+    });
+
+    if (entry.bodyId && entry.stableId) {
+      const generatedReferenceId = generatedReferenceNodeId(
+        entry.bodyId,
+        entry.stableId
+      );
+
+      addEdge(edges, {
+        kind: "anchors",
+        from: topologyAnchorNodeId(entry.topologyAnchorId),
+        to: nodes.has(generatedReferenceId)
+          ? generatedReferenceId
+          : bodyNodeId(entry.bodyId),
+        label: nodes.has(generatedReferenceId)
+          ? "anchors generated reference"
+          : "anchors body topology",
+        bodyId: entry.bodyId,
+        stableId: entry.stableId,
+        topologyAnchorId: entry.topologyAnchorId,
+        checkpointId: entry.checkpointId,
+        ...(entry.sourceFeatureId
+          ? { sourceFeatureId: entry.sourceFeatureId }
+          : {})
+      });
+    } else if (entry.bodyId) {
+      addEdge(edges, {
+        kind: "anchors",
+        from: topologyAnchorNodeId(entry.topologyAnchorId),
+        to: bodyNodeId(entry.bodyId),
+        label: "anchors body topology",
+        bodyId: entry.bodyId,
+        topologyAnchorId: entry.topologyAnchorId,
+        checkpointId: entry.checkpointId,
+        ...(entry.sourceFeatureId
+          ? { sourceFeatureId: entry.sourceFeatureId }
+          : {})
+      });
+    }
+  }
+
   return {
     nodes: [...nodes.values()],
     edges: [...edges.values()]
@@ -415,6 +482,13 @@ function createAllReferenceHealthEntries(
   for (const reference of options.namedReferences) {
     entries.push(createNamedReferenceHealth(options, reference));
   }
+
+  entries.push(
+    ...createTopologyAnchorReferenceHealthEntries({
+      topologyIdentity: options.document.topologyIdentity,
+      topologyMatchResults: options.topologyMatchResults
+    })
+  );
 
   return entries;
 }
@@ -785,6 +859,18 @@ function filterReferenceHealthEntries(
     return [createMissingNamedReferenceHealth(target.name)];
   }
 
+  if (target.type === "topologyAnchor") {
+    const matches = entries.filter(
+      (entry) => entry.topologyAnchorId === target.anchorId
+    );
+
+    if (matches.length > 0) {
+      return matches;
+    }
+
+    return [createMissingTopologyAnchorReferenceHealth(target.anchorId)];
+  }
+
   const matches = entries.filter(
     (entry) =>
       entry.bodyId === target.bodyId && entry.stableId === target.stableId
@@ -858,6 +944,34 @@ function createMissingNamedReferenceHealth(
     label: name,
     referenceName: name,
     dependencies: createReferenceDependencies({ namedReferenceNames: [name] }),
+    diagnosticCount: diagnostics.length,
+    diagnostics
+  };
+}
+
+function createMissingTopologyAnchorReferenceHealth(
+  anchorId: string
+): CadReferenceHealthEntry {
+  const diagnostics = [
+    createDiagnostic({
+      code: "REFERENCE_TARGET_MISSING",
+      severity: "blocker",
+      status: "missing",
+      message: `Topology anchor does not exist: ${anchorId}`,
+      topologyAnchorId: anchorId
+    })
+  ];
+
+  return {
+    source: "topologyAnchor",
+    status: "missing",
+    commandable: false,
+    commandOperations: [],
+    label: anchorId,
+    topologyAnchorId: anchorId,
+    dependencies: createReferenceDependencies({
+      topologyAnchorIds: [anchorId]
+    }),
     diagnosticCount: diagnostics.length,
     diagnostics
   };
@@ -1019,6 +1133,8 @@ function createReferenceDependencies(args: {
   readonly bodyIds?: readonly BodyId[];
   readonly generatedReferenceStableIds?: readonly string[];
   readonly namedReferenceNames?: readonly NamedReferenceName[];
+  readonly topologyAnchorIds?: readonly string[];
+  readonly checkpointIds?: readonly string[];
 }): CadReferenceHealthDependencies {
   return {
     sketchIds: unique(args.sketchIds ?? []),
@@ -1026,7 +1142,11 @@ function createReferenceDependencies(args: {
     featureIds: unique(args.featureIds ?? []),
     bodyIds: unique(args.bodyIds ?? []),
     generatedReferenceStableIds: unique(args.generatedReferenceStableIds ?? []),
-    namedReferenceNames: unique(args.namedReferenceNames ?? [])
+    namedReferenceNames: unique(args.namedReferenceNames ?? []),
+    ...(args.topologyAnchorIds
+      ? { topologyAnchorIds: unique(args.topologyAnchorIds) }
+      : {}),
+    ...(args.checkpointIds ? { checkpointIds: unique(args.checkpointIds) } : {})
   };
 }
 
@@ -1318,6 +1438,10 @@ function addEdge(
     ...(edge.targetFeatureId ? { targetFeatureId: edge.targetFeatureId } : {}),
     ...(edge.bodyId ? { bodyId: edge.bodyId } : {}),
     ...(edge.stableId ? { stableId: edge.stableId } : {}),
+    ...(edge.topologyAnchorId
+      ? { topologyAnchorId: edge.topologyAnchorId }
+      : {}),
+    ...(edge.checkpointId ? { checkpointId: edge.checkpointId } : {}),
     ...(edge.referenceName ? { referenceName: edge.referenceName } : {})
   });
 }
@@ -1333,6 +1457,8 @@ function createDiagnostic(args: {
   readonly sketchId?: SketchId;
   readonly sketchEntityId?: SketchEntityId;
   readonly stableId?: string;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly expected?: string;
   readonly received?: string;
@@ -1348,6 +1474,10 @@ function createDiagnostic(args: {
     ...(args.sketchId ? { sketchId: args.sketchId } : {}),
     ...(args.sketchEntityId ? { sketchEntityId: args.sketchEntityId } : {}),
     ...(args.stableId ? { stableId: args.stableId } : {}),
+    ...(args.topologyAnchorId
+      ? { topologyAnchorId: args.topologyAnchorId }
+      : {}),
+    ...(args.checkpointId ? { checkpointId: args.checkpointId } : {}),
     ...(args.referenceName ? { referenceName: args.referenceName } : {}),
     ...(args.expected ? { expected: args.expected } : {}),
     ...(args.received ? { received: args.received } : {})
@@ -1379,6 +1509,10 @@ function generatedReferenceNodeId(bodyId: BodyId, stableId: string): string {
 
 function namedReferenceNodeId(name: NamedReferenceName): string {
   return `named-reference:${name}`;
+}
+
+function topologyAnchorNodeId(anchorId: string): string {
+  return `topology-anchor:${anchorId}`;
 }
 
 function unique<T extends string>(values: readonly T[]): readonly T[] {

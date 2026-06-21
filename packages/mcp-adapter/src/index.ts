@@ -21,6 +21,7 @@ import type {
   CadSketchEditProposal,
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation,
+  CadTopologyMatchResult,
   CadTopologyMatchSnapshotInput
 } from "@web-cad/cad-protocol";
 
@@ -413,6 +414,9 @@ export class CadMcpServer {
             featureId: request.arguments.featureId,
             ...(request.arguments.proposedEdit
               ? { proposedEdit: request.arguments.proposedEdit }
+              : {}),
+            ...(request.arguments.topologyMatchResults
+              ? { topologyMatchResults: request.arguments.topologyMatchResults }
               : {})
           }
         }
@@ -522,10 +526,10 @@ export class CadMcpServer {
   #callProjectDependencyGraph(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
-    if (!isEmptyObjectOrUndefined(request.arguments)) {
+    if (!isTopologyMatchContextToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_dependency_graph does not accept arguments."
+        "cad.project_dependency_graph expects optional topologyMatchResults."
       );
     }
 
@@ -535,7 +539,12 @@ export class CadMcpServer {
         adapterVersion: ADAPTER_VERSION,
         query: {
           version: "cadops.v1",
-          query: { query: "project.dependencyGraph" }
+          query: {
+            query: "project.dependencyGraph",
+            ...(request.arguments?.topologyMatchResults
+              ? { topologyMatchResults: request.arguments.topologyMatchResults }
+              : {})
+          }
         }
       })
     );
@@ -546,10 +555,10 @@ export class CadMcpServer {
   #callProjectRebuildPlan(
     request: CadMcpToolCallRequest
   ): CadMcpToolCallResult {
-    if (!isEmptyObjectOrUndefined(request.arguments)) {
+    if (!isTopologyMatchContextToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.project_rebuild_plan does not accept arguments."
+        "cad.project_rebuild_plan expects optional topologyMatchResults."
       );
     }
 
@@ -559,7 +568,12 @@ export class CadMcpServer {
         adapterVersion: ADAPTER_VERSION,
         query: {
           version: "cadops.v1",
-          query: { query: "project.rebuildPlan" }
+          query: {
+            query: "project.rebuildPlan",
+            ...(request.arguments?.topologyMatchResults
+              ? { topologyMatchResults: request.arguments.topologyMatchResults }
+              : {})
+          }
         }
       })
     );
@@ -1158,6 +1172,9 @@ export class CadMcpServer {
             query: "reference.health",
             ...(request.arguments?.target
               ? { target: request.arguments.target }
+              : {}),
+            ...(request.arguments?.topologyMatchResults
+              ? { topologyMatchResults: request.arguments.topologyMatchResults }
               : {})
           }
         }
@@ -1331,6 +1348,14 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
               description: "Optional proposed extrude side."
             }
           }
+        },
+        topologyMatchResults: {
+          type: "array",
+          description:
+            "Optional V13 topology.matchSnapshots results used as read-only health evidence.",
+          items: {
+            type: "object"
+          }
         }
       }
     }
@@ -1378,21 +1403,39 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.project_dependency_graph",
     description:
-      "Returns V10 source-derived dependency graph nodes, edges, reference health, and structured downstream reference diagnostics.",
+      "Returns source-derived dependency graph nodes, edges, reference health, and optional V13 topology-anchor match diagnostics.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      properties: {}
+      properties: {
+        topologyMatchResults: {
+          type: "array",
+          description:
+            "Optional V13 topology.matchSnapshots results used as read-only health evidence.",
+          items: {
+            type: "object"
+          }
+        }
+      }
     }
   },
   {
     name: "cad.project_rebuild_plan",
     description:
-      "Returns V10 source-derived rebuild plan and body lifecycle status, including active, consumed, modified, repair-needed, and derived-rebuild-pending body effects.",
+      "Returns source-derived rebuild plan and body lifecycle status, including optional V13 topology-anchor match effects.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      properties: {}
+      properties: {
+        topologyMatchResults: {
+          type: "array",
+          description:
+            "Optional V13 topology.matchSnapshots results used as read-only health evidence.",
+          items: {
+            type: "object"
+          }
+        }
+      }
     }
   },
   {
@@ -1768,7 +1811,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.reference_health",
     description:
-      "Returns V10 source-derived reference health for all references or a body, generated reference, or named reference target.",
+      "Returns source-derived reference health for all references or a body, generated reference, named reference, or topology anchor target.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1828,8 +1871,28 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
                   description: "Source-of-truth named generated reference."
                 }
               }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "anchorId"],
+              properties: {
+                type: { const: "topologyAnchor" },
+                anchorId: {
+                  type: "string",
+                  description: "Source-of-truth topology anchor ID."
+                }
+              }
             }
           ]
+        },
+        topologyMatchResults: {
+          type: "array",
+          description:
+            "Optional V13 topology.matchSnapshots results used as read-only health evidence.",
+          items: {
+            type: "object"
+          }
         }
       }
     }
@@ -1998,13 +2061,15 @@ function isIdToolArguments(value: unknown): value is { readonly id: string } {
 function isFeatureEditabilityToolArguments(value: unknown): value is {
   readonly featureId: string;
   readonly proposedEdit?: CadFeatureEditProposal;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 } {
   return (
     isRecord(value) &&
     typeof value.featureId === "string" &&
     value.featureId !== "" &&
     (value.proposedEdit === undefined ||
-      isCadFeatureEditProposal(value.proposedEdit))
+      isCadFeatureEditProposal(value.proposedEdit)) &&
+    isOptionalTopologyMatchResults(value.topologyMatchResults)
   );
 }
 
@@ -2166,13 +2231,18 @@ function isSelectionReferenceCandidatesToolArguments(value: unknown): value is {
 function isReferenceHealthToolArguments(value: unknown): value is
   | {
       readonly target?: CadReferenceHealthTarget;
+      readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
     }
   | undefined {
   return (
     value === undefined ||
     (isRecord(value) &&
-      Object.keys(value).every((key) => key === "target") &&
-      (value.target === undefined || isCadReferenceHealthTarget(value.target)))
+      Object.keys(value).every((key) =>
+        ["target", "topologyMatchResults"].includes(key)
+      ) &&
+      (value.target === undefined ||
+        isCadReferenceHealthTarget(value.target)) &&
+      isOptionalTopologyMatchResults(value.topologyMatchResults))
   );
 }
 
@@ -2385,6 +2455,8 @@ function isCadReferenceHealthTarget(
       );
     case "namedReference":
       return typeof value.name === "string" && value.name !== "";
+    case "topologyAnchor":
+      return typeof value.anchorId === "string" && value.anchorId !== "";
     default:
       return false;
   }
@@ -2636,6 +2708,23 @@ function isTopologyMatchSnapshotsArguments(value: unknown): value is {
     Array.isArray(value.candidates) &&
     value.candidates.every(isTopologyMatchSnapshotInputShape)
   );
+}
+
+function isTopologyMatchContextToolArguments(value: unknown): value is
+  | {
+      readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
+    }
+  | undefined {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      Object.keys(value).every((key) => key === "topologyMatchResults") &&
+      isOptionalTopologyMatchResults(value.topologyMatchResults))
+  );
+}
+
+function isOptionalTopologyMatchResults(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.every(isRecord));
 }
 
 function isTopologyMatchSnapshotInputShape(value: unknown): boolean {

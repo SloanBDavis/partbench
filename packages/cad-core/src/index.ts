@@ -71,6 +71,7 @@ import type {
   CadSketchRef,
   CadTransactionStatus,
   CadTopologyIdentitySourceSnapshot,
+  CadTopologyMatchResult,
   CadTopologyMatchSnapshotInput,
   ConeDimensions,
   CylinderDimensions,
@@ -1193,7 +1194,8 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
-          sketchProfileHealth
+          sketchProfileHealth,
+          topologyMatchResults: request.query.topologyMatchResults
         });
       }
 
@@ -1274,7 +1276,8 @@ export class CadEngine {
           features: structure.features,
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
-          sketchProfileHealth
+          sketchProfileHealth,
+          topologyMatchResults: request.query.topologyMatchResults
         });
       }
 
@@ -1295,7 +1298,8 @@ export class CadEngine {
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
           sketchProfileHealth,
-          target: { type: "all" }
+          target: { type: "all" },
+          topologyMatchResults: request.query.topologyMatchResults
         });
         return createProjectRebuildPlan({
           cadOpsVersion: request.version,
@@ -1961,7 +1965,8 @@ export class CadEngine {
           bodies: structure.bodies,
           namedReferences: [...this.#document.namedReferences.values()],
           sketchProfileHealth,
-          target: request.query.target
+          target: request.query.target,
+          topologyMatchResults: request.query.topologyMatchResults
         });
       }
 
@@ -4939,8 +4944,6 @@ function isCadQuery(value: unknown): boolean {
     case "project.summary":
     case "project.features":
     case "project.structure":
-    case "project.dependencyGraph":
-    case "project.rebuildPlan":
     case "project.topologyIdentityReadiness":
     case "project.exportReadiness":
     case "project.packageReadiness":
@@ -4948,6 +4951,13 @@ function isCadQuery(value: unknown): boolean {
     case "reference.listNamed":
     case "transaction.history":
       return Object.keys(value).length === 1;
+    case "project.dependencyGraph":
+    case "project.rebuildPlan":
+      return (
+        Object.keys(value).every((key) =>
+          ["query", "topologyMatchResults"].includes(key)
+        ) && isOptionalTopologyMatchResults(value.topologyMatchResults)
+      );
     case "topology.matchSnapshots":
       return (
         isCadTopologyMatchSnapshotInput(value.previous) &&
@@ -4980,7 +4990,8 @@ function isCadQuery(value: unknown): boolean {
       return (
         typeof value.featureId === "string" &&
         (value.proposedEdit === undefined ||
-          isCadFeatureEditProposal(value.proposedEdit))
+          isCadFeatureEditProposal(value.proposedEdit)) &&
+        isOptionalTopologyMatchResults(value.topologyMatchResults)
       );
     case "object.get":
     case "object.measurements":
@@ -5011,9 +5022,12 @@ function isCadQuery(value: unknown): boolean {
       return typeof value.name === "string";
     case "reference.health":
       return (
-        Object.keys(value).length === 1 ||
-        (Object.keys(value).length === 2 &&
-          isCadReferenceHealthTarget(value.target))
+        Object.keys(value).every((key) =>
+          ["query", "target", "topologyMatchResults"].includes(key)
+        ) &&
+        (value.target === undefined ||
+          isCadReferenceHealthTarget(value.target)) &&
+        isOptionalTopologyMatchResults(value.topologyMatchResults)
       );
     case "selection.referenceCandidates":
       return (
@@ -5043,6 +5057,74 @@ function isCadTopologyMatchSnapshotInput(
         typeof value.sourceIdentity.sha256 === "string" &&
         SHA256_HEX_PATTERN.test(value.sourceIdentity.sha256))) &&
     isCadBodyExactTopologySnapshot(value.topologySnapshot)
+  );
+}
+
+function isOptionalTopologyMatchResults(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every(isCadTopologyMatchResult))
+  );
+}
+
+function isCadTopologyMatchResult(
+  value: unknown
+): value is CadTopologyMatchResult {
+  return (
+    isRecord(value) &&
+    (value.anchorId === undefined || typeof value.anchorId === "string") &&
+    (value.previousStableId === undefined ||
+      typeof value.previousStableId === "string") &&
+    (value.candidateStableId === undefined ||
+      typeof value.candidateStableId === "string") &&
+    isTopologyEntityKind(value.entityKind) &&
+    isTopologyIdentityState(value.state) &&
+    isTopologyMatchConfidence(value.confidence) &&
+    typeof value.evidenceCount === "number" &&
+    Array.isArray(value.evidence) &&
+    typeof value.diagnosticCount === "number" &&
+    Array.isArray(value.diagnostics)
+  );
+}
+
+function isTopologyEntityKind(value: unknown): boolean {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex" ||
+    value === "axis" ||
+    value === "loop" ||
+    value === "wire" ||
+    value === "coedge"
+  );
+}
+
+function isTopologyIdentityState(value: unknown): boolean {
+  return (
+    value === "active" ||
+    value === "replaced" ||
+    value === "split" ||
+    value === "merged" ||
+    value === "consumed" ||
+    value === "deleted" ||
+    value === "ambiguous" ||
+    value === "stale" ||
+    value === "missing" ||
+    value === "repair-needed" ||
+    value === "unsupported" ||
+    value === "failed" ||
+    value === "deferred"
+  );
+}
+
+function isTopologyMatchConfidence(value: unknown): boolean {
+  return (
+    value === "none" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "exact"
   );
 }
 
@@ -5217,6 +5299,8 @@ function isCadReferenceHealthTarget(value: unknown): boolean {
       );
     case "namedReference":
       return typeof value.name === "string";
+    case "topologyAnchor":
+      return typeof value.anchorId === "string";
     default:
       return false;
   }
@@ -21471,6 +21555,12 @@ function isCadFeatureReferenceChangeSummary(
     (value.bodyId === undefined || typeof value.bodyId === "string") &&
     (value.stableId === undefined || typeof value.stableId === "string") &&
     (value.kind === undefined || isGeneratedEntityKind(value.kind)) &&
+    (value.topologyAnchorId === undefined ||
+      typeof value.topologyAnchorId === "string") &&
+    (value.checkpointId === undefined ||
+      typeof value.checkpointId === "string") &&
+    (value.matchConfidence === undefined ||
+      isTopologyMatchConfidence(value.matchConfidence)) &&
     (value.referenceName === undefined ||
       typeof value.referenceName === "string") &&
     (value.sourceFeatureId === undefined ||

@@ -3137,7 +3137,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "feature.editability" &&
         typeof value.query.featureId === "string" &&
         (value.query.proposedEdit === undefined ||
-          isCadFeatureEditProposal(value.query.proposedEdit))) ||
+          isCadFeatureEditProposal(value.query.proposedEdit)) &&
+        isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "project.summary" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.features" &&
@@ -3145,9 +3146,15 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "project.structure" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "project.dependencyGraph" &&
-        Object.keys(value.query).length === 1) ||
+        Object.keys(value.query).every((key) =>
+          ["query", "topologyMatchResults"].includes(key)
+        ) &&
+        isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "project.rebuildPlan" &&
-        Object.keys(value.query).length === 1) ||
+        Object.keys(value.query).every((key) =>
+          ["query", "topologyMatchResults"].includes(key)
+        ) &&
+        isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "project.topologyIdentityReadiness" &&
         Object.keys(value.query).length === 1) ||
       (value.query.query === "topology.matchSnapshots" &&
@@ -3211,9 +3218,12 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
       (value.query.query === "reference.resolveNamed" &&
         typeof value.query.name === "string") ||
       (value.query.query === "reference.health" &&
-        (Object.keys(value.query).length === 1 ||
-          (Object.keys(value.query).length === 2 &&
-            isCadReferenceHealthTarget(value.query.target)))) ||
+        Object.keys(value.query).every((key) =>
+          ["query", "target", "topologyMatchResults"].includes(key)
+        ) &&
+        (value.query.target === undefined ||
+          isCadReferenceHealthTarget(value.query.target)) &&
+        isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "selection.referenceCandidates" &&
         isCadSelectionReferenceInput(value.query.selection) &&
         (value.query.requiredOperation === undefined ||
@@ -3417,6 +3427,68 @@ function isTopologyMatchSnapshotInputShape(value: unknown): boolean {
   );
 }
 
+function isOptionalTopologyMatchResults(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every(isTopologyMatchResultShape))
+  );
+}
+
+function isTopologyMatchResultShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.anchorId === undefined || typeof value.anchorId === "string") &&
+    isTopologyEntityKind(value.entityKind) &&
+    isTopologyIdentityState(value.state) &&
+    isTopologyMatchConfidence(value.confidence) &&
+    typeof value.evidenceCount === "number" &&
+    Array.isArray(value.evidence) &&
+    typeof value.diagnosticCount === "number" &&
+    Array.isArray(value.diagnostics)
+  );
+}
+
+function isTopologyEntityKind(value: unknown): boolean {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex" ||
+    value === "axis" ||
+    value === "loop" ||
+    value === "wire" ||
+    value === "coedge"
+  );
+}
+
+function isTopologyIdentityState(value: unknown): boolean {
+  return (
+    value === "active" ||
+    value === "replaced" ||
+    value === "split" ||
+    value === "merged" ||
+    value === "consumed" ||
+    value === "deleted" ||
+    value === "ambiguous" ||
+    value === "stale" ||
+    value === "missing" ||
+    value === "repair-needed" ||
+    value === "unsupported" ||
+    value === "failed" ||
+    value === "deferred"
+  );
+}
+
+function isTopologyMatchConfidence(value: unknown): boolean {
+  return (
+    value === "none" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "exact"
+  );
+}
+
 function isWcadSourceIdentityInput(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -3474,6 +3546,8 @@ function isCadReferenceHealthTarget(
       );
     case "namedReference":
       return typeof value.name === "string" && value.name !== "";
+    case "topologyAnchor":
+      return typeof value.anchorId === "string" && value.anchorId !== "";
     default:
       return false;
   }

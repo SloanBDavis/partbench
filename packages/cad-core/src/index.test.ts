@@ -4,6 +4,7 @@ import type {
   CadBodyExactTopologySnapshot,
   CadBatch,
   CadQueryRequest,
+  CadTopologyMatchResult,
   WcadManifestV2,
   FeatureEditabilityQueryResponse,
   ProjectExactExportQueryResponse,
@@ -272,6 +273,109 @@ function createV18CheckpointFixture(): {
   };
 
   return { project, checkpointPayload };
+}
+
+function createTopologyAnchorEngine(): CadEngine {
+  const baseEngine = createRectangleExtrudeEngine();
+  const baseDocument = baseEngine.getDocument();
+  const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+  const paths = createWcadV2CheckpointEntryPaths("checkpoint_1");
+  const sourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+  };
+
+  return new CadEngine({
+    ...baseDocument,
+    topologyIdentity: {
+      ...topologyIdentity,
+      checkpoints: [
+        {
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          sourceIdentity,
+          packageVersion: "partbench.wcad.v2",
+          projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+          brepEntryPath: paths.brep,
+          topologyEntryPath: paths.topology,
+          signatureEntryPath: paths.signature,
+          status: "active",
+          diagnostics: []
+        }
+      ],
+      anchors: [
+        {
+          anchorId: "anchor_face_1",
+          entityKind: "face",
+          bodyId: "body_rect_1",
+          checkpointId: "checkpoint_1",
+          checkpointEntityId: "checkpoint-local-face-1",
+          sourceFeatureId: "feat_rect_1",
+          stableId: "generated:face:body_rect_1:endCap",
+          sourceSemanticRole: "end cap",
+          signatureHash: "face_signature_1",
+          state: "active",
+          diagnostics: []
+        }
+      ]
+    }
+  });
+}
+
+function createTopologyAnchorMatchResult(
+  state: CadTopologyMatchResult["state"],
+  confidence: CadTopologyMatchResult["confidence"] = state === "active"
+    ? "exact"
+    : "low"
+): CadTopologyMatchResult {
+  return {
+    anchorId: "anchor_face_1",
+    previousStableId: "generated:face:body_rect_1:endCap",
+    previousCheckpointId: "checkpoint_1",
+    ...(state === "deleted"
+      ? {}
+      : {
+          candidateStableId: "generated:face:body_rect_1:endCap",
+          candidateCheckpointId: "checkpoint_2"
+        }),
+    entityKind: "face",
+    state,
+    confidence,
+    confidenceScore: confidence === "exact" ? 1 : 0.35,
+    evidenceCount: 1,
+    evidence: [
+      {
+        kind: "sourceLineage",
+        confidence,
+        message: `Synthetic ${state} topology match evidence.`
+      }
+    ],
+    diagnosticCount: state === "active" ? 0 : 1,
+    diagnostics:
+      state === "active"
+        ? []
+        : [
+            {
+              code:
+                state === "deleted"
+                  ? "TOPOLOGY_MATCH_DELETED"
+                  : state === "ambiguous" || state === "split"
+                    ? "TOPOLOGY_MATCH_AMBIGUOUS"
+                    : state === "replaced"
+                      ? "TOPOLOGY_MATCH_REPLACED"
+                      : "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+              status: "deferred",
+              severity: "warning",
+              message: `Synthetic ${state} topology match diagnostic.`,
+              entityKind: "face",
+              bodyId: "body_rect_1",
+              featureId: "feat_rect_1",
+              checkpointId: "checkpoint_1",
+              anchorId: "anchor_face_1"
+            }
+          ]
+  };
 }
 
 function createTopologySnapshot(
@@ -1062,14 +1166,16 @@ function readProjectExportReadiness(
 function readFeatureEditability(
   engine: CadEngine,
   featureId: string,
-  proposedEdit?: FeatureEditabilityQueryResponse["dryRun"]["proposedEdit"]
+  proposedEdit?: FeatureEditabilityQueryResponse["dryRun"]["proposedEdit"],
+  topologyMatchResults?: readonly CadTopologyMatchResult[]
 ): FeatureEditabilityQueryResponse {
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: {
       query: "feature.editability",
       featureId,
-      ...(proposedEdit ? { proposedEdit } : {})
+      ...(proposedEdit ? { proposedEdit } : {}),
+      ...(topologyMatchResults ? { topologyMatchResults } : {})
     }
   });
 
@@ -1081,11 +1187,15 @@ function readFeatureEditability(
 }
 
 function readProjectDependencyGraph(
-  engine: CadEngine
+  engine: CadEngine,
+  topologyMatchResults?: readonly CadTopologyMatchResult[]
 ): ProjectDependencyGraphQueryResponse {
   const response = engine.executeQuery({
     version: "cadops.v1",
-    query: { query: "project.dependencyGraph" }
+    query: {
+      query: "project.dependencyGraph",
+      ...(topologyMatchResults ? { topologyMatchResults } : {})
+    }
   });
 
   if (!response.ok || response.query !== "project.dependencyGraph") {
@@ -1096,11 +1206,15 @@ function readProjectDependencyGraph(
 }
 
 function readProjectRebuildPlan(
-  engine: CadEngine
+  engine: CadEngine,
+  topologyMatchResults?: readonly CadTopologyMatchResult[]
 ): ProjectRebuildPlanQueryResponse {
   const response = engine.executeQuery({
     version: "cadops.v1",
-    query: { query: "project.rebuildPlan" }
+    query: {
+      query: "project.rebuildPlan",
+      ...(topologyMatchResults ? { topologyMatchResults } : {})
+    }
   });
 
   if (!response.ok || response.query !== "project.rebuildPlan") {
@@ -1112,13 +1226,15 @@ function readProjectRebuildPlan(
 
 function readReferenceHealth(
   engine: CadEngine,
-  target?: CadReferenceHealthTarget
+  target?: CadReferenceHealthTarget,
+  topologyMatchResults?: readonly CadTopologyMatchResult[]
 ): ReferenceHealthQueryResponse {
   const response = engine.executeQuery({
     version: "cadops.v1",
     query: {
       query: "reference.health",
-      ...(target ? { target } : {})
+      ...(target ? { target } : {}),
+      ...(topologyMatchResults ? { topologyMatchResults } : {})
     }
   });
 
@@ -30203,6 +30319,190 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       diagnostics: expect.arrayContaining([
         expect.objectContaining({ code: "TOPOLOGY_MATCH_KIND_MISMATCH" })
       ])
+    });
+  });
+
+  it("threads topology anchor matches through reference health, rebuild plan, dependency graph, and feature editability", () => {
+    const engine = createTopologyAnchorEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const topologyMatchResults = [createTopologyAnchorMatchResult("active")];
+    const referenceHealth = readReferenceHealth(
+      engine,
+      { type: "topologyAnchor", anchorId: "anchor_face_1" },
+      topologyMatchResults
+    );
+    const dependencyGraph = readProjectDependencyGraph(
+      engine,
+      topologyMatchResults
+    );
+    const rebuildPlan = readProjectRebuildPlan(engine, topologyMatchResults);
+    const editability = readFeatureEditability(
+      engine,
+      "feat_rect_1",
+      undefined,
+      topologyMatchResults
+    );
+
+    expect(referenceHealth).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          status: "active",
+          commandable: false,
+          topologyAnchorId: "anchor_face_1",
+          checkpointId: "checkpoint_1",
+          matchConfidence: "exact",
+          matchState: "active"
+        })
+      ]
+    });
+    expect(dependencyGraph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "topologyAnchor",
+          topologyAnchorId: "anchor_face_1",
+          status: "active"
+        })
+      ])
+    );
+    expect(dependencyGraph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "anchors",
+          topologyAnchorId: "anchor_face_1",
+          checkpointId: "checkpoint_1"
+        })
+      ])
+    );
+    expect(rebuildPlan.bodyLifecycles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          topologyAnchorCount: 1,
+          topologyMatchCount: 1,
+          topologyMatchStates: ["active"],
+          commandReady: true
+        })
+      ])
+    );
+    expect(editability.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "active",
+          topologyAnchorId: "anchor_face_1",
+          checkpointId: "checkpoint_1",
+          matchConfidence: "exact"
+        })
+      ])
+    );
+    expect(
+      JSON.stringify({
+        referenceHealth,
+        dependencyGraph,
+        rebuildPlan,
+        editability
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("degrades topology anchor health and rebuild lifecycle for non-active topology matches", () => {
+    const engine = createTopologyAnchorEngine();
+    const topologyMatchResults = [
+      createTopologyAnchorMatchResult("replaced", "high")
+    ];
+    const referenceHealth = readReferenceHealth(
+      engine,
+      { type: "topologyAnchor", anchorId: "anchor_face_1" },
+      topologyMatchResults
+    );
+    const rebuildPlan = readProjectRebuildPlan(engine, topologyMatchResults);
+    const editability = readFeatureEditability(
+      engine,
+      "feat_rect_1",
+      undefined,
+      topologyMatchResults
+    );
+
+    expect(referenceHealth).toMatchObject({
+      status: "replaced",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          status: "replaced",
+          commandable: false,
+          matchConfidence: "high",
+          matchState: "replaced",
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "REFERENCE_TOPOLOGY_MATCH_REPLACED"
+            })
+          ])
+        })
+      ]
+    });
+    expect(rebuildPlan).toMatchObject({
+      status: "repair-needed",
+      bodyLifecycles: expect.arrayContaining([
+        expect.objectContaining({
+          bodyId: "body_rect_1",
+          primaryState: "replaced",
+          states: expect.arrayContaining(["active", "source", "replaced"]),
+          referenceHealthStatus: "replaced",
+          commandReady: false,
+          topologyMatchStates: ["replaced"]
+        })
+      ])
+    });
+    expect(editability.referenceChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "replaced",
+          topologyAnchorId: "anchor_face_1",
+          matchConfidence: "high"
+        })
+      ])
+    );
+  });
+
+  it("reports missing topology checkpoint anchors structurally", () => {
+    const engine = createTopologyAnchorEngine();
+    const document = engine.getDocument();
+    const topologyIdentity = document.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const missingCheckpointEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        checkpoints: []
+      }
+    });
+    const referenceHealth = readReferenceHealth(missingCheckpointEngine, {
+      type: "topologyAnchor",
+      anchorId: "anchor_face_1"
+    });
+
+    expect(referenceHealth).toMatchObject({
+      status: "missing",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          status: "missing",
+          commandable: false,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              code: "REFERENCE_TOPOLOGY_CHECKPOINT_MISSING"
+            })
+          ])
+        })
+      ]
     });
   });
 

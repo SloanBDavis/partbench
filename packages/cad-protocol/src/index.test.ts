@@ -37,9 +37,12 @@ import type {
   CadTopologyIdentitySourceSnapshot,
   CadTopologyMatchResult,
   CadTopologyRepairCandidate,
+  FeatureEditabilityQueryResponse,
   HoleFeatureSnapshot,
   ProjectPackageReadinessQueryResponse,
+  ProjectRebuildPlanQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
+  ReferenceHealthQueryResponse,
   RevolveFeatureSnapshot,
   ProjectHealthQueryResponse,
   ProjectSummaryQueryResponse,
@@ -804,6 +807,200 @@ describe("cad-protocol", () => {
       "checkpoint-local:face:1"
     );
     expect(response.mutatesSource).toBe(false);
+  });
+
+  it("types topology match consumption across reference health, rebuild, and editability surfaces", () => {
+    const match: CadTopologyMatchResult = {
+      anchorId: "anchor_1",
+      previousStableId: "generated:face:body_1:endCap",
+      candidateStableId: "generated:face:body_2:endCap",
+      previousCheckpointId: "checkpoint_1",
+      candidateCheckpointId: "checkpoint_2",
+      entityKind: "face",
+      state: "replaced",
+      confidence: "high",
+      confidenceScore: 0.9,
+      evidenceCount: 1,
+      evidence: [
+        {
+          kind: "sourceLineage",
+          confidence: "high",
+          message: "Matched by source lineage."
+        }
+      ],
+      diagnosticCount: 0,
+      diagnostics: []
+    };
+    const referenceHealth: ReferenceHealthQueryResponse = {
+      ok: true,
+      query: "reference.health",
+      cadOpsVersion: "cadops.v1",
+      target: { type: "topologyAnchor", anchorId: "anchor_1" },
+      status: "replaced",
+      referenceHealthCount: 1,
+      referenceHealth: [
+        {
+          source: "topologyAnchor",
+          status: "replaced",
+          commandable: false,
+          commandOperations: [],
+          label: "End cap",
+          bodyId: "body_1",
+          stableId: "generated:face:body_1:endCap",
+          kind: "face",
+          topologyAnchorId: "anchor_1",
+          topologyEntityKind: "face",
+          checkpointId: "checkpoint_1",
+          matchConfidence: "high",
+          matchState: "replaced",
+          sourceFeatureId: "feature_1",
+          dependencies: {
+            sketchIds: [],
+            sketchEntityIds: [],
+            featureIds: ["feature_1"],
+            bodyIds: ["body_1"],
+            generatedReferenceStableIds: ["generated:face:body_1:endCap"],
+            namedReferenceNames: [],
+            topologyAnchorIds: ["anchor_1"],
+            checkpointIds: ["checkpoint_1"]
+          },
+          diagnosticCount: 1,
+          diagnostics: [
+            {
+              code: "REFERENCE_TOPOLOGY_MATCH_REPLACED",
+              severity: "warning",
+              status: "replaced",
+              message: "Explicit repair required.",
+              bodyId: "body_1",
+              stableId: "generated:face:body_1:endCap",
+              topologyAnchorId: "anchor_1",
+              checkpointId: "checkpoint_1",
+              featureId: "feature_1"
+            }
+          ]
+        }
+      ],
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "REFERENCE_TOPOLOGY_MATCH_REPLACED",
+          severity: "warning",
+          status: "replaced",
+          message: "Explicit repair required.",
+          topologyAnchorId: "anchor_1",
+          checkpointId: "checkpoint_1"
+        }
+      ],
+      sourceBoundaryNote: "source only",
+      derivedBoundaryNote: "derived private ids excluded",
+      requiresProjectSchemaMigration: false
+    };
+    const rebuild: ProjectRebuildPlanQueryResponse = {
+      ok: true,
+      query: "project.rebuildPlan",
+      cadOpsVersion: "cadops.v1",
+      status: "repair-needed",
+      bodyLifecycleCount: 1,
+      bodyLifecycles: [
+        {
+          bodyId: "body_1",
+          featureId: "feature_1",
+          role: "source",
+          sourceType: "sketchExtrudeFeature",
+          primaryState: "replaced",
+          states: ["active", "source", "replaced"],
+          referenceHealthStatus: "replaced",
+          topologyAnchorCount: 1,
+          topologyMatchCount: 1,
+          topologyMatchStates: ["replaced"],
+          rebuildRequired: true,
+          derivedRebuildPending: false,
+          commandReady: false,
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      lifecycleEffectCount: 0,
+      lifecycleEffects: [],
+      affected: {
+        sketchIds: [],
+        sketchEntityIds: [],
+        featureIds: ["feature_1"],
+        bodyIds: ["body_1"],
+        generatedReferenceCount: 0,
+        namedReferenceCount: 0,
+        derivedArtifactKinds: ["derivedGeometry"]
+      },
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote: "source only",
+      derivedBoundaryNote: "derived private ids excluded",
+      requiresProjectSchemaMigration: false
+    };
+    const editability: FeatureEditabilityQueryResponse = {
+      ok: true,
+      query: "feature.editability",
+      cadOpsVersion: "cadops.v1",
+      featureId: "feature_1",
+      status: "editable",
+      fieldCount: 0,
+      fields: [],
+      rebuildReadiness: {
+        status: "ready",
+        commitDeferred: false,
+        diagnosticCount: 0,
+        diagnostics: []
+      },
+      dryRun: {
+        status: "not-requested",
+        willMutateDocument: false,
+        diagnosticCount: 0,
+        diagnostics: []
+      },
+      affected: {
+        sketchIds: [],
+        featureIds: ["feature_1"],
+        bodyIds: ["body_1"],
+        generatedReferenceCount: 0,
+        namedReferenceCount: 0
+      },
+      referenceChangeCount: 1,
+      referenceChanges: [
+        {
+          category: "replaced",
+          bodyId: "body_1",
+          stableId: "generated:face:body_1:endCap",
+          kind: "face",
+          topologyAnchorId: "anchor_1",
+          checkpointId: "checkpoint_1",
+          matchConfidence: "high",
+          sourceFeatureId: "feature_1",
+          message: "Topology anchor is replaced."
+        }
+      ],
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote: "source only",
+      derivedBoundaryNote: "derived private ids excluded",
+      requiresProjectSchemaMigration: false
+    };
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "reference.health",
+        target: { type: "topologyAnchor", anchorId: "anchor_1" },
+        topologyMatchResults: [match]
+      }
+    };
+
+    expect(request.query.query).toBe("reference.health");
+    expect(referenceHealth.referenceHealth[0]?.topologyAnchorId).toBe(
+      "anchor_1"
+    );
+    expect(rebuild.bodyLifecycles[0]?.topologyMatchStates).toEqual([
+      "replaced"
+    ]);
+    expect(editability.referenceChanges[0]?.matchConfidence).toBe("high");
   });
 
   it("types supported scene commands", () => {

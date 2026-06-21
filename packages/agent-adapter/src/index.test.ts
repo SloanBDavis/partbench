@@ -1,4 +1,10 @@
-import { CadEngine } from "@web-cad/cad-core";
+import {
+  CAD_PROJECT_FORMAT_VERSION_V18,
+  CadEngine,
+  createEmptyTopologyIdentitySourceSnapshot,
+  createWcadV2CheckpointEntryPaths
+} from "@web-cad/cad-core";
+import type { CadTopologyMatchResult } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
   CadOpsAgentAdapter,
@@ -7,6 +13,99 @@ import {
   parseCadOpsAgentQueryRequestJson,
   parseCadOpsAgentRequestJson
 } from "./index";
+
+function createTopologyAnchorEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_1",
+      id: "rect_1",
+      center: [0, 0],
+      width: 2,
+      height: 2
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_rect_1",
+      bodyId: "body_rect_1",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1
+    }
+  ]);
+
+  const document = engine.getDocument();
+  const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+  const paths = createWcadV2CheckpointEntryPaths("checkpoint_1");
+
+  return new CadEngine({
+    ...document,
+    topologyIdentity: {
+      ...topologyIdentity,
+      checkpoints: [
+        {
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          sourceIdentity: {
+            algorithm: "partbench-source-v1",
+            sha256:
+              "1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          packageVersion: "partbench.wcad.v2",
+          projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+          brepEntryPath: paths.brep,
+          topologyEntryPath: paths.topology,
+          signatureEntryPath: paths.signature,
+          status: "active",
+          diagnostics: []
+        }
+      ],
+      anchors: [
+        {
+          anchorId: "anchor_face_1",
+          entityKind: "face",
+          bodyId: "body_rect_1",
+          checkpointId: "checkpoint_1",
+          checkpointEntityId: "checkpoint-local-face-1",
+          sourceFeatureId: "feat_rect_1",
+          stableId: "generated:face:body_rect_1:endCap",
+          sourceSemanticRole: "end cap",
+          signatureHash: "face_signature_1",
+          state: "active",
+          diagnostics: []
+        }
+      ]
+    }
+  });
+}
+
+function createTopologyAnchorMatchResult(): CadTopologyMatchResult {
+  return {
+    anchorId: "anchor_face_1",
+    previousStableId: "generated:face:body_rect_1:endCap",
+    candidateStableId: "generated:face:body_rect_1:endCap",
+    previousCheckpointId: "checkpoint_1",
+    candidateCheckpointId: "checkpoint_2",
+    entityKind: "face",
+    state: "replaced",
+    confidence: "high",
+    confidenceScore: 0.9,
+    evidenceCount: 1,
+    evidence: [
+      {
+        kind: "sourceLineage",
+        confidence: "high",
+        message: "Matched by source lineage."
+      }
+    ],
+    diagnosticCount: 0,
+    diagnostics: []
+  };
+}
 
 describe("agent-adapter", () => {
   it("runs a CADOps dry-run batch without mutating the engine", () => {
@@ -2779,6 +2878,38 @@ describe("agent-adapter", () => {
           confidence: "exact",
           previousCheckpointEntityId: "face_old",
           candidateCheckpointEntityId: "face_new"
+        })
+      ]
+    });
+  });
+
+  it("passes topology match context through reference health adapter queries", () => {
+    const adapter = new CadOpsAgentAdapter(createTopologyAnchorEngine());
+    const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {
+      requestId: "agent_topology_reference_health",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "reference.health",
+          target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+          topologyMatchResults: [createTopologyAnchorMatchResult()]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_reference_health",
+      query: "reference.health",
+      status: "replaced",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          topologyAnchorId: "anchor_face_1",
+          matchConfidence: "high",
+          matchState: "replaced",
+          commandable: false
         })
       ]
     });

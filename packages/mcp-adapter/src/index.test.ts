@@ -1,5 +1,30 @@
+import type { CadTopologyMatchResult } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import { CadMcpServer, createCadMcpServer } from "./index";
+
+function createTopologyAnchorMatchResult(): CadTopologyMatchResult {
+  return {
+    anchorId: "anchor_face_1",
+    previousStableId: "generated:face:body_rect_1:endCap",
+    candidateStableId: "generated:face:body_rect_1:endCap",
+    previousCheckpointId: "checkpoint_1",
+    candidateCheckpointId: "checkpoint_2",
+    entityKind: "face",
+    state: "replaced",
+    confidence: "high",
+    confidenceScore: 0.9,
+    evidenceCount: 1,
+    evidence: [
+      {
+        kind: "sourceLineage",
+        confidence: "high",
+        message: "Matched by source lineage."
+      }
+    ],
+    diagnosticCount: 0,
+    diagnostics: []
+  };
+}
 
 describe("mcp-adapter", () => {
   it("lists only the supported CAD tools", () => {
@@ -1325,6 +1350,37 @@ describe("mcp-adapter", () => {
             confidence: "exact",
             previousCheckpointEntityId: "face_old",
             candidateCheckpointEntityId: "face_new"
+          })
+        ]
+      }
+    });
+  });
+
+  it("passes topology match context through cad.reference_health", () => {
+    const server = new CadMcpServer();
+    const result = server.callTool({
+      name: "cad.reference_health",
+      requestId: "mcp_req_topology_reference_health",
+      arguments: {
+        target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+        topologyMatchResults: [createTopologyAnchorMatchResult()]
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.reference_health",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_topology_reference_health",
+        query: "reference.health",
+        status: "missing",
+        referenceHealth: [
+          expect.objectContaining({
+            source: "topologyAnchor",
+            topologyAnchorId: "anchor_face_1",
+            status: "missing",
+            commandable: false
           })
         ]
       }

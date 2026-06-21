@@ -83,10 +83,21 @@ function createBodyLifecycleSummary(
       .filter((entry) => entry.bodyId === body.id)
       .map((entry) => entry.status)
   );
+  const topologyAnchorHealth = options.referenceHealth.filter(
+    (entry) => entry.bodyId === body.id && entry.source === "topologyAnchor"
+  );
+  const topologyMatchStates = uniqueTopologyStates(
+    topologyAnchorHealth
+      .map((entry) => entry.matchState)
+      .filter(
+        (state): state is NonNullable<typeof state> => state !== undefined
+      )
+  );
   const role = lifecycleRoleForBody(body, feature);
   const baseStates = lifecycleStatesForBody(body, feature, role);
   const states = uniqueLifecycleStates([
     ...baseStates,
+    ...lifecycleStatesFromReferenceHealth(referenceHealthStatus),
     ...effects.flatMap((effect) => effect.states)
   ]);
   const primaryState = primaryLifecycleState(states, effects, body, feature);
@@ -105,8 +116,12 @@ function createBodyLifecycleSummary(
     derivedRebuildPending ||
     states.includes("modified") ||
     states.includes("replacement") ||
+    states.includes("replaced") ||
     states.includes("stale") ||
-    states.includes("failed");
+    states.includes("failed") ||
+    states.includes("deleted") ||
+    states.includes("missing") ||
+    states.includes("unsupported");
 
   return {
     bodyId: body.id,
@@ -124,6 +139,15 @@ function createBodyLifecycleSummary(
       ? { targetBodyId: body.source.targetBodyId }
       : {}),
     ...(referenceHealthStatus ? { referenceHealthStatus } : {}),
+    ...(topologyAnchorHealth.length > 0
+      ? { topologyAnchorCount: topologyAnchorHealth.length }
+      : {}),
+    ...(topologyMatchStates.length > 0
+      ? {
+          topologyMatchCount: topologyMatchStates.length,
+          topologyMatchStates
+        }
+      : {}),
     rebuildRequired,
     derivedRebuildPending,
     commandReady: isCommandReady(states, referenceHealthStatus, diagnostics),
@@ -237,12 +261,18 @@ function primaryLifecycleState(
     return latestEffectPrimary;
   }
 
-  if (states.includes("repair-needed")) {
-    return "repair-needed";
-  }
-
-  if (states.includes("ambiguous")) {
-    return "ambiguous";
+  for (const state of [
+    "missing",
+    "deleted",
+    "stale",
+    "unsupported",
+    "repair-needed",
+    "ambiguous",
+    "replaced"
+  ] satisfies readonly CadBodyLifecycleState[]) {
+    if (states.includes(state)) {
+      return state;
+    }
   }
 
   if (states.includes("derived-rebuild-pending")) {
@@ -516,7 +546,9 @@ function combineRebuildPlanStatus(
       (body) =>
         body.states.includes("repair-needed") ||
         body.states.includes("ambiguous") ||
-        body.states.includes("stale")
+        body.states.includes("stale") ||
+        body.states.includes("deleted") ||
+        body.states.includes("replaced")
     )
   ) {
     return "repair-needed";
@@ -562,8 +594,20 @@ function combineReferenceStatuses(
   return "active";
 }
 
+function lifecycleStatesFromReferenceHealth(
+  status: CadReferenceHealthStatus | undefined
+): readonly CadBodyLifecycleState[] {
+  return status && status !== "active" ? [status] : [];
+}
+
 function uniqueLifecycleStates(
   states: readonly CadBodyLifecycleState[]
 ): readonly CadBodyLifecycleState[] {
+  return [...new Set(states)];
+}
+
+function uniqueTopologyStates(
+  states: readonly NonNullable<CadReferenceHealthEntry["matchState"]>[]
+): readonly NonNullable<CadReferenceHealthEntry["matchState"]>[] {
   return [...new Set(states)];
 }

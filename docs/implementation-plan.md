@@ -2376,9 +2376,18 @@ Use these decisions when drafting or implementing V13 tranches:
    repair-needed/kind-mismatch states. Agent and MCP wrappers pass through the
    same cad-core query. Richer geometry/adjacency scoring waits for richer
    checkpoint descriptors.
-6. **Reference Health And Rebuild Integration** - existing reference,
-   dependency, rebuild, editability, and semantic-diff surfaces consume topology
-   matching and report topology-anchor effects consistently.
+6. **Implemented: Reference Health And Rebuild Integration, First Slice** -
+   existing reference, dependency, rebuild, and editability query surfaces now
+   consume V18 topology anchor records plus caller-supplied
+   `topology.matchSnapshots` results. Topology anchors appear as reference
+   health and dependency graph entries; rebuild body lifecycle summaries include
+   topology anchor counts and match states; feature editability reference
+   effects include topology anchor IDs, checkpoint IDs, and match confidence.
+   Missing checkpoints, replaced, ambiguous/split/merged, deleted, unsupported,
+   and repair-needed topology states remain structured diagnostics. Agent and
+   MCP wrappers pass through the same evidence without gaining matching or
+   repair authority. Committed anchor creation/repair and command-time topology
+   retargeting remain later V13 work.
 7. **Topology Anchor And Repair Commands** - CADOps dry-run/commit paths to
    create anchors and explicitly repair anchors or named references to
    replacement candidates, with undo/redo, transaction history, UI affordances,

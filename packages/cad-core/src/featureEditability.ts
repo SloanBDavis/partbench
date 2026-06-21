@@ -15,6 +15,8 @@ import type {
   CadFeatureSummary,
   CadGeneratedReference,
   CadOpsVersion,
+  CadTopologyIdentitySourceSnapshot,
+  CadTopologyMatchResult,
   DocumentUnits,
   FeatureExtrudeSide,
   FeatureId,
@@ -36,6 +38,7 @@ import {
   findSketchProfileHealthEntry,
   type SketchProfileHealthEntry
 } from "./sketchProfileHealth";
+import { createTopologyAnchorReferenceChangesForBody } from "./topologyReferenceHealth";
 
 const SOURCE_BOUNDARY_NOTE =
   "Feature editability is derived from authoritative document source features and semantic generated/named references.";
@@ -47,11 +50,14 @@ export interface CreateFeatureEditabilityResponseOptions {
   readonly featureId: FeatureId;
   readonly proposedEdit?: CadFeatureEditProposal;
   readonly units: DocumentUnits;
-  readonly document: GeneratedReferencesDocument;
+  readonly document: GeneratedReferencesDocument & {
+    readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
+  };
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
   readonly sketchProfileHealth?: readonly SketchProfileHealthEntry[];
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export function createFeatureEditabilityResponse(
@@ -1650,8 +1656,18 @@ function createReferenceChangesForBody(args: {
         message: args.message
       })
     );
+  const topologyAnchorChanges = createTopologyAnchorReferenceChangesForBody({
+    topologyIdentity: args.options.document.topologyIdentity,
+    topologyMatchResults: args.options.topologyMatchResults,
+    bodyId: args.bodyId,
+    sourceFeatureId: args.sourceFeatureId,
+    targetFeatureId: args.targetFeatureId,
+    fallbackCategory: args.category,
+    diagnosticCode: args.diagnosticCode,
+    fallbackMessage: args.message
+  });
 
-  return [...changes, ...namedReferenceChanges];
+  return [...changes, ...namedReferenceChanges, ...topologyAnchorChanges];
 }
 
 function createNamedReferenceChange(args: {
