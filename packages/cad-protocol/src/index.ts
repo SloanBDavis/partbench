@@ -2895,6 +2895,7 @@ export type CadTopologyIdentityCapabilityId =
 export type CadTopologyIdentityDiagnosticCode =
   | "TOPOLOGY_IDENTITY_CONTRACT_READY"
   | "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED"
+  | "TOPOLOGY_SNAPSHOT_EXTRACTION_READY"
   | "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED"
   | "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED"
   | "TOPOLOGY_CHECKPOINT_PERSISTENCE_DEFERRED"
@@ -4224,8 +4225,38 @@ export interface CadBodyExactMetadataDiagnostic {
 export interface CadBodyExactMetadataTopologyCounts {
   readonly solidCount: number;
   readonly faceCount: number;
+  readonly wireCount?: number;
   readonly edgeCount: number;
   readonly vertexCount: number;
+}
+
+export interface CadBodyExactTopologyEntityCounts extends Required<CadBodyExactMetadataTopologyCounts> {
+  readonly bodyCount: number;
+  readonly loopCount: number;
+  readonly coedgeCount: number;
+  readonly axisCount: number;
+}
+
+export type CadBodyExactTopologySnapshotStatus = "ready" | "partial";
+
+export interface CadBodyExactTopologyEntityDescriptor {
+  readonly localId: string;
+  readonly kind: CadTopologyEntityKind | "solid";
+  readonly source: "kernel-derived";
+  readonly signature: string;
+}
+
+export interface CadBodyExactTopologySnapshot {
+  readonly source: "kernel-derived";
+  readonly status: CadBodyExactTopologySnapshotStatus;
+  readonly entityCounts: CadBodyExactTopologyEntityCounts;
+  readonly entityCount: number;
+  readonly entities: readonly CadBodyExactTopologyEntityDescriptor[];
+  readonly unsupportedEntityKinds: readonly CadTopologyEntityKind[];
+  readonly adjacencyAvailable: boolean;
+  readonly signatureAlgorithm: "partbench-derived-topology-snapshot-v1";
+  readonly signature: string;
+  readonly diagnostics: readonly CadBodyExactMetadataDiagnostic[];
 }
 
 export interface CadBodyExactMetadataSnapshot {
@@ -4237,6 +4268,7 @@ export interface CadBodyExactMetadataSnapshot {
   readonly surfaceArea?: number;
   readonly centroid?: Vec3;
   readonly topologyCounts?: CadBodyExactMetadataTopologyCounts;
+  readonly topologySnapshot?: CadBodyExactTopologySnapshot;
   readonly diagnostics: readonly CadBodyExactMetadataDiagnostic[];
 }
 

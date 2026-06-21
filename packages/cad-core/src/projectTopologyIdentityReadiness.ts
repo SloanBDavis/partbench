@@ -58,9 +58,9 @@ export function createProjectTopologyIdentityReadiness({
     createCapability(
       "snapshotExtraction",
       "Exact topology snapshot extraction",
-      "deferred",
-      "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
-      "Geometry-boundary extraction of exact B-rep topology snapshots is deferred to V13 Tranche B."
+      "supported",
+      "TOPOLOGY_SNAPSHOT_EXTRACTION_READY",
+      "Geometry-boundary extraction of derived exact topology snapshots is available for supported exact body sources. These snapshots are derived evidence, not persisted public topology identity."
     ),
     createCapability(
       "anchorPersistence",

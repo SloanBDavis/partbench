@@ -47,8 +47,11 @@ import {
 import {
   createOcctExactBodyMetadataWithInstance,
   createOcctExactBodyMetadataWithLoader,
+  createOcctExactTopologySnapshotWithInstance,
+  createOcctExactTopologySnapshotWithLoader,
   type OcctExactBodyMetadata,
   type OcctExactBodyMetadataInput,
+  type OcctExactTopologySnapshot,
   type OcctExactEdgeFinishMetadataSource,
   type OcctExactHoleMetadataSource
 } from "./exactMetadata";
@@ -81,6 +84,7 @@ export type {
   OcctTorusInput,
   OcctExactBodyMetadata,
   OcctExactBodyMetadataInput,
+  OcctExactTopologySnapshot,
   OcctExactEdgeFinishMetadataSource,
   OcctExactHoleMetadataSource,
   OcctRevolveProfileInput,
@@ -113,6 +117,8 @@ export {
   createOcctRevolveProfileMeshWithLoader,
   createOcctExactBodyMetadataWithInstance,
   createOcctExactBodyMetadataWithLoader,
+  createOcctExactTopologySnapshotWithInstance,
+  createOcctExactTopologySnapshotWithLoader,
   createOcctStepExportWithInstance,
   createOcctStepExportWithLoader,
   getOcctStepWriterCapabilityWithInstance,
@@ -250,6 +256,12 @@ export async function createOcctExactBodyMetadata(
   input: OcctExactBodyMetadataInput
 ): Promise<OcctExactBodyMetadata> {
   return createOcctExactBodyMetadataWithLoader(loadBrowserOcct, input);
+}
+
+export async function createOcctExactTopologySnapshot(
+  input: OcctExactBodyMetadataInput
+): Promise<OcctExactTopologySnapshot> {
+  return createOcctExactTopologySnapshotWithLoader(loadBrowserOcct, input);
 }
 
 export async function createOcctStepExport(

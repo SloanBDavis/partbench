@@ -23,6 +23,7 @@ export {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
@@ -160,6 +161,7 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.booleanFeature" &&
     kind !== "geometry-worker.edgeFinishFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
+    kind !== "geometry-worker.exactTopologySnapshot" &&
     kind !== "geometry-worker.exactExport"
   ) {
     return `Unsupported geometry worker request kind: ${kind}.`;
@@ -177,6 +179,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.hole" &&
     op !== "geometry.edgeFinish" &&
     op !== "geometry.exactBodyMetadata" &&
+    op !== "geometry.exactTopologySnapshot" &&
     op !== "geometry.exportStep"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;

@@ -2349,10 +2349,12 @@ Use these decisions when drafting or implementing V13 tranches:
    match results, evidence, repair candidates, command eligibility, and
    diagnostics. Added read-only `project.topologyIdentityReadiness` with thin
    agent/MCP pass-through. No schema migration or checkpoint persistence yet.
-2. **Exact Topology Snapshot Extraction** - geometry-kernel/worker support for
-   extracting face, loop/wire, oriented edge-use/coedge, edge, vertex, axis,
-   adjacency, and signature descriptors from exact B-rep results where the
-   OCCT boundary supports it. The output is derived evidence, not public
+2. **Implemented, partial: Exact Topology Snapshot Extraction** -
+   geometry-kernel/worker support for derived exact topology snapshots from
+   supported exact body sources. Current snapshots expose body/solid/face/wire/
+   edge/vertex counts and local derived descriptors; loop, coedge, axis,
+   ordered adjacency, and entity-level geometric descriptors remain structured
+   unavailable/deferred evidence. The output is derived evidence, not public
    identity.
 3. **V18 Source Contract And `.wcad` V2 Package Contract** - project schema and
    package decisions for topology identity settings, checkpoint metadata,

@@ -1246,7 +1246,56 @@ function createExactMetadataSnapshot(input: {
   readonly faceCount?: number;
   readonly edgeCount?: number;
   readonly vertexCount?: number;
+  readonly includeTopologySnapshot?: boolean;
 }): CadBodyDerivedExactMetadataSnapshot {
+  const topologySnapshot = input.includeTopologySnapshot
+    ? {
+        source: "kernel-derived" as const,
+        status: "partial" as const,
+        entityCounts: {
+          bodyCount: 1,
+          solidCount: 1,
+          faceCount: input.faceCount ?? 6,
+          wireCount: 6,
+          edgeCount: input.edgeCount ?? 12,
+          vertexCount: input.vertexCount ?? 8,
+          loopCount: 0,
+          coedgeCount: 0,
+          axisCount: 0
+        },
+        entityCount:
+          2 +
+          (input.faceCount ?? 6) +
+          6 +
+          (input.edgeCount ?? 12) +
+          (input.vertexCount ?? 8),
+        entities: [
+          {
+            localId: "snapshot-local:body:0",
+            kind: "body" as const,
+            source: "kernel-derived" as const,
+            signature: "topology-body-test"
+          },
+          ...Array.from({ length: 33 }, (_, index) => ({
+            localId: `snapshot-local:face:${index}`,
+            kind: "face" as const,
+            source: "kernel-derived" as const,
+            signature: `topology-face-test-${index}`
+          }))
+        ],
+        unsupportedEntityKinds: ["loop", "coedge", "axis"] as const,
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1" as const,
+        signature: "topology-snapshot-test",
+        diagnostics: [
+          {
+            code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
+            message: "Derived topology snapshot extracted."
+          }
+        ]
+      }
+    : undefined;
+
   return {
     bodyId: input.bodyId,
     sourceIdentitySignature: input.sourceIdentitySignature,
@@ -1269,6 +1318,7 @@ function createExactMetadataSnapshot(input: {
         edgeCount: input.edgeCount ?? 12,
         vertexCount: input.vertexCount ?? 8
       },
+      ...(topologySnapshot ? { topologySnapshot } : {}),
       diagnostics: []
     }
   };
@@ -17590,7 +17640,8 @@ describe("cad-core", () => {
     const exactMetadata = createExactMetadataSnapshot({
       bodyId,
       sourceIdentitySignature,
-      volume: 22
+      volume: 22,
+      includeTopologySnapshot: true
     });
     const measurements = engine.executeQuery({
       version: "cadops.v1",
@@ -17619,10 +17670,58 @@ describe("cad-core", () => {
         measurementConfidence: "kernel-derived",
         exactMetadata: {
           status: "healthy",
-          volume: 22
+          volume: 22,
+          topologySnapshot: {
+            status: "partial",
+            adjacencyAvailable: false,
+            signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+          }
         }
       }
     });
+    expect(JSON.stringify(topology)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("rejects malformed derived exact topology snapshots on body topology queries", () => {
+    const engine = createRectangleChamferEngine();
+    const bodyId = "body_chamfer_1";
+    const sourceIdentitySignature = readBodyTopologySourceSignature(
+      engine,
+      bodyId
+    );
+    const exactMetadata = createExactMetadataSnapshot({
+      bodyId,
+      sourceIdentitySignature,
+      includeTopologySnapshot: true
+    });
+    const malformedMetadata = {
+      ...exactMetadata,
+      metadata: {
+        ...exactMetadata.metadata!,
+        topologySnapshot: {
+          ...exactMetadata.metadata!.topologySnapshot!,
+          entityCount: 1
+        }
+      }
+    };
+    const beforeJson = exportCadProjectJson(engine);
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "body.topology",
+        bodyId,
+        derivedExactMetadata: malformedMetadata
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "body.topology",
+      error: { code: "INVALID_QUERY" }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
   it("uses derived exact metadata snapshots for V6 result body project health confidence", () => {
@@ -29289,8 +29388,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "snapshotExtraction",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "checkpointPersistence",
@@ -29323,8 +29422,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "supported"
         }),
         expect.objectContaining({
-          code: "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
-          status: "deferred"
+          code: "TOPOLOGY_SNAPSHOT_EXTRACTION_READY",
+          status: "supported"
         }),
         expect.objectContaining({
           code: "TOPOLOGY_SCHEMA_V18_DEFERRED",

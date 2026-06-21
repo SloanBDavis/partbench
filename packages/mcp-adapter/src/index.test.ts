@@ -1232,7 +1232,7 @@ describe("mcp-adapter", () => {
           }),
           expect.objectContaining({
             capability: "snapshotExtraction",
-            status: "deferred"
+            status: "supported"
           })
         ]),
         diagnostics: expect.arrayContaining([

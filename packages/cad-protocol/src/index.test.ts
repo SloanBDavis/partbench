@@ -2119,9 +2119,50 @@ describe("cad-protocol", () => {
             centroid: [2, 1, 1.5],
             topologyCounts: {
               solidCount: 1,
+              wireCount: 6,
               faceCount: 6,
               edgeCount: 12,
               vertexCount: 8
+            },
+            topologySnapshot: {
+              source: "kernel-derived",
+              status: "partial",
+              entityCounts: {
+                bodyCount: 1,
+                solidCount: 1,
+                faceCount: 6,
+                wireCount: 6,
+                edgeCount: 12,
+                vertexCount: 8,
+                loopCount: 0,
+                coedgeCount: 0,
+                axisCount: 0
+              },
+              entityCount: 34,
+              entities: [
+                {
+                  localId: "snapshot-local:body:0",
+                  kind: "body",
+                  source: "kernel-derived",
+                  signature: "topology-body-test"
+                },
+                ...Array.from({ length: 33 }, (_, index) => ({
+                  localId: `snapshot-local:face:${index}`,
+                  kind: "face" as const,
+                  source: "kernel-derived" as const,
+                  signature: `topology-face-test-${index}`
+                }))
+              ],
+              unsupportedEntityKinds: ["loop", "coedge", "axis"],
+              adjacencyAvailable: false,
+              signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+              signature: "topology-snapshot-test",
+              diagnostics: [
+                {
+                  code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
+                  message: "Derived topology snapshot extracted."
+                }
+              ]
             },
             diagnostics: []
           }
@@ -2165,9 +2206,50 @@ describe("cad-protocol", () => {
           centroid: [2, 1, 1.5],
           topologyCounts: {
             solidCount: 1,
+            wireCount: 6,
             faceCount: 6,
             edgeCount: 12,
             vertexCount: 8
+          },
+          topologySnapshot: {
+            source: "kernel-derived",
+            status: "partial",
+            entityCounts: {
+              bodyCount: 1,
+              solidCount: 1,
+              faceCount: 6,
+              wireCount: 6,
+              edgeCount: 12,
+              vertexCount: 8,
+              loopCount: 0,
+              coedgeCount: 0,
+              axisCount: 0
+            },
+            entityCount: 34,
+            entities: [
+              {
+                localId: "snapshot-local:body:0",
+                kind: "body",
+                source: "kernel-derived",
+                signature: "topology-body-test"
+              },
+              ...Array.from({ length: 33 }, (_, index) => ({
+                localId: `snapshot-local:face:${index}`,
+                kind: "face" as const,
+                source: "kernel-derived" as const,
+                signature: `topology-face-test-${index}`
+              }))
+            ],
+            unsupportedEntityKinds: ["loop", "coedge", "axis"],
+            adjacencyAvailable: false,
+            signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+            signature: "topology-snapshot-test",
+            diagnostics: [
+              {
+                code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
+                message: "Derived topology snapshot extracted."
+              }
+            ]
           },
           diagnostics: []
         },
@@ -2189,7 +2271,11 @@ describe("cad-protocol", () => {
         exactMetadata: {
           status: "healthy",
           volume: 24,
-          topologyCounts: { faceCount: 6 }
+          topologyCounts: { faceCount: 6 },
+          topologySnapshot: {
+            status: "partial",
+            adjacencyAvailable: false
+          }
         }
       }
     });

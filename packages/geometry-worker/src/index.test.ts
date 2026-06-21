@@ -6,6 +6,7 @@ import {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
   createExtrudeTessellationWorkerRequest,
@@ -522,6 +523,47 @@ describe("geometry-worker", () => {
         id: "worker_req_exact_metadata:payload",
         version: "geometry-kernel.v1",
         op: "geometry.exactBodyMetadata",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 3
+          },
+          depth: 5,
+          side: "positive"
+        }
+      }
+    });
+  });
+
+  it("creates a typed exact topology snapshot worker request", () => {
+    expect(
+      createExactTopologySnapshotWorkerRequest({
+        id: "worker_req_exact_topology_snapshot",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 3
+          },
+          depth: 5,
+          side: "positive"
+        }
+      })
+    ).toEqual({
+      id: "worker_req_exact_topology_snapshot",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactTopologySnapshot",
+      payload: {
+        id: "worker_req_exact_topology_snapshot:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologySnapshot",
         source: {
           kind: "extrude",
           sketchPlane: "XY",
@@ -1194,6 +1236,60 @@ describe("geometry-worker", () => {
     expect(response.response.metadata.volume).toBeCloseTo(60, 6);
     expect(response.response.metadata.surfaceArea).toBeCloseTo(94, 6);
     expect(response.response.metadata.measurementSource).toBe("kernel-derived");
+  }, 120_000);
+
+  it("returns exact topology snapshots through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactTopologySnapshotWorkerRequest({
+        id: "worker_req_exact_topology_snapshot_execute",
+        payloadId: "geometry_req_exact_topology_snapshot_execute",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      })
+    );
+
+    expect(response).toMatchObject({
+      id: "worker_req_exact_topology_snapshot_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactTopologySnapshot",
+      payloadId: "geometry_req_exact_topology_snapshot_execute",
+      transferables: [],
+      response: {
+        ok: true,
+        id: "geometry_req_exact_topology_snapshot_execute",
+        op: "geometry.exactTopologySnapshot",
+        warnings: []
+      }
+    });
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response.response.snapshot).toMatchObject({
+      sourceKind: "extrude",
+      source: "kernel-derived",
+      status: "partial",
+      adjacencyAvailable: false,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+    });
+    expect(response.response.snapshot.entityCounts.faceCount).toBe(6);
+    expect(response.response.snapshot.entityCount).toBe(
+      response.response.snapshot.entities.length
+    );
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
   }, 120_000);
 
   it("returns exact STEP bytes through the geometry kernel facade", async () => {

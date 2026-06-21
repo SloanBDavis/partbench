@@ -3,6 +3,7 @@ import type {
   BooleanExtrudesRequest,
   EdgeFinishRequest,
   ExactBodyMetadataRequest,
+  ExactTopologySnapshotRequest,
   ExactStepExportBodySource,
   ExactStepExportRequest,
   GeometryKernelErrorResponse,
@@ -28,6 +29,7 @@ import type {
 
 export type {
   GeometryKernelExactBodyMetadata,
+  GeometryKernelExactTopologySnapshot,
   GeometryKernelExactExportFormat,
   GeometryKernelExactStepExportArtifact
 } from "@web-cad/geometry-kernel";
@@ -39,6 +41,7 @@ export type GeometryWorkerRequestKind =
   | "geometry-worker.booleanFeature"
   | "geometry-worker.edgeFinishFeature"
   | "geometry-worker.exactMetadata"
+  | "geometry-worker.exactTopologySnapshot"
   | "geometry-worker.exactExport";
 
 export interface GeometryWorkerRequest<
@@ -554,6 +557,24 @@ export function createExactBodyMetadataWorkerRequest(input: {
       id: input.payloadId ?? `${input.id}:payload`,
       version: "geometry-kernel.v1",
       op: "geometry.exactBodyMetadata",
+      source: input.source
+    }
+  };
+}
+
+export function createExactTopologySnapshotWorkerRequest(input: {
+  readonly id: string;
+  readonly payloadId?: string;
+  readonly source: ExactTopologySnapshotRequest["source"];
+}): GeometryWorkerRequest<ExactTopologySnapshotRequest> {
+  return {
+    id: input.id,
+    version: "geometry-worker.v1",
+    kind: "geometry-worker.exactTopologySnapshot",
+    payload: {
+      id: input.payloadId ?? `${input.id}:payload`,
+      version: "geometry-kernel.v1",
+      op: "geometry.exactTopologySnapshot",
       source: input.source
     }
   };

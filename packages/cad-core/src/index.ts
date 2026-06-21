@@ -4381,6 +4381,8 @@ function isCadBodyExactMetadataSnapshotWithoutStatus(
     (value.centroid === undefined || isVec3(value.centroid)) &&
     (value.topologyCounts === undefined ||
       isCadBodyExactMetadataTopologyCounts(value.topologyCounts)) &&
+    (value.topologySnapshot === undefined ||
+      isCadBodyExactTopologySnapshot(value.topologySnapshot)) &&
     Array.isArray(value.diagnostics) &&
     value.diagnostics.every(isCadBodyExactMetadataDiagnostic)
   );
@@ -4405,6 +4407,10 @@ function isCadBodyExactMetadataTopologyCounts(value: unknown): boolean {
     typeof value.faceCount === "number" &&
     Number.isInteger(value.faceCount) &&
     value.faceCount >= 0 &&
+    (value.wireCount === undefined ||
+      (typeof value.wireCount === "number" &&
+        Number.isInteger(value.wireCount) &&
+        value.wireCount >= 0)) &&
     typeof value.edgeCount === "number" &&
     Number.isInteger(value.edgeCount) &&
     value.edgeCount >= 0 &&
@@ -4412,6 +4418,97 @@ function isCadBodyExactMetadataTopologyCounts(value: unknown): boolean {
     Number.isInteger(value.vertexCount) &&
     value.vertexCount >= 0
   );
+}
+
+function isCadBodyExactTopologySnapshot(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    value.source !== "kernel-derived" ||
+    (value.status !== "ready" && value.status !== "partial") ||
+    !isCadBodyExactTopologyEntityCounts(value.entityCounts) ||
+    typeof value.entityCount !== "number" ||
+    !Number.isInteger(value.entityCount) ||
+    value.entityCount < 0 ||
+    !Array.isArray(value.entities) ||
+    value.entities.length !== value.entityCount ||
+    !value.entities.every(isCadBodyExactTopologyEntityDescriptor) ||
+    !Array.isArray(value.unsupportedEntityKinds) ||
+    !value.unsupportedEntityKinds.every(isCadBodyExactTopologyEntityKind) ||
+    typeof value.adjacencyAvailable !== "boolean" ||
+    value.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
+    typeof value.signature !== "string" ||
+    !Array.isArray(value.diagnostics) ||
+    !value.diagnostics.every(isCadBodyExactMetadataDiagnostic)
+  ) {
+    return false;
+  }
+
+  const counts = value.entityCounts;
+  const expectedEntityCount =
+    counts.bodyCount +
+    counts.solidCount +
+    counts.faceCount +
+    counts.wireCount +
+    counts.edgeCount +
+    counts.vertexCount +
+    counts.loopCount +
+    counts.coedgeCount +
+    counts.axisCount;
+
+  return value.entityCount === expectedEntityCount;
+}
+
+function isCadBodyExactTopologyEntityCounts(value: unknown): value is {
+  readonly bodyCount: number;
+  readonly solidCount: number;
+  readonly faceCount: number;
+  readonly wireCount: number;
+  readonly edgeCount: number;
+  readonly vertexCount: number;
+  readonly loopCount: number;
+  readonly coedgeCount: number;
+  readonly axisCount: number;
+} {
+  return (
+    isRecord(value) &&
+    isNonNegativeInteger(value.bodyCount) &&
+    isNonNegativeInteger(value.solidCount) &&
+    isNonNegativeInteger(value.faceCount) &&
+    isNonNegativeInteger(value.wireCount) &&
+    isNonNegativeInteger(value.edgeCount) &&
+    isNonNegativeInteger(value.vertexCount) &&
+    isNonNegativeInteger(value.loopCount) &&
+    isNonNegativeInteger(value.coedgeCount) &&
+    isNonNegativeInteger(value.axisCount)
+  );
+}
+
+function isCadBodyExactTopologyEntityDescriptor(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.localId === "string" &&
+    isCadBodyExactTopologyEntityKind(value.kind) &&
+    value.source === "kernel-derived" &&
+    typeof value.signature === "string"
+  );
+}
+
+function isCadBodyExactTopologyEntityKind(value: unknown): boolean {
+  return (
+    value === "body" ||
+    value === "solid" ||
+    value === "face" ||
+    value === "wire" ||
+    value === "edge" ||
+    value === "vertex" ||
+    value === "loop" ||
+    value === "coedge" ||
+    value === "axis"
+  );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isCadBodyExactMetadataDiagnostic(

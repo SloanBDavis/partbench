@@ -41,6 +41,7 @@ export type GeometryKernelOp =
   | "geometry.hole"
   | "geometry.edgeFinish"
   | "geometry.exactBodyMetadata"
+  | "geometry.exactTopologySnapshot"
   | "geometry.exportStep";
 export type GeometryKernelPrimitive =
   | "box"
@@ -323,6 +324,13 @@ export interface ExactBodyMetadataRequest {
   readonly source: ExactBodyMetadataSource;
 }
 
+export interface ExactTopologySnapshotRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.exactTopologySnapshot";
+  readonly source: ExactBodyMetadataSource;
+}
+
 export interface ExactStepExportBodySource extends BooleanExtrudeSource {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -348,11 +356,14 @@ export type GeometryKernelRequest =
   | HoleRequest
   | EdgeFinishRequest
   | ExactBodyMetadataRequest
+  | ExactTopologySnapshotRequest
   | ExactStepExportRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
   GeometryKernelRequest,
-  ExactBodyMetadataRequest | ExactStepExportRequest
+  | ExactBodyMetadataRequest
+  | ExactTopologySnapshotRequest
+  | ExactStepExportRequest
 >;
 
 export interface SerializableMeshData {
@@ -371,6 +382,7 @@ export type GeometryKernelResponse =
 export type GeometryKernelSuccessResponse =
   | GeometryKernelMeshSuccessResponse
   | GeometryKernelExactBodyMetadataSuccessResponse
+  | GeometryKernelExactTopologySnapshotSuccessResponse
   | GeometryKernelExactStepExportSuccessResponse;
 
 export interface GeometryKernelMeshSuccessResponse {
@@ -386,6 +398,14 @@ export interface GeometryKernelExactBodyMetadataSuccessResponse {
   readonly id: string;
   readonly op: "geometry.exactBodyMetadata";
   readonly metadata: GeometryKernelExactBodyMetadata;
+  readonly warnings: readonly string[];
+}
+
+export interface GeometryKernelExactTopologySnapshotSuccessResponse {
+  readonly ok: true;
+  readonly id: string;
+  readonly op: "geometry.exactTopologySnapshot";
+  readonly snapshot: GeometryKernelExactTopologySnapshot;
   readonly warnings: readonly string[];
 }
 
@@ -464,6 +484,60 @@ export interface GeometryKernelExactBodyMetadata {
   readonly diagnostics: readonly GeometryKernelExactMetadataDiagnostic[];
 }
 
+export type GeometryKernelTopologySnapshotStatus = "ready" | "partial";
+export type GeometryKernelTopologyEntityKind =
+  | "body"
+  | "solid"
+  | "face"
+  | "wire"
+  | "edge"
+  | "vertex"
+  | "loop"
+  | "coedge"
+  | "axis";
+
+export type GeometryKernelTopologyDiagnosticCode =
+  | "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED"
+  | "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE"
+  | "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
+  | "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED";
+
+export interface GeometryKernelTopologyDiagnostic {
+  readonly code: GeometryKernelTopologyDiagnosticCode;
+  readonly severity: "info" | "warning";
+  readonly message: string;
+  readonly entityKind?: GeometryKernelTopologyEntityKind;
+}
+
+export interface GeometryKernelTopologyEntityDescriptor {
+  readonly localId: string;
+  readonly kind: GeometryKernelTopologyEntityKind;
+  readonly source: "kernel-derived";
+  readonly signature: string;
+}
+
+export interface GeometryKernelTopologyEntityCounts extends GeometryKernelTopologyCounts {
+  readonly bodyCount: number;
+  readonly wireCount: number;
+  readonly loopCount: number;
+  readonly coedgeCount: number;
+  readonly axisCount: number;
+}
+
+export interface GeometryKernelExactTopologySnapshot {
+  readonly sourceKind: ExactBodyMetadataSource["kind"];
+  readonly status: GeometryKernelTopologySnapshotStatus;
+  readonly entityCounts: GeometryKernelTopologyEntityCounts;
+  readonly entityCount: number;
+  readonly entities: readonly GeometryKernelTopologyEntityDescriptor[];
+  readonly unsupportedEntityKinds: readonly GeometryKernelTopologyEntityKind[];
+  readonly adjacencyAvailable: boolean;
+  readonly signatureAlgorithm: "partbench-derived-topology-snapshot-v1";
+  readonly signature: string;
+  readonly source: "kernel-derived";
+  readonly diagnostics: readonly GeometryKernelTopologyDiagnostic[];
+}
+
 export interface GeometryKernelMeshResult {
   readonly primitive: GeometryKernelPrimitive;
   readonly positions: Float32Array;
@@ -521,6 +595,10 @@ export type GeometryKernelExactBodyMetadataFactory = (
   input: Omit<ExactBodyMetadataRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactBodyMetadata>;
 
+export type GeometryKernelExactTopologySnapshotFactory = (
+  input: Omit<ExactTopologySnapshotRequest, "id" | "version" | "op">
+) => Promise<GeometryKernelExactTopologySnapshot>;
+
 export type GeometryKernelExactStepExportFactory = (
   input: Omit<ExactStepExportRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactStepExportArtifact>;
@@ -536,6 +614,7 @@ export interface GeometryKernelMeshFactories {
   readonly createEdgeFinishMesh?: GeometryKernelEdgeFinishMeshFactory;
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
+  readonly createExactTopologySnapshot?: GeometryKernelExactTopologySnapshotFactory;
   readonly createExactStepExport?: GeometryKernelExactStepExportFactory;
 }
 
@@ -544,11 +623,15 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
     ?
         | GeometryKernelExactBodyMetadataSuccessResponse
         | GeometryKernelErrorResponse
-    : T extends ExactStepExportRequest
+    : T extends ExactTopologySnapshotRequest
       ?
-          | GeometryKernelExactStepExportSuccessResponse
+          | GeometryKernelExactTopologySnapshotSuccessResponse
           | GeometryKernelErrorResponse
-      : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+      : T extends ExactStepExportRequest
+        ?
+            | GeometryKernelExactStepExportSuccessResponse
+            | GeometryKernelErrorResponse
+        : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
 
 const STEP_WRITER_CHECKED_BINDINGS = [
   "STEPControl_Writer_1",
@@ -657,6 +740,26 @@ export async function executeGeometryKernelRequestWithMeshFactory<
         id: request.id,
         op: request.op,
         metadata,
+        warnings: []
+      } as unknown as GeometryKernelResponseForRequest<T>;
+    }
+
+    if (request.op === "geometry.exactTopologySnapshot") {
+      const snapshot = await createExactTopologySnapshot(factories, request);
+
+      if (isInvalidExactTopologySnapshot(snapshot)) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned an exact topology snapshot with invalid or inconsistent entity data."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+
+      return {
+        ok: true,
+        id: request.id,
+        op: request.op,
+        snapshot,
         warnings: []
       } as unknown as GeometryKernelResponseForRequest<T>;
     }
@@ -830,6 +933,12 @@ function validateRequest(
 
     if (metadataSourceError) {
       return metadataSourceError;
+    }
+  } else if (request.op === "geometry.exactTopologySnapshot") {
+    const snapshotSourceError = validateExactBodyMetadataSource(request.source);
+
+    if (snapshotSourceError) {
+      return snapshotSourceError;
     }
   } else if (request.op === "geometry.exportStep") {
     if (request.bodies.length === 0) {
@@ -1019,6 +1128,23 @@ function createExactBodyMetadata(
   });
 }
 
+function createExactTopologySnapshot(
+  factories: GeometryKernelMeshFactories,
+  request: ExactTopologySnapshotRequest
+): Promise<GeometryKernelExactTopologySnapshot> {
+  if (!factories.createExactTopologySnapshot) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Exact topology snapshots require an OCCT topology snapshot factory with subshape traversal bindings."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createExactTopologySnapshot({
+    source: request.source
+  });
+}
+
 function createExactStepExport(
   factories: GeometryKernelMeshFactories,
   request: ExactStepExportRequest
@@ -1185,6 +1311,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Edge finish";
     case "geometry.exactBodyMetadata":
       return "Exact body metadata";
+    case "geometry.exactTopologySnapshot":
+      return "Exact topology snapshot";
     case "geometry.exportStep":
       return "STEP export";
   }
@@ -1616,6 +1744,96 @@ function isInvalidExactBodyMetadata(
         typeof diagnostic.message !== "string" ||
         diagnostic.message.trim().length === 0
     )
+  );
+}
+
+function isInvalidExactTopologySnapshot(
+  snapshot: GeometryKernelExactTopologySnapshot
+): boolean {
+  const expectedEntityCount =
+    snapshot.entityCounts.bodyCount +
+    snapshot.entityCounts.solidCount +
+    snapshot.entityCounts.faceCount +
+    snapshot.entityCounts.wireCount +
+    snapshot.entityCounts.edgeCount +
+    snapshot.entityCounts.vertexCount +
+    snapshot.entityCounts.loopCount +
+    snapshot.entityCounts.coedgeCount +
+    snapshot.entityCounts.axisCount;
+
+  return (
+    (snapshot.sourceKind !== "extrude" &&
+      snapshot.sourceKind !== "booleanExtrudes" &&
+      snapshot.sourceKind !== "revolve" &&
+      snapshot.sourceKind !== "hole" &&
+      snapshot.sourceKind !== "edgeFinish") ||
+    (snapshot.status !== "ready" && snapshot.status !== "partial") ||
+    snapshot.source !== "kernel-derived" ||
+    snapshot.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
+    typeof snapshot.signature !== "string" ||
+    snapshot.signature.trim().length === 0 ||
+    !isNonNegativeInteger(snapshot.entityCounts.bodyCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.solidCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.faceCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.wireCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.edgeCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.vertexCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.loopCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.coedgeCount) ||
+    !isNonNegativeInteger(snapshot.entityCounts.axisCount) ||
+    !isNonNegativeInteger(snapshot.entityCount) ||
+    snapshot.entityCount !== snapshot.entities.length ||
+    snapshot.entityCount !== expectedEntityCount ||
+    snapshot.entities.some(
+      (entity) =>
+        typeof entity.localId !== "string" ||
+        entity.localId.trim().length === 0 ||
+        !isTopologyEntityKind(entity.kind) ||
+        entity.source !== "kernel-derived" ||
+        typeof entity.signature !== "string" ||
+        entity.signature.trim().length === 0
+    ) ||
+    snapshot.unsupportedEntityKinds.some(
+      (kind) => !isTopologyEntityKind(kind)
+    ) ||
+    typeof snapshot.adjacencyAvailable !== "boolean" ||
+    !Array.isArray(snapshot.diagnostics) ||
+    snapshot.diagnostics.some(
+      (diagnostic) =>
+        !isTopologyDiagnosticCode(diagnostic.code) ||
+        (diagnostic.severity !== "info" && diagnostic.severity !== "warning") ||
+        typeof diagnostic.message !== "string" ||
+        diagnostic.message.trim().length === 0 ||
+        (diagnostic.entityKind !== undefined &&
+          !isTopologyEntityKind(diagnostic.entityKind))
+    )
+  );
+}
+
+function isTopologyEntityKind(
+  kind: string
+): kind is GeometryKernelTopologyEntityKind {
+  return (
+    kind === "body" ||
+    kind === "solid" ||
+    kind === "face" ||
+    kind === "wire" ||
+    kind === "edge" ||
+    kind === "vertex" ||
+    kind === "loop" ||
+    kind === "coedge" ||
+    kind === "axis"
+  );
+}
+
+function isTopologyDiagnosticCode(
+  code: string
+): code is GeometryKernelTopologyDiagnosticCode {
+  return (
+    code === "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED" ||
+    code === "GEOMETRY_TOPOLOGY_ENTITY_KIND_UNAVAILABLE" ||
+    code === "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE" ||
+    code === "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED"
   );
 }
 

@@ -2145,6 +2145,176 @@ describe("geometry-kernel facade", () => {
     expect(getGeometryResponseTransferables(response)).toEqual([]);
   });
 
+  it("returns exact topology snapshots from an injected topology factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactTopologySnapshot: async (input) => ({
+        sourceKind: input.source.kind,
+        status: "partial",
+        entityCounts: {
+          bodyCount: 1,
+          solidCount: 1,
+          faceCount: 6,
+          wireCount: 6,
+          edgeCount: 12,
+          vertexCount: 8,
+          loopCount: 0,
+          coedgeCount: 0,
+          axisCount: 0
+        },
+        entityCount: 34,
+        entities: [
+          {
+            localId: "snapshot-local:body:0",
+            kind: "body",
+            source: "kernel-derived",
+            signature: "topology-body-test"
+          },
+          ...Array.from({ length: 33 }, (_, index) => ({
+            localId: `snapshot-local:face:${index}`,
+            kind: "face" as const,
+            source: "kernel-derived" as const,
+            signature: `topology-face-test-${index}`
+          }))
+        ],
+        unsupportedEntityKinds: ["loop", "coedge", "axis"],
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        signature: "topology-snapshot-test",
+        source: "kernel-derived",
+        diagnostics: [
+          {
+            code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED",
+            severity: "info",
+            message: "Test topology snapshot extracted."
+          }
+        ]
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_exact_topology_snapshot",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologySnapshot",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_exact_topology_snapshot",
+      op: "geometry.exactTopologySnapshot",
+      snapshot: expect.objectContaining({
+        sourceKind: "extrude",
+        status: "partial",
+        entityCount: 34,
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+      }),
+      warnings: []
+    });
+    expect(getGeometryResponseTransferables(response)).toEqual([]);
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("rejects inconsistent exact topology snapshots from injected factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactTopologySnapshot: async (input) => ({
+        sourceKind: input.source.kind,
+        status: "partial",
+        entityCounts: {
+          bodyCount: 1,
+          solidCount: 1,
+          faceCount: 6,
+          wireCount: 6,
+          edgeCount: 12,
+          vertexCount: 8,
+          loopCount: 0,
+          coedgeCount: 0,
+          axisCount: 0
+        },
+        entityCount: 1,
+        entities: [
+          {
+            localId: "snapshot-local:body:0",
+            kind: "body",
+            source: "kernel-derived",
+            signature: "topology-body-test"
+          }
+        ],
+        unsupportedEntityKinds: ["loop", "coedge", "axis"],
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        signature: "topology-snapshot-test",
+        source: "kernel-derived",
+        diagnostics: []
+      })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_invalid_exact_topology_snapshot",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologySnapshot",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_invalid_exact_topology_snapshot",
+      op: "geometry.exactTopologySnapshot",
+      error: {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned an exact topology snapshot with invalid or inconsistent entity data."
+      },
+      warnings: []
+    });
+  });
+
   it("returns exact metadata for revolve sources from an injected metadata factory", async () => {
     const unusedFactory = async () => {
       throw new Error("Unexpected mesh factory call.");

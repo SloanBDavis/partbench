@@ -6,6 +6,7 @@ import {
   createOcctCylinderMesh,
   createOcctEdgeFinishMesh,
   createOcctExactBodyMetadata,
+  createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
   createOcctSphereMesh,
   createOcctStepExport,
@@ -316,6 +317,74 @@ describe("occt-wasm", () => {
       expect(metadata.measurementSource).toBe("kernel-derived");
       expect(metadata.measurementConfidence).toBe("kernel-derived");
       expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "returns derived exact topology snapshots through Open CASCADE WASM",
+    async () => {
+      const snapshot = await createOcctExactTopologySnapshot({
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      });
+
+      expect(snapshot).toMatchObject({
+        sourceKind: "extrude",
+        status: "partial",
+        source: "kernel-derived",
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        unsupportedEntityKinds: ["loop", "coedge", "axis"]
+      });
+      expect(snapshot.entityCounts).toMatchObject({
+        bodyCount: 1,
+        solidCount: 1,
+        faceCount: 6,
+        edgeCount: 12,
+        vertexCount: 8,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      });
+      expect(snapshot.entityCounts.wireCount).toBeGreaterThan(0);
+      expect(snapshot.entityCount).toBe(snapshot.entities.length);
+      expect(snapshot.entities).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "body",
+            source: "kernel-derived",
+            localId: expect.stringMatching(/^snapshot-local:body:/)
+          }),
+          expect.objectContaining({
+            kind: "face",
+            source: "kernel-derived",
+            localId: expect.stringMatching(/^snapshot-local:face:/)
+          })
+        ])
+      );
+      expect(snapshot.diagnostics).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED"
+          }),
+          expect.objectContaining({
+            code: "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
+          })
+        ])
+      );
+      expect(JSON.stringify(snapshot)).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+      );
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
