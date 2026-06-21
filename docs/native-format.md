@@ -31,7 +31,11 @@ exact STEP export for supported bodies. V11 Tranche C introduces
 `web-cad.project.v17` for saved advanced sketch constraint source records:
 tangent, concentric, equal length, equal radius, angle, and symmetry. This
 document continues to define the project-format and source/derived rules that
-storage and solver work must preserve.
+storage and solver work must preserve. V13 planning reserves
+`web-cad.project.v18` and `partbench.wcad.v2` for the general topology
+identity and B-rep checkpoint foundation if implementation persists topology
+anchors, explicit repair records, checkpoint metadata, or authoritative
+checkpoint payload entries.
 
 ## Current Format
 
@@ -1441,41 +1445,44 @@ web-cad.project.v13
 web-cad.project.v14
 web-cad.project.v15
 web-cad.project.v16
+web-cad.project.v17
 ```
 
-Schema V1 is migrated to V16 on parse/load by adding empty sketches, empty
-authored features, empty named references, empty parameters, empty sketch
-dimensions, empty sketch constraints, and fresh
+Schema V1 is migrated to the current document model on parse/load by adding
+empty sketches, empty authored features, empty named references, empty
+parameters, empty sketch dimensions, empty sketch constraints, and fresh
 sketch/feature/body/parameter/dimension/constraint counters. Schema V2 is
-migrated to V16 by preserving sketches and adding empty authored features, empty
-named references, empty parameters, empty sketch dimensions, empty sketch
-constraints, and fresh feature/body/parameter/dimension/constraint counters.
-Schema V3 is migrated to V16 by preserving sketches/features, treating all
-sketches as unattached, adding empty named references, empty parameters, empty
-sketch dimensions, empty sketch constraints, and defaulting authored extrude
-operation mode to `newBody`.
-Schema V4 is migrated to V16 by preserving sketches, authored features, and
-attached sketch metadata, plus empty named-reference, parameter,
-sketch-dimension, and sketch-constraint tables and `newBody` operation mode.
-Schema V5 is migrated to V16 by preserving sketches, authored features, attached
-sketch metadata, and named references while defaulting missing operation mode to
-`newBody` and adding empty parameters, sketch dimensions, and sketch
-constraints. Schema V6 is migrated to V16 by preserving all V6 source data and
-adding empty parameters, sketch dimensions, and sketch constraints. Schema V7 is
-migrated to V16 by preserving parameters and sketch dimensions and adding empty
-sketch constraints. Schema V8 is migrated to V16 by preserving horizontal and
-vertical sketch constraints. Schema V9 is migrated to V16 by preserving fixed
-point constraints. Schema V10 is migrated to V16 by preserving coincident point
-constraints. Schema V11 is migrated to V16 by preserving midpoint constraints
-and rejecting parallel constraints because they are a V12 source shape. Schema
-V12 is migrated to V16 by preserving parallel constraints and rejecting
-perpendicular constraints because they are a V13 source shape. Schema V13 is
-migrated to V16 by preserving perpendicular constraints and rejecting revolve
-features because they are a V14 source shape. Schema V14 is migrated to V16 by
+migrated by preserving sketches and adding empty authored features, empty named
+references, empty parameters, empty sketch dimensions, empty sketch constraints,
+and fresh feature/body/parameter/dimension/constraint counters. Schema V3 is
+migrated by preserving sketches/features, treating all sketches as unattached,
+adding empty named references, empty parameters, empty sketch dimensions, empty
+sketch constraints, and defaulting authored extrude operation mode to
+`newBody`.
+Schema V4 is migrated by preserving sketches, authored features, and attached
+sketch metadata, plus empty named-reference, parameter, sketch-dimension, and
+sketch-constraint tables and `newBody` operation mode. Schema V5 is migrated by
+preserving sketches, authored features, attached sketch metadata, and named
+references while defaulting missing operation mode to `newBody` and adding
+empty parameters, sketch dimensions, and sketch constraints. Schema V6 is
+migrated by preserving all V6 source data and adding empty parameters, sketch
+dimensions, and sketch constraints. Schema V7 is migrated by preserving
+parameters and sketch dimensions and adding empty sketch constraints. Schema V8
+is migrated by preserving horizontal and vertical sketch constraints. Schema V9
+is migrated by preserving fixed point constraints. Schema V10 is migrated by
+preserving coincident point constraints. Schema V11 is migrated by preserving
+midpoint constraints and rejecting parallel constraints because they are a V12
+source shape. Schema V12 is migrated by preserving parallel constraints and
+rejecting perpendicular constraints because they are a V13 source shape. Schema
+V13 is migrated by preserving perpendicular constraints and rejecting revolve
+features because they are a V14 source shape. Schema V14 is migrated by
 preserving authored revolve features and rejecting hole features because they
-are a V15 source shape. Schema V15 is migrated to V16 by preserving authored
-hole features and rejecting chamfer/fillet features because they are a V16
-source shape. Current imports reject
+are a V15 source shape. Schema V15 is migrated by preserving authored hole
+features and rejecting chamfer/fillet features because they are a V16 source
+shape. Schema V16 is migrated by preserving authored chamfer/fillet features
+and rejecting V11 advanced sketch solver constraints because they are a V17
+source shape. Schema V17 is loaded with V11 advanced sketch solver constraints
+intact. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
 targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,
@@ -1513,7 +1520,7 @@ Do not add more migration branches before another real format exists.
 
 ## V12 Stable Boolean Topology Storage Decision
 
-The planned V12 stable boolean topology release does not, by default, introduce
+The completed V12 stable boolean topology release does not introduce
 a new saved-project schema. Boolean topology readiness, generated boolean
 reference candidates, labels, measurements, derived exact signatures, reference
 health, repair eligibility, and release-smoke metadata are query-derived until a
@@ -1531,6 +1538,32 @@ package layout. A future `web-cad.project.v18` document can be stored inside the
 existing `document.cbor` entry if only document source fields change. A package
 layout change should be reserved for authoritative new package entries, such as
 source B-rep checkpoints, not for derived topology query output.
+
+## V13 General Topology Identity Storage Decision
+
+The planned V13 general topology identity release should introduce
+`web-cad.project.v18` only when it persists new source truth such as topology
+anchor records, checkpoint metadata records, explicit topology repair records,
+or exact checkpoint payload references. Query-only topology readiness, derived
+signatures, transient topology snapshots, and OPFS cache entries remain derived
+and do not justify V18 by themselves.
+
+Do not confuse the V13 release with `web-cad.project.v13`; that schema
+identifier already means persisted perpendicular-line sketch constraints from
+an older release. The next saved-project schema after V17 is
+`web-cad.project.v18`.
+
+If V13 persists authoritative B-rep checkpoint payloads, that is a native
+package layout change and should introduce `partbench.wcad.v2`. The V2 package
+should keep `manifest.json`, `document.cbor`, and `commands.cbor`, then add
+manifest-listed checkpoint entries such as B-rep payloads, topology snapshots,
+and signature records with content hashes, byte lengths, kernel/checkpoint
+versions, units, tolerance metadata, source identity, and structured corruption
+or incompatibility diagnostics.
+
+OPFS may cache unpacked checkpoint data or matcher acceleration structures, but
+OPFS remains rebuildable browser-private cache. Clearing OPFS must not remove
+authoritative checkpoint source from a `.wcad` package.
 
 ## V8 Native Package Direction
 
@@ -1670,9 +1703,12 @@ Likely rebuildable cache files are:
 - thumbnails
 - geometry diagnostics
 
-The current JSON format is the source-of-truth interchange format for the V4/V13
-foundation. It is not the final storage backend and does not imply OPFS or File
-System Access API behavior.
+The current JSON format is the source-of-truth interchange/debug format for the
+current V16/V17 document model. It is not the final storage backend and does
+not imply OPFS or File System Access API behavior. If V13 adds authoritative
+B-rep checkpoint payloads that JSON cannot carry losslessly, JSON export/import
+must report that boundary explicitly rather than silently dropping checkpoint
+source and claiming topology anchors are healthy.
 
 JSON export/import remains the deliberate debuggable interchange path. `.wcad`
 is now the runtime project-file workflow for current supported projects, using

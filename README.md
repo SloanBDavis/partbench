@@ -113,14 +113,11 @@ Current OCCT/WASM load-size notes live in `docs/occt-wasm-size.md`.
 
 - `docs/architecture.md` - long-term architecture.
 - `docs/implementation-plan.md` - current implementation source of truth and
-  roadmap.
-- `docs/archive/v4.md` - archived V4 constrained sketch solving milestone.
-- `docs/v10.md` - completed V10 editable feature history and stable modeling
-  references release record.
-- `docs/v11.md` - completed V11 full sketch solver and parametric sketch UX
-  release record.
+  roadmap, including condensed historical release records.
 - `docs/v12.md` - completed V12 stable boolean topology and result references
   release record.
+- `docs/v13.md` - planned V13 general topology identity and B-rep checkpoint
+  foundation release record.
 - `docs/native-format.md` - current JSON format and native project package
   direction.
 - `docs/occt-wasm-size.md` - OCCT/WASM size findings and recommendations.

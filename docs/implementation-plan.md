@@ -4,18 +4,16 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-20.
+Last updated: 2026-06-21.
 
 Use this document for day-to-day implementation decisions. Use
-`docs/architecture.md` for long-term design, `docs/archive/v4.md` for the
-archived V4 constrained sketch solving milestone, `docs/v10.md` for the
-completed editable feature history and stable modeling references release
-record, `docs/v11.md` for the completed full sketch solver and parametric
-sketch UX release record, `docs/v12.md` for the completed stable boolean topology
-and result references release record, `docs/native-format.md` for
-project-format direction, and `docs/occt-wasm-size.md` for OCCT/WASM load-size
-findings. V7, V8, and V9 are completed historical releases whose details are
-now condensed in this plan instead of maintained as separate release documents.
+`docs/architecture.md` for long-term design, `docs/v12.md` for the completed
+stable boolean topology and result references release record, `docs/v13.md` for
+the planned general topology identity and B-rep checkpoint foundation release
+record, `docs/native-format.md` for project-format direction, and
+`docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
+and V11 are completed historical releases whose details are now condensed in
+this plan instead of maintained as separate release documents.
 
 ## Active Rules
 
@@ -53,11 +51,13 @@ These constraints remain active:
     expansion, unrelated new modeling commands, persistent B-rep checkpoints,
     WebGPU, assemblies, STEP import, or hosted collaboration without explicit
     approval. V11 is complete as the explicit sketch solver expansion scope.
-    V12 is the explicit implementation scope for stable boolean topology and result
-    references. Completed V8, V9, V10, and V11 tranche records below remain
-    historical release records and compatibility guardrails. Do not re-open
-    those releases unless the user explicitly asks for a maintenance or
-    regression-fix tranche.
+    V12 is complete as the stable boolean topology and result references
+    release. V13 is the planned implementation scope for general topology
+    identity, B-rep checkpoints, topology anchors, matching, repair, and
+    checkpoint-backed commandability. Completed V8, V9, V10, V11, and V12
+    tranche records below remain historical release records and compatibility
+    guardrails. Do not re-open those releases unless the user explicitly asks
+    for a maintenance or regression-fix tranche.
 14. V8 Tranche A is implemented as a protocol and pure-helper slice only:
     `partbench.wcad.v1` manifest/source-identity types, structured package
     validation diagnostics, `project.packageReadiness`, and thin agent/MCP
@@ -221,8 +221,9 @@ These constraints remain active:
     workflow runner. It does not add CAD behavior, modeling commands, renderer
     authority, project/source schemas, persisted UI state, WebGPU, assemblies,
     STEP import, agent/MCP behavior, or `web-cad.project.v17`.
-34. V10 is complete in `docs/v10.md` as the editable feature history and stable
-    modeling references release record. Tranche A is implemented as the
+34. V10 is complete as the editable feature history and stable modeling
+    references release. Its release details are now condensed in this plan.
+    Tranche A is implemented as the
     `feature.editability` contract/query slice. Tranche B is implemented as the
     `project.dependencyGraph` and `reference.health` contract/query slice:
     source-derived graph nodes/edges and reference health cover sketches,
@@ -301,8 +302,9 @@ These constraints remain active:
     production WebGPU, assemblies, STEP import, broad sketch solving, broad new
     modeling features, or persisted UI state unless a later tranche explicitly
     scopes one of those items.
-35. V11 is complete in `docs/v11.md` as the full sketch solver and parametric
-    sketch UX release. Its center is source-backed constraints and dimensions,
+35. V11 is complete as the full sketch solver and parametric sketch UX release.
+    Its release details are now condensed in this plan. Its center is
+    source-backed constraints and dimensions,
     custom solver diagnostics, profile validity, drag-solve preview/commit,
     compact sketch UI, downstream V10 rebuild/reference-health integration,
     agent/MCP parity, and JSON/`.wcad` round-trips for new sketch source data.
@@ -348,6 +350,16 @@ These constraints remain active:
     B-rep checkpoints, WebGPU, STEP import, assemblies, broad new modeling
     commands, or a new saved-project schema unless a tranche explicitly adds new
     source-of-truth topology anchor data.
+37. V13 is planned in `docs/v13.md` as the general topology identity and B-rep
+    checkpoint foundation release. Its center is one shared subsystem for exact
+    topology snapshots, checkpoint package payloads, stable public topology
+    anchors, matching confidence/evidence, explicit repair records, reference
+    health integration, and command eligibility. V13 is allowed to introduce
+    `web-cad.project.v18` and `partbench.wcad.v2` only when it persists
+    topology anchors, checkpoint metadata, repair records, or authoritative
+    checkpoint payload entries. It must not treat OCCT indexes, renderer/mesh
+    IDs, GPU/selection-buffer IDs, OPFS paths, file handles, local paths, or
+    viewport/session state as public stable CAD references.
 
 ## Current Repo State
 
@@ -681,15 +693,18 @@ Current limitations:
 - There is no broad feature graph beyond current authored extrudes, scoped
   booleans, revolve, hole, and rectangle-edge chamfer/fillet workflows.
 - Generated references and healthy semantic topology exist for simple authored
-  rectangle/circle newBody extrude bodies, but boolean result bodies expose
-  structured ambiguous topology instead of generated topology/reference sets.
-  V6 revolve, hole, chamfer, and fillet result bodies also keep generated
-  references unsupported unless a future stable topological naming design is
-  explicitly implemented.
-- V12 now scopes the next stable-reference expansion: supported cut/add boolean
-  result bodies should gain command-ready generated topology where source
-  semantics prove identity, without promoting raw OCCT or renderer topology IDs
-  to public stable references.
+  rectangle/circle newBody extrude bodies and for the supported V12 cut/add
+  boolean result face/edge subsets. Unsupported target-carried/split,
+  intersection, seam, and broad result-body topology remains structured
+  diagnostic output rather than command-ready identity. V6 revolve, hole,
+  chamfer, and fillet result bodies still need a general stable topological
+  naming/checkpoint system before their arbitrary generated faces/edges can be
+  treated as robust command targets.
+- V13 now scopes that general topology identity foundation: exact topology
+  snapshots, B-rep checkpoints, stable topology anchors, matching confidence,
+  explicit repair records, reference-health integration, and command
+  eligibility without promoting raw OCCT or renderer topology IDs to public
+  stable references.
 - Feature tree, inspector, modeling workflow, agents, MCP, and the left
   `Selection` tab consume semantic selections that the UI already exposes. The
   current viewport supports body/object-granularity pick intent for current
@@ -703,15 +718,19 @@ Current limitations:
   future selection-buffer work, but the visible C4 product correction keeps the
   viewport unobstructed and moves current-selection detail into the left
   `Selection` tab.
-- There is no authoritative B-rep topology persisted in the document model.
+- There is not yet authoritative B-rep topology persisted in the document model.
+  V13 is planned to decide and implement the first checkpoint/anchor source
+  records and package payload rules where they are needed for real topology
+  identity.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
   through derived exact metadata snapshots on `body.topology`, `project.extents`,
   and `project.health`, not through persisted source data.
-- Circle target edge finishing, broad exact topology naming, shell, sweep, loft,
-  patterns, direct edits, general booleans, STEP import, production WebGPU,
-  assemblies, hosted collaboration, production MCP auth, and natural-language
-  command entry remain unimplemented unless scoped into a later release.
+- Circle target edge finishing, shell, sweep, loft, patterns, direct edits,
+  general booleans, STEP import, production WebGPU, assemblies, hosted
+  collaboration, production MCP auth, and natural-language command entry remain
+  unimplemented unless scoped into a later release. Broad exact topology naming
+  is now the planned V13 foundation rather than an unowned future item.
   V8 made `.wcad` the app-level project workflow: File System Access browsers
   can open/save/save-as through app-only handles, and other browsers use
   upload/download fallback. File handles are not written into cad-core, JSON,
@@ -762,10 +781,10 @@ constraint source data.
 
 ### V4 Constrained Sketch Solving
 
-V4 is archived in `docs/archive/v4.md`. It completed the constrained sketch
-solving milestone by adding a clearer solver/evaluator boundary, durable sketch
-point/entity targets, fixed/coincident/midpoint point constraints, parallel and
-perpendicular line constraints, solver-backed dimensions/orientation behavior,
+V4 completed the constrained sketch solving milestone by adding a clearer
+solver/evaluator boundary, durable sketch point/entity targets,
+fixed/coincident/midpoint point constraints, parallel and perpendicular line
+constraints, solver-backed dimensions/orientation behavior,
 regeneration/health hardening, UI support, and agent/MCP wrappers. V4 evolved
 project JSON through `web-cad.project.v13`.
 
@@ -1635,7 +1654,7 @@ display state should stay rebuildable or session-only by default.
 
 ## V10 Editable Feature History And Stable Modeling References Release
 
-V10 is complete in `docs/v10.md`. Tranche A, B, C1, C2, D1, D2, E1, E2, F1,
+V10 is complete and condensed here. Tranche A, B, C1, C2, D1, D2, E1, E2, F1,
 G1, G2, H1, and I1 are implemented as the feature editability contract,
 dependency/reference health, authored feature edit commit,
 rebuild-plan/body lifecycle contract, scoped transactional source-model
@@ -1873,7 +1892,7 @@ Do not combine these in one V10 tranche unless explicitly approved:
 
 ## V11 Full Sketch Solver And Parametric Sketch UX Release
 
-V11 is complete in `docs/v11.md`. It is the release that turned the earlier
+V11 is complete and condensed here. It is the release that turned the earlier
 limited sketch dimensions and constraint evaluator into a solver-backed
 parametric sketch workflow:
 
@@ -2139,7 +2158,7 @@ Use these decisions when drafting or implementing V12 tranches:
 - unsupported or ambiguous topology must remain structured diagnostics instead
   of silently retargeting or using display/kernel IDs.
 
-### V12 Proposed Tranche Sequence
+### V12 Completed Tranche Sequence
 
 1. **Boolean Topology Contract And Readiness** - implemented as the first typed
    protocol/core slice. It adds boolean result topology roles, provenance,
@@ -2249,6 +2268,143 @@ Do not combine these in one V12 tranche unless explicitly approved:
 - boolean topology work and WebGPU renderer/selection-buffer replacement;
 - boolean topology work and STEP import or assemblies;
 - boolean topology work and arbitrary topology naming for every OCCT result.
+
+## V13 General Topology Identity And B-Rep Checkpoint Foundation
+
+V13 is planned in `docs/v13.md`. It is the release that turns arbitrary exact
+topology from a deferred risk into a first-class subsystem:
+
+```text
+source document + exact B-rep result ->
+topology snapshot ->
+stable topology anchors ->
+checkpoint package payloads ->
+topology matching ->
+reference health and repair ->
+command-ready references
+```
+
+V13 should not be treated as another V12-style source-semantic role expansion.
+V12 proved stable boolean result references where source semantics were enough.
+V13 builds the broader machinery needed for general generated topology across
+existing and future exact feature families.
+
+### V13 Release Pillars
+
+V13 is organized around these pillars:
+
+- typed topology identity, topology snapshot, checkpoint, matching, and repair
+  protocol vocabulary;
+- exact topology snapshot extraction through geometry-worker/OCCT without
+  leaking raw kernel topology IDs;
+- `web-cad.project.v18` source records for topology anchors, checkpoint
+  metadata, explicit repair records, and topology identity settings when those
+  records become persisted source truth;
+- `partbench.wcad.v2` package entries for authoritative B-rep checkpoint,
+  topology snapshot, and signature payloads when checkpoint bytes become
+  lossless project data;
+- topology matching with confidence/evidence diagnostics for active, replaced,
+  split, merged, stale, consumed, ambiguous, missing, unsupported,
+  repair-needed, deleted, and failed states;
+- integration with `selection.referenceCandidates`, `reference.health`,
+  `project.dependencyGraph`, `project.rebuildPlan`, `feature.editability`,
+  semantic diffs, named-reference repair, agents, and MCP;
+- command eligibility for topology-anchor references only where validators and
+  geometry runtime support the target;
+- compact UI for topology health, repair candidates, checkpoint status, and
+  command-ready actions without viewport-blocking diagnostics.
+
+### V13 Answered Decisions
+
+Use these decisions when drafting or implementing V13 tranches:
+
+- V13 is a general topology identity/modeling-authority release, not a UI,
+  renderer, assembly, import, or broad new modeling-feature release;
+- public stable CAD references come from cad-core controlled generated
+  references or topology anchors, never raw OCCT topology indexes, renderer
+  IDs, mesh IDs, GPU/selection-buffer IDs, OPFS paths, file handles, local
+  paths, viewport pixels, or export artifact identifiers;
+- exact topology snapshots can contain private checkpoint-local kernel evidence
+  and extraction IDs, but those IDs remain inside geometry/checkpoint payloads;
+- feature-specific source-semantic roles remain high-confidence evidence and
+  should feed the V13 identity system instead of remaining a parallel
+  subsystem;
+- checkpoint records and topology anchors are source truth only when a tranche
+  explicitly adds them to `web-cad.project.v18`;
+- authoritative checkpoint payload bytes require package validation and should
+  introduce `partbench.wcad.v2` rather than hiding source B-rep data in OPFS;
+- JSON stays debug/interchange and must explicitly report lossy checkpoint
+  boundaries if it cannot carry full checkpoint payloads;
+- matching must expose confidence and evidence, not just a yes/no result;
+- ambiguous or low-confidence matches require explicit repair rather than
+  silent retargeting;
+- healthy identity and command eligibility are separate concepts: a face may be
+  stable enough to name or measure but still invalid for sketch-on-face or
+  edge-finish commands.
+
+### V13 Proposed Tranche Sequence
+
+1. **Topology Identity Protocol And Vocabulary** - typed protocol/core shapes
+   for topology snapshots, anchors, checkpoint metadata, match results,
+   evidence, repair candidates, command eligibility, and diagnostics. No schema
+   migration or checkpoint persistence yet.
+2. **Exact Topology Snapshot Extraction** - geometry-kernel/worker support for
+   extracting face, loop/wire, oriented edge-use/coedge, edge, vertex, axis,
+   adjacency, and signature descriptors from exact B-rep results where the
+   OCCT boundary supports it. The output is derived evidence, not public
+   identity.
+3. **V18 Source Contract And `.wcad` V2 Package Contract** - project schema and
+   package decisions for topology identity settings, checkpoint metadata,
+   topology anchors, repair records, and manifest-listed checkpoint payloads.
+4. **Checkpoint Write/Read And Validation** - durable checkpoint payload
+   creation, package entry validation, source identity checks, hash/length
+   checks, kernel/checkpoint compatibility diagnostics, `.wcad` v1 read
+   compatibility, and clear Project/File status.
+5. **Topology Matching Engine** - snapshot-to-snapshot matching with source
+   lineage, signatures, geometry, adjacency, kernel evidence where available,
+   and structured confidence/evidence output for active/replaced/split/merged/
+   deleted/ambiguous/repair-needed states.
+6. **Reference Health And Rebuild Integration** - existing reference,
+   dependency, rebuild, editability, and semantic-diff surfaces consume topology
+   matching and report topology-anchor effects consistently.
+7. **Topology Anchor And Repair Commands** - CADOps dry-run/commit paths to
+   create anchors and explicitly repair anchors or named references to
+   replacement candidates, with undo/redo, transaction history, UI affordances,
+   agent/MCP parity, and no silent retargeting.
+8. **Apply Identity To Existing Result Feature Families** - existing extrude,
+   cut/add boolean, revolve, hole, chamfer, and fillet result bodies flow
+   through the checkpoint/snapshot/anchor/matcher path. V12 source-semantic
+   references become high-confidence evidence in the shared system.
+9. **Command Eligibility For Topology Anchors** - existing commands consume
+   topology-anchor references where validators and runtime prove support:
+   sketch-on-face for planar anchors, chamfer/fillet for supported edge
+   anchors, exact measure/inspect, and downstream cut/add where active result
+   topology and body lifecycle allow it.
+10. **Product Integration And Topology Diagnostics** - compact Selection,
+    Inspector, Modeling, viewport contextual action, and Project/File surfaces
+    for topology health, matching evidence, repair candidates, checkpoint
+    package status, and lossy JSON warnings.
+11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
+    browser smokes for checkpoint save/open, rebuild, match, repair, command
+    eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and
+    no raw-ID leakage.
+
+### V13 Scope Guardrails
+
+Do not combine these in one V13 tranche unless explicitly approved:
+
+- schema/package migration and broad product UI changes;
+- checkpoint persistence and STEP import;
+- topology matching and new modeling families;
+- topology identity and WebGPU renderer replacement;
+- topology identity and assemblies;
+- topology identity and silent automatic named-reference retargeting;
+- topology-anchor command eligibility and unsupported runtime validators.
+
+V13 should not implement broad new solid feature families, STEP import,
+assemblies, production WebGPU, hosted collaboration, natural-language command
+entry, or parameter expressions. Those releases should build on V13 rather than
+compete with it.
 
 ## Definition of Done
 
