@@ -2386,12 +2386,19 @@ Use these decisions when drafting or implementing V13 tranches:
    Missing checkpoints, replaced, ambiguous/split/merged, deleted, unsupported,
    and repair-needed topology states remain structured diagnostics. Agent and
    MCP wrappers pass through the same evidence without gaining matching or
-   repair authority. Committed anchor creation/repair and command-time topology
-   retargeting remain later V13 work.
-7. **Topology Anchor And Repair Commands** - CADOps dry-run/commit paths to
-   create anchors and explicitly repair anchors or named references to
-   replacement candidates, with undo/redo, transaction history, UI affordances,
-   agent/MCP parity, and no silent retargeting.
+   repair authority. Committed anchor creation/repair is handled by the G first
+   command slice; command-time topology retargeting remains later V13 work.
+7. **Implemented, first command slice: Topology Anchor And Repair Commands** -
+   protocol, cad-core, agent, and MCP batch paths support
+   `topology.anchor.create` and `topology.anchor.repair`. Anchor creation records
+   source-backed V18 topology anchors against existing checkpoint records;
+   anchor repair appends explicit repair records and retargets the anchor to a
+   replacement checkpoint entity. Both commands support dry-run/commit through
+   CADOps, emit topology-anchor semantic diffs, participate in undo/redo and
+   transaction-history summaries, and preserve source-boundary validation. UI
+   repair affordances, named-reference repair to topology-anchor targets,
+   checkpoint creation commands, checkpoint payload entity validation, and
+   command-time topology-anchor eligibility remain later V13 work.
 8. **Apply Identity To Existing Result Feature Families** - existing extrude,
    cut/add boolean, revolve, hole, chamfer, and fillet result bodies flow
    through the checkpoint/snapshot/anchor/matcher path. V12 source-semantic

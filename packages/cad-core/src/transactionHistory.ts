@@ -83,6 +83,8 @@ function createOperationSummaries(
   let createdNamedReferenceIndex = 0;
   let repairedNamedReferenceIndex = 0;
   let deletedNamedReferenceIndex = 0;
+  let createdTopologyAnchorIndex = 0;
+  let repairedTopologyAnchorIndex = 0;
   let createdParameterIndex = 0;
   let deletedParameterIndex = 0;
   let createdSketchDimensionIndex = 0;
@@ -134,6 +136,18 @@ function createOperationSummaries(
       op.op === "reference.deleteName"
         ? transaction.diff.references?.namedDeleted?.[
             deletedNamedReferenceIndex++
+          ]
+        : undefined;
+    const createdTopologyAnchorRef =
+      op.op === "topology.anchor.create"
+        ? transaction.diff.references?.topologyAnchorsCreated?.[
+            createdTopologyAnchorIndex++
+          ]
+        : undefined;
+    const repairedTopologyAnchorRef =
+      op.op === "topology.anchor.repair"
+        ? transaction.diff.references?.topologyAnchorsRepaired?.[
+            repairedTopologyAnchorIndex++
           ]
         : undefined;
     const createdParameterRef =
@@ -751,6 +765,34 @@ function createOperationSummaries(
           generatedReferenceKind: deletedNamedReferenceRef?.kind
         });
       }
+
+      case "topology.anchor.create": {
+        return createReferenceOperationSummary({
+          op: op.op,
+          label: `Create ${op.entityKind} topology anchor ${op.anchorId}`,
+          bodyId: op.bodyId,
+          stableId: op.stableId,
+          topologyAnchorId: op.anchorId,
+          checkpointId: op.checkpointId,
+          checkpointEntityId: op.checkpointEntityId,
+          topologyEntityKind: createdTopologyAnchorRef?.entityKind
+        });
+      }
+
+      case "topology.anchor.repair": {
+        return createReferenceOperationSummary({
+          op: op.op,
+          label: `Repair topology anchor ${op.anchorId}`,
+          bodyId: repairedTopologyAnchorRef?.after.bodyId,
+          stableId: repairedTopologyAnchorRef?.after.stableId,
+          topologyAnchorId: op.anchorId,
+          checkpointId: op.replacementCheckpointId,
+          checkpointEntityId: op.replacementCheckpointEntityId,
+          repairId: op.repairId,
+          topologyEntityKind: repairedTopologyAnchorRef?.after.entityKind,
+          confidence: op.confidence
+        });
+      }
     }
   });
 }
@@ -905,7 +947,19 @@ function createReferenceOperationSummary(
     ...(summary.stableId ? { stableId: summary.stableId } : {}),
     ...(summary.generatedReferenceKind
       ? { generatedReferenceKind: summary.generatedReferenceKind }
-      : {})
+      : {}),
+    ...(summary.topologyAnchorId
+      ? { topologyAnchorId: summary.topologyAnchorId }
+      : {}),
+    ...(summary.checkpointId ? { checkpointId: summary.checkpointId } : {}),
+    ...(summary.checkpointEntityId
+      ? { checkpointEntityId: summary.checkpointEntityId }
+      : {}),
+    ...(summary.repairId ? { repairId: summary.repairId } : {}),
+    ...(summary.topologyEntityKind
+      ? { topologyEntityKind: summary.topologyEntityKind }
+      : {}),
+    ...(summary.confidence ? { confidence: summary.confidence } : {})
   };
 }
 
@@ -1015,7 +1069,13 @@ function cloneReferenceSemanticDiff(
   return {
     ...(diff.namedCreated ? { namedCreated: [...diff.namedCreated] } : {}),
     ...(diff.namedRepaired ? { namedRepaired: [...diff.namedRepaired] } : {}),
-    ...(diff.namedDeleted ? { namedDeleted: [...diff.namedDeleted] } : {})
+    ...(diff.namedDeleted ? { namedDeleted: [...diff.namedDeleted] } : {}),
+    ...(diff.topologyAnchorsCreated
+      ? { topologyAnchorsCreated: [...diff.topologyAnchorsCreated] }
+      : {}),
+    ...(diff.topologyAnchorsRepaired
+      ? { topologyAnchorsRepaired: [...diff.topologyAnchorsRepaired] }
+      : {})
   };
 }
 

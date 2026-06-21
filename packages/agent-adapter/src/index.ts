@@ -1346,9 +1346,16 @@ function createEntityChangeSummary(
   const namedReferenceCounts =
     response?.ok === true
       ? {
-          created: ops.filter((op) => op.op === "reference.nameGenerated")
-            .length,
-          modified: ops.filter((op) => op.op === "reference.repairName").length,
+          created: ops.filter(
+            (op) =>
+              op.op === "reference.nameGenerated" ||
+              op.op === "topology.anchor.create"
+          ).length,
+          modified: ops.filter(
+            (op) =>
+              op.op === "reference.repairName" ||
+              op.op === "topology.anchor.repair"
+          ).length,
           deleted: ops.filter((op) => op.op === "reference.deleteName").length
         }
       : emptyChangeCount();
@@ -2023,6 +2030,28 @@ function createOperationReview(
           `Delete named reference ${op.name}`
         ),
         referenceName: op.name
+      };
+
+    case "topology.anchor.create":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "create",
+          `Create ${op.entityKind} topology anchor ${op.anchorId} for ${op.bodyId}`
+        ),
+        bodyId: op.bodyId,
+        stableId: op.stableId
+      };
+
+    case "topology.anchor.repair":
+      return {
+        ...operationReviewBase(
+          index,
+          op,
+          "modify",
+          `Repair topology anchor ${op.anchorId} to checkpoint ${op.replacementCheckpointId}`
+        )
       };
   }
 }
@@ -3461,6 +3490,16 @@ function isTopologyEntityKind(value: unknown): boolean {
   );
 }
 
+function isTopologyAnchorEntityKind(value: unknown): boolean {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex" ||
+    value === "axis"
+  );
+}
+
 function isTopologyIdentityState(value: unknown): boolean {
   return (
     value === "active" ||
@@ -4161,6 +4200,35 @@ function isCadOp(value: unknown): value is CadOp {
 
   if (value.op === "reference.deleteName") {
     return typeof value.name === "string";
+  }
+
+  if (value.op === "topology.anchor.create") {
+    return (
+      typeof value.anchorId === "string" &&
+      isTopologyAnchorEntityKind(value.entityKind) &&
+      typeof value.bodyId === "string" &&
+      typeof value.checkpointId === "string" &&
+      typeof value.checkpointEntityId === "string" &&
+      (value.sourceFeatureId === undefined ||
+        typeof value.sourceFeatureId === "string") &&
+      (value.stableId === undefined || typeof value.stableId === "string") &&
+      (value.sourceSemanticRole === undefined ||
+        typeof value.sourceSemanticRole === "string") &&
+      (value.signatureHash === undefined ||
+        typeof value.signatureHash === "string")
+    );
+  }
+
+  if (value.op === "topology.anchor.repair") {
+    return (
+      typeof value.repairId === "string" &&
+      typeof value.anchorId === "string" &&
+      typeof value.replacementCheckpointId === "string" &&
+      typeof value.replacementCheckpointEntityId === "string" &&
+      isTopologyMatchConfidence(value.confidence) &&
+      (value.evidence === undefined || Array.isArray(value.evidence)) &&
+      (value.diagnostics === undefined || Array.isArray(value.diagnostics))
+    );
   }
 
   return false;

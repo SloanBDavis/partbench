@@ -192,6 +192,52 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes topology anchor commands through cad.batch to cad-core validation", () => {
+    const server = new CadMcpServer();
+
+    const response = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_topology_anchor",
+      arguments: {
+        batch: {
+          version: "cadops.v1",
+          mode: "dryRun",
+          ops: [
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_face_1",
+              entityKind: "face",
+              bodyId: "body_rect_1",
+              checkpointId: "checkpoint_1",
+              checkpointEntityId: "checkpoint-local-face-1"
+            }
+          ]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      toolName: "cad.batch",
+      isError: true,
+      structuredContent: {
+        ok: false,
+        requestId: "mcp_req_topology_anchor",
+        mode: "dryRun",
+        error: {
+          code: "TOPOLOGY_CHECKPOINT_NOT_FOUND"
+        },
+        review: {
+          operations: [
+            expect.objectContaining({
+              op: "topology.anchor.create",
+              intent: "create"
+            })
+          ]
+        }
+      }
+    });
+  });
+
   it("runs cad.batch commit and reports the object through cad.project_summary", () => {
     const server = new CadMcpServer();
 

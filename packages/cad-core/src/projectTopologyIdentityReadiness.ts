@@ -65,9 +65,9 @@ export function createProjectTopologyIdentityReadiness({
     createCapability(
       "anchorPersistence",
       "Topology anchor persistence",
-      "deferred",
-      "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED",
-      "Authoritative topology anchor records are typed in the V18 source contract, but anchor creation, matching, and repair maintenance are deferred."
+      "supported",
+      "TOPOLOGY_ANCHOR_PERSISTENCE_READY",
+      "Authoritative topology anchor records are typed in the V18 source contract and can be created through topology.anchor.create against existing checkpoint source records."
     ),
     createCapability(
       "checkpointPersistence",
@@ -86,16 +86,16 @@ export function createProjectTopologyIdentityReadiness({
     createCapability(
       "repairCommands",
       "Topology repair commands",
-      "deferred",
-      "TOPOLOGY_REPAIR_COMMANDS_DEFERRED",
-      "Explicit topology anchor and named-reference repair commands are deferred."
+      "supported",
+      "TOPOLOGY_REPAIR_COMMANDS_READY",
+      "Explicit topology anchor repair is available through topology.anchor.repair. Named-reference repair to topology-anchor targets and UI repair affordances remain deferred."
     ),
     createCapability(
       "commandEligibility",
       "Topology-anchor command eligibility",
       "deferred",
       "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
-      "Command eligibility for arbitrary topology anchors is deferred until anchors and matching exist."
+      "Command eligibility for arbitrary topology anchors remains deferred until command validators and geometry runtime paths explicitly accept topology-anchor targets."
     ),
     createCapability(
       "v18SourceContract",

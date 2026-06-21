@@ -192,6 +192,79 @@ describe("agent-adapter", () => {
     expect(engine.getDocument().objects.size).toBe(0);
   });
 
+  it("passes topology anchor commands through cad.batch with review labels", () => {
+    const engine = createTopologyAnchorEngine();
+    const op = {
+      op: "topology.anchor.create" as const,
+      anchorId: "anchor_face_2",
+      entityKind: "face" as const,
+      bodyId: "body_rect_1",
+      checkpointId: "checkpoint_1",
+      checkpointEntityId: "checkpoint-local-face-2",
+      stableId: "generated:face:body_rect_1:startCap"
+    };
+    const dryRun = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_topology_anchor_dry",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [op]
+      }
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      review: {
+        entityChanges: {
+          namedReferences: { created: 1, modified: 0, deleted: 0 }
+        },
+        operations: [
+          expect.objectContaining({
+            op: "topology.anchor.create",
+            intent: "create",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:startCap"
+          })
+        ]
+      }
+    });
+    expect(
+      engine
+        .getDocument()
+        .topologyIdentity?.anchors.some(
+          (anchor) => anchor.anchorId === "anchor_face_2"
+        )
+    ).toBe(false);
+
+    const commit = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_topology_anchor_commit",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [op]
+      }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      review: {
+        entityChanges: {
+          namedReferences: { created: 1, modified: 0, deleted: 0 }
+        }
+      }
+    });
+    expect(engine.getDocument().topologyIdentity?.anchors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ anchorId: "anchor_face_2" })
+      ])
+    );
+  });
+
   it("runs a CADOps commit batch and returns the transaction ID", () => {
     const adapter = new CadOpsAgentAdapter();
 

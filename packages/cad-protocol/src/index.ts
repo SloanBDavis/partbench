@@ -283,7 +283,9 @@ export type CadOp =
   | FeatureDeleteOp
   | ReferenceNameGeneratedOp
   | ReferenceRepairNameOp
-  | ReferenceDeleteNameOp;
+  | ReferenceDeleteNameOp
+  | TopologyAnchorCreateOp
+  | TopologyAnchorRepairOp;
 
 export interface DocumentUpdateUnitsOp {
   readonly op: "document.updateUnits";
@@ -700,6 +702,30 @@ export interface ReferenceDeleteNameOp {
   readonly name: NamedReferenceName;
 }
 
+export interface TopologyAnchorCreateOp {
+  readonly op: "topology.anchor.create";
+  readonly anchorId: string;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly checkpointEntityId: string;
+  readonly sourceFeatureId?: FeatureId;
+  readonly stableId?: string;
+  readonly sourceSemanticRole?: string;
+  readonly signatureHash?: string;
+}
+
+export interface TopologyAnchorRepairOp {
+  readonly op: "topology.anchor.repair";
+  readonly repairId: string;
+  readonly anchorId: string;
+  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointEntityId: string;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly evidence?: readonly CadTopologyMatchEvidence[];
+  readonly diagnostics?: readonly CadTopologyIdentityDiagnostic[];
+}
+
 export interface CadObjectRef {
   readonly id: ObjectId;
   readonly kind: CadObjectKind;
@@ -793,6 +819,23 @@ export interface CadNamedReferenceRef {
   readonly kind: CadGeneratedEntityKind;
 }
 
+export interface CadTopologyAnchorRef {
+  readonly anchorId: string;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly checkpointEntityId: string;
+  readonly sourceFeatureId?: FeatureId;
+  readonly stableId?: string;
+}
+
+export interface CadTopologyAnchorRepairRef {
+  readonly repairId: string;
+  readonly before: CadTopologyAnchorRef;
+  readonly after: CadTopologyAnchorRef;
+  readonly confidence: CadTopologyMatchConfidence;
+}
+
 export interface CadParameterRef {
   readonly id: ParameterId;
   readonly name: string;
@@ -860,6 +903,8 @@ export interface ReferenceSemanticDiff {
   readonly namedCreated?: readonly CadNamedReferenceRef[];
   readonly namedRepaired?: readonly CadNamedReferenceRepairRef[];
   readonly namedDeleted?: readonly CadNamedReferenceRef[];
+  readonly topologyAnchorsCreated?: readonly CadTopologyAnchorRef[];
+  readonly topologyAnchorsRepaired?: readonly CadTopologyAnchorRepairRef[];
 }
 
 export interface CadNamedReferenceRepairRef {
@@ -952,6 +997,12 @@ export type CadBatchValidationErrorCode =
   | "INVALID_REFERENCE_NAME"
   | "NAMED_REFERENCE_ALREADY_EXISTS"
   | "NAMED_REFERENCE_NOT_FOUND"
+  | "TOPOLOGY_ANCHOR_ALREADY_EXISTS"
+  | "TOPOLOGY_ANCHOR_NOT_FOUND"
+  | "TOPOLOGY_CHECKPOINT_NOT_FOUND"
+  | "TOPOLOGY_REPAIR_ALREADY_EXISTS"
+  | "INVALID_TOPOLOGY_ANCHOR"
+  | "INVALID_TOPOLOGY_REPAIR"
   | "FEATURE_ALREADY_EXISTS"
   | "FEATURE_NOT_FOUND"
   | "FEATURE_NOT_DELETABLE"
@@ -980,6 +1031,8 @@ export interface CadBatchValidationError {
   readonly bodyId?: BodyId;
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly path?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -2957,10 +3010,12 @@ export type CadTopologyIdentityDiagnosticCode =
   | "TOPOLOGY_SNAPSHOT_EXTRACTION_READY"
   | "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED"
   | "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED"
+  | "TOPOLOGY_ANCHOR_PERSISTENCE_READY"
   | "TOPOLOGY_CHECKPOINT_PERSISTENCE_READY"
   | "TOPOLOGY_CHECKPOINT_PERSISTENCE_DEFERRED"
   | "TOPOLOGY_MATCHING_ENGINE_DEFERRED"
   | "TOPOLOGY_REPAIR_COMMANDS_DEFERRED"
+  | "TOPOLOGY_REPAIR_COMMANDS_READY"
   | "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED"
   | "TOPOLOGY_SOURCE_CONTRACT_READY"
   | "TOPOLOGY_SOURCE_CONTRACT_INVALID"
@@ -4030,6 +4085,12 @@ export interface CadOperationSummary {
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly generatedReferenceKind?: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
+  readonly checkpointEntityId?: string;
+  readonly repairId?: string;
+  readonly topologyEntityKind?: CadTopologyAnchorEntityKind;
+  readonly confidence?: CadTopologyMatchConfidence;
   readonly operationMode?: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
 }

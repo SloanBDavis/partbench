@@ -1238,6 +1238,23 @@ describe("cad-protocol", () => {
       {
         op: "reference.deleteName",
         name: "Mounting face"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_face_1",
+        entityKind: "face",
+        bodyId: "body_1",
+        checkpointId: "checkpoint_1",
+        checkpointEntityId: "face_1",
+        stableId: "generated:face:body_1:endCap"
+      },
+      {
+        op: "topology.anchor.repair",
+        repairId: "repair_1",
+        anchorId: "anchor_face_1",
+        replacementCheckpointId: "checkpoint_2",
+        replacementCheckpointEntityId: "face_2",
+        confidence: "high"
       }
     ];
 
@@ -1279,7 +1296,9 @@ describe("cad-protocol", () => {
       "feature.delete",
       "reference.nameGenerated",
       "reference.repairName",
-      "reference.deleteName"
+      "reference.deleteName",
+      "topology.anchor.create",
+      "topology.anchor.repair"
     ]);
     expect(ops[0]).toMatchObject({
       op: "document.updateUnits",
@@ -1319,6 +1338,74 @@ describe("cad-protocol", () => {
     expect(repairNamedReferenceOp).toMatchObject({
       op: "reference.repairName",
       name: "Mounting face"
+    });
+    const topologyAnchorCreateOp: CadOp = {
+      op: "topology.anchor.create",
+      anchorId: "anchor_face_1",
+      entityKind: "face",
+      bodyId: "body_1",
+      checkpointId: "checkpoint_1",
+      checkpointEntityId: "face_1"
+    };
+    const topologyAnchorRepairOp: CadOp = {
+      op: "topology.anchor.repair",
+      repairId: "repair_1",
+      anchorId: "anchor_face_1",
+      replacementCheckpointId: "checkpoint_2",
+      replacementCheckpointEntityId: "face_2",
+      confidence: "high"
+    };
+    expect(topologyAnchorCreateOp).toMatchObject({
+      op: "topology.anchor.create",
+      anchorId: "anchor_face_1"
+    });
+    expect(topologyAnchorRepairOp).toMatchObject({
+      op: "topology.anchor.repair",
+      repairId: "repair_1"
+    });
+
+    const topologyAnchorDiff: SemanticDiff = {
+      created: [],
+      modified: [],
+      deleted: [],
+      references: {
+        topologyAnchorsCreated: [
+          {
+            anchorId: "anchor_face_1",
+            entityKind: "face",
+            bodyId: "body_1",
+            checkpointId: "checkpoint_1",
+            checkpointEntityId: "face_1",
+            stableId: "generated:face:body_1:endCap"
+          }
+        ],
+        topologyAnchorsRepaired: [
+          {
+            repairId: "repair_1",
+            confidence: "high",
+            before: {
+              anchorId: "anchor_face_1",
+              entityKind: "face",
+              bodyId: "body_1",
+              checkpointId: "checkpoint_1",
+              checkpointEntityId: "face_1"
+            },
+            after: {
+              anchorId: "anchor_face_1",
+              entityKind: "face",
+              bodyId: "body_2",
+              checkpointId: "checkpoint_2",
+              checkpointEntityId: "face_2"
+            }
+          }
+        ]
+      }
+    };
+    expect(
+      topologyAnchorDiff.references?.topologyAnchorsRepaired?.[0]
+    ).toMatchObject({
+      repairId: "repair_1",
+      confidence: "high"
     });
   });
 

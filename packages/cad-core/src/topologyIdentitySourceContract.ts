@@ -126,6 +126,7 @@ export function validateTopologyIdentitySourceSnapshot(
   validateRecordArray(value.checkpoints, "checkpoint", issues);
   validateRecordArray(value.anchors, "anchor", issues);
   validateRecordArray(value.repairs, "repair", issues);
+  validateTopologyIdentitySourceLinks(value, issues);
 
   return issues;
 }
@@ -575,6 +576,149 @@ function validateRecordArray(
   }
 }
 
+function validateTopologyIdentitySourceLinks(
+  value: Record<string, unknown>,
+  issues: CadTopologyIdentityDiagnostic[]
+): void {
+  if (
+    !Array.isArray(value.checkpoints) ||
+    !Array.isArray(value.anchors) ||
+    !Array.isArray(value.repairs) ||
+    !value.checkpoints.every(isRecord) ||
+    !value.anchors.every(isRecord) ||
+    !value.repairs.every(isRecord)
+  ) {
+    return;
+  }
+
+  const checkpointIds = collectUniqueTopologyIds({
+    records: value.checkpoints,
+    field: "checkpointId",
+    label: "checkpoint",
+    issues
+  });
+  const anchorIds = collectUniqueTopologyIds({
+    records: value.anchors,
+    field: "anchorId",
+    label: "anchor",
+    issues
+  });
+  collectUniqueTopologyIds({
+    records: value.repairs,
+    field: "repairId",
+    label: "repair",
+    issues
+  });
+
+  for (const anchor of value.anchors) {
+    const checkpointId = anchor.checkpointId;
+    if (typeof checkpointId === "string" && !checkpointIds.has(checkpointId)) {
+      issues.push(
+        createTopologyDiagnostic(
+          "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+          "error",
+          `Topology anchor ${String(anchor.anchorId)} targets missing checkpoint ${checkpointId}.`,
+          {
+            checkpointId,
+            anchorId:
+              typeof anchor.anchorId === "string" ? anchor.anchorId : undefined,
+            expected: "existing checkpoint id",
+            received: checkpointId
+          }
+        )
+      );
+    }
+  }
+
+  for (const repair of value.repairs) {
+    const anchorId = repair.anchorId;
+    if (typeof anchorId === "string" && !anchorIds.has(anchorId)) {
+      issues.push(
+        createTopologyDiagnostic(
+          "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+          "error",
+          `Topology repair ${String(repair.repairId)} targets missing anchor ${anchorId}.`,
+          {
+            anchorId,
+            expected: "existing anchor id",
+            received: anchorId
+          }
+        )
+      );
+    }
+
+    for (const field of [
+      "previousCheckpointId",
+      "replacementCheckpointId"
+    ] as const) {
+      const checkpointId = repair[field];
+      if (
+        typeof checkpointId === "string" &&
+        !checkpointIds.has(checkpointId)
+      ) {
+        issues.push(
+          createTopologyDiagnostic(
+            "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+            "error",
+            `Topology repair ${String(repair.repairId)} targets missing ${field} ${checkpointId}.`,
+            {
+              checkpointId,
+              anchorId: typeof anchorId === "string" ? anchorId : undefined,
+              expected: "existing checkpoint id",
+              received: checkpointId
+            }
+          )
+        );
+      }
+    }
+  }
+}
+
+function collectUniqueTopologyIds(args: {
+  readonly records: readonly Record<string, unknown>[];
+  readonly field: string;
+  readonly label: string;
+  readonly issues: CadTopologyIdentityDiagnostic[];
+}): ReadonlySet<string> {
+  const ids = new Set<string>();
+
+  for (const record of args.records) {
+    const id = record[args.field];
+    if (typeof id !== "string" || id.length === 0) {
+      args.issues.push(
+        createTopologyDiagnostic(
+          "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+          "error",
+          `Topology identity ${args.label} record is missing ${args.field}.`,
+          {
+            expected: "non-empty string",
+            received: typeof id
+          }
+        )
+      );
+      continue;
+    }
+
+    if (ids.has(id)) {
+      args.issues.push(
+        createTopologyDiagnostic(
+          "TOPOLOGY_SOURCE_CONTRACT_INVALID",
+          "error",
+          `Duplicate topology identity ${args.label} id: ${id}.`,
+          {
+            expected: "unique id",
+            received: id
+          }
+        )
+      );
+    }
+
+    ids.add(id);
+  }
+
+  return ids;
+}
+
 function validateEntryMetadata(
   value: Record<string, unknown>,
   role: WcadPackageEntryRole,
@@ -643,7 +787,10 @@ function createTopologyDiagnostic(
   code: CadTopologyIdentityDiagnostic["code"],
   severity: CadTopologyIdentityDiagnostic["severity"],
   message: string,
-  details: Pick<CadTopologyIdentityDiagnostic, "expected" | "received"> = {}
+  details: Pick<
+    CadTopologyIdentityDiagnostic,
+    "anchorId" | "checkpointId" | "expected" | "received"
+  > = {}
 ): CadTopologyIdentityDiagnostic {
   return {
     code,

@@ -97,6 +97,10 @@ import type {
   TorusDimensions,
   BodyId,
   CadTransactionAuditMetadata,
+  CadTopologyAnchorRef,
+  CadTopologyAnchorRepairRef,
+  CadTopologyAnchorSourceRecord,
+  CadTopologyRepairSourceRecord,
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
   FeatureExtrudeOperationMode,
@@ -193,6 +197,7 @@ import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentit
 import { createTopologyMatchSnapshotsResponse } from "./topologyMatching";
 import {
   collectWcadV2CheckpointSourceEntries,
+  createEmptyTopologyIdentitySourceSnapshot,
   createWcadV2CheckpointEntryPaths,
   validateTopologyIdentitySourceSnapshot,
   validateWcadManifestV2Contract
@@ -3682,6 +3687,8 @@ type MutableReferenceSemanticDiff = {
   namedCreated: CadNamedReferenceRef[];
   namedRepaired: CadNamedReferenceRepairRef[];
   namedDeleted: CadNamedReferenceRef[];
+  topologyAnchorsCreated: CadTopologyAnchorRef[];
+  topologyAnchorsRepaired: CadTopologyAnchorRepairRef[];
 };
 
 type MutableParameterSemanticDiff = {
@@ -4658,6 +4665,194 @@ function applyOperation(
       return;
     }
 
+    case "topology.anchor.create": {
+      const topologyIdentity = ensureTopologyIdentitySource(state);
+
+      if (
+        topologyIdentity.anchors.some(
+          (anchor) => anchor.anchorId === op.anchorId
+        )
+      ) {
+        throwValidationError({
+          code: "TOPOLOGY_ANCHOR_ALREADY_EXISTS",
+          message: `Topology anchor already exists: ${op.anchorId}`,
+          opIndex,
+          topologyAnchorId: op.anchorId,
+          path: operationPath(opIndex, "anchorId"),
+          expected: "unique topology anchor id",
+          received: op.anchorId
+        });
+      }
+
+      const checkpoint = topologyIdentity.checkpoints.find(
+        (candidate) => candidate.checkpointId === op.checkpointId
+      );
+
+      if (!checkpoint) {
+        throwValidationError({
+          code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
+          message: `Topology checkpoint does not exist: ${op.checkpointId}`,
+          opIndex,
+          topologyAnchorId: op.anchorId,
+          checkpointId: op.checkpointId,
+          path: operationPath(opIndex, "checkpointId"),
+          expected: "existing topology checkpoint",
+          received: op.checkpointId
+        });
+      }
+
+      if (!documentBodyExists(state, op.bodyId)) {
+        throwValidationError({
+          code: "BODY_NOT_FOUND",
+          message: `Body does not exist: ${op.bodyId}`,
+          opIndex,
+          bodyId: op.bodyId,
+          path: operationPath(opIndex, "bodyId"),
+          expected: "existing body",
+          received: op.bodyId
+        });
+      }
+
+      if (checkpoint.bodyId !== op.bodyId) {
+        throwValidationError({
+          code: "INVALID_TOPOLOGY_ANCHOR",
+          message: `Topology anchor body ${op.bodyId} does not match checkpoint body ${checkpoint.bodyId}.`,
+          opIndex,
+          bodyId: op.bodyId,
+          topologyAnchorId: op.anchorId,
+          checkpointId: checkpoint.checkpointId,
+          path: operationPath(opIndex, "bodyId"),
+          expected: checkpoint.bodyId,
+          received: op.bodyId
+        });
+      }
+
+      if (op.sourceFeatureId && !state.features.has(op.sourceFeatureId)) {
+        throwValidationError({
+          code: "FEATURE_NOT_FOUND",
+          message: `Feature does not exist: ${op.sourceFeatureId}`,
+          opIndex,
+          featureId: op.sourceFeatureId,
+          path: operationPath(opIndex, "sourceFeatureId"),
+          expected: "existing feature",
+          received: op.sourceFeatureId
+        });
+      }
+
+      const anchor: CadTopologyAnchorSourceRecord = {
+        anchorId: op.anchorId,
+        entityKind: op.entityKind,
+        bodyId: op.bodyId,
+        checkpointId: op.checkpointId,
+        checkpointEntityId: op.checkpointEntityId,
+        ...((op.sourceFeatureId ?? checkpoint.sourceFeatureId)
+          ? {
+              sourceFeatureId: op.sourceFeatureId ?? checkpoint.sourceFeatureId
+            }
+          : {}),
+        ...(op.stableId ? { stableId: op.stableId } : {}),
+        ...(op.sourceSemanticRole
+          ? { sourceSemanticRole: op.sourceSemanticRole }
+          : {}),
+        ...(op.signatureHash ? { signatureHash: op.signatureHash } : {}),
+        state: "active",
+        diagnostics: []
+      };
+
+      state.topologyIdentity = {
+        ...topologyIdentity,
+        anchors: [...topologyIdentity.anchors, anchor]
+      };
+      pushTopologyAnchorCreated(diff, anchor);
+      return;
+    }
+
+    case "topology.anchor.repair": {
+      const topologyIdentity = requireTopologyIdentitySource(
+        state,
+        opIndex,
+        op.anchorId
+      );
+      const anchor = topologyIdentity.anchors.find(
+        (candidate) => candidate.anchorId === op.anchorId
+      );
+
+      if (!anchor) {
+        throwValidationError({
+          code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+          message: `Topology anchor does not exist: ${op.anchorId}`,
+          opIndex,
+          topologyAnchorId: op.anchorId,
+          path: operationPath(opIndex, "anchorId"),
+          expected: "existing topology anchor",
+          received: op.anchorId
+        });
+      }
+
+      if (
+        topologyIdentity.repairs.some(
+          (repair) => repair.repairId === op.repairId
+        )
+      ) {
+        throwValidationError({
+          code: "TOPOLOGY_REPAIR_ALREADY_EXISTS",
+          message: `Topology repair already exists: ${op.repairId}`,
+          opIndex,
+          topologyAnchorId: op.anchorId,
+          path: operationPath(opIndex, "repairId"),
+          expected: "unique topology repair id",
+          received: op.repairId
+        });
+      }
+
+      const replacementCheckpoint = topologyIdentity.checkpoints.find(
+        (candidate) => candidate.checkpointId === op.replacementCheckpointId
+      );
+
+      if (!replacementCheckpoint) {
+        throwValidationError({
+          code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
+          message: `Replacement topology checkpoint does not exist: ${op.replacementCheckpointId}`,
+          opIndex,
+          topologyAnchorId: op.anchorId,
+          checkpointId: op.replacementCheckpointId,
+          path: operationPath(opIndex, "replacementCheckpointId"),
+          expected: "existing replacement topology checkpoint",
+          received: op.replacementCheckpointId
+        });
+      }
+
+      const repair: CadTopologyRepairSourceRecord = {
+        repairId: op.repairId,
+        anchorId: anchor.anchorId,
+        previousCheckpointId: anchor.checkpointId,
+        replacementCheckpointId: op.replacementCheckpointId,
+        replacementCheckpointEntityId: op.replacementCheckpointEntityId,
+        confidence: op.confidence,
+        evidence: op.evidence ?? [],
+        diagnostics: op.diagnostics ?? []
+      };
+      const repairedAnchor: CadTopologyAnchorSourceRecord = {
+        ...anchor,
+        bodyId: replacementCheckpoint.bodyId,
+        checkpointId: op.replacementCheckpointId,
+        checkpointEntityId: op.replacementCheckpointEntityId,
+        sourceFeatureId: replacementCheckpoint.sourceFeatureId,
+        state: "active",
+        diagnostics: []
+      };
+
+      state.topologyIdentity = {
+        ...topologyIdentity,
+        anchors: topologyIdentity.anchors.map((candidate) =>
+          candidate.anchorId === anchor.anchorId ? repairedAnchor : candidate
+        ),
+        repairs: [...topologyIdentity.repairs, repair]
+      };
+      pushTopologyAnchorRepaired(diff, repair, anchor, repairedAnchor);
+      return;
+    }
+
     default: {
       const unknownOp = op as unknown;
 
@@ -4812,6 +5007,8 @@ function isCadOperationKind(value: string): boolean {
     case "reference.nameGenerated":
     case "reference.repairName":
     case "reference.deleteName":
+    case "topology.anchor.create":
+    case "topology.anchor.repair":
       return true;
   }
 
@@ -5100,6 +5297,16 @@ function isTopologyEntityKind(value: unknown): boolean {
   );
 }
 
+function isTopologyAnchorEntityKind(value: unknown): boolean {
+  return (
+    value === "body" ||
+    value === "face" ||
+    value === "edge" ||
+    value === "vertex" ||
+    value === "axis"
+  );
+}
+
 function isTopologyIdentityState(value: unknown): boolean {
   return (
     value === "active" ||
@@ -5125,6 +5332,30 @@ function isTopologyMatchConfidence(value: unknown): boolean {
     value === "medium" ||
     value === "high" ||
     value === "exact"
+  );
+}
+
+function isTopologyMatchEvidenceShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.kind === "string" &&
+    isTopologyMatchConfidence(value.confidence) &&
+    typeof value.message === "string" &&
+    (value.weight === undefined || typeof value.weight === "number")
+  );
+}
+
+function isTopologyIdentityDiagnosticShape(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    (value.status === "supported" ||
+      value.status === "deferred" ||
+      value.status === "unsupported") &&
+    (value.severity === "info" ||
+      value.severity === "warning" ||
+      value.severity === "error") &&
+    typeof value.message === "string"
   );
 }
 
@@ -11877,6 +12108,22 @@ function namedReferenceRef(
   };
 }
 
+function topologyAnchorRef(
+  anchor: CadTopologyAnchorSourceRecord
+): CadTopologyAnchorRef {
+  return {
+    anchorId: anchor.anchorId,
+    entityKind: anchor.entityKind,
+    bodyId: anchor.bodyId,
+    checkpointId: anchor.checkpointId,
+    checkpointEntityId: anchor.checkpointEntityId,
+    ...(anchor.sourceFeatureId
+      ? { sourceFeatureId: anchor.sourceFeatureId }
+      : {}),
+    ...(anchor.stableId ? { stableId: anchor.stableId } : {})
+  };
+}
+
 function parameterRef(parameter: CadParameter): CadParameterRef {
   return {
     id: parameter.id,
@@ -12116,16 +12363,71 @@ function pushNamedReferenceDeleted(
   ensureReferenceDiff(diff).namedDeleted.push(namedReferenceRef(reference));
 }
 
+function pushTopologyAnchorCreated(
+  diff: MutableSemanticDiff,
+  anchor: CadTopologyAnchorSourceRecord
+): void {
+  ensureReferenceDiff(diff).topologyAnchorsCreated.push(
+    topologyAnchorRef(anchor)
+  );
+}
+
+function pushTopologyAnchorRepaired(
+  diff: MutableSemanticDiff,
+  repair: CadTopologyRepairSourceRecord,
+  before: CadTopologyAnchorSourceRecord,
+  after: CadTopologyAnchorSourceRecord
+): void {
+  ensureReferenceDiff(diff).topologyAnchorsRepaired.push({
+    repairId: repair.repairId,
+    before: topologyAnchorRef(before),
+    after: topologyAnchorRef(after),
+    confidence: repair.confidence
+  });
+}
+
 function ensureReferenceDiff(
   diff: MutableSemanticDiff
 ): MutableReferenceSemanticDiff {
   diff.references ??= {
     namedCreated: [],
     namedRepaired: [],
-    namedDeleted: []
+    namedDeleted: [],
+    topologyAnchorsCreated: [],
+    topologyAnchorsRepaired: []
   };
 
   return diff.references;
+}
+
+function ensureTopologyIdentitySource(
+  state: MutableDocumentState
+): CadTopologyIdentitySourceSnapshot {
+  if (!state.topologyIdentity) {
+    state.topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+  }
+
+  return state.topologyIdentity;
+}
+
+function requireTopologyIdentitySource(
+  state: MutableDocumentState,
+  opIndex: number,
+  anchorId: string
+): CadTopologyIdentitySourceSnapshot {
+  if (!state.topologyIdentity) {
+    throwValidationError({
+      code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+      message: `Topology anchor does not exist: ${anchorId}`,
+      opIndex,
+      topologyAnchorId: anchorId,
+      path: operationPath(opIndex, "anchorId"),
+      expected: "existing topology identity source block",
+      received: anchorId
+    });
+  }
+
+  return state.topologyIdentity;
 }
 
 function pushParameterCreated(
@@ -21453,6 +21755,39 @@ function isCadOp(value: unknown): value is CadOp {
     return typeof value.name === "string";
   }
 
+  if (value.op === "topology.anchor.create") {
+    return (
+      isNonEmptyString(value.anchorId) &&
+      isTopologyAnchorEntityKind(value.entityKind) &&
+      isNonEmptyString(value.bodyId) &&
+      isNonEmptyString(value.checkpointId) &&
+      isNonEmptyString(value.checkpointEntityId) &&
+      (value.sourceFeatureId === undefined ||
+        isNonEmptyString(value.sourceFeatureId)) &&
+      (value.stableId === undefined || isNonEmptyString(value.stableId)) &&
+      (value.sourceSemanticRole === undefined ||
+        isNonEmptyString(value.sourceSemanticRole)) &&
+      (value.signatureHash === undefined ||
+        isNonEmptyString(value.signatureHash))
+    );
+  }
+
+  if (value.op === "topology.anchor.repair") {
+    return (
+      isNonEmptyString(value.repairId) &&
+      isNonEmptyString(value.anchorId) &&
+      isNonEmptyString(value.replacementCheckpointId) &&
+      isNonEmptyString(value.replacementCheckpointEntityId) &&
+      isTopologyMatchConfidence(value.confidence) &&
+      (value.evidence === undefined ||
+        (Array.isArray(value.evidence) &&
+          value.evidence.every(isTopologyMatchEvidenceShape))) &&
+      (value.diagnostics === undefined ||
+        (Array.isArray(value.diagnostics) &&
+          value.diagnostics.every(isTopologyIdentityDiagnosticShape)))
+    );
+  }
+
   return false;
 }
 
@@ -21669,7 +22004,13 @@ function isReferenceSemanticDiff(
         value.namedRepaired.every(isCadNamedReferenceRepairRef))) &&
     (value.namedDeleted === undefined ||
       (Array.isArray(value.namedDeleted) &&
-        value.namedDeleted.every(isCadNamedReferenceRef)))
+        value.namedDeleted.every(isCadNamedReferenceRef))) &&
+    (value.topologyAnchorsCreated === undefined ||
+      (Array.isArray(value.topologyAnchorsCreated) &&
+        value.topologyAnchorsCreated.every(isCadTopologyAnchorRef))) &&
+    (value.topologyAnchorsRepaired === undefined ||
+      (Array.isArray(value.topologyAnchorsRepaired) &&
+        value.topologyAnchorsRepaired.every(isCadTopologyAnchorRepairRef)))
   );
 }
 
@@ -21847,6 +22188,32 @@ function isCadNamedReferenceRepairRef(
   );
 }
 
+function isCadTopologyAnchorRef(value: unknown): value is CadTopologyAnchorRef {
+  return (
+    isRecord(value) &&
+    typeof value.anchorId === "string" &&
+    isTopologyAnchorEntityKind(value.entityKind) &&
+    typeof value.bodyId === "string" &&
+    typeof value.checkpointId === "string" &&
+    typeof value.checkpointEntityId === "string" &&
+    (value.sourceFeatureId === undefined ||
+      typeof value.sourceFeatureId === "string") &&
+    (value.stableId === undefined || typeof value.stableId === "string")
+  );
+}
+
+function isCadTopologyAnchorRepairRef(
+  value: unknown
+): value is CadTopologyAnchorRepairRef {
+  return (
+    isRecord(value) &&
+    typeof value.repairId === "string" &&
+    isCadTopologyAnchorRef(value.before) &&
+    isCadTopologyAnchorRef(value.after) &&
+    isTopologyMatchConfidence(value.confidence)
+  );
+}
+
 function isCadParameterRef(value: unknown): value is CadParameterRef {
   return (
     isRecord(value) &&
@@ -21998,6 +22365,10 @@ function isSketchEntity(value: unknown): value is SketchEntitySnapshot {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function isDocumentUnits(value: unknown): value is DocumentUnits {
