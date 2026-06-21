@@ -74,6 +74,7 @@ import {
 } from "./projectExportReadiness";
 import { validateGeneratedReference } from "./generatedReferences";
 import { writeZipStore } from "./wcadZip";
+import { encodeCanonicalCbor } from "./canonicalCbor";
 
 function getExtrudeFeature(
   engine: CadEngine,
@@ -183,6 +184,92 @@ function createCircleExtrudeEngine(): CadEngine {
   ]);
 
   return engine;
+}
+
+function createV18CheckpointFixture(): {
+  readonly project: CadProject;
+  readonly checkpointPayload: NonNullable<
+    NonNullable<
+      Parameters<typeof exportCadProjectToWcad>[1]
+    >["topologyCheckpoints"]
+  >[number];
+} {
+  const engine = createRectangleExtrudeEngine();
+  const baseProject = exportCadProject(engine);
+  const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+  const paths = createWcadV2CheckpointEntryPaths("checkpoint_1");
+  const placeholderSourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+  };
+  const project: CadProject = {
+    ...baseProject,
+    schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+    document: {
+      ...baseProject.document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        checkpoints: [
+          {
+            checkpointId: "checkpoint_1",
+            bodyId: "body_rect_1",
+            sourceFeatureId: "feat_rect_1",
+            sourceIdentity: placeholderSourceIdentity,
+            packageVersion: "partbench.wcad.v2",
+            projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+            brepEntryPath: paths.brep,
+            topologyEntryPath: paths.topology,
+            signatureEntryPath: paths.signature,
+            status: "active",
+            diagnostics: []
+          }
+        ]
+      }
+    }
+  };
+  const checkpointPayload = {
+    checkpointId: "checkpoint_1",
+    bodyId: "body_rect_1",
+    sourceFeatureId: "feat_rect_1",
+    kernel: {
+      boundary: "geometry-kernel" as const,
+      snapshotAlgorithm: "partbench-derived-topology-snapshot-v1" as const
+    },
+    tolerance: {
+      linearTolerance: 0.001,
+      angularToleranceDegrees: 0.01
+    },
+    brepBytes: new TextEncoder().encode("real checkpoint brep bytes"),
+    topologyBytes: encodeCanonicalCbor({
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 0,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 0,
+      entities: [],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "topology_signature",
+      diagnostics: []
+    }),
+    signatureBytes: encodeCanonicalCbor({
+      checkpointId: "checkpoint_1",
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "topology_signature"
+    })
+  };
+
+  return { project, checkpointPayload };
 }
 
 function createV17TangentRectangleProfileProject(): CadProject {
@@ -29556,6 +29643,226 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("keeps ordinary WCAD v1 read/write unchanged while preserving checkpointed V18 projects through WCAD v2", async () => {
+    const v1Export = await exportCadProjectWcad(createRectangleExtrudeEngine());
+    const v1Read = await readCadProjectWcad(v1Export.bytes);
+
+    expect(v1Export.manifest.packageVersion).toBe("partbench.wcad.v1");
+    expect(v1Export.checkpointPayloads).toBeUndefined();
+    expect(v1Read.ok).toBe(true);
+    if (!v1Read.ok) {
+      throw new Error("Expected WCAD v1 read to succeed.");
+    }
+    expect(v1Read.manifest.packageVersion).toBe("partbench.wcad.v1");
+    expect(v1Read.checkpointPayloads).toBeUndefined();
+
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+    const v2Export = await exportCadProjectToWcad(project, {
+      createdAt: "2026-06-21T00:00:00.000Z",
+      topologyCheckpoints: [checkpointPayload]
+    });
+    const v2Read = await readCadProjectWcad(v2Export.bytes);
+
+    expect(v2Export.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(v2Export.checkpointPayloads).toHaveLength(1);
+    expect(v2Export.sourceIdentity.sha256).toBe(
+      v2Export.manifest.sourceIdentity.sha256
+    );
+    expect(JSON.stringify(v2Export.manifest)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+    expect(v2Read.ok).toBe(true);
+    if (!v2Read.ok) {
+      throw new Error("Expected WCAD v2 read to succeed.");
+    }
+    expect(v2Read.project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V18);
+    expect(v2Read.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(v2Read.checkpointPayloads).toHaveLength(1);
+    expect(Array.from(v2Read.checkpointPayloads?.[0]?.brepBytes ?? [])).toEqual(
+      Array.from(checkpointPayload.brepBytes)
+    );
+    expect(
+      Array.from(v2Read.checkpointPayloads?.[0]?.topologyBytes ?? [])
+    ).toEqual(Array.from(checkpointPayload.topologyBytes));
+    expect(
+      Array.from(v2Read.checkpointPayloads?.[0]?.signatureBytes ?? [])
+    ).toEqual(Array.from(checkpointPayload.signatureBytes));
+  });
+
+  it("blocks WCAD v2 writes when V18 source checkpoint records have no payload bytes", async () => {
+    const { project } = createV18CheckpointFixture();
+
+    await expect(exportCadProjectToWcad(project)).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_MISSING_CHECKPOINT_ENTRY",
+          severity: "error"
+        })
+      ])
+    });
+  });
+
+  it("returns structured diagnostics for missing or corrupt WCAD v2 checkpoint payloads", async () => {
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+    const exported = await exportCadProjectToWcad(project, {
+      topologyCheckpoints: [checkpointPayload]
+    });
+    const manifestBytes = new TextEncoder().encode(
+      `${JSON.stringify(exported.manifest, null, 2)}\n`
+    );
+    const checkpoint = exported.checkpointPayloads?.[0];
+
+    if (!checkpoint) {
+      throw new Error("Expected checkpoint payload.");
+    }
+
+    const missingSignature = await readCadProjectWcad(
+      writeZipStore([
+        { path: "manifest.json", bytes: manifestBytes },
+        { path: "document.cbor", bytes: exported.documentBytes },
+        { path: "commands.cbor", bytes: exported.commandsBytes },
+        {
+          path: checkpoint.manifestEntry.brep.path,
+          bytes: checkpoint.brepBytes
+        },
+        {
+          path: checkpoint.manifestEntry.topology.path,
+          bytes: checkpoint.topologyBytes
+        }
+      ])
+    );
+
+    expect(missingSignature.ok).toBe(false);
+    if (missingSignature.ok) {
+      throw new Error("Expected missing checkpoint read to fail.");
+    }
+    expect(missingSignature.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_MISSING_CHECKPOINT_ENTRY",
+          entryRole: "checkpoint-signature"
+        })
+      ])
+    );
+
+    const corruptTopology = await readCadProjectWcad(
+      writeZipStore([
+        { path: "manifest.json", bytes: manifestBytes },
+        { path: "document.cbor", bytes: exported.documentBytes },
+        { path: "commands.cbor", bytes: exported.commandsBytes },
+        {
+          path: checkpoint.manifestEntry.brep.path,
+          bytes: checkpoint.brepBytes
+        },
+        {
+          path: checkpoint.manifestEntry.topology.path,
+          bytes: new Uint8Array([0xff])
+        },
+        {
+          path: checkpoint.manifestEntry.signature.path,
+          bytes: checkpoint.signatureBytes
+        }
+      ])
+    );
+
+    expect(corruptTopology.ok).toBe(false);
+    if (corruptTopology.ok) {
+      throw new Error("Expected corrupt topology read to fail.");
+    }
+    expect(corruptTopology.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_HASH_MISMATCH",
+          entryRole: "checkpoint-topology"
+        }),
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          entryRole: "checkpoint-topology"
+        })
+      ])
+    );
+  });
+
+  it("rejects WCAD v2 source identity mismatches", async () => {
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+    const exported = await exportCadProjectToWcad(project, {
+      topologyCheckpoints: [checkpointPayload]
+    });
+    const wrongSourceIdentity = {
+      ...exported.sourceIdentity,
+      sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+    };
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    if (exported.manifest.packageVersion !== "partbench.wcad.v2") {
+      throw new Error("Expected WCAD v2 manifest.");
+    }
+    const manifest = {
+      ...exported.manifest,
+      sourceIdentity: wrongSourceIdentity,
+      topologyIdentity: {
+        ...exported.manifest.topologyIdentity,
+        checkpoints: exported.manifest.topologyIdentity.checkpoints.map(
+          (checkpoint) => ({
+            ...checkpoint,
+            sourceIdentity: wrongSourceIdentity,
+            brep: {
+              ...checkpoint.brep,
+              sourceIdentity: wrongSourceIdentity
+            },
+            topology: {
+              ...checkpoint.topology,
+              sourceIdentity: wrongSourceIdentity
+            },
+            signature: {
+              ...checkpoint.signature,
+              sourceIdentity: wrongSourceIdentity
+            }
+          })
+        )
+      }
+    };
+    const checkpoint = exported.checkpointPayloads?.[0];
+
+    if (!checkpoint) {
+      throw new Error("Expected checkpoint payload.");
+    }
+
+    const result = await readCadProjectWcad(
+      writeZipStore([
+        {
+          path: "manifest.json",
+          bytes: new TextEncoder().encode(
+            `${JSON.stringify(manifest, null, 2)}\n`
+          )
+        },
+        { path: "document.cbor", bytes: exported.documentBytes },
+        { path: "commands.cbor", bytes: exported.commandsBytes },
+        {
+          path: checkpoint.manifestEntry.brep.path,
+          bytes: checkpoint.brepBytes
+        },
+        {
+          path: checkpoint.manifestEntry.topology.path,
+          bytes: checkpoint.topologyBytes
+        },
+        {
+          path: checkpoint.manifestEntry.signature.path,
+          bytes: checkpoint.signatureBytes
+        }
+      ])
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected source identity mismatch read to fail.");
+    }
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "WCAD_SOURCE_IDENTITY_MISMATCH" })
+      ])
+    );
+  });
+
   it("reports V13 topology identity readiness without creating anchors or checkpoints", () => {
     const engine = createRectangleExtrudeEngine();
     const beforeJson = exportCadProjectJson(engine);
@@ -29603,8 +29910,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "checkpointPersistence",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "matchingEngine",

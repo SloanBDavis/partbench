@@ -67,14 +67,14 @@ export function createProjectTopologyIdentityReadiness({
       "Topology anchor persistence",
       "deferred",
       "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED",
-      "Authoritative topology anchor records are deferred until the V18 source contract tranche."
+      "Authoritative topology anchor records are typed in the V18 source contract, but anchor creation, matching, and repair maintenance are deferred."
     ),
     createCapability(
       "checkpointPersistence",
       "B-rep checkpoint persistence",
-      "deferred",
-      "TOPOLOGY_CHECKPOINT_PERSISTENCE_DEFERRED",
-      "Exact B-rep checkpoint metadata and package payload persistence are deferred to later V13 tranches."
+      "supported",
+      "TOPOLOGY_CHECKPOINT_PERSISTENCE_READY",
+      "WCAD v2 can preserve and validate caller-supplied checkpoint B-rep, topology, and signature payload bytes. Geometry-boundary B-rep checkpoint creation remains deferred."
     ),
     createCapability(
       "matchingEngine",
@@ -109,7 +109,7 @@ export function createProjectTopologyIdentityReadiness({
       "WCAD v2 checkpoint package contract",
       "supported",
       "TOPOLOGY_PACKAGE_V2_CONTRACT_READY",
-      "partbench.wcad.v2 checkpoint payload entries and manifest validation are typed. Current .wcad v1 read/write remains unchanged until checkpoint persistence is implemented."
+      "partbench.wcad.v2 checkpoint payload entries, manifest validation, package source identity, and read/write preservation are implemented while current .wcad v1 read/write remains unchanged."
     ),
     createCapability(
       "protocolVocabulary",

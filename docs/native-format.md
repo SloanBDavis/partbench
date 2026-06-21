@@ -1569,8 +1569,11 @@ or incompatibility diagnostics.
 
 V13 Tranche C types the `.wcad` v2 manifest and checkpoint entry contract,
 including checkpoint B-rep, topology, and signature payload paths under
-`checkpoints/`. It does not yet write or read checkpoint payload bytes; that
-remains the checkpoint persistence tranche.
+`checkpoints/`. V13 Tranche D adds package-level read/write preservation for
+caller-supplied checkpoint B-rep, topology, and signature payload bytes, with
+manifest path, hash, byte-length, source-identity, and topology/signature CBOR
+validation. Geometry-boundary B-rep checkpoint byte creation remains deferred;
+cad-core must not synthesize placeholder B-rep data.
 
 OPFS may cache unpacked checkpoint data or matcher acceleration structures, but
 OPFS remains rebuildable browser-private cache. Clearing OPFS must not remove

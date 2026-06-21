@@ -1,10 +1,18 @@
 import {
+  CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
+  CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
   WCAD_COMMANDS_ENTRY_PATH,
   WCAD_DOCUMENT_ENTRY_PATH,
   WCAD_MANIFEST_ENTRY_PATH,
   WCAD_PACKAGE_VERSION,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
   type WcadManifestV1,
+  type WcadManifestV2,
+  type WcadTopologyCheckpointKernelMetadata,
+  type WcadTopologyCheckpointManifestEntry,
+  type WcadTopologyCheckpointPayloadEntry,
+  type WcadTopologyCheckpointToleranceMetadata,
+  type WcadPackageEntryMetadata,
   type WcadPackageValidationIssue,
   type WcadSourceIdentity,
   type WcadPackageEntryRole
@@ -180,7 +188,12 @@ import {
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
 import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentityReadiness";
-import { validateTopologyIdentitySourceSnapshot } from "./topologyIdentitySourceContract";
+import {
+  collectWcadV2CheckpointSourceEntries,
+  createWcadV2CheckpointEntryPaths,
+  validateTopologyIdentitySourceSnapshot,
+  validateWcadManifestV2Contract
+} from "./topologyIdentitySourceContract";
 import { SHA256_HEX_PATTERN } from "./sha256";
 import { readZipStore, writeZipStore } from "./wcadZip";
 
@@ -786,26 +799,52 @@ export interface CadProject {
   readonly redoStack: readonly Transaction[];
 }
 
+export interface WcadTopologyCheckpointPayloadInput {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly units?: DocumentUnits;
+  readonly kernel: WcadTopologyCheckpointKernelMetadata;
+  readonly tolerance: WcadTopologyCheckpointToleranceMetadata;
+  readonly brepBytes: Uint8Array;
+  readonly topologyBytes: Uint8Array;
+  readonly signatureBytes: Uint8Array;
+}
+
+export interface WcadTopologyCheckpointPayload {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly manifestEntry: WcadTopologyCheckpointManifestEntry;
+  readonly brepBytes: Uint8Array;
+  readonly topologyBytes: Uint8Array;
+  readonly signatureBytes: Uint8Array;
+}
+
 export interface ExportCadProjectWcadOptions {
   readonly createdAt?: string;
   readonly modifiedAt?: string;
   readonly appVersion?: string;
+  readonly topologyCheckpoints?: readonly WcadTopologyCheckpointPayloadInput[];
+  readonly topologyJsonFallback?: WcadManifestV2["topologyIdentity"]["jsonFallback"];
 }
 
 export interface WcadPackageExportResult {
   readonly bytes: Uint8Array;
-  readonly manifest: WcadManifestV1;
+  readonly manifest: WcadManifestV1 | WcadManifestV2;
   readonly sourceIdentity: WcadSourceIdentity;
   readonly documentBytes: Uint8Array;
   readonly commandsBytes: Uint8Array;
+  readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayload[];
 }
 
 export type WcadPackageReadResult =
   | {
       readonly ok: true;
       readonly project: CadProject;
-      readonly manifest: WcadManifestV1;
+      readonly manifest: WcadManifestV1 | WcadManifestV2;
       readonly sourceIdentity: WcadSourceIdentity;
+      readonly checkpointPayloads?: readonly WcadTopologyCheckpointPayload[];
       readonly diagnostics: readonly WcadPackageValidationIssue[];
     }
   | {
@@ -2211,6 +2250,20 @@ export async function exportCadProjectToWcad(
   project: CadProject,
   options: ExportCadProjectWcadOptions = {}
 ): Promise<WcadPackageExportResult> {
+  if (
+    project.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 ||
+    (options.topologyCheckpoints?.length ?? 0) > 0
+  ) {
+    return exportCadProjectToWcadV2(project, options);
+  }
+
+  return exportCadProjectToWcadV1(project, options);
+}
+
+async function exportCadProjectToWcadV1(
+  project: CadProject,
+  options: ExportCadProjectWcadOptions
+): Promise<WcadPackageExportResult> {
   if (!isSupportedWcadDocumentSchema(project.schemaVersion)) {
     throw new WcadPackageImportError([
       createWcadPackageIssue(
@@ -2278,6 +2331,186 @@ export async function exportCadProjectToWcad(
   };
 }
 
+async function exportCadProjectToWcadV2(
+  project: CadProject,
+  options: ExportCadProjectWcadOptions
+): Promise<WcadPackageExportResult> {
+  const checkpointInputs = options.topologyCheckpoints ?? [];
+
+  if (project.schemaVersion !== CAD_PROJECT_FORMAT_VERSION_V18) {
+    throw new WcadPackageImportError([
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
+        "error",
+        "WCAD v2 checkpoint writer requires web-cad.project.v18 source.",
+        "$.schemaVersion",
+        CAD_PROJECT_FORMAT_VERSION_V18,
+        project.schemaVersion
+      )
+    ]);
+  }
+
+  if (!project.document.topologyIdentity) {
+    throw new WcadPackageImportError([
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA",
+        "error",
+        "WCAD v2 checkpoint writer requires a topologyIdentity source block.",
+        "$.document.topologyIdentity",
+        "topology identity source block",
+        "missing"
+      )
+    ]);
+  }
+
+  const topologyIdentityIssues = validateTopologyIdentitySourceSnapshot(
+    project.document.topologyIdentity
+  );
+
+  if (topologyIdentityIssues.some((issue) => issue.severity === "error")) {
+    throw new WcadPackageImportError(
+      topologyIdentityIssues.map((issue) =>
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          `Topology identity source block is invalid: ${issue.message}`,
+          "$.document.topologyIdentity",
+          issue.expected,
+          issue.received
+        )
+      )
+    );
+  }
+
+  validateWcadV2CheckpointPayloadInputs(project, checkpointInputs);
+
+  const documentBytes = encodeCanonicalCbor(project.document);
+  const commandsBytes = encodeCanonicalCbor({
+    history: project.history,
+    redoStack: project.redoStack
+  });
+  const checkpointPayloadsWithoutIdentity =
+    await createWcadV2CheckpointPayloadsWithoutIdentity(
+      checkpointInputs,
+      project.document.units
+    );
+  const checkpointSourceEntries = checkpointPayloadsWithoutIdentity.flatMap(
+    (payload) => [payload.brep, payload.topology, payload.signature]
+  );
+  const [documentEntry, commandsEntry, sourceIdentity] = await Promise.all([
+    createWcadPackageEntryMetadata({
+      path: WCAD_DOCUMENT_ENTRY_PATH,
+      bytes: documentBytes
+    }),
+    createWcadPackageEntryMetadata({
+      path: WCAD_COMMANDS_ENTRY_PATH,
+      bytes: commandsBytes
+    }),
+    createWcadSourceIdentity({
+      packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      units: project.document.units,
+      documentBytes,
+      commandsBytes,
+      checkpointSourceEntries
+    })
+  ]);
+  const checkpointPayloads = checkpointPayloadsWithoutIdentity.map(
+    (payload): WcadTopologyCheckpointPayload => {
+      const manifestEntry: WcadTopologyCheckpointManifestEntry = {
+        checkpointId: payload.checkpointId,
+        bodyId: payload.bodyId,
+        ...(payload.sourceFeatureId
+          ? { sourceFeatureId: payload.sourceFeatureId }
+          : {}),
+        sourceIdentity,
+        units: payload.units,
+        kernel: payload.kernel,
+        tolerance: payload.tolerance,
+        brep: createCheckpointPayloadEntry(payload.brep, sourceIdentity),
+        topology: createCheckpointPayloadEntry(
+          payload.topology,
+          sourceIdentity
+        ),
+        signature: createCheckpointPayloadEntry(
+          payload.signature,
+          sourceIdentity
+        )
+      };
+
+      return {
+        checkpointId: payload.checkpointId,
+        bodyId: payload.bodyId,
+        ...(payload.sourceFeatureId
+          ? { sourceFeatureId: payload.sourceFeatureId }
+          : {}),
+        manifestEntry,
+        brepBytes: payload.brepBytes,
+        topologyBytes: payload.topologyBytes,
+        signatureBytes: payload.signatureBytes
+      };
+    }
+  );
+  const timestamp = options.createdAt ?? "1970-01-01T00:00:00.000Z";
+  const manifest: WcadManifestV2 = {
+    packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+    product: "Partbench",
+    createdBy: {
+      app: "partbench",
+      ...(options.appVersion ? { version: options.appVersion } : {})
+    },
+    createdAt: timestamp,
+    modifiedAt: options.modifiedAt ?? timestamp,
+    units: project.document.units,
+    document: {
+      ...documentEntry,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18
+    },
+    commands: commandsEntry,
+    sourceIdentity,
+    topologyIdentity: {
+      contractVersion: CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
+      projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      checkpointCount: checkpointPayloads.length,
+      checkpoints: checkpointPayloads.map((payload) => payload.manifestEntry),
+      jsonFallback:
+        options.topologyJsonFallback ??
+        (checkpointPayloads.length > 0
+          ? "checkpoint-metadata-only"
+          : "lossless")
+    }
+  };
+  const manifestIssues = validateWcadManifestV2Contract(manifest);
+
+  if (hasError(manifestIssues)) {
+    throw new WcadPackageImportError(manifestIssues);
+  }
+
+  const manifestBytes = encodeUtf8(`${JSON.stringify(manifest, null, 2)}\n`);
+  const checkpointZipEntries = checkpointPayloads.flatMap((payload) => [
+    { path: payload.manifestEntry.brep.path, bytes: payload.brepBytes },
+    { path: payload.manifestEntry.topology.path, bytes: payload.topologyBytes },
+    {
+      path: payload.manifestEntry.signature.path,
+      bytes: payload.signatureBytes
+    }
+  ]);
+
+  return {
+    bytes: writeZipStore([
+      { path: WCAD_MANIFEST_ENTRY_PATH, bytes: manifestBytes },
+      { path: WCAD_DOCUMENT_ENTRY_PATH, bytes: documentBytes },
+      { path: WCAD_COMMANDS_ENTRY_PATH, bytes: commandsBytes },
+      ...checkpointZipEntries
+    ]),
+    manifest,
+    sourceIdentity,
+    documentBytes,
+    commandsBytes,
+    checkpointPayloads
+  };
+}
+
 export async function readCadProjectWcad(
   bytes: Uint8Array
 ): Promise<WcadPackageReadResult> {
@@ -2305,6 +2538,10 @@ export async function readCadProjectWcad(
 
   if (!manifestValue) {
     return { ok: false, issues };
+  }
+
+  if (isWcadManifestV2Package(manifestValue)) {
+    return readCadProjectWcadV2(zip.entries, issues, manifestValue);
   }
 
   issues.push(...validateWcadManifest(manifestValue));
@@ -2491,6 +2728,631 @@ export async function readCadProjectWcad(
   }
 }
 
+async function readCadProjectWcadV2(
+  entries: ReadonlyMap<string, Uint8Array>,
+  issues: WcadPackageValidationIssue[],
+  manifestValue: unknown
+): Promise<WcadPackageReadResult> {
+  issues.push(...validateWcadManifestV2Contract(manifestValue));
+
+  if (hasError(issues) || !isWcadManifestV2(manifestValue)) {
+    return { ok: false, issues };
+  }
+
+  const documentBytes = entries.get(manifestValue.document.path);
+  const commandsBytes = entries.get(manifestValue.commands.path);
+
+  if (!documentBytes) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_MISSING_DOCUMENT",
+        "error",
+        "WCAD package is missing document.cbor.",
+        "$.document.path",
+        manifestValue.document.path,
+        "missing",
+        manifestValue.document.path,
+        "document"
+      )
+    );
+  }
+
+  if (!commandsBytes) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_MISSING_COMMANDS",
+        "error",
+        "WCAD package is missing commands.cbor.",
+        "$.commands.path",
+        manifestValue.commands.path,
+        "missing",
+        manifestValue.commands.path,
+        "commands"
+      )
+    );
+  }
+
+  if (documentBytes) {
+    issues.push(
+      ...(await validateWcadPackageEntryBytes({
+        entry: manifestValue.document,
+        bytes: documentBytes,
+        entryRole: "document"
+      }))
+    );
+  }
+
+  if (commandsBytes) {
+    issues.push(
+      ...(await validateWcadPackageEntryBytes({
+        entry: manifestValue.commands,
+        bytes: commandsBytes,
+        entryRole: "commands"
+      }))
+    );
+  }
+
+  const checkpointPayloads = await readWcadV2CheckpointPayloads(
+    entries,
+    manifestValue,
+    issues
+  );
+
+  issues.push(...readOptionalCacheDiagnostics(entries, manifestValue));
+
+  if (hasError(issues) || !documentBytes || !commandsBytes) {
+    return { ok: false, issues };
+  }
+
+  const documentPayload = decodePackageCborPayload(
+    documentBytes,
+    "document",
+    issues
+  );
+  const commandsPayload = decodePackageCborPayload(
+    commandsBytes,
+    "commands",
+    issues
+  );
+
+  if (hasError(issues)) {
+    return { ok: false, issues };
+  }
+
+  if (!isRecord(commandsPayload) || !Array.isArray(commandsPayload.history)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_COMMANDS_CBOR",
+        "error",
+        "commands.cbor must decode to an object with a history array.",
+        "$.history",
+        "array",
+        isRecord(commandsPayload)
+          ? typeof commandsPayload.history
+          : typeof commandsPayload,
+        WCAD_COMMANDS_ENTRY_PATH,
+        "commands"
+      )
+    );
+  }
+
+  if (!isRecord(commandsPayload) || !Array.isArray(commandsPayload.redoStack)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_COMMANDS_CBOR",
+        "error",
+        "commands.cbor must decode to an object with a redoStack array.",
+        "$.redoStack",
+        "array",
+        isRecord(commandsPayload)
+          ? typeof commandsPayload.redoStack
+          : typeof commandsPayload,
+        WCAD_COMMANDS_ENTRY_PATH,
+        "commands"
+      )
+    );
+  }
+
+  const sourceIdentity = await createWcadSourceIdentity({
+    packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+    documentSchemaVersion: manifestValue.document.schemaVersion,
+    units: manifestValue.units,
+    documentBytes,
+    commandsBytes,
+    checkpointSourceEntries: collectWcadV2CheckpointSourceEntries(manifestValue)
+  });
+  issues.push(
+    ...validateWcadManifestSourceIdentity(manifestValue, sourceIdentity)
+  );
+
+  if (hasError(issues) || !isRecord(commandsPayload)) {
+    return { ok: false, issues };
+  }
+
+  const candidateProject = {
+    schemaVersion: manifestValue.document.schemaVersion,
+    document: documentPayload,
+    history: commandsPayload.history,
+    redoStack: commandsPayload.redoStack
+  };
+
+  try {
+    const project = parseCadProject(candidateProject);
+
+    return {
+      ok: true,
+      project,
+      manifest: manifestValue,
+      sourceIdentity,
+      checkpointPayloads,
+      diagnostics: issues
+    };
+  } catch (error) {
+    if (error instanceof CadProjectImportError) {
+      issues.push(...mapProjectImportIssuesToWcadIssues(error.issues));
+      return { ok: false, issues };
+    }
+
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_DOCUMENT_CBOR",
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Decoded WCAD source could not be imported.",
+        "$",
+        undefined,
+        undefined,
+        WCAD_DOCUMENT_ENTRY_PATH,
+        "document"
+      )
+    );
+    return { ok: false, issues };
+  }
+}
+
+interface WcadV2CheckpointPayloadWithoutIdentity {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly units: DocumentUnits;
+  readonly kernel: WcadTopologyCheckpointKernelMetadata;
+  readonly tolerance: WcadTopologyCheckpointToleranceMetadata;
+  readonly brep: WcadPackageEntryMetadata;
+  readonly topology: WcadPackageEntryMetadata;
+  readonly signature: WcadPackageEntryMetadata;
+  readonly brepBytes: Uint8Array;
+  readonly topologyBytes: Uint8Array;
+  readonly signatureBytes: Uint8Array;
+}
+
+function validateWcadV2CheckpointPayloadInputs(
+  project: CadProject,
+  checkpointInputs: readonly WcadTopologyCheckpointPayloadInput[]
+): void {
+  const sourceCheckpointIds = new Set(
+    project.document.topologyIdentity?.checkpoints.map(
+      (checkpoint) => checkpoint.checkpointId
+    ) ?? []
+  );
+  const sourceCheckpointsById = new Map(
+    project.document.topologyIdentity?.checkpoints.map((checkpoint) => [
+      checkpoint.checkpointId,
+      checkpoint
+    ]) ?? []
+  );
+  const inputCheckpointIds = new Set<string>();
+  const issues: WcadPackageValidationIssue[] = [];
+
+  for (const input of checkpointInputs) {
+    let paths: ReturnType<typeof createWcadV2CheckpointEntryPaths> | undefined;
+
+    try {
+      paths = createWcadV2CheckpointEntryPaths(input.checkpointId);
+    } catch {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          "WCAD v2 checkpoint payload input has an invalid checkpoint id.",
+          "$.topologyCheckpoints.checkpointId",
+          "package-safe checkpoint id",
+          input.checkpointId
+        )
+      );
+      continue;
+    }
+
+    if (inputCheckpointIds.has(input.checkpointId)) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_DUPLICATE_ENTRY",
+          "error",
+          "WCAD v2 checkpoint payload input duplicates a checkpoint id.",
+          "$.topologyCheckpoints",
+          undefined,
+          input.checkpointId
+        )
+      );
+    }
+
+    inputCheckpointIds.add(input.checkpointId);
+
+    if (!sourceCheckpointIds.has(input.checkpointId)) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          "WCAD v2 checkpoint payload input has no matching topologyIdentity source checkpoint record.",
+          "$.topologyCheckpoints",
+          "source checkpoint record",
+          input.checkpointId
+        )
+      );
+    } else {
+      const sourceCheckpoint = sourceCheckpointsById.get(input.checkpointId);
+
+      if (sourceCheckpoint) {
+        validateSourceCheckpointPaths(sourceCheckpoint, paths, issues);
+      }
+    }
+
+    validateCheckpointCborPayload(
+      input.topologyBytes,
+      paths.topology,
+      "checkpoint-topology",
+      issues,
+      isCompatibleCheckpointTopologyPayload,
+      "topology.cbor must contain a compatible exact topology snapshot."
+    );
+    validateCheckpointCborPayload(
+      input.signatureBytes,
+      paths.signature,
+      "checkpoint-signature",
+      issues,
+      isRecord,
+      "signature.cbor must contain a canonical CBOR object."
+    );
+  }
+
+  for (const checkpointId of sourceCheckpointIds) {
+    if (!inputCheckpointIds.has(checkpointId)) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_MISSING_CHECKPOINT_ENTRY",
+          "error",
+          "WCAD v2 writer requires payload bytes for every topologyIdentity source checkpoint record.",
+          "$.document.topologyIdentity.checkpoints",
+          checkpointId,
+          "missing"
+        )
+      );
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new WcadPackageImportError(issues);
+  }
+}
+
+function validateSourceCheckpointPaths(
+  checkpoint: NonNullable<
+    CadDocumentSnapshot["topologyIdentity"]
+  >["checkpoints"][number],
+  paths: ReturnType<typeof createWcadV2CheckpointEntryPaths>,
+  issues: WcadPackageValidationIssue[]
+): void {
+  if (checkpoint.brepEntryPath !== paths.brep) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_PACKAGE_PATH",
+        "error",
+        "Topology checkpoint source record B-rep path must match its checkpoint id.",
+        "$.document.topologyIdentity.checkpoints.brepEntryPath",
+        paths.brep,
+        checkpoint.brepEntryPath,
+        checkpoint.brepEntryPath,
+        "checkpoint-brep"
+      )
+    );
+  }
+
+  if (checkpoint.topologyEntryPath !== paths.topology) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_PACKAGE_PATH",
+        "error",
+        "Topology checkpoint source record topology path must match its checkpoint id.",
+        "$.document.topologyIdentity.checkpoints.topologyEntryPath",
+        paths.topology,
+        checkpoint.topologyEntryPath,
+        checkpoint.topologyEntryPath,
+        "checkpoint-topology"
+      )
+    );
+  }
+
+  if (checkpoint.signatureEntryPath !== paths.signature) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_INVALID_PACKAGE_PATH",
+        "error",
+        "Topology checkpoint source record signature path must match its checkpoint id.",
+        "$.document.topologyIdentity.checkpoints.signatureEntryPath",
+        paths.signature,
+        checkpoint.signatureEntryPath,
+        checkpoint.signatureEntryPath,
+        "checkpoint-signature"
+      )
+    );
+  }
+}
+
+async function createWcadV2CheckpointPayloadsWithoutIdentity(
+  checkpointInputs: readonly WcadTopologyCheckpointPayloadInput[],
+  defaultUnits: DocumentUnits
+): Promise<readonly WcadV2CheckpointPayloadWithoutIdentity[]> {
+  return Promise.all(
+    checkpointInputs.map(async (input) => {
+      const paths = createWcadV2CheckpointEntryPaths(input.checkpointId);
+      const [brep, topology, signature] = await Promise.all([
+        createWcadPackageEntryMetadata({
+          path: paths.brep,
+          bytes: input.brepBytes
+        }),
+        createWcadPackageEntryMetadata({
+          path: paths.topology,
+          bytes: input.topologyBytes
+        }),
+        createWcadPackageEntryMetadata({
+          path: paths.signature,
+          bytes: input.signatureBytes
+        })
+      ]);
+
+      return {
+        checkpointId: input.checkpointId,
+        bodyId: input.bodyId,
+        ...(input.sourceFeatureId
+          ? { sourceFeatureId: input.sourceFeatureId }
+          : {}),
+        units: input.units ?? defaultUnits,
+        kernel: input.kernel,
+        tolerance: input.tolerance,
+        brep,
+        topology,
+        signature,
+        brepBytes: input.brepBytes,
+        topologyBytes: input.topologyBytes,
+        signatureBytes: input.signatureBytes
+      };
+    })
+  );
+}
+
+function createCheckpointPayloadEntry(
+  metadata: WcadPackageEntryMetadata,
+  sourceIdentity: WcadSourceIdentity
+): WcadTopologyCheckpointPayloadEntry {
+  const checkpointId = getCheckpointIdFromPayloadPath(metadata.path);
+
+  return {
+    ...metadata,
+    checkpointId,
+    source: true,
+    sourceIdentity
+  };
+}
+
+async function readWcadV2CheckpointPayloads(
+  entries: ReadonlyMap<string, Uint8Array>,
+  manifest: WcadManifestV2,
+  issues: WcadPackageValidationIssue[]
+): Promise<readonly WcadTopologyCheckpointPayload[]> {
+  const payloads: WcadTopologyCheckpointPayload[] = [];
+
+  for (const checkpoint of manifest.topologyIdentity.checkpoints) {
+    const brepBytes = await readRequiredWcadV2CheckpointBytes(
+      entries,
+      checkpoint.brep,
+      "checkpoint-brep",
+      issues
+    );
+    const topologyBytes = await readRequiredWcadV2CheckpointBytes(
+      entries,
+      checkpoint.topology,
+      "checkpoint-topology",
+      issues
+    );
+    const signatureBytes = await readRequiredWcadV2CheckpointBytes(
+      entries,
+      checkpoint.signature,
+      "checkpoint-signature",
+      issues
+    );
+
+    if (topologyBytes) {
+      validateCheckpointCborPayload(
+        topologyBytes,
+        checkpoint.topology.path,
+        "checkpoint-topology",
+        issues,
+        isCompatibleCheckpointTopologyPayload,
+        "topology.cbor must contain a compatible exact topology snapshot."
+      );
+    }
+
+    if (signatureBytes) {
+      validateCheckpointCborPayload(
+        signatureBytes,
+        checkpoint.signature.path,
+        "checkpoint-signature",
+        issues,
+        isRecord,
+        "signature.cbor must contain a canonical CBOR object."
+      );
+    }
+
+    if (!brepBytes || !topologyBytes || !signatureBytes) {
+      continue;
+    }
+
+    payloads.push({
+      checkpointId: checkpoint.checkpointId,
+      bodyId: checkpoint.bodyId,
+      ...(checkpoint.sourceFeatureId
+        ? { sourceFeatureId: checkpoint.sourceFeatureId }
+        : {}),
+      manifestEntry: checkpoint,
+      brepBytes,
+      topologyBytes,
+      signatureBytes
+    });
+  }
+
+  return payloads;
+}
+
+async function readRequiredWcadV2CheckpointBytes(
+  entries: ReadonlyMap<string, Uint8Array>,
+  entry: WcadTopologyCheckpointPayloadEntry,
+  entryRole: Extract<
+    WcadPackageEntryRole,
+    "checkpoint-brep" | "checkpoint-topology" | "checkpoint-signature"
+  >,
+  issues: WcadPackageValidationIssue[]
+): Promise<Uint8Array | undefined> {
+  const bytes = entries.get(entry.path);
+
+  if (!bytes) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_MISSING_CHECKPOINT_ENTRY",
+        "error",
+        "WCAD package is missing a required checkpoint payload entry.",
+        undefined,
+        entry.path,
+        "missing",
+        entry.path,
+        entryRole
+      )
+    );
+    return undefined;
+  }
+
+  issues.push(
+    ...(await validateWcadPackageEntryBytes({
+      entry,
+      bytes,
+      entryRole
+    }))
+  );
+
+  return bytes;
+}
+
+function validateCheckpointCborPayload(
+  bytes: Uint8Array,
+  entryPath: string,
+  entryRole: Extract<
+    WcadPackageEntryRole,
+    "checkpoint-topology" | "checkpoint-signature"
+  >,
+  issues: WcadPackageValidationIssue[],
+  predicate: (value: unknown) => boolean,
+  invalidMessage: string
+): void {
+  let payload: unknown;
+
+  try {
+    payload = decodeCanonicalCbor(bytes);
+  } catch (error) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+        "error",
+        error instanceof Error
+          ? `${entryPath} could not be decoded: ${error.message}`
+          : `${entryPath} could not be decoded.`,
+        "$",
+        "canonical CBOR checkpoint payload",
+        error instanceof CanonicalCborDecodeError ? error.message : "invalid",
+        entryPath,
+        entryRole
+      )
+    );
+    return;
+  }
+
+  if (!predicate(payload)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+        "error",
+        invalidMessage,
+        "$",
+        "compatible checkpoint payload",
+        "invalid",
+        entryPath,
+        entryRole
+      )
+    );
+  }
+}
+
+function isCompatibleCheckpointTopologyPayload(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    value.source !== "kernel-derived" ||
+    (value.status !== "ready" && value.status !== "partial") ||
+    value.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
+    typeof value.signature !== "string" ||
+    typeof value.entityCount !== "number" ||
+    !Number.isInteger(value.entityCount) ||
+    value.entityCount < 0 ||
+    !Array.isArray(value.entities) ||
+    value.entities.length !== value.entityCount ||
+    !isRecord(value.entityCounts)
+  ) {
+    return false;
+  }
+
+  const counts = value.entityCounts;
+
+  return [
+    "bodyCount",
+    "solidCount",
+    "faceCount",
+    "wireCount",
+    "edgeCount",
+    "vertexCount",
+    "loopCount",
+    "coedgeCount",
+    "axisCount"
+  ].every((key) => {
+    const count = counts[key];
+    return typeof count === "number" && Number.isInteger(count) && count >= 0;
+  });
+}
+
+function getCheckpointIdFromPayloadPath(path: string): string {
+  const basename = path.slice(path.lastIndexOf("/") + 1);
+
+  if (basename.endsWith(".topology.cbor")) {
+    return basename.slice(0, -".topology.cbor".length);
+  }
+
+  if (basename.endsWith(".signature.cbor")) {
+    return basename.slice(0, -".signature.cbor".length);
+  }
+
+  if (basename.endsWith(".brep")) {
+    return basename.slice(0, -".brep".length);
+  }
+
+  return basename;
+}
+
 export async function parseCadProjectWcad(
   bytes: Uint8Array
 ): Promise<CadProject> {
@@ -2592,7 +3454,7 @@ function decodePackageCborPayload(
 
 function readOptionalCacheDiagnostics(
   entries: ReadonlyMap<string, Uint8Array>,
-  manifest: WcadManifestV1
+  manifest: WcadManifestV1 | WcadManifestV2
 ): readonly WcadPackageValidationIssue[] {
   if (!manifest.cache?.entriesPath) {
     return [];
@@ -2692,6 +3554,29 @@ function isWcadManifestV1(value: unknown): value is WcadManifestV1 {
     isRecord(value.commands) &&
     value.commands.path === WCAD_COMMANDS_ENTRY_PATH &&
     isRecord(value.sourceIdentity)
+  );
+}
+
+function isWcadManifestV2Package(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.packageVersion === CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION
+  );
+}
+
+function isWcadManifestV2(value: unknown): value is WcadManifestV2 {
+  return (
+    isRecord(value) &&
+    value.packageVersion === CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION &&
+    value.product === "Partbench" &&
+    isRecord(value.document) &&
+    value.document.path === WCAD_DOCUMENT_ENTRY_PATH &&
+    value.document.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18 &&
+    isRecord(value.commands) &&
+    value.commands.path === WCAD_COMMANDS_ENTRY_PATH &&
+    isRecord(value.sourceIdentity) &&
+    isRecord(value.topologyIdentity) &&
+    Array.isArray(value.topologyIdentity.checkpoints)
   );
 }
 

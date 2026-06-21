@@ -11,6 +11,7 @@ import {
   type ProjectPackageReadinessQueryResponse,
   type WcadDocumentSchemaVersion,
   type WcadManifestV1,
+  type WcadManifestV2,
   type WcadPackageV1DocumentSchemaVersion,
   type WcadPackageVersion,
   type WcadPackageCacheArtifactKind,
@@ -540,7 +541,7 @@ export async function validateWcadPackageEntryBytes({
 }
 
 export function validateWcadManifestSourceIdentity(
-  manifest: WcadManifestV1,
+  manifest: WcadManifestV1 | WcadManifestV2,
   computed: WcadSourceIdentity
 ): readonly WcadPackageValidationIssue[] {
   if (

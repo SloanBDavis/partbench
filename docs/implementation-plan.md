@@ -2362,10 +2362,13 @@ Use these decisions when drafting or implementing V13 tranches:
    manifest entries, and v2 source identity rules. Current projects still
    export as V16/V17 unless topology identity source records exist; current
    `.wcad` v1 read/write remains unchanged until checkpoint persistence.
-4. **Checkpoint Write/Read And Validation** - durable checkpoint payload
-   creation, package entry validation, source identity checks, hash/length
-   checks, kernel/checkpoint compatibility diagnostics, `.wcad` v1 read
-   compatibility, and clear Project/File status.
+4. **Implemented, package-level: Checkpoint Write/Read And Validation** -
+   cad-core can preserve caller-supplied checkpoint B-rep, topology, and
+   signature payload bytes in `partbench.wcad.v2`, validate package paths,
+   source identity, hash/length metadata, topology/signature CBOR
+   compatibility, and keep `.wcad` v1 read/write compatibility. Geometry-boundary
+   B-rep checkpoint byte creation and Project/File checkpoint status remain for
+   later V13 tranches.
 5. **Topology Matching Engine** - snapshot-to-snapshot matching with source
    lineage, signatures, geometry, adjacency, kernel evidence where available,
    and structured confidence/evidence output for active/replaced/split/merged/
