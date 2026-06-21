@@ -33,6 +33,7 @@ import type {
   CadTopologyAnchorDescriptor,
   CadTopologyCheckpointMetadata,
   CadTopologyIdentityState,
+  CadTopologyIdentitySourceSnapshot,
   CadTopologyMatchResult,
   CadTopologyRepairCandidate,
   HoleFeatureSnapshot,
@@ -45,6 +46,7 @@ import type {
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
   WcadManifestV1,
+  WcadManifestV2,
   WcadPackageValidationIssue,
   NamedGeneratedReferenceEntry,
   SketchSnapshot
@@ -553,6 +555,128 @@ describe("cad-protocol", () => {
     expect(response.plannedPackageVersion).toBe("partbench.wcad.v2");
     expect(response.anchors[0]?.entityKind).toBe("face");
     expect(response.checkpoints[0]).not.toHaveProperty("brepEntryPath");
+  });
+
+  it("types V18 topology source and WCAD v2 checkpoint package contracts", () => {
+    const sourceIdentity = {
+      algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+      sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+    };
+    const source: CadTopologyIdentitySourceSnapshot = {
+      schemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+      settings: {
+        contractVersion: CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
+        matchingPolicy: "evidence-scored-explicit-repair",
+        checkpointPolicy: "required-for-topology-anchors",
+        minimumAutomaticConfidence: "high",
+        allowSilentRetargeting: false
+      },
+      checkpoints: [
+        {
+          checkpointId: "checkpoint_1",
+          bodyId: "body_1",
+          sourceIdentity,
+          packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+          projectSchemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+          brepEntryPath: "checkpoints/checkpoint_1.brep",
+          topologyEntryPath: "checkpoints/checkpoint_1.topology.cbor",
+          signatureEntryPath: "checkpoints/checkpoint_1.signature.cbor",
+          status: "active",
+          diagnostics: []
+        }
+      ],
+      anchors: [
+        {
+          anchorId: "anchor_1",
+          entityKind: "face",
+          bodyId: "body_1",
+          checkpointId: "checkpoint_1",
+          checkpointEntityId: "checkpoint-local:face:7",
+          state: "active",
+          diagnostics: []
+        }
+      ],
+      repairs: []
+    };
+    const checkpointEntry = {
+      checkpointId: "checkpoint_1",
+      bodyId: "body_1",
+      sourceIdentity,
+      units: "mm" as const,
+      kernel: {
+        boundary: "geometry-kernel" as const,
+        packageName: "opencascade.js",
+        packageVersion: "2.0.0-test",
+        snapshotAlgorithm: "partbench-derived-topology-snapshot-v1" as const
+      },
+      tolerance: {
+        linearTolerance: 0.001
+      },
+      brep: {
+        checkpointId: "checkpoint_1",
+        path: "checkpoints/checkpoint_1.brep",
+        byteLength: 64,
+        sha256:
+          "3333333333333333333333333333333333333333333333333333333333333333",
+        source: true as const,
+        sourceIdentity
+      },
+      topology: {
+        checkpointId: "checkpoint_1",
+        path: "checkpoints/checkpoint_1.topology.cbor",
+        byteLength: 32,
+        sha256:
+          "4444444444444444444444444444444444444444444444444444444444444444",
+        source: true as const,
+        sourceIdentity
+      },
+      signature: {
+        checkpointId: "checkpoint_1",
+        path: "checkpoints/checkpoint_1.signature.cbor",
+        byteLength: 16,
+        sha256:
+          "5555555555555555555555555555555555555555555555555555555555555555",
+        source: true as const,
+        sourceIdentity
+      }
+    };
+    const manifest: WcadManifestV2 = {
+      packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
+      product: "Partbench",
+      createdBy: { app: "partbench" },
+      createdAt: "2026-06-21T00:00:00.000Z",
+      modifiedAt: "2026-06-21T00:00:00.000Z",
+      units: "mm",
+      document: {
+        path: WCAD_DOCUMENT_ENTRY_PATH,
+        schemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+        byteLength: 12,
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      commands: {
+        path: WCAD_COMMANDS_ENTRY_PATH,
+        byteLength: 8,
+        sha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      sourceIdentity,
+      topologyIdentity: {
+        contractVersion: CAD_TOPOLOGY_IDENTITY_CONTRACT_VERSION,
+        projectSchemaVersion: CAD_TOPOLOGY_IDENTITY_PROJECT_SCHEMA_VERSION,
+        checkpointCount: 1,
+        checkpoints: [checkpointEntry],
+        jsonFallback: "checkpoint-metadata-only"
+      }
+    };
+
+    expect(source.schemaVersion).toBe("web-cad.project.v18");
+    expect(source.settings.allowSilentRetargeting).toBe(false);
+    expect(manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(manifest.topologyIdentity.checkpoints[0]?.brep.source).toBe(true);
+    expect(JSON.stringify(manifest)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
   });
 
   it("types supported scene commands", () => {

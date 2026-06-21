@@ -62,6 +62,7 @@ import type {
   CadSketchDimensionRef,
   CadSketchRef,
   CadTransactionStatus,
+  CadTopologyIdentitySourceSnapshot,
   ConeDimensions,
   CylinderDimensions,
   DocumentSemanticDiff,
@@ -179,6 +180,7 @@ import {
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
 import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentityReadiness";
+import { validateTopologyIdentitySourceSnapshot } from "./topologyIdentitySourceContract";
 import { SHA256_HEX_PATTERN } from "./sha256";
 import { readZipStore, writeZipStore } from "./wcadZip";
 
@@ -192,6 +194,17 @@ export {
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
+export {
+  WCAD_CHECKPOINT_BREP_EXTENSION,
+  WCAD_CHECKPOINT_ENTRY_PREFIX,
+  WCAD_CHECKPOINT_SIGNATURE_EXTENSION,
+  WCAD_CHECKPOINT_TOPOLOGY_EXTENSION,
+  collectWcadV2CheckpointSourceEntries,
+  createEmptyTopologyIdentitySourceSnapshot,
+  createWcadV2CheckpointEntryPaths,
+  validateTopologyIdentitySourceSnapshot,
+  validateWcadManifestV2Contract
+} from "./topologyIdentitySourceContract";
 
 export * from "./releaseSamples";
 
@@ -557,6 +570,7 @@ export interface CadDocument {
     NamedReferenceName,
     NamedGeneratedReferenceSnapshot
   >;
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
   readonly units: DocumentUnits;
 }
 
@@ -599,6 +613,7 @@ export interface CadDocumentSnapshot {
   readonly sketchConstraints: readonly SketchConstraintSnapshot[];
   readonly features: readonly FeatureSnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
   readonly nextObjectNumber: number;
   readonly nextSketchNumber: number;
   readonly nextSketchEntityNumber: number;
@@ -647,6 +662,7 @@ export const CAD_PROJECT_FORMAT_VERSION_V14 = "web-cad.project.v14";
 export const CAD_PROJECT_FORMAT_VERSION_V15 = "web-cad.project.v15";
 export const CAD_PROJECT_FORMAT_VERSION_V16 = "web-cad.project.v16";
 export const CAD_PROJECT_FORMAT_VERSION_V17 = "web-cad.project.v17";
+export const CAD_PROJECT_FORMAT_VERSION_V18 = "web-cad.project.v18";
 export const CURRENT_CAD_PROJECT_FORMAT_VERSION =
   CAD_PROJECT_FORMAT_VERSION_V16;
 
@@ -668,6 +684,7 @@ export type CadProjectFormatVersion =
   | typeof CAD_PROJECT_FORMAT_VERSION_V15
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
   | typeof CAD_PROJECT_FORMAT_VERSION_V17
+  | typeof CAD_PROJECT_FORMAT_VERSION_V18
   | typeof CURRENT_CAD_PROJECT_FORMAT_VERSION;
 
 const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
@@ -687,14 +704,20 @@ const SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS = new Set<string>([
   CAD_PROJECT_FORMAT_VERSION_V14,
   CAD_PROJECT_FORMAT_VERSION_V15,
   CAD_PROJECT_FORMAT_VERSION_V16,
-  CAD_PROJECT_FORMAT_VERSION_V17
+  CAD_PROJECT_FORMAT_VERSION_V17,
+  CAD_PROJECT_FORMAT_VERSION_V18
 ]);
 
 function getCadProjectFormatVersionForDocument(
   document: CadDocument | CadDocumentSnapshot
 ):
   | typeof CAD_PROJECT_FORMAT_VERSION_V16
-  | typeof CAD_PROJECT_FORMAT_VERSION_V17 {
+  | typeof CAD_PROJECT_FORMAT_VERSION_V17
+  | typeof CAD_PROJECT_FORMAT_VERSION_V18 {
+  if (document.topologyIdentity !== undefined) {
+    return CAD_PROJECT_FORMAT_VERSION_V18;
+  }
+
   const sketchConstraints: readonly SketchConstraintSnapshot[] = Array.isArray(
     document.sketchConstraints
   )
@@ -850,7 +873,8 @@ export function createCadDocument(
   features: Iterable<readonly [FeatureId, Feature]> = [],
   namedReferences: Iterable<
     readonly [NamedReferenceName, NamedGeneratedReferenceSnapshot]
-  > = []
+  > = [],
+  topologyIdentity?: CadTopologyIdentitySourceSnapshot
 ): CadDocument {
   return {
     objects: new Map(objects),
@@ -860,6 +884,12 @@ export function createCadDocument(
     sketchConstraints: new Map(sketchConstraints),
     features: new Map(features),
     namedReferences: new Map(namedReferences),
+    ...(topologyIdentity
+      ? {
+          topologyIdentity:
+            cloneTopologyIdentitySourceSnapshot(topologyIdentity)
+        }
+      : {}),
     units
   };
 }
@@ -2787,6 +2817,7 @@ interface MutableDocumentState {
   sketchConstraints: Map<SketchConstraintId, SketchConstraint>;
   features: Map<FeatureId, Feature>;
   namedReferences: Map<NamedReferenceName, NamedGeneratedReferenceSnapshot>;
+  topologyIdentity?: CadTopologyIdentitySourceSnapshot;
   units: DocumentUnits;
 }
 
@@ -11434,6 +11465,13 @@ export function createCadDocumentSnapshot(
     namedReferences: [...document.namedReferences.values()].map(
       cloneNamedReferenceSnapshot
     ),
+    ...(document.topologyIdentity
+      ? {
+          topologyIdentity: cloneTopologyIdentitySourceSnapshot(
+            document.topologyIdentity
+          )
+        }
+      : {}),
     nextObjectNumber,
     nextSketchNumber,
     nextSketchEntityNumber,
@@ -11473,8 +11511,19 @@ export function createCadDocumentFromSnapshot(
     snapshot.namedReferences.map(
       (reference) =>
         [reference.name, cloneNamedReferenceSnapshot(reference)] as const
-    )
+    ),
+    snapshot.topologyIdentity
+      ? cloneTopologyIdentitySourceSnapshot(snapshot.topologyIdentity)
+      : undefined
   );
+}
+
+function cloneTopologyIdentitySourceSnapshot(
+  snapshot: CadTopologyIdentitySourceSnapshot
+): CadTopologyIdentitySourceSnapshot {
+  return JSON.parse(
+    JSON.stringify(snapshot)
+  ) as CadTopologyIdentitySourceSnapshot;
 }
 
 function createCadObjectSnapshot(object: SceneObject): CadObjectSnapshot {
@@ -13201,6 +13250,13 @@ function runOperations(
     sketchConstraints: new Map(document.sketchConstraints),
     features: new Map(document.features),
     namedReferences: new Map(document.namedReferences),
+    ...(document.topologyIdentity
+      ? {
+          topologyIdentity: cloneTopologyIdentitySourceSnapshot(
+            document.topologyIdentity
+          )
+        }
+      : {}),
     units: document.units
   };
   let nextObjectNumber = initialObjectNumber;
@@ -13299,7 +13355,8 @@ function runOperations(
     state.sketchDimensions,
     state.sketchConstraints,
     state.features,
-    state.namedReferences
+    state.namedReferences,
+    state.topologyIdentity
   );
 
   return {
@@ -14218,7 +14275,11 @@ function cadDocumentsEqual(left: CadDocument, right: CadDocument): boolean {
     left.sketchDimensions.size !== right.sketchDimensions.size ||
     left.sketchConstraints.size !== right.sketchConstraints.size ||
     left.features.size !== right.features.size ||
-    left.namedReferences.size !== right.namedReferences.size
+    left.namedReferences.size !== right.namedReferences.size ||
+    !stableJsonEqual(
+      left.topologyIdentity ?? null,
+      right.topologyIdentity ?? null
+    )
   ) {
     return false;
   }
@@ -14537,6 +14598,36 @@ function assertValidCadProject(value: unknown): asserts value is CadProject {
 }
 
 function normalizeCadProject(value: CadProject): CadProject {
+  if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18) {
+    return {
+      ...value,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      document: {
+        ...value.document,
+        parameters: value.document.parameters.map(cloneParameterSnapshot),
+        sketchDimensions: value.document.sketchDimensions.map(
+          cloneSketchDimensionSnapshot
+        ),
+        sketchConstraints: value.document.sketchConstraints.map(
+          cloneSketchConstraintSnapshot
+        ),
+        features: value.document.features.map(normalizeFeatureSnapshot),
+        namedReferences: value.document.namedReferences.map(
+          cloneNamedReferenceSnapshot
+        ),
+        ...(value.document.topologyIdentity
+          ? {
+              topologyIdentity: cloneTopologyIdentitySourceSnapshot(
+                value.document.topologyIdentity
+              )
+            }
+          : {})
+      },
+      history: value.history.map(normalizeTransactionSnapshot),
+      redoStack: value.redoStack.map(normalizeTransactionSnapshot)
+    };
+  }
+
   if (value.schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17) {
     return {
       ...value,
@@ -15092,6 +15183,7 @@ function validateCadDocumentSnapshot(
   }
 
   const isV17Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V17;
+  const isV18Schema = schemaVersion === CAD_PROJECT_FORMAT_VERSION_V18;
   const requiresSketches =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V2 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
@@ -15108,7 +15200,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const requiresFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V3 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
@@ -15124,7 +15217,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsSketchAttachments =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V4 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
@@ -15139,7 +15233,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const requiresNamedReferences =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V5 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V6 ||
@@ -15153,7 +15248,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const requiresParameters =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V7 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
@@ -15165,7 +15261,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const requiresSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V8 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
@@ -15176,7 +15273,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsFixedSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V9 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
@@ -15186,7 +15284,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsCoincidentSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V10 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
@@ -15195,7 +15294,8 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsMidpointSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V11 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
@@ -15203,32 +15303,39 @@ function validateCadDocumentSnapshot(
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsParallelSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V12 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsPerpendicularSketchConstraints =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V13 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsRevolveFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V14 ||
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsHoleFeatures =
     schemaVersion === CAD_PROJECT_FORMAT_VERSION_V15 ||
     schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
-    isV17Schema;
+    isV17Schema ||
+    isV18Schema;
   const allowsEdgeFinishFeatures =
-    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION || isV17Schema;
-  const allowsAdvancedSketchConstraints = isV17Schema;
+    schemaVersion === CURRENT_CAD_PROJECT_FORMAT_VERSION ||
+    isV17Schema ||
+    isV18Schema;
+  const allowsAdvancedSketchConstraints = isV17Schema || isV18Schema;
   const isKnownProjectVersion =
     typeof schemaVersion === "string" &&
     SUPPORTED_CAD_PROJECT_FORMAT_VERSIONS.has(schemaVersion);
@@ -15319,6 +15426,28 @@ function validateCadDocumentSnapshot(
         "Project documents before V8 must not include sketch constraint source data."
       );
     }
+  }
+
+  if (isV18Schema) {
+    const topologyIdentityIssues = validateTopologyIdentitySourceSnapshot(
+      value.topologyIdentity
+    );
+
+    for (const issue of topologyIdentityIssues) {
+      addProjectIssue(
+        issues,
+        "INVALID_DOCUMENT",
+        `${path}.topologyIdentity`,
+        issue.message
+      );
+    }
+  } else if (isKnownProjectVersion && "topologyIdentity" in value) {
+    addProjectIssue(
+      issues,
+      "INVALID_DOCUMENT",
+      `${path}.topologyIdentity`,
+      "Topology identity source records require web-cad.project.v18."
+    );
   }
 
   if (requiresSketches) {

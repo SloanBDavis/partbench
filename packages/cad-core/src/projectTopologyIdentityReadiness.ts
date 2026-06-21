@@ -100,16 +100,16 @@ export function createProjectTopologyIdentityReadiness({
     createCapability(
       "v18SourceContract",
       "V18 topology identity source contract",
-      "deferred",
-      "TOPOLOGY_SCHEMA_V18_DEFERRED",
-      "web-cad.project.v18 is reserved for persisted topology identity source records but is not introduced by this query-only tranche."
+      "supported",
+      "TOPOLOGY_SOURCE_CONTRACT_READY",
+      "web-cad.project.v18 topology identity source settings, checkpoint metadata, anchor records, and repair records are typed. Existing projects are not migrated until source records are written."
     ),
     createCapability(
       "wcadV2Package",
       "WCAD v2 checkpoint package contract",
-      "deferred",
-      "TOPOLOGY_PACKAGE_V2_DEFERRED",
-      "partbench.wcad.v2 is reserved for checkpoint payload entries but the current package layout remains unchanged."
+      "supported",
+      "TOPOLOGY_PACKAGE_V2_CONTRACT_READY",
+      "partbench.wcad.v2 checkpoint payload entries and manifest validation are typed. Current .wcad v1 read/write remains unchanged until checkpoint persistence is implemented."
     ),
     createCapability(
       "protocolVocabulary",

@@ -2356,9 +2356,12 @@ Use these decisions when drafting or implementing V13 tranches:
    ordered adjacency, and entity-level geometric descriptors remain structured
    unavailable/deferred evidence. The output is derived evidence, not public
    identity.
-3. **V18 Source Contract And `.wcad` V2 Package Contract** - project schema and
-   package decisions for topology identity settings, checkpoint metadata,
-   topology anchors, repair records, and manifest-listed checkpoint payloads.
+3. **Implemented, contract-only: V18 Source Contract And `.wcad` V2 Package
+   Contract** - typed `web-cad.project.v18` topology identity source settings,
+   checkpoint metadata, topology anchors, repair records, `.wcad` v2 checkpoint
+   manifest entries, and v2 source identity rules. Current projects still
+   export as V16/V17 unless topology identity source records exist; current
+   `.wcad` v1 read/write remains unchanged until checkpoint persistence.
 4. **Checkpoint Write/Read And Validation** - durable checkpoint payload
    creation, package entry validation, source identity checks, hash/length
    checks, kernel/checkpoint compatibility diagnostics, `.wcad` v1 read

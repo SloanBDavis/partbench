@@ -21,12 +21,15 @@ export type DocumentUnits = "mm" | "cm" | "m" | "in";
 export type DocumentUnitUpdateMode = "metadataOnly" | "preservePhysicalSize";
 export type CadActorType = "human" | "agent" | "script" | "system";
 export type CadRequestIntent = CadBatchMode;
-export type WcadPackageVersion = "partbench.wcad.v1";
+export type WcadPackageVersion = "partbench.wcad.v1" | "partbench.wcad.v2";
 export type WcadPackageExtension = ".wcad";
 export type WcadSourceIdentityAlgorithm = "partbench-source-v1";
-export type WcadDocumentSchemaVersion =
+export type WcadPackageV1DocumentSchemaVersion =
   | "web-cad.project.v16"
   | "web-cad.project.v17";
+export type WcadDocumentSchemaVersion =
+  | WcadPackageV1DocumentSchemaVersion
+  | "web-cad.project.v18";
 export type CadTopologyIdentityContractVersion =
   "partbench.topology-identity.v1";
 export type CadTopologyIdentityProjectSchemaVersion = "web-cad.project.v18";
@@ -35,6 +38,9 @@ export type WcadPackageEntryRole =
   | "manifest"
   | "document"
   | "commands"
+  | "checkpoint-brep"
+  | "checkpoint-topology"
+  | "checkpoint-signature"
   | "cache"
   | "thumbnail"
   | "export"
@@ -54,7 +60,7 @@ export type WcadPackageCacheArtifactKind =
   | "packageUnpack"
   | "exportIntermediate";
 
-export const WCAD_PACKAGE_VERSION: WcadPackageVersion = "partbench.wcad.v1";
+export const WCAD_PACKAGE_VERSION = "partbench.wcad.v1" as const;
 export const WCAD_PACKAGE_EXTENSION: WcadPackageExtension = ".wcad";
 export const WCAD_SOURCE_IDENTITY_ALGORITHM: WcadSourceIdentityAlgorithm =
   "partbench-source-v1";
@@ -2902,6 +2908,10 @@ export type CadTopologyIdentityDiagnosticCode =
   | "TOPOLOGY_MATCHING_ENGINE_DEFERRED"
   | "TOPOLOGY_REPAIR_COMMANDS_DEFERRED"
   | "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED"
+  | "TOPOLOGY_SOURCE_CONTRACT_READY"
+  | "TOPOLOGY_SOURCE_CONTRACT_INVALID"
+  | "TOPOLOGY_PACKAGE_V2_CONTRACT_READY"
+  | "TOPOLOGY_PACKAGE_V2_CHECKPOINT_INVALID"
   | "TOPOLOGY_SCHEMA_V18_DEFERRED"
   | "TOPOLOGY_PACKAGE_V2_DEFERRED";
 
@@ -3047,6 +3057,67 @@ export interface CadTopologyRepairCandidate {
   readonly confidenceScore?: number;
   readonly evidence: readonly CadTopologyMatchEvidence[];
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyIdentitySettingsSnapshot {
+  readonly contractVersion: CadTopologyIdentityContractVersion;
+  readonly matchingPolicy: "evidence-scored-explicit-repair";
+  readonly checkpointPolicy: "required-for-topology-anchors";
+  readonly minimumAutomaticConfidence: Extract<
+    CadTopologyMatchConfidence,
+    "high" | "exact"
+  >;
+  readonly allowSilentRetargeting: false;
+}
+
+export interface CadTopologyCheckpointSourceRecord {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly packageVersion: CadTopologyIdentityPackageVersion;
+  readonly projectSchemaVersion: CadTopologyIdentityProjectSchemaVersion;
+  readonly brepEntryPath: string;
+  readonly topologyEntryPath: string;
+  readonly signatureEntryPath: string;
+  readonly status: Extract<
+    CadTopologyIdentityState,
+    "active" | "stale" | "missing" | "failed" | "unsupported"
+  >;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyAnchorSourceRecord {
+  readonly anchorId: string;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly bodyId: BodyId;
+  readonly checkpointId: string;
+  readonly checkpointEntityId: string;
+  readonly sourceFeatureId?: FeatureId;
+  readonly stableId?: string;
+  readonly sourceSemanticRole?: string;
+  readonly signatureHash?: string;
+  readonly state: CadTopologyIdentityState;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyRepairSourceRecord {
+  readonly repairId: string;
+  readonly anchorId: string;
+  readonly previousCheckpointId: string;
+  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointEntityId: string;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface CadTopologyIdentitySourceSnapshot {
+  readonly schemaVersion: CadTopologyIdentityProjectSchemaVersion;
+  readonly settings: CadTopologyIdentitySettingsSnapshot;
+  readonly checkpoints: readonly CadTopologyCheckpointSourceRecord[];
+  readonly anchors: readonly CadTopologyAnchorSourceRecord[];
+  readonly repairs: readonly CadTopologyRepairSourceRecord[];
 }
 
 export interface CadTopologyIdentityCapabilityReadiness {
@@ -3928,7 +3999,7 @@ export interface WcadPackageEntryMetadata {
 }
 
 export interface WcadManifestV1 {
-  readonly packageVersion: WcadPackageVersion;
+  readonly packageVersion: "partbench.wcad.v1";
   readonly product: "Partbench";
   readonly createdBy: {
     readonly app: "partbench";
@@ -3938,12 +4009,72 @@ export interface WcadManifestV1 {
   readonly modifiedAt: string;
   readonly units: DocumentUnits;
   readonly document: WcadPackageEntryMetadata & {
-    readonly schemaVersion: WcadDocumentSchemaVersion;
+    readonly schemaVersion: WcadPackageV1DocumentSchemaVersion;
   };
   readonly commands: WcadPackageEntryMetadata;
   readonly sourceIdentity: WcadSourceIdentity;
   readonly cache?: WcadPackageCacheManifestMetadata;
   readonly thumbnail?: WcadPackageThumbnailMetadata;
+}
+
+export interface WcadTopologyCheckpointKernelMetadata {
+  readonly boundary: "geometry-kernel" | "geometry-worker" | "occt-wasm";
+  readonly packageName?: string;
+  readonly packageVersion?: string;
+  readonly snapshotAlgorithm: "partbench-derived-topology-snapshot-v1";
+}
+
+export interface WcadTopologyCheckpointToleranceMetadata {
+  readonly linearTolerance: number;
+  readonly angularToleranceDegrees?: number;
+}
+
+export interface WcadTopologyCheckpointPayloadEntry extends WcadPackageEntryMetadata {
+  readonly checkpointId: string;
+  readonly source: true;
+  readonly sourceIdentity: WcadSourceIdentity;
+}
+
+export interface WcadTopologyCheckpointManifestEntry {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceIdentity: WcadSourceIdentity;
+  readonly units: DocumentUnits;
+  readonly kernel: WcadTopologyCheckpointKernelMetadata;
+  readonly tolerance: WcadTopologyCheckpointToleranceMetadata;
+  readonly brep: WcadTopologyCheckpointPayloadEntry & {
+    readonly path: string;
+  };
+  readonly topology: WcadTopologyCheckpointPayloadEntry & {
+    readonly path: string;
+  };
+  readonly signature: WcadTopologyCheckpointPayloadEntry & {
+    readonly path: string;
+  };
+}
+
+export interface WcadTopologyIdentityManifestMetadata {
+  readonly contractVersion: CadTopologyIdentityContractVersion;
+  readonly projectSchemaVersion: CadTopologyIdentityProjectSchemaVersion;
+  readonly checkpointCount: number;
+  readonly checkpoints: readonly WcadTopologyCheckpointManifestEntry[];
+  readonly jsonFallback:
+    | "source-graph-only"
+    | "checkpoint-metadata-only"
+    | "lossless";
+}
+
+export interface WcadManifestV2 extends Omit<
+  WcadManifestV1,
+  "packageVersion" | "document" | "cache"
+> {
+  readonly packageVersion: CadTopologyIdentityPackageVersion;
+  readonly document: WcadPackageEntryMetadata & {
+    readonly schemaVersion: CadTopologyIdentityProjectSchemaVersion;
+  };
+  readonly topologyIdentity: WcadTopologyIdentityManifestMetadata;
+  readonly cache?: WcadPackageCacheManifestMetadata;
 }
 
 export interface WcadSourceIdentity {
@@ -3981,6 +4112,9 @@ export type WcadPackageValidationIssueCode =
   | "WCAD_INVALID_COMMANDS_CBOR"
   | "WCAD_UNSUPPORTED_DOCUMENT_SCHEMA"
   | "WCAD_SOURCE_IDENTITY_MISMATCH"
+  | "WCAD_MISSING_CHECKPOINT_ENTRY"
+  | "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY"
+  | "WCAD_CHECKPOINT_SOURCE_IDENTITY_MISMATCH"
   | "WCAD_STALE_CACHE_ENTRY"
   | "WCAD_UNSUPPORTED_CACHE_ENTRY";
 

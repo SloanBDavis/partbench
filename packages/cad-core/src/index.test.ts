@@ -3,6 +3,7 @@ import type {
   CadBodyDerivedExactMetadataSnapshot,
   CadBatch,
   CadQueryRequest,
+  WcadManifestV2,
   FeatureEditabilityQueryResponse,
   ProjectExactExportQueryResponse,
   ProjectDependencyGraphQueryResponse,
@@ -29,6 +30,7 @@ import {
   CAD_PROJECT_FORMAT_VERSION_V13,
   CAD_PROJECT_FORMAT_VERSION_V14,
   CAD_PROJECT_FORMAT_VERSION_V17,
+  CAD_PROJECT_FORMAT_VERSION_V18,
   CAD_PROJECT_FORMAT_VERSION_V8,
   CAD_PROJECT_FORMAT_VERSION_V9,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
@@ -46,7 +48,10 @@ import {
   createWcadPackageEntryMetadata,
   createWcadSourceIdentity,
   MockCadCommandWorker,
+  collectWcadV2CheckpointSourceEntries,
   corePackage,
+  createEmptyTopologyIdentitySourceSnapshot,
+  createWcadV2CheckpointEntryPaths,
   exportCadProject,
   exportCadProjectJson,
   exportCadProjectWcad,
@@ -59,7 +64,9 @@ import {
   validateWcadManifest,
   validateWcadManifestSourceIdentity,
   validateWcadPackageCacheEntries,
-  validateWcadPackageEntryBytes
+  validateWcadPackageEntryBytes,
+  validateTopologyIdentitySourceSnapshot,
+  validateWcadManifestV2Contract
 } from "./index";
 import {
   createProjectExactExport,
@@ -29346,6 +29353,209 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).not.toContain("web-cad.project.v17");
   });
 
+  it("preserves explicit V18 topology identity source contracts without migrating ordinary projects", () => {
+    const engine = createRectangleExtrudeEngine();
+    const ordinaryProject = exportCadProject(engine);
+    const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+    const v18Project: CadProject = {
+      ...ordinaryProject,
+      schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      document: {
+        ...ordinaryProject.document,
+        topologyIdentity
+      },
+      history: [],
+      redoStack: []
+    };
+    const imported = importCadProject(v18Project);
+    const exported = exportCadProject(imported);
+
+    expect(exportCadProject(engine).schemaVersion).toBe(
+      CURRENT_CAD_PROJECT_FORMAT_VERSION
+    );
+    expect(exported.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V18);
+    expect(exported.document.topologyIdentity).toEqual(topologyIdentity);
+    expect(validateTopologyIdentitySourceSnapshot(topologyIdentity)).toEqual(
+      []
+    );
+    expect(JSON.stringify(exported.document.topologyIdentity)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
+  });
+
+  it("rejects topology identity source records before V18", () => {
+    const engine = createRectangleExtrudeEngine();
+    const project = exportCadProject(engine);
+    const invalidProject = {
+      ...project,
+      document: {
+        ...project.document,
+        topologyIdentity: createEmptyTopologyIdentitySourceSnapshot()
+      },
+      history: [],
+      redoStack: []
+    } as CadProject;
+
+    expectProjectImportError(() => importCadProject(invalidProject), {
+      code: "INVALID_DOCUMENT",
+      path: "$.document.topologyIdentity",
+      message: "require web-cad.project.v18"
+    });
+  });
+
+  it("validates WCAD v2 checkpoint package contracts and source identity inputs", async () => {
+    const paths = createWcadV2CheckpointEntryPaths("checkpoint_1");
+    const documentBytes = new Uint8Array([1, 2, 3]);
+    const commandsBytes = new Uint8Array([4, 5]);
+    const checkpointEntries = [
+      {
+        path: paths.brep,
+        byteLength: 7,
+        sha256:
+          "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      {
+        path: paths.topology,
+        byteLength: 5,
+        sha256:
+          "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      {
+        path: paths.signature,
+        byteLength: 3,
+        sha256:
+          "5555555555555555555555555555555555555555555555555555555555555555"
+      }
+    ];
+    const sourceIdentity = await createWcadSourceIdentity({
+      packageVersion: "partbench.wcad.v2",
+      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      units: "mm",
+      documentBytes,
+      commandsBytes,
+      checkpointSourceEntries: checkpointEntries
+    });
+    const sourceIdentityWithReorderedEntries = await createWcadSourceIdentity({
+      packageVersion: "partbench.wcad.v2",
+      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      units: "mm",
+      documentBytes,
+      commandsBytes,
+      checkpointSourceEntries: [...checkpointEntries].reverse()
+    });
+    const sourceIdentityWithoutCheckpoints = await createWcadSourceIdentity({
+      packageVersion: "partbench.wcad.v2",
+      documentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+      units: "mm",
+      documentBytes,
+      commandsBytes
+    });
+    const checkpointPayload = {
+      checkpointId: "checkpoint_1",
+      bodyId: "body_1",
+      sourceIdentity,
+      units: "mm" as const,
+      kernel: {
+        boundary: "geometry-kernel" as const,
+        snapshotAlgorithm: "partbench-derived-topology-snapshot-v1" as const
+      },
+      tolerance: { linearTolerance: 0.001 },
+      brep: {
+        ...checkpointEntries[0],
+        checkpointId: "checkpoint_1",
+        source: true as const,
+        sourceIdentity
+      },
+      topology: {
+        ...checkpointEntries[1],
+        checkpointId: "checkpoint_1",
+        source: true as const,
+        sourceIdentity
+      },
+      signature: {
+        ...checkpointEntries[2],
+        checkpointId: "checkpoint_1",
+        source: true as const,
+        sourceIdentity
+      }
+    };
+    const manifest: WcadManifestV2 = {
+      packageVersion: "partbench.wcad.v2",
+      product: "Partbench",
+      createdBy: { app: "partbench" },
+      createdAt: "2026-06-21T00:00:00.000Z",
+      modifiedAt: "2026-06-21T00:00:00.000Z",
+      units: "mm",
+      document: {
+        path: "document.cbor",
+        schemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+        byteLength: documentBytes.byteLength,
+        sha256:
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      commands: {
+        path: "commands.cbor",
+        byteLength: commandsBytes.byteLength,
+        sha256:
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      sourceIdentity,
+      topologyIdentity: {
+        contractVersion: "partbench.topology-identity.v1",
+        projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+        checkpointCount: 1,
+        checkpoints: [checkpointPayload],
+        jsonFallback: "checkpoint-metadata-only"
+      }
+    };
+
+    expect(sourceIdentityWithReorderedEntries).toEqual(sourceIdentity);
+    expect(sourceIdentityWithoutCheckpoints.sha256).not.toBe(
+      sourceIdentity.sha256
+    );
+    expect(validateWcadManifestV2Contract(manifest)).toEqual([]);
+    expect(collectWcadV2CheckpointSourceEntries(manifest)).toEqual(
+      checkpointEntries
+    );
+
+    const invalidManifest = {
+      ...manifest,
+      topologyIdentity: {
+        ...manifest.topologyIdentity,
+        checkpoints: [
+          {
+            ...checkpointPayload,
+            brep: {
+              ...checkpointPayload.brep,
+              path: "../checkpoint_1.brep"
+            },
+            signature: {
+              ...checkpointPayload.signature,
+              sourceIdentity: {
+                ...sourceIdentity,
+                sha256:
+                  "6666666666666666666666666666666666666666666666666666666666666666"
+              }
+            }
+          }
+        ]
+      }
+    };
+
+    expect(validateWcadManifestV2Contract(invalidManifest)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_INVALID_PACKAGE_PATH",
+          entryRole: "checkpoint-brep"
+        }),
+        expect.objectContaining({
+          code: "WCAD_CHECKPOINT_SOURCE_IDENTITY_MISMATCH",
+          entryRole: "checkpoint-signature"
+        })
+      ])
+    );
+  });
+
   it("reports V13 topology identity readiness without creating anchors or checkpoints", () => {
     const engine = createRectangleExtrudeEngine();
     const beforeJson = exportCadProjectJson(engine);
@@ -29403,13 +29613,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           capability: "v18SourceContract",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         }),
         expect.objectContaining({
           capability: "wcadV2Package",
-          status: "deferred",
-          available: false
+          status: "supported",
+          available: true
         })
       ]),
       diagnostics: expect.arrayContaining([
@@ -29426,12 +29636,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           status: "supported"
         }),
         expect.objectContaining({
-          code: "TOPOLOGY_SCHEMA_V18_DEFERRED",
-          status: "deferred"
+          code: "TOPOLOGY_SOURCE_CONTRACT_READY",
+          status: "supported"
         }),
         expect.objectContaining({
-          code: "TOPOLOGY_PACKAGE_V2_DEFERRED",
-          status: "deferred"
+          code: "TOPOLOGY_PACKAGE_V2_CONTRACT_READY",
+          status: "supported"
         })
       ])
     });

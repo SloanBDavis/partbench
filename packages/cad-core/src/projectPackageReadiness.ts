@@ -5,11 +5,14 @@ import {
   WCAD_PACKAGE_EXTENSION,
   WCAD_PACKAGE_VERSION,
   WCAD_SOURCE_IDENTITY_ALGORITHM,
+  type CadTopologyIdentityProjectSchemaVersion,
   type CadOpsVersion,
   type DocumentUnits,
   type ProjectPackageReadinessQueryResponse,
   type WcadDocumentSchemaVersion,
   type WcadManifestV1,
+  type WcadPackageV1DocumentSchemaVersion,
+  type WcadPackageVersion,
   type WcadPackageCacheArtifactKind,
   type WcadPackageEntryMetadata,
   type WcadPackageEntryRole,
@@ -27,10 +30,14 @@ interface ProjectPackageReadinessInput {
 }
 
 export interface WcadSourceIdentityInput {
-  readonly documentSchemaVersion: WcadDocumentSchemaVersion;
+  readonly packageVersion?: WcadPackageVersion;
+  readonly documentSchemaVersion:
+    | WcadDocumentSchemaVersion
+    | CadTopologyIdentityProjectSchemaVersion;
   readonly units: DocumentUnits;
   readonly documentBytes: Uint8Array;
   readonly commandsBytes: Uint8Array;
+  readonly checkpointSourceEntries?: readonly WcadPackageEntryMetadata[];
 }
 
 interface WcadPackageEntryBytesInput {
@@ -52,7 +59,7 @@ const DERIVED_BOUNDARY_NOTE =
 const SUPPORTED_DOCUMENT_SCHEMAS = [
   "web-cad.project.v16",
   "web-cad.project.v17"
-] satisfies readonly WcadDocumentSchemaVersion[];
+] satisfies readonly WcadPackageV1DocumentSchemaVersion[];
 
 const SUPPORTED_CACHE_ARTIFACT_KINDS = [
   "derivedMesh",
@@ -67,8 +74,8 @@ export function createProjectPackageReadiness({
   documentSchemaVersion,
   units
 }: ProjectPackageReadinessInput): ProjectPackageReadinessQueryResponse {
-  const schemaSupported = SUPPORTED_DOCUMENT_SCHEMAS.includes(
-    documentSchemaVersion
+  const schemaSupported = SUPPORTED_DOCUMENT_SCHEMAS.some(
+    (schema) => schema === documentSchemaVersion
   );
   const canRepresentCurrentSource = schemaSupported;
   const requiresProjectSchemaMigration = !canRepresentCurrentSource;
@@ -232,23 +239,34 @@ function chooseReadinessStatus(
 }
 
 export function createWcadSourceIdentitySync({
+  packageVersion = WCAD_PACKAGE_VERSION,
   documentSchemaVersion,
   units,
   documentBytes,
-  commandsBytes
+  commandsBytes,
+  checkpointSourceEntries = []
 }: WcadSourceIdentityInput): WcadSourceIdentity {
+  const sortedCheckpointEntries = [...checkpointSourceEntries].sort(
+    (left, right) => left.path.localeCompare(right.path)
+  );
+
   return {
     algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
     sha256: sha256Hex(
       joinByteParts([
         utf8(`${WCAD_SOURCE_IDENTITY_ALGORITHM}\n`),
-        utf8(`packageVersion:${WCAD_PACKAGE_VERSION}\n`),
+        utf8(`packageVersion:${packageVersion}\n`),
         utf8(`documentSchemaVersion:${documentSchemaVersion}\n`),
         utf8(`units:${units}\n`),
         utf8(`documentByteLength:${documentBytes.byteLength}\n`),
         documentBytes,
         utf8(`\ncommandsByteLength:${commandsBytes.byteLength}\n`),
-        commandsBytes
+        commandsBytes,
+        ...sortedCheckpointEntries.flatMap((entry) => [
+          utf8(`\ncheckpointEntry:${entry.path}\n`),
+          utf8(`byteLength:${entry.byteLength}\n`),
+          utf8(`sha256:${entry.sha256}\n`)
+        ])
       ])
     )
   };
@@ -746,10 +764,10 @@ function isValidWcadPackagePath(path: string): boolean {
 
 function isSupportedDocumentSchema(
   value: unknown
-): value is WcadDocumentSchemaVersion {
+): value is WcadPackageV1DocumentSchemaVersion {
   return (
     typeof value === "string" &&
-    SUPPORTED_DOCUMENT_SCHEMAS.includes(value as WcadDocumentSchemaVersion)
+    SUPPORTED_DOCUMENT_SCHEMAS.some((schema) => schema === value)
   );
 }
 

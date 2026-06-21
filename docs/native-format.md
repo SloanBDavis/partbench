@@ -1548,6 +1548,12 @@ or exact checkpoint payload references. Query-only topology readiness, derived
 signatures, transient topology snapshots, and OPFS cache entries remain derived
 and do not justify V18 by themselves.
 
+V13 Tranche C implements the contract for that storage boundary. The typed
+V18 source block contains topology identity settings, checkpoint metadata,
+topology anchor records, and explicit repair records. Ordinary projects still
+export as V16 or V17 until topology identity source records are actually
+present.
+
 Do not confuse the V13 release with `web-cad.project.v13`; that schema
 identifier already means persisted perpendicular-line sketch constraints from
 an older release. The next saved-project schema after V17 is
@@ -1560,6 +1566,11 @@ manifest-listed checkpoint entries such as B-rep payloads, topology snapshots,
 and signature records with content hashes, byte lengths, kernel/checkpoint
 versions, units, tolerance metadata, source identity, and structured corruption
 or incompatibility diagnostics.
+
+V13 Tranche C types the `.wcad` v2 manifest and checkpoint entry contract,
+including checkpoint B-rep, topology, and signature payload paths under
+`checkpoints/`. It does not yet write or read checkpoint payload bytes; that
+remains the checkpoint persistence tranche.
 
 OPFS may cache unpacked checkpoint data or matcher acceleration structures, but
 OPFS remains rebuildable browser-private cache. Clearing OPFS must not remove
