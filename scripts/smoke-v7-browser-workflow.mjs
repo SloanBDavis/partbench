@@ -493,6 +493,16 @@ async function v7BrowserWorkflowSmoke({
     v12CircleAddToolEntityId: "v12_smoke_circle_add_tool",
     v12CircleAddToolSketchId: "v12_smoke_circle_add_tool_sketch",
     v12CircleAddToolSketchName: "V12 smoke circle add tool sketch",
+    v12CircleCutBodyId: "v12_smoke_circle_cut_body",
+    v12CircleCutBodyName: "V12 smoke circle cut result",
+    v12CircleCutFeatureId: "v12_smoke_circle_cut_feature",
+    v12CircleCutTargetBodyId: "v12_smoke_circle_cut_target_body",
+    v12CircleCutTargetBodyName: "V12 smoke circle cut target body",
+    v12CircleCutTargetEntityId: "v12_smoke_circle_cut_target_rect",
+    v12CircleCutTargetFeatureId: "v12_smoke_circle_cut_target_feature",
+    v12CircleCutToolEntityId: "v12_smoke_circle_cut_tool",
+    v12CircleCutToolSketchId: "v12_smoke_circle_cut_tool_sketch",
+    v12CircleCutToolSketchName: "V12 smoke circle cut tool sketch",
     v12CutWallSketchId: "v12_smoke_cut_wall_sketch",
     v12CutWallSketchName: "V12 smoke cut wall sketch",
     v12RepairReferenceName: "v12_smoke_repaired_cut_face",
@@ -1197,6 +1207,7 @@ async function v7BrowserWorkflowSmoke({
     if (requireV12Workflow) {
       await runV12CutResultReferenceWorkflowSmoke();
       await runV12AddResultReferenceWorkflowSmoke();
+      await runV12CircleCutResultReferenceWorkflowSmoke();
       await runV12CircleAddResultReferenceWorkflowSmoke();
     }
 
@@ -2893,6 +2904,232 @@ async function v7BrowserWorkflowSmoke({
       "missing named reference is repaired to a command-ready V12 add-result edge",
       getSelectionText()
     );
+  }
+
+  async function runV12CircleCutResultReferenceWorkflowSmoke() {
+    await createV10RectangleNewBody({
+      bodyId: ids.v12CircleCutTargetBodyId,
+      bodyName: ids.v12CircleCutTargetBodyName,
+      centerX: "-12",
+      entityId: ids.v12CircleCutTargetEntityId,
+      featureId: ids.v12CircleCutTargetFeatureId
+    });
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleCutTargetBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(
+      `generated:face:${ids.v12CircleCutTargetBodyId}:endCap`
+    );
+
+    const targetInspector = getElementByAriaLabel("Inspector");
+    setSelectByLabel(
+      targetInspector,
+      "Face",
+      `generated:face:${ids.v12CircleCutTargetBodyId}:endCap`
+    );
+    setFieldByLabel(
+      targetInspector,
+      "Sketch name",
+      ids.v12CircleCutToolSketchName
+    );
+    setInputByDetailsSummary(
+      targetInspector,
+      "Advanced sketch options",
+      ids.v12CircleCutToolSketchId
+    );
+    clickButton(targetInspector, "Create attached sketch");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12CircleCutToolSketchName
+        ),
+      "V12 circle cut target attached tool sketch"
+    );
+
+    clickButtonContaining(getElementByAriaLabel("Tool tabs"), "Sketches");
+    const sketches = getSectionByAriaLabel("Sketches");
+    setSelectByLabel(sketches, "Active sketch", ids.v12CircleCutToolSketchId);
+    await waitFor(
+      () =>
+        getControlByLabel(getSectionByAriaLabel("Sketches"), "Active sketch")
+          .value === ids.v12CircleCutToolSketchId,
+      "V12 circle cut tool sketch became active"
+    );
+    clickButton(getElementByAriaLabel("Add sketch entity"), "Circle");
+    const entityEditor = await waitForSectionByAriaLabel(
+      "Sketch entity editor",
+      "V12 circle cut tool circle entity editor"
+    );
+    setSelectByLabel(entityEditor, "Entity", "circle");
+    setInputByDetailsSummary(
+      entityEditor,
+      "Optional ID",
+      ids.v12CircleCutToolEntityId
+    );
+    setFieldByLabel(entityEditor, "Center X", "0");
+    setFieldByLabel(entityEditor, "Center Y", "0");
+    setFieldByLabel(entityEditor, "Radius", "0.35");
+    clickButton(entityEditor, "Add entity");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Select sketch entity"),
+          ids.v12CircleCutToolEntityId
+        ),
+      "created V12 circle cut tool circle"
+    );
+
+    let featureEditor = getSectionByAriaLabel("Create authored feature");
+    setFieldByLabel(featureEditor, "Depth", "0.5");
+    setSelectByLabel(featureEditor, "Operation", "cut");
+    setSelectByLabel(featureEditor, "Side", "negative");
+    await waitFor(
+      () =>
+        Boolean(
+          queryControlByLabel(
+            getSectionByAriaLabel("Create authored feature"),
+            "Target body"
+          )
+        ),
+      "circle cut target body control"
+    );
+    featureEditor = getSectionByAriaLabel("Create authored feature");
+    setSelectByLabel(
+      featureEditor,
+      "Target body",
+      ids.v12CircleCutTargetBodyId
+    );
+    setFieldByLabel(
+      featureEditor,
+      "Optional feature ID",
+      ids.v12CircleCutFeatureId
+    );
+    setFieldByLabel(featureEditor, "Optional body ID", ids.v12CircleCutBodyId);
+    setFieldByLabel(featureEditor, "Optional name", ids.v12CircleCutBodyName);
+    clickButton(featureEditor, "Create extrude");
+    await waitFor(
+      () =>
+        includesText(
+          getElementByAriaLabel("Model structure"),
+          ids.v12CircleCutBodyName
+        ),
+      "created V12 circle cut result body"
+    );
+    pass(
+      "v12-circle-cut-result-create",
+      "created a deterministic circle-tool cut result through the browser UI",
+      ids.v12CircleCutBodyId
+    );
+
+    const wallStableId = `generated:face:${ids.v12CircleCutBodyId}:side:circular`;
+    const startRimStableId = `generated:edge:${ids.v12CircleCutBodyId}:start:circular`;
+    const terminalRimStableId = `generated:edge:${ids.v12CircleCutBodyId}:end:circular`;
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleCutBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(wallStableId);
+    await waitForV12ResultMeasureOnlyReferenceCommandReady({
+      bodyId: ids.v12CircleCutBodyId,
+      stableId: wallStableId,
+      label: "Cut circular wall face"
+    });
+    pass(
+      "v12-circle-cut-result-wall-command-ready-browser",
+      "V12 circle cut-result cylindrical wall is command-ready for name/measure/inspect",
+      getSelectionText()
+    );
+    await waitForViewportContextualCommands(
+      ["Name", "Measure", "Inspect"],
+      "V12 circle cut-result wall contextual commands"
+    );
+    assertViewportContextualCommandsAbsent([
+      "Create sketch",
+      "Chamfer",
+      "Fillet"
+    ]);
+    pass(
+      "v12-circle-cut-result-wall-no-sketch",
+      "V12 circle cut-result cylindrical wall hides unsupported sketch and edge-finish actions",
+      getViewportContextualCommandText()
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v12CircleCutBodyName
+    );
+    openSelectionPanel();
+    await selectGeneratedReferenceByStableId(terminalRimStableId);
+    await waitForV12ResultEdgeCommandReady({
+      bodyId: ids.v12CircleCutBodyId,
+      stableId: terminalRimStableId,
+      label: "Cut terminal circular rim edge"
+    });
+    pass(
+      "v12-circle-cut-result-rim-command-ready-browser",
+      "V12 circle cut-result terminal rim edge is command-ready for naming, measurement, and inspect",
+      getSelectionText()
+    );
+
+    const rimSelect = getControlByLabel(
+      getElementByAriaLabel("Inspector"),
+      "Inspect reference"
+    );
+    const hasStartRim = [...rimSelect.querySelectorAll("option")].some(
+      (option) => option.value === startRimStableId
+    );
+
+    if (!hasStartRim) {
+      fail(
+        "v12-circle-cut-result-rim-options-browser",
+        "V12 circle cut-result exposes both start and terminal rim edge options",
+        compactText(rimSelect.textContent, 520)
+      );
+    } else {
+      pass(
+        "v12-circle-cut-result-rim-options-browser",
+        "V12 circle cut-result exposes both start and terminal rim edge options",
+        compactText(rimSelect.textContent, 520)
+      );
+    }
+
+    await waitForViewportContextualCommands(
+      ["Name", "Measure", "Inspect"],
+      "V12 circle cut-result rim contextual commands"
+    );
+    assertViewportContextualCommandsAbsent([
+      "Create sketch",
+      "Chamfer",
+      "Fillet"
+    ]);
+    const selectionText = getViewportContextualCommandText();
+    const deferredVisible =
+      selectionText.includes("Edge finish") ||
+      selectionText.includes("Chamfer") ||
+      selectionText.includes("Fillet");
+
+    if (deferredVisible) {
+      fail(
+        "v12-circle-cut-result-rim-no-deferred-finish",
+        "V12 circle cut-result rim edges hide deferred edge-finish affordances",
+        selectionText
+      );
+    } else {
+      pass(
+        "v12-circle-cut-result-rim-no-deferred-finish",
+        "V12 circle cut-result rim edges hide deferred edge-finish affordances",
+        selectionText
+      );
+    }
   }
 
   async function runV12CircleAddResultReferenceWorkflowSmoke() {

@@ -552,6 +552,10 @@ browser path that creates a supported circle add result, verifies command-ready
 added cap, cylindrical wall, and circular cap edge references, and proves the
 cylindrical wall/circular edge expose only supported name/measure/inspect
 actions rather than unsupported create-sketch or deferred edge-finish actions.
+The same V12 browser smoke now requires a circle-tool cut path that verifies
+command-ready cut-wall and start/terminal rim references while keeping
+unsupported sketch and deferred edge-finish actions hidden on the cylindrical
+and rim targets.
 The underlying files remain
 `scripts/smoke-v7-browser-workflow.mjs` and
 `scripts/v7-browser-workflow.mjs` for backward compatibility.
@@ -2223,8 +2227,10 @@ Use these decisions when drafting or implementing V12 tranches:
    added-cap profile edge command-ready browser workflow. It now also covers
    the browser circle-tool add path for added cap, cylindrical wall, and
    circular cap edge command readiness, including hidden unsupported sketch and
-   edge-finish actions on the cylindrical/edge targets. Thin agent/MCP tests
-   also assert `selection.referenceCandidates` pass-through for the same
+   edge-finish actions on the cylindrical/edge targets, plus the browser
+   circle-tool cut path for cut-wall and start/terminal rim command readiness
+   with the same unsupported-action boundary. Thin agent/MCP tests also assert
+   `selection.referenceCandidates` pass-through for the same
    added-cap profile edge. Docs should continue stating exactly which boolean
    topology is supported and which remains deferred.
 
