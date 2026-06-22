@@ -69,6 +69,16 @@ import {
   type OcctStepExportUnit,
   type OcctStepWriterCapability
 } from "./exactStepExport";
+import {
+  createOcctExactTopologyCheckpointPayloadWithInstance,
+  createOcctExactTopologyCheckpointPayloadWithLoader,
+  getOcctBrepCheckpointWriterCapabilityWithInstance,
+  getOcctBrepCheckpointWriterCapabilityWithLoader,
+  type OcctBrepCheckpointWriterCapability,
+  type OcctExactTopologyCheckpointPayload,
+  type OcctExactTopologyCheckpointPayloadInput,
+  type OcctTopologyCheckpointSignaturePayload
+} from "./exactCheckpointPayload";
 
 export type {
   OcctBooleanExtrudeInput,
@@ -91,6 +101,10 @@ export type {
   OcctStepExportSchema,
   OcctStepExportUnit,
   OcctStepWriterCapability,
+  OcctBrepCheckpointWriterCapability,
+  OcctExactTopologyCheckpointPayload,
+  OcctExactTopologyCheckpointPayloadInput,
+  OcctTopologyCheckpointSignaturePayload,
   OcctMeshData
 };
 export {
@@ -119,7 +133,11 @@ export {
   createOcctStepExportWithInstance,
   createOcctStepExportWithLoader,
   getOcctStepWriterCapabilityWithInstance,
-  getOcctStepWriterCapabilityWithLoader
+  getOcctStepWriterCapabilityWithLoader,
+  createOcctExactTopologyCheckpointPayloadWithInstance,
+  createOcctExactTopologyCheckpointPayloadWithLoader,
+  getOcctBrepCheckpointWriterCapabilityWithInstance,
+  getOcctBrepCheckpointWriterCapabilityWithLoader
 };
 
 let occtPromise: Promise<OpenCascadeInstance> | undefined;
@@ -203,4 +221,14 @@ export async function createOcctStepExport(
 
 export async function getOcctStepWriterCapability(): Promise<OcctStepWriterCapability> {
   return getOcctStepWriterCapabilityWithLoader(loadOcct);
+}
+
+export async function createOcctExactTopologyCheckpointPayload(
+  input: OcctExactTopologyCheckpointPayloadInput
+): Promise<OcctExactTopologyCheckpointPayload> {
+  return createOcctExactTopologyCheckpointPayloadWithLoader(loadOcct, input);
+}
+
+export async function getOcctBrepCheckpointWriterCapability(): Promise<OcctBrepCheckpointWriterCapability> {
+  return getOcctBrepCheckpointWriterCapabilityWithLoader(loadOcct);
 }

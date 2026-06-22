@@ -6,10 +6,12 @@ import {
   createOcctCylinderMesh,
   createOcctEdgeFinishMesh,
   createOcctExactBodyMetadata,
+  createOcctExactTopologyCheckpointPayload,
   createOcctExactTopologySnapshot,
   createOcctRevolveProfileMesh,
   createOcctSphereMesh,
   createOcctStepExport,
+  getOcctBrepCheckpointWriterCapability,
   getOcctStepWriterCapability,
   createOcctTorusMesh
 } from "./index";
@@ -31,6 +33,25 @@ describe("occt-wasm", () => {
       });
       expect(capability.missingBindings).toEqual([]);
       expect(capability.availableBindings).toContain("STEPControl_Writer_1");
+      expect(capability.availableBindings).toContain("FS.readFile");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "reports BRep checkpoint writer bindings as available through the isolated boundary",
+    async () => {
+      const capability = await getOcctBrepCheckpointWriterCapability();
+
+      expect(capability).toMatchObject({
+        format: "occt-brep",
+        status: "available",
+        writerAvailable: true,
+        boundary: "occt-wasm",
+        packageName: "opencascade.js"
+      });
+      expect(capability.missingBindings).toEqual([]);
+      expect(capability.availableBindings).toContain("BRepTools.Write_3");
       expect(capability.availableBindings).toContain("FS.readFile");
     },
     OCCT_WASM_TEST_TIMEOUT_MS
@@ -68,6 +89,62 @@ describe("occt-wasm", () => {
       expect(text).toContain("ISO-10303-21");
       expect(text).toContain("SI_UNIT(.MILLI.,.METRE.)");
       expect(text).not.toContain("mesh");
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "creates real BRep checkpoint bytes and matching topology payloads through Open CASCADE WASM",
+    async () => {
+      const checkpointPayload = await createOcctExactTopologyCheckpointPayload({
+        checkpointId: "checkpoint_occt_rect",
+        bodyId: "body_occt_rect",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      });
+      const brepText = new TextDecoder().decode(checkpointPayload.brepBytes);
+
+      expect(checkpointPayload).toMatchObject({
+        checkpointId: "checkpoint_occt_rect",
+        bodyId: "body_occt_rect",
+        sourceKind: "extrude",
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3"
+      });
+      expect(checkpointPayload.brepByteLength).toBe(
+        checkpointPayload.brepBytes.byteLength
+      );
+      expect(checkpointPayload.brepByteLength).toBeGreaterThan(1000);
+      expect(brepText).toContain("CASCADE Topology");
+      expect(checkpointPayload.topologySnapshot).toMatchObject({
+        sourceKind: "extrude",
+        source: "kernel-derived",
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+      });
+      expect(checkpointPayload.signaturePayload).toEqual({
+        checkpointId: "checkpoint_occt_rect",
+        signatureAlgorithm:
+          checkpointPayload.topologySnapshot.signatureAlgorithm,
+        signature: checkpointPayload.topologySnapshot.signature,
+        entityCount: checkpointPayload.topologySnapshot.entityCount,
+        entities: checkpointPayload.topologySnapshot.entities.map((entity) => ({
+          localId: entity.localId,
+          kind: entity.kind,
+          signature: entity.signature
+        }))
+      });
+      expect(JSON.stringify(checkpointPayload)).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+      );
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );

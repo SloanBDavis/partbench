@@ -10,6 +10,7 @@ import {
   createOcctRevolveProfileMesh,
   createOcctExactBodyMetadata,
   createOcctExactTopologySnapshot,
+  createOcctExactTopologyCheckpointPayload,
   createOcctStepExport
 } from "@web-cad/occt-wasm";
 import {
@@ -29,6 +30,7 @@ import {
   type ExactExtrudeMetadataSource,
   type ExactHoleMetadataSource,
   type ExactTopologySnapshotRequest,
+  type ExactTopologyCheckpointPayloadRequest,
   type ExactRevolveMetadataSource,
   type ExactStepExportBodySource,
   type ExactStepExportRequest,
@@ -49,6 +51,9 @@ import {
   type GeometryKernelExactTopologySnapshot,
   type GeometryKernelExactTopologySnapshotFactory,
   type GeometryKernelExactTopologySnapshotSuccessResponse,
+  type GeometryKernelExactTopologyCheckpointPayload,
+  type GeometryKernelExactTopologyCheckpointPayloadFactory,
+  type GeometryKernelExactTopologyCheckpointPayloadSuccessResponse,
   type GeometryKernelExactStepExportArtifact,
   type GeometryKernelExactStepExportFactory,
   type GeometryKernelExactStepExportSuccessResponse,
@@ -75,6 +80,8 @@ import {
   type GeometryKernelTopologyEntityCounts,
   type GeometryKernelTopologyEntityDescriptor,
   type GeometryKernelTopologyEntityKind,
+  type GeometryKernelTopologyCheckpointSignatureEntity,
+  type GeometryKernelTopologyCheckpointSignaturePayload,
   type GeometryKernelVersion,
   type GeometryKernelErrorResponse,
   type EdgeFinishRequest,
@@ -113,6 +120,7 @@ export type {
   ExactExtrudeMetadataSource,
   ExactHoleMetadataSource,
   ExactTopologySnapshotRequest,
+  ExactTopologyCheckpointPayloadRequest,
   ExactRevolveMetadataSource,
   ExactStepExportBodySource,
   ExactStepExportRequest,
@@ -133,6 +141,9 @@ export type {
   GeometryKernelExactTopologySnapshot,
   GeometryKernelExactTopologySnapshotFactory,
   GeometryKernelExactTopologySnapshotSuccessResponse,
+  GeometryKernelExactTopologyCheckpointPayload,
+  GeometryKernelExactTopologyCheckpointPayloadFactory,
+  GeometryKernelExactTopologyCheckpointPayloadSuccessResponse,
   GeometryKernelExactStepExportArtifact,
   GeometryKernelExactStepExportFactory,
   GeometryKernelExactStepExportSuccessResponse,
@@ -159,6 +170,8 @@ export type {
   GeometryKernelTopologyEntityCounts,
   GeometryKernelTopologyEntityDescriptor,
   GeometryKernelTopologyEntityKind,
+  GeometryKernelTopologyCheckpointSignatureEntity,
+  GeometryKernelTopologyCheckpointSignaturePayload,
   GeometryKernelVersion,
   GeometryKernelErrorResponse,
   EdgeFinishRequest,
@@ -203,6 +216,8 @@ export async function executeGeometryKernelRequest<
       createRevolveProfileMesh: createOcctRevolveProfileMesh,
       createExactBodyMetadata: createOcctExactBodyMetadata,
       createExactTopologySnapshot: createOcctExactTopologySnapshot,
+      createExactTopologyCheckpointPayload:
+        createOcctExactTopologyCheckpointPayload,
       createExactStepExport: createOcctStepExport
     },
     request

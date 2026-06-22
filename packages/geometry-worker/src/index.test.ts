@@ -6,6 +6,7 @@ import {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
@@ -564,6 +565,51 @@ describe("geometry-worker", () => {
         id: "worker_req_exact_topology_snapshot:payload",
         version: "geometry-kernel.v1",
         op: "geometry.exactTopologySnapshot",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 3
+          },
+          depth: 5,
+          side: "positive"
+        }
+      }
+    });
+  });
+
+  it("creates a typed exact topology checkpoint payload worker request", () => {
+    expect(
+      createExactTopologyCheckpointPayloadWorkerRequest({
+        id: "worker_req_exact_topology_checkpoint_payload",
+        checkpointId: "checkpoint_worker_rect",
+        bodyId: "body_worker_rect",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 4,
+            height: 3
+          },
+          depth: 5,
+          side: "positive"
+        }
+      })
+    ).toEqual({
+      id: "worker_req_exact_topology_checkpoint_payload",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactTopologyCheckpointPayload",
+      payload: {
+        id: "worker_req_exact_topology_checkpoint_payload:payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologyCheckpointPayload",
+        checkpointId: "checkpoint_worker_rect",
+        bodyId: "body_worker_rect",
         source: {
           kind: "extrude",
           sketchPlane: "XY",
@@ -1296,6 +1342,76 @@ describe("geometry-worker", () => {
     expect(bodyEntity?.bounds?.max[0]).toBeCloseTo(3, 6);
     expect(bodyEntity?.bounds?.max[1]).toBeCloseTo(3.5, 6);
     expect(bodyEntity?.bounds?.max[2]).toBeCloseTo(5, 6);
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  }, 120_000);
+
+  it("returns exact topology checkpoint payloads through the geometry kernel facade", async () => {
+    const worker = createGeometryKernelWorker({ delayMs: 1 });
+    const response = await worker.execute(
+      createExactTopologyCheckpointPayloadWorkerRequest({
+        id: "worker_req_exact_topology_checkpoint_payload_execute",
+        payloadId: "geometry_req_exact_topology_checkpoint_payload_execute",
+        checkpointId: "checkpoint_worker_rect",
+        bodyId: "body_worker_rect",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [1, 2],
+            width: 4,
+            height: 3
+          },
+          depth: 5
+        }
+      })
+    );
+
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
+    expect(response).toMatchObject({
+      id: "worker_req_exact_topology_checkpoint_payload_execute",
+      version: "geometry-worker.v1",
+      kind: "geometry-worker.exactTopologyCheckpointPayload",
+      payloadId: "geometry_req_exact_topology_checkpoint_payload_execute",
+      response: {
+        ok: true,
+        id: "geometry_req_exact_topology_checkpoint_payload_execute",
+        op: "geometry.exactTopologyCheckpointPayload",
+        warnings: []
+      }
+    });
+    expect(response.response.checkpointPayload).toMatchObject({
+      checkpointId: "checkpoint_worker_rect",
+      bodyId: "body_worker_rect",
+      sourceKind: "extrude",
+      brepFormat: "occt-brep",
+      brepWriter: "BRepTools.Write_3",
+      topologySnapshot: expect.objectContaining({
+        sourceKind: "extrude",
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+      }),
+      signaturePayload: expect.objectContaining({
+        checkpointId: "checkpoint_worker_rect",
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
+      })
+    });
+    expect(response.response.checkpointPayload.brepByteLength).toBe(
+      response.response.checkpointPayload.brepBytes.byteLength
+    );
+    expect(response.response.checkpointPayload.brepByteLength).toBeGreaterThan(
+      1000
+    );
+    expect(response.response.checkpointPayload.signaturePayload.signature).toBe(
+      response.response.checkpointPayload.topologySnapshot.signature
+    );
+    expect(response.transferables).toEqual([
+      response.response.checkpointPayload.brepBytes.buffer
+    ]);
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );

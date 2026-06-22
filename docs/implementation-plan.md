@@ -2368,8 +2368,12 @@ Use these decisions when drafting or implementing V13 tranches:
    source identity, hash/length metadata, topology/signature CBOR
    compatibility, topology entity descriptor integrity, signature-to-topology
    consistency, and topology-anchor checkpoint-entity links. It keeps `.wcad`
-   v1 read/write compatibility. Geometry-boundary B-rep checkpoint byte
-   creation and Project/File checkpoint status remain for later V13 tranches.
+   v1 read/write compatibility. The isolated `occt-wasm`/geometry-kernel/
+   geometry-worker boundary can now produce native OCCT B-rep checkpoint bytes
+   with `BRepTools.Write_3` plus matching topology snapshot and signature
+   payload objects for supported exact body sources. Automatic app/cad-core
+   checkpoint-payload generation during normal project save/open and
+   Project/File checkpoint status remain for later V13 tranches.
    Command-backed checkpoint metadata creation is handled by the G command
    slice.
 5. **Implemented: Topology Matching Engine** - `topology.matchSnapshots`
@@ -2493,9 +2497,11 @@ Use these decisions when drafting or implementing V13 tranches:
     checkpoint-local ids, and exports JSON again to prove the downstream cut
     keeps its `targetTopologyAnchorId`. Full interactive
     result-topology creation and manual repair chains remain later Tranche K
-    hardening. This K slice still does not generate checkpoint payload bytes
-    from the geometry boundary; it verifies package preservation for
-    deterministic caller-supplied payload bytes.
+    hardening. The geometry boundary can now generate real native B-rep
+    checkpoint payload bytes for supported exact body sources, while this K
+    smoke still verifies package preservation with deterministic
+    caller-supplied payload bytes until normal app/cad-core save orchestration
+    creates payloads automatically.
 
 ### V13 Scope Guardrails
 

@@ -173,41 +173,9 @@ export function createOcctExactBodyMetadataWithInstance(
   oc: OpenCascadeInstance,
   input: OcctExactBodyMetadataInput
 ): OcctExactBodyMetadata {
-  assertExactMetadataBindings(oc);
-
-  if (input.source.kind === "extrude") {
-    const shapeBuilder = makeBooleanExtrudeShape(oc, input.source);
-
-    try {
-      return readExactBodyMetadata(oc, shapeBuilder.Shape(), input.source.kind);
-    } finally {
-      shapeBuilder.delete();
-    }
-  }
-
-  if (input.source.kind === "revolve") {
-    const shapeHandle = makeRevolveProfileShape(oc, input.source);
-
-    try {
-      return readExactBodyMetadata(oc, shapeHandle.shape, input.source.kind);
-    } finally {
-      shapeHandle.delete();
-    }
-  }
-
-  if (input.source.kind === "hole") {
-    return withOcctHoleResultShape(oc, input.source, (shape) =>
-      readExactBodyMetadata(oc, shape, input.source.kind)
-    );
-  }
-
-  if (input.source.kind === "edgeFinish") {
-    return withOcctEdgeFinishResultShape(oc, input.source, (shape) =>
-      readExactBodyMetadata(oc, shape, input.source.kind)
-    );
-  }
-
-  return readBooleanExactBodyMetadata(oc, input.source);
+  return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>
+    readExactBodyMetadata(oc, shape, sourceKind)
+  );
 }
 
 export async function createOcctExactTopologySnapshotWithLoader(
@@ -223,55 +191,63 @@ export function createOcctExactTopologySnapshotWithInstance(
   oc: OpenCascadeInstance,
   input: OcctExactBodyMetadataInput
 ): OcctExactTopologySnapshot {
+  return withOcctExactBodyShape(oc, input.source, (shape, sourceKind) =>
+    readExactTopologySnapshot(oc, shape, sourceKind)
+  );
+}
+
+export function withOcctExactBodyShape<T>(
+  oc: OpenCascadeInstance,
+  source: OcctExactBodyMetadataSource,
+  readShape: (
+    shape: TopoDS_Shape,
+    sourceKind: OcctExactBodyMetadataSource["kind"]
+  ) => T
+): T {
   assertExactMetadataBindings(oc);
 
-  if (input.source.kind === "extrude") {
-    const shapeBuilder = makeBooleanExtrudeShape(oc, input.source);
+  if (source.kind === "extrude") {
+    const shapeBuilder = makeBooleanExtrudeShape(oc, source);
 
     try {
-      return readExactTopologySnapshot(
-        oc,
-        shapeBuilder.Shape(),
-        input.source.kind
-      );
+      return readShape(shapeBuilder.Shape(), source.kind);
     } finally {
       shapeBuilder.delete();
     }
   }
 
-  if (input.source.kind === "revolve") {
-    const shapeHandle = makeRevolveProfileShape(oc, input.source);
+  if (source.kind === "revolve") {
+    const shapeHandle = makeRevolveProfileShape(oc, source);
 
     try {
-      return readExactTopologySnapshot(
-        oc,
-        shapeHandle.shape,
-        input.source.kind
-      );
+      return readShape(shapeHandle.shape, source.kind);
     } finally {
       shapeHandle.delete();
     }
   }
 
-  if (input.source.kind === "hole") {
-    return withOcctHoleResultShape(oc, input.source, (shape) =>
-      readExactTopologySnapshot(oc, shape, input.source.kind)
+  if (source.kind === "hole") {
+    return withOcctHoleResultShape(oc, source, (shape) =>
+      readShape(shape, source.kind)
     );
   }
 
-  if (input.source.kind === "edgeFinish") {
-    return withOcctEdgeFinishResultShape(oc, input.source, (shape) =>
-      readExactTopologySnapshot(oc, shape, input.source.kind)
+  if (source.kind === "edgeFinish") {
+    return withOcctEdgeFinishResultShape(oc, source, (shape) =>
+      readShape(shape, source.kind)
     );
   }
 
-  return readBooleanExactTopologySnapshot(oc, input.source);
+  return withOcctBooleanExactBodyShape(oc, source, (shape) =>
+    readShape(shape, source.kind)
+  );
 }
 
-function readBooleanExactTopologySnapshot(
+function withOcctBooleanExactBodyShape<T>(
   oc: OpenCascadeInstance,
-  source: OcctExactBooleanExtrudesMetadataSource
-): OcctExactTopologySnapshot {
+  source: OcctExactBooleanExtrudesMetadataSource,
+  readShape: (shape: TopoDS_Shape) => T
+): T {
   const targetShape = makeBooleanExtrudeShape(oc, source.target);
   const toolShape = makeBooleanExtrudeShape(oc, source.tool);
   const range = new oc.Message_ProgressRange_1();
@@ -298,46 +274,7 @@ function readBooleanExactTopologySnapshot(
       throw new Error(`Open CASCADE boolean ${source.operation} failed.`);
     }
 
-    return readExactTopologySnapshot(oc, booleanOperation.Shape(), source.kind);
-  } finally {
-    booleanOperation?.delete();
-    range.delete();
-    targetShape.delete();
-    toolShape.delete();
-  }
-}
-
-function readBooleanExactBodyMetadata(
-  oc: OpenCascadeInstance,
-  source: OcctExactBooleanExtrudesMetadataSource
-): OcctExactBodyMetadata {
-  const targetShape = makeBooleanExtrudeShape(oc, source.target);
-  const toolShape = makeBooleanExtrudeShape(oc, source.tool);
-  const range = new oc.Message_ProgressRange_1();
-  let booleanOperation:
-    | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
-    | InstanceType<typeof oc.BRepAlgoAPI_Cut_3>
-    | undefined;
-
-  try {
-    booleanOperation =
-      source.operation === "add"
-        ? new oc.BRepAlgoAPI_Fuse_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          )
-        : new oc.BRepAlgoAPI_Cut_3(
-            targetShape.Shape(),
-            toolShape.Shape(),
-            range
-          );
-
-    if (booleanOperation.HasErrors()) {
-      throw new Error(`Open CASCADE boolean ${source.operation} failed.`);
-    }
-
-    return readExactBodyMetadata(oc, booleanOperation.Shape(), source.kind);
+    return readShape(booleanOperation.Shape());
   } finally {
     booleanOperation?.delete();
     range.delete();
@@ -387,7 +324,7 @@ function readExactBodyMetadata(
   }
 }
 
-function readExactTopologySnapshot(
+export function readExactTopologySnapshot(
   oc: OpenCascadeInstance,
   shape: TopoDS_Shape,
   sourceKind: OcctExactBodyMetadataSource["kind"]

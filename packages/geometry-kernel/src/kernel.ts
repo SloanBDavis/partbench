@@ -42,6 +42,7 @@ export type GeometryKernelOp =
   | "geometry.edgeFinish"
   | "geometry.exactBodyMetadata"
   | "geometry.exactTopologySnapshot"
+  | "geometry.exactTopologyCheckpointPayload"
   | "geometry.exportStep";
 export type GeometryKernelPrimitive =
   | "box"
@@ -331,6 +332,15 @@ export interface ExactTopologySnapshotRequest {
   readonly source: ExactBodyMetadataSource;
 }
 
+export interface ExactTopologyCheckpointPayloadRequest {
+  readonly id: string;
+  readonly version: GeometryKernelVersion;
+  readonly op: "geometry.exactTopologyCheckpointPayload";
+  readonly checkpointId: string;
+  readonly bodyId: string;
+  readonly source: ExactBodyMetadataSource;
+}
+
 export interface ExactStepExportBodySource extends BooleanExtrudeSource {
   readonly bodyId: string;
   readonly bodyName?: string;
@@ -357,12 +367,14 @@ export type GeometryKernelRequest =
   | EdgeFinishRequest
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
+  | ExactTopologyCheckpointPayloadRequest
   | ExactStepExportRequest;
 
 export type GeometryKernelMeshRequest = Exclude<
   GeometryKernelRequest,
   | ExactBodyMetadataRequest
   | ExactTopologySnapshotRequest
+  | ExactTopologyCheckpointPayloadRequest
   | ExactStepExportRequest
 >;
 
@@ -383,6 +395,7 @@ export type GeometryKernelSuccessResponse =
   | GeometryKernelMeshSuccessResponse
   | GeometryKernelExactBodyMetadataSuccessResponse
   | GeometryKernelExactTopologySnapshotSuccessResponse
+  | GeometryKernelExactTopologyCheckpointPayloadSuccessResponse
   | GeometryKernelExactStepExportSuccessResponse;
 
 export interface GeometryKernelMeshSuccessResponse {
@@ -406,6 +419,40 @@ export interface GeometryKernelExactTopologySnapshotSuccessResponse {
   readonly id: string;
   readonly op: "geometry.exactTopologySnapshot";
   readonly snapshot: GeometryKernelExactTopologySnapshot;
+  readonly warnings: readonly string[];
+}
+
+export interface GeometryKernelTopologyCheckpointSignatureEntity {
+  readonly localId: string;
+  readonly kind: GeometryKernelTopologyEntityKind;
+  readonly signature: string;
+}
+
+export interface GeometryKernelTopologyCheckpointSignaturePayload {
+  readonly checkpointId: string;
+  readonly signatureAlgorithm: "partbench-derived-topology-snapshot-v1";
+  readonly signature: string;
+  readonly entityCount: number;
+  readonly entities: readonly GeometryKernelTopologyCheckpointSignatureEntity[];
+}
+
+export interface GeometryKernelExactTopologyCheckpointPayload {
+  readonly checkpointId: string;
+  readonly bodyId: string;
+  readonly sourceKind: ExactBodyMetadataSource["kind"];
+  readonly brepFormat: "occt-brep";
+  readonly brepWriter: "BRepTools.Write_3";
+  readonly brepBytes: Uint8Array;
+  readonly brepByteLength: number;
+  readonly topologySnapshot: GeometryKernelExactTopologySnapshot;
+  readonly signaturePayload: GeometryKernelTopologyCheckpointSignaturePayload;
+}
+
+export interface GeometryKernelExactTopologyCheckpointPayloadSuccessResponse {
+  readonly ok: true;
+  readonly id: string;
+  readonly op: "geometry.exactTopologyCheckpointPayload";
+  readonly checkpointPayload: GeometryKernelExactTopologyCheckpointPayload;
   readonly warnings: readonly string[];
 }
 
@@ -600,6 +647,10 @@ export type GeometryKernelExactTopologySnapshotFactory = (
   input: Omit<ExactTopologySnapshotRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactTopologySnapshot>;
 
+export type GeometryKernelExactTopologyCheckpointPayloadFactory = (
+  input: Omit<ExactTopologyCheckpointPayloadRequest, "id" | "version" | "op">
+) => Promise<GeometryKernelExactTopologyCheckpointPayload>;
+
 export type GeometryKernelExactStepExportFactory = (
   input: Omit<ExactStepExportRequest, "id" | "version" | "op">
 ) => Promise<GeometryKernelExactStepExportArtifact>;
@@ -616,6 +667,7 @@ export interface GeometryKernelMeshFactories {
   readonly createRevolveProfileMesh?: GeometryKernelRevolveProfileMeshFactory;
   readonly createExactBodyMetadata?: GeometryKernelExactBodyMetadataFactory;
   readonly createExactTopologySnapshot?: GeometryKernelExactTopologySnapshotFactory;
+  readonly createExactTopologyCheckpointPayload?: GeometryKernelExactTopologyCheckpointPayloadFactory;
   readonly createExactStepExport?: GeometryKernelExactStepExportFactory;
 }
 
@@ -628,11 +680,15 @@ export type GeometryKernelResponseForRequest<T extends GeometryKernelRequest> =
       ?
           | GeometryKernelExactTopologySnapshotSuccessResponse
           | GeometryKernelErrorResponse
-      : T extends ExactStepExportRequest
+      : T extends ExactTopologyCheckpointPayloadRequest
         ?
-            | GeometryKernelExactStepExportSuccessResponse
+            | GeometryKernelExactTopologyCheckpointPayloadSuccessResponse
             | GeometryKernelErrorResponse
-        : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
+        : T extends ExactStepExportRequest
+          ?
+              | GeometryKernelExactStepExportSuccessResponse
+              | GeometryKernelErrorResponse
+          : GeometryKernelMeshSuccessResponse | GeometryKernelErrorResponse;
 
 const STEP_WRITER_CHECKED_BINDINGS = [
   "STEPControl_Writer_1",
@@ -765,6 +821,29 @@ export async function executeGeometryKernelRequestWithMeshFactory<
       } as unknown as GeometryKernelResponseForRequest<T>;
     }
 
+    if (request.op === "geometry.exactTopologyCheckpointPayload") {
+      const checkpointPayload = await createExactTopologyCheckpointPayload(
+        factories,
+        request
+      );
+
+      if (isInvalidExactTopologyCheckpointPayload(checkpointPayload)) {
+        return errorResponse(request, {
+          code: "INVALID_RESULT",
+          message:
+            "The geometry kernel returned an exact topology checkpoint payload with invalid or inconsistent BRep, topology, or signature data."
+        }) as GeometryKernelResponseForRequest<T>;
+      }
+
+      return {
+        ok: true,
+        id: request.id,
+        op: request.op,
+        checkpointPayload,
+        warnings: []
+      } as unknown as GeometryKernelResponseForRequest<T>;
+    }
+
     const mesh = await createMesh(factories, request);
 
     if (isEmptyMesh(mesh)) {
@@ -820,6 +899,10 @@ export function getGeometryResponseTransferables(
 
   if ("artifact" in response) {
     return [response.artifact.bytes.buffer as ArrayBuffer];
+  }
+
+  if ("checkpointPayload" in response) {
+    return [response.checkpointPayload.brepBytes.buffer as ArrayBuffer];
   }
 
   return [];
@@ -940,6 +1023,27 @@ function validateRequest(
 
     if (snapshotSourceError) {
       return snapshotSourceError;
+    }
+  } else if (request.op === "geometry.exactTopologyCheckpointPayload") {
+    const checkpointSourceError = validateExactBodyMetadataSource(
+      request.source
+    );
+
+    if (checkpointSourceError) {
+      return checkpointSourceError;
+    }
+
+    if (
+      typeof request.checkpointId !== "string" ||
+      request.checkpointId.trim().length === 0 ||
+      typeof request.bodyId !== "string" ||
+      request.bodyId.trim().length === 0
+    ) {
+      return {
+        code: "INVALID_DIMENSIONS",
+        message:
+          "Exact topology checkpoint payload requests require non-empty checkpoint and body ids."
+      };
     }
   } else if (request.op === "geometry.exportStep") {
     if (request.bodies.length === 0) {
@@ -1146,6 +1250,25 @@ function createExactTopologySnapshot(
   });
 }
 
+function createExactTopologyCheckpointPayload(
+  factories: GeometryKernelMeshFactories,
+  request: ExactTopologyCheckpointPayloadRequest
+): Promise<GeometryKernelExactTopologyCheckpointPayload> {
+  if (!factories.createExactTopologyCheckpointPayload) {
+    return Promise.reject({
+      code: "UNAVAILABLE_BINDING",
+      message:
+        "Exact topology checkpoint payloads require an OCCT BRep checkpoint writer factory through the geometry boundary."
+    } satisfies GeometryKernelError);
+  }
+
+  return factories.createExactTopologyCheckpointPayload({
+    checkpointId: request.checkpointId,
+    bodyId: request.bodyId,
+    source: request.source
+  });
+}
+
 function createExactStepExport(
   factories: GeometryKernelMeshFactories,
   request: ExactStepExportRequest
@@ -1314,6 +1437,8 @@ function formatPrimitiveLabel(op: GeometryKernelOp): string {
       return "Exact body metadata";
     case "geometry.exactTopologySnapshot":
       return "Exact topology snapshot";
+    case "geometry.exactTopologyCheckpointPayload":
+      return "Exact topology checkpoint payload";
     case "geometry.exportStep":
       return "STEP export";
   }
@@ -1810,6 +1935,76 @@ function isInvalidExactTopologySnapshot(
           !isTopologyEntityKind(diagnostic.entityKind))
     )
   );
+}
+
+function isInvalidExactTopologyCheckpointPayload(
+  checkpointPayload: GeometryKernelExactTopologyCheckpointPayload
+): boolean {
+  return (
+    typeof checkpointPayload.checkpointId !== "string" ||
+    checkpointPayload.checkpointId.trim().length === 0 ||
+    typeof checkpointPayload.bodyId !== "string" ||
+    checkpointPayload.bodyId.trim().length === 0 ||
+    (checkpointPayload.sourceKind !== "extrude" &&
+      checkpointPayload.sourceKind !== "booleanExtrudes" &&
+      checkpointPayload.sourceKind !== "revolve" &&
+      checkpointPayload.sourceKind !== "hole" &&
+      checkpointPayload.sourceKind !== "edgeFinish") ||
+    checkpointPayload.brepFormat !== "occt-brep" ||
+    checkpointPayload.brepWriter !== "BRepTools.Write_3" ||
+    !(checkpointPayload.brepBytes instanceof Uint8Array) ||
+    checkpointPayload.brepBytes.byteLength <= 0 ||
+    checkpointPayload.brepByteLength !==
+      checkpointPayload.brepBytes.byteLength ||
+    isInvalidExactTopologySnapshot(checkpointPayload.topologySnapshot) ||
+    isInvalidCheckpointSignaturePayload(
+      checkpointPayload.signaturePayload,
+      checkpointPayload.checkpointId,
+      checkpointPayload.topologySnapshot
+    )
+  );
+}
+
+function isInvalidCheckpointSignaturePayload(
+  signaturePayload: GeometryKernelTopologyCheckpointSignaturePayload,
+  checkpointId: string,
+  topologySnapshot: GeometryKernelExactTopologySnapshot
+): boolean {
+  if (
+    signaturePayload.checkpointId !== checkpointId ||
+    signaturePayload.signatureAlgorithm !==
+      "partbench-derived-topology-snapshot-v1" ||
+    signaturePayload.signature !== topologySnapshot.signature ||
+    signaturePayload.entityCount !== topologySnapshot.entityCount ||
+    signaturePayload.entities.length !== topologySnapshot.entityCount
+  ) {
+    return true;
+  }
+
+  const topologyEntitiesById = new Map(
+    topologySnapshot.entities.map((entity) => [entity.localId, entity])
+  );
+  const signatureEntityIds = new Set<string>();
+
+  for (const entity of signaturePayload.entities) {
+    const topologyEntity = topologyEntitiesById.get(entity.localId);
+
+    if (
+      signatureEntityIds.has(entity.localId) ||
+      !topologyEntity ||
+      topologyEntity.kind !== entity.kind ||
+      topologyEntity.signature !== entity.signature ||
+      !isTopologyEntityKind(entity.kind) ||
+      typeof entity.signature !== "string" ||
+      entity.signature.trim().length === 0
+    ) {
+      return true;
+    }
+
+    signatureEntityIds.add(entity.localId);
+  }
+
+  return false;
 }
 
 function isGeometryKernelBounds(value: unknown): value is GeometryKernelBounds {

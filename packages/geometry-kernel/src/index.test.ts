@@ -6,6 +6,7 @@ import {
 } from "./index";
 import {
   executeGeometryKernelRequestWithMeshFactory,
+  type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryKernelMeshFactories,
   type GeometryKernelTopologyEntityDescriptor
 } from "./kernel";
@@ -24,6 +25,75 @@ function createTopologyEntityFixture(
     bounds: {
       min: [-1, -1.5, 0],
       max: [1, 1.5, 4]
+    }
+  };
+}
+
+function createCheckpointPayloadFixture(
+  input: {
+    readonly checkpointId?: string;
+    readonly bodyId?: string;
+    readonly brepBytes?: Uint8Array;
+    readonly signature?: string;
+  } = {}
+): GeometryKernelExactTopologyCheckpointPayload {
+  const checkpointId = input.checkpointId ?? "checkpoint_injected";
+  const bodyId = input.bodyId ?? "body_injected";
+  const entities = [
+    createTopologyEntityFixture("body", 1),
+    createTopologyEntityFixture("solid", 1),
+    createTopologyEntityFixture("face", 1)
+  ];
+  const topologySignature = "topology-checkpoint-test";
+  const topologySnapshot = {
+    sourceKind: "extrude" as const,
+    status: "partial" as const,
+    entityCounts: {
+      bodyCount: 1,
+      solidCount: 1,
+      faceCount: 1,
+      wireCount: 0,
+      edgeCount: 0,
+      vertexCount: 0,
+      loopCount: 0,
+      coedgeCount: 0,
+      axisCount: 0
+    },
+    entityCount: entities.length,
+    entities,
+    unsupportedEntityKinds: ["loop", "coedge", "axis"] as const,
+    adjacencyAvailable: false,
+    signatureAlgorithm: "partbench-derived-topology-snapshot-v1" as const,
+    signature: topologySignature,
+    source: "kernel-derived" as const,
+    diagnostics: [
+      {
+        code: "GEOMETRY_TOPOLOGY_SNAPSHOT_EXTRACTED" as const,
+        severity: "info" as const,
+        message: "Test checkpoint topology snapshot extracted."
+      }
+    ]
+  };
+
+  return {
+    checkpointId,
+    bodyId,
+    sourceKind: "extrude",
+    brepFormat: "occt-brep",
+    brepWriter: "BRepTools.Write_3",
+    brepBytes: input.brepBytes ?? new Uint8Array([1, 2, 3, 4]),
+    brepByteLength: input.brepBytes?.byteLength ?? 4,
+    topologySnapshot,
+    signaturePayload: {
+      checkpointId,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: input.signature ?? topologySignature,
+      entityCount: topologySnapshot.entityCount,
+      entities: topologySnapshot.entities.map((entity) => ({
+        localId: entity.localId,
+        kind: entity.kind,
+        signature: entity.signature
+      }))
     }
   };
 }
@@ -98,6 +168,61 @@ describe("geometry-kernel facade", () => {
       expect(response.artifact.byteLength).toBeGreaterThan(1000);
       expect(text).toContain("ISO-10303-21");
       expect(getGeometryResponseTransferables(response)).toHaveLength(1);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
+    "creates exact topology checkpoint payload bytes through the isolated OCCT WASM adapter",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_exact_checkpoint_payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologyCheckpointPayload",
+        checkpointId: "checkpoint_kernel_rect",
+        bodyId: "body_kernel_rect",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 1
+          },
+          depth: 3,
+          side: "positive"
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error(response.error.message);
+      }
+
+      const brepText = new TextDecoder().decode(
+        response.checkpointPayload.brepBytes
+      );
+
+      expect(response.checkpointPayload).toMatchObject({
+        checkpointId: "checkpoint_kernel_rect",
+        bodyId: "body_kernel_rect",
+        sourceKind: "extrude",
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3"
+      });
+      expect(response.checkpointPayload.brepByteLength).toBeGreaterThan(1000);
+      expect(brepText).toContain("CASCADE Topology");
+      expect(response.checkpointPayload.signaturePayload).toMatchObject({
+        checkpointId: "checkpoint_kernel_rect",
+        signature: response.checkpointPayload.topologySnapshot.signature,
+        entityCount: response.checkpointPayload.topologySnapshot.entityCount
+      });
+      expect(getGeometryResponseTransferables(response)).toHaveLength(1);
+      expect(JSON.stringify(response)).not.toMatch(
+        /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+      );
     },
     OCCT_WASM_TEST_TIMEOUT_MS
   );
@@ -2264,6 +2389,125 @@ describe("geometry-kernel facade", () => {
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );
+  });
+
+  it("returns exact topology checkpoint payloads from an injected factory", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactTopologyCheckpointPayload: async (input) =>
+        createCheckpointPayloadFixture({
+          checkpointId: input.checkpointId,
+          bodyId: input.bodyId
+        })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_injected_exact_checkpoint_payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologyCheckpointPayload",
+        checkpointId: "checkpoint_kernel_injected",
+        bodyId: "body_kernel_injected",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: true,
+      id: "geometry_req_injected_exact_checkpoint_payload",
+      op: "geometry.exactTopologyCheckpointPayload",
+      checkpointPayload: expect.objectContaining({
+        checkpointId: "checkpoint_kernel_injected",
+        bodyId: "body_kernel_injected",
+        brepFormat: "occt-brep",
+        brepWriter: "BRepTools.Write_3",
+        brepByteLength: 4,
+        topologySnapshot: expect.objectContaining({
+          sourceKind: "extrude",
+          entityCount: 3
+        }),
+        signaturePayload: expect.objectContaining({
+          checkpointId: "checkpoint_kernel_injected",
+          entityCount: 3
+        })
+      }),
+      warnings: []
+    });
+    expect(getGeometryResponseTransferables(response)).toHaveLength(1);
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
+  });
+
+  it("rejects inconsistent exact topology checkpoint payloads from injected factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: unusedFactory,
+      createExactTopologyCheckpointPayload: async () =>
+        createCheckpointPayloadFixture({
+          signature: "signature-mismatch"
+        })
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_invalid_exact_checkpoint_payload",
+        version: "geometry-kernel.v1",
+        op: "geometry.exactTopologyCheckpointPayload",
+        checkpointId: "checkpoint_kernel_invalid",
+        bodyId: "body_kernel_invalid",
+        source: {
+          kind: "extrude",
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0, 0],
+            width: 2,
+            height: 3
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      id: "geometry_req_invalid_exact_checkpoint_payload",
+      op: "geometry.exactTopologyCheckpointPayload",
+      error: {
+        code: "INVALID_RESULT",
+        message:
+          "The geometry kernel returned an exact topology checkpoint payload with invalid or inconsistent BRep, topology, or signature data."
+      },
+      warnings: []
+    });
   });
 
   it("rejects inconsistent exact topology snapshots from injected factories", async () => {
