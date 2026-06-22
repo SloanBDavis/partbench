@@ -3,8 +3,8 @@ import {
   CadEngine,
   exportCadProject,
   exportCadProjectJson,
-  exportCadProjectWcad,
   readCadProjectWcad,
+  WcadPackageImportError,
   type CadBodySnapshot,
   type CadBodyTopologySnapshot,
   type CadDocument,
@@ -42,6 +42,7 @@ import type {
   SketchConstraintEntry,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
+  WcadPackageValidationIssue,
   SketchEntityKind,
   SketchEntitySnapshot,
   SketchSnapshot
@@ -245,6 +246,10 @@ import {
   type WcadFileHandleLike,
   type WcadFilePickerTargetLike
 } from "./projectWcadWorkflow";
+import {
+  exportProjectWcadWithTopologyCheckpoints,
+  isProjectWcadTopologyCheckpointPayloadError
+} from "./projectWcadTopologyCheckpoints";
 import {
   clearProjectOpfsCache as clearProjectOpfsCacheStorage,
   createInitialProjectOpfsCacheStatus,
@@ -2825,12 +2830,37 @@ export function App() {
     await saveProjectWcadAs();
   }
 
+  async function exportProjectWcadForSave(): Promise<WcadPackageExportResult> {
+    const timestamp = new Date().toISOString();
+
+    return exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: projectStructure.features,
+      sketches,
+      generatedFacesByKey,
+      runtime: getDerivedGeometryRuntime(),
+      createdAt: timestamp,
+      modifiedAt: timestamp
+    });
+  }
+
+  function getProjectWcadSaveFailureDiagnostics(
+    error: unknown
+  ): readonly WcadPackageValidationIssue[] | undefined {
+    if (isProjectWcadTopologyCheckpointPayloadError(error)) {
+      return error.issues;
+    }
+
+    if (error instanceof WcadPackageImportError) {
+      return error.issues;
+    }
+
+    return undefined;
+  }
+
   async function saveProjectWcadAs() {
     try {
-      const exported = await exportCadProjectWcad(engine, {
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      });
+      const exported = await exportProjectWcadForSave();
 
       if (projectStorageCapabilities.fileSystemAccessAvailable) {
         try {
@@ -2911,6 +2941,7 @@ export function App() {
         createProjectFileFailureState(current, {
           operation: "saveAs",
           message: "Could not save .wcad package.",
+          diagnostics: getProjectWcadSaveFailureDiagnostics(error),
           detail: error instanceof Error ? error.message : "Save failed."
         })
       );
@@ -2928,10 +2959,7 @@ export function App() {
     let exported: WcadPackageExportResult | undefined;
 
     try {
-      exported = await exportCadProjectWcad(engine, {
-        createdAt: new Date().toISOString(),
-        modifiedAt: new Date().toISOString()
-      });
+      exported = await exportProjectWcadForSave();
       await writeBytesToWcadHandle(handle, exported.bytes);
       setProjectFile(
         createProjectFileStateFromExport(exported, {
@@ -2966,6 +2994,7 @@ export function App() {
         createProjectFileFailureState(current, {
           operation,
           message: "Could not save .wcad package.",
+          diagnostics: getProjectWcadSaveFailureDiagnostics(error),
           detail: error instanceof Error ? error.message : "Save failed."
         })
       );

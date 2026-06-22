@@ -30691,7 +30691,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           diagnostics: [
             expect.objectContaining({
               message: expect.stringContaining(
-                "app geometry boundary can generate payload bytes"
+                "app geometry boundary can generate and attach payload bytes"
               )
             })
           ]

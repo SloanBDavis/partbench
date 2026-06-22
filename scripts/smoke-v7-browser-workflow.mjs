@@ -1751,6 +1751,81 @@ async function v7BrowserWorkflowSmoke({
       );
     }
 
+    await runV13CheckpointedWcadSaveAsSmoke(projectPanel);
+
+    async function runV13CheckpointedWcadSaveAsSmoke(projectPanelForSave) {
+      const v13DownloadCapture = createDownloadCapture();
+      v13DownloadCapture.install();
+
+      try {
+        clickButton(projectPanelForSave, "Save As");
+        await waitFor(
+          () => {
+            if (v13DownloadCapture.blobs.length === 0) {
+              throw new Error("No V13 .wcad blob download was captured.");
+            }
+
+            if (
+              !includesText(projectPanelForSave, "Downloaded .wcad package")
+            ) {
+              throw new Error(
+                compactText(projectPanelForSave.textContent, 520)
+              );
+            }
+
+            return true;
+          },
+          "downloaded V13 checkpointed .wcad package through fallback Save As",
+          Math.max(timeoutMs, 60_000)
+        );
+        const v13WcadBytes = await v13DownloadCapture.readFirstBytes();
+        const v13WcadText = decodeBytesForSearch(v13WcadBytes);
+        const v13CheckpointPackageReady =
+          v13WcadText.includes('"packageVersion": "partbench.wcad.v2"') &&
+          v13WcadText.includes("checkpoints/v13_checkpoint_repair_body.brep") &&
+          v13WcadText.includes(
+            "checkpoints/v13_checkpoint_repair_body.topology.cbor"
+          ) &&
+          v13WcadText.includes(
+            "checkpoints/v13_checkpoint_repair_body.signature.cbor"
+          ) &&
+          v13WcadText.includes("checkpoints/v13_checkpoint_target_body.brep") &&
+          v13WcadText.includes(
+            "checkpoints/v13_checkpoint_target_body.topology.cbor"
+          ) &&
+          v13WcadText.includes(
+            "checkpoints/v13_checkpoint_target_body.signature.cbor"
+          ) &&
+          v13WcadText.includes("CASCADE Topology");
+
+        if (v13CheckpointPackageReady) {
+          pass(
+            "v13-wcad-save-as-checkpoint-payloads",
+            "V13 Save As .wcad attaches generated checkpoint payload entries",
+            `${v13WcadBytes.byteLength} bytes`
+          );
+        } else {
+          fail(
+            "v13-wcad-save-as-checkpoint-payloads",
+            "V13 Save As .wcad attaches generated checkpoint payload entries",
+            compactText(v13WcadText, 520)
+          );
+        }
+      } catch (error) {
+        projectPanel = getSectionByAriaLabel("Project");
+        fail(
+          "v13-wcad-save-as-checkpoint-payloads",
+          "V13 Save As .wcad attaches generated checkpoint payload entries",
+          [
+            error instanceof Error ? error.message : String(error),
+            compactText(projectPanel.textContent, 520)
+          ].join("; ")
+        );
+      } finally {
+        v13DownloadCapture.restore();
+      }
+    }
+
     openTreePanel();
     clickButtonContaining(
       getElementByAriaLabel("Model structure"),
@@ -4349,8 +4424,8 @@ async function v7BrowserWorkflowSmoke({
     return match ? `Private UI token leaked: ${match[0]}` : "";
   }
 
-  async function waitFor(predicate, label) {
-    const deadline = Date.now() + timeoutMs;
+  async function waitFor(predicate, label, waitTimeoutMs = timeoutMs) {
+    const deadline = Date.now() + waitTimeoutMs;
     let lastError;
 
     while (Date.now() < deadline) {
@@ -4679,6 +4754,10 @@ async function v7BrowserWorkflowSmoke({
         return new Uint8Array(await blob.arrayBuffer());
       }
     };
+  }
+
+  function decodeBytesForSearch(bytes) {
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   }
 
   async function waitForSectionByAriaLabel(label, waitLabel) {

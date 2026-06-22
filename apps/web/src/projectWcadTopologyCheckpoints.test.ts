@@ -1,5 +1,6 @@
 import {
   CadEngine,
+  createV13ReleaseSampleBatch,
   exportCadProjectWcad,
   readCadProjectWcad,
   type CadFeatureSummary,
@@ -10,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createProjectWcadTopologyCheckpointPayloadInputs,
+  exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
 
@@ -71,6 +73,75 @@ describe("projectWcadTopologyCheckpoints", () => {
       sourceFeatureId: "feat_rect_1"
     });
     expect(JSON.stringify(payloads)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
+  it("exports checkpointed projects with generated payloads through the app save helper", async () => {
+    const engine = createRectangleCheckpointEngine();
+    const runtime = createCheckpointRuntime();
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime,
+      createdAt: "2026-06-22T00:00:00.000Z",
+      modifiedAt: "2026-06-22T00:00:00.000Z"
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(runtime.exactTopologyCheckpointPayload).toHaveBeenCalledTimes(1);
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(exported.checkpointPayloads).toHaveLength(1);
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error(read.issues[0]?.message);
+    }
+    expect(read.checkpointPayloads).toHaveLength(1);
+    expect(JSON.stringify(exported.manifest)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
+  it("keeps ordinary projects on WCAD v1 and does not request checkpoint payloads", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const runtime = createCheckpointRuntime();
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime,
+      createdAt: "2026-06-22T00:00:00.000Z",
+      modifiedAt: "2026-06-22T00:00:00.000Z"
+    });
+
+    expect(runtime.exactTopologyCheckpointPayload).not.toHaveBeenCalled();
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v1");
+    expect(exported.checkpointPayloads).toBeUndefined();
+  });
+
+  it("exports V13 source-owned checkpoint anchor ids instead of generated snapshot-local ids", async () => {
+    const engine = new CadEngine();
+    const response = engine.executeBatch(
+      createV13ReleaseSampleBatch("v13-topology-anchor-repair-command-chain")
+    );
+    const runtime = createCheckpointRuntime();
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(response.ok).toBe(true);
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error(read.issues[0]?.message);
+    }
+    expect(read.checkpointPayloads).toHaveLength(2);
+    expect(JSON.stringify(exported.manifest)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
     );
   });
@@ -168,6 +239,38 @@ describe("projectWcadTopologyCheckpoints", () => {
   });
 });
 
+function createRectangleExtrudeEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_plain_1",
+      name: "Plain rectangle sketch",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_plain_1",
+      id: "rect_plain_1",
+      center: [0, 0],
+      width: 2,
+      height: 1
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_plain_1",
+      bodyId: "body_plain_1",
+      sketchId: "sketch_plain_1",
+      entityId: "rect_plain_1",
+      depth: 1,
+      operationMode: "newBody"
+    }
+  ]);
+
+  return engine;
+}
+
 function createRectangleCheckpointEngine(): CadEngine {
   const engine = new CadEngine();
 
@@ -206,6 +309,18 @@ function createRectangleCheckpointEngine(): CadEngine {
           "1111111111111111111111111111111111111111111111111111111111111111"
       },
       status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_rect_1_end_face",
+      entityKind: "face",
+      bodyId: "body_rect_1",
+      checkpointId: "checkpoint_rect_1",
+      checkpointEntityId: "checkpoint_rect_1_end_face",
+      stableId: "generated:face:body_rect_1:endCap",
+      sourceFeatureId: "feat_rect_1",
+      sourceSemanticRole: "end cap",
+      signatureHash: "checkpoint_rect_1_end_face_signature"
     }
   ]);
 
@@ -245,7 +360,8 @@ function createCheckpointRuntime(): Pick<
     exactTopologyCheckpointPayload: vi.fn(async (input) => ({
       checkpointPayload: createCheckpointPayloadFixture(
         input.checkpointId,
-        input.bodyId
+        input.bodyId,
+        input.source.kind === "extrude" ? input.source.depth : 1
       ),
       metrics: {
         objectId: input.bodyId,
@@ -258,7 +374,8 @@ function createCheckpointRuntime(): Pick<
 
 function createCheckpointPayloadFixture(
   checkpointId: string,
-  bodyId: string
+  bodyId: string,
+  depth: number
 ): GeometryKernelExactTopologyCheckpointPayload {
   const brepBytes = new TextEncoder().encode(
     `CASCADE Topology checkpoint fixture ${checkpointId}`
@@ -268,13 +385,21 @@ function createCheckpointPayloadFixture(
       localId: "checkpoint-local-body",
       kind: "body" as const,
       source: "kernel-derived" as const,
-      signature: `${bodyId}:body`
+      signature: `${bodyId}:body`,
+      bounds: {
+        min: [0, 0, 0] as const,
+        max: [1, 1, depth] as const
+      }
     },
     {
       localId: "checkpoint-local-face",
       kind: "face" as const,
       source: "kernel-derived" as const,
-      signature: `${bodyId}:face`
+      signature: `${bodyId}:face`,
+      bounds: {
+        min: [0, 0, depth] as const,
+        max: [1, 1, depth] as const
+      }
     }
   ];
   const topologySnapshot = {

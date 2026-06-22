@@ -1572,8 +1572,11 @@ including checkpoint B-rep, topology, and signature payload paths under
 `checkpoints/`. V13 Tranche D adds package-level read/write preservation for
 caller-supplied checkpoint B-rep, topology, and signature payload bytes, with
 manifest path, hash, byte-length, source-identity, and topology/signature CBOR
-validation. Geometry-boundary B-rep checkpoint byte creation remains deferred;
-cad-core must not synthesize placeholder B-rep data.
+validation. The geometry boundary can generate native B-rep checkpoint bytes
+for supported exact body sources, and the web app `.wcad` Save/Save As workflow
+can attach generated payloads for existing V18 checkpoint records. Cad-core
+must not synthesize placeholder B-rep data, and ordinary saves must not
+auto-create checkpoint source records.
 
 OPFS may cache unpacked checkpoint data or matcher acceleration structures, but
 OPFS remains rebuildable browser-private cache. Clearing OPFS must not remove

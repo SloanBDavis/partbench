@@ -11,6 +11,7 @@ import {
   createOcctRevolveProfileMeshWithInstance,
   createOcctExactBodyMetadataWithInstance,
   createOcctExactTopologySnapshotWithInstance,
+  createOcctExactTopologyCheckpointPayloadWithInstance,
   createOcctStepExportWithInstance
 } from "@web-cad/occt-wasm/browser";
 import {
@@ -28,6 +29,7 @@ import {
   type ExactEdgeFinishMetadataSource,
   type ExactExtrudeMetadataSource,
   type ExactHoleMetadataSource,
+  type ExactTopologyCheckpointPayloadRequest,
   type ExactTopologySnapshotRequest,
   type ExactStepExportBodySource,
   type ExactStepExportRequest,
@@ -217,6 +219,8 @@ export async function executeTimedBrowserGeometryKernelRequest<
       createRevolveProfileMesh: createRevolveProfileMeshWithBrowserOcct,
       createExactBodyMetadata: createExactBodyMetadataWithBrowserOcct,
       createExactTopologySnapshot: createExactTopologySnapshotWithBrowserOcct,
+      createExactTopologyCheckpointPayload:
+        createExactTopologyCheckpointPayloadWithBrowserOcct,
       createExactStepExport: createExactStepExportWithBrowserOcct
     },
     request
@@ -425,6 +429,34 @@ export async function executeTimedBrowserGeometryKernelRequest<
 
     try {
       return createOcctExactTopologySnapshotWithInstance(oc, input);
+    } catch (error) {
+      failureStage = "tessellation";
+      throw error;
+    } finally {
+      tessellationMs = performance.now() - tessellationStart;
+    }
+  }
+
+  async function createExactTopologyCheckpointPayloadWithBrowserOcct(
+    input: Omit<ExactTopologyCheckpointPayloadRequest, "id" | "version" | "op">
+  ) {
+    const occtLoadStart = performance.now();
+    let oc: Awaited<ReturnType<typeof loadBrowserOcct>>;
+
+    try {
+      oc = await loadBrowserOcct();
+    } catch (error) {
+      occtLoadMs = performance.now() - occtLoadStart;
+      failureStage = "wasmLoad";
+      throw error;
+    }
+
+    occtLoadMs = performance.now() - occtLoadStart;
+
+    const tessellationStart = performance.now();
+
+    try {
+      return createOcctExactTopologyCheckpointPayloadWithInstance(oc, input);
     } catch (error) {
       failureStage = "tessellation";
       throw error;
