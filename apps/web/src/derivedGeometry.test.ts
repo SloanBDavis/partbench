@@ -4095,6 +4095,11 @@ function createRuntime(
     exactBodyMetadata(): Promise<DerivedExactMetadataResult> {
       throw new Error("Exact metadata is not used by derived geometry tests.");
     },
+    exactTopologyCheckpointPayload() {
+      throw new Error(
+        "Checkpoint payload requests are not used by derived geometry tests."
+      );
+    },
     dispose() {
       disposeCount += 1;
     }

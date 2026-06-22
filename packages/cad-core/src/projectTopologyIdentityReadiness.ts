@@ -81,7 +81,7 @@ export function createProjectTopologyIdentityReadiness({
       "B-rep checkpoint persistence",
       "supported",
       "TOPOLOGY_CHECKPOINT_PERSISTENCE_READY",
-      "WCAD v2 can preserve and validate caller-supplied checkpoint B-rep, topology, and signature payload bytes. Geometry-boundary B-rep checkpoint creation remains deferred."
+      "WCAD v2 can preserve and validate checkpoint B-rep, topology, and signature payload bytes. The app geometry boundary can generate payload bytes for supported exact body sources; automatic normal-save orchestration remains separate."
     ),
     createCapability(
       "matchingEngine",

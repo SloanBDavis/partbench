@@ -1,4 +1,5 @@
 import type {
+  GeometryKernelExactTopologyCheckpointPayload,
   GeometryKernelExactBodyMetadata,
   GeometryWorkerDiagnostics,
   GeometryWorkerResponse
@@ -138,6 +139,8 @@ export type DerivedGeometryEdgeFinishInput =
     };
 
 export type DerivedExactBodyMetadata = GeometryKernelExactBodyMetadata;
+export type DerivedExactTopologyCheckpointPayload =
+  GeometryKernelExactTopologyCheckpointPayload;
 
 export interface DerivedExactMetadataInput {
   readonly id: string;
@@ -219,6 +222,17 @@ export interface DerivedExactMetadataResult {
   readonly message: string;
 }
 
+export interface DerivedExactTopologyCheckpointPayloadInput extends DerivedExactMetadataInput {
+  readonly checkpointId: string;
+  readonly bodyId: string;
+}
+
+export interface DerivedExactTopologyCheckpointPayloadResult {
+  readonly checkpointPayload: DerivedExactTopologyCheckpointPayload;
+  readonly metrics: DerivedExactMetadataMetrics;
+  readonly message: string;
+}
+
 export interface DerivedGeometryErrorDetails {
   readonly code: string;
   readonly stage: string;
@@ -257,6 +271,9 @@ export interface DerivedGeometryRuntime {
   exactBodyMetadata(
     input: DerivedExactMetadataInput
   ): Promise<DerivedExactMetadataResult>;
+  exactTopologyCheckpointPayload(
+    input: DerivedExactTopologyCheckpointPayloadInput
+  ): Promise<DerivedExactTopologyCheckpointPayloadResult>;
   dispose(): void;
 }
 

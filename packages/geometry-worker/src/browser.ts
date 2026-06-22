@@ -23,6 +23,7 @@ export {
   createCylinderTessellationWorkerRequest,
   createEdgeFinishWorkerRequest,
   createExactBodyMetadataWorkerRequest,
+  createExactTopologyCheckpointPayloadWorkerRequest,
   createExactTopologySnapshotWorkerRequest,
   createExactStepExportWorkerRequest,
   createExtrudeBooleanWorkerRequest,
@@ -37,6 +38,7 @@ export {
   type GeometryWorkerDiagnostics,
   type GeometryWorkerErrorCode,
   type GeometryWorkerErrorDetails,
+  type GeometryKernelExactTopologyCheckpointPayload,
   type GeometryWorkerOptions,
   type GeometryWorkerRequest,
   type GeometryWorkerRequestKind,
@@ -162,6 +164,7 @@ function getUnsupportedPrimitiveMessage(
     kind !== "geometry-worker.edgeFinishFeature" &&
     kind !== "geometry-worker.exactMetadata" &&
     kind !== "geometry-worker.exactTopologySnapshot" &&
+    kind !== "geometry-worker.exactTopologyCheckpointPayload" &&
     kind !== "geometry-worker.exactExport"
   ) {
     return `Unsupported geometry worker request kind: ${kind}.`;
@@ -180,6 +183,7 @@ function getUnsupportedPrimitiveMessage(
     op !== "geometry.edgeFinish" &&
     op !== "geometry.exactBodyMetadata" &&
     op !== "geometry.exactTopologySnapshot" &&
+    op !== "geometry.exactTopologyCheckpointPayload" &&
     op !== "geometry.exportStep"
   ) {
     return `Unsupported geometry kernel operation: ${op}.`;

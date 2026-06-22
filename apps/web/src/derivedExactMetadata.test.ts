@@ -1623,6 +1623,11 @@ function createRuntime(
       exactInputs.push(input);
       return handler(input);
     },
+    exactTopologyCheckpointPayload() {
+      throw new Error(
+        "Checkpoint payload requests are not used by exact metadata tests."
+      );
+    },
     dispose() {}
   };
 }

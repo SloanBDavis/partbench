@@ -19,7 +19,9 @@ import {
   type DerivedGeometryResult,
   type DerivedGeometryRuntime,
   type DerivedExactMetadataInput,
-  type DerivedExactMetadataResult
+  type DerivedExactMetadataResult,
+  type DerivedExactTopologyCheckpointPayloadInput,
+  type DerivedExactTopologyCheckpointPayloadResult
 } from "./derivedGeometryRuntime";
 
 type DisposableGeometryWorker = GeometryWorker & {
@@ -130,6 +132,36 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         roundTripMs
       }),
       message: `Derived exact metadata for ${input.id}.`
+    };
+  }
+
+  async function executeExactTopologyCheckpointPayloadRequest(
+    input: DerivedExactTopologyCheckpointPayloadInput,
+    request: GeometryWorkerRequest
+  ): Promise<DerivedExactTopologyCheckpointPayloadResult> {
+    const worker = await getGeometryWorker();
+    const roundTripStart = performance.now();
+    const response = await worker.execute(request);
+    const roundTripMs = performance.now() - roundTripStart;
+
+    if (!response.response.ok) {
+      throw createDerivedGeometryErrorFromWorkerResponse(response);
+    }
+
+    if (!("checkpointPayload" in response.response)) {
+      throw new Error(
+        "Geometry worker response does not contain an exact topology checkpoint payload."
+      );
+    }
+
+    return {
+      checkpointPayload: response.response.checkpointPayload,
+      metrics: createDerivedExactMetadataMetrics({
+        objectId: input.id,
+        response,
+        roundTripMs
+      }),
+      message: `Derived exact topology checkpoint payload for ${input.bodyId}.`
     };
   }
 
@@ -323,6 +355,24 @@ export function createDerivedGeometryRuntime(): DerivedGeometryRuntime {
         createExactBodyMetadataWorkerRequest({
           id: requestId,
           payloadId: `${requestId}:kernel`,
+          source: input.source
+        })
+      );
+    },
+    async exactTopologyCheckpointPayload(
+      input: DerivedExactTopologyCheckpointPayloadInput
+    ) {
+      const { createExactTopologyCheckpointPayloadWorkerRequest } =
+        await import("@web-cad/geometry-worker/browser");
+      const requestId = createRequestId(input.id);
+
+      return executeExactTopologyCheckpointPayloadRequest(
+        input,
+        createExactTopologyCheckpointPayloadWorkerRequest({
+          id: requestId,
+          payloadId: `${requestId}:kernel`,
+          checkpointId: input.checkpointId,
+          bodyId: input.bodyId,
           source: input.source
         })
       );

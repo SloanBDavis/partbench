@@ -228,6 +228,7 @@ export {
   validateWcadPackageCacheEntries,
   validateWcadPackageEntryBytes
 } from "./projectPackageReadiness";
+export { encodeCanonicalCbor as encodeWcadCanonicalCbor } from "./canonicalCbor";
 export {
   WCAD_CHECKPOINT_BREP_EXTENSION,
   WCAD_CHECKPOINT_ENTRY_PREFIX,

@@ -30687,7 +30687,14 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           capability: "checkpointPersistence",
           status: "supported",
-          available: true
+          available: true,
+          diagnostics: [
+            expect.objectContaining({
+              message: expect.stringContaining(
+                "app geometry boundary can generate payload bytes"
+              )
+            })
+          ]
         }),
         expect.objectContaining({
           capability: "matchingEngine",

@@ -2371,9 +2371,11 @@ Use these decisions when drafting or implementing V13 tranches:
    v1 read/write compatibility. The isolated `occt-wasm`/geometry-kernel/
    geometry-worker boundary can now produce native OCCT B-rep checkpoint bytes
    with `BRepTools.Write_3` plus matching topology snapshot and signature
-   payload objects for supported exact body sources. Automatic app/cad-core
-   checkpoint-payload generation during normal project save/open and
-   Project/File checkpoint status remain for later V13 tranches.
+   payload objects for supported exact body sources, and the web app now has a
+   checkpoint payload collector helper for existing V18 checkpoint source
+   records. Automatic app/cad-core checkpoint-payload attachment during normal
+   project save/open and broader Project/File checkpoint status remain for
+   later V13 tranches.
    Command-backed checkpoint metadata creation is handled by the G command
    slice.
 5. **Implemented: Topology Matching Engine** - `topology.matchSnapshots`
@@ -2407,8 +2409,9 @@ Use these decisions when drafting or implementing V13 tranches:
    These commands support dry-run/commit through CADOps, emit semantic diffs,
    participate in undo/redo and transaction-history summaries, and preserve
    source-boundary validation. UI repair affordances are handled by the later
-   Tranche J product-integration slices; checkpoint payload byte generation and
-   broader direct topology-anchor command targets remain later V13 work.
+   Tranche J product-integration slices; automatic checkpoint-payload
+   attachment during ordinary app save/open and broader direct topology-anchor
+   command targets remain later V13 work.
    Generated-reference-backed command eligibility and named-reference repair are
    implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
@@ -2421,8 +2424,8 @@ Use these decisions when drafting or implementing V13 tranches:
    semantic signatures. Chamfer and fillet result bodies remain status-only;
    the query does not invent generated face/edge candidates where current
    source semantics do not prove them. Automatic anchor creation, command
-   eligibility, UI repair affordances, and checkpoint payload generation remain
-   later V13 work.
+   eligibility, UI repair affordances, and automatic checkpoint-payload
+   attachment during ordinary app save/open remain later V13 work.
 9. **Implemented, first read-only, planar-face command, edge-finish command,
    named-reference repair, and downstream body-target command slices: Command
    Eligibility For Topology Anchors** -
