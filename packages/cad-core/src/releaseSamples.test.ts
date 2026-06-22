@@ -1,25 +1,35 @@
 import { describe, expect, it } from "vitest";
 import type {
   BodyGeneratedReferencesQueryResponse,
+  CadReferenceHealthTarget,
+  CadSelectionReferenceInput,
+  CadSelectionReferenceOperation,
   FeatureEditabilityQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
   ProjectRebuildPlanQueryResponse,
+  ProjectStructureQueryResponse,
   ProjectSummaryQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
   ReferenceListNamedQueryResponse,
-  SelectionReferenceCandidatesQueryResponse
+  SelectionReferenceCandidatesQueryResponse,
+  TopologyMatchSnapshotsQueryResponse
 } from "@web-cad/cad-protocol";
 import {
+  CAD_PROJECT_FORMAT_VERSION_V18,
   CURRENT_CAD_PROJECT_FORMAT_VERSION,
   CadEngine,
+  createV13ReleaseSampleBatch,
   createV7ReleaseSampleBatch,
   createV10ReleaseSampleBatch,
   exportCadProjectJson,
   importCadProjectJson,
+  listV13ReleaseSampleFixtures,
   listV7ReleaseSampleFixtures,
   listV10ReleaseSampleFixtures,
   parseCadProjectJson,
+  type V13ReleaseSampleFixture,
   type V7ReleaseSampleFixture,
   type V10ReleaseSampleFixture
 } from "./index";
@@ -284,6 +294,189 @@ describe("V10 release sample fixtures", () => {
   }
 });
 
+describe("V13 release sample fixtures", () => {
+  it("defines deterministic typed topology fixtures without raw renderer/browser IDs in public expectations", () => {
+    const fixtures = listV13ReleaseSampleFixtures();
+
+    expect(fixtures.map((fixture) => fixture.id)).toEqual([
+      "v13-topology-anchor-repair-command-chain"
+    ]);
+
+    for (const fixture of fixtures) {
+      expect(fixture.units).toBe("mm");
+      expect(fixture.ops.length).toBeGreaterThan(0);
+      expect(fixture.workflowTags).toEqual(
+        expect.arrayContaining([
+          "topology-checkpoint",
+          "topology-anchor",
+          "topology-match",
+          "reference-health",
+          "named-reference-repair",
+          "selection-reference-candidates",
+          "target-topology-anchor",
+          "source-boundary"
+        ])
+      );
+      expect(createV13ReleaseSampleBatch(fixture.id)).toEqual({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: fixture.ops
+      });
+
+      assertNoRawDerivedIds(
+        JSON.stringify({
+          expectedTopology: fixture.expectedTopology,
+          topologyMatchPrevious: fixture.topologyMatchPrevious,
+          topologyMatchCandidates: fixture.topologyMatchCandidates,
+          expectedTopologyMatches: fixture.expectedTopologyMatches
+        })
+      );
+    }
+  });
+
+  for (const fixture of listV13ReleaseSampleFixtures()) {
+    it(`round-trips and verifies ${fixture.id}`, () => {
+      const engine = buildV13SampleEngine(fixture);
+      const json = exportCadProjectJson(engine);
+      const project = parseCadProjectJson(json);
+      const restored = importCadProjectJson(json);
+
+      expect(project.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V18);
+      expect(json).toContain("web-cad.project.v18");
+      expect(json).toContain("topologyIdentity");
+      expect(json).not.toContain("project.topologyIdentityReadiness");
+      expect(json).not.toContain("topology.matchSnapshots");
+      assertNoRawDerivedIds(json);
+
+      const readiness = readProjectTopologyIdentityReadiness(restored);
+      expect(readiness).toMatchObject({
+        query: "project.topologyIdentityReadiness",
+        currentDocumentSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+        requiresProjectSchemaMigration: false,
+        checkpointCount: fixture.expectedTopology.checkpointCount,
+        anchorCount: fixture.expectedTopology.anchorCount
+      });
+      expect(readiness.checkpoints).toHaveLength(
+        fixture.expectedTopology.checkpointCount
+      );
+      const matchCheckpointIds = [
+        fixture.topologyMatchPrevious.checkpointId,
+        ...fixture.topologyMatchCandidates.map(
+          (candidate) => candidate.checkpointId
+        )
+      ].filter((checkpointId): checkpointId is string => Boolean(checkpointId));
+      expect(
+        readiness.checkpoints.map((checkpoint) => checkpoint.checkpointId)
+      ).toEqual(expect.arrayContaining(matchCheckpointIds));
+      expect(readiness.anchors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            anchorId: fixture.expectedTopology.repairedTopologyAnchorId,
+            entityKind: "face",
+            state: "active"
+          }),
+          expect.objectContaining({
+            anchorId: fixture.expectedTopology.downstreamTargetTopologyAnchorId,
+            entityKind: "body",
+            state: "active"
+          })
+        ])
+      );
+      assertNoPublicTopologyIds(JSON.stringify(readiness));
+
+      const namedReferences = readNamedReferences(restored);
+      expect(namedReferences.references).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: fixture.expectedTopology.repairedReferenceName,
+            status: "resolved",
+            topologyAnchorId: fixture.expectedTopology.repairedTopologyAnchorId,
+            stableId: expect.stringContaining(":endCap")
+          })
+        ])
+      );
+
+      const namedSelection = readSelectionCandidatesFor(restored, {
+        selection: {
+          type: "namedReference",
+          name: fixture.expectedTopology.repairedReferenceName
+        },
+        requiredOperation: "feature.selectReference"
+      });
+      expect(namedSelection).toMatchObject({
+        status: "resolved",
+        candidateCount: 1,
+        candidates: [
+          expect.objectContaining({
+            commandable: true,
+            target: expect.objectContaining({
+              topologyAnchorId:
+                fixture.expectedTopology.repairedTopologyAnchorId
+            })
+          })
+        ]
+      });
+      assertNoPublicTopologyIds(JSON.stringify(namedSelection));
+
+      const repairedHealth = readReferenceHealth(restored, {
+        type: "namedReference",
+        name: fixture.expectedTopology.repairedReferenceName
+      });
+      expect(repairedHealth).toMatchObject({
+        status: "active",
+        referenceHealth: [
+          expect.objectContaining({
+            status: "active",
+            commandable: true,
+            topologyAnchorId: fixture.expectedTopology.repairedTopologyAnchorId
+          })
+        ]
+      });
+      assertNoPublicTopologyIds(JSON.stringify(repairedHealth));
+
+      const structure = readProjectStructure(restored);
+      expect(structure.features).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: fixture.expectedTopology.downstreamFeatureId,
+            kind: "extrude",
+            operationMode: "cut",
+            targetTopologyAnchorId:
+              fixture.expectedTopology.downstreamTargetTopologyAnchorId
+          })
+        ])
+      );
+
+      const match = readTopologyMatchSnapshots(
+        restored,
+        fixture.topologyMatchPrevious,
+        fixture.topologyMatchCandidates
+      );
+      const byPreviousEntity = new Map(
+        match.matchResults.map((result) => [
+          result.previousCheckpointEntityId,
+          result
+        ])
+      );
+
+      expect(match).toMatchObject({
+        query: "topology.matchSnapshots",
+        mutatesSource: false,
+        resultCount: fixture.expectedTopologyMatches.length
+      });
+      for (const expectation of fixture.expectedTopologyMatches) {
+        expect(
+          byPreviousEntity.get(expectation.previousCheckpointEntityId)
+        ).toMatchObject({
+          state: expectation.expectedState,
+          confidence: expectation.expectedConfidence
+        });
+      }
+      assertNoRawDerivedIds(JSON.stringify(match));
+    });
+  }
+});
+
 function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV7ReleaseSampleBatch(fixture.id));
@@ -301,6 +494,15 @@ function buildSampleEngine(fixture: V7ReleaseSampleFixture): CadEngine {
 function buildV10SampleEngine(fixture: V10ReleaseSampleFixture): CadEngine {
   const engine = new CadEngine();
   const response = engine.executeBatch(createV10ReleaseSampleBatch(fixture.id));
+
+  expect(response.ok).toBe(true);
+
+  return engine;
+}
+
+function buildV13SampleEngine(fixture: V13ReleaseSampleFixture): CadEngine {
+  const engine = new CadEngine();
+  const response = engine.executeBatch(createV13ReleaseSampleBatch(fixture.id));
 
   expect(response.ok).toBe(true);
 
@@ -379,9 +581,39 @@ function readProjectRebuildPlan(
   return response;
 }
 
+function readProjectStructure(
+  engine: CadEngine
+): ProjectStructureQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.structure" }
+  });
+
+  if (!response.ok || response.query !== "project.structure") {
+    throw new Error("Expected project.structure response.");
+  }
+
+  return response;
+}
+
+function readProjectTopologyIdentityReadiness(
+  engine: CadEngine
+): ProjectTopologyIdentityReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.topologyIdentityReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.topologyIdentityReadiness") {
+    throw new Error("Expected project.topologyIdentityReadiness response.");
+  }
+
+  return response;
+}
+
 function readReferenceHealth(
   engine: CadEngine,
-  target: V10ReleaseSampleFixture["expectedReferenceHealth"][number]["target"]
+  target: CadReferenceHealthTarget
 ): ReferenceHealthQueryResponse {
   const response = engine.executeQuery({
     version: "cadops.v1",
@@ -390,6 +622,27 @@ function readReferenceHealth(
 
   if (!response.ok || response.query !== "reference.health") {
     throw new Error("Expected reference.health response.");
+  }
+
+  return response;
+}
+
+function readTopologyMatchSnapshots(
+  engine: CadEngine,
+  previous: V13ReleaseSampleFixture["topologyMatchPrevious"],
+  candidates: V13ReleaseSampleFixture["topologyMatchCandidates"]
+): TopologyMatchSnapshotsQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "topology.matchSnapshots",
+      previous,
+      candidates
+    }
+  });
+
+  if (!response.ok || response.query !== "topology.matchSnapshots") {
+    throw new Error("Expected topology.matchSnapshots response.");
   }
 
   return response;
@@ -483,8 +736,38 @@ function readSelectionCandidates(
   return response;
 }
 
+function readSelectionCandidatesFor(
+  engine: CadEngine,
+  input: {
+    readonly selection: CadSelectionReferenceInput;
+    readonly requiredOperation?: CadSelectionReferenceOperation;
+  }
+): SelectionReferenceCandidatesQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "selection.referenceCandidates",
+      selection: input.selection,
+      ...(input.requiredOperation
+        ? { requiredOperation: input.requiredOperation }
+        : {})
+    }
+  });
+
+  if (!response.ok || response.query !== "selection.referenceCandidates") {
+    throw new Error("Expected selection.referenceCandidates response.");
+  }
+
+  return response;
+}
+
 function assertNoRawDerivedIds(text: string): void {
   expect(text).not.toMatch(
-    /rendererId|renderId|meshId|occtId|occtShape|cacheKey|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    /rendererId|renderId|meshId|occtId|occtShape|cacheKey|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
   );
+}
+
+function assertNoPublicTopologyIds(text: string): void {
+  assertNoRawDerivedIds(text);
+  expect(text).not.toMatch(/checkpointEntityId|checkpoint-local/i);
 }

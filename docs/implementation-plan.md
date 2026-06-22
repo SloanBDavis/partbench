@@ -2475,7 +2475,17 @@ Use these decisions when drafting or implementing V13 tranches:
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and
-    no raw-ID leakage.
+    no raw-ID leakage. The first deterministic cad-core source/query sample is
+    implemented as `v13-topology-anchor-repair-command-chain` plus
+    `pnpm smoke:v13-release-samples`: it covers V18 checkpoint and anchor
+    source records, named-reference repair to a topology face anchor,
+    downstream cut through a topology body anchor, JSON round-trip behavior,
+    and exact/split/deleted/low-confidence topology matching. Browser-level
+    result-topology selection, explicit repair, and downstream command smokes
+    remain later Tranche K work. This first K slice does not exercise
+    checkpoint payload byte generation or `.wcad` v2 checkpoint-payload
+    round-trips; it verifies JSON source round-trips for the V18 topology
+    identity records.
 
 ### V13 Scope Guardrails
 

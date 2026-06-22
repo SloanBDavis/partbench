@@ -14,6 +14,9 @@ import type {
   CadSelectionReferenceInput,
   CadSelectionReferenceOperation,
   CadSelectionReferenceStatus,
+  CadTopologyIdentityState,
+  CadTopologyMatchConfidence,
+  CadTopologyMatchSnapshotInput,
   DocumentUnits,
   NamedReferenceName
 } from "@web-cad/cad-protocol";
@@ -1730,5 +1733,384 @@ export function createV10ReleaseSampleBatch(id: V10ReleaseSampleId): CadBatch {
     version: "cadops.v1",
     mode: "commit",
     ops: getV10ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
+  };
+}
+
+export type V13ReleaseSampleId = "v13-topology-anchor-repair-command-chain";
+
+export type V13ReleaseSampleWorkflowTag =
+  | "topology-checkpoint"
+  | "topology-anchor"
+  | "topology-match"
+  | "reference-health"
+  | "named-reference-repair"
+  | "selection-reference-candidates"
+  | "target-topology-anchor"
+  | "source-boundary";
+
+export interface V13ReleaseSampleTopologyExpectation {
+  readonly checkpointCount: number;
+  readonly anchorCount: number;
+  readonly repairedReferenceName: NamedReferenceName;
+  readonly repairedTopologyAnchorId: string;
+  readonly downstreamFeatureId: string;
+  readonly downstreamTargetTopologyAnchorId: string;
+}
+
+export interface V13ReleaseSampleTopologyMatchExpectation {
+  readonly previousCheckpointEntityId: string;
+  readonly expectedState: CadTopologyIdentityState;
+  readonly expectedConfidence: CadTopologyMatchConfidence;
+}
+
+export interface V13ReleaseSampleFixture {
+  readonly id: V13ReleaseSampleId;
+  readonly title: string;
+  readonly description: string;
+  readonly units: DocumentUnits;
+  readonly workflowTags: readonly V13ReleaseSampleWorkflowTag[];
+  readonly expectedTopology: V13ReleaseSampleTopologyExpectation;
+  readonly topologyMatchPrevious: CadTopologyMatchSnapshotInput;
+  readonly topologyMatchCandidates: readonly CadTopologyMatchSnapshotInput[];
+  readonly expectedTopologyMatches: readonly V13ReleaseSampleTopologyMatchExpectation[];
+  readonly knownLimitations: readonly string[];
+  readonly ops: readonly CadOp[];
+}
+
+const V13_REPAIR_BODY = "v13_repair_body";
+const V13_REPAIR_START_FACE = `generated:face:${V13_REPAIR_BODY}:startCap`;
+const V13_REPAIR_END_FACE = `generated:face:${V13_REPAIR_BODY}:endCap`;
+const V13_REPAIR_FACE_ANCHOR = "v13_anchor_repair_face";
+const V13_REPAIR_CHECKPOINT = "v13_checkpoint_repair_body";
+
+const V13_TARGET_BODY = "v13_target_body";
+const V13_TARGET_BODY_ANCHOR = "v13_anchor_target_body";
+const V13_TARGET_CHECKPOINT = "v13_checkpoint_target_body";
+const V13_CUT_BODY = "v13_cut_body";
+
+export const V13_RELEASE_SAMPLE_FIXTURES = [
+  {
+    id: "v13-topology-anchor-repair-command-chain",
+    title: "V13 topology anchor repair and command chain sample",
+    description:
+      "Two authored rectangle bodies with explicit topology checkpoints and anchors, a named-reference repair to a face anchor, a downstream cut through a body anchor, and deterministic topology matching fixtures.",
+    units: "mm",
+    workflowTags: [
+      "topology-checkpoint",
+      "topology-anchor",
+      "topology-match",
+      "reference-health",
+      "named-reference-repair",
+      "selection-reference-candidates",
+      "target-topology-anchor",
+      "source-boundary"
+    ],
+    expectedTopology: {
+      checkpointCount: 2,
+      anchorCount: 2,
+      repairedReferenceName: "V13 repair face",
+      repairedTopologyAnchorId: V13_REPAIR_FACE_ANCHOR,
+      downstreamFeatureId: "v13_cut_feature",
+      downstreamTargetTopologyAnchorId: V13_TARGET_BODY_ANCHOR
+    },
+    topologyMatchPrevious: createV13TopologyMatchSnapshot({
+      checkpointId: V13_REPAIR_CHECKPOINT,
+      bodyId: V13_REPAIR_BODY,
+      entities: [
+        {
+          localId: "v13_match_face_exact",
+          kind: "face",
+          signature: "v13:face:exact"
+        },
+        {
+          localId: "v13_match_edge_split",
+          kind: "edge",
+          signature: "v13:edge:split"
+        },
+        {
+          localId: "v13_match_axis_deleted",
+          kind: "axis",
+          signature: "v13:axis:deleted"
+        },
+        {
+          localId: "v13_match_vertex_low",
+          kind: "vertex",
+          signature: "v13:vertex:low"
+        }
+      ]
+    }),
+    topologyMatchCandidates: [
+      createV13TopologyMatchSnapshot({
+        checkpointId: V13_TARGET_CHECKPOINT,
+        bodyId: V13_TARGET_BODY,
+        sourceIdentitySha:
+          "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        entities: [
+          {
+            localId: "v13_match_face_exact_new",
+            kind: "face",
+            signature: "v13:face:exact"
+          },
+          {
+            localId: "v13_match_edge_split_new_a",
+            kind: "edge",
+            signature: "v13:edge:split"
+          },
+          {
+            localId: "v13_match_edge_split_new_b",
+            kind: "edge",
+            signature: "v13:edge:split"
+          },
+          {
+            localId: "v13_match_vertex_low_new",
+            kind: "vertex",
+            signature: "v13:vertex:other"
+          }
+        ]
+      })
+    ],
+    expectedTopologyMatches: [
+      {
+        previousCheckpointEntityId: "v13_match_face_exact",
+        expectedState: "active",
+        expectedConfidence: "exact"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_edge_split",
+        expectedState: "split",
+        expectedConfidence: "high"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_axis_deleted",
+        expectedState: "deleted",
+        expectedConfidence: "none"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_vertex_low",
+        expectedState: "repair-needed",
+        expectedConfidence: "low"
+      }
+    ],
+    knownLimitations: [
+      "Checkpoint payload bytes are still caller-supplied; this fixture proves source records, matching, repair, and command eligibility.",
+      "Direct topology-anchor command targets without generated backing remain explicitly unsupported."
+    ],
+    ops: [
+      {
+        op: "sketch.create",
+        id: "v13_repair_sketch",
+        name: "V13 repair source profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v13_repair_sketch",
+        id: "v13_repair_rect",
+        center: [-2, 0],
+        width: 3,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v13_repair_extrude",
+        bodyId: V13_REPAIR_BODY,
+        name: "V13 repair body",
+        sketchId: "v13_repair_sketch",
+        entityId: "v13_repair_rect",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "reference.nameGenerated",
+        name: "V13 repair face",
+        bodyId: V13_REPAIR_BODY,
+        stableId: V13_REPAIR_START_FACE
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V13_REPAIR_CHECKPOINT,
+        bodyId: V13_REPAIR_BODY,
+        sourceFeatureId: "v13_repair_extrude",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V13_REPAIR_FACE_ANCHOR,
+        entityKind: "face",
+        bodyId: V13_REPAIR_BODY,
+        checkpointId: V13_REPAIR_CHECKPOINT,
+        checkpointEntityId: "v13_repair_checkpoint_face_end",
+        stableId: V13_REPAIR_END_FACE,
+        sourceFeatureId: "v13_repair_extrude",
+        sourceSemanticRole: "end cap",
+        signatureHash: "v13_repair_face_signature"
+      },
+      {
+        op: "reference.repairName",
+        name: "V13 repair face",
+        topologyAnchorId: V13_REPAIR_FACE_ANCHOR
+      },
+      {
+        op: "sketch.create",
+        id: "v13_target_sketch",
+        name: "V13 target profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v13_target_sketch",
+        id: "v13_target_rect",
+        center: [2, 0],
+        width: 4,
+        height: 2
+      },
+      {
+        op: "feature.extrude",
+        id: "v13_target_extrude",
+        bodyId: V13_TARGET_BODY,
+        name: "V13 anchored target body",
+        sketchId: "v13_target_sketch",
+        entityId: "v13_target_rect",
+        depth: 2,
+        side: "positive",
+        operationMode: "newBody"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V13_TARGET_CHECKPOINT,
+        bodyId: V13_TARGET_BODY,
+        sourceFeatureId: "v13_target_extrude",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: V13_TARGET_BODY_ANCHOR,
+        entityKind: "body",
+        bodyId: V13_TARGET_BODY,
+        checkpointId: V13_TARGET_CHECKPOINT,
+        checkpointEntityId: "v13_target_checkpoint_body",
+        stableId: `generated:body:${V13_TARGET_BODY}`,
+        sourceFeatureId: "v13_target_extrude",
+        sourceSemanticRole: "target body",
+        signatureHash: "v13_target_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "v13_cut_sketch",
+        name: "V13 anchored cut profile",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "v13_cut_sketch",
+        id: "v13_cut_rect",
+        center: [2, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "v13_cut_feature",
+        bodyId: V13_CUT_BODY,
+        name: "V13 anchored cut",
+        sketchId: "v13_cut_sketch",
+        entityId: "v13_cut_rect",
+        depth: 1,
+        side: "positive",
+        operationMode: "cut",
+        targetTopologyAnchorId: V13_TARGET_BODY_ANCHOR
+      }
+    ]
+  }
+] as const satisfies readonly V13ReleaseSampleFixture[];
+
+export function listV13ReleaseSampleFixtures(): readonly V13ReleaseSampleFixture[] {
+  return V13_RELEASE_SAMPLE_FIXTURES;
+}
+
+export function getV13ReleaseSampleFixture(
+  id: V13ReleaseSampleId
+): V13ReleaseSampleFixture {
+  const fixture = V13_RELEASE_SAMPLE_FIXTURES.find(
+    (candidate) => candidate.id === id
+  );
+
+  if (!fixture) {
+    throw new Error(`Unknown V13 release sample fixture: ${id}`);
+  }
+
+  return fixture;
+}
+
+export function createV13ReleaseSampleBatch(id: V13ReleaseSampleId): CadBatch {
+  return {
+    version: "cadops.v1",
+    mode: "commit",
+    ops: getV13ReleaseSampleFixture(id).ops.map((op) => ({ ...op }))
+  };
+}
+
+function createV13TopologyMatchSnapshot({
+  checkpointId,
+  bodyId,
+  sourceIdentitySha = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  entities
+}: {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceIdentitySha?: string;
+  readonly entities: readonly {
+    readonly localId: string;
+    readonly kind: CadTopologyMatchSnapshotInput["topologySnapshot"]["entities"][number]["kind"];
+    readonly signature: string;
+  }[];
+}): CadTopologyMatchSnapshotInput {
+  return {
+    checkpointId,
+    bodyId,
+    sourceIdentity: {
+      algorithm: "partbench-source-v1",
+      sha256: sourceIdentitySha
+    },
+    topologySnapshot: {
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: entities.filter((entity) => entity.kind === "body").length,
+        solidCount: entities.filter((entity) => entity.kind === "solid").length,
+        faceCount: entities.filter((entity) => entity.kind === "face").length,
+        loopCount: entities.filter((entity) => entity.kind === "loop").length,
+        wireCount: entities.filter((entity) => entity.kind === "wire").length,
+        coedgeCount: entities.filter((entity) => entity.kind === "coedge")
+          .length,
+        edgeCount: entities.filter((entity) => entity.kind === "edge").length,
+        vertexCount: entities.filter((entity) => entity.kind === "vertex")
+          .length,
+        axisCount: entities.filter((entity) => entity.kind === "axis").length
+      },
+      entityCount: entities.length,
+      entities: entities.map((entity) => ({
+        localId: entity.localId,
+        kind: entity.kind,
+        source: "kernel-derived",
+        signature: entity.signature
+      })),
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: false,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: `${checkpointId}:signature`,
+      diagnostics: []
+    }
   };
 }
