@@ -192,6 +192,87 @@ function createCircleExtrudeEngine(): CadEngine {
   return engine;
 }
 
+type CheckpointTopologyEntityFixture =
+  CadBodyExactTopologySnapshot["entities"][number];
+
+function createCheckpointTopologyPayload(
+  entities: readonly CheckpointTopologyEntityFixture[] = []
+): CadBodyExactTopologySnapshot {
+  const counts = {
+    bodyCount: 0,
+    solidCount: 0,
+    faceCount: 0,
+    wireCount: 0,
+    edgeCount: 0,
+    vertexCount: 0,
+    loopCount: 0,
+    coedgeCount: 0,
+    axisCount: 0
+  };
+
+  for (const entity of entities) {
+    switch (entity.kind) {
+      case "body":
+        counts.bodyCount += 1;
+        break;
+      case "solid":
+        counts.solidCount += 1;
+        break;
+      case "face":
+        counts.faceCount += 1;
+        break;
+      case "wire":
+        counts.wireCount += 1;
+        break;
+      case "edge":
+        counts.edgeCount += 1;
+        break;
+      case "vertex":
+        counts.vertexCount += 1;
+        break;
+      case "loop":
+        counts.loopCount += 1;
+        break;
+      case "coedge":
+        counts.coedgeCount += 1;
+        break;
+      case "axis":
+        counts.axisCount += 1;
+        break;
+    }
+  }
+
+  return {
+    source: "kernel-derived",
+    status: "ready",
+    entityCounts: counts,
+    entityCount: entities.length,
+    entities,
+    unsupportedEntityKinds: [],
+    adjacencyAvailable: true,
+    signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+    signature: "topology_signature",
+    diagnostics: []
+  };
+}
+
+function createCheckpointSignaturePayload(
+  checkpointId: string,
+  topology: CadBodyExactTopologySnapshot
+): unknown {
+  return {
+    checkpointId,
+    signatureAlgorithm: topology.signatureAlgorithm,
+    signature: topology.signature,
+    entityCount: topology.entityCount,
+    entities: topology.entities.map((entity) => ({
+      localId: entity.localId,
+      kind: entity.kind,
+      signature: entity.signature
+    }))
+  };
+}
+
 function createV18CheckpointFixture(): {
   readonly project: CadProject;
   readonly checkpointPayload: NonNullable<
@@ -204,6 +285,7 @@ function createV18CheckpointFixture(): {
   const baseProject = exportCadProject(engine);
   const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
   const paths = createWcadV2CheckpointEntryPaths("checkpoint_1");
+  const topologyPayload = createCheckpointTopologyPayload();
   const placeholderSourceIdentity = {
     algorithm: "partbench-source-v1" as const,
     sha256: "1111111111111111111111111111111111111111111111111111111111111111"
@@ -246,33 +328,10 @@ function createV18CheckpointFixture(): {
       angularToleranceDegrees: 0.01
     },
     brepBytes: new TextEncoder().encode("real checkpoint brep bytes"),
-    topologyBytes: encodeCanonicalCbor({
-      source: "kernel-derived",
-      status: "ready",
-      entityCounts: {
-        bodyCount: 0,
-        solidCount: 0,
-        faceCount: 0,
-        wireCount: 0,
-        edgeCount: 0,
-        vertexCount: 0,
-        loopCount: 0,
-        coedgeCount: 0,
-        axisCount: 0
-      },
-      entityCount: 0,
-      entities: [],
-      unsupportedEntityKinds: [],
-      adjacencyAvailable: true,
-      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
-      signature: "topology_signature",
-      diagnostics: []
-    }),
-    signatureBytes: encodeCanonicalCbor({
-      checkpointId: "checkpoint_1",
-      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
-      signature: "topology_signature"
-    })
+    topologyBytes: encodeCanonicalCbor(topologyPayload),
+    signatureBytes: encodeCanonicalCbor(
+      createCheckpointSignaturePayload("checkpoint_1", topologyPayload)
+    )
   };
 
   return { project, checkpointPayload };
@@ -1705,6 +1764,9 @@ function createExactMetadataSnapshot(input: {
   readonly topologySnapshotStatus?: CadBodyExactTopologySnapshot["status"];
   readonly topologyEntities?: CadBodyExactTopologySnapshot["entities"];
 }): CadBodyDerivedExactMetadataSnapshot {
+  const defaultFaceCount = input.faceCount ?? 6;
+  const defaultEdgeCount = input.edgeCount ?? 12;
+  const defaultVertexCount = input.vertexCount ?? 8;
   const topologyEntities = input.topologyEntities ?? [
     {
       localId: "snapshot-local:body:0",
@@ -1712,11 +1774,35 @@ function createExactMetadataSnapshot(input: {
       source: "kernel-derived" as const,
       signature: "topology-body-test"
     },
-    ...Array.from({ length: 33 }, (_, index) => ({
+    {
+      localId: "snapshot-local:solid:0",
+      kind: "solid" as const,
+      source: "kernel-derived" as const,
+      signature: "topology-solid-test"
+    },
+    ...Array.from({ length: defaultFaceCount }, (_, index) => ({
       localId: `snapshot-local:face:${index}`,
       kind: "face" as const,
       source: "kernel-derived" as const,
       signature: `topology-face-test-${index}`
+    })),
+    ...Array.from({ length: 6 }, (_, index) => ({
+      localId: `snapshot-local:wire:${index}`,
+      kind: "wire" as const,
+      source: "kernel-derived" as const,
+      signature: `topology-wire-test-${index}`
+    })),
+    ...Array.from({ length: defaultEdgeCount }, (_, index) => ({
+      localId: `snapshot-local:edge:${index}`,
+      kind: "edge" as const,
+      source: "kernel-derived" as const,
+      signature: `topology-edge-test-${index}`
+    })),
+    ...Array.from({ length: defaultVertexCount }, (_, index) => ({
+      localId: `snapshot-local:vertex:${index}`,
+      kind: "vertex" as const,
+      source: "kernel-derived" as const,
+      signature: `topology-vertex-test-${index}`
     }))
   ];
   const countEntities = (
@@ -1727,29 +1813,17 @@ function createExactMetadataSnapshot(input: {
         source: "kernel-derived" as const,
         status: input.topologySnapshotStatus ?? ("partial" as const),
         entityCounts: {
-          bodyCount: input.topologyEntities ? countEntities("body") : 1,
-          solidCount: input.topologyEntities ? countEntities("solid") : 1,
-          faceCount: input.topologyEntities
-            ? countEntities("face")
-            : (input.faceCount ?? 6),
-          wireCount: input.topologyEntities ? countEntities("wire") : 6,
-          edgeCount: input.topologyEntities
-            ? countEntities("edge")
-            : (input.edgeCount ?? 12),
-          vertexCount: input.topologyEntities
-            ? countEntities("vertex")
-            : (input.vertexCount ?? 8),
-          loopCount: input.topologyEntities ? countEntities("loop") : 0,
-          coedgeCount: input.topologyEntities ? countEntities("coedge") : 0,
-          axisCount: input.topologyEntities ? countEntities("axis") : 0
+          bodyCount: countEntities("body"),
+          solidCount: countEntities("solid"),
+          faceCount: countEntities("face"),
+          wireCount: countEntities("wire"),
+          edgeCount: countEntities("edge"),
+          vertexCount: countEntities("vertex"),
+          loopCount: countEntities("loop"),
+          coedgeCount: countEntities("coedge"),
+          axisCount: countEntities("axis")
         },
-        entityCount: input.topologyEntities
-          ? input.topologyEntities.length
-          : 2 +
-            (input.faceCount ?? 6) +
-            6 +
-            (input.edgeCount ?? 12) +
-            (input.vertexCount ?? 8),
+        entityCount: topologyEntities.length,
         entities: topologyEntities,
         unsupportedEntityKinds: ["loop", "coedge", "axis"] as const,
         adjacencyAvailable: false,
@@ -30315,6 +30389,174 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     );
+  });
+
+  it("rejects WCAD v2 checkpoint payloads with invalid topology descriptors", async () => {
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+    const invalidTopologyPayload = {
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face_signature"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "topology_signature",
+      diagnostics: []
+    };
+
+    await expect(
+      exportCadProjectToWcad(project, {
+        topologyCheckpoints: [
+          {
+            ...checkpointPayload,
+            topologyBytes: encodeCanonicalCbor(invalidTopologyPayload),
+            signatureBytes: encodeCanonicalCbor({
+              checkpointId: "checkpoint_1",
+              signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+              signature: "topology_signature",
+              entityCount: 1,
+              entities: [
+                {
+                  localId: "",
+                  kind: "face",
+                  signature: "face_signature"
+                }
+              ]
+            })
+          }
+        ]
+      })
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          entryRole: "checkpoint-topology"
+        })
+      ])
+    });
+  });
+
+  it("rejects WCAD v2 checkpoint signature payloads that do not match topology payloads", async () => {
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+
+    await expect(
+      exportCadProjectToWcad(project, {
+        topologyCheckpoints: [
+          {
+            ...checkpointPayload,
+            signatureBytes: encodeCanonicalCbor({
+              checkpointId: "checkpoint_1",
+              signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+              signature: "different_topology_signature",
+              entityCount: 0,
+              entities: []
+            })
+          }
+        ]
+      })
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          entryRole: "checkpoint-signature",
+          message:
+            "Checkpoint signature payload must match topology.cbor snapshot signature."
+        })
+      ])
+    });
+  });
+
+  it("validates WCAD v2 topology anchor records against checkpoint topology payload entities", async () => {
+    const { project, checkpointPayload } = createV18CheckpointFixture();
+    const topologyIdentity = project.document.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const projectWithAnchor: CadProject = {
+      ...project,
+      document: {
+        ...project.document,
+        topologyIdentity: {
+          ...topologyIdentity,
+          anchors: [
+            {
+              anchorId: "anchor_face_1",
+              entityKind: "face",
+              bodyId: "body_rect_1",
+              checkpointId: "checkpoint_1",
+              checkpointEntityId: "checkpoint-local-face-1",
+              state: "active",
+              diagnostics: []
+            }
+          ]
+        }
+      }
+    };
+
+    await expect(
+      exportCadProjectToWcad(projectWithAnchor, {
+        topologyCheckpoints: [checkpointPayload]
+      })
+    ).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          entryRole: "checkpoint-topology",
+          received: "checkpoint-local-face-1"
+        })
+      ])
+    });
+
+    const topologyPayload = createCheckpointTopologyPayload([
+      {
+        localId: "checkpoint-local-face-1",
+        kind: "face",
+        source: "kernel-derived",
+        signature: "face_signature_1",
+        bounds: {
+          min: [-2, -1, 3],
+          max: [2, 1, 3]
+        }
+      }
+    ]);
+    const payloadWithFace = {
+      ...checkpointPayload,
+      topologyBytes: encodeCanonicalCbor(topologyPayload),
+      signatureBytes: encodeCanonicalCbor(
+        createCheckpointSignaturePayload("checkpoint_1", topologyPayload)
+      )
+    };
+    const exported = await exportCadProjectToWcad(projectWithAnchor, {
+      topologyCheckpoints: [payloadWithFace]
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error("Expected checkpointed package with anchored face.");
+    }
+    expect(read.checkpointPayloads).toHaveLength(1);
   });
 
   it("rejects WCAD v2 source identity mismatches", async () => {

@@ -3299,11 +3299,35 @@ describe("agent-adapter", () => {
                     source: "kernel-derived",
                     signature: "topology-body-test"
                   },
-                  ...Array.from({ length: 33 }, (_, index) => ({
+                  {
+                    localId: "snapshot-local:solid:0",
+                    kind: "solid" as const,
+                    source: "kernel-derived" as const,
+                    signature: "topology-solid-test"
+                  },
+                  ...Array.from({ length: 6 }, (_, index) => ({
                     localId: `snapshot-local:face:${index}`,
                     kind: "face" as const,
                     source: "kernel-derived" as const,
                     signature: `topology-face-test-${index}`
+                  })),
+                  ...Array.from({ length: 6 }, (_, index) => ({
+                    localId: `snapshot-local:wire:${index}`,
+                    kind: "wire" as const,
+                    source: "kernel-derived" as const,
+                    signature: `topology-wire-test-${index}`
+                  })),
+                  ...Array.from({ length: 12 }, (_, index) => ({
+                    localId: `snapshot-local:edge:${index}`,
+                    kind: "edge" as const,
+                    source: "kernel-derived" as const,
+                    signature: `topology-edge-test-${index}`
+                  })),
+                  ...Array.from({ length: 8 }, (_, index) => ({
+                    localId: `snapshot-local:vertex:${index}`,
+                    kind: "vertex" as const,
+                    source: "kernel-derived" as const,
+                    signature: `topology-vertex-test-${index}`
                   }))
                 ],
                 unsupportedEntityKinds: ["loop", "coedge", "axis"],

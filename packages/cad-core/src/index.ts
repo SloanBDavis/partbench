@@ -8,9 +8,12 @@ import {
   WCAD_SOURCE_IDENTITY_ALGORITHM,
   type WcadManifestV1,
   type WcadManifestV2,
+  type CadBodyExactTopologyEntityDescriptor,
+  type CadBodyExactTopologySnapshot,
   type WcadTopologyCheckpointKernelMetadata,
   type WcadTopologyCheckpointManifestEntry,
   type WcadTopologyCheckpointPayloadEntry,
+  type WcadTopologyCheckpointSignaturePayload,
   type WcadTopologyCheckpointToleranceMetadata,
   type WcadPackageEntryMetadata,
   type WcadPackageValidationIssue,
@@ -2856,7 +2859,7 @@ async function readCadProjectWcadV2(
     );
   }
 
-  const checkpointPayloads = await readWcadV2CheckpointPayloads(
+  const checkpointPayloadReadSet = await readWcadV2CheckpointPayloads(
     entries,
     manifestValue,
     issues
@@ -2942,13 +2945,22 @@ async function readCadProjectWcadV2(
 
   try {
     const project = parseCadProject(candidateProject);
+    validateWcadV2CheckpointPayloadSourceLinks(
+      project,
+      checkpointPayloadReadSet.decodedByCheckpointId,
+      issues
+    );
+
+    if (hasError(issues)) {
+      return { ok: false, issues };
+    }
 
     return {
       ok: true,
       project,
       manifest: manifestValue,
       sourceIdentity,
-      checkpointPayloads,
+      checkpointPayloads: checkpointPayloadReadSet.payloads,
       diagnostics: issues
     };
   } catch (error) {
@@ -2988,6 +3000,19 @@ interface WcadV2CheckpointPayloadWithoutIdentity {
   readonly brepBytes: Uint8Array;
   readonly topologyBytes: Uint8Array;
   readonly signatureBytes: Uint8Array;
+}
+
+interface DecodedWcadV2CheckpointPayload {
+  readonly topologySnapshot?: CadBodyExactTopologySnapshot;
+  readonly signaturePayload?: WcadTopologyCheckpointSignaturePayload;
+}
+
+interface WcadV2CheckpointPayloadReadSet {
+  readonly payloads: readonly WcadTopologyCheckpointPayload[];
+  readonly decodedByCheckpointId: ReadonlyMap<
+    string,
+    DecodedWcadV2CheckpointPayload
+  >;
 }
 
 function validateWcadV2CheckpointPayloadInputs(
@@ -3061,21 +3086,29 @@ function validateWcadV2CheckpointPayloadInputs(
       }
     }
 
-    validateCheckpointCborPayload(
+    const topologySnapshot = validateCheckpointTopologyPayload(
       input.topologyBytes,
       paths.topology,
-      "checkpoint-topology",
-      issues,
-      isCompatibleCheckpointTopologyPayload,
-      "topology.cbor must contain a compatible exact topology snapshot."
+      issues
     );
-    validateCheckpointCborPayload(
+    const signaturePayload = validateCheckpointSignaturePayload(
       input.signatureBytes,
       paths.signature,
-      "checkpoint-signature",
+      issues
+    );
+
+    validateCheckpointPayloadConsistency(
+      {
+        checkpointId: input.checkpointId,
+        topologySnapshot,
+        signaturePayload,
+        anchors:
+          project.document.topologyIdentity?.anchors.filter(
+            (anchor) => anchor.checkpointId === input.checkpointId
+          ) ?? []
+      },
       issues,
-      isRecord,
-      "signature.cbor must contain a canonical CBOR object."
+      { topology: paths.topology, signature: paths.signature }
     );
   }
 
@@ -3212,8 +3245,12 @@ async function readWcadV2CheckpointPayloads(
   entries: ReadonlyMap<string, Uint8Array>,
   manifest: WcadManifestV2,
   issues: WcadPackageValidationIssue[]
-): Promise<readonly WcadTopologyCheckpointPayload[]> {
+): Promise<WcadV2CheckpointPayloadReadSet> {
   const payloads: WcadTopologyCheckpointPayload[] = [];
+  const decodedByCheckpointId = new Map<
+    string,
+    DecodedWcadV2CheckpointPayload
+  >();
 
   for (const checkpoint of manifest.topologyIdentity.checkpoints) {
     const brepBytes = await readRequiredWcadV2CheckpointBytes(
@@ -3235,27 +3272,39 @@ async function readWcadV2CheckpointPayloads(
       issues
     );
 
-    if (topologyBytes) {
-      validateCheckpointCborPayload(
-        topologyBytes,
-        checkpoint.topology.path,
-        "checkpoint-topology",
-        issues,
-        isCompatibleCheckpointTopologyPayload,
-        "topology.cbor must contain a compatible exact topology snapshot."
-      );
-    }
+    const topologySnapshot = topologyBytes
+      ? validateCheckpointTopologyPayload(
+          topologyBytes,
+          checkpoint.topology.path,
+          issues
+        )
+      : undefined;
 
-    if (signatureBytes) {
-      validateCheckpointCborPayload(
-        signatureBytes,
-        checkpoint.signature.path,
-        "checkpoint-signature",
-        issues,
-        isRecord,
-        "signature.cbor must contain a canonical CBOR object."
-      );
-    }
+    const signaturePayload = signatureBytes
+      ? validateCheckpointSignaturePayload(
+          signatureBytes,
+          checkpoint.signature.path,
+          issues
+        )
+      : undefined;
+
+    validateCheckpointPayloadConsistency(
+      {
+        checkpointId: checkpoint.checkpointId,
+        topologySnapshot,
+        signaturePayload,
+        anchors: []
+      },
+      issues,
+      {
+        topology: checkpoint.topology.path,
+        signature: checkpoint.signature.path
+      }
+    );
+    decodedByCheckpointId.set(checkpoint.checkpointId, {
+      ...(topologySnapshot ? { topologySnapshot } : {}),
+      ...(signaturePayload ? { signaturePayload } : {})
+    });
 
     if (!brepBytes || !topologyBytes || !signatureBytes) {
       continue;
@@ -3274,7 +3323,7 @@ async function readWcadV2CheckpointPayloads(
     });
   }
 
-  return payloads;
+  return { payloads, decodedByCheckpointId };
 }
 
 async function readRequiredWcadV2CheckpointBytes(
@@ -3315,21 +3364,87 @@ async function readRequiredWcadV2CheckpointBytes(
   return bytes;
 }
 
-function validateCheckpointCborPayload(
+function validateCheckpointTopologyPayload(
+  bytes: Uint8Array,
+  entryPath: string,
+  issues: WcadPackageValidationIssue[]
+): CadBodyExactTopologySnapshot | undefined {
+  const payload = decodeCheckpointCborPayload(
+    bytes,
+    entryPath,
+    "checkpoint-topology",
+    issues
+  );
+
+  if (payload === undefined) {
+    return undefined;
+  }
+
+  if (!isCadBodyExactTopologySnapshot(payload)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+        "error",
+        "topology.cbor must contain a compatible exact topology snapshot with valid entity descriptors.",
+        "$",
+        "compatible exact topology snapshot",
+        "invalid",
+        entryPath,
+        "checkpoint-topology"
+      )
+    );
+    return undefined;
+  }
+
+  return payload;
+}
+
+function validateCheckpointSignaturePayload(
+  bytes: Uint8Array,
+  entryPath: string,
+  issues: WcadPackageValidationIssue[]
+): WcadTopologyCheckpointSignaturePayload | undefined {
+  const payload = decodeCheckpointCborPayload(
+    bytes,
+    entryPath,
+    "checkpoint-signature",
+    issues
+  );
+
+  if (payload === undefined) {
+    return undefined;
+  }
+
+  if (!isWcadTopologyCheckpointSignaturePayload(payload)) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+        "error",
+        "signature.cbor must contain a checkpoint signature payload matching the V13 package contract.",
+        "$",
+        "checkpoint signature payload",
+        "invalid",
+        entryPath,
+        "checkpoint-signature"
+      )
+    );
+    return undefined;
+  }
+
+  return payload;
+}
+
+function decodeCheckpointCborPayload(
   bytes: Uint8Array,
   entryPath: string,
   entryRole: Extract<
     WcadPackageEntryRole,
     "checkpoint-topology" | "checkpoint-signature"
   >,
-  issues: WcadPackageValidationIssue[],
-  predicate: (value: unknown) => boolean,
-  invalidMessage: string
-): void {
-  let payload: unknown;
-
+  issues: WcadPackageValidationIssue[]
+): unknown | undefined {
   try {
-    payload = decodeCanonicalCbor(bytes);
+    return decodeCanonicalCbor(bytes);
   } catch (error) {
     issues.push(
       createWcadPackageIssue(
@@ -3345,58 +3460,269 @@ function validateCheckpointCborPayload(
         entryRole
       )
     );
+    return undefined;
+  }
+}
+
+function validateCheckpointPayloadConsistency(
+  input: {
+    readonly checkpointId: string;
+    readonly topologySnapshot?: CadBodyExactTopologySnapshot;
+    readonly signaturePayload?: WcadTopologyCheckpointSignaturePayload;
+    readonly anchors: readonly CadTopologyAnchorSourceRecord[];
+  },
+  issues: WcadPackageValidationIssue[],
+  entryPaths: {
+    readonly topology: string;
+    readonly signature: string;
+  }
+): void {
+  const { topologySnapshot, signaturePayload } = input;
+
+  if (!topologySnapshot || !signaturePayload) {
     return;
   }
 
-  if (!predicate(payload)) {
+  if (signaturePayload.checkpointId !== input.checkpointId) {
     issues.push(
       createWcadPackageIssue(
         "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
         "error",
-        invalidMessage,
-        "$",
-        "compatible checkpoint payload",
-        "invalid",
-        entryPath,
-        entryRole
+        "Checkpoint signature payload checkpointId must match the checkpoint entry.",
+        "$.checkpointId",
+        input.checkpointId,
+        signaturePayload.checkpointId,
+        entryPaths.signature,
+        "checkpoint-signature"
       )
+    );
+  }
+
+  if (signaturePayload.signature !== topologySnapshot.signature) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+        "error",
+        "Checkpoint signature payload must match topology.cbor snapshot signature.",
+        "$.signature",
+        topologySnapshot.signature,
+        signaturePayload.signature,
+        entryPaths.signature,
+        "checkpoint-signature"
+      )
+    );
+  }
+
+  if (signaturePayload.entityCount !== topologySnapshot.entityCount) {
+    issues.push(
+      createWcadPackageIssue(
+        "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+        "error",
+        "Checkpoint signature payload entityCount must match topology.cbor.",
+        "$.entityCount",
+        topologySnapshot.entityCount,
+        signaturePayload.entityCount,
+        entryPaths.signature,
+        "checkpoint-signature"
+      )
+    );
+  }
+
+  if (signaturePayload.entities) {
+    validateCheckpointSignatureEntities(
+      topologySnapshot,
+      signaturePayload,
+      issues,
+      entryPaths.signature
+    );
+  }
+
+  validateCheckpointAnchorPayloadEntities(
+    input.anchors,
+    topologySnapshot,
+    issues,
+    entryPaths.topology
+  );
+}
+
+function validateWcadV2CheckpointPayloadSourceLinks(
+  project: CadProject,
+  decodedByCheckpointId: ReadonlyMap<string, DecodedWcadV2CheckpointPayload>,
+  issues: WcadPackageValidationIssue[]
+): void {
+  const topologyIdentity = project.document.topologyIdentity;
+
+  if (!topologyIdentity) {
+    return;
+  }
+
+  for (const checkpoint of topologyIdentity.checkpoints) {
+    const decoded = decodedByCheckpointId.get(checkpoint.checkpointId);
+
+    validateCheckpointPayloadConsistency(
+      {
+        checkpointId: checkpoint.checkpointId,
+        topologySnapshot: decoded?.topologySnapshot,
+        signaturePayload: decoded?.signaturePayload,
+        anchors: topologyIdentity.anchors.filter(
+          (anchor) => anchor.checkpointId === checkpoint.checkpointId
+        )
+      },
+      issues,
+      {
+        topology: checkpoint.topologyEntryPath,
+        signature: checkpoint.signatureEntryPath
+      }
     );
   }
 }
 
-function isCompatibleCheckpointTopologyPayload(value: unknown): boolean {
+function validateCheckpointSignatureEntities(
+  topologySnapshot: CadBodyExactTopologySnapshot,
+  signaturePayload: WcadTopologyCheckpointSignaturePayload,
+  issues: WcadPackageValidationIssue[],
+  entryPath: string
+): void {
+  const topologyEntitiesById = new Map(
+    topologySnapshot.entities.map((entity) => [entity.localId, entity])
+  );
+
+  for (const entity of signaturePayload.entities ?? []) {
+    const topologyEntity = topologyEntitiesById.get(entity.localId);
+
+    if (!topologyEntity) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          "Checkpoint signature payload entity must exist in topology.cbor.",
+          "$.entities",
+          "topology entity localId",
+          entity.localId,
+          entryPath,
+          "checkpoint-signature"
+        )
+      );
+      continue;
+    }
+
+    if (
+      topologyEntity.kind !== entity.kind ||
+      topologyEntity.signature !== entity.signature
+    ) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          "Checkpoint signature payload entity kind/signature must match topology.cbor.",
+          "$.entities",
+          `${topologyEntity.kind}:${topologyEntity.signature}`,
+          `${entity.kind}:${entity.signature}`,
+          entryPath,
+          "checkpoint-signature"
+        )
+      );
+    }
+  }
+}
+
+function validateCheckpointAnchorPayloadEntities(
+  anchors: readonly CadTopologyAnchorSourceRecord[],
+  topologySnapshot: CadBodyExactTopologySnapshot,
+  issues: WcadPackageValidationIssue[],
+  entryPath: string
+): void {
+  const topologyEntitiesById = new Map(
+    topologySnapshot.entities.map((entity) => [entity.localId, entity])
+  );
+
+  for (const anchor of anchors) {
+    const topologyEntity = topologyEntitiesById.get(anchor.checkpointEntityId);
+
+    if (!topologyEntity) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          "Topology anchor source record points to a checkpoint entity missing from topology.cbor.",
+          "$.document.topologyIdentity.anchors.checkpointEntityId",
+          "checkpoint topology entity",
+          anchor.checkpointEntityId,
+          entryPath,
+          "checkpoint-topology"
+        )
+      );
+      continue;
+    }
+
+    if (topologyEntity.kind !== anchor.entityKind) {
+      issues.push(
+        createWcadPackageIssue(
+          "WCAD_UNSUPPORTED_CHECKPOINT_ENTRY",
+          "error",
+          "Topology anchor source record entityKind must match topology.cbor entity kind.",
+          "$.document.topologyIdentity.anchors.entityKind",
+          topologyEntity.kind,
+          anchor.entityKind,
+          entryPath,
+          "checkpoint-topology"
+        )
+      );
+    }
+  }
+}
+
+function isWcadTopologyCheckpointSignaturePayload(
+  value: unknown
+): value is WcadTopologyCheckpointSignaturePayload {
   if (
     !isRecord(value) ||
-    value.source !== "kernel-derived" ||
-    (value.status !== "ready" && value.status !== "partial") ||
+    typeof value.checkpointId !== "string" ||
+    value.checkpointId.trim().length === 0 ||
     value.signatureAlgorithm !== "partbench-derived-topology-snapshot-v1" ||
     typeof value.signature !== "string" ||
-    typeof value.entityCount !== "number" ||
-    !Number.isInteger(value.entityCount) ||
-    value.entityCount < 0 ||
-    !Array.isArray(value.entities) ||
-    value.entities.length !== value.entityCount ||
-    !isRecord(value.entityCounts)
+    value.signature.trim().length === 0 ||
+    !isNonNegativeInteger(value.entityCount)
   ) {
     return false;
   }
 
-  const counts = value.entityCounts;
+  if (value.entities !== undefined) {
+    if (
+      !Array.isArray(value.entities) ||
+      value.entities.length !== value.entityCount ||
+      !value.entities.every(isWcadTopologyCheckpointSignatureEntity)
+    ) {
+      return false;
+    }
 
-  return [
-    "bodyCount",
-    "solidCount",
-    "faceCount",
-    "wireCount",
-    "edgeCount",
-    "vertexCount",
-    "loopCount",
-    "coedgeCount",
-    "axisCount"
-  ].every((key) => {
-    const count = counts[key];
-    return typeof count === "number" && Number.isInteger(count) && count >= 0;
-  });
+    const ids = new Set<string>();
+
+    for (const entity of value.entities) {
+      if (ids.has(entity.localId)) {
+        return false;
+      }
+
+      ids.add(entity.localId);
+    }
+  }
+
+  return true;
+}
+
+function isWcadTopologyCheckpointSignatureEntity(
+  value: unknown
+): value is NonNullable<
+  WcadTopologyCheckpointSignaturePayload["entities"]
+>[number] {
+  return (
+    isRecord(value) &&
+    typeof value.localId === "string" &&
+    value.localId.trim().length > 0 &&
+    isCadBodyExactTopologyEntityKind(value.kind) &&
+    typeof value.signature === "string" &&
+    value.signature.trim().length > 0
+  );
 }
 
 function getCheckpointIdFromPayloadPath(path: string): string {
@@ -5842,7 +6168,9 @@ function isCadBodyExactMetadataTopologyCounts(value: unknown): boolean {
   );
 }
 
-function isCadBodyExactTopologySnapshot(value: unknown): boolean {
+function isCadBodyExactTopologySnapshot(
+  value: unknown
+): value is CadBodyExactTopologySnapshot {
   if (
     !isRecord(value) ||
     value.source !== "kernel-derived" ||
@@ -5866,18 +6194,62 @@ function isCadBodyExactTopologySnapshot(value: unknown): boolean {
   }
 
   const counts = value.entityCounts;
-  const expectedEntityCount =
-    counts.bodyCount +
-    counts.solidCount +
-    counts.faceCount +
-    counts.wireCount +
-    counts.edgeCount +
-    counts.vertexCount +
-    counts.loopCount +
-    counts.coedgeCount +
-    counts.axisCount;
+  const entities =
+    value.entities as readonly CadBodyExactTopologyEntityDescriptor[];
+  const entityKindCounts = countExactTopologyEntitiesByKind(entities);
+  const ids = new Set<string>();
 
-  return value.entityCount === expectedEntityCount;
+  for (const entity of entities) {
+    if (ids.has(entity.localId)) {
+      return false;
+    }
+
+    ids.add(entity.localId);
+  }
+
+  return (
+    value.entityCount ===
+      counts.bodyCount +
+        counts.solidCount +
+        counts.faceCount +
+        counts.wireCount +
+        counts.edgeCount +
+        counts.vertexCount +
+        counts.loopCount +
+        counts.coedgeCount +
+        counts.axisCount &&
+    entityKindCounts.body === counts.bodyCount &&
+    entityKindCounts.solid === counts.solidCount &&
+    entityKindCounts.face === counts.faceCount &&
+    entityKindCounts.wire === counts.wireCount &&
+    entityKindCounts.edge === counts.edgeCount &&
+    entityKindCounts.vertex === counts.vertexCount &&
+    entityKindCounts.loop === counts.loopCount &&
+    entityKindCounts.coedge === counts.coedgeCount &&
+    entityKindCounts.axis === counts.axisCount
+  );
+}
+
+function countExactTopologyEntitiesByKind(
+  entities: readonly CadBodyExactTopologyEntityDescriptor[]
+): Record<CadBodyExactTopologyEntityDescriptor["kind"], number> {
+  const counts = {
+    body: 0,
+    solid: 0,
+    face: 0,
+    wire: 0,
+    edge: 0,
+    vertex: 0,
+    loop: 0,
+    coedge: 0,
+    axis: 0
+  } satisfies Record<CadBodyExactTopologyEntityDescriptor["kind"], number>;
+
+  for (const entity of entities) {
+    counts[entity.kind] += 1;
+  }
+
+  return counts;
 }
 
 function isCadBodyExactTopologyEntityCounts(value: unknown): value is {
@@ -5909,9 +6281,11 @@ function isCadBodyExactTopologyEntityDescriptor(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.localId === "string" &&
+    value.localId.trim().length > 0 &&
     isCadBodyExactTopologyEntityKind(value.kind) &&
     value.source === "kernel-derived" &&
     typeof value.signature === "string" &&
+    value.signature.trim().length > 0 &&
     (value.bounds === undefined || isCadTopologyEntityBounds(value.bounds))
   );
 }

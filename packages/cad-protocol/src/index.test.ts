@@ -52,6 +52,7 @@ import type {
   TopologyMatchSnapshotsQueryResponse,
   WcadManifestV1,
   WcadManifestV2,
+  WcadTopologyCheckpointSignaturePayload,
   WcadPackageValidationIssue,
   NamedGeneratedReferenceEntry,
   SketchSnapshot
@@ -645,6 +646,19 @@ describe("cad-protocol", () => {
         sourceIdentity
       }
     };
+    const signaturePayload: WcadTopologyCheckpointSignaturePayload = {
+      checkpointId: "checkpoint_1",
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "checkpoint_signature",
+      entityCount: 1,
+      entities: [
+        {
+          localId: "checkpoint-local:face:7",
+          kind: "face",
+          signature: "face_signature"
+        }
+      ]
+    };
     const manifest: WcadManifestV2 = {
       packageVersion: CAD_TOPOLOGY_IDENTITY_PACKAGE_VERSION,
       product: "Partbench",
@@ -677,6 +691,7 @@ describe("cad-protocol", () => {
 
     expect(source.schemaVersion).toBe("web-cad.project.v18");
     expect(source.settings.allowSilentRetargeting).toBe(false);
+    expect(signaturePayload.entities?.[0]?.kind).toBe("face");
     expect(manifest.packageVersion).toBe("partbench.wcad.v2");
     expect(manifest.topologyIdentity.checkpoints[0]?.brep.source).toBe(true);
     expect(JSON.stringify(manifest)).not.toMatch(

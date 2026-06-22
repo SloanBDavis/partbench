@@ -2366,10 +2366,12 @@ Use these decisions when drafting or implementing V13 tranches:
    cad-core can preserve caller-supplied checkpoint B-rep, topology, and
    signature payload bytes in `partbench.wcad.v2`, validate package paths,
    source identity, hash/length metadata, topology/signature CBOR
-   compatibility, and keep `.wcad` v1 read/write compatibility. Geometry-boundary
-   B-rep checkpoint byte creation and Project/File checkpoint status remain for
-   later V13 tranches. Command-backed checkpoint metadata creation is handled by
-   the G command slice.
+   compatibility, topology entity descriptor integrity, signature-to-topology
+   consistency, and topology-anchor checkpoint-entity links. It keeps `.wcad`
+   v1 read/write compatibility. Geometry-boundary B-rep checkpoint byte
+   creation and Project/File checkpoint status remain for later V13 tranches.
+   Command-backed checkpoint metadata creation is handled by the G command
+   slice.
 5. **Implemented: Topology Matching Engine** - `topology.matchSnapshots`
    performs non-mutating snapshot-to-snapshot matching with source lineage,
    signature, checkpoint source identity, confidence, evidence, and structured
@@ -2401,9 +2403,8 @@ Use these decisions when drafting or implementing V13 tranches:
    These commands support dry-run/commit through CADOps, emit semantic diffs,
    participate in undo/redo and transaction-history summaries, and preserve
    source-boundary validation. UI repair affordances are handled by the later
-   Tranche J product-integration slices; checkpoint payload byte generation,
-   checkpoint payload entity validation, and broader direct topology-anchor
-   command targets remain later V13 work.
+   Tranche J product-integration slices; checkpoint payload byte generation and
+   broader direct topology-anchor command targets remain later V13 work.
    Generated-reference-backed command eligibility and named-reference repair are
    implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature

@@ -4263,6 +4263,20 @@ export interface WcadTopologyCheckpointPayloadEntry extends WcadPackageEntryMeta
   readonly sourceIdentity: WcadSourceIdentity;
 }
 
+export interface WcadTopologyCheckpointSignatureEntity {
+  readonly localId: string;
+  readonly kind: CadTopologyEntityKind | "solid";
+  readonly signature: string;
+}
+
+export interface WcadTopologyCheckpointSignaturePayload {
+  readonly checkpointId: string;
+  readonly signatureAlgorithm: "partbench-derived-topology-snapshot-v1";
+  readonly signature: string;
+  readonly entityCount: number;
+  readonly entities?: readonly WcadTopologyCheckpointSignatureEntity[];
+}
+
 export interface WcadTopologyCheckpointManifestEntry {
   readonly checkpointId: string;
   readonly bodyId: BodyId;
