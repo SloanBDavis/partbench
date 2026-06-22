@@ -5,11 +5,14 @@ import {
   WCAD_PACKAGE_VERSION,
   type CadBodySnapshot,
   type CadFeatureSummary,
+  type CadTopologyAnchorDescriptor,
+  type CadTopologyCheckpointMetadata,
   type CadOpsVersion,
   type CadTopologyEntityKind,
   type CadTopologyIdentityCapabilityId,
   type CadTopologyIdentityCapabilityReadiness,
   type CadTopologyIdentityDiagnostic,
+  type CadTopologyIdentitySourceSnapshot,
   type NamedGeneratedReferenceSnapshot,
   type ProjectTopologyIdentityReadinessQueryResponse,
   type WcadDocumentSchemaVersion,
@@ -22,12 +25,15 @@ interface ProjectTopologyIdentityReadinessInput {
   readonly features: readonly CadFeatureSummary[];
   readonly bodies: readonly CadBodySnapshot[];
   readonly namedReferences: readonly NamedGeneratedReferenceSnapshot[];
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot | undefined;
 }
 
 const SOURCE_BOUNDARY_NOTE =
   "Derived from the current authoritative document schema, source features, bodies, and named references.";
 const DERIVED_BOUNDARY_NOTE =
   "Renderer, mesh, OCCT, GPU, selection-buffer, OPFS, file-handle, path, viewport, and export artifact identifiers are excluded from public topology identity.";
+const PRIVATE_DIAGNOSTIC_TOKEN_PATTERN =
+  /\b(?:checkpointEntityId|rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle|localPath|exportArtifactId)\b|checkpoint-local[-:\w]*/gi;
 
 const SUPPORTED_ENTITY_KINDS = [
   "body",
@@ -45,7 +51,8 @@ export function createProjectTopologyIdentityReadiness({
   documentSchemaVersion,
   features,
   bodies,
-  namedReferences
+  namedReferences,
+  topologyIdentity
 }: ProjectTopologyIdentityReadinessInput): ProjectTopologyIdentityReadinessQueryResponse {
   const capabilities: readonly CadTopologyIdentityCapabilityReadiness[] = [
     createCapability(
@@ -123,6 +130,10 @@ export function createProjectTopologyIdentityReadiness({
     (capability) => capability.diagnostics
   );
 
+  const checkpoints =
+    topologyIdentity?.checkpoints.map(createCheckpointMetadata) ?? [];
+  const anchors = topologyIdentity?.anchors.map(createAnchorDescriptor) ?? [];
+
   return {
     ok: true,
     query: "project.topologyIdentityReadiness",
@@ -145,10 +156,10 @@ export function createProjectTopologyIdentityReadiness({
     currentNamedReferenceCount: namedReferences.length,
     snapshotDescriptorCount: 0,
     snapshots: [],
-    anchorCount: 0,
-    anchors: [],
-    checkpointCount: 0,
-    checkpoints: [],
+    anchorCount: anchors.length,
+    anchors,
+    checkpointCount: checkpoints.length,
+    checkpoints,
     matchResultCount: 0,
     matchResults: [],
     repairCandidateCount: 0,
@@ -158,6 +169,75 @@ export function createProjectTopologyIdentityReadiness({
     diagnosticCount: diagnostics.length,
     diagnostics
   };
+}
+
+function createCheckpointMetadata(
+  checkpoint: CadTopologyIdentitySourceSnapshot["checkpoints"][number]
+): CadTopologyCheckpointMetadata {
+  return {
+    checkpointId: checkpoint.checkpointId,
+    bodyId: checkpoint.bodyId,
+    sourceIdentity: checkpoint.sourceIdentity,
+    projectSchemaVersion: checkpoint.projectSchemaVersion,
+    packageVersion: checkpoint.packageVersion,
+    brepEntryId: checkpoint.brepEntryPath,
+    topologyEntryId: checkpoint.topologyEntryPath,
+    signatureEntryId: checkpoint.signatureEntryPath,
+    status: checkpoint.status,
+    diagnostics: sanitizeTopologyIdentityDiagnostics(checkpoint.diagnostics)
+  };
+}
+
+function createAnchorDescriptor(
+  anchor: CadTopologyIdentitySourceSnapshot["anchors"][number]
+): CadTopologyAnchorDescriptor {
+  return {
+    anchorId: anchor.anchorId,
+    entityKind: anchor.entityKind,
+    bodyId: anchor.bodyId,
+    sourceFeatureId: anchor.sourceFeatureId,
+    stableId: anchor.stableId,
+    sourceSemanticRole: anchor.sourceSemanticRole,
+    checkpointId: anchor.checkpointId,
+    signatureHash: anchor.signatureHash,
+    state: anchor.state,
+    diagnostics: sanitizeTopologyIdentityDiagnostics(anchor.diagnostics)
+  };
+}
+
+function sanitizeTopologyIdentityDiagnostics(
+  diagnostics: readonly CadTopologyIdentityDiagnostic[]
+): readonly CadTopologyIdentityDiagnostic[] {
+  return diagnostics.map((diagnostic) => {
+    const message = sanitizePublicDiagnosticText(diagnostic.message);
+    const expected =
+      diagnostic.expected === undefined
+        ? undefined
+        : sanitizePublicDiagnosticText(diagnostic.expected);
+    const received =
+      diagnostic.received === undefined
+        ? undefined
+        : sanitizePublicDiagnosticText(diagnostic.received);
+
+    if (
+      message === diagnostic.message &&
+      expected === diagnostic.expected &&
+      received === diagnostic.received
+    ) {
+      return diagnostic;
+    }
+
+    return {
+      ...diagnostic,
+      message,
+      ...(expected === undefined ? {} : { expected }),
+      ...(received === undefined ? {} : { received })
+    };
+  });
+}
+
+function sanitizePublicDiagnosticText(value: string): string {
+  return value.replace(PRIVATE_DIAGNOSTIC_TOKEN_PATTERN, "[private]");
 }
 
 function createCapability(

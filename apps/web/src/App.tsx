@@ -34,6 +34,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectExportReadinessQueryResponse,
   ProjectHealthQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse,
   ReferenceHealthQueryResponse,
   SelectionReferenceCandidatesQueryResponse,
   SketchDimensionEntry,
@@ -426,6 +427,19 @@ function readProjectExportReadiness():
   });
 
   return response.ok && response.query === "project.exportReadiness"
+    ? response
+    : undefined;
+}
+
+function readProjectTopologyIdentityReadiness():
+  | ProjectTopologyIdentityReadinessQueryResponse
+  | undefined {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.topologyIdentityReadiness" }
+  });
+
+  return response.ok && response.query === "project.topologyIdentityReadiness"
     ? response
     : undefined;
 }
@@ -1257,6 +1271,8 @@ export function App() {
   const projectStructure = readProjectStructure();
   const projectHealth = readProjectHealth(derivedExactMetadata);
   const projectExportReadiness = readProjectExportReadiness();
+  const projectTopologyIdentityReadiness =
+    readProjectTopologyIdentityReadiness();
   const sketchExtrudeBodies = useMemo(
     () =>
       projectStructure.bodies.filter(
@@ -3365,6 +3381,7 @@ export function App() {
             <ProjectJsonPanel
               disabled={commandPending}
               exportReadiness={projectExportReadiness}
+              topologyIdentityReadiness={projectTopologyIdentityReadiness}
               visualizationDownloadAvailable={
                 projectStorageCapabilities.jsonDownloadAvailable
               }

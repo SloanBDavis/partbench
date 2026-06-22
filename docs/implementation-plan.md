@@ -2456,7 +2456,13 @@ Use these decisions when drafting or implementing V13 tranches:
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint
-    package status, and lossy JSON warnings.
+    package status, and lossy JSON warnings. The first Project/File slice is
+    implemented: `project.topologyIdentityReadiness` reports public checkpoint
+    metadata and anchor descriptors from V18 source records, and the web
+    Project/File panel shows compact topology identity status plus JSON
+    debug/interchange payload warnings. Selection, Inspector, Modeling,
+    viewport contextual-action, and browser repair/command workflow integration
+    remain later Tranche J work.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and

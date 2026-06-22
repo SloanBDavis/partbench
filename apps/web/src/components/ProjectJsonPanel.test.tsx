@@ -5,7 +5,10 @@ import {
   exportCadProject,
   exportCadProjectJson
 } from "@web-cad/cad-core";
-import type { ProjectExportReadinessQueryResponse } from "@web-cad/cad-protocol";
+import type {
+  ProjectExportReadinessQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse
+} from "@web-cad/cad-protocol";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -340,6 +343,41 @@ describe("ProjectJsonPanel", () => {
     );
   });
 
+  it("renders compact topology identity status and JSON payload warning", () => {
+    const engine = createTopologyIdentityEngine();
+    const markup = renderToStaticMarkup(
+      createElement(ProjectJsonPanel, {
+        disabled: false,
+        topologyIdentityReadiness: readTopologyIdentityReadiness(engine),
+        projectJson: "",
+        storageCapabilities: createProjectStorageCapabilityStatus(
+          createJsonFallbackTarget()
+        ),
+        workflow: createProjectJsonWorkflowState({
+          currentProject: exportCadProject(engine),
+          draftJson: "",
+          draftSource: { kind: "empty" }
+        }),
+        onProjectJsonChange: () => undefined,
+        onProjectFileLoaded: () => undefined,
+        onProjectFileError: () => undefined,
+        onExport: () => undefined,
+        onDownload: () => undefined,
+        onImport: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Topology identity");
+    expect(markup).toContain("1 checkpoint");
+    expect(markup).toContain("1 anchor");
+    expect(markup).toContain("partbench.wcad.v1 -&gt; partbench.wcad.v2");
+    expect(markup).toContain("Use .wcad");
+    expect(markup).toContain("JSON remains debug/interchange");
+    expect(markup).not.toMatch(
+      /checkpoint-local-face-1|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("renders available visualization GLB export separately from project JSON controls", () => {
     const engine = new CadEngine();
 
@@ -538,6 +576,76 @@ function readExportReadiness(
   }
 
   return response;
+}
+
+function readTopologyIdentityReadiness(
+  engine: CadEngine
+): ProjectTopologyIdentityReadinessQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.topologyIdentityReadiness" }
+  });
+
+  if (!response.ok || response.query !== "project.topologyIdentityReadiness") {
+    throw new Error("Expected project topology identity readiness.");
+  }
+
+  return response;
+}
+
+function createTopologyIdentityEngine(): CadEngine {
+  const engine = new CadEngine();
+  const sourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+  };
+
+  engine.applyBatch([
+    {
+      op: "sketch.create",
+      id: "sketch_topology",
+      name: "Profile",
+      plane: "XY"
+    },
+    {
+      op: "sketch.addRectangle",
+      sketchId: "sketch_topology",
+      id: "rect_topology",
+      center: [0, 0],
+      width: 2,
+      height: 1
+    },
+    {
+      op: "feature.extrude",
+      id: "feat_topology",
+      bodyId: "body_topology",
+      sketchId: "sketch_topology",
+      entityId: "rect_topology",
+      depth: 1
+    },
+    {
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_topology_1",
+      bodyId: "body_topology",
+      sourceFeatureId: "feat_topology",
+      sourceIdentity,
+      status: "active"
+    },
+    {
+      op: "topology.anchor.create",
+      anchorId: "anchor_topology_face_1",
+      entityKind: "face",
+      bodyId: "body_topology",
+      sourceFeatureId: "feat_topology",
+      checkpointId: "checkpoint_topology_1",
+      checkpointEntityId: "checkpoint-local-face-1",
+      stableId: "generated:face:body_topology:endCap",
+      sourceSemanticRole: "end cap",
+      signatureHash: "face_signature_1"
+    }
+  ]);
+
+  return engine;
 }
 
 function getExportReadinessMarkup(markup: string): string {

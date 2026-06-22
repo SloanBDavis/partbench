@@ -1346,7 +1346,8 @@ export class CadEngine {
           ),
           features: structure.features,
           bodies: structure.bodies,
-          namedReferences: [...this.#document.namedReferences.values()]
+          namedReferences: [...this.#document.namedReferences.values()],
+          topologyIdentity: this.#document.topologyIdentity
         });
       }
 

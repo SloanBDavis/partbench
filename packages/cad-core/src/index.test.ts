@@ -30499,6 +30499,114 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).not.toContain("partbench.wcad.v2");
   });
 
+  it("reports source topology checkpoints and anchors as public readiness metadata", () => {
+    const engine = createRectangleExtrudeEngine();
+    const sourceIdentity = {
+      algorithm: "partbench-source-v1" as const,
+      sha256: "5555555555555555555555555555555555555555555555555555555555555555"
+    };
+
+    engine.apply({
+      op: "topology.checkpoint.create",
+      checkpointId: "checkpoint_1",
+      bodyId: "body_rect_1",
+      sourceFeatureId: "feat_rect_1",
+      sourceIdentity,
+      status: "active",
+      diagnostics: [
+        {
+          code: "TOPOLOGY_CHECKPOINT_PERSISTENCE_READY",
+          status: "supported",
+          severity: "info",
+          message:
+            "Internal checkpointEntityId checkpoint-local-face-1 is not public.",
+          expected: "rendererId",
+          received: "meshId checkpoint-local-face-1"
+        }
+      ]
+    });
+    engine.apply({
+      op: "topology.anchor.create",
+      anchorId: "anchor_face_ready_1",
+      entityKind: "face",
+      bodyId: "body_rect_1",
+      checkpointId: "checkpoint_1",
+      checkpointEntityId: "checkpoint-local-face-1",
+      stableId: "generated:face:body_rect_1:endCap",
+      sourceFeatureId: "feat_rect_1",
+      sourceSemanticRole: "end cap",
+      signatureHash: "face_signature_1"
+    });
+
+    const document = engine.getDocument();
+    const topologyIdentity = document.topologyIdentity;
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity source.");
+    }
+    const readinessEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: topologyIdentity.anchors.map((anchor) =>
+          anchor.anchorId === "anchor_face_ready_1"
+            ? {
+                ...anchor,
+                diagnostics: [
+                  {
+                    code: "TOPOLOGY_ANCHOR_PERSISTENCE_READY",
+                    status: "supported",
+                    severity: "info",
+                    message:
+                      "Private checkpoint-local-face-1 came from checkpointEntityId."
+                  }
+                ]
+              }
+            : anchor
+        )
+      }
+    });
+
+    const readiness = readProjectTopologyIdentityReadiness(readinessEngine);
+
+    expect(readiness).toMatchObject({
+      ok: true,
+      query: "project.topologyIdentityReadiness",
+      checkpointCount: 1,
+      anchorCount: 1,
+      checkpoints: [
+        expect.objectContaining({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+          packageVersion: "partbench.wcad.v2",
+          brepEntryId: "checkpoints/checkpoint_1.brep",
+          topologyEntryId: "checkpoints/checkpoint_1.topology.cbor",
+          signatureEntryId: "checkpoints/checkpoint_1.signature.cbor",
+          status: "active"
+        })
+      ],
+      anchors: [
+        expect.objectContaining({
+          anchorId: "anchor_face_ready_1",
+          entityKind: "face",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          stableId: "generated:face:body_rect_1:endCap",
+          sourceSemanticRole: "end cap",
+          checkpointId: "checkpoint_1",
+          signatureHash: "face_signature_1",
+          state: "active"
+        })
+      ]
+    });
+
+    const publicText = JSON.stringify(readiness);
+    expect(publicText).not.toMatch(
+      /checkpointEntityId|checkpoint-local-face-1|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+    expect(publicText).toContain("[private]");
+  });
+
   it("matches topology snapshots exactly without mutating document source", () => {
     const engine = createRectangleExtrudeEngine();
     const beforeJson = exportCadProjectJson(engine);

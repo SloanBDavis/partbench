@@ -1,5 +1,8 @@
 import { useRef } from "react";
-import type { ProjectExportReadinessQueryResponse } from "@web-cad/cad-protocol";
+import type {
+  ProjectExportReadinessQueryResponse,
+  ProjectTopologyIdentityReadinessQueryResponse
+} from "@web-cad/cad-protocol";
 import {
   getProjectImportStatusText,
   type ProjectJsonDraftWorkflowState,
@@ -28,6 +31,7 @@ import {
   type ProjectExportReadinessRow,
   type ProjectVisualizationExportDisplayStatus
 } from "../projectExportReadiness";
+import { createProjectTopologyIdentityDisplay } from "../projectTopologyIdentityStatus";
 import {
   createInitialProjectOpfsCacheStatus,
   formatProjectOpfsCacheDiagnostic,
@@ -39,6 +43,7 @@ import {
 export interface ProjectJsonPanelProps {
   readonly disabled: boolean;
   readonly exportReadiness?: ProjectExportReadinessQueryResponse;
+  readonly topologyIdentityReadiness?: ProjectTopologyIdentityReadinessQueryResponse;
   readonly visualizationExport?: ProjectVisualizationExportDisplayStatus;
   readonly visualizationDownloadAvailable?: boolean;
   readonly projectJson: string;
@@ -67,6 +72,7 @@ export interface ProjectJsonPanelProps {
 export function ProjectJsonPanel({
   disabled,
   exportReadiness,
+  topologyIdentityReadiness,
   visualizationExport,
   visualizationDownloadAvailable = true,
   projectJson,
@@ -143,6 +149,11 @@ export function ProjectJsonPanel({
         projectFile={projectFile}
         storageCapabilities={storageCapabilities}
       />
+      {topologyIdentityReadiness && (
+        <ProjectTopologyIdentityStatus
+          topologyIdentityReadiness={topologyIdentityReadiness}
+        />
+      )}
       <div className="button-row">
         <button
           type="button"
@@ -294,6 +305,71 @@ export function ProjectJsonPanel({
           {message}
         </p>
       )}
+    </section>
+  );
+}
+
+function ProjectTopologyIdentityStatus({
+  topologyIdentityReadiness
+}: {
+  readonly topologyIdentityReadiness: ProjectTopologyIdentityReadinessQueryResponse;
+}) {
+  const display = createProjectTopologyIdentityDisplay(
+    topologyIdentityReadiness
+  );
+
+  return (
+    <section
+      className="project-workflow-section"
+      aria-label="Topology identity status"
+    >
+      <div className="project-workflow-heading">
+        <h3>Topology identity</h3>
+        <span>{display.statusLabel}</span>
+      </div>
+      <p className="project-workflow-detail">{display.detail}</p>
+      <dl className="project-workflow-grid">
+        <ProjectWorkflowRow
+          label="Checkpoints"
+          value={display.checkpointSummary}
+          detail="B-rep checkpoint payloads are source package data, not renderer meshes."
+        />
+        <ProjectWorkflowRow
+          label="Anchors"
+          value={display.anchorSummary}
+          detail="Topology anchors are document-controlled command targets."
+        />
+        <ProjectWorkflowRow
+          label="Package"
+          value={display.packageSummary}
+          detail="Topology checkpoint payloads use the V13 .wcad package contract."
+        />
+      </dl>
+      {display.jsonWarning && (
+        <p className="project-import-status">{display.jsonWarning}</p>
+      )}
+      <details className="advanced-options compact">
+        <summary>Topology diagnostics</summary>
+        <dl className="project-workflow-grid">
+          <ProjectWorkflowRow
+            label="Schema"
+            value={topologyIdentityReadiness.currentDocumentSchemaVersion}
+            detail={`Topology source target: ${topologyIdentityReadiness.plannedProjectSchemaVersion}.`}
+          />
+          <ProjectWorkflowRow
+            label="Boundary"
+            value="Source-owned"
+            detail={topologyIdentityReadiness.derivedBoundaryNote}
+          />
+        </dl>
+        <ul className="compact-list">
+          {display.capabilityRows.map((row) => (
+            <li key={row.label}>
+              <strong>{row.label}</strong>: {row.value}. {row.detail}
+            </li>
+          ))}
+        </ul>
+      </details>
     </section>
   );
 }
