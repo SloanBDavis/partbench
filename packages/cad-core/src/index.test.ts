@@ -518,6 +518,7 @@ function createTopologySnapshot(
     readonly localId: string;
     readonly kind: string;
     readonly signature: string;
+    readonly bounds?: CadBodyExactTopologySnapshot["entities"][number]["bounds"];
   }[]
 ): CadBodyExactTopologySnapshot {
   const counts = {
@@ -541,7 +542,8 @@ function createTopologySnapshot(
       localId: entity.localId,
       kind: entity.kind as CadBodyExactTopologySnapshot["entities"][number]["kind"],
       source: "kernel-derived" as const,
-      signature: entity.signature
+      signature: entity.signature,
+      ...(entity.bounds ? { bounds: entity.bounds } : {})
     })),
     unsupportedEntityKinds: [],
     adjacencyAvailable: true,
@@ -565,6 +567,7 @@ function createTopologyMatchSnapshotInput({
     readonly localId: string;
     readonly kind: string;
     readonly signature: string;
+    readonly bounds?: CadBodyExactTopologySnapshot["entities"][number]["bounds"];
   }[];
   readonly sourceIdentitySha?: string;
 }) {
@@ -30614,7 +30617,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       checkpointId: "checkpoint_old",
       bodyId: "body_rect_1",
       entities: [
-        { localId: "face_old_1", kind: "face", signature: "face:top" },
+        {
+          localId: "face_old_1",
+          kind: "face",
+          signature: "face:top",
+          bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+        },
         { localId: "edge_old_1", kind: "edge", signature: "edge:left" }
       ]
     });
@@ -30622,7 +30630,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       checkpointId: "checkpoint_new",
       bodyId: "body_rect_1",
       entities: [
-        { localId: "face_new_1", kind: "face", signature: "face:top" },
+        {
+          localId: "face_new_1",
+          kind: "face",
+          signature: "face:top",
+          bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+        },
         { localId: "edge_new_1", kind: "edge", signature: "edge:left" }
       ]
     });
@@ -30651,7 +30664,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           entityKind: "face",
           state: "active",
           confidence: "exact",
-          confidenceScore: 1
+          confidenceScore: 1,
+          evidence: expect.arrayContaining([
+            expect.objectContaining({
+              kind: "bounds",
+              confidence: "high"
+            })
+          ])
         }),
         expect.objectContaining({
           previousCheckpointEntityId: "edge_old_1",
@@ -33105,6 +33124,40 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           bodyId: "body_1",
           topologySnapshot: { source: "renderer" }
         },
+        candidates: []
+      }
+    } as unknown as CadQueryRequest);
+
+    expect(response).toMatchObject({
+      ok: false,
+      query: "topology.matchSnapshots",
+      error: {
+        code: "INVALID_QUERY"
+      }
+    });
+  });
+
+  it("rejects topology.matchSnapshots snapshots with invalid entity bounds", () => {
+    const engine = new CadEngine();
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.matchSnapshots",
+        previous: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_old",
+          bodyId: "body_1",
+          entities: [
+            {
+              localId: "face_old_1",
+              kind: "face",
+              signature: "face:bad-bounds",
+              bounds: {
+                min: [2, 0, 0],
+                max: [1, 1, 1]
+              }
+            }
+          ]
+        }),
         candidates: []
       }
     } as unknown as CadQueryRequest);

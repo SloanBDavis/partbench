@@ -2352,10 +2352,10 @@ Use these decisions when drafting or implementing V13 tranches:
 2. **Implemented, partial: Exact Topology Snapshot Extraction** -
    geometry-kernel/worker support for derived exact topology snapshots from
    supported exact body sources. Current snapshots expose body/solid/face/wire/
-   edge/vertex counts and local derived descriptors; loop, coedge, axis,
-   ordered adjacency, and entity-level geometric descriptors remain structured
-   unavailable/deferred evidence. The output is derived evidence, not public
-   identity.
+   edge/vertex counts, per-entity bounds evidence, and bounds-derived entity/
+   snapshot signatures; loop, coedge, axis, ordered adjacency, and richer
+   surface/curve/area/length descriptors remain structured unavailable/deferred
+   evidence. The output is derived evidence, not public identity.
 3. **Implemented, contract-only: V18 Source Contract And `.wcad` V2 Package
    Contract** - typed `web-cad.project.v18` topology identity source settings,
    checkpoint metadata, topology anchors, repair records, `.wcad` v2 checkpoint

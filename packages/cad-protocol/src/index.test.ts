@@ -705,7 +705,11 @@ describe("cad-protocol", () => {
           localId: "checkpoint-local:face:1",
           kind: "face",
           source: "kernel-derived",
-          signature: "face-signature"
+          signature: "face-signature",
+          bounds: {
+            min: [0, 0, 0],
+            max: [1, 1, 0]
+          }
         }
       ],
       unsupportedEntityKinds: [],

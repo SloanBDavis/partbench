@@ -4601,11 +4601,17 @@ export interface CadBodyExactTopologyEntityCounts extends Required<CadBodyExactM
 
 export type CadBodyExactTopologySnapshotStatus = "ready" | "partial";
 
+export interface CadTopologyEntityBounds {
+  readonly min: Vec3;
+  readonly max: Vec3;
+}
+
 export interface CadBodyExactTopologyEntityDescriptor {
   readonly localId: string;
   readonly kind: CadTopologyEntityKind | "solid";
   readonly source: "kernel-derived";
   readonly signature: string;
+  readonly bounds?: CadTopologyEntityBounds;
 }
 
 export interface CadBodyExactTopologySnapshot {

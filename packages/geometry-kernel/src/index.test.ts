@@ -6,10 +6,27 @@ import {
 } from "./index";
 import {
   executeGeometryKernelRequestWithMeshFactory,
-  type GeometryKernelMeshFactories
+  type GeometryKernelMeshFactories,
+  type GeometryKernelTopologyEntityDescriptor
 } from "./kernel";
 
 const OCCT_WASM_TEST_TIMEOUT_MS = 120_000;
+
+function createTopologyEntityFixture(
+  kind: GeometryKernelTopologyEntityDescriptor["kind"],
+  index: number
+): GeometryKernelTopologyEntityDescriptor {
+  return {
+    localId: `snapshot-local:${kind}:${index}`,
+    kind,
+    source: "kernel-derived",
+    signature: `topology-${kind}-test-${index}`,
+    bounds: {
+      min: [-1, -1.5, 0],
+      max: [1, 1.5, 4]
+    }
+  };
+}
 
 describe("geometry-kernel facade", () => {
   it("reports STEP exact export writer capability as available", () => {
@@ -2172,18 +2189,20 @@ describe("geometry-kernel facade", () => {
         },
         entityCount: 34,
         entities: [
-          {
-            localId: "snapshot-local:body:0",
-            kind: "body",
-            source: "kernel-derived",
-            signature: "topology-body-test"
-          },
-          ...Array.from({ length: 33 }, (_, index) => ({
-            localId: `snapshot-local:face:${index}`,
-            kind: "face" as const,
-            source: "kernel-derived" as const,
-            signature: `topology-face-test-${index}`
-          }))
+          createTopologyEntityFixture("body", 1),
+          createTopologyEntityFixture("solid", 1),
+          ...Array.from({ length: 6 }, (_, index) =>
+            createTopologyEntityFixture("face", index + 1)
+          ),
+          ...Array.from({ length: 6 }, (_, index) =>
+            createTopologyEntityFixture("wire", index + 1)
+          ),
+          ...Array.from({ length: 12 }, (_, index) =>
+            createTopologyEntityFixture("edge", index + 1)
+          ),
+          ...Array.from({ length: 8 }, (_, index) =>
+            createTopologyEntityFixture("vertex", index + 1)
+          )
         ],
         unsupportedEntityKinds: ["loop", "coedge", "axis"],
         adjacencyAvailable: false,
@@ -2228,6 +2247,14 @@ describe("geometry-kernel facade", () => {
         sourceKind: "extrude",
         status: "partial",
         entityCount: 34,
+        entities: expect.arrayContaining([
+          expect.objectContaining({
+            bounds: {
+              min: [-1, -1.5, 0],
+              max: [1, 1.5, 4]
+            }
+          })
+        ]),
         adjacencyAvailable: false,
         signatureAlgorithm: "partbench-derived-topology-snapshot-v1"
       }),
@@ -2270,7 +2297,11 @@ describe("geometry-kernel facade", () => {
             localId: "snapshot-local:body:0",
             kind: "body",
             source: "kernel-derived",
-            signature: "topology-body-test"
+            signature: "topology-body-test",
+            bounds: {
+              min: [2, 0, 0],
+              max: [1, 1, 1]
+            }
           }
         ],
         unsupportedEntityKinds: ["loop", "coedge", "axis"],

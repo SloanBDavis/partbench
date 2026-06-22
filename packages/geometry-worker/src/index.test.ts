@@ -1258,6 +1258,10 @@ describe("geometry-worker", () => {
       })
     );
 
+    if (!response.response.ok) {
+      throw new Error(response.response.error.message);
+    }
+
     expect(response).toMatchObject({
       id: "worker_req_exact_topology_snapshot_execute",
       version: "geometry-worker.v1",
@@ -1272,10 +1276,6 @@ describe("geometry-worker", () => {
       }
     });
 
-    if (!response.response.ok) {
-      throw new Error(response.response.error.message);
-    }
-
     expect(response.response.snapshot).toMatchObject({
       sourceKind: "extrude",
       source: "kernel-derived",
@@ -1287,6 +1287,15 @@ describe("geometry-worker", () => {
     expect(response.response.snapshot.entityCount).toBe(
       response.response.snapshot.entities.length
     );
+    const bodyEntity = response.response.snapshot.entities.find(
+      (entity) => entity.kind === "body"
+    );
+    expect(bodyEntity?.bounds?.min[0]).toBeCloseTo(-1, 6);
+    expect(bodyEntity?.bounds?.min[1]).toBeCloseTo(0.5, 6);
+    expect(bodyEntity?.bounds?.min[2]).toBeCloseTo(0, 6);
+    expect(bodyEntity?.bounds?.max[0]).toBeCloseTo(3, 6);
+    expect(bodyEntity?.bounds?.max[1]).toBeCloseTo(3.5, 6);
+    expect(bodyEntity?.bounds?.max[2]).toBeCloseTo(5, 6);
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
     );

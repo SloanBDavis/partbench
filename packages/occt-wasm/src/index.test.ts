@@ -358,17 +358,39 @@ describe("occt-wasm", () => {
       });
       expect(snapshot.entityCounts.wireCount).toBeGreaterThan(0);
       expect(snapshot.entityCount).toBe(snapshot.entities.length);
+      const bodyEntity = snapshot.entities.find(
+        (entity) => entity.kind === "body"
+      );
+      expect(bodyEntity?.bounds?.min[0]).toBeCloseTo(-1, 6);
+      expect(bodyEntity?.bounds?.min[1]).toBeCloseTo(0.5, 6);
+      expect(bodyEntity?.bounds?.min[2]).toBeCloseTo(0, 6);
+      expect(bodyEntity?.bounds?.max[0]).toBeCloseTo(3, 6);
+      expect(bodyEntity?.bounds?.max[1]).toBeCloseTo(3.5, 6);
+      expect(bodyEntity?.bounds?.max[2]).toBeCloseTo(5, 6);
+      expect(
+        snapshot.entities.every(
+          (entity) =>
+            entity.bounds &&
+            entity.bounds.min.every(Number.isFinite) &&
+            entity.bounds.max.every(Number.isFinite)
+        )
+      ).toBe(true);
+      expect(
+        new Set(snapshot.entities.map((entity) => entity.signature)).size
+      ).toBeGreaterThan(3);
       expect(snapshot.entities).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             kind: "body",
             source: "kernel-derived",
-            localId: expect.stringMatching(/^snapshot-local:body:/)
+            localId: expect.stringMatching(/^snapshot-local:body:/),
+            bounds: expect.any(Object)
           }),
           expect.objectContaining({
             kind: "face",
             source: "kernel-derived",
-            localId: expect.stringMatching(/^snapshot-local:face:/)
+            localId: expect.stringMatching(/^snapshot-local:face:/),
+            bounds: expect.any(Object)
           })
         ])
       );
@@ -379,6 +401,10 @@ describe("occt-wasm", () => {
           }),
           expect.objectContaining({
             code: "GEOMETRY_TOPOLOGY_ADJACENCY_UNAVAILABLE"
+          }),
+          expect.objectContaining({
+            code: "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED",
+            message: expect.stringContaining("per-entity bounds")
           })
         ])
       );

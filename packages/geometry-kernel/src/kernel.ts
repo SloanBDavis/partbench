@@ -514,6 +514,7 @@ export interface GeometryKernelTopologyEntityDescriptor {
   readonly kind: GeometryKernelTopologyEntityKind;
   readonly source: "kernel-derived";
   readonly signature: string;
+  readonly bounds?: GeometryKernelBounds;
 }
 
 export interface GeometryKernelTopologyEntityCounts extends GeometryKernelTopologyCounts {
@@ -1791,7 +1792,8 @@ function isInvalidExactTopologySnapshot(
         !isTopologyEntityKind(entity.kind) ||
         entity.source !== "kernel-derived" ||
         typeof entity.signature !== "string" ||
-        entity.signature.trim().length === 0
+        entity.signature.trim().length === 0 ||
+        (entity.bounds !== undefined && !isGeometryKernelBounds(entity.bounds))
     ) ||
     snapshot.unsupportedEntityKinds.some(
       (kind) => !isTopologyEntityKind(kind)
@@ -1807,6 +1809,21 @@ function isInvalidExactTopologySnapshot(
         (diagnostic.entityKind !== undefined &&
           !isTopologyEntityKind(diagnostic.entityKind))
     )
+  );
+}
+
+function isGeometryKernelBounds(value: unknown): value is GeometryKernelBounds {
+  if (!isRecord(value) || !isVec3(value.min) || !isVec3(value.max)) {
+    return false;
+  }
+
+  const min = value.min;
+  const max = value.max;
+
+  return (
+    min.every(isFiniteNumber) &&
+    max.every(isFiniteNumber) &&
+    min.every((component, index) => component <= max[index])
   );
 }
 
@@ -1888,7 +1905,11 @@ function isValidBooleanExtrudePlacementFrame(
   );
 }
 
-function isVec3(value: readonly [number, number, number]): boolean {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isVec3(value: unknown): value is readonly [number, number, number] {
   return (
     Array.isArray(value) &&
     value.length === 3 &&

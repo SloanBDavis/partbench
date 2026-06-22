@@ -328,6 +328,21 @@ function createEvidence(
   }
 
   if (
+    previous.entity.bounds &&
+    candidate.entity.bounds &&
+    boundsKey(previous.entity.bounds) === boundsKey(candidate.entity.bounds)
+  ) {
+    evidence.push({
+      kind: "bounds",
+      confidence: "high",
+      weight: exactSignature ? 0.05 : 0.15,
+      message: "Topology entity bounds match.",
+      previousValue: boundsKey(previous.entity.bounds),
+      candidateValue: boundsKey(candidate.entity.bounds)
+    });
+  }
+
+  if (
     previous.snapshot.sourceIdentity &&
     candidate.snapshot.sourceIdentity &&
     previous.snapshot.sourceIdentity.sha256 ===
@@ -361,6 +376,19 @@ function createEvidence(
   }
 
   return evidence;
+}
+
+function boundsKey(
+  bounds: NonNullable<MatchEntity["entity"]["bounds"]>
+): string {
+  return JSON.stringify({
+    min: bounds.min.map(roundEvidenceNumber),
+    max: bounds.max.map(roundEvidenceNumber)
+  });
+}
+
+function roundEvidenceNumber(value: number): number {
+  return Number(value.toFixed(9));
 }
 
 function createMatchResult({

@@ -110,6 +110,7 @@ export interface OcctTopologyEntityDescriptor {
   readonly kind: OcctTopologyEntityKind;
   readonly source: "kernel-derived";
   readonly signature: string;
+  readonly bounds?: OcctExactBodyMetadata["bounds"];
 }
 
 export interface OcctTopologyEntityCounts {
@@ -403,12 +404,17 @@ function readExactTopologySnapshot(
     axisCount: 0
   };
   const entities = [
-    ...createTopologyEntities("body", entityCounts.bodyCount, sourceKind),
-    ...createTopologyEntities("solid", entityCounts.solidCount, sourceKind),
-    ...createTopologyEntities("face", entityCounts.faceCount, sourceKind),
-    ...createTopologyEntities("wire", entityCounts.wireCount, sourceKind),
-    ...createTopologyEntities("edge", entityCounts.edgeCount, sourceKind),
-    ...createTopologyEntities("vertex", entityCounts.vertexCount, sourceKind)
+    createTopologyEntity({
+      kind: "body",
+      index: 1,
+      sourceKind,
+      bounds: readBounds(oc, shape)
+    }),
+    ...createTopologyEntities(oc, shape, "solid", "TopAbs_SOLID", sourceKind),
+    ...createTopologyEntities(oc, shape, "face", "TopAbs_FACE", sourceKind),
+    ...createTopologyEntities(oc, shape, "wire", "TopAbs_WIRE", sourceKind),
+    ...createTopologyEntities(oc, shape, "edge", "TopAbs_EDGE", sourceKind),
+    ...createTopologyEntities(oc, shape, "vertex", "TopAbs_VERTEX", sourceKind)
   ];
   const unsupportedEntityKinds = [
     "loop",
@@ -417,7 +423,17 @@ function readExactTopologySnapshot(
   ] satisfies readonly OcctTopologyEntityKind[];
   const signature = createDerivedTopologySignature({
     sourceKind,
-    entityCounts
+    entityCounts,
+    entities: entities
+      .map((entity) => ({
+        kind: entity.kind,
+        signature: entity.signature
+      }))
+      .sort((left, right) =>
+        `${left.kind}:${left.signature}`.localeCompare(
+          `${right.kind}:${right.signature}`
+        )
+      )
   });
 
   return {
@@ -454,34 +470,100 @@ function readExactTopologySnapshot(
         code: "GEOMETRY_TOPOLOGY_SIGNATURE_LIMITED",
         severity: "warning",
         message:
-          "Topology signatures are derived from source kind and topology counts only until per-entity geometry signatures are implemented."
+          "Topology signatures include source kind, topology kind, and per-entity bounds; surface, curve, and adjacency descriptors are not exposed by the current Open CASCADE snapshot binding."
       }
     ]
   };
 }
 
 function createTopologyEntities(
+  oc: OpenCascadeInstance,
+  shape: TopoDS_Shape,
   kind: Extract<
     OcctTopologyEntityKind,
-    "body" | "solid" | "face" | "wire" | "edge" | "vertex"
+    "solid" | "face" | "wire" | "edge" | "vertex"
   >,
-  count: number,
+  shapeTypeKey:
+    | "TopAbs_SOLID"
+    | "TopAbs_FACE"
+    | "TopAbs_WIRE"
+    | "TopAbs_EDGE"
+    | "TopAbs_VERTEX",
   sourceKind: OcctExactBodyMetadataSource["kind"]
 ): readonly OcctTopologyEntityDescriptor[] {
-  return Array.from({ length: count }, (_, index) => {
-    const localId = `snapshot-local:${kind}:${index + 1}`;
+  const shapeType = oc.TopAbs_ShapeEnum[shapeTypeKey] as unknown as Parameters<
+    typeof oc.TopExp.MapShapes_1
+  >[1];
+  const shapeMap = new oc.TopTools_IndexedMapOfShape_1();
+  const entities: OcctTopologyEntityDescriptor[] = [];
 
-    return {
-      localId,
-      kind,
-      source: "kernel-derived",
-      signature: createDerivedTopologySignature({
-        sourceKind,
-        entityKind: kind,
-        ordinal: index + 1
-      })
-    };
-  });
+  try {
+    oc.TopExp.MapShapes_1(shape, shapeType, shapeMap);
+
+    for (let index = 1; index <= shapeMap.Size(); index += 1) {
+      const current = shapeMap.FindKey(index);
+
+      try {
+        entities.push(
+          createTopologyEntity({
+            kind,
+            index,
+            sourceKind,
+            bounds: readBounds(oc, current)
+          })
+        );
+      } finally {
+        current.delete();
+      }
+    }
+  } finally {
+    shapeMap.delete();
+  }
+
+  return entities;
+}
+
+function createTopologyEntity(input: {
+  readonly kind: Extract<
+    OcctTopologyEntityKind,
+    "body" | "solid" | "face" | "wire" | "edge" | "vertex"
+  >;
+  readonly index: number;
+  readonly sourceKind: OcctExactBodyMetadataSource["kind"];
+  readonly bounds: OcctExactBodyMetadata["bounds"];
+}): OcctTopologyEntityDescriptor {
+  return {
+    localId: `snapshot-local:${input.kind}:${input.index}`,
+    kind: input.kind,
+    source: "kernel-derived",
+    bounds: input.bounds,
+    signature: createDerivedTopologySignature({
+      sourceKind: input.sourceKind,
+      entityKind: input.kind,
+      bounds: normalizeBoundsForSignature(input.bounds)
+    })
+  };
+}
+
+function normalizeBoundsForSignature(
+  bounds: OcctExactBodyMetadata["bounds"]
+): OcctExactBodyMetadata["bounds"] {
+  return {
+    min: [
+      roundTopologySignatureNumber(bounds.min[0]),
+      roundTopologySignatureNumber(bounds.min[1]),
+      roundTopologySignatureNumber(bounds.min[2])
+    ],
+    max: [
+      roundTopologySignatureNumber(bounds.max[0]),
+      roundTopologySignatureNumber(bounds.max[1]),
+      roundTopologySignatureNumber(bounds.max[2])
+    ]
+  };
+}
+
+function roundTopologySignatureNumber(value: number): number {
+  return Number(value.toFixed(9));
 }
 
 function createDerivedTopologySignature(value: unknown): string {

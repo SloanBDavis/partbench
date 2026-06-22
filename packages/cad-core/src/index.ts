@@ -5911,7 +5911,23 @@ function isCadBodyExactTopologyEntityDescriptor(value: unknown): boolean {
     typeof value.localId === "string" &&
     isCadBodyExactTopologyEntityKind(value.kind) &&
     value.source === "kernel-derived" &&
-    typeof value.signature === "string"
+    typeof value.signature === "string" &&
+    (value.bounds === undefined || isCadTopologyEntityBounds(value.bounds))
+  );
+}
+
+function isCadTopologyEntityBounds(value: unknown): boolean {
+  if (!isRecord(value) || !isVec3(value.min) || !isVec3(value.max)) {
+    return false;
+  }
+
+  const min = value.min;
+  const max = value.max;
+
+  return (
+    min.every(Number.isFinite) &&
+    max.every(Number.isFinite) &&
+    min.every((component, index) => component <= max[index])
   );
 }
 
