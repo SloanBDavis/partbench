@@ -372,6 +372,9 @@ function createAuthoredExtrudeHealth(
     profileKind: feature.profileKind,
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+    ...(feature.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+      : {}),
     ...(topologySnapshot
       ? {
           topologyStatus: topologySnapshot.status,

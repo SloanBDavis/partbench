@@ -842,6 +842,29 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildFeatureExtrudeOp("sketch_1", "rect_1", {
+        id: "feat_anchor_cut",
+        bodyId: "body_anchor_cut",
+        targetTopologyAnchorId: " anchor_body_1 ",
+        name: "Anchor cut",
+        depth: 1,
+        side: "positive",
+        operationMode: "cut"
+      })
+    ).toEqual({
+      op: "feature.extrude",
+      id: "feat_anchor_cut",
+      bodyId: "body_anchor_cut",
+      targetTopologyAnchorId: "anchor_body_1",
+      name: "Anchor cut",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 1,
+      side: "positive",
+      operationMode: "cut"
+    });
+
+    expect(
       buildFeatureRevolveOp("sketch_1", "circle_1", {
         id: "feat_revolve_1",
         bodyId: "body_revolve_1",

@@ -3166,6 +3166,54 @@ describe("cad-protocol", () => {
     });
   });
 
+  it("types topology-anchor extrude target provenance", () => {
+    const op: CadOp = {
+      op: "feature.extrude",
+      id: "feat_anchor_cut",
+      bodyId: "body_anchor_cut",
+      name: "Anchor cut",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      depth: 2,
+      side: "positive",
+      operationMode: "cut",
+      targetTopologyAnchorId: "anchor_body_target"
+    };
+    const feature: CadExtrudeFeatureSummary = {
+      id: "feat_anchor_cut",
+      kind: "extrude",
+      partId: "part:default",
+      bodyId: "body_anchor_cut",
+      sketchId: "sketch_1",
+      entityId: "rect_1",
+      profileKind: "rectangle",
+      depth: 2,
+      side: "positive",
+      operationMode: "cut",
+      targetBodyId: "body_target",
+      targetTopologyAnchorId: "anchor_body_target",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_1",
+        entityId: "rect_1",
+        targetTopologyAnchorId: "anchor_body_target"
+      }
+    };
+
+    expect(feature).toMatchObject({
+      kind: "extrude",
+      targetBodyId: "body_target",
+      targetTopologyAnchorId: "anchor_body_target",
+      source: {
+        targetTopologyAnchorId: "anchor_body_target"
+      }
+    });
+    expect(op).toMatchObject({
+      op: "feature.extrude",
+      targetTopologyAnchorId: "anchor_body_target"
+    });
+  });
+
   it("types sketch revolve feature snapshots and summaries", () => {
     const snapshot: RevolveFeatureSnapshot = {
       id: "feat_revolve_1",

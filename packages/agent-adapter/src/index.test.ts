@@ -4304,6 +4304,114 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes topology body anchors through extrude cut targets", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_anchor_body_cut",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "anchor_body_sketch",
+                name: "Anchor body profile",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "anchor_body_sketch",
+                id: "anchor_body_rect",
+                center: [0, 0],
+                width: 4,
+                height: 2
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_anchor_body_source",
+                bodyId: "body_anchor_body_source",
+                sketchId: "anchor_body_sketch",
+                entityId: "anchor_body_rect",
+                depth: 3
+              },
+              {
+                op: "topology.checkpoint.create",
+                checkpointId: "checkpoint_anchor_body",
+                bodyId: "body_anchor_body_source",
+                sourceFeatureId: "feat_anchor_body_source",
+                sourceIdentity: {
+                  algorithm: "partbench-source-v1",
+                  sha256:
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                },
+                status: "active"
+              },
+              {
+                op: "topology.anchor.create",
+                anchorId: "anchor_body_target",
+                entityKind: "body",
+                bodyId: "body_anchor_body_source",
+                checkpointId: "checkpoint_anchor_body",
+                checkpointEntityId: "checkpoint-local-body",
+                sourceFeatureId: "feat_anchor_body_source",
+                stableId: "generated:body:body_anchor_body_source"
+              },
+              {
+                op: "sketch.create",
+                id: "anchor_body_cut_sketch",
+                name: "Anchor body cut",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "anchor_body_cut_sketch",
+                id: "anchor_body_cut_rect",
+                center: [0, 0],
+                width: 1,
+                height: 1
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_anchor_body_cut",
+                bodyId: "body_anchor_body_cut",
+                sketchId: "anchor_body_cut_sketch",
+                entityId: "anchor_body_cut_rect",
+                depth: 1,
+                operationMode: "cut",
+                targetTopologyAnchorId: "anchor_body_target"
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+      readonly review?: { readonly operations?: readonly unknown[] };
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_body_source", "feat_anchor_body_cut"],
+      createdBodyIds: ["body_anchor_body_source", "body_anchor_body_cut"],
+      review: {
+        operations: expect.arrayContaining([
+          expect.objectContaining({
+            op: "feature.extrude",
+            targetTopologyAnchorId: "anchor_body_target",
+            label:
+              "Create cut extrude feature feat_anchor_body_cut from anchor_body_cut_sketch/anchor_body_cut_rect"
+          })
+        ])
+      }
+    });
+  });
+
   it("returns generated body references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

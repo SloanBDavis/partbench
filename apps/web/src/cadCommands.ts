@@ -171,6 +171,7 @@ export interface FeatureExtrudeForm {
   readonly id: string;
   readonly bodyId: string;
   readonly targetBodyId?: string;
+  readonly targetTopologyAnchorId?: string;
   readonly name: string;
   readonly depth: number;
   readonly side: FeatureExtrudeSide;
@@ -763,12 +764,16 @@ export function buildFeatureExtrudeOp(
   form: FeatureExtrudeForm
 ): FeatureExtrudeOp {
   const targetBodyId = normalizeOptionalId(form.targetBodyId ?? "");
+  const targetTopologyAnchorId = normalizeOptionalId(
+    form.targetTopologyAnchorId ?? ""
+  );
 
   return {
     op: "feature.extrude",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
     ...(targetBodyId ? { targetBodyId } : {}),
+    ...(targetTopologyAnchorId ? { targetTopologyAnchorId } : {}),
     name: form.name.trim() || undefined,
     sketchId,
     entityId,

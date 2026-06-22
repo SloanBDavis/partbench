@@ -283,6 +283,7 @@ export interface CadOpsAgentOperationReview {
   readonly featureId?: string;
   readonly bodyId?: string;
   readonly targetBodyId?: string;
+  readonly targetTopologyAnchorId?: string;
   readonly referenceName?: string;
   readonly stableId?: string;
 }
@@ -1859,6 +1860,9 @@ function createOperationReview(
         ...(op.id ? { featureId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
         ...(op.targetBodyId ? { targetBodyId: op.targetBodyId } : {}),
+        ...(op.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: op.targetTopologyAnchorId }
+          : {}),
         sketchId: op.sketchId,
         sketchEntityId: op.entityId
       };
@@ -4164,6 +4168,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.targetBodyId) &&
+      isOptionalString(value.targetTopologyAnchorId) &&
       isOptionalString(value.name) &&
       typeof value.sketchId === "string" &&
       typeof value.entityId === "string" &&

@@ -94,6 +94,7 @@ export interface GeneratedReferencesExtrudeFeature {
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly bodyId: BodyId;
 }
 
@@ -1795,6 +1796,7 @@ function createGeneratedReferenceSignature(
   return {
     sourceKind: "extrude",
     targetBodyId: feature.targetBodyId,
+    targetTopologyAnchorId: feature.targetTopologyAnchorId,
     profileKind: feature.profileKind,
     sketchPlane: sketch.plane,
     extrudeOperationMode: feature.operationMode,

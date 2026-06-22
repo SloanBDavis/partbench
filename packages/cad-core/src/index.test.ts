@@ -31416,6 +31416,428 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("creates cut and add extrudes from active topology body anchors", () => {
+    const cutEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: "generated:body:body_rect_1"
+    });
+    const beforeJson = exportCadProjectJson(cutEngine);
+    const cutOps = [
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut",
+        id: "rect_anchor_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_anchor_cut",
+        bodyId: "body_anchor_cut",
+        sketchId: "sketch_anchor_cut",
+        entityId: "rect_anchor_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_1"
+      }
+    ] as const;
+    const dryRun = cutEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: cutOps
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_anchor_cut"],
+      createdBodyIds: ["body_anchor_cut"]
+    });
+    expect(exportCadProjectJson(cutEngine)).toBe(beforeJson);
+
+    const cutResult = cutEngine.applyBatch(cutOps);
+    expect(getExtrudeFeature(cutEngine, "feat_anchor_cut")).toMatchObject({
+      kind: "extrude",
+      operationMode: "cut",
+      targetBodyId: "body_rect_1",
+      targetTopologyAnchorId: "anchor_body_1",
+      bodyId: "body_anchor_cut"
+    });
+    expect(cutResult.transaction.ops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.extrude",
+          targetTopologyAnchorId: "anchor_body_1",
+          operationMode: "cut"
+        })
+      ])
+    );
+
+    const structure = readProjectStructure(cutEngine);
+    const health = readProjectHealth(cutEngine);
+    const graph = readProjectDependencyGraph(cutEngine);
+    const history = cutEngine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+    const exportedProject = parseCadProjectJson(
+      exportCadProjectJson(cutEngine)
+    );
+
+    expect(structure.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_cut",
+          kind: "extrude",
+          operationMode: "cut",
+          targetBodyId: "body_rect_1",
+          targetTopologyAnchorId: "anchor_body_1",
+          source: expect.objectContaining({
+            type: "sketchEntity",
+            targetTopologyAnchorId: "anchor_body_1"
+          })
+        })
+      ])
+    );
+    expect(health.authoredExtrudes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_anchor_cut",
+          operationMode: "cut",
+          targetBodyId: "body_rect_1",
+          targetTopologyAnchorId: "anchor_body_1"
+        })
+      ])
+    );
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "sources",
+          sourceFeatureId: "feat_anchor_cut",
+          topologyAnchorId: "anchor_body_1"
+        }),
+        expect.objectContaining({
+          kind: "targets",
+          sourceFeatureId: "feat_anchor_cut",
+          bodyId: "body_rect_1"
+        })
+      ])
+    );
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.extrude",
+              featureId: "feat_anchor_cut",
+              targetTopologyAnchorId: "anchor_body_1",
+              operationMode: "cut"
+            })
+          ])
+        })
+      ])
+    });
+    expect(exportedProject.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_cut",
+          targetBodyId: "body_rect_1",
+          targetTopologyAnchorId: "anchor_body_1"
+        })
+      ])
+    );
+    expect(
+      JSON.stringify({
+        cutTransaction: cutResult.transaction,
+        structure,
+        graph
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+
+    const addEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: "generated:body:body_rect_1"
+    });
+    addEngine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_add",
+        name: "Add",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_add",
+        id: "rect_anchor_add",
+        center: [3, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_anchor_add",
+        bodyId: "body_anchor_add",
+        sketchId: "sketch_anchor_add",
+        entityId: "rect_anchor_add",
+        depth: 1,
+        operationMode: "add",
+        targetTopologyAnchorId: "anchor_body_1"
+      }
+    ]);
+
+    expect(getExtrudeFeature(addEngine, "feat_anchor_add")).toMatchObject({
+      kind: "extrude",
+      operationMode: "add",
+      targetBodyId: "body_rect_1",
+      targetTopologyAnchorId: "anchor_body_1",
+      bodyId: "body_anchor_add"
+    });
+  });
+
+  it("rejects topology body anchors that cannot prove extrude targets", () => {
+    const engine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: "generated:body:body_rect_1"
+    });
+    const beforeJson = exportCadProjectJson(engine);
+    const baseOps = [
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut",
+        id: "rect_anchor_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      }
+    ] as const;
+
+    engine.applyBatch(baseOps);
+    const beforeFeatureJson = exportCadProjectJson(engine);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.extrude",
+            sketchId: "sketch_anchor_cut",
+            entityId: "rect_anchor_cut",
+            depth: 1,
+            operationMode: "cut",
+            targetBodyId: "body_rect_1",
+            targetTopologyAnchorId: "anchor_body_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_body_1",
+        path: "$.ops[0].targetTopologyAnchorId",
+        expected: "targetTopologyAnchorId without targetBodyId"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.extrude",
+            sketchId: "sketch_anchor_cut",
+            entityId: "rect_anchor_cut",
+            depth: 1,
+            targetTopologyAnchorId: "anchor_body_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_FEATURE",
+        topologyAnchorId: "anchor_body_1",
+        path: "$.ops[0].targetTopologyAnchorId",
+        expected: "omitted targetTopologyAnchorId for newBody"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.extrude",
+            sketchId: "sketch_anchor_cut",
+            entityId: "rect_anchor_cut",
+            depth: 1,
+            operationMode: "cut",
+            targetTopologyAnchorId: "missing_anchor"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+        topologyAnchorId: "missing_anchor",
+        path: "$.ops[0].targetTopologyAnchorId"
+      }
+    });
+
+    const faceAnchorEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "face",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    faceAnchorEngine.applyBatch(baseOps);
+    expect(
+      faceAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.extrude",
+            sketchId: "sketch_anchor_cut",
+            entityId: "rect_anchor_cut",
+            depth: 1,
+            operationMode: "cut",
+            targetTopologyAnchorId: "anchor_body_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_body_1",
+        path: "$.ops[0].targetTopologyAnchorId",
+        expected: "body topology anchor",
+        received: "face"
+      }
+    });
+
+    const missingStableEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: ""
+    });
+    missingStableEngine.applyBatch(baseOps);
+    expect(
+      missingStableEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.extrude",
+            sketchId: "sketch_anchor_cut",
+            entityId: "rect_anchor_cut",
+            depth: 1,
+            operationMode: "cut",
+            targetTopologyAnchorId: "anchor_body_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_body_1",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].targetTopologyAnchorId",
+        expected: "stable generated body backing",
+        received: "missing stableId"
+      }
+    });
+
+    const consumedEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: "generated:body:body_rect_1"
+    });
+    consumedEngine.applyBatch([
+      ...baseOps,
+      {
+        op: "feature.extrude",
+        id: "feat_first_cut",
+        bodyId: "body_first_cut",
+        sketchId: "sketch_anchor_cut",
+        entityId: "rect_anchor_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_1"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut_2",
+        name: "Second cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut_2",
+        id: "rect_anchor_cut_2",
+        center: [0, 0],
+        width: 0.5,
+        height: 0.5
+      }
+    ]);
+    expect(
+      consumedEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.extrude",
+            sketchId: "sketch_anchor_cut_2",
+            entityId: "rect_anchor_cut_2",
+            depth: 1,
+            operationMode: "cut",
+            targetTopologyAnchorId: "anchor_body_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "UNSUPPORTED_FEATURE_OPERATION",
+        bodyId: "body_rect_1",
+        path: "$.ops[0].operationMode",
+        received: expect.stringContaining(
+          '"targetConsumedByFeatureId":"feat_first_cut"'
+        )
+      }
+    });
+
+    expect(beforeFeatureJson).not.toBe(beforeJson);
+    expect(exportCadProjectJson(engine)).toBe(beforeFeatureJson);
+    expect(
+      getExtrudeFeature(engine, "feat_rect_1").targetTopologyAnchorId
+    ).toBeUndefined();
+  });
+
   it("rejects topology edge anchors that cannot prove edge-finish targets", () => {
     const beforeEngine = createTopologyEdgeAnchorEngine();
     const beforeJson = exportCadProjectJson(beforeEngine);

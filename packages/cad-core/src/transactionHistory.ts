@@ -539,6 +539,7 @@ function createOperationSummaries(
           featureId,
           bodyId,
           targetBodyId: op.targetBodyId,
+          targetTopologyAnchorId: op.targetTopologyAnchorId,
           operationMode
         });
       }
@@ -977,6 +978,9 @@ function createFeatureOperationSummary(
     ...(summary.featureId ? { featureId: summary.featureId } : {}),
     ...(summary.bodyId ? { bodyId: summary.bodyId } : {}),
     ...(summary.targetBodyId ? { targetBodyId: summary.targetBodyId } : {}),
+    ...(summary.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: summary.targetTopologyAnchorId }
+      : {}),
     ...(summary.operationMode ? { operationMode: summary.operationMode } : {})
   };
 }

@@ -538,6 +538,7 @@ export interface ExtrudeFeature {
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly bodyId: BodyId;
 }
 
@@ -4407,17 +4408,18 @@ function applyOperation(
         op.operationMode,
         opIndex
       );
-      const targetBodyId = validateExtrudeTargetBodyId(
+      const target = validateExtrudeTarget(
         state,
         operationMode,
         op.targetBodyId,
+        op.targetTopologyAnchorId,
         opIndex
       );
       assertSupportedExtrudeOperation(
         state,
         operationMode,
         profileKind,
-        targetBodyId,
+        target.targetBodyId,
         opIndex
       );
       const feature: ExtrudeFeature = {
@@ -4430,7 +4432,8 @@ function applyOperation(
         depth,
         side,
         operationMode,
-        targetBodyId,
+        targetBodyId: target.targetBodyId,
+        targetTopologyAnchorId: target.targetTopologyAnchorId,
         bodyId: op.bodyId ?? createBodyId()
       };
 
@@ -10798,6 +10801,93 @@ function parseExtrudeOperationMode(
   });
 }
 
+function validateExtrudeTarget(
+  state: MutableDocumentState,
+  operationMode: FeatureExtrudeOperationMode,
+  targetBodyId: BodyId | undefined,
+  targetTopologyAnchorId: string | undefined,
+  opIndex?: number
+): {
+  readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
+} {
+  if (targetBodyId !== undefined && targetTopologyAnchorId !== undefined) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message:
+        "feature.extrude must use targetTopologyAnchorId without targetBodyId.",
+      opIndex,
+      bodyId: targetBodyId,
+      topologyAnchorId: targetTopologyAnchorId,
+      path: operationPath(opIndex, "targetTopologyAnchorId"),
+      expected: "targetTopologyAnchorId without targetBodyId",
+      received: "mixed target inputs"
+    });
+  }
+
+  if (targetTopologyAnchorId === undefined) {
+    return {
+      targetBodyId: validateExtrudeTargetBodyId(
+        state,
+        operationMode,
+        targetBodyId,
+        opIndex
+      )
+    };
+  }
+
+  if (operationMode === "newBody") {
+    throwValidationError({
+      code: "INVALID_FEATURE",
+      message: "newBody extrudes must not include targetTopologyAnchorId.",
+      opIndex,
+      topologyAnchorId: targetTopologyAnchorId,
+      path: operationPath(opIndex, "targetTopologyAnchorId"),
+      expected: "omitted targetTopologyAnchorId for newBody",
+      received: describeReceived(targetTopologyAnchorId)
+    });
+  }
+
+  const target = resolveActiveTopologyAnchorStableTarget(
+    state,
+    targetTopologyAnchorId,
+    "body",
+    opIndex,
+    "targetTopologyAnchorId"
+  );
+
+  const validation = validateGeneratedReference({
+    document: state,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: target.bodyId,
+    stableId: target.stableId,
+    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+    expectedKind: "body",
+    requiredOperation: "feature.selectReference"
+  });
+
+  if (!validation.ok) {
+    throwGeneratedReferenceValidationError(
+      validation.error,
+      opIndex,
+      "targetTopologyAnchorId",
+      undefined,
+      target.topologyAnchorId,
+      target.checkpointId
+    );
+  }
+
+  return {
+    targetBodyId: validateExtrudeTargetBodyId(
+      state,
+      operationMode,
+      target.bodyId,
+      opIndex
+    ),
+    targetTopologyAnchorId: target.topologyAnchorId
+  };
+}
+
 function validateExtrudeTargetBodyId(
   state: MutableDocumentState,
   operationMode: FeatureExtrudeOperationMode,
@@ -11234,7 +11324,8 @@ function resolveActiveTopologyAnchorStableTarget(
   state: MutableDocumentState,
   topologyAnchorId: string,
   expectedKind: CadTopologyAnchorEntityKind,
-  opIndex?: number
+  opIndex?: number,
+  pathField: string = "topologyAnchorId"
 ): {
   readonly bodyId: BodyId;
   readonly stableId: string;
@@ -11249,7 +11340,7 @@ function resolveActiveTopologyAnchorStableTarget(
       message: "Topology anchor ID must be non-empty.",
       opIndex,
       topologyAnchorId,
-      path: operationPath(opIndex, "topologyAnchorId"),
+      path: operationPath(opIndex, pathField),
       expected: "non-empty topology anchor id",
       received: describeReceived(topologyAnchorId)
     });
@@ -11266,7 +11357,7 @@ function resolveActiveTopologyAnchorStableTarget(
       message: `Topology anchor does not exist: ${anchorId}`,
       opIndex,
       topologyAnchorId: anchorId,
-      path: operationPath(opIndex, "topologyAnchorId"),
+      path: operationPath(opIndex, pathField),
       expected: "existing topology anchor",
       received: anchorId
     });
@@ -11283,7 +11374,7 @@ function resolveActiveTopologyAnchorStableTarget(
       opIndex,
       topologyAnchorId: anchor.anchorId,
       checkpointId: anchor.checkpointId,
-      path: operationPath(opIndex, "topologyAnchorId"),
+      path: operationPath(opIndex, pathField),
       expected: "existing topology checkpoint",
       received: anchor.checkpointId
     });
@@ -11297,7 +11388,7 @@ function resolveActiveTopologyAnchorStableTarget(
       bodyId: anchor.bodyId,
       topologyAnchorId: anchor.anchorId,
       checkpointId: anchor.checkpointId,
-      path: operationPath(opIndex, "topologyAnchorId"),
+      path: operationPath(opIndex, pathField),
       expected: "active topology anchor and checkpoint",
       received: `anchor:${anchor.state}, checkpoint:${checkpoint.status}`
     });
@@ -11311,7 +11402,7 @@ function resolveActiveTopologyAnchorStableTarget(
       bodyId: anchor.bodyId,
       topologyAnchorId: anchor.anchorId,
       checkpointId: anchor.checkpointId,
-      path: operationPath(opIndex, "topologyAnchorId"),
+      path: operationPath(opIndex, pathField),
       expected: `${expectedKind} topology anchor`,
       received: anchor.entityKind
     });
@@ -11325,7 +11416,7 @@ function resolveActiveTopologyAnchorStableTarget(
       bodyId: anchor.bodyId,
       topologyAnchorId: anchor.anchorId,
       checkpointId: anchor.checkpointId,
-      path: operationPath(opIndex, "topologyAnchorId"),
+      path: operationPath(opIndex, pathField),
       expected: `stable generated ${expectedKind} backing`,
       received: "missing stableId"
     });
@@ -12542,6 +12633,7 @@ function throwGeneratedReferenceValidationError(
     | "faceStableId"
     | "stableId"
     | "referenceName"
+    | "targetTopologyAnchorId"
     | "topologyAnchorId" = "faceStableId",
   referenceName?: NamedReferenceName,
   topologyAnchorId?: string,
@@ -12900,7 +12992,10 @@ function featureRef(feature: Feature): CadFeatureRef {
     depth: feature.depth,
     side: feature.side,
     operationMode: feature.operationMode,
-    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {})
+    ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+    ...(feature.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+      : {})
   };
 }
 
@@ -13999,6 +14094,9 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
     side: feature.side,
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+    ...(feature.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+      : {}),
     bodyId: feature.bodyId
   };
 }
@@ -14074,6 +14172,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
     side: snapshot.side ?? "positive",
     operationMode: snapshot.operationMode ?? "newBody",
     targetBodyId: snapshot.targetBodyId,
+    targetTopologyAnchorId: snapshot.targetTopologyAnchorId,
     bodyId: snapshot.bodyId
   };
 }
@@ -14680,10 +14779,16 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
     side: feature.side,
     operationMode: feature.operationMode,
     ...(feature.targetBodyId ? { targetBodyId: feature.targetBodyId } : {}),
+    ...(feature.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+      : {}),
     source: {
       type: "sketchEntity",
       sketchId: feature.sketchId,
-      entityId: feature.entityId
+      entityId: feature.entityId,
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {})
     }
   };
 }
@@ -16758,6 +16863,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.side === right.side &&
       left.operationMode === right.operationMode &&
       left.targetBodyId === right.targetBodyId &&
+      left.targetTopologyAnchorId === right.targetTopologyAnchorId &&
       left.bodyId === right.bodyId
     );
   }
@@ -20003,6 +20109,7 @@ function collectValidExtrudeFeatureByBodyId(
     (value.side === undefined || isExtrudeSide(value.side)) &&
     (value.operationMode === undefined || value.operationMode === "newBody") &&
     value.targetBodyId === undefined &&
+    value.targetTopologyAnchorId === undefined &&
     typeof value.bodyId === "string"
   ) {
     featuresByBodyId.set(value.bodyId, {
@@ -20039,6 +20146,8 @@ function collectValidAuthoredFeatureByBodyId(
       isExtrudeOperationMode(value.operationMode)) &&
     (value.targetBodyId === undefined ||
       typeof value.targetBodyId === "string") &&
+    (value.targetTopologyAnchorId === undefined ||
+      typeof value.targetTopologyAnchorId === "string") &&
     typeof value.bodyId === "string"
   ) {
     featuresByBodyId.set(value.bodyId, {
@@ -20052,6 +20161,7 @@ function collectValidAuthoredFeatureByBodyId(
       side: value.side ?? "positive",
       operationMode: value.operationMode ?? "newBody",
       targetBodyId: value.targetBodyId,
+      targetTopologyAnchorId: value.targetTopologyAnchorId,
       bodyId: value.bodyId,
       path
     });
@@ -20996,6 +21106,41 @@ function validateFeatureSnapshot(
       `${path}.targetBodyId`,
       `Extrude operationMode ${value.operationMode} requires targetBodyId.`
     );
+  }
+
+  if (value.targetTopologyAnchorId !== undefined) {
+    if (
+      typeof value.targetTopologyAnchorId !== "string" ||
+      value.targetTopologyAnchorId === ""
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.targetTopologyAnchorId`,
+        "Extrude feature targetTopologyAnchorId must be a non-empty string when present."
+      );
+    }
+
+    if (
+      value.operationMode === undefined ||
+      value.operationMode === "newBody"
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.targetTopologyAnchorId`,
+        "newBody extrude features must not include targetTopologyAnchorId."
+      );
+    }
+
+    if (value.targetBodyId === undefined) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.targetTopologyAnchorId`,
+        "Persisted topology-anchor extrude targets must include the resolved targetBodyId."
+      );
+    }
   }
 
   if (typeof value.bodyId !== "string" || value.bodyId.length === 0) {
@@ -22549,6 +22694,7 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.targetBodyId) &&
+      isOptionalString(value.targetTopologyAnchorId) &&
       isOptionalString(value.name) &&
       typeof value.sketchId === "string" &&
       typeof value.entityId === "string" &&
@@ -23085,7 +23231,10 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
     typeof value.sketchId !== "string" ||
     typeof value.entityId !== "string" ||
     (value.profileKind !== "rectangle" && value.profileKind !== "circle") ||
-    (value.targetBodyId !== undefined && typeof value.targetBodyId !== "string")
+    (value.targetBodyId !== undefined &&
+      typeof value.targetBodyId !== "string") ||
+    (value.targetTopologyAnchorId !== undefined &&
+      typeof value.targetTopologyAnchorId !== "string")
   ) {
     return false;
   }

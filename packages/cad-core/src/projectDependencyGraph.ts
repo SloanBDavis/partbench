@@ -453,6 +453,17 @@ function addFeatureSourceEdges(
     sketchEntityId: feature.entityId
   });
 
+  if (feature.kind === "extrude" && feature.targetTopologyAnchorId) {
+    addEdge(edges, {
+      kind: "sources",
+      from: topologyAnchorNodeId(feature.targetTopologyAnchorId),
+      to: featureNodeId(feature.id),
+      label: "target topology anchor source",
+      sourceFeatureId: feature.id,
+      topologyAnchorId: feature.targetTopologyAnchorId
+    });
+  }
+
   if (feature.kind === "revolve") {
     addEdge(edges, {
       kind: "sources",

@@ -591,6 +591,7 @@ export interface FeatureExtrudeOp {
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly name?: string;
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
@@ -777,6 +778,7 @@ export interface CadExtrudeFeatureRef {
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
 }
 
 export interface CadRevolveFeatureRef {
@@ -1729,6 +1731,7 @@ export interface ExtrudeFeatureSnapshot {
   readonly side: FeatureExtrudeSide;
   readonly operationMode?: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly bodyId: BodyId;
 }
 
@@ -1979,6 +1982,7 @@ export interface CadExtrudeFeatureSource {
   readonly type: "sketchEntity";
   readonly sketchId: SketchId;
   readonly entityId: SketchEntityId;
+  readonly targetTopologyAnchorId?: string;
 }
 
 export interface CadExtrudeFeatureSummary {
@@ -1994,6 +1998,7 @@ export interface CadExtrudeFeatureSummary {
   readonly side: FeatureExtrudeSide;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly source: CadExtrudeFeatureSource;
 }
 
@@ -3412,6 +3417,7 @@ export type CadGeneratedReferenceProfileSignature =
 export interface CadGeneratedReferenceSignature {
   readonly sourceKind?: "extrude" | "revolve" | "hole";
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly sketchPlane: SketchPlane;
   readonly extrudeOperationMode?: FeatureExtrudeOperationMode;
@@ -3983,6 +3989,7 @@ export interface CadAuthoredExtrudeHealth {
   readonly profileKind: FeatureExtrudeProfileKind;
   readonly operationMode: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly topologyStatus?: CadBodyTopologyStatus;
   readonly topologyModel?: CadBodyTopologyModel;
   readonly topologyAvailable?: boolean;
@@ -4184,6 +4191,7 @@ export interface CadOperationSummary {
   readonly confidence?: CadTopologyMatchConfidence;
   readonly operationMode?: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
 }
 
 export interface CadSemanticDiffSummary {
@@ -4649,6 +4657,7 @@ export interface CadBodyTopologySourceIdentity {
   readonly featureId?: FeatureId;
   readonly operationMode?: FeatureExtrudeOperationMode;
   readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sourceSketchId?: SketchId;
   readonly sourceSketchEntityId?: SketchEntityId;
   readonly profileKind?: FeatureExtrudeProfileKind;

@@ -3432,6 +3432,113 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes topology body anchors through cad.batch extrude cut targets", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_anchor_body_cut",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "anchor_body_sketch",
+              name: "Anchor body profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "anchor_body_sketch",
+              id: "anchor_body_rect",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_anchor_body_source",
+              bodyId: "body_anchor_body_source",
+              sketchId: "anchor_body_sketch",
+              entityId: "anchor_body_rect",
+              depth: 3
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_anchor_body",
+              bodyId: "body_anchor_body_source",
+              sourceFeatureId: "feat_anchor_body_source",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_body_target",
+              entityKind: "body",
+              bodyId: "body_anchor_body_source",
+              checkpointId: "checkpoint_anchor_body",
+              checkpointEntityId: "checkpoint-local-body",
+              sourceFeatureId: "feat_anchor_body_source",
+              stableId: "generated:body:body_anchor_body_source"
+            },
+            {
+              op: "sketch.create",
+              id: "anchor_body_cut_sketch",
+              name: "Anchor body cut",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "anchor_body_cut_sketch",
+              id: "anchor_body_cut_rect",
+              center: [0, 0],
+              width: 1,
+              height: 1
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_anchor_body_cut",
+              bodyId: "body_anchor_body_cut",
+              sketchId: "anchor_body_cut_sketch",
+              entityId: "anchor_body_cut_rect",
+              depth: 1,
+              operationMode: "cut",
+              targetTopologyAnchorId: "anchor_body_target"
+            }
+          ]
+        }
+      }
+    });
+    const features = server.callTool({
+      name: "cad.project_features",
+      requestId: "mcp_req_anchor_body_features"
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_body_source", "feat_anchor_body_cut"],
+      createdBodyIds: ["body_anchor_body_source", "body_anchor_body_cut"]
+    });
+    expect(features.structuredContent).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_body_cut",
+          kind: "extrude",
+          targetBodyId: "body_anchor_body_source",
+          targetTopologyAnchorId: "anchor_body_target",
+          operationMode: "cut"
+        })
+      ])
+    });
+  });
+
   it("returns generated body references through cad.body_generated_references", () => {
     const server = new CadMcpServer();
 

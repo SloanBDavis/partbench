@@ -2401,10 +2401,10 @@ Use these decisions when drafting or implementing V13 tranches:
    These commands support dry-run/commit through CADOps, emit semantic diffs,
    participate in undo/redo and transaction-history summaries, and preserve
    source-boundary validation. UI repair affordances, checkpoint payload byte
-   generation, checkpoint payload entity validation, and command-time
-   topology-anchor eligibility remain later V13 work. Named-reference repair to
-   topology-anchor targets is implemented separately through the Tranche I
-   command eligibility slice.
+   generation, checkpoint payload entity validation, and broader direct
+   topology-anchor command targets remain later V13 work.
+   Generated-reference-backed command eligibility and named-reference repair are
+   implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
    Families** - `body.topologyIdentity` now derives non-mutating topology
    identity candidates from authoritative source, generated-reference
@@ -2417,8 +2417,9 @@ Use these decisions when drafting or implementing V13 tranches:
    source semantics do not prove them. Automatic anchor creation, command
    eligibility, UI repair affordances, and checkpoint payload generation remain
    later V13 work.
-9. **Implemented, first read-only, planar-face command, and edge-finish
-   command slices: Command Eligibility For Topology Anchors** -
+9. **Implemented, first read-only, planar-face command, edge-finish command,
+   named-reference repair, and downstream body-target command slices: Command
+   Eligibility For Topology Anchors** -
    `reference.health` reports active topology anchors as commandable for
    supported read-only reference operations, and stable
    generated-reference-backed anchors can resolve through
@@ -2438,13 +2439,20 @@ Use these decisions when drafting or implementing V13 tranches:
    references store the resolved generated target plus topology-anchor
    provenance for semantic diffs, transaction history, reference health,
    dependency graph, import/export, agent, MCP, and app helper surfaces.
-   Metadata-only anchors remain health-only until a direct topology-anchor
-   command target exists. Missing, stale, replaced, ambiguous, deleted,
-   unsupported, and repair-needed anchors remain non-commandable with
-   structured diagnostics. Downstream cut/add retargeting, automatic selection
-   routing beyond stable generated-reference backing, and direct
-   topology-anchor command targets without generated backing remain later V13
-   work.
+   Stable active body anchors whose generated backing proves a command-ready
+   generated body reference can now be used as `targetTopologyAnchorId` for
+   `feature.extrude` add/cut. Cad-core resolves the anchor to the existing
+   generated `targetBodyId`, reuses the current conservative add/cut target
+   validator, and stores the resolved `targetBodyId` plus topology-anchor
+   provenance for transaction history, project structure, health, dependency
+   graph, import/export, agent, MCP, app helper, generated-reference signature,
+   and topology source-identity surfaces. Metadata-only anchors remain
+   health-only until a direct topology-anchor command target exists. Missing,
+   stale, replaced, ambiguous, deleted, unsupported, consumed, and
+   repair-needed anchors remain non-commandable with structured diagnostics.
+   Automatic selection routing beyond stable generated-reference backing and
+   direct topology-anchor command targets without generated backing remain later
+   V13 work.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint
