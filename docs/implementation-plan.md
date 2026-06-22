@@ -2400,9 +2400,10 @@ Use these decisions when drafting or implementing V13 tranches:
    repair records and retargets the anchor to a replacement checkpoint entity.
    These commands support dry-run/commit through CADOps, emit semantic diffs,
    participate in undo/redo and transaction-history summaries, and preserve
-   source-boundary validation. UI repair affordances, checkpoint payload byte
-   generation, checkpoint payload entity validation, and broader direct
-   topology-anchor command targets remain later V13 work.
+   source-boundary validation. UI repair affordances are handled by the later
+   Tranche J product-integration slices; checkpoint payload byte generation,
+   checkpoint payload entity validation, and broader direct topology-anchor
+   command targets remain later V13 work.
    Generated-reference-backed command eligibility and named-reference repair are
    implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
@@ -2465,8 +2466,12 @@ Use these decisions when drafting or implementing V13 tranches:
     provenance from `selection.referenceCandidates` without making React a
     topology authority. Viewport contextual create-sketch actions now preserve
     topology-anchor-backed face targets from the shared reference query when
-    routing to `sketch.createOnFace`. Viewport repair actions and broader
-    browser repair/command workflow integration remain later Tranche J work.
+    routing to `sketch.createOnFace`. Named-reference repair actions now
+    preserve topology-anchor-backed replacement targets from
+    `selection.referenceCandidates` in Inspector, Modeling, and viewport
+    contextual surfaces, so `reference.repairName` receives the semantic
+    topology anchor. Broader browser repair/command workflow hardening remains
+    later Tranche J work.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and

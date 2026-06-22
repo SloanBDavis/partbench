@@ -21,6 +21,7 @@ export interface SelectedGeneratedReference {
   readonly bodyId: string;
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
 }
 
 export type GeneratedReferenceSelectionState =

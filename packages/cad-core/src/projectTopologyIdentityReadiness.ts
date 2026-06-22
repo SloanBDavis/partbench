@@ -95,7 +95,7 @@ export function createProjectTopologyIdentityReadiness({
       "Topology repair commands",
       "supported",
       "TOPOLOGY_REPAIR_COMMANDS_READY",
-      "Explicit topology anchor repair is available through topology.anchor.repair. Named-reference repair to topology-anchor targets and UI repair affordances remain deferred."
+      "Explicit topology anchor repair is available through topology.anchor.repair. Named-reference repair to topology-anchor targets is available through reference.repairName when the shared reference query proves the target."
     ),
     createCapability(
       "commandEligibility",

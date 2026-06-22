@@ -2,6 +2,7 @@ import type {
   CadBodySnapshot,
   CadGeneratedReference,
   CadSelectionReferenceOperation,
+  CadReferenceHealthEntry,
   NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
@@ -32,6 +33,7 @@ import type {
   ModelingActionDescriptor,
   ModelingActionId
 } from "./modelingActions";
+import { createNamedReferenceRepairUiState } from "./namedReferenceRepairUi";
 import type {
   ViewportSelectionDisplay,
   ViewportSelectionTone
@@ -46,6 +48,7 @@ export type ViewportContextualCommandActionId =
   | "feature.fillet"
   | "feature.measureReference"
   | "feature.selectReference"
+  | "reference.repairName"
   | "reference.name"
   | "sketch.createOnFace";
 
@@ -55,6 +58,7 @@ export type ViewportContextualCommandActionRoute =
   | "measure"
   | "modeling"
   | "name"
+  | "repair"
   | "references";
 
 export interface ViewportContextualCommandAction {
@@ -65,6 +69,7 @@ export interface ViewportContextualCommandAction {
   readonly reason?: string;
   readonly operation?: CadSelectionReferenceOperation;
   readonly modelingActionId?: ModelingActionId;
+  readonly referenceName?: string;
   readonly target?: SelectedGeneratedReference;
 }
 
@@ -80,6 +85,12 @@ export interface ViewportContextualCommandSurfaceModel {
 
 export interface CreateViewportContextualCommandSurfaceInput {
   readonly modelingActions: readonly ModelingActionDescriptor[];
+  readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
+  readonly selectedNamedReferenceName?: string;
   readonly selectionDisplay: ViewportSelectionDisplay;
   readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
@@ -100,10 +111,17 @@ export interface RunViewportContextualCommandActionInput {
     form: FeatureEdgeFinishForm
   ) => void;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
+  readonly onRepairNamedReference?: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
 }
 
 export function createViewportContextualCommandSurface({
   modelingActions,
+  namedReferences,
+  namedReferenceHealthByName,
+  selectedNamedReferenceName,
   selectionDisplay,
   selectedGeneratedReferenceState,
   selectionReferenceCandidates
@@ -113,7 +131,14 @@ export function createViewportContextualCommandSurface({
     ...createActionsFromReferenceOperations(
       selectionDisplay,
       selectionReferenceCandidates
-    )
+    ),
+    ...createActionsFromNamedReferenceRepair({
+      namedReferences,
+      namedReferenceHealthByName,
+      selectedNamedReferenceName,
+      selectedGeneratedReferenceState,
+      selectionReferenceCandidates
+    })
   ]);
   const diagnostic = selectionDisplay.diagnostics[0]?.message;
   const visible =
@@ -216,6 +241,7 @@ export function runViewportContextualCommandAction({
   onContinueInModeling,
   onCreateEdgeFinish,
   onCreateSketchOnFace,
+  onRepairNamedReference,
   selectionReferenceCandidates,
   selectedGeneratedReferenceState
 }: RunViewportContextualCommandActionInput): boolean {
@@ -258,6 +284,15 @@ export function runViewportContextualCommandAction({
 
     onCreateEdgeFinish?.(operation, form);
     return Boolean(onCreateEdgeFinish);
+  }
+
+  if (action.id === "reference.repairName") {
+    if (!action.referenceName || !action.target) {
+      return false;
+    }
+
+    onRepairNamedReference?.(action.referenceName, action.target);
+    return Boolean(onRepairNamedReference);
   }
 
   return false;
@@ -435,6 +470,52 @@ function createActionsFromReferenceOperations(
   return actions;
 }
 
+function createActionsFromNamedReferenceRepair({
+  namedReferences = [],
+  namedReferenceHealthByName,
+  selectedNamedReferenceName,
+  selectedGeneratedReferenceState,
+  selectionReferenceCandidates
+}: {
+  readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly namedReferenceHealthByName?: ReadonlyMap<
+    string,
+    CadReferenceHealthEntry
+  >;
+  readonly selectedNamedReferenceName?: string;
+  readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
+}): readonly ViewportContextualCommandAction[] {
+  if (selectedGeneratedReferenceState.status !== "selected") {
+    return [];
+  }
+
+  const repairState = createNamedReferenceRepairUiState({
+    namedReferences,
+    namedReferenceHealthByName,
+    selectedNamedReferenceName,
+    selectedGeneratedReference: selectedGeneratedReferenceState.selection,
+    selectionReferenceCandidates
+  });
+
+  if (repairState.status === "none") {
+    return [];
+  }
+
+  return [
+    {
+      id: "reference.repairName",
+      label: "Repair",
+      route: "repair",
+      disabled: repairState.status !== "ready",
+      referenceName: repairState.reference.name,
+      ...(repairState.status === "ready"
+        ? { target: repairState.target }
+        : { reason: repairState.message })
+    }
+  ];
+}
+
 function createActionFromOperation(
   operation: CadSelectionReferenceOperation,
   label: string,
@@ -598,16 +679,18 @@ function getActionRank(id: ViewportContextualCommandActionId): number {
       return 0;
     case "reference.name":
       return 1;
-    case "feature.chamfer":
+    case "reference.repairName":
       return 2;
-    case "feature.fillet":
+    case "feature.chamfer":
       return 3;
+    case "feature.fillet":
+      return 4;
     case "feature.measureReference":
     case "body.measureTopology":
-      return 4;
+      return 5;
     case "feature.selectReference":
     case "body.references.inspect":
-      return 5;
+      return 6;
   }
 }
 

@@ -84,6 +84,34 @@ describe("namedReferenceRepairUi", () => {
     );
   });
 
+  it("preserves topology-anchor-backed repair targets from selection candidates", () => {
+    const face = createFace();
+    const state = createNamedReferenceRepairUiState({
+      namedReferences: [createNamedReference()],
+      namedReferenceHealthByName: new Map([
+        ["Mounting face", createHealthEntry("repair-needed")]
+      ]),
+      selectedNamedReferenceName: "Mounting face",
+      selectedGeneratedReference: selectReference(face),
+      selectionReferenceCandidates: createSelectionReferenceCandidates(face, {
+        topologyAnchorId: "anchor_face_1"
+      })
+    });
+
+    expect(state).toMatchObject({
+      status: "ready",
+      target: {
+        bodyId: "body_rect",
+        stableId: "generated:face:body_rect:endCap",
+        kind: "face",
+        topologyAnchorId: "anchor_face_1"
+      }
+    });
+    expect(JSON.stringify(state)).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("offers repair for resolved named references with repairable health", () => {
     const face = createFace();
     const state = createNamedReferenceRepairUiState({
@@ -395,6 +423,7 @@ function createSelectionReferenceCandidates(
     readonly commandable?: boolean;
     readonly commandOperations?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"];
     readonly message?: string;
+    readonly topologyAnchorId?: string;
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
@@ -432,7 +461,10 @@ function createSelectionReferenceCandidates(
           type: "generatedReference",
           bodyId: reference.bodyId,
           stableId: reference.stableId,
-          kind: reference.kind
+          kind: reference.kind,
+          ...(overrides.topologyAnchorId
+            ? { topologyAnchorId: overrides.topologyAnchorId }
+            : {})
         },
         reference,
         commandable: overrides.commandable ?? true,

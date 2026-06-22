@@ -5,6 +5,8 @@ import type {
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
   CadGeneratedReference,
+  CadReferenceHealthEntry,
+  NamedGeneratedReferenceEntry,
   SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -369,6 +371,55 @@ describe("viewport contextual commands", () => {
       topologyAnchorId: "anchor_face_1"
     });
     expect(JSON.stringify(onCreateSketchOnFace.mock.calls)).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
+  it("routes query-proven topology-anchor named-reference repairs from viewport context", () => {
+    const face = createFace();
+    const candidates = createSelectionReferenceCandidates(face, {
+      source: "topologyAnchorSelection",
+      topologyAnchorId: "anchor_face_1",
+      checkpointId: "checkpoint_1"
+    });
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: createGeneratedReferenceActions(face, candidates),
+      namedReferences: [createNamedReference()],
+      namedReferenceHealthByName: new Map([
+        ["Mounting face", createReferenceHealth("repair-needed")]
+      ]),
+      selectedNamedReferenceName: "Mounting face",
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "generatedReference",
+        commandOperations: candidates.candidates[0].commandOperations
+      }),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectionReferenceCandidates: candidates
+    });
+    const onRepairNamedReference = vi.fn();
+
+    expect(surface.actions.map((action) => action.id)).toEqual([
+      "sketch.createOnFace",
+      "reference.name",
+      "reference.repairName",
+      "feature.measureReference",
+      "feature.selectReference"
+    ]);
+
+    const routed = runViewportContextualCommandAction({
+      action: actionById(surface.actions, "reference.repairName"),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      onRepairNamedReference
+    });
+
+    expect(routed).toBe(true);
+    expect(onRepairNamedReference).toHaveBeenCalledWith("Mounting face", {
+      bodyId: "body_rect",
+      stableId: "generated:face:body_rect:startCap",
+      kind: "face",
+      topologyAnchorId: "anchor_face_1"
+    });
+    expect(JSON.stringify(onRepairNamedReference.mock.calls)).not.toMatch(
       /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
     );
   });
@@ -751,5 +802,61 @@ function createSelectionReferenceCandidates(
     ],
     issueCount: issue ? 1 : 0,
     issues: issue ? [issue] : []
+  };
+}
+
+function createNamedReference(
+  overrides: Partial<NamedGeneratedReferenceEntry> = {}
+): NamedGeneratedReferenceEntry {
+  return {
+    name: "Mounting face",
+    bodyId: "body_old",
+    stableId: "generated:face:body_old:startCap",
+    kind: "face",
+    status: "stale",
+    error: {
+      code: "GENERATED_REFERENCE_NOT_FOUND",
+      message: "Named reference Mounting face is stale."
+    },
+    ...overrides
+  };
+}
+
+function createReferenceHealth(
+  status: CadReferenceHealthEntry["status"]
+): CadReferenceHealthEntry {
+  return {
+    source: "namedReference",
+    status,
+    commandable: status === "stale" || status === "repair-needed",
+    commandOperations:
+      status === "stale" || status === "repair-needed"
+        ? ["feature.selectReference"]
+        : [],
+    label: "Mounting face",
+    bodyId: "body_old",
+    stableId: "generated:face:body_old:startCap",
+    kind: "face",
+    referenceName: "Mounting face",
+    sourceFeatureId: "feat_rect",
+    dependencies: {
+      sketchIds: ["sketch_1"],
+      sketchEntityIds: ["rect_1"],
+      featureIds: ["feat_rect"],
+      bodyIds: ["body_old"],
+      generatedReferenceStableIds: ["generated:face:body_old:startCap"],
+      namedReferenceNames: ["Mounting face"]
+    },
+    diagnosticCount: 1,
+    diagnostics: [
+      {
+        code: "REFERENCE_REPAIR_NEEDED",
+        severity: "blocker",
+        message: `Named reference Mounting face is ${status}.`,
+        status,
+        referenceName: "Mounting face",
+        stableId: "generated:face:body_old:startCap"
+      }
+    ]
   };
 }

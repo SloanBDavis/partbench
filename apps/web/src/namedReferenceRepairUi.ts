@@ -237,7 +237,10 @@ function getQueryProvenRepairTarget(
       target: {
         bodyId: candidate.target.bodyId,
         stableId: candidate.target.stableId,
-        kind: candidate.target.kind
+        kind: candidate.target.kind,
+        ...(candidate.target.topologyAnchorId
+          ? { topologyAnchorId: candidate.target.topologyAnchorId }
+          : {})
       }
     };
   }

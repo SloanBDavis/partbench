@@ -86,6 +86,7 @@ import {
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
   buildRepairNamedReferenceOp,
+  buildRepairNamedReferenceToTopologyAnchorOp,
   buildRenameObjectOp,
   buildRenameSketchOp,
   buildSketchConstraintEditOps,
@@ -1548,6 +1549,9 @@ export function App() {
   const viewportContextualCommandSurface =
     createViewportContextualCommandSurface({
       modelingActions,
+      namedReferences,
+      namedReferenceHealthByName,
+      selectedNamedReferenceName,
       selectionDisplay: viewportSelectionDisplay,
       selectedGeneratedReferenceState,
       selectionReferenceCandidates: selectedSelectionReferenceCandidates
@@ -2336,11 +2340,12 @@ export function App() {
     name: string,
     target: SelectedGeneratedReference
   ) {
-    const op = buildRepairNamedReferenceOp(
-      name,
-      target.bodyId,
-      target.stableId
-    );
+    const op = target.topologyAnchorId
+      ? buildRepairNamedReferenceToTopologyAnchorOp(
+          name,
+          target.topologyAnchorId
+        )
+      : buildRepairNamedReferenceOp(name, target.bodyId, target.stableId);
 
     setCommandPending(true);
     setCommandError(undefined);
@@ -2437,7 +2442,9 @@ export function App() {
       },
       onCreateEdgeFinish: (operation, form) =>
         void createEdgeFinish(operation, form),
-      onCreateSketchOnFace: (form) => void createSketchOnFace(form)
+      onCreateSketchOnFace: (form) => void createSketchOnFace(form),
+      onRepairNamedReference: (name, target) =>
+        void repairNamedReference(name, target)
     });
 
     if (!routed && action.route === "command") {

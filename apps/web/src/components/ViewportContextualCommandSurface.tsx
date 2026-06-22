@@ -205,6 +205,9 @@ export function ViewportContextualCommandSurface({
       case "name":
         toggleExpandedSection("name");
         return;
+      case "repair":
+        onRunCommand?.(action);
+        return;
       case "references":
         toggleExpandedSection("references");
         return;
