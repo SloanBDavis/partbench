@@ -1224,7 +1224,7 @@ export class CadMcpServer {
     if (!isSelectionReferenceCandidatesToolArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.selection_reference_candidates expects arguments shaped as { selection: { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' | 'axis' } | { type: 'namedReference', name: string }, requiredOperation?: string }."
+        "cad.selection_reference_candidates expects arguments shaped as { selection: { type: 'body', bodyId: string } | { type: 'generatedReference', bodyId: string, stableId: string, expectedKind?: 'body' | 'face' | 'edge' | 'vertex' | 'axis' } | { type: 'namedReference', name: string } | { type: 'topologyAnchor', anchorId: string }, requiredOperation?: string, topologyMatchResults?: object[] }."
       );
     }
 
@@ -1239,6 +1239,9 @@ export class CadMcpServer {
             selection: request.arguments.selection,
             ...(request.arguments.requiredOperation
               ? { requiredOperation: request.arguments.requiredOperation }
+              : {}),
+            ...(request.arguments.topologyMatchResults
+              ? { topologyMatchResults: request.arguments.topologyMatchResults }
               : {})
           }
         }
@@ -1943,6 +1946,18 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
                   description: "Source-of-truth topology anchor ID."
                 }
               }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "anchorId"],
+              properties: {
+                type: { const: "topologyAnchor" },
+                anchorId: {
+                  type: "string",
+                  description: "Source-of-truth topology anchor ID."
+                }
+              }
             }
           ]
         },
@@ -1960,7 +1975,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
   {
     name: "cad.selection_reference_candidates",
     description:
-      "Returns command-ready semantic CAD reference candidates for a body, generated reference, or named reference selection.",
+      "Returns command-ready semantic CAD reference candidates for a body, generated reference, named reference, or topology anchor selection.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -2028,6 +2043,14 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           ],
           description:
             "Optional command operation the selected target must support."
+        },
+        topologyMatchResults: {
+          type: "array",
+          description:
+            "Optional V13 topology.matchSnapshots results used as read-only anchor health evidence.",
+          items: {
+            type: "object"
+          }
         }
       }
     }
@@ -2295,10 +2318,12 @@ function isResolveNamedReferenceToolArguments(
 function isSelectionReferenceCandidatesToolArguments(value: unknown): value is {
   readonly selection: CadSelectionReferenceInput;
   readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 } {
   return (
     isRecord(value) &&
     isCadSelectionReferenceInput(value.selection) &&
+    isOptionalTopologyMatchResults(value.topologyMatchResults) &&
     (value.requiredOperation === undefined ||
       isCadSelectionReferenceOperation(value.requiredOperation))
   );
@@ -2503,6 +2528,8 @@ function isCadSelectionReferenceInput(
       );
     case "namedReference":
       return typeof value.name === "string" && value.name !== "";
+    case "topologyAnchor":
+      return typeof value.anchorId === "string" && value.anchorId !== "";
     default:
       return false;
   }

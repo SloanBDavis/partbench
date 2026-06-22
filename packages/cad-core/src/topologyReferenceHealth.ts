@@ -8,6 +8,7 @@ import type {
   CadReferenceHealthDiagnosticCode,
   CadReferenceHealthEntry,
   CadReferenceHealthStatus,
+  CadSelectionReferenceOperation,
   CadTopologyAnchorEntityKind,
   CadTopologyAnchorSourceRecord,
   CadTopologyCheckpointSourceRecord,
@@ -112,11 +113,16 @@ function createTopologyAnchorReferenceHealth({
     checkpoint,
     match
   );
+  const commandOperations = createTopologyAnchorCommandOperations(
+    anchor,
+    status
+  );
+
   return {
     source: "topologyAnchor",
     status,
-    commandable: false,
-    commandOperations: [],
+    commandable: commandOperations.length > 0,
+    commandOperations,
     label: anchor.sourceSemanticRole ?? anchor.stableId ?? anchor.anchorId,
     bodyId: anchor.bodyId,
     ...(anchor.stableId ? { stableId: anchor.stableId } : {}),
@@ -143,6 +149,30 @@ function createTopologyAnchorReferenceHealth({
   };
 }
 
+function createTopologyAnchorCommandOperations(
+  anchor: CadTopologyAnchorSourceRecord,
+  status: CadReferenceHealthStatus
+): readonly CadSelectionReferenceOperation[] {
+  if (status !== "active" || !anchor.stableId) {
+    return [];
+  }
+
+  return canMeasureTopologyAnchor(anchor)
+    ? ["feature.measureReference", "feature.selectReference"]
+    : ["feature.selectReference"];
+}
+
+function canMeasureTopologyAnchor(
+  anchor: CadTopologyAnchorSourceRecord
+): boolean {
+  return (
+    Boolean(anchor.stableId) &&
+    (anchor.entityKind === "face" ||
+      anchor.entityKind === "edge" ||
+      anchor.entityKind === "vertex")
+  );
+}
+
 function createTopologyAnchorStatus(
   anchor: CadTopologyAnchorSourceRecord,
   checkpoint: CadTopologyCheckpointSourceRecord | undefined,
@@ -162,6 +192,21 @@ function createTopologyAnchorStatus(
   }
 
   return referenceStatusFromTopologyState(anchor.state);
+}
+
+export function createTopologyAnchorReferenceStatusForSelection(args: {
+  readonly anchor: CadTopologyAnchorSourceRecord;
+  readonly checkpoint?: CadTopologyCheckpointSourceRecord;
+  readonly match?: CadTopologyMatchResult;
+}): CadReferenceHealthStatus {
+  return createTopologyAnchorStatus(args.anchor, args.checkpoint, args.match);
+}
+
+export function createTopologyAnchorCommandOperationsForSelection(
+  anchor: CadTopologyAnchorSourceRecord,
+  status: CadReferenceHealthStatus
+): readonly CadSelectionReferenceOperation[] {
+  return createTopologyAnchorCommandOperations(anchor, status);
 }
 
 function createTopologyAnchorDiagnostics(

@@ -206,6 +206,8 @@ function createSemanticSelectionInput(
       };
     case "namedReference":
       return { type: "namedReference", name: selection.name };
+    case "topologyAnchor":
+      return { type: "topologyAnchor", anchorId: selection.anchorId };
   }
 }
 

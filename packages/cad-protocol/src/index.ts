@@ -1393,6 +1393,7 @@ export interface SelectionReferenceCandidatesQuery {
   readonly query: "selection.referenceCandidates";
   readonly selection: CadSelectionReferenceInput;
   readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface TransactionHistoryQuery {
@@ -3525,7 +3526,8 @@ export interface NamedGeneratedReferenceEntry extends NamedGeneratedReferenceSna
 export type CadSelectionReferenceInput =
   | CadSelectionBodyInput
   | CadSelectionGeneratedReferenceInput
-  | CadSelectionNamedReferenceInput;
+  | CadSelectionNamedReferenceInput
+  | CadSelectionTopologyAnchorInput;
 
 export interface CadSelectionBodyInput {
   readonly type: "body";
@@ -3542,6 +3544,11 @@ export interface CadSelectionGeneratedReferenceInput {
 export interface CadSelectionNamedReferenceInput {
   readonly type: "namedReference";
   readonly name: NamedReferenceName;
+}
+
+export interface CadSelectionTopologyAnchorInput {
+  readonly type: "topologyAnchor";
+  readonly anchorId: string;
 }
 
 export type CadViewportPointerInputKind =
@@ -3867,6 +3874,8 @@ export interface CadSelectionReferenceIssue {
   readonly message: string;
   readonly bodyId?: BodyId;
   readonly stableId?: string;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly featureId?: FeatureId;
   readonly expected?: string;
@@ -3878,13 +3887,16 @@ export interface CadSelectionReferenceCommandTarget {
   readonly bodyId: BodyId;
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
   readonly referenceName?: NamedReferenceName;
 }
 
 export type CadSelectionReferenceCandidateSource =
   | "bodySelection"
   | "generatedReferenceSelection"
-  | "namedReferenceSelection";
+  | "namedReferenceSelection"
+  | "topologyAnchorSelection";
 
 export interface CadSelectionReferenceCandidate {
   readonly source: CadSelectionReferenceCandidateSource;

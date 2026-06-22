@@ -30594,7 +30594,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({
           source: "topologyAnchor",
           status: "active",
-          commandable: false,
+          commandable: true,
+          commandOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
           topologyAnchorId: "anchor_face_1",
           checkpointId: "checkpoint_1",
           matchConfidence: "exact",
@@ -30652,6 +30656,169 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("keeps topology anchor command eligibility scoped to supported read-only operations", () => {
+    const engine = createTopologyAnchorEngine();
+    const document = engine.getDocument();
+    const topologyIdentity = document.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const axisAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      anchorId: "anchor_axis_1",
+      entityKind: "axis" as const,
+      sourceSemanticRole: "revolve axis"
+    };
+    delete (axisAnchor as { stableId?: string }).stableId;
+
+    const axisAnchorEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [axisAnchor]
+      }
+    });
+    const referenceHealth = readReferenceHealth(axisAnchorEngine, {
+      type: "topologyAnchor",
+      anchorId: "anchor_axis_1"
+    });
+
+    expect(referenceHealth).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          status: "active",
+          commandable: false,
+          commandOperations: [],
+          topologyAnchorId: "anchor_axis_1",
+          topologyEntityKind: "axis"
+        })
+      ]
+    });
+    expect(JSON.stringify(referenceHealth)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+  });
+
+  it("resolves stable active topology anchors through selection reference candidates", () => {
+    const engine = createTopologyAnchorEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+        requiredOperation: "feature.measureReference",
+        topologyMatchResults: [createTopologyAnchorMatchResult("active")]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          source: "topologyAnchorSelection",
+          commandable: true,
+          commandOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          target: expect.objectContaining({
+            type: "generatedReference",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face",
+            topologyAnchorId: "anchor_face_1",
+            checkpointId: "checkpoint_1"
+          })
+        })
+      ],
+      issueCount: 0
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("blocks topology anchor selection candidates when anchor health is not active or generated backing is missing", () => {
+    const engine = createTopologyAnchorEngine();
+    const replaced = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+        requiredOperation: "feature.measureReference",
+        topologyMatchResults: [
+          createTopologyAnchorMatchResult("replaced", "high")
+        ]
+      }
+    });
+    const document = engine.getDocument();
+    const topologyIdentity = document.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const missingStableIdAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      anchorId: "anchor_no_stable_id"
+    };
+    delete (missingStableIdAnchor as { stableId?: string }).stableId;
+    const missingStableIdEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [missingStableIdAnchor]
+      }
+    });
+    const missingStableId = missingStableIdEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "topologyAnchor",
+          anchorId: "anchor_no_stable_id"
+        }
+      }
+    });
+
+    expect(replaced).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "non-commandable",
+      candidateCount: 0,
+      issues: [
+        expect.objectContaining({
+          code: "NON_COMMANDABLE_SELECTION_TARGET",
+          topologyAnchorId: "anchor_face_1",
+          checkpointId: "checkpoint_1",
+          received: "replaced"
+        })
+      ]
+    });
+    expect(missingStableId).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "unsupported",
+      candidateCount: 0,
+      issues: [
+        expect.objectContaining({
+          code: "UNSUPPORTED_SELECTION_TARGET",
+          topologyAnchorId: "anchor_no_stable_id",
+          checkpointId: "checkpoint_1"
+        })
+      ]
+    });
   });
 
   it("degrades topology anchor health and rebuild lifecycle for non-active topology matches", () => {

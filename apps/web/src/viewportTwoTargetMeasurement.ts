@@ -427,6 +427,11 @@ function cleanSelection(
         type: "namedReference",
         name: clean(selection.name)
       };
+    case "topologyAnchor":
+      return {
+        type: "topologyAnchor",
+        anchorId: clean(selection.anchorId)
+      };
   }
 }
 

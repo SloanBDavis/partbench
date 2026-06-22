@@ -2416,11 +2416,21 @@ Use these decisions when drafting or implementing V13 tranches:
    source semantics do not prove them. Automatic anchor creation, command
    eligibility, UI repair affordances, and checkpoint payload generation remain
    later V13 work.
-9. **Command Eligibility For Topology Anchors** - existing commands consume
-   topology-anchor references where validators and runtime prove support:
-   sketch-on-face for planar anchors, chamfer/fillet for supported edge
-   anchors, exact measure/inspect, and downstream cut/add where active result
-   topology and body lifecycle allow it.
+9. **Implemented, first read-only slice: Command Eligibility For Topology
+   Anchors** - `reference.health` reports active topology anchors as
+   commandable for supported read-only reference operations, and
+   stable generated-reference-backed anchors can resolve through
+   `selection.referenceCandidates` without exposing checkpoint-local topology
+   IDs. Stable face, edge, and vertex anchors expose measure/select
+   eligibility; active stable body or axis anchors expose select eligibility
+   only. Metadata-only anchors remain health-only until a direct
+   topology-anchor command target exists. Missing, stale, replaced, ambiguous,
+   deleted, unsupported, and repair-needed anchors remain non-commandable with
+   structured diagnostics.
+   Sketch-on-face, chamfer/fillet, downstream cut/add retargeting, automatic
+   selection routing beyond stable generated-reference backing, and
+   named-reference repair to topology-anchor targets remain later V13 work
+   until command validators accept topology-anchor targets directly.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint

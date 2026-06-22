@@ -3294,6 +3294,7 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         isOptionalTopologyMatchResults(value.query.topologyMatchResults)) ||
       (value.query.query === "selection.referenceCandidates" &&
         isCadSelectionReferenceInput(value.query.selection) &&
+        isOptionalTopologyMatchResults(value.query.topologyMatchResults) &&
         (value.query.requiredOperation === undefined ||
           isCadSelectionReferenceOperation(value.query.requiredOperation))) ||
       (value.query.query === "transaction.history" &&
@@ -3606,6 +3607,8 @@ function isCadSelectionReferenceInput(
       );
     case "namedReference":
       return typeof value.name === "string";
+    case "topologyAnchor":
+      return typeof value.anchorId === "string";
     default:
       return false;
   }

@@ -57,6 +57,7 @@ import type {
   CadQueryRequest,
   CadQueryResponse,
   CadRebuildPlanDiagnosticCode,
+  CadReferenceHealthStatus,
   CadSelectionReferenceCandidate,
   CadSelectionReferenceCommandTarget,
   CadSelectionReferenceCandidateSource,
@@ -162,6 +163,10 @@ import {
   createProjectDependencyGraph,
   createReferenceHealth
 } from "./projectDependencyGraph";
+import {
+  createTopologyAnchorCommandOperationsForSelection,
+  createTopologyAnchorReferenceStatusForSelection
+} from "./topologyReferenceHealth";
 import { createProjectRebuildPlan } from "./projectRebuildPlan";
 import { createProjectHealth } from "./projectHealth";
 import {
@@ -2018,7 +2023,8 @@ export class CadEngine {
           structure,
           this.#history.map((entry) => entry.transaction),
           request.query.selection,
-          request.query.requiredOperation
+          request.query.requiredOperation,
+          request.query.topologyMatchResults
         );
 
         return {
@@ -5370,6 +5376,7 @@ function isCadQuery(value: unknown): boolean {
     case "selection.referenceCandidates":
       return (
         isCadSelectionReferenceInput(value.selection) &&
+        isOptionalTopologyMatchResults(value.topologyMatchResults) &&
         (value.requiredOperation === undefined ||
           isCadSelectionReferenceOperation(value.requiredOperation))
       );
@@ -5734,6 +5741,8 @@ function isCadSelectionReferenceInput(
       );
     case "namedReference":
       return typeof value.name === "string";
+    case "topologyAnchor":
+      return typeof value.anchorId === "string";
     default:
       return false;
   }
@@ -11398,7 +11407,8 @@ function createSelectionReferenceCandidates(
   structure: CadProjectStructureSnapshot,
   transactions: readonly Transaction[],
   selection: CadSelectionReferenceInput,
-  requiredOperation: CadSelectionReferenceOperation | undefined
+  requiredOperation: CadSelectionReferenceOperation | undefined,
+  topologyMatchResults: readonly CadTopologyMatchResult[] = []
 ): {
   readonly status: CadSelectionReferenceStatus;
   readonly candidates: readonly CadSelectionReferenceCandidate[];
@@ -11545,6 +11555,16 @@ function createSelectionReferenceCandidates(
     });
   }
 
+  if (selection.type === "topologyAnchor") {
+    return createTopologyAnchorSelectionReferenceCandidate({
+      document,
+      structure,
+      selection,
+      requiredOperation,
+      topologyMatchResults
+    });
+  }
+
   const namedReference = document.namedReferences.get(selection.name);
 
   if (!namedReference) {
@@ -11626,6 +11646,190 @@ function createSelectionReferenceCandidates(
   });
 }
 
+function createTopologyAnchorSelectionReferenceCandidate(options: {
+  readonly document: CadDocument;
+  readonly structure: CadProjectStructureSnapshot;
+  readonly selection: Extract<
+    CadSelectionReferenceInput,
+    { type: "topologyAnchor" }
+  >;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly topologyMatchResults: readonly CadTopologyMatchResult[];
+}): {
+  readonly status: CadSelectionReferenceStatus;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issues: readonly CadSelectionReferenceIssue[];
+} {
+  const topologyIdentity = options.document.topologyIdentity;
+  const anchor = topologyIdentity?.anchors.find(
+    (candidate) => candidate.anchorId === options.selection.anchorId
+  );
+
+  if (!topologyIdentity || !anchor) {
+    const issues = [
+      createSelectionIssue(
+        "MISSING_SELECTION_TARGET",
+        "missing",
+        `Topology anchor does not exist: ${options.selection.anchorId}`,
+        { topologyAnchorId: options.selection.anchorId }
+      )
+    ];
+
+    return { status: "missing", candidates: [], issues };
+  }
+
+  const checkpoint = topologyIdentity.checkpoints.find(
+    (candidate) => candidate.checkpointId === anchor.checkpointId
+  );
+  const match = options.topologyMatchResults.find(
+    (candidate) => candidate.anchorId === anchor.anchorId
+  );
+  const status = createTopologyAnchorReferenceStatusForSelection({
+    anchor,
+    checkpoint,
+    match
+  });
+  const commandOperations = createTopologyAnchorCommandOperationsForSelection(
+    anchor,
+    status
+  );
+
+  if (status !== "active") {
+    const selectionStatus = selectionStatusFromReferenceHealthStatus(status);
+    const issues = [
+      createSelectionIssue(
+        selectionIssueCodeFromReferenceHealthStatus(status),
+        selectionStatus,
+        `Topology anchor ${anchor.anchorId} is ${status} and is not command-ready.`,
+        {
+          bodyId: anchor.bodyId,
+          stableId: anchor.stableId,
+          topologyAnchorId: anchor.anchorId,
+          checkpointId: anchor.checkpointId,
+          expected: "active topology anchor",
+          received: status
+        }
+      )
+    ];
+
+    return { status: selectionStatus, candidates: [], issues };
+  }
+
+  if (!anchor.stableId) {
+    const issues = [
+      createSelectionIssue(
+        "UNSUPPORTED_SELECTION_TARGET",
+        "unsupported",
+        `Topology anchor ${anchor.anchorId} does not have a stable generated-reference backing yet.`,
+        {
+          bodyId: anchor.bodyId,
+          topologyAnchorId: anchor.anchorId,
+          checkpointId: anchor.checkpointId,
+          expected: "stable generated reference backing"
+        }
+      )
+    ];
+
+    return { status: "unsupported", candidates: [], issues };
+  }
+
+  const body = options.structure.bodies.find(
+    (candidate) => candidate.id === anchor.bodyId
+  );
+
+  if (!body) {
+    const issues = [
+      createSelectionIssue(
+        "MISSING_SELECTION_TARGET",
+        "missing",
+        `Topology anchor body does not exist: ${anchor.bodyId}`,
+        {
+          bodyId: anchor.bodyId,
+          stableId: anchor.stableId,
+          topologyAnchorId: anchor.anchorId,
+          checkpointId: anchor.checkpointId
+        }
+      )
+    ];
+
+    return { status: "missing", candidates: [], issues };
+  }
+
+  const references = createBodyGeneratedReferences(
+    options.document,
+    body.id,
+    body.partId
+  );
+
+  if (!references) {
+    const issues = [
+      ...createConsumedSelectionIssues(body),
+      createBodyReferenceUnavailableIssue(
+        options.document,
+        body,
+        anchor.stableId
+      )
+    ];
+
+    return {
+      status: chooseSelectionReferenceStatus(issues),
+      candidates: [],
+      issues
+    };
+  }
+
+  const resolution = resolveGeneratedReference(references, anchor.stableId);
+
+  if (!resolution) {
+    const issues = [
+      createSelectionIssue(
+        "STALE_SELECTION_REFERENCE",
+        "stale",
+        `Topology anchor ${anchor.anchorId} stable generated reference is no longer available on ${anchor.bodyId}: ${anchor.stableId}`,
+        {
+          bodyId: anchor.bodyId,
+          stableId: anchor.stableId,
+          topologyAnchorId: anchor.anchorId,
+          checkpointId: anchor.checkpointId
+        }
+      )
+    ];
+
+    return { status: "stale", candidates: [], issues };
+  }
+
+  const extraIssues =
+    resolution.kind === anchor.entityKind
+      ? []
+      : [
+          createSelectionIssue(
+            "SELECTION_KIND_MISMATCH",
+            "non-commandable",
+            `Topology anchor ${anchor.anchorId} resolved as ${resolution.kind}, not ${anchor.entityKind}.`,
+            {
+              bodyId: anchor.bodyId,
+              stableId: anchor.stableId,
+              topologyAnchorId: anchor.anchorId,
+              checkpointId: anchor.checkpointId,
+              expected: anchor.entityKind,
+              received: resolution.kind
+            }
+          )
+        ];
+
+  return createSingleSelectionReferenceCandidate({
+    source: "topologyAnchorSelection",
+    selection: options.selection,
+    body,
+    reference: resolution.reference,
+    requiredOperation: options.requiredOperation,
+    extraIssues,
+    commandOperations,
+    topologyAnchorId: anchor.anchorId,
+    checkpointId: anchor.checkpointId
+  });
+}
+
 function createSingleSelectionReferenceCandidate(options: {
   readonly source: CadSelectionReferenceCandidateSource;
   readonly selection: CadSelectionReferenceInput;
@@ -11633,6 +11837,9 @@ function createSingleSelectionReferenceCandidate(options: {
   readonly reference: CadGeneratedReference;
   readonly requiredOperation?: CadSelectionReferenceOperation;
   readonly extraIssues?: readonly CadSelectionReferenceIssue[];
+  readonly commandOperations?: readonly CadSelectionReferenceOperation[];
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
 }): {
   readonly status: CadSelectionReferenceStatus;
   readonly candidates: readonly CadSelectionReferenceCandidate[];
@@ -11646,7 +11853,10 @@ function createSingleSelectionReferenceCandidate(options: {
   const baseOperations: readonly CadSelectionReferenceOperation[] =
     consumedIssues.length > 0
       ? []
-      : [...namingOperations, ...options.reference.eligibleOperations];
+      : (options.commandOperations ?? [
+          ...namingOperations,
+          ...options.reference.eligibleOperations
+        ]);
   const operationIssues =
     consumedIssues.length === 0
       ? createCommandabilityIssues(
@@ -11666,6 +11876,10 @@ function createSingleSelectionReferenceCandidate(options: {
     bodyId: options.reference.bodyId,
     stableId: options.reference.stableId,
     kind: options.reference.kind,
+    ...(options.topologyAnchorId
+      ? { topologyAnchorId: options.topologyAnchorId }
+      : {}),
+    ...(options.checkpointId ? { checkpointId: options.checkpointId } : {}),
     ...(options.selection.type === "namedReference"
       ? { referenceName: options.selection.name }
       : {})
@@ -11734,6 +11948,58 @@ function createCommandabilityIssues(
   }
 
   return [];
+}
+
+function selectionStatusFromReferenceHealthStatus(
+  status: CadReferenceHealthStatus
+): Exclude<CadSelectionReferenceStatus, "resolved"> {
+  if (status === "active") {
+    return "non-commandable";
+  }
+
+  if (status === "missing" || status === "deleted") {
+    return "missing";
+  }
+
+  if (status === "stale") {
+    return "stale";
+  }
+
+  if (status === "ambiguous") {
+    return "ambiguous";
+  }
+
+  if (status === "consumed") {
+    return "consumed";
+  }
+
+  if (status === "unsupported") {
+    return "unsupported";
+  }
+
+  return "non-commandable";
+}
+
+function selectionIssueCodeFromReferenceHealthStatus(
+  status: CadReferenceHealthStatus
+): CadSelectionReferenceIssueCode {
+  if (status === "missing" || status === "deleted") {
+    return "MISSING_SELECTION_TARGET";
+  }
+
+  if (status === "stale") {
+    return "STALE_SELECTION_REFERENCE";
+  }
+
+  if (status === "ambiguous") {
+    return "AMBIGUOUS_SELECTION_TOPOLOGY";
+  }
+
+  if (status === "unsupported") {
+    return "UNSUPPORTED_SELECTION_TARGET";
+  }
+
+  return "NON_COMMANDABLE_SELECTION_TARGET";
 }
 
 function createConsumedSelectionIssues(
@@ -11827,6 +12093,8 @@ function createSelectionIssue(
   details: {
     readonly bodyId?: BodyId;
     readonly stableId?: string;
+    readonly topologyAnchorId?: string;
+    readonly checkpointId?: string;
     readonly referenceName?: NamedReferenceName;
     readonly featureId?: FeatureId;
     readonly expected?: string;
@@ -11839,6 +12107,10 @@ function createSelectionIssue(
     message,
     ...(details.bodyId ? { bodyId: details.bodyId } : {}),
     ...(details.stableId ? { stableId: details.stableId } : {}),
+    ...(details.topologyAnchorId
+      ? { topologyAnchorId: details.topologyAnchorId }
+      : {}),
+    ...(details.checkpointId ? { checkpointId: details.checkpointId } : {}),
     ...(details.referenceName ? { referenceName: details.referenceName } : {}),
     ...(details.featureId ? { featureId: details.featureId } : {}),
     ...(details.expected ? { expected: details.expected } : {}),

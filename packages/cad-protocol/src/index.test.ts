@@ -3596,6 +3596,75 @@ describe("cad-protocol", () => {
       status: "ambiguous",
       issues: [{ code: "AMBIGUOUS_SELECTION_TOPOLOGY" }]
     });
+
+    const topologyAnchor: CadQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+      requiredOperation: "feature.measureReference",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        {
+          source: "topologyAnchorSelection",
+          target: {
+            type: "generatedReference",
+            bodyId: "body_1",
+            stableId: "generated:face:body_1:endCap",
+            kind: "face",
+            topologyAnchorId: "anchor_face_1",
+            checkpointId: "checkpoint_1"
+          },
+          reference: {
+            kind: "face",
+            stableId: "generated:face:body_1:endCap",
+            label: "End cap",
+            eligibleOperations: [
+              "feature.attachSketchPlane",
+              "feature.measureReference",
+              "feature.selectReference"
+            ],
+            bodyId: "body_1",
+            ownerPartId: "part:default",
+            sourceFeatureId: "feat_1",
+            sourceSketchId: "sketch_1",
+            sourceSketchEntityId: "rect_1",
+            role: "endCap",
+            geometricSignature: {
+              profileKind: "rectangle",
+              sketchPlane: "XY",
+              extrudeSide: "positive",
+              depth: 3
+            }
+          },
+          commandable: true,
+          commandOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          label: "End cap",
+          issues: []
+        }
+      ],
+      issueCount: 0,
+      issues: []
+    };
+
+    expect(topologyAnchor).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidates: [
+        {
+          source: "topologyAnchorSelection",
+          target: expect.objectContaining({
+            topologyAnchorId: "anchor_face_1",
+            checkpointId: "checkpoint_1"
+          })
+        }
+      ]
+    });
   });
 
   it("types the V9 viewport interaction contract without making private hit IDs public references", () => {
