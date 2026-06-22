@@ -30713,7 +30713,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       query: {
         query: "selection.referenceCandidates",
         selection: { type: "topologyAnchor", anchorId: "anchor_face_1" },
-        requiredOperation: "feature.measureReference",
+        requiredOperation: "feature.attachSketchPlane",
         topologyMatchResults: [createTopologyAnchorMatchResult("active")]
       }
     });
@@ -30728,6 +30728,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           source: "topologyAnchorSelection",
           commandable: true,
           commandOperations: [
+            "feature.attachSketchPlane",
             "feature.measureReference",
             "feature.selectReference"
           ],
@@ -30819,6 +30820,288 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ]
     });
+  });
+
+  it("creates attached sketches from active topology face anchors", () => {
+    const engine = createTopologyAnchorEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const op = {
+      op: "sketch.createOnFace" as const,
+      id: "sketch_anchor_face_1",
+      name: "Anchor face sketch",
+      topologyAnchorId: "anchor_face_1"
+    };
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [op]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_anchor_face_1"]
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    const result = engine.apply(op);
+    expect(result.document.sketches.get("sketch_anchor_face_1")).toMatchObject({
+      id: "sketch_anchor_face_1",
+      name: "Anchor face sketch",
+      plane: "XY",
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap",
+        sourceFeatureId: "feat_rect_1",
+        sourceSketchId: "sketch_1",
+        sourceSketchEntityId: "rect_1",
+        faceRole: "endCap"
+      }
+    });
+    expect(result.transaction.ops[0]).toMatchObject({
+      op: "sketch.createOnFace",
+      topologyAnchorId: "anchor_face_1"
+    });
+    expect(JSON.stringify(result.transaction)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+  });
+
+  it("rejects topology anchors that cannot prove planar sketch-on-face targets", () => {
+    const engine = createTopologyAnchorEngine();
+    const document = engine.getDocument();
+    const topologyIdentity = document.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const beforeJson = exportCadProjectJson(engine);
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Missing anchor sketch",
+            topologyAnchorId: "missing_anchor"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+        topologyAnchorId: "missing_anchor",
+        path: "$.ops[0].topologyAnchorId"
+      }
+    });
+
+    const staleAnchorEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [
+          {
+            ...topologyIdentity.anchors[0]!,
+            state: "stale"
+          }
+        ]
+      }
+    });
+    expect(
+      staleAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Stale anchor sketch",
+            topologyAnchorId: "anchor_face_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_face_1",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].topologyAnchorId",
+        received: "anchor:stale, checkpoint:active"
+      }
+    });
+
+    const missingCheckpointEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        checkpoints: []
+      }
+    });
+    expect(
+      missingCheckpointEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Missing checkpoint anchor sketch",
+            topologyAnchorId: "anchor_face_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
+        topologyAnchorId: "anchor_face_1",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].topologyAnchorId"
+      }
+    });
+
+    const edgeAnchorEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [
+          {
+            ...topologyIdentity.anchors[0]!,
+            entityKind: "edge",
+            stableId: "generated:edge:body_rect_1:start:uMin"
+          }
+        ]
+      }
+    });
+    expect(
+      edgeAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Edge anchor sketch",
+            topologyAnchorId: "anchor_face_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_face_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "face topology anchor",
+        received: "edge"
+      }
+    });
+
+    const missingStableIdAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      anchorId: "anchor_no_stable_id"
+    };
+    delete (missingStableIdAnchor as { stableId?: string }).stableId;
+    const missingStableIdEngine = new CadEngine({
+      ...document,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [missingStableIdAnchor]
+      }
+    });
+    expect(
+      missingStableIdEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Missing stable anchor sketch",
+            topologyAnchorId: "anchor_no_stable_id"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_no_stable_id",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "stable generated face backing",
+        received: "missing stableId"
+      }
+    });
+
+    const circleEngine = createCircleExtrudeEngine();
+    const circleDocument = circleEngine.getDocument();
+    const circlePaths = createWcadV2CheckpointEntryPaths("checkpoint_circle_1");
+    const circleSourceIdentity = {
+      algorithm: "partbench-source-v1" as const,
+      sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+    };
+    const circularFaceAnchorEngine = new CadEngine({
+      ...circleDocument,
+      topologyIdentity: {
+        ...createEmptyTopologyIdentitySourceSnapshot(),
+        checkpoints: [
+          {
+            checkpointId: "checkpoint_circle_1",
+            bodyId: "body_circle_1",
+            sourceFeatureId: "feat_circle_1",
+            sourceIdentity: circleSourceIdentity,
+            packageVersion: "partbench.wcad.v2" as const,
+            projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+            brepEntryPath: circlePaths.brep,
+            topologyEntryPath: circlePaths.topology,
+            signatureEntryPath: circlePaths.signature,
+            status: "active" as const,
+            diagnostics: []
+          }
+        ],
+        anchors: [
+          {
+            anchorId: "anchor_circular_side",
+            entityKind: "face" as const,
+            bodyId: "body_circle_1",
+            checkpointId: "checkpoint_circle_1",
+            checkpointEntityId: "checkpoint-local-circle-side",
+            sourceFeatureId: "feat_circle_1",
+            stableId: "generated:face:body_circle_1:side:circular",
+            sourceSemanticRole: "circular side",
+            signatureHash: "circle_side_signature",
+            state: "active" as const,
+            diagnostics: []
+          }
+        ]
+      }
+    });
+    expect(
+      circularFaceAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Circular wall anchor sketch",
+            topologyAnchorId: "anchor_circular_side"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        topologyAnchorId: "anchor_circular_side",
+        checkpointId: "checkpoint_circle_1",
+        stableId: "generated:face:body_circle_1:side:circular",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "feature.attachSketchPlane"
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
   it("degrades topology anchor health and rebuild lifecycle for non-active topology matches", () => {

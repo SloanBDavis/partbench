@@ -1691,11 +1691,13 @@ function createOperationReview(
     case "sketch.createOnFace": {
       const target = op.referenceName
         ? `named reference ${op.referenceName}`
-        : op.faceStableId
-          ? `face ${op.faceStableId}`
-          : op.bodyId
-            ? `face on ${op.bodyId}`
-            : "selected face";
+        : op.topologyAnchorId
+          ? `topology anchor ${op.topologyAnchorId}`
+          : op.faceStableId
+            ? `face ${op.faceStableId}`
+            : op.bodyId
+              ? `face on ${op.bodyId}`
+              : "selected face";
 
       return {
         ...operationReviewBase(
@@ -1707,6 +1709,9 @@ function createOperationReview(
         ...(op.id ? { sketchId: op.id } : {}),
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
         ...(op.referenceName ? { referenceName: op.referenceName } : {}),
+        ...(op.topologyAnchorId
+          ? { topologyAnchorId: op.topologyAnchorId }
+          : {}),
         ...(op.faceStableId ? { stableId: op.faceStableId } : {})
       };
     }
@@ -3990,16 +3995,23 @@ function isCadOp(value: unknown): value is CadOp {
     const hasGeneratedReference =
       typeof value.bodyId === "string" &&
       typeof value.faceStableId === "string" &&
-      value.referenceName === undefined;
+      value.referenceName === undefined &&
+      value.topologyAnchorId === undefined;
     const hasNamedReference =
       typeof value.referenceName === "string" &&
       value.bodyId === undefined &&
-      value.faceStableId === undefined;
+      value.faceStableId === undefined &&
+      value.topologyAnchorId === undefined;
+    const hasTopologyAnchor =
+      typeof value.topologyAnchorId === "string" &&
+      value.bodyId === undefined &&
+      value.faceStableId === undefined &&
+      value.referenceName === undefined;
 
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      (hasGeneratedReference || hasNamedReference)
+      (hasGeneratedReference || hasNamedReference || hasTopologyAnchor)
     );
   }
 

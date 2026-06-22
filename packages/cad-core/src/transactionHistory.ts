@@ -361,12 +361,20 @@ function createOperationSummaries(
         const sketchId = op.id ?? createdSketchRef?.id;
         const target = op.referenceName
           ? `named reference ${op.referenceName}`
-          : op.faceStableId;
+          : op.topologyAnchorId
+            ? `topology anchor ${op.topologyAnchorId}`
+            : op.faceStableId;
 
         return createSketchOperationSummary({
           op: op.op,
           label: `Create sketch ${sketchId ?? "with generated ID"} on ${target}`,
-          sketchId
+          sketchId,
+          ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+          ...(op.faceStableId ? { stableId: op.faceStableId } : {}),
+          ...(op.referenceName ? { referenceName: op.referenceName } : {}),
+          ...(op.topologyAnchorId
+            ? { topologyAnchorId: op.topologyAnchorId }
+            : {})
         });
       }
 
@@ -900,7 +908,13 @@ function createSketchOperationSummary(
       ? { sketchEntityKind: summary.sketchEntityKind }
       : {}),
     ...(summary.featureId ? { featureId: summary.featureId } : {}),
-    ...(summary.bodyId ? { bodyId: summary.bodyId } : {})
+    ...(summary.bodyId ? { bodyId: summary.bodyId } : {}),
+    ...(summary.stableId ? { stableId: summary.stableId } : {}),
+    ...(summary.referenceName ? { referenceName: summary.referenceName } : {}),
+    ...(summary.topologyAnchorId
+      ? { topologyAnchorId: summary.topologyAnchorId }
+      : {}),
+    ...(summary.checkpointId ? { checkpointId: summary.checkpointId } : {})
   };
 }
 

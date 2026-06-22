@@ -3152,6 +3152,98 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes sketch.createOnFace with a topology anchor through cad.batch", () => {
+    const server = new CadMcpServer();
+
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_create_on_anchor_face",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "anchor_profile_sketch",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "anchor_profile_sketch",
+              id: "anchor_profile_rect",
+              center: [0, 0],
+              width: 2,
+              height: 3
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_anchor_profile",
+              bodyId: "body_anchor_profile",
+              sketchId: "anchor_profile_sketch",
+              entityId: "anchor_profile_rect",
+              depth: 4
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_anchor_profile",
+              bodyId: "body_anchor_profile",
+              sourceFeatureId: "feat_anchor_profile",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "7777777777777777777777777777777777777777777777777777777777777777"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_profile_end_face",
+              entityKind: "face",
+              bodyId: "body_anchor_profile",
+              checkpointId: "checkpoint_anchor_profile",
+              checkpointEntityId: "checkpoint-local-end-face",
+              sourceFeatureId: "feat_anchor_profile",
+              stableId: "generated:face:body_anchor_profile:endCap"
+            },
+            {
+              op: "sketch.createOnFace",
+              id: "anchor_face_sketch",
+              name: "Anchor face sketch",
+              topologyAnchorId: "anchor_profile_end_face"
+            }
+          ]
+        }
+      }
+    });
+    const get = server.callTool({
+      name: "cad.sketch_get",
+      requestId: "mcp_req_anchor_face_sketch_get",
+      arguments: { id: "anchor_face_sketch" }
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdSketchIds: ["anchor_profile_sketch", "anchor_face_sketch"],
+      createdFeatureIds: ["feat_anchor_profile"],
+      createdBodyIds: ["body_anchor_profile"]
+    });
+    expect(get.structuredContent).toMatchObject({
+      ok: true,
+      sketch: {
+        id: "anchor_face_sketch",
+        attachment: {
+          kind: "generatedFace",
+          bodyId: "body_anchor_profile",
+          faceStableId: "generated:face:body_anchor_profile:endCap",
+          faceRole: "endCap"
+        }
+      }
+    });
+  });
+
   it("returns generated body references through cad.body_generated_references", () => {
     const server = new CadMcpServer();
 

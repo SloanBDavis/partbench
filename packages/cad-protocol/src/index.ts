@@ -421,6 +421,7 @@ export interface SketchCreateOnFaceOp {
   readonly bodyId?: BodyId;
   readonly faceStableId?: string;
   readonly referenceName?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
 }
 
 export interface SketchRenameOp {

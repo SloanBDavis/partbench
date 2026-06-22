@@ -1322,6 +1322,12 @@ describe("cad-protocol", () => {
       name: "Named face sketch",
       referenceName: "Mounting face"
     };
+    const topologyAnchorFaceOp: CadOp = {
+      op: "sketch.createOnFace",
+      id: "sketch_anchor_face_1",
+      name: "Anchor face sketch",
+      topologyAnchorId: "anchor_face_1"
+    };
     const addExtrudeOp: CadOp = {
       op: "feature.extrude",
       id: "feat_add",
@@ -1335,6 +1341,10 @@ describe("cad-protocol", () => {
     expect(namedFaceOp).toMatchObject({
       op: "sketch.createOnFace",
       referenceName: "Mounting face"
+    });
+    expect(topologyAnchorFaceOp).toMatchObject({
+      op: "sketch.createOnFace",
+      topologyAnchorId: "anchor_face_1"
     });
     expect(addExtrudeOp).toMatchObject({
       op: "feature.extrude",
@@ -3602,7 +3612,7 @@ describe("cad-protocol", () => {
       query: "selection.referenceCandidates",
       cadOpsVersion: "cadops.v1",
       selection: { type: "topologyAnchor", anchorId: "anchor_face_1" },
-      requiredOperation: "feature.measureReference",
+      requiredOperation: "feature.attachSketchPlane",
       status: "resolved",
       candidateCount: 1,
       candidates: [
@@ -3640,6 +3650,7 @@ describe("cad-protocol", () => {
           },
           commandable: true,
           commandOperations: [
+            "feature.attachSketchPlane",
             "feature.measureReference",
             "feature.selectReference"
           ],

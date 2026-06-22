@@ -4003,6 +4003,67 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes sketch.createOnFace with a topology anchor through JSON batch dry-run and commit", () => {
+    const engine = createTopologyAnchorEngine();
+    const op = {
+      op: "sketch.createOnFace" as const,
+      id: "sketch_anchor_face",
+      name: "Anchor face sketch",
+      topologyAnchorId: "anchor_face_1"
+    };
+    const dryRun = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_create_on_anchor_face_dry",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      batch: {
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [op]
+      }
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_anchor_face"],
+      review: {
+        operations: [
+          expect.objectContaining({
+            op: "sketch.createOnFace",
+            topologyAnchorId: "anchor_face_1",
+            label:
+              "Create sketch sketch_anchor_face on topology anchor anchor_face_1"
+          })
+        ]
+      }
+    });
+
+    const commit = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_create_on_anchor_face_commit",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [op]
+      }
+    });
+
+    expect(commit).toMatchObject({
+      ok: true,
+      mode: "commit",
+      createdSketchIds: ["sketch_anchor_face"]
+    });
+    expect(
+      engine.getDocument().sketches.get("sketch_anchor_face")
+    ).toMatchObject({
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+  });
+
   it("returns generated body references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

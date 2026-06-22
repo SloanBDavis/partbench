@@ -4078,10 +4078,11 @@ function applyOperation(
 
     case "sketch.createOnFace": {
       const face = validateSketchAttachmentFace(state, op, opIndex);
+      const target = resolveSketchAttachmentFaceTarget(state, op, opIndex);
       const sketch: Sketch = {
         id: op.id ?? createSketchId(),
         name: normalizeSketchName(op.name, opIndex, op.id),
-        plane: createSketchPlaneFromFaceReference(face, opIndex),
+        plane: createSketchPlaneFromFaceReference(face, target.path, opIndex),
         attachment: createSketchFaceAttachment(face),
         entities: new Map()
       };
@@ -11164,7 +11165,9 @@ function validateSketchAttachmentFace(
       result.error,
       opIndex,
       target.path,
-      target.referenceName
+      target.referenceName,
+      target.topologyAnchorId,
+      target.checkpointId
     );
   }
 
@@ -11178,21 +11181,28 @@ function resolveSketchAttachmentFaceTarget(
 ): {
   readonly bodyId: BodyId;
   readonly stableId: string;
-  readonly path: "faceStableId" | "referenceName";
+  readonly path: "faceStableId" | "referenceName" | "topologyAnchorId";
   readonly referenceName?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
 } {
   if (op.referenceName !== undefined) {
     const name = normalizeNamedReferenceName(op.referenceName, opIndex);
 
-    if (op.bodyId !== undefined || op.faceStableId !== undefined) {
+    if (
+      op.bodyId !== undefined ||
+      op.faceStableId !== undefined ||
+      op.topologyAnchorId !== undefined
+    ) {
       throwValidationError({
         code: "INVALID_REFERENCE_NAME",
         message:
-          "sketch.createOnFace must use either referenceName or bodyId with faceStableId.",
+          "sketch.createOnFace must use referenceName, topologyAnchorId, or bodyId with faceStableId.",
         opIndex,
         referenceName: name,
         path: operationPath(opIndex, "referenceName"),
-        expected: "referenceName without bodyId or faceStableId",
+        expected:
+          "referenceName without bodyId, faceStableId, or topologyAnchorId",
         received: "mixed generated reference inputs"
       });
     }
@@ -11219,11 +11229,124 @@ function resolveSketchAttachmentFaceTarget(
     };
   }
 
+  if (op.topologyAnchorId !== undefined) {
+    const anchorId = op.topologyAnchorId.trim();
+
+    if (op.bodyId !== undefined || op.faceStableId !== undefined) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message:
+          "sketch.createOnFace must use topologyAnchorId without bodyId, faceStableId, or referenceName.",
+        opIndex,
+        topologyAnchorId: anchorId || op.topologyAnchorId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "topologyAnchorId without generated reference inputs",
+        received: "mixed topology anchor inputs"
+      });
+    }
+
+    if (anchorId.length === 0) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: "Topology anchor ID must be non-empty.",
+        opIndex,
+        topologyAnchorId: op.topologyAnchorId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "non-empty topology anchor id",
+        received: describeReceived(op.topologyAnchorId)
+      });
+    }
+
+    const topologyIdentity = state.topologyIdentity;
+    const anchor = topologyIdentity?.anchors.find(
+      (candidate) => candidate.anchorId === anchorId
+    );
+
+    if (!topologyIdentity || !anchor) {
+      throwValidationError({
+        code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+        message: `Topology anchor does not exist: ${anchorId}`,
+        opIndex,
+        topologyAnchorId: anchorId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "existing topology anchor",
+        received: anchorId
+      });
+    }
+
+    const checkpoint = topologyIdentity.checkpoints.find(
+      (candidate) => candidate.checkpointId === anchor.checkpointId
+    );
+
+    if (!checkpoint) {
+      throwValidationError({
+        code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
+        message: `Topology checkpoint does not exist: ${anchor.checkpointId}`,
+        opIndex,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "existing topology checkpoint",
+        received: anchor.checkpointId
+      });
+    }
+
+    if (checkpoint.status !== "active" || anchor.state !== "active") {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: `Topology anchor ${anchor.anchorId} is not active.`,
+        opIndex,
+        bodyId: anchor.bodyId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "active topology anchor and checkpoint",
+        received: `anchor:${anchor.state}, checkpoint:${checkpoint.status}`
+      });
+    }
+
+    if (anchor.entityKind !== "face") {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: `Topology anchor ${anchor.anchorId} is ${anchor.entityKind}, not a face.`,
+        opIndex,
+        bodyId: anchor.bodyId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "face topology anchor",
+        received: anchor.entityKind
+      });
+    }
+
+    if (!anchor.stableId) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: `Topology anchor ${anchor.anchorId} does not have a stable generated face backing.`,
+        opIndex,
+        bodyId: anchor.bodyId,
+        topologyAnchorId: anchor.anchorId,
+        checkpointId: anchor.checkpointId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "stable generated face backing",
+        received: "missing stableId"
+      });
+    }
+
+    return {
+      bodyId: anchor.bodyId,
+      stableId: anchor.stableId,
+      path: "topologyAnchorId",
+      topologyAnchorId: anchor.anchorId,
+      checkpointId: anchor.checkpointId
+    };
+  }
+
   if (op.bodyId === undefined || op.faceStableId === undefined) {
     throwValidationError({
       code: "GENERATED_REFERENCE_NOT_FOUND",
       message:
-        "sketch.createOnFace requires bodyId with faceStableId, or referenceName.",
+        "sketch.createOnFace requires bodyId with faceStableId, referenceName, or topologyAnchorId.",
       opIndex,
       bodyId: op.bodyId,
       stableId: op.faceStableId,
@@ -11231,11 +11354,12 @@ function resolveSketchAttachmentFaceTarget(
         opIndex,
         op.bodyId === undefined ? "bodyId" : "faceStableId"
       ),
-      expected: "bodyId and faceStableId, or referenceName",
+      expected: "bodyId and faceStableId, referenceName, or topologyAnchorId",
       received: describeReceived({
         bodyId: op.bodyId,
         faceStableId: op.faceStableId,
-        referenceName: op.referenceName
+        referenceName: op.referenceName,
+        topologyAnchorId: op.topologyAnchorId
       })
     });
   }
@@ -11816,6 +11940,11 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
             }
           )
         ];
+  const supportedCommandOperations =
+    createTopologyAnchorGeneratedReferenceCommandOperations(
+      commandOperations,
+      resolution.reference
+    );
 
   return createSingleSelectionReferenceCandidate({
     source: "topologyAnchorSelection",
@@ -11824,10 +11953,27 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     reference: resolution.reference,
     requiredOperation: options.requiredOperation,
     extraIssues,
-    commandOperations,
+    commandOperations: supportedCommandOperations,
     topologyAnchorId: anchor.anchorId,
     checkpointId: anchor.checkpointId
   });
+}
+
+function createTopologyAnchorGeneratedReferenceCommandOperations(
+  anchorOperations: readonly CadSelectionReferenceOperation[],
+  reference: CadGeneratedReference
+): readonly CadSelectionReferenceOperation[] {
+  const operations = [
+    ...(reference.kind === "face" &&
+    reference.eligibleOperations.includes("feature.attachSketchPlane")
+      ? ([
+          "feature.attachSketchPlane"
+        ] satisfies readonly CadSelectionReferenceOperation[])
+      : []),
+    ...anchorOperations
+  ];
+
+  return [...new Set(operations)];
 }
 
 function createSingleSelectionReferenceCandidate(options: {
@@ -12163,8 +12309,11 @@ function throwGeneratedReferenceValidationError(
     | "edgeStableId"
     | "faceStableId"
     | "stableId"
-    | "referenceName" = "faceStableId",
-  referenceName?: NamedReferenceName
+    | "referenceName"
+    | "topologyAnchorId" = "faceStableId",
+  referenceName?: NamedReferenceName,
+  topologyAnchorId?: string,
+  checkpointId?: string
 ): never {
   throwValidationError({
     code: error.code,
@@ -12173,13 +12322,17 @@ function throwGeneratedReferenceValidationError(
     bodyId: error.bodyId,
     stableId: error.stableId,
     ...(referenceName ? { referenceName } : {}),
+    ...(topologyAnchorId ? { topologyAnchorId } : {}),
+    ...(checkpointId ? { checkpointId } : {}),
     path: operationPath(
       opIndex,
       error.code === "BODY_NOT_FOUND" ||
         error.code === "UNSUPPORTED_BODY_REFERENCES"
         ? stableIdPath === "referenceName"
           ? "referenceName"
-          : "bodyId"
+          : stableIdPath === "topologyAnchorId"
+            ? "topologyAnchorId"
+            : "bodyId"
         : stableIdPath
     ),
     expected: describeGeneratedReferenceValidationExpected(error),
@@ -12221,6 +12374,7 @@ function describeGeneratedReferenceValidationReceived(
 
 function createSketchPlaneFromFaceReference(
   face: CadGeneratedFaceReference,
+  path: "faceStableId" | "referenceName" | "topologyAnchorId" = "faceStableId",
   opIndex?: number
 ): SketchPlane {
   const normal = face.geometricSignature.normal;
@@ -12232,7 +12386,7 @@ function createSketchPlaneFromFaceReference(
       opIndex,
       bodyId: face.bodyId,
       stableId: face.stableId,
-      path: operationPath(opIndex, "faceStableId"),
+      path: operationPath(opIndex, path),
       expected: "planar generated face reference",
       received: face.stableId
     });
@@ -12258,7 +12412,7 @@ function createSketchPlaneFromFaceReference(
     opIndex,
     bodyId: face.bodyId,
     stableId: face.stableId,
-    path: operationPath(opIndex, "faceStableId"),
+    path: operationPath(opIndex, path),
     expected: "axis-aligned planar generated face reference",
     received: JSON.stringify(normal)
   });
@@ -21913,16 +22067,23 @@ function isCadOp(value: unknown): value is CadOp {
     const hasGeneratedReference =
       typeof value.bodyId === "string" &&
       typeof value.faceStableId === "string" &&
-      value.referenceName === undefined;
+      value.referenceName === undefined &&
+      value.topologyAnchorId === undefined;
     const hasNamedReference =
       typeof value.referenceName === "string" &&
       value.bodyId === undefined &&
-      value.faceStableId === undefined;
+      value.faceStableId === undefined &&
+      value.topologyAnchorId === undefined;
+    const hasTopologyAnchor =
+      typeof value.topologyAnchorId === "string" &&
+      value.bodyId === undefined &&
+      value.faceStableId === undefined &&
+      value.referenceName === undefined;
 
     return (
       isOptionalString(value.id) &&
       typeof value.name === "string" &&
-      (hasGeneratedReference || hasNamedReference)
+      (hasGeneratedReference || hasNamedReference || hasTopologyAnchor)
     );
   }
 
