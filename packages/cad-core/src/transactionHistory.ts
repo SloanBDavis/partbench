@@ -766,9 +766,17 @@ function createOperationSummaries(
           op: op.op,
           label: `Repair named ${kindLabel}reference ${op.name}`,
           referenceName: op.name,
-          bodyId: op.bodyId,
-          stableId: op.stableId,
-          generatedReferenceKind: repairedNamedReferenceRef?.after.kind
+          bodyId: repairedNamedReferenceRef?.after.bodyId ?? op.bodyId,
+          stableId: repairedNamedReferenceRef?.after.stableId ?? op.stableId,
+          generatedReferenceKind: repairedNamedReferenceRef?.after.kind,
+          ...((repairedNamedReferenceRef?.after.topologyAnchorId ??
+          op.topologyAnchorId)
+            ? {
+                topologyAnchorId:
+                  repairedNamedReferenceRef?.after.topologyAnchorId ??
+                  op.topologyAnchorId
+              }
+            : {})
         });
       }
 

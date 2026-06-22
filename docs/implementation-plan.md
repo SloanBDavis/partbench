@@ -2400,10 +2400,11 @@ Use these decisions when drafting or implementing V13 tranches:
    repair records and retargets the anchor to a replacement checkpoint entity.
    These commands support dry-run/commit through CADOps, emit semantic diffs,
    participate in undo/redo and transaction-history summaries, and preserve
-   source-boundary validation. UI repair affordances, named-reference repair to
-   topology-anchor targets, checkpoint payload byte generation, checkpoint
-   payload entity validation, and command-time topology-anchor eligibility
-   remain later V13 work.
+   source-boundary validation. UI repair affordances, checkpoint payload byte
+   generation, checkpoint payload entity validation, and command-time
+   topology-anchor eligibility remain later V13 work. Named-reference repair to
+   topology-anchor targets is implemented separately through the Tranche I
+   command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
    Families** - `body.topologyIdentity` now derives non-mutating topology
    identity candidates from authoritative source, generated-reference
@@ -2432,13 +2433,18 @@ Use these decisions when drafting or implementing V13 tranches:
    `feature.fillet` can be consumed by those edge-finish commands; committed
    features store the resolved generated edge plus topology-anchor provenance
    for transaction, health, dependency, import, export, and UI helper surfaces.
+   Existing named generated references can be explicitly repaired to stable
+   active topology anchors through `reference.repairName`; committed named
+   references store the resolved generated target plus topology-anchor
+   provenance for semantic diffs, transaction history, reference health,
+   dependency graph, import/export, agent, MCP, and app helper surfaces.
    Metadata-only anchors remain health-only until a direct topology-anchor
    command target exists. Missing, stale, replaced, ambiguous, deleted,
    unsupported, and repair-needed anchors remain non-commandable with
    structured diagnostics. Downstream cut/add retargeting, automatic selection
-   routing beyond stable generated-reference backing, named-reference repair to
-   topology-anchor targets, and direct topology-anchor command targets without
-   generated backing remain later V13 work.
+   routing beyond stable generated-reference backing, and direct
+   topology-anchor command targets without generated backing remain later V13
+   work.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint

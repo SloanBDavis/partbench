@@ -33,6 +33,7 @@ import {
   buildNameGeneratedReferenceOp,
   buildParameterEditOps,
   buildRepairNamedReferenceOp,
+  buildRepairNamedReferenceToTopologyAnchorOp,
   buildCreateSketchOnFaceOp,
   buildDeleteObjectOp,
   buildDeleteSketchEntityOp,
@@ -251,6 +252,16 @@ describe("cad command builders", () => {
       name: "Mounting face",
       bodyId: "body_2",
       stableId: "generated:face:body_2:endCap"
+    });
+    expect(
+      buildRepairNamedReferenceToTopologyAnchorOp(
+        " Mounting face ",
+        " anchor_face_1 "
+      )
+    ).toEqual({
+      op: "reference.repairName",
+      name: "Mounting face",
+      topologyAnchorId: "anchor_face_1"
     });
     expect(
       buildUpdateSketchEntityOp("sketch_1", {

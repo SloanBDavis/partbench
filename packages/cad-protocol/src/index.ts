@@ -697,8 +697,9 @@ export interface ReferenceNameGeneratedOp {
 export interface ReferenceRepairNameOp {
   readonly op: "reference.repairName";
   readonly name: NamedReferenceName;
-  readonly bodyId: BodyId;
-  readonly stableId: string;
+  readonly bodyId?: BodyId;
+  readonly stableId?: string;
+  readonly topologyAnchorId?: string;
 }
 
 export interface ReferenceDeleteNameOp {
@@ -836,6 +837,7 @@ export interface CadNamedReferenceRef {
   readonly bodyId: BodyId;
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
 }
 
 export interface CadTopologyCheckpointRef {
@@ -3527,6 +3529,7 @@ export interface NamedGeneratedReferenceSnapshot {
   readonly bodyId: BodyId;
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
 }
 
 export type NamedGeneratedReferenceStatus = "resolved" | "stale";
@@ -4133,6 +4136,7 @@ export interface CadNamedReferenceHealth {
   readonly bodyId: BodyId;
   readonly stableId: string;
   readonly kind: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
   readonly status: CadDependencyHealthStatus;
   readonly resolvedKind?: CadGeneratedEntityKind;
   readonly issues: readonly CadDependencyHealthIssue[];

@@ -285,8 +285,24 @@ function buildDependencyGraph(
       bodyId: reference.bodyId,
       stableId: reference.stableId,
       referenceName: reference.name,
-      generatedReferenceKind: reference.kind
+      generatedReferenceKind: reference.kind,
+      ...(reference.topologyAnchorId
+        ? { topologyAnchorId: reference.topologyAnchorId }
+        : {})
     });
+
+    if (reference.topologyAnchorId) {
+      addEdge(edges, {
+        kind: "dependsOn",
+        from: namedReferenceNodeId(reference.name),
+        to: topologyAnchorNodeId(reference.topologyAnchorId),
+        label: "depends on topology anchor",
+        bodyId: reference.bodyId,
+        stableId: reference.stableId,
+        referenceName: reference.name,
+        topologyAnchorId: reference.topologyAnchorId
+      });
+    }
 
     if (
       nodes.has(generatedReferenceNodeId(reference.bodyId, reference.stableId))
@@ -1126,6 +1142,9 @@ function createNamedReferenceEntry(args: {
     stableId: args.reference.stableId,
     kind: args.kind ?? args.reference.kind,
     referenceName: args.reference.name,
+    ...(args.reference.topologyAnchorId
+      ? { topologyAnchorId: args.reference.topologyAnchorId }
+      : {}),
     ...(args.sourceFeatureId ? { sourceFeatureId: args.sourceFeatureId } : {}),
     ...(args.consumedByFeatureId
       ? { consumedByFeatureId: args.consumedByFeatureId }

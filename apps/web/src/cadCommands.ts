@@ -959,6 +959,17 @@ export function buildRepairNamedReferenceOp(
   };
 }
 
+export function buildRepairNamedReferenceToTopologyAnchorOp(
+  name: string,
+  topologyAnchorId: string
+): ReferenceRepairNameOp {
+  return {
+    op: "reference.repairName",
+    name: name.trim(),
+    topologyAnchorId: topologyAnchorId.trim()
+  };
+}
+
 export function buildDeleteNamedReferenceOp(
   name: string
 ): ReferenceDeleteNameOp {

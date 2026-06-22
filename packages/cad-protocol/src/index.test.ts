@@ -1385,6 +1385,15 @@ describe("cad-protocol", () => {
       op: "reference.repairName",
       name: "Mounting face"
     });
+    const repairNamedReferenceToAnchorOp: CadOp = {
+      op: "reference.repairName",
+      name: "Mounting face",
+      topologyAnchorId: "anchor_face_1"
+    };
+    expect(repairNamedReferenceToAnchorOp).toMatchObject({
+      op: "reference.repairName",
+      topologyAnchorId: "anchor_face_1"
+    });
     const topologyCheckpointCreateOp: CadOp = {
       op: "topology.checkpoint.create",
       checkpointId: "checkpoint_1",

@@ -2035,18 +2035,26 @@ function createOperationReview(
         stableId: op.stableId
       };
 
-    case "reference.repairName":
+    case "reference.repairName": {
+      const target = op.topologyAnchorId
+        ? `topology anchor ${op.topologyAnchorId}`
+        : `${op.stableId} on ${op.bodyId}`;
+
       return {
         ...operationReviewBase(
           index,
           op,
           "modify",
-          `Repair named reference ${op.name} to ${op.stableId} on ${op.bodyId}`
+          `Repair named reference ${op.name} to ${target}`
         ),
         referenceName: op.name,
-        bodyId: op.bodyId,
-        stableId: op.stableId
+        ...(op.bodyId ? { bodyId: op.bodyId } : {}),
+        ...(op.stableId ? { stableId: op.stableId } : {}),
+        ...(op.topologyAnchorId
+          ? { topologyAnchorId: op.topologyAnchorId }
+          : {})
       };
+    }
 
     case "reference.deleteName":
       return {
@@ -4267,8 +4275,7 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "reference.repairName") {
     return (
       typeof value.name === "string" &&
-      typeof value.bodyId === "string" &&
-      typeof value.stableId === "string"
+      hasValidReferenceRepairTargetInput(value)
     );
   }
 
@@ -4510,6 +4517,21 @@ function hasExactlyOneEdgeReferenceInput(
     [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
       .length === 1
   );
+}
+
+function hasValidReferenceRepairTargetInput(
+  value: Record<string, unknown>
+): boolean {
+  const hasGeneratedTarget =
+    typeof value.bodyId === "string" &&
+    typeof value.stableId === "string" &&
+    value.topologyAnchorId === undefined;
+  const hasTopologyAnchorTarget =
+    typeof value.topologyAnchorId === "string" &&
+    value.bodyId === undefined &&
+    value.stableId === undefined;
+
+  return hasGeneratedTarget || hasTopologyAnchorTarget;
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

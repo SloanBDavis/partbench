@@ -4652,38 +4652,22 @@ function applyOperation(
         });
       }
 
-      const validation = validateGeneratedReference({
-        document: state,
-        ownerPartId: DEFAULT_PART_ID,
-        bodyId: op.bodyId,
-        stableId: op.stableId,
-        expectedKind: before.kind,
-        bodyExists: (bodyId) => documentBodyExists(state, bodyId),
-        requiredOperation: "feature.selectReference"
-      });
-
-      if (!validation.ok) {
-        throwRepairGeneratedReferenceValidationError(
-          state,
-          validation.error,
-          opIndex,
-          name
-        );
-      }
-
-      assertRepairTargetBodyActive(
+      const repairTarget = resolveNamedReferenceRepairTarget(
         state,
-        op.bodyId,
-        op.stableId,
+        op,
+        before,
         name,
         opIndex
       );
 
       const after: NamedGeneratedReferenceSnapshot = {
         name,
-        bodyId: op.bodyId,
-        stableId: op.stableId,
-        kind: validation.kind
+        bodyId: repairTarget.bodyId,
+        stableId: repairTarget.stableId,
+        kind: repairTarget.kind,
+        ...(repairTarget.topologyAnchorId
+          ? { topologyAnchorId: repairTarget.topologyAnchorId }
+          : {})
       };
       assertNamedReferenceRepairConsumers(state, before, after, opIndex);
       state.namedReferences.set(name, after);
@@ -11478,12 +11462,149 @@ function documentBodyExists(
   );
 }
 
+function resolveNamedReferenceRepairTarget(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "reference.repairName" }>,
+  before: NamedGeneratedReferenceSnapshot,
+  referenceName: NamedReferenceName,
+  opIndex?: number
+): {
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly kind: CadGeneratedEntityKind;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
+} {
+  const hasGeneratedTarget =
+    op.bodyId !== undefined || op.stableId !== undefined;
+
+  if (op.topologyAnchorId !== undefined) {
+    if (hasGeneratedTarget) {
+      throwValidationError({
+        code: "INVALID_OPERATION",
+        message:
+          "reference.repairName must use topologyAnchorId without bodyId or stableId.",
+        opIndex,
+        referenceName,
+        topologyAnchorId: op.topologyAnchorId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "topologyAnchorId without generated reference inputs",
+        received: describeReceived({
+          bodyId: op.bodyId,
+          stableId: op.stableId,
+          topologyAnchorId: op.topologyAnchorId
+        })
+      });
+    }
+
+    const target = resolveActiveTopologyAnchorStableTarget(
+      state,
+      op.topologyAnchorId,
+      before.kind,
+      opIndex
+    );
+    const validation = validateGeneratedReference({
+      document: state,
+      ownerPartId: DEFAULT_PART_ID,
+      bodyId: target.bodyId,
+      stableId: target.stableId,
+      expectedKind: before.kind,
+      bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+      requiredOperation: "feature.selectReference"
+    });
+
+    if (!validation.ok) {
+      throwRepairGeneratedReferenceValidationError(
+        state,
+        validation.error,
+        opIndex,
+        referenceName,
+        "topologyAnchorId",
+        target.topologyAnchorId,
+        target.checkpointId
+      );
+    }
+
+    assertRepairTargetBodyActive(
+      state,
+      target.bodyId,
+      target.stableId,
+      referenceName,
+      opIndex,
+      "topologyAnchorId",
+      target.topologyAnchorId,
+      target.checkpointId
+    );
+
+    return {
+      bodyId: target.bodyId,
+      stableId: target.stableId,
+      kind: validation.kind,
+      topologyAnchorId: target.topologyAnchorId,
+      checkpointId: target.checkpointId
+    };
+  }
+
+  if (op.bodyId === undefined || op.stableId === undefined) {
+    throwValidationError({
+      code: "INVALID_OPERATION",
+      message:
+        "reference.repairName requires bodyId and stableId, or topologyAnchorId.",
+      opIndex,
+      referenceName,
+      path: operationPath(opIndex),
+      expected: "bodyId and stableId, or topologyAnchorId",
+      received: describeReceived({
+        bodyId: op.bodyId,
+        stableId: op.stableId,
+        topologyAnchorId: op.topologyAnchorId
+      })
+    });
+  }
+
+  const validation = validateGeneratedReference({
+    document: state,
+    ownerPartId: DEFAULT_PART_ID,
+    bodyId: op.bodyId,
+    stableId: op.stableId,
+    expectedKind: before.kind,
+    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
+    requiredOperation: "feature.selectReference"
+  });
+
+  if (!validation.ok) {
+    throwRepairGeneratedReferenceValidationError(
+      state,
+      validation.error,
+      opIndex,
+      referenceName
+    );
+  }
+
+  assertRepairTargetBodyActive(
+    state,
+    op.bodyId,
+    op.stableId,
+    referenceName,
+    opIndex
+  );
+
+  return {
+    bodyId: op.bodyId,
+    stableId: op.stableId,
+    kind: validation.kind
+  };
+}
+
 function assertRepairTargetBodyActive(
   state: MutableDocumentState,
   bodyId: BodyId,
   stableId: string,
   referenceName: NamedReferenceName,
-  opIndex?: number
+  opIndex?: number,
+  path: "bodyId" | "topologyAnchorId" = "bodyId",
+  topologyAnchorId?: string,
+  checkpointId?: string
 ): void {
   const body = createProjectStructure(state, []).bodies.find(
     (candidate) => candidate.id === bodyId
@@ -11500,7 +11621,9 @@ function assertRepairTargetBodyActive(
     bodyId,
     stableId,
     referenceName,
-    path: operationPath(opIndex, "bodyId"),
+    ...(topologyAnchorId ? { topologyAnchorId } : {}),
+    ...(checkpointId ? { checkpointId } : {}),
+    path: operationPath(opIndex, path),
     expected: "active command-ready generated reference target",
     received: `consumed by ${body.consumedByFeatureId}`
   });
@@ -11556,7 +11679,10 @@ function throwRepairGeneratedReferenceValidationError(
   state: MutableDocumentState,
   error: GeneratedReferenceValidationError,
   opIndex: number | undefined,
-  referenceName: NamedReferenceName
+  referenceName: NamedReferenceName,
+  stableIdPath: "stableId" | "topologyAnchorId" = "stableId",
+  topologyAnchorId?: string,
+  checkpointId?: string
 ): never {
   const body = createProjectStructure(state, []).bodies.find(
     (candidate) => candidate.id === error.bodyId
@@ -11576,7 +11702,12 @@ function throwRepairGeneratedReferenceValidationError(
       bodyId: error.bodyId,
       stableId: error.stableId,
       referenceName,
-      path: operationPath(opIndex, "bodyId"),
+      ...(topologyAnchorId ? { topologyAnchorId } : {}),
+      ...(checkpointId ? { checkpointId } : {}),
+      path: operationPath(
+        opIndex,
+        stableIdPath === "topologyAnchorId" ? "topologyAnchorId" : "bodyId"
+      ),
       expected: "command-ready source-semantic generated reference",
       received: `${feature.operationMode} extrude result`
     });
@@ -11585,8 +11716,10 @@ function throwRepairGeneratedReferenceValidationError(
   throwGeneratedReferenceValidationError(
     error,
     opIndex,
-    "stableId",
-    referenceName
+    stableIdPath,
+    referenceName,
+    topologyAnchorId,
+    checkpointId
   );
 }
 
@@ -11864,7 +11997,8 @@ function createSelectionReferenceCandidates(
     selection,
     body,
     reference: entry.reference,
-    requiredOperation
+    requiredOperation,
+    topologyAnchorId: entry.topologyAnchorId
   });
 }
 
@@ -12785,7 +12919,10 @@ function namedReferenceRef(
     name: reference.name,
     bodyId: reference.bodyId,
     stableId: reference.stableId,
-    kind: reference.kind
+    kind: reference.kind,
+    ...(reference.topologyAnchorId
+      ? { topologyAnchorId: reference.topologyAnchorId }
+      : {})
   };
 }
 
@@ -13948,7 +14085,10 @@ function cloneNamedReferenceSnapshot(
     name: reference.name,
     bodyId: reference.bodyId,
     stableId: reference.stableId,
-    kind: reference.kind
+    kind: reference.kind,
+    ...(reference.topologyAnchorId
+      ? { topologyAnchorId: reference.topologyAnchorId }
+      : {})
   };
 }
 
@@ -16398,7 +16538,8 @@ function namedReferencesEqual(
     left.name === right.name &&
     left.bodyId === right.bodyId &&
     left.stableId === right.stableId &&
-    left.kind === right.kind
+    left.kind === right.kind &&
+    left.topologyAnchorId === right.topologyAnchorId
   );
 }
 
@@ -20429,6 +20570,10 @@ function validateNamedReferenceSnapshots(
     const stableId =
       typeof value.stableId === "string" ? value.stableId : undefined;
     const kind = isGeneratedEntityKind(value.kind) ? value.kind : undefined;
+    const topologyAnchorId =
+      typeof value.topologyAnchorId === "string"
+        ? value.topologyAnchorId
+        : undefined;
 
     if (!name) {
       addProjectIssue(
@@ -20482,6 +20627,24 @@ function validateNamedReferenceSnapshots(
       );
     }
 
+    if (value.topologyAnchorId !== undefined) {
+      if (typeof value.topologyAnchorId !== "string") {
+        addProjectIssue(
+          issues,
+          "INVALID_NAMED_REFERENCE",
+          `${referencePath}.topologyAnchorId`,
+          "Named reference topologyAnchorId must be a string."
+        );
+      } else if (value.topologyAnchorId.trim() === "") {
+        addProjectIssue(
+          issues,
+          "INVALID_NAMED_REFERENCE",
+          `${referencePath}.topologyAnchorId`,
+          "Named reference topologyAnchorId must be a non-empty string."
+        );
+      }
+    }
+
     if (!name || !bodyId || !stableId || !kind) {
       continue;
     }
@@ -20500,7 +20663,8 @@ function validateNamedReferenceSnapshots(
       name,
       bodyId,
       stableId,
-      kind
+      kind,
+      ...(topologyAnchorId ? { topologyAnchorId } : {})
     });
   }
 
@@ -22518,8 +22682,7 @@ function isCadOp(value: unknown): value is CadOp {
   if (value.op === "reference.repairName") {
     return (
       typeof value.name === "string" &&
-      typeof value.bodyId === "string" &&
-      typeof value.stableId === "string"
+      hasValidReferenceRepairTargetInput(value)
     );
   }
 
@@ -22963,7 +23126,9 @@ function isCadNamedReferenceRef(value: unknown): value is CadNamedReferenceRef {
     typeof value.name === "string" &&
     typeof value.bodyId === "string" &&
     typeof value.stableId === "string" &&
-    isGeneratedEntityKind(value.kind)
+    isGeneratedEntityKind(value.kind) &&
+    (value.topologyAnchorId === undefined ||
+      typeof value.topologyAnchorId === "string")
   );
 }
 
@@ -23333,6 +23498,21 @@ function hasExactlyOneEdgeReferenceInput(
     [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
       .length === 1
   );
+}
+
+function hasValidReferenceRepairTargetInput(
+  value: Record<string, unknown>
+): boolean {
+  const hasGeneratedTarget =
+    typeof value.bodyId === "string" &&
+    typeof value.stableId === "string" &&
+    value.topologyAnchorId === undefined;
+  const hasTopologyAnchorTarget =
+    typeof value.topologyAnchorId === "string" &&
+    value.bodyId === undefined &&
+    value.stableId === undefined;
+
+  return hasGeneratedTarget || hasTopologyAnchorTarget;
 }
 
 function hasValidEdgeFinishFeatureReference(

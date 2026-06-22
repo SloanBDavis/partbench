@@ -1255,6 +1255,9 @@ function createNamedReferenceHealth(
     bodyId: reference.bodyId,
     stableId: reference.stableId,
     kind: reference.kind,
+    ...(reference.topologyAnchorId
+      ? { topologyAnchorId: reference.topologyAnchorId }
+      : {}),
     status: statusFromIssues(issues),
     ...(resolvedKind ? { resolvedKind } : {}),
     issues

@@ -3250,6 +3250,98 @@ describe("mcp-adapter", () => {
     });
   });
 
+  it("passes reference.repairName with a topology anchor through cad.batch", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_repair_named_anchor",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "anchor_named_sketch",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "anchor_named_sketch",
+              id: "anchor_named_rect",
+              center: [0, 0],
+              width: 2,
+              height: 3
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_anchor_named",
+              bodyId: "body_anchor_named",
+              sketchId: "anchor_named_sketch",
+              entityId: "anchor_named_rect",
+              depth: 4
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_anchor_named",
+              bodyId: "body_anchor_named",
+              sourceFeatureId: "feat_anchor_named",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "9999999999999999999999999999999999999999999999999999999999999999"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_named_end_face",
+              entityKind: "face",
+              bodyId: "body_anchor_named",
+              checkpointId: "checkpoint_anchor_named",
+              checkpointEntityId: "checkpoint-local-named-end-face",
+              sourceFeatureId: "feat_anchor_named",
+              stableId: "generated:face:body_anchor_named:endCap"
+            },
+            {
+              op: "reference.nameGenerated",
+              name: "MCP face",
+              bodyId: "body_anchor_named",
+              stableId: "generated:face:body_anchor_named:startCap"
+            },
+            {
+              op: "reference.repairName",
+              name: "MCP face",
+              topologyAnchorId: "anchor_named_end_face"
+            }
+          ]
+        }
+      }
+    });
+    const resolved = server.callTool({
+      name: "cad.resolve_named_reference",
+      requestId: "mcp_req_resolve_named_anchor",
+      arguments: { name: "MCP face" }
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_named"],
+      createdBodyIds: ["body_anchor_named"]
+    });
+    expect(resolved.structuredContent).toMatchObject({
+      ok: true,
+      target: {
+        bodyId: "body_anchor_named",
+        stableId: "generated:face:body_anchor_named:endCap",
+        topologyAnchorId: "anchor_named_end_face"
+      },
+      reference: { kind: "face", role: "endCap" }
+    });
+  });
+
   it("passes feature.chamfer with a topology edge anchor through cad.batch", () => {
     const server = new CadMcpServer();
     const commit = server.callTool({

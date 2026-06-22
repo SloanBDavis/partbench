@@ -4064,6 +4064,64 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes reference.repairName with a topology anchor through JSON batch commit", () => {
+    const engine = createTopologyAnchorEngine();
+    const response = executeCadOpsAgentRequest(engine, {
+      requestId: "agent_req_repair_name_to_anchor",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      permissions: { allowCommit: true },
+      batch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.nameGenerated",
+            name: "Top face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:startCap"
+          },
+          {
+            op: "reference.repairName",
+            name: "Top face",
+            topologyAnchorId: "anchor_face_1"
+          }
+        ]
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      mode: "commit",
+      review: {
+        operations: [
+          expect.objectContaining({
+            op: "reference.nameGenerated",
+            referenceName: "Top face"
+          }),
+          expect.objectContaining({
+            op: "reference.repairName",
+            referenceName: "Top face",
+            topologyAnchorId: "anchor_face_1",
+            label:
+              "Repair named reference Top face to topology anchor anchor_face_1"
+          })
+        ]
+      }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: {
+        stableId: "generated:face:body_rect_1:endCap",
+        topologyAnchorId: "anchor_face_1"
+      }
+    });
+  });
+
   it("passes edge-finish features with topology anchors through JSON batch commit", () => {
     const adapter = new CadOpsAgentAdapter();
     const response = JSON.parse(

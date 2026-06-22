@@ -31004,6 +31004,286 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("repairs named references to active topology face anchors", () => {
+    const engine = createTopologyAnchorEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+    const beforeJson = exportCadProjectJson(engine);
+    const op = {
+      op: "reference.repairName" as const,
+      name: "Top face",
+      topologyAnchorId: "anchor_face_1"
+    };
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [op]
+    });
+
+    expect(dryRun).toMatchObject({ ok: true, mode: "dryRun" });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: { stableId: "generated:face:body_rect_1:startCap" }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    const result = engine.apply(op);
+    expect(result.transaction.diff.references).toMatchObject({
+      namedRepaired: [
+        {
+          before: {
+            name: "Top face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:startCap",
+            kind: "face"
+          },
+          after: {
+            name: "Top face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face",
+            topologyAnchorId: "anchor_face_1"
+          }
+        }
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.resolveNamed", name: "Top face" }
+      })
+    ).toMatchObject({
+      ok: true,
+      target: {
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap",
+        kind: "face",
+        topologyAnchorId: "anchor_face_1"
+      },
+      reference: { kind: "face", role: "endCap" }
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: { query: "reference.listNamed" }
+      })
+    ).toMatchObject({
+      ok: true,
+      references: [
+        expect.objectContaining({
+          name: "Top face",
+          stableId: "generated:face:body_rect_1:endCap",
+          topologyAnchorId: "anchor_face_1",
+          status: "resolved"
+        })
+      ]
+    });
+    expect(
+      engine.executeQuery({
+        version: "cadops.v1",
+        query: {
+          query: "selection.referenceCandidates",
+          selection: { type: "namedReference", name: "Top face" },
+          requiredOperation: "feature.selectReference"
+        }
+      })
+    ).toMatchObject({
+      ok: true,
+      status: "resolved",
+      candidates: [
+        expect.objectContaining({
+          source: "namedReferenceSelection",
+          commandable: true,
+          target: expect.objectContaining({
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            kind: "face",
+            referenceName: "Top face",
+            topologyAnchorId: "anchor_face_1"
+          })
+        })
+      ]
+    });
+
+    const health = readProjectHealth(engine);
+    expect(health.namedReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Top face",
+          stableId: "generated:face:body_rect_1:endCap",
+          topologyAnchorId: "anchor_face_1",
+          status: "healthy"
+        })
+      ])
+    );
+
+    const graph = readProjectDependencyGraph(engine);
+    expect(graph.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "namedReference",
+          referenceName: "Top face",
+          topologyAnchorId: "anchor_face_1"
+        })
+      ])
+    );
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "dependsOn",
+          from: "named-reference:Top face",
+          to: "topology-anchor:anchor_face_1",
+          topologyAnchorId: "anchor_face_1"
+        }),
+        expect.objectContaining({
+          kind: "names",
+          from: "named-reference:Top face",
+          to: "generated-reference:body_rect_1:generated:face:body_rect_1:endCap",
+          referenceName: "Top face"
+        })
+      ])
+    );
+
+    const history = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "transaction.history" }
+    });
+    expect(history).toMatchObject({
+      ok: true,
+      transactions: expect.arrayContaining([
+        expect.objectContaining({
+          ops: expect.arrayContaining([
+            expect.objectContaining({
+              op: "reference.repairName",
+              referenceName: "Top face",
+              stableId: "generated:face:body_rect_1:endCap",
+              topologyAnchorId: "anchor_face_1"
+            })
+          ])
+        })
+      ])
+    });
+
+    const exportedProject = parseCadProjectJson(exportCadProjectJson(engine));
+    expect(exportedProject.schemaVersion).toBe(CAD_PROJECT_FORMAT_VERSION_V18);
+    expect(exportedProject.document.namedReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "Top face",
+          stableId: "generated:face:body_rect_1:endCap",
+          topologyAnchorId: "anchor_face_1"
+        })
+      ])
+    );
+    expect(
+      JSON.stringify({
+        transaction: result.transaction,
+        health,
+        graph,
+        history
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+  });
+
+  it("rejects topology anchor named-reference repairs without mutating source", () => {
+    const engine = createTopologyAnchorEngine();
+
+    engine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+    const beforeJson = exportCadProjectJson(engine);
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.repairName",
+            name: "Top face",
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            topologyAnchorId: "anchor_face_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_OPERATION",
+        topologyAnchorId: "anchor_face_1",
+        path: "$.ops[0].topologyAnchorId"
+      }
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.repairName",
+            name: "Top face",
+            topologyAnchorId: "missing_anchor"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+        topologyAnchorId: "missing_anchor",
+        path: "$.ops[0].topologyAnchorId"
+      }
+    });
+
+    const edgeAnchorEngine = createTopologyEdgeAnchorEngine();
+    edgeAnchorEngine.apply({
+      op: "reference.nameGenerated",
+      name: "Top face",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:startCap"
+    });
+    expect(
+      edgeAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "reference.repairName",
+            name: "Top face",
+            topologyAnchorId: "anchor_edge_1"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_edge_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "face topology anchor",
+        received: "edge"
+      }
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("creates chamfer and fillet features from active topology edge anchors", () => {
     const chamferEngine = createTopologyEdgeAnchorEngine();
     const beforeJson = exportCadProjectJson(chamferEngine);
