@@ -522,6 +522,7 @@ function SelectionReferenceContractCard({
           {operations.length > 0 ? operations.join(", ") : "No commands"}
         </small>
       )}
+      {primary?.topologyDetail && <small>{primary.topologyDetail}</small>}
       {issues.length > 0 && <p className="error-text compact">{issues[0]}</p>}
     </section>
   );

@@ -2460,9 +2460,11 @@ Use these decisions when drafting or implementing V13 tranches:
     implemented: `project.topologyIdentityReadiness` reports public checkpoint
     metadata and anchor descriptors from V18 source records, and the web
     Project/File panel shows compact topology identity status plus JSON
-    debug/interchange payload warnings. Selection, Inspector, Modeling,
-    viewport contextual-action, and browser repair/command workflow integration
-    remain later Tranche J work.
+    debug/interchange payload warnings. Selection/Inspector and Modeling
+    reference-status surfaces now show compact topology-anchor/checkpoint
+    provenance from `selection.referenceCandidates` without making React a
+    topology authority. Viewport contextual-action and browser repair/command
+    workflow integration remain later Tranche J work.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and

@@ -242,6 +242,7 @@ describe("generated reference selection helpers", () => {
         tone: "ready",
         title: "Face: Start cap",
         detail: "4 command-ready operations",
+        topologyDetail: undefined,
         stableId: "generated:face:body_1:startCap",
         commandOperations: [
           "reference.nameGenerated",
@@ -285,12 +286,62 @@ describe("generated reference selection helpers", () => {
         title: "Selection topology ambiguous",
         detail:
           "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting.",
+        topologyDetail: undefined,
         commandOperations: [],
         issues: [
           "Boolean result body body_cut is visible, but body-level modeling commands are not available. Select a command-ready result face or edge for sketching, naming, measuring, or inspecting."
         ]
       }
     ]);
+  });
+
+  it("summarizes topology-anchor-backed selection candidates without private ids", () => {
+    const references = createReferences();
+    const response: SelectionReferenceCandidatesQueryResponse = {
+      ok: true,
+      query: "selection.referenceCandidates",
+      cadOpsVersion: "cadops.v1",
+      selection: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        {
+          source: "topologyAnchorSelection",
+          target: {
+            type: "generatedReference",
+            bodyId: "body_1",
+            stableId: references.faces[0].stableId,
+            kind: "face",
+            topologyAnchorId: "anchor_face_1",
+            checkpointId: "checkpoint_1"
+          },
+          reference: references.faces[0],
+          commandable: true,
+          commandOperations: [
+            "reference.nameGenerated",
+            "feature.attachSketchPlane",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          label: references.faces[0].label,
+          description: references.faces[0].description,
+          issues: []
+        }
+      ],
+      issueCount: 0,
+      issues: []
+    };
+
+    const summaries = createSelectionReferenceCandidateSummaries(response);
+
+    expect(summaries[0]).toMatchObject({
+      tone: "ready",
+      title: "Face: Start cap",
+      topologyDetail: "Topology anchor-backed target with checkpoint evidence."
+    });
+    expect(JSON.stringify(summaries)).not.toMatch(
+      /checkpointEntityId|checkpoint-local|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
   });
 
   it("derives V7 operation availability from selection reference candidates", () => {

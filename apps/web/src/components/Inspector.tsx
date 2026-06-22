@@ -1063,6 +1063,12 @@ function SelectionReferenceContractPanel({
             <dt>Commands</dt>
             <dd>{operations.length > 0 ? operations.join(", ") : "None"}</dd>
           </div>
+          {primary.topologyDetail && (
+            <div>
+              <dt>Topology</dt>
+              <dd>{primary.topologyDetail}</dd>
+            </div>
+          )}
         </dl>
       )}
       {issues.length > 0 && <p className="error-text">{issues[0]}</p>}

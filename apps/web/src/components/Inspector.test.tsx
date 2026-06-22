@@ -402,6 +402,61 @@ describe("Inspector", () => {
     expect(markup).not.toContain("Fillet");
   });
 
+  it("renders topology-anchor-backed selected references in the reference contract", () => {
+    const face = createFace();
+    const edge = createEdge();
+    const faceCandidates = createSelectionReferenceCandidates(face, {
+      source: "topologyAnchorSelection",
+      topologyAnchorId: "anchor_face_1",
+      checkpointId: "checkpoint_1"
+    });
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, edge),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_rect",
+          stableId: face.stableId,
+          kind: "face"
+        },
+        selectionReferenceCandidates: faceCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Reference status");
+    expect(markup).toContain("Topology");
+    expect(markup).toContain(
+      "Topology anchor-backed target with checkpoint evidence."
+    );
+    expect(markup).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("renders generated references for non-extrude authored bodies", () => {
     const holeFeature = createHoleFeature();
     const markup = renderToStaticMarkup(
@@ -1043,6 +1098,9 @@ function createSelectionReferenceCandidates(
     readonly commandable?: boolean;
     readonly commandOperations?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["commandOperations"];
     readonly message?: string;
+    readonly source?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["source"];
+    readonly topologyAnchorId?: string;
+    readonly checkpointId?: string;
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
@@ -1075,12 +1133,18 @@ function createSelectionReferenceCandidates(
     candidateCount: 1,
     candidates: [
       {
-        source: "generatedReferenceSelection",
+        source: overrides.source ?? "generatedReferenceSelection",
         target: {
           type: "generatedReference",
           bodyId: reference.bodyId,
           stableId: reference.stableId,
-          kind: reference.kind
+          kind: reference.kind,
+          ...(overrides.topologyAnchorId
+            ? { topologyAnchorId: overrides.topologyAnchorId }
+            : {}),
+          ...(overrides.checkpointId
+            ? { checkpointId: overrides.checkpointId }
+            : {})
         },
         reference,
         commandable: overrides.commandable ?? true,

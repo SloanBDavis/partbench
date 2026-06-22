@@ -42,6 +42,7 @@ export interface SelectionReferenceCandidateSummary {
   readonly tone: "ready" | "warning" | "blocked";
   readonly title: string;
   readonly detail: string;
+  readonly topologyDetail?: string;
   readonly stableId?: string;
   readonly commandOperations: readonly CadSelectionReferenceOperation[];
   readonly issues: readonly string[];
@@ -243,6 +244,7 @@ export function createSelectionReferenceCandidateSummaries(
         tone: "blocked",
         title: formatSelectionReferenceStatus(response.status),
         detail: response.issues.map(formatSelectionReferenceIssue).join(" "),
+        topologyDetail: undefined,
         commandOperations: [],
         issues: response.issues.map(formatSelectionReferenceIssue)
       }
@@ -267,10 +269,29 @@ export function createSelectionReferenceCandidateSummary(
     detail:
       issueMessages[0] ??
       `${candidate.commandOperations.length} command-ready operation${candidate.commandOperations.length === 1 ? "" : "s"}`,
+    topologyDetail: createSelectionReferenceTopologyDetail(candidate),
     stableId: candidate.target.stableId,
     commandOperations: candidate.commandOperations,
     issues: issueMessages
   };
+}
+
+export function createSelectionReferenceTopologyDetail(
+  candidate: CadSelectionReferenceCandidate
+): string | undefined {
+  const usesTopologyAnchor =
+    candidate.source === "topologyAnchorSelection" ||
+    candidate.target.topologyAnchorId !== undefined;
+
+  if (!usesTopologyAnchor) {
+    return undefined;
+  }
+
+  if (candidate.target.checkpointId) {
+    return "Topology anchor-backed target with checkpoint evidence.";
+  }
+
+  return "Topology anchor-backed target.";
 }
 
 export function formatSelectionReferenceStatus(
