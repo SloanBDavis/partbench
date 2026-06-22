@@ -406,6 +406,16 @@ function addFeatureSourceEdges(
   }
 
   if (feature.kind === "chamfer" || feature.kind === "fillet") {
+    if (feature.topologyAnchorId) {
+      addEdge(edges, {
+        kind: "sources",
+        from: topologyAnchorNodeId(feature.topologyAnchorId),
+        to: featureNodeId(feature.id),
+        label: "topology anchor source",
+        sourceFeatureId: feature.id,
+        topologyAnchorId: feature.topologyAnchorId
+      });
+    }
     return;
   }
 

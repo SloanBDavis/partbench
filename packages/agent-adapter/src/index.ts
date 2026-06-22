@@ -1897,7 +1897,9 @@ function createOperationReview(
     case "feature.chamfer": {
       const target = op.namedReference
         ? `named reference ${op.namedReference}`
-        : op.edgeStableId;
+        : op.topologyAnchorId
+          ? `topology anchor ${op.topologyAnchorId}`
+          : op.edgeStableId;
 
       return {
         ...operationReviewBase(
@@ -1910,14 +1912,19 @@ function createOperationReview(
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
         targetBodyId: op.targetBodyId,
         ...(op.namedReference ? { referenceName: op.namedReference } : {}),
-        ...(op.edgeStableId ? { stableId: op.edgeStableId } : {})
+        ...(op.edgeStableId ? { stableId: op.edgeStableId } : {}),
+        ...(op.topologyAnchorId
+          ? { topologyAnchorId: op.topologyAnchorId }
+          : {})
       };
     }
 
     case "feature.fillet": {
       const target = op.namedReference
         ? `named reference ${op.namedReference}`
-        : op.edgeStableId;
+        : op.topologyAnchorId
+          ? `topology anchor ${op.topologyAnchorId}`
+          : op.edgeStableId;
 
       return {
         ...operationReviewBase(
@@ -1930,7 +1937,10 @@ function createOperationReview(
         ...(op.bodyId ? { bodyId: op.bodyId } : {}),
         targetBodyId: op.targetBodyId,
         ...(op.namedReference ? { referenceName: op.namedReference } : {}),
-        ...(op.edgeStableId ? { stableId: op.edgeStableId } : {})
+        ...(op.edgeStableId ? { stableId: op.edgeStableId } : {}),
+        ...(op.topologyAnchorId
+          ? { topologyAnchorId: op.topologyAnchorId }
+          : {})
       };
     }
 
@@ -4485,12 +4495,21 @@ function hasExactlyOneEdgeReferenceInput(
 ): boolean {
   const hasStableId =
     typeof value.edgeStableId === "string" &&
-    value.namedReference === undefined;
+    value.namedReference === undefined &&
+    value.topologyAnchorId === undefined;
   const hasNamedReference =
     typeof value.namedReference === "string" &&
-    value.edgeStableId === undefined;
+    value.edgeStableId === undefined &&
+    value.topologyAnchorId === undefined;
+  const hasTopologyAnchor =
+    typeof value.topologyAnchorId === "string" &&
+    value.edgeStableId === undefined &&
+    value.namedReference === undefined;
 
-  return hasStableId !== hasNamedReference;
+  return (
+    [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
+      .length === 1
+  );
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

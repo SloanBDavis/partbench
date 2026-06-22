@@ -11,6 +11,7 @@ import type {
   ProjectExactExportQueryResponse,
   ProjectDependencyGraphQueryResponse,
   ProjectExportReadinessQueryResponse,
+  ProjectHealthQueryResponse,
   ProjectPackageReadinessQueryResponse,
   ProjectRebuildPlanQueryResponse,
   ProjectStructureQueryResponse,
@@ -318,6 +319,83 @@ function createTopologyAnchorEngine(): CadEngine {
           sourceSemanticRole: "end cap",
           signatureHash: "face_signature_1",
           state: "active",
+          diagnostics: []
+        }
+      ]
+    }
+  });
+}
+
+function createTopologyEdgeAnchorEngine(
+  options: {
+    readonly anchorId?: string;
+    readonly entityKind?: "face" | "edge" | "vertex" | "body" | "axis";
+    readonly bodyId?: string;
+    readonly stableId?: string;
+    readonly checkpointStatus?:
+      | "active"
+      | "stale"
+      | "missing"
+      | "unsupported"
+      | "failed";
+    readonly anchorState?:
+      | "active"
+      | "replaced"
+      | "split"
+      | "merged"
+      | "ambiguous"
+      | "deleted"
+      | "stale"
+      | "missing"
+      | "unsupported"
+      | "repair-needed"
+      | "failed";
+  } = {}
+): CadEngine {
+  const baseEngine = createRectangleExtrudeEngine();
+  const baseDocument = baseEngine.getDocument();
+  const topologyIdentity = createEmptyTopologyIdentitySourceSnapshot();
+  const paths = createWcadV2CheckpointEntryPaths("checkpoint_1");
+  const sourceIdentity = {
+    algorithm: "partbench-source-v1" as const,
+    sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+  };
+
+  return new CadEngine({
+    ...baseDocument,
+    topologyIdentity: {
+      ...topologyIdentity,
+      checkpoints: [
+        {
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          sourceIdentity,
+          packageVersion: "partbench.wcad.v2" as const,
+          projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+          brepEntryPath: paths.brep,
+          topologyEntryPath: paths.topology,
+          signatureEntryPath: paths.signature,
+          status: options.checkpointStatus ?? "active",
+          diagnostics: []
+        }
+      ],
+      anchors: [
+        {
+          anchorId: options.anchorId ?? "anchor_edge_1",
+          entityKind: options.entityKind ?? "edge",
+          bodyId: options.bodyId ?? "body_rect_1",
+          checkpointId: "checkpoint_1",
+          checkpointEntityId: "checkpoint-local-edge-1",
+          sourceFeatureId: "feat_rect_1",
+          ...(options.stableId === undefined
+            ? { stableId: "generated:edge:body_rect_1:start:uMin" }
+            : options.stableId.length > 0
+              ? { stableId: options.stableId }
+              : {}),
+          sourceSemanticRole: "start uMin edge",
+          signatureHash: "edge_signature_1",
+          state: options.anchorState ?? "active",
           diagnostics: []
         }
       ]
@@ -1257,6 +1335,19 @@ function readProjectDependencyGraph(
 
   if (!response.ok || response.query !== "project.dependencyGraph") {
     throw new Error("Expected project.dependencyGraph response.");
+  }
+
+  return response;
+}
+
+function readProjectHealth(engine: CadEngine): ProjectHealthQueryResponse {
+  const response = engine.executeQuery({
+    version: "cadops.v1",
+    query: { query: "project.health" }
+  });
+
+  if (!response.ok || response.query !== "project.health") {
+    throw new Error("Expected project.health response.");
   }
 
   return response;
@@ -30750,6 +30841,51 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
+  it("advertises edge finish operations for stable active topology edge anchors", () => {
+    const engine = createTopologyEdgeAnchorEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const response = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: { type: "topologyAnchor", anchorId: "anchor_edge_1" },
+        requiredOperation: "feature.chamfer"
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          source: "topologyAnchorSelection",
+          commandable: true,
+          commandOperations: [
+            "feature.chamfer",
+            "feature.fillet",
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          target: expect.objectContaining({
+            type: "generatedReference",
+            bodyId: "body_rect_1",
+            stableId: "generated:edge:body_rect_1:start:uMin",
+            kind: "edge",
+            topologyAnchorId: "anchor_edge_1",
+            checkpointId: "checkpoint_1"
+          })
+        })
+      ],
+      issueCount: 0
+    });
+    expect(JSON.stringify(response)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("blocks topology anchor selection candidates when anchor health is not active or generated backing is missing", () => {
     const engine = createTopologyAnchorEngine();
     const replaced = engine.executeQuery({
@@ -30866,6 +31002,330 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(JSON.stringify(result.transaction)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
+  });
+
+  it("creates chamfer and fillet features from active topology edge anchors", () => {
+    const chamferEngine = createTopologyEdgeAnchorEngine();
+    const beforeJson = exportCadProjectJson(chamferEngine);
+    const chamferOp = {
+      op: "feature.chamfer" as const,
+      id: "feat_anchor_chamfer",
+      bodyId: "body_anchor_chamfer",
+      targetBodyId: "body_rect_1",
+      topologyAnchorId: "anchor_edge_1",
+      distance: 0.2
+    };
+    const dryRun = chamferEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [chamferOp]
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_anchor_chamfer"],
+      createdBodyIds: ["body_anchor_chamfer"]
+    });
+    expect(exportCadProjectJson(chamferEngine)).toBe(beforeJson);
+
+    const chamferResult = chamferEngine.apply(chamferOp);
+    expect(
+      getChamferFeature(chamferEngine, "feat_anchor_chamfer")
+    ).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      topologyAnchorId: "anchor_edge_1",
+      distance: 0.2,
+      bodyId: "body_anchor_chamfer"
+    });
+    expect(chamferResult.transaction.ops[0]).toMatchObject({
+      op: "feature.chamfer",
+      topologyAnchorId: "anchor_edge_1"
+    });
+
+    const filletEngine = createTopologyEdgeAnchorEngine();
+    const filletResult = filletEngine.apply({
+      op: "feature.fillet",
+      id: "feat_anchor_fillet",
+      bodyId: "body_anchor_fillet",
+      targetBodyId: "body_rect_1",
+      topologyAnchorId: "anchor_edge_1",
+      radius: 0.2
+    });
+
+    expect(getFilletFeature(filletEngine, "feat_anchor_fillet")).toMatchObject({
+      kind: "fillet",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      topologyAnchorId: "anchor_edge_1",
+      radius: 0.2,
+      bodyId: "body_anchor_fillet"
+    });
+    expect(filletResult.transaction.ops[0]).toMatchObject({
+      op: "feature.fillet",
+      topologyAnchorId: "anchor_edge_1"
+    });
+    expect(
+      JSON.stringify({
+        chamferTransaction: chamferResult.transaction,
+        filletTransaction: filletResult.transaction
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+
+    const structure = readProjectStructure(chamferEngine);
+    const health = readProjectHealth(chamferEngine);
+    const dependencyGraph = readProjectDependencyGraph(chamferEngine);
+    const exportedProject = parseCadProjectJson(
+      exportCadProjectJson(chamferEngine)
+    );
+
+    expect(structure).toMatchObject({
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_chamfer",
+          kind: "chamfer",
+          edgeStableId: "generated:edge:body_rect_1:start:uMin",
+          topologyAnchorId: "anchor_edge_1",
+          source: expect.objectContaining({
+            edgeStableId: "generated:edge:body_rect_1:start:uMin",
+            topologyAnchorId: "anchor_edge_1"
+          })
+        })
+      ]),
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_anchor_chamfer",
+          source: expect.objectContaining({
+            type: "edgeChamferFeature",
+            edgeStableId: "generated:edge:body_rect_1:start:uMin",
+            topologyAnchorId: "anchor_edge_1"
+          })
+        })
+      ])
+    });
+    expect(health.authoredChamfers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_anchor_chamfer",
+          edgeStableId: "generated:edge:body_rect_1:start:uMin",
+          topologyAnchorId: "anchor_edge_1"
+        })
+      ])
+    );
+    expect(dependencyGraph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "sources",
+          sourceFeatureId: "feat_anchor_chamfer",
+          topologyAnchorId: "anchor_edge_1"
+        })
+      ])
+    );
+    expect(exportedProject.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_chamfer",
+          edgeStableId: "generated:edge:body_rect_1:start:uMin",
+          topologyAnchorId: "anchor_edge_1"
+        })
+      ])
+    );
+  });
+
+  it("rejects topology edge anchors that cannot prove edge-finish targets", () => {
+    const beforeEngine = createTopologyEdgeAnchorEngine();
+    const beforeJson = exportCadProjectJson(beforeEngine);
+
+    expect(
+      beforeEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            targetBodyId: "body_rect_1",
+            edgeStableId: "generated:edge:body_rect_1:start:uMin",
+            topologyAnchorId: "anchor_edge_1",
+            distance: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_edge_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "topologyAnchorId without generated edge inputs"
+      }
+    });
+
+    expect(
+      beforeEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            targetBodyId: "body_rect_1",
+            topologyAnchorId: "missing_anchor",
+            distance: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+        topologyAnchorId: "missing_anchor",
+        path: "$.ops[0].topologyAnchorId"
+      }
+    });
+
+    const staleAnchorEngine = createTopologyEdgeAnchorEngine({
+      anchorState: "stale"
+    });
+    expect(
+      staleAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.fillet",
+            targetBodyId: "body_rect_1",
+            topologyAnchorId: "anchor_edge_1",
+            radius: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_edge_1",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].topologyAnchorId",
+        received: "anchor:stale, checkpoint:active"
+      }
+    });
+
+    const faceAnchorEngine = createTopologyEdgeAnchorEngine({
+      entityKind: "face",
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    expect(
+      faceAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            targetBodyId: "body_rect_1",
+            topologyAnchorId: "anchor_edge_1",
+            distance: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_edge_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "edge topology anchor",
+        received: "face"
+      }
+    });
+
+    const missingStableEngine = createTopologyEdgeAnchorEngine({
+      stableId: ""
+    });
+    expect(
+      missingStableEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.fillet",
+            targetBodyId: "body_rect_1",
+            topologyAnchorId: "anchor_edge_1",
+            radius: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        topologyAnchorId: "anchor_edge_1",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "stable generated edge backing",
+        received: "missing stableId"
+      }
+    });
+
+    const wrongBodyEngine = createTopologyEdgeAnchorEngine({
+      bodyId: "body_other",
+      stableId: "generated:edge:body_rect_1:start:uMin"
+    });
+    expect(
+      wrongBodyEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            targetBodyId: "body_rect_1",
+            topologyAnchorId: "anchor_edge_1",
+            distance: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        topologyAnchorId: "anchor_edge_1",
+        checkpointId: "checkpoint_1",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "topology edge anchor resolving to targetBodyId",
+        received: "body_other"
+      }
+    });
+
+    const faceStableIdEngine = createTopologyEdgeAnchorEngine({
+      stableId: "generated:face:body_rect_1:endCap"
+    });
+    expect(
+      faceStableIdEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "feature.chamfer",
+            targetBodyId: "body_rect_1",
+            topologyAnchorId: "anchor_edge_1",
+            distance: 0.2
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_KIND_MISMATCH",
+        topologyAnchorId: "anchor_edge_1",
+        checkpointId: "checkpoint_1",
+        stableId: "generated:face:body_rect_1:endCap",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "edge"
+      }
+    });
+    expect(exportCadProjectJson(beforeEngine)).toBe(beforeJson);
   });
 
   it("rejects topology anchors that cannot prove planar sketch-on-face targets", () => {

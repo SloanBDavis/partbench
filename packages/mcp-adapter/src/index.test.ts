@@ -91,6 +91,12 @@ describe("mcp-adapter", () => {
           ?.inputSchema
       )
     ).toContain('"axis"');
+    expect(
+      JSON.stringify(
+        tools.find((tool) => tool.name === "cad.selection_reference_candidates")
+          ?.inputSchema
+      )
+    ).toContain('"topologyAnchor"');
   });
 
   it("runs cad.batch dry-run without mutating the document", () => {
@@ -3241,6 +3247,96 @@ describe("mcp-adapter", () => {
           faceRole: "endCap"
         }
       }
+    });
+  });
+
+  it("passes feature.chamfer with a topology edge anchor through cad.batch", () => {
+    const server = new CadMcpServer();
+    const commit = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_anchor_edge_chamfer",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "anchor_edge_sketch",
+              name: "Anchor edge profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "anchor_edge_sketch",
+              id: "anchor_edge_rect",
+              center: [0, 0],
+              width: 4,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_anchor_edge",
+              bodyId: "body_anchor_edge",
+              sketchId: "anchor_edge_sketch",
+              entityId: "anchor_edge_rect",
+              depth: 3
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_anchor_edge",
+              bodyId: "body_anchor_edge",
+              sourceFeatureId: "feat_anchor_edge",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_start_edge",
+              entityKind: "edge",
+              bodyId: "body_anchor_edge",
+              checkpointId: "checkpoint_anchor_edge",
+              checkpointEntityId: "checkpoint-local-start-edge",
+              sourceFeatureId: "feat_anchor_edge",
+              stableId: "generated:edge:body_anchor_edge:start:uMin"
+            },
+            {
+              op: "feature.chamfer",
+              id: "feat_anchor_chamfer",
+              bodyId: "body_anchor_chamfer",
+              targetBodyId: "body_anchor_edge",
+              topologyAnchorId: "anchor_start_edge",
+              distance: 0.2
+            }
+          ]
+        }
+      }
+    });
+    const features = server.callTool({
+      name: "cad.project_features",
+      requestId: "mcp_req_anchor_edge_features"
+    });
+
+    expect(commit.structuredContent).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_edge", "feat_anchor_chamfer"],
+      createdBodyIds: ["body_anchor_edge", "body_anchor_chamfer"]
+    });
+    expect(features.structuredContent).toMatchObject({
+      ok: true,
+      features: expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_chamfer",
+          kind: "chamfer",
+          edgeStableId: "generated:edge:body_anchor_edge:start:uMin",
+          topologyAnchorId: "anchor_start_edge"
+        })
+      ])
     });
   });
 

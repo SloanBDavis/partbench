@@ -632,6 +632,7 @@ export interface FeatureChamferOp {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly name?: string;
 }
@@ -643,6 +644,7 @@ export interface FeatureFilletOp {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
   readonly name?: string;
 }
@@ -808,6 +810,7 @@ export interface CadChamferFeatureRef {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
 }
 
@@ -818,6 +821,7 @@ export interface CadFilletFeatureRef {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
 }
 
@@ -1760,6 +1764,7 @@ export interface ChamferFeatureSnapshot {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly bodyId: BodyId;
 }
@@ -1771,6 +1776,7 @@ export interface FilletFeatureSnapshot {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
   readonly bodyId: BodyId;
 }
@@ -2039,6 +2045,7 @@ export interface CadChamferFeatureSource {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
 }
 
 export interface CadChamferFeatureSummary {
@@ -2049,6 +2056,7 @@ export interface CadChamferFeatureSummary {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly name?: string;
   readonly source: CadChamferFeatureSource;
@@ -2059,6 +2067,7 @@ export interface CadFilletFeatureSource {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
 }
 
 export interface CadFilletFeatureSummary {
@@ -2069,6 +2078,7 @@ export interface CadFilletFeatureSummary {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
   readonly name?: string;
   readonly source: CadFilletFeatureSource;
@@ -2174,6 +2184,7 @@ export interface CadFeatureEditDiagnostic {
   readonly sketchEntityId?: SketchEntityId;
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly fieldPath?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -2984,6 +2995,7 @@ export interface CadChamferBodySource {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
 }
 
 export interface CadFilletBodySource {
@@ -2992,6 +3004,7 @@ export interface CadFilletBodySource {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
 }
 
 export type CadBodySource =
@@ -4022,6 +4035,7 @@ export interface CadAuthoredChamferHealth {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly topologyStatus?: CadBodyTopologyStatus;
   readonly topologyModel?: CadBodyTopologyModel;
@@ -4039,6 +4053,7 @@ export interface CadAuthoredFilletHealth {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
   readonly topologyStatus?: CadBodyTopologyStatus;
   readonly topologyModel?: CadBodyTopologyModel;
@@ -4645,6 +4660,7 @@ export interface CadBodyTopologySourceIdentity {
   readonly holeDirection?: FeatureHoleDirection;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly chamferDistance?: number;
   readonly filletRadius?: number;
   readonly profileSignature?: CadGeneratedReferenceProfileSignature;

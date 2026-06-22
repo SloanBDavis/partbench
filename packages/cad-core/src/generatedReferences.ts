@@ -116,6 +116,7 @@ export interface GeneratedReferencesChamferFeature {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: string;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly bodyId: BodyId;
 }
@@ -126,6 +127,7 @@ export interface GeneratedReferencesFilletFeature {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: string;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
   readonly bodyId: BodyId;
 }

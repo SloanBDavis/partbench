@@ -1328,6 +1328,22 @@ describe("cad-protocol", () => {
       name: "Anchor face sketch",
       topologyAnchorId: "anchor_face_1"
     };
+    const topologyAnchorChamferOp: CadOp = {
+      op: "feature.chamfer",
+      id: "feat_anchor_chamfer_1",
+      bodyId: "body_anchor_chamfer_1",
+      targetBodyId: "body_target",
+      topologyAnchorId: "anchor_edge_1",
+      distance: 0.25
+    };
+    const topologyAnchorFilletOp: CadOp = {
+      op: "feature.fillet",
+      id: "feat_anchor_fillet_1",
+      bodyId: "body_anchor_fillet_1",
+      targetBodyId: "body_target",
+      topologyAnchorId: "anchor_edge_1",
+      radius: 0.25
+    };
     const addExtrudeOp: CadOp = {
       op: "feature.extrude",
       id: "feat_add",
@@ -1345,6 +1361,14 @@ describe("cad-protocol", () => {
     expect(topologyAnchorFaceOp).toMatchObject({
       op: "sketch.createOnFace",
       topologyAnchorId: "anchor_face_1"
+    });
+    expect(topologyAnchorChamferOp).toMatchObject({
+      op: "feature.chamfer",
+      topologyAnchorId: "anchor_edge_1"
+    });
+    expect(topologyAnchorFilletOp).toMatchObject({
+      op: "feature.fillet",
+      topologyAnchorId: "anchor_edge_1"
     });
     expect(addExtrudeOp).toMatchObject({
       op: "feature.extrude",

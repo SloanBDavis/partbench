@@ -3,7 +3,8 @@ import type {
   CadFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedReference,
-  NamedGeneratedReferenceEntry
+  NamedGeneratedReferenceEntry,
+  SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import type { FeatureEdgeFinishForm } from "./cadCommands";
 import type { GeneratedReferenceSelectionState } from "./generatedReferenceSelection";
@@ -27,6 +28,7 @@ export interface EdgeFinishReferenceOption {
   readonly label: string;
   readonly edgeStableId?: string;
   readonly namedReference?: string;
+  readonly topologyAnchorId?: string;
   readonly reference?: CadGeneratedEdgeReference;
   readonly status: "resolved" | "stale";
 }
@@ -42,18 +44,24 @@ export function createNamedEdgeFinishReferenceValue(name: string): string {
 
 export function createEdgeFinishReferenceOptions(
   state: GeneratedReferenceSelectionState,
-  namedReferences: readonly NamedGeneratedReferenceEntry[]
+  namedReferences: readonly NamedGeneratedReferenceEntry[],
+  selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse
 ): readonly EdgeFinishReferenceOption[] {
   if (state.status !== "selected" || state.reference.kind !== "edge") {
     return [];
   }
 
   const selectedReference = state.reference;
+  const topologyAnchorId = findSelectedTopologyAnchorId(
+    selectedReference,
+    selectionReferenceCandidates
+  );
   const selectedOption: EdgeFinishReferenceOption = {
     value: SELECTED_EDGE_FINISH_REFERENCE_VALUE,
     kind: "generated",
     label: `Selected edge (${selectedReference.label})`,
     edgeStableId: selectedReference.stableId,
+    ...(topologyAnchorId ? { topologyAnchorId } : {}),
     reference: selectedReference,
     status: "resolved"
   };
@@ -203,7 +211,8 @@ export function buildEdgeFinishForm(input: {
 
   if (
     input.referenceOption.kind === "generated" &&
-    !input.referenceOption.edgeStableId
+    !input.referenceOption.edgeStableId &&
+    !input.referenceOption.topologyAnchorId
   ) {
     return undefined;
   }
@@ -221,11 +230,31 @@ export function buildEdgeFinishForm(input: {
     targetBodyId: input.targetBodyId,
     name: input.draft.name,
     ...(input.referenceOption.kind === "generated"
-      ? { edgeStableId: input.referenceOption.edgeStableId }
+      ? input.referenceOption.topologyAnchorId
+        ? { topologyAnchorId: input.referenceOption.topologyAnchorId }
+        : { edgeStableId: input.referenceOption.edgeStableId }
       : { namedReference: input.referenceOption.namedReference }),
     distance: input.draft.distance,
     radius: input.draft.radius
   };
+}
+
+function findSelectedTopologyAnchorId(
+  reference: CadGeneratedEdgeReference,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
+): string | undefined {
+  const candidate = selectionReferenceCandidates?.candidates.find(
+    (entry) =>
+      entry.source === "topologyAnchorSelection" &&
+      entry.target.bodyId === reference.bodyId &&
+      entry.target.stableId === reference.stableId &&
+      entry.target.kind === "edge" &&
+      entry.commandable
+  );
+
+  return candidate?.target.topologyAnchorId;
 }
 
 export function isSupportedRectangleEdgeFinishReference(

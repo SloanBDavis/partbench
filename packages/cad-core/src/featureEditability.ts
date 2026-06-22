@@ -549,6 +549,7 @@ function createEdgeFinishEditabilityResponse(
         targetBodyId: feature.targetBodyId,
         stableId: feature.edgeStableId,
         referenceName: feature.namedReference,
+        topologyAnchorId: feature.topologyAnchorId,
         expected: feature.id,
         received: targetBody?.consumedByFeatureId ?? "active target body"
       })
@@ -570,10 +571,21 @@ function createEdgeFinishEditabilityResponse(
         unit: options.units
       },
       {
-        path: feature.namedReference ? "namedReference" : "edgeStableId",
-        label: feature.namedReference ? "Named reference" : "Edge reference",
+        path: feature.topologyAnchorId
+          ? "topologyAnchorId"
+          : feature.namedReference
+            ? "namedReference"
+            : "edgeStableId",
+        label: feature.topologyAnchorId
+          ? "Topology anchor"
+          : feature.namedReference
+            ? "Named reference"
+            : "Edge reference",
         valueType: "reference",
-        currentValue: feature.namedReference ?? feature.edgeStableId
+        currentValue:
+          feature.topologyAnchorId ??
+          feature.namedReference ??
+          feature.edgeStableId
       }
     ],
     blockingDiagnostics,
@@ -1132,10 +1144,21 @@ function createReferenceField(
   diagnostics: readonly CadFeatureEditDiagnostic[]
 ): CadFeatureEditFieldDescriptor {
   return {
-    path: feature.namedReference ? "namedReference" : "edgeStableId",
-    label: feature.namedReference ? "Named reference" : "Edge reference",
+    path: feature.topologyAnchorId
+      ? "topologyAnchorId"
+      : feature.namedReference
+        ? "namedReference"
+        : "edgeStableId",
+    label: feature.topologyAnchorId
+      ? "Topology anchor"
+      : feature.namedReference
+        ? "Named reference"
+        : "Edge reference",
     valueType: "reference",
-    currentValue: feature.namedReference ?? feature.edgeStableId,
+    currentValue:
+      feature.topologyAnchorId ??
+      feature.namedReference ??
+      feature.edgeStableId,
     editable: false,
     diagnostics
   };
@@ -1729,6 +1752,7 @@ function createDiagnostic(args: {
   readonly sketchEntityId?: SketchEntityId;
   readonly stableId?: string;
   readonly referenceName?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly fieldPath?: string;
   readonly expected?: string;
   readonly received?: string;
@@ -1744,6 +1768,9 @@ function createDiagnostic(args: {
     ...(args.sketchEntityId ? { sketchEntityId: args.sketchEntityId } : {}),
     ...(args.stableId ? { stableId: args.stableId } : {}),
     ...(args.referenceName ? { referenceName: args.referenceName } : {}),
+    ...(args.topologyAnchorId
+      ? { topologyAnchorId: args.topologyAnchorId }
+      : {}),
     ...(args.fieldPath ? { fieldPath: args.fieldPath } : {}),
     ...(args.expected ? { expected: args.expected } : {}),
     ...(args.received ? { received: args.received } : {})

@@ -90,6 +90,7 @@ export interface RunViewportContextualCommandActionInput {
   readonly body?: CadBodySnapshot;
   readonly disabled?: boolean;
   readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
   readonly onContinueInModeling?: (
     action: ViewportContextualCommandAction
@@ -156,12 +157,14 @@ export function createViewportContextualEdgeFinishForm({
   body,
   namedReferences = [],
   operation,
-  selectedGeneratedReferenceState
+  selectedGeneratedReferenceState,
+  selectionReferenceCandidates
 }: {
   readonly body?: CadBodySnapshot;
   readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];
   readonly operation: EdgeFinishOperation;
   readonly selectedGeneratedReferenceState: GeneratedReferenceSelectionState;
+  readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
 }): FeatureEdgeFinishForm | undefined {
   if (
     selectedGeneratedReferenceState.status !== "selected" ||
@@ -172,7 +175,8 @@ export function createViewportContextualEdgeFinishForm({
 
   const referenceOptions = createEdgeFinishReferenceOptions(
     selectedGeneratedReferenceState,
-    namedReferences
+    namedReferences,
+    selectionReferenceCandidates
   );
   const referenceOption = selectEdgeFinishReferenceOption(
     referenceOptions,
@@ -201,6 +205,7 @@ export function runViewportContextualCommandAction({
   onContinueInModeling,
   onCreateEdgeFinish,
   onCreateSketchOnFace,
+  selectionReferenceCandidates,
   selectedGeneratedReferenceState
 }: RunViewportContextualCommandActionInput): boolean {
   if (disabled || action.disabled) {
@@ -231,6 +236,7 @@ export function runViewportContextualCommandAction({
       body,
       namedReferences,
       operation,
+      selectionReferenceCandidates,
       selectedGeneratedReferenceState
     });
 

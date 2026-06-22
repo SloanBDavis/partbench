@@ -3,7 +3,8 @@ import type {
   CadFeatureSummary,
   CadGeneratedEdgeReference,
   CadGeneratedFaceReference,
-  NamedGeneratedReferenceEntry
+  NamedGeneratedReferenceEntry,
+  SelectionReferenceCandidatesQueryResponse
 } from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import { buildFeatureChamferOp, buildFeatureFilletOp } from "./cadCommands";
@@ -92,6 +93,53 @@ describe("edge finish UI helpers", () => {
       edgeStableId: edge.stableId,
       distance: 0.25,
       name: "Edge break"
+    });
+  });
+
+  it("builds topology-anchor-backed edge finish commands from selection candidates", () => {
+    const edge = createEdge();
+    const option = selectEdgeFinishReferenceOption(
+      createEdgeFinishReferenceOptions(
+        selected(edge),
+        [],
+        createTopologyAnchorSelectionCandidates(edge)
+      ),
+      SELECTED_EDGE_FINISH_REFERENCE_VALUE
+    );
+    const form = buildEdgeFinishForm({
+      draft: {
+        id: "feat_anchor_chamfer",
+        bodyId: "body_anchor_chamfer",
+        name: "Anchor break",
+        distance: 0.25,
+        radius: 0.1
+      },
+      operation: "chamfer",
+      referenceOption: option,
+      targetBodyId: "body_rect"
+    });
+
+    expect(option).toMatchObject({
+      topologyAnchorId: "anchor_edge_1",
+      edgeStableId: edge.stableId
+    });
+    expect(form).toEqual({
+      id: "feat_anchor_chamfer",
+      bodyId: "body_anchor_chamfer",
+      targetBodyId: "body_rect",
+      name: "Anchor break",
+      topologyAnchorId: "anchor_edge_1",
+      distance: 0.25,
+      radius: 0.1
+    });
+    expect(buildFeatureChamferOp(form!)).toEqual({
+      op: "feature.chamfer",
+      id: "feat_anchor_chamfer",
+      bodyId: "body_anchor_chamfer",
+      targetBodyId: "body_rect",
+      topologyAnchorId: "anchor_edge_1",
+      distance: 0.25,
+      name: "Anchor break"
     });
   });
 
@@ -399,5 +447,44 @@ function createNamedReference(
     kind: "edge",
     status,
     ...(status === "resolved" ? { reference } : {})
+  };
+}
+
+function createTopologyAnchorSelectionCandidates(
+  edge: CadGeneratedEdgeReference
+): SelectionReferenceCandidatesQueryResponse {
+  return {
+    ok: true,
+    query: "selection.referenceCandidates",
+    cadOpsVersion: "cadops.v1",
+    selection: { type: "topologyAnchor", anchorId: "anchor_edge_1" },
+    requiredOperation: "feature.chamfer",
+    status: "resolved",
+    candidateCount: 1,
+    candidates: [
+      {
+        source: "topologyAnchorSelection",
+        target: {
+          type: "generatedReference",
+          bodyId: edge.bodyId,
+          stableId: edge.stableId,
+          kind: "edge",
+          topologyAnchorId: "anchor_edge_1",
+          checkpointId: "checkpoint_1"
+        },
+        reference: edge,
+        commandable: true,
+        commandOperations: [
+          "feature.chamfer",
+          "feature.fillet",
+          "feature.measureReference",
+          "feature.selectReference"
+        ],
+        label: edge.label,
+        issues: []
+      }
+    ],
+    issueCount: 0,
+    issues: []
   };
 }

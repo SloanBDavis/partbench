@@ -587,7 +587,9 @@ function createOperationSummaries(
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
         const edgeLabel = op.namedReference
           ? `named reference ${op.namedReference}`
-          : op.edgeStableId;
+          : op.topologyAnchorId
+            ? `topology anchor ${op.topologyAnchorId}`
+            : op.edgeStableId;
 
         return createFeatureOperationSummary({
           op: op.op,
@@ -598,7 +600,8 @@ function createOperationSummaries(
           bodyId,
           targetBodyId: op.targetBodyId,
           stableId: op.edgeStableId,
-          referenceName: op.namedReference
+          referenceName: op.namedReference,
+          topologyAnchorId: op.topologyAnchorId
         });
       }
 
@@ -607,7 +610,9 @@ function createOperationSummaries(
         const bodyId = op.bodyId ?? createdFeatureRef?.bodyId;
         const edgeLabel = op.namedReference
           ? `named reference ${op.namedReference}`
-          : op.edgeStableId;
+          : op.topologyAnchorId
+            ? `topology anchor ${op.topologyAnchorId}`
+            : op.edgeStableId;
 
         return createFeatureOperationSummary({
           op: op.op,
@@ -618,7 +623,8 @@ function createOperationSummaries(
           bodyId,
           targetBodyId: op.targetBodyId,
           stableId: op.edgeStableId,
-          referenceName: op.namedReference
+          referenceName: op.namedReference,
+          topologyAnchorId: op.topologyAnchorId
         });
       }
 

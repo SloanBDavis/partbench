@@ -920,6 +920,27 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildFeatureChamferOp({
+        id: "feat_anchor_chamfer",
+        bodyId: "body_anchor_chamfer",
+        targetBodyId: "body_rect_1",
+        name: "Anchor break",
+        edgeStableId: "generated:edge:body_rect_1:start:uMin",
+        topologyAnchorId: "anchor_edge_1",
+        distance: 0.25,
+        radius: 0.1
+      })
+    ).toEqual({
+      op: "feature.chamfer",
+      id: "feat_anchor_chamfer",
+      bodyId: "body_anchor_chamfer",
+      targetBodyId: "body_rect_1",
+      topologyAnchorId: "anchor_edge_1",
+      distance: 0.25,
+      name: "Anchor break"
+    });
+
+    expect(
       buildFeatureFilletOp({
         id: "feat_fillet_1",
         bodyId: "body_fillet_1",

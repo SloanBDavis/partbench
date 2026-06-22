@@ -2028,6 +2028,18 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
                   description: "Source-of-truth named generated reference."
                 }
               }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "anchorId"],
+              properties: {
+                type: { const: "topologyAnchor" },
+                anchorId: {
+                  type: "string",
+                  description: "Source-of-truth V13 topology anchor ID."
+                }
+              }
             }
           ]
         },

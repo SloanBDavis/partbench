@@ -697,7 +697,11 @@ function createEdgeFinishAction(
 ): ModelingActionDescriptor {
   const state = createGeneratedReferenceSelectionState(context.reference);
   const referenceOption = selectEdgeFinishReferenceOption(
-    createEdgeFinishReferenceOptions(state, context.namedReferences ?? []),
+    createEdgeFinishReferenceOptions(
+      state,
+      context.namedReferences ?? [],
+      context.selectionReferenceCandidates
+    ),
     SELECTED_EDGE_FINISH_REFERENCE_VALUE
   );
   const status = getEdgeFinishOperationStatus({

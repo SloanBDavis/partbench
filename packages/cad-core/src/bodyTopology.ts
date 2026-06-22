@@ -833,6 +833,9 @@ function createChamferSourceIdentityInput(
     ...(feature.namedReference
       ? { namedReference: feature.namedReference }
       : {}),
+    ...(feature.topologyAnchorId
+      ? { topologyAnchorId: feature.topologyAnchorId }
+      : {}),
     chamferDistance: feature.distance
   };
 }
@@ -851,6 +854,9 @@ function createFilletSourceIdentityInput(
     ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
     ...(feature.namedReference
       ? { namedReference: feature.namedReference }
+      : {}),
+    ...(feature.topologyAnchorId
+      ? { topologyAnchorId: feature.topologyAnchorId }
       : {}),
     filletRadius: feature.radius
   };

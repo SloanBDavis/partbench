@@ -41,6 +41,7 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedEntityKind,
   CadGeneratedReference,
+  CadGeneratedReferenceEligibleOperation,
   CadNamedReferenceRepairRef,
   CadNamedReferenceRef,
   CadObjectSnapshot,
@@ -71,6 +72,7 @@ import type {
   CadSketchDimensionRef,
   CadSketchRef,
   CadTransactionStatus,
+  CadTopologyAnchorEntityKind,
   CadTopologyIdentitySourceSnapshot,
   CadTopologyMatchResult,
   CadTopologyMatchSnapshotInput,
@@ -573,6 +575,7 @@ export interface ChamferFeature {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly bodyId: BodyId;
 }
@@ -584,6 +587,7 @@ export interface FilletFeature {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
   readonly bodyId: BodyId;
 }
@@ -4523,6 +4527,7 @@ function applyOperation(
           targetBodyId: op.targetBodyId,
           edgeStableId: op.edgeStableId,
           namedReference: op.namedReference,
+          topologyAnchorId: op.topologyAnchorId,
           scalar: op.distance
         },
         "feature.chamfer",
@@ -4545,6 +4550,7 @@ function applyOperation(
           targetBodyId: op.targetBodyId,
           edgeStableId: op.edgeStableId,
           namedReference: op.namedReference,
+          topologyAnchorId: op.topologyAnchorId,
           scalar: op.radius
         },
         "feature.fillet",
@@ -9470,6 +9476,9 @@ function createEdgeFinishSourceReferenceEffect(
     ...(feature.namedReference
       ? { referenceName: feature.namedReference }
       : {}),
+    ...(feature.topologyAnchorId
+      ? { topologyAnchorId: feature.topologyAnchorId }
+      : {}),
     sourceFeatureId: feature.id,
     targetFeatureId: feature.id,
     message:
@@ -10322,6 +10331,7 @@ type EdgeFinishOperation = "feature.chamfer" | "feature.fillet";
 interface EdgeFinishReferenceSource {
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
 }
 
 function createEdgeFinishFeature(
@@ -10471,6 +10481,63 @@ function validateEdgeFinishReference(
   source: EdgeFinishReferenceSource,
   opIndex?: number
 ): EdgeFinishReferenceSource {
+  if (source.topologyAnchorId !== undefined) {
+    const mixedInputs =
+      source.edgeStableId !== undefined || source.namedReference !== undefined;
+
+    if (mixedInputs) {
+      throwValidationError({
+        code: "INVALID_TOPOLOGY_ANCHOR",
+        message: `${operation} must use topologyAnchorId without edgeStableId or namedReference.`,
+        opIndex,
+        bodyId: targetBodyId,
+        topologyAnchorId: source.topologyAnchorId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "topologyAnchorId without generated edge inputs",
+        received: "mixed topology anchor inputs"
+      });
+    }
+
+    const target = resolveActiveTopologyAnchorStableTarget(
+      state,
+      source.topologyAnchorId,
+      "edge",
+      opIndex
+    );
+
+    if (target.bodyId !== targetBodyId) {
+      throwValidationError({
+        code: "GENERATED_REFERENCE_NOT_FOUND",
+        message: `Topology anchor ${target.topologyAnchorId} resolves to body ${target.bodyId}, not target body ${targetBodyId}.`,
+        opIndex,
+        bodyId: targetBodyId,
+        stableId: target.stableId,
+        topologyAnchorId: target.topologyAnchorId,
+        checkpointId: target.checkpointId,
+        path: operationPath(opIndex, "topologyAnchorId"),
+        expected: "topology edge anchor resolving to targetBodyId",
+        received: target.bodyId
+      });
+    }
+
+    validateEdgeGeneratedReference(
+      state,
+      operation,
+      targetBodyId,
+      target.stableId,
+      opIndex,
+      "topologyAnchorId",
+      undefined,
+      target.topologyAnchorId,
+      target.checkpointId
+    );
+
+    return {
+      edgeStableId: target.stableId,
+      topologyAnchorId: target.topologyAnchorId
+    };
+  }
+
   const hasStableId =
     typeof source.edgeStableId === "string" &&
     source.edgeStableId.trim().length > 0;
@@ -10488,10 +10555,11 @@ function validateEdgeFinishReference(
         opIndex,
         hasStableId ? "namedReference" : "edgeStableId"
       ),
-      expected: "exactly one edgeStableId or namedReference",
+      expected: "exactly one edgeStableId, namedReference, or topologyAnchorId",
       received: describeReceived({
         edgeStableId: source.edgeStableId,
-        namedReference: source.namedReference
+        namedReference: source.namedReference,
+        topologyAnchorId: source.topologyAnchorId
       })
     });
   }
@@ -10563,8 +10631,10 @@ function validateEdgeGeneratedReference(
   targetBodyId: BodyId,
   stableId: string,
   opIndex: number | undefined,
-  stableIdPath: "edgeStableId" | "referenceName",
-  referenceName?: NamedReferenceName
+  stableIdPath: "edgeStableId" | "referenceName" | "topologyAnchorId",
+  referenceName?: NamedReferenceName,
+  topologyAnchorId?: string,
+  checkpointId?: string
 ): void {
   const result = validateGeneratedReference({
     document: state,
@@ -10581,7 +10651,9 @@ function validateEdgeGeneratedReference(
       result.error,
       opIndex,
       stableIdPath,
-      referenceName
+      referenceName,
+      topologyAnchorId,
+      checkpointId
     );
   }
 }
@@ -11174,6 +11246,115 @@ function validateSketchAttachmentFace(
   return result.reference as CadGeneratedFaceReference;
 }
 
+function resolveActiveTopologyAnchorStableTarget(
+  state: MutableDocumentState,
+  topologyAnchorId: string,
+  expectedKind: CadTopologyAnchorEntityKind,
+  opIndex?: number
+): {
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly topologyAnchorId: string;
+  readonly checkpointId: string;
+} {
+  const anchorId = topologyAnchorId.trim();
+
+  if (anchorId.length === 0) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: "Topology anchor ID must be non-empty.",
+      opIndex,
+      topologyAnchorId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: "non-empty topology anchor id",
+      received: describeReceived(topologyAnchorId)
+    });
+  }
+
+  const topologyIdentity = state.topologyIdentity;
+  const anchor = topologyIdentity?.anchors.find(
+    (candidate) => candidate.anchorId === anchorId
+  );
+
+  if (!topologyIdentity || !anchor) {
+    throwValidationError({
+      code: "TOPOLOGY_ANCHOR_NOT_FOUND",
+      message: `Topology anchor does not exist: ${anchorId}`,
+      opIndex,
+      topologyAnchorId: anchorId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: "existing topology anchor",
+      received: anchorId
+    });
+  }
+
+  const checkpoint = topologyIdentity.checkpoints.find(
+    (candidate) => candidate.checkpointId === anchor.checkpointId
+  );
+
+  if (!checkpoint) {
+    throwValidationError({
+      code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
+      message: `Topology checkpoint does not exist: ${anchor.checkpointId}`,
+      opIndex,
+      topologyAnchorId: anchor.anchorId,
+      checkpointId: anchor.checkpointId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: "existing topology checkpoint",
+      received: anchor.checkpointId
+    });
+  }
+
+  if (checkpoint.status !== "active" || anchor.state !== "active") {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `Topology anchor ${anchor.anchorId} is not active.`,
+      opIndex,
+      bodyId: anchor.bodyId,
+      topologyAnchorId: anchor.anchorId,
+      checkpointId: anchor.checkpointId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: "active topology anchor and checkpoint",
+      received: `anchor:${anchor.state}, checkpoint:${checkpoint.status}`
+    });
+  }
+
+  if (anchor.entityKind !== expectedKind) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `Topology anchor ${anchor.anchorId} is ${anchor.entityKind}, not a ${expectedKind}.`,
+      opIndex,
+      bodyId: anchor.bodyId,
+      topologyAnchorId: anchor.anchorId,
+      checkpointId: anchor.checkpointId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: `${expectedKind} topology anchor`,
+      received: anchor.entityKind
+    });
+  }
+
+  if (!anchor.stableId) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `Topology anchor ${anchor.anchorId} does not have a stable generated ${expectedKind} backing.`,
+      opIndex,
+      bodyId: anchor.bodyId,
+      topologyAnchorId: anchor.anchorId,
+      checkpointId: anchor.checkpointId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: `stable generated ${expectedKind} backing`,
+      received: "missing stableId"
+    });
+  }
+
+  return {
+    bodyId: anchor.bodyId,
+    stableId: anchor.stableId,
+    topologyAnchorId: anchor.anchorId,
+    checkpointId: anchor.checkpointId
+  };
+}
+
 function resolveSketchAttachmentFaceTarget(
   state: MutableDocumentState,
   op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
@@ -11230,115 +11411,32 @@ function resolveSketchAttachmentFaceTarget(
   }
 
   if (op.topologyAnchorId !== undefined) {
-    const anchorId = op.topologyAnchorId.trim();
-
     if (op.bodyId !== undefined || op.faceStableId !== undefined) {
       throwValidationError({
         code: "INVALID_TOPOLOGY_ANCHOR",
         message:
           "sketch.createOnFace must use topologyAnchorId without bodyId, faceStableId, or referenceName.",
         opIndex,
-        topologyAnchorId: anchorId || op.topologyAnchorId,
+        topologyAnchorId: op.topologyAnchorId,
         path: operationPath(opIndex, "topologyAnchorId"),
         expected: "topologyAnchorId without generated reference inputs",
         received: "mixed topology anchor inputs"
       });
     }
 
-    if (anchorId.length === 0) {
-      throwValidationError({
-        code: "INVALID_TOPOLOGY_ANCHOR",
-        message: "Topology anchor ID must be non-empty.",
-        opIndex,
-        topologyAnchorId: op.topologyAnchorId,
-        path: operationPath(opIndex, "topologyAnchorId"),
-        expected: "non-empty topology anchor id",
-        received: describeReceived(op.topologyAnchorId)
-      });
-    }
-
-    const topologyIdentity = state.topologyIdentity;
-    const anchor = topologyIdentity?.anchors.find(
-      (candidate) => candidate.anchorId === anchorId
+    const target = resolveActiveTopologyAnchorStableTarget(
+      state,
+      op.topologyAnchorId,
+      "face",
+      opIndex
     );
-
-    if (!topologyIdentity || !anchor) {
-      throwValidationError({
-        code: "TOPOLOGY_ANCHOR_NOT_FOUND",
-        message: `Topology anchor does not exist: ${anchorId}`,
-        opIndex,
-        topologyAnchorId: anchorId,
-        path: operationPath(opIndex, "topologyAnchorId"),
-        expected: "existing topology anchor",
-        received: anchorId
-      });
-    }
-
-    const checkpoint = topologyIdentity.checkpoints.find(
-      (candidate) => candidate.checkpointId === anchor.checkpointId
-    );
-
-    if (!checkpoint) {
-      throwValidationError({
-        code: "TOPOLOGY_CHECKPOINT_NOT_FOUND",
-        message: `Topology checkpoint does not exist: ${anchor.checkpointId}`,
-        opIndex,
-        topologyAnchorId: anchor.anchorId,
-        checkpointId: anchor.checkpointId,
-        path: operationPath(opIndex, "topologyAnchorId"),
-        expected: "existing topology checkpoint",
-        received: anchor.checkpointId
-      });
-    }
-
-    if (checkpoint.status !== "active" || anchor.state !== "active") {
-      throwValidationError({
-        code: "INVALID_TOPOLOGY_ANCHOR",
-        message: `Topology anchor ${anchor.anchorId} is not active.`,
-        opIndex,
-        bodyId: anchor.bodyId,
-        topologyAnchorId: anchor.anchorId,
-        checkpointId: anchor.checkpointId,
-        path: operationPath(opIndex, "topologyAnchorId"),
-        expected: "active topology anchor and checkpoint",
-        received: `anchor:${anchor.state}, checkpoint:${checkpoint.status}`
-      });
-    }
-
-    if (anchor.entityKind !== "face") {
-      throwValidationError({
-        code: "INVALID_TOPOLOGY_ANCHOR",
-        message: `Topology anchor ${anchor.anchorId} is ${anchor.entityKind}, not a face.`,
-        opIndex,
-        bodyId: anchor.bodyId,
-        topologyAnchorId: anchor.anchorId,
-        checkpointId: anchor.checkpointId,
-        path: operationPath(opIndex, "topologyAnchorId"),
-        expected: "face topology anchor",
-        received: anchor.entityKind
-      });
-    }
-
-    if (!anchor.stableId) {
-      throwValidationError({
-        code: "INVALID_TOPOLOGY_ANCHOR",
-        message: `Topology anchor ${anchor.anchorId} does not have a stable generated face backing.`,
-        opIndex,
-        bodyId: anchor.bodyId,
-        topologyAnchorId: anchor.anchorId,
-        checkpointId: anchor.checkpointId,
-        path: operationPath(opIndex, "topologyAnchorId"),
-        expected: "stable generated face backing",
-        received: "missing stableId"
-      });
-    }
 
     return {
-      bodyId: anchor.bodyId,
-      stableId: anchor.stableId,
+      bodyId: target.bodyId,
+      stableId: target.stableId,
       path: "topologyAnchorId",
-      topologyAnchorId: anchor.anchorId,
-      checkpointId: anchor.checkpointId
+      topologyAnchorId: target.topologyAnchorId,
+      checkpointId: target.checkpointId
     };
   }
 
@@ -11964,12 +12062,12 @@ function createTopologyAnchorGeneratedReferenceCommandOperations(
   reference: CadGeneratedReference
 ): readonly CadSelectionReferenceOperation[] {
   const operations = [
-    ...(reference.kind === "face" &&
-    reference.eligibleOperations.includes("feature.attachSketchPlane")
-      ? ([
-          "feature.attachSketchPlane"
-        ] satisfies readonly CadSelectionReferenceOperation[])
-      : []),
+    ...reference.eligibleOperations.filter(
+      (operation): operation is CadGeneratedReferenceEligibleOperation =>
+        operation === "feature.attachSketchPlane" ||
+        operation === "feature.chamfer" ||
+        operation === "feature.fillet"
+    ),
     ...anchorOperations
   ];
 
@@ -12605,6 +12703,9 @@ function featureRef(feature: Feature): CadFeatureRef {
       ...(feature.namedReference
         ? { namedReference: feature.namedReference }
         : {}),
+      ...(feature.topologyAnchorId
+        ? { topologyAnchorId: feature.topologyAnchorId }
+        : {}),
       distance: feature.distance
     };
   }
@@ -12618,6 +12719,9 @@ function featureRef(feature: Feature): CadFeatureRef {
       ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
       ...(feature.namedReference
         ? { namedReference: feature.namedReference }
+        : {}),
+      ...(feature.topologyAnchorId
+        ? { topologyAnchorId: feature.topologyAnchorId }
         : {}),
       radius: feature.radius
     };
@@ -13690,6 +13794,9 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
       ...(feature.namedReference
         ? { namedReference: feature.namedReference }
         : {}),
+      ...(feature.topologyAnchorId
+        ? { topologyAnchorId: feature.topologyAnchorId }
+        : {}),
       distance: feature.distance,
       bodyId: feature.bodyId
     };
@@ -13704,6 +13811,9 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
       ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
       ...(feature.namedReference
         ? { namedReference: feature.namedReference }
+        : {}),
+      ...(feature.topologyAnchorId
+        ? { topologyAnchorId: feature.topologyAnchorId }
         : {}),
       radius: feature.radius,
       bodyId: feature.bodyId
@@ -13765,6 +13875,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
       targetBodyId: snapshot.targetBodyId,
       edgeStableId: snapshot.edgeStableId,
       namedReference: snapshot.namedReference,
+      topologyAnchorId: snapshot.topologyAnchorId,
       distance: snapshot.distance,
       bodyId: snapshot.bodyId
     };
@@ -13778,6 +13889,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
       targetBodyId: snapshot.targetBodyId,
       edgeStableId: snapshot.edgeStableId,
       namedReference: snapshot.namedReference,
+      topologyAnchorId: snapshot.topologyAnchorId,
       radius: snapshot.radius,
       bodyId: snapshot.bodyId
     };
@@ -14321,6 +14433,9 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       ...(feature.namedReference
         ? { namedReference: feature.namedReference }
         : {}),
+      ...(feature.topologyAnchorId
+        ? { topologyAnchorId: feature.topologyAnchorId }
+        : {}),
       distance: feature.distance,
       name: feature.name,
       source: {
@@ -14329,6 +14444,9 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
         ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
         ...(feature.namedReference
           ? { namedReference: feature.namedReference }
+          : {}),
+        ...(feature.topologyAnchorId
+          ? { topologyAnchorId: feature.topologyAnchorId }
           : {})
       }
     };
@@ -14345,6 +14463,9 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       ...(feature.namedReference
         ? { namedReference: feature.namedReference }
         : {}),
+      ...(feature.topologyAnchorId
+        ? { topologyAnchorId: feature.topologyAnchorId }
+        : {}),
       radius: feature.radius,
       name: feature.name,
       source: {
@@ -14353,6 +14474,9 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
         ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
         ...(feature.namedReference
           ? { namedReference: feature.namedReference }
+          : {}),
+        ...(feature.topologyAnchorId
+          ? { topologyAnchorId: feature.topologyAnchorId }
           : {})
       }
     };
@@ -14443,6 +14567,9 @@ function createFeatureBodySnapshot(
         ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
         ...(feature.namedReference
           ? { namedReference: feature.namedReference }
+          : {}),
+        ...(feature.topologyAnchorId
+          ? { topologyAnchorId: feature.topologyAnchorId }
           : {})
       }
     };
@@ -14463,6 +14590,9 @@ function createFeatureBodySnapshot(
         ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
         ...(feature.namedReference
           ? { namedReference: feature.namedReference }
+          : {}),
+        ...(feature.topologyAnchorId
+          ? { topologyAnchorId: feature.topologyAnchorId }
           : {})
       }
     };
@@ -16457,6 +16587,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.targetBodyId === right.targetBodyId &&
       left.edgeStableId === right.edgeStableId &&
       left.namedReference === right.namedReference &&
+      left.topologyAnchorId === right.topologyAnchorId &&
       left.distance === right.distance &&
       left.bodyId === right.bodyId
     );
@@ -16469,6 +16600,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.targetBodyId === right.targetBodyId &&
       left.edgeStableId === right.edgeStableId &&
       left.namedReference === right.namedReference &&
+      left.topologyAnchorId === right.topologyAnchorId &&
       left.radius === right.radius &&
       left.bodyId === right.bodyId
     );
@@ -19856,6 +19988,8 @@ function collectValidAuthoredFeatureByBodyId(
       value.namedReference === undefined) ||
       (typeof value.namedReference === "string" &&
         value.edgeStableId === undefined)) &&
+    (value.topologyAnchorId === undefined ||
+      typeof value.topologyAnchorId === "string") &&
     typeof value.distance === "number" &&
     isPositiveFiniteNumber(value.distance) &&
     typeof value.bodyId === "string"
@@ -19870,6 +20004,9 @@ function collectValidAuthoredFeatureByBodyId(
         : {}),
       ...(typeof value.namedReference === "string"
         ? { namedReference: value.namedReference }
+        : {}),
+      ...(typeof value.topologyAnchorId === "string"
+        ? { topologyAnchorId: value.topologyAnchorId }
         : {}),
       distance: value.distance,
       bodyId: value.bodyId,
@@ -19887,6 +20024,8 @@ function collectValidAuthoredFeatureByBodyId(
       value.namedReference === undefined) ||
       (typeof value.namedReference === "string" &&
         value.edgeStableId === undefined)) &&
+    (value.topologyAnchorId === undefined ||
+      typeof value.topologyAnchorId === "string") &&
     typeof value.radius === "number" &&
     isPositiveFiniteNumber(value.radius) &&
     typeof value.bodyId === "string"
@@ -19901,6 +20040,9 @@ function collectValidAuthoredFeatureByBodyId(
         : {}),
       ...(typeof value.namedReference === "string"
         ? { namedReference: value.namedReference }
+        : {}),
+      ...(typeof value.topologyAnchorId === "string"
+        ? { topologyAnchorId: value.topologyAnchorId }
         : {}),
       radius: value.radius,
       bodyId: value.bodyId,
@@ -21021,6 +21163,10 @@ function validateEdgeFinishFeatureSnapshotFields(
     typeof value.edgeStableId === "string" ? value.edgeStableId : undefined;
   const namedReference =
     typeof value.namedReference === "string" ? value.namedReference : undefined;
+  const topologyAnchorId =
+    typeof value.topologyAnchorId === "string"
+      ? value.topologyAnchorId
+      : undefined;
   const hasEdgeStableId = edgeStableId !== undefined;
   const hasNamedReference = namedReference !== undefined;
 
@@ -21062,6 +21208,24 @@ function validateEdgeFinishFeatureSnapshotFields(
         "INVALID_FEATURE",
         `${path}.namedReference`,
         `${label} feature namedReference must be a non-empty string.`
+      );
+    }
+  }
+
+  if (value.topologyAnchorId !== undefined) {
+    if (typeof value.topologyAnchorId !== "string") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.topologyAnchorId`,
+        `${label} feature topologyAnchorId must be a string.`
+      );
+    } else if (!topologyAnchorId || topologyAnchorId.trim() === "") {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.topologyAnchorId`,
+        `${label} feature topologyAnchorId must be a non-empty string.`
       );
     }
   }
@@ -22739,7 +22903,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (value.kind === "chamfer") {
     return (
       typeof value.targetBodyId === "string" &&
-      hasExactlyOneEdgeReferenceInput(value) &&
+      hasValidEdgeFinishFeatureReference(value) &&
       typeof value.distance === "number" &&
       isPositiveFiniteNumber(value.distance)
     );
@@ -22748,7 +22912,7 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (value.kind === "fillet") {
     return (
       typeof value.targetBodyId === "string" &&
-      hasExactlyOneEdgeReferenceInput(value) &&
+      hasValidEdgeFinishFeatureReference(value) &&
       typeof value.radius === "number" &&
       isPositiveFiniteNumber(value.radius)
     );
@@ -23154,12 +23318,35 @@ function hasExactlyOneEdgeReferenceInput(
 ): boolean {
   const hasStableId =
     typeof value.edgeStableId === "string" &&
-    value.namedReference === undefined;
+    value.namedReference === undefined &&
+    value.topologyAnchorId === undefined;
   const hasNamedReference =
     typeof value.namedReference === "string" &&
-    value.edgeStableId === undefined;
+    value.edgeStableId === undefined &&
+    value.topologyAnchorId === undefined;
+  const hasTopologyAnchor =
+    typeof value.topologyAnchorId === "string" &&
+    value.edgeStableId === undefined &&
+    value.namedReference === undefined;
 
-  return hasStableId !== hasNamedReference;
+  return (
+    [hasStableId, hasNamedReference, hasTopologyAnchor].filter(Boolean)
+      .length === 1
+  );
+}
+
+function hasValidEdgeFinishFeatureReference(
+  value: Record<string, unknown>
+): boolean {
+  const hasStableId = typeof value.edgeStableId === "string";
+  const hasNamedReference = typeof value.namedReference === "string";
+  const hasTopologyAnchor = typeof value.topologyAnchorId === "string";
+
+  if (hasNamedReference) {
+    return !hasStableId && !hasTopologyAnchor;
+  }
+
+  return hasStableId || hasTopologyAnchor;
 }
 
 function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {

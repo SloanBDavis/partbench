@@ -1935,7 +1935,8 @@ function EdgeFinishEditor({
   });
   const referenceOptions = createEdgeFinishReferenceOptions(
     state,
-    namedReferences
+    namedReferences,
+    selectionReferenceCandidates
   );
   const referenceOption = selectEdgeFinishReferenceOption(
     referenceOptions,

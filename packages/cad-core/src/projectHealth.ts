@@ -134,6 +134,7 @@ export interface ProjectHealthChamferFeature {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
 }
 
@@ -144,6 +145,7 @@ export interface ProjectHealthFilletFeature {
   readonly targetBodyId: BodyId;
   readonly edgeStableId?: string;
   readonly namedReference?: NamedReferenceName;
+  readonly topologyAnchorId?: string;
   readonly radius: number;
 }
 
@@ -706,6 +708,9 @@ function createAuthoredChamferHealth(
     ...(feature.namedReference
       ? { namedReference: feature.namedReference }
       : {}),
+    ...(feature.topologyAnchorId
+      ? { topologyAnchorId: feature.topologyAnchorId }
+      : {}),
     distance: feature.distance,
     ...(topologySnapshot
       ? {
@@ -742,6 +747,9 @@ function createAuthoredFilletHealth(
     ...(feature.edgeStableId ? { edgeStableId: feature.edgeStableId } : {}),
     ...(feature.namedReference
       ? { namedReference: feature.namedReference }
+      : {}),
+    ...(feature.topologyAnchorId
+      ? { topologyAnchorId: feature.topologyAnchorId }
       : {}),
     radius: feature.radius,
     ...(topologySnapshot

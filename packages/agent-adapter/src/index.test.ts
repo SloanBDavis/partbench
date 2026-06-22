@@ -4064,6 +4064,188 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes edge-finish features with topology anchors through JSON batch commit", () => {
+    const adapter = new CadOpsAgentAdapter();
+    const response = JSON.parse(
+      adapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_anchor_edge_finish",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "anchor_edge_sketch",
+                name: "Anchor edge profile",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "anchor_edge_sketch",
+                id: "anchor_edge_rect",
+                center: [0, 0],
+                width: 4,
+                height: 2
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_anchor_edge",
+                bodyId: "body_anchor_edge",
+                sketchId: "anchor_edge_sketch",
+                entityId: "anchor_edge_rect",
+                depth: 3
+              },
+              {
+                op: "topology.checkpoint.create",
+                checkpointId: "checkpoint_anchor_edge",
+                bodyId: "body_anchor_edge",
+                sourceFeatureId: "feat_anchor_edge",
+                sourceIdentity: {
+                  algorithm: "partbench-source-v1",
+                  sha256:
+                    "8888888888888888888888888888888888888888888888888888888888888888"
+                },
+                status: "active"
+              },
+              {
+                op: "topology.anchor.create",
+                anchorId: "anchor_start_edge",
+                entityKind: "edge",
+                bodyId: "body_anchor_edge",
+                checkpointId: "checkpoint_anchor_edge",
+                checkpointEntityId: "checkpoint-local-start-edge",
+                sourceFeatureId: "feat_anchor_edge",
+                stableId: "generated:edge:body_anchor_edge:start:uMin"
+              },
+              {
+                op: "feature.chamfer",
+                id: "feat_anchor_chamfer",
+                bodyId: "body_anchor_chamfer",
+                targetBodyId: "body_anchor_edge",
+                topologyAnchorId: "anchor_start_edge",
+                distance: 0.2
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+      readonly review?: { readonly operations?: readonly unknown[] };
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_edge", "feat_anchor_chamfer"],
+      createdBodyIds: ["body_anchor_edge", "body_anchor_chamfer"],
+      review: {
+        operations: expect.arrayContaining([
+          expect.objectContaining({
+            op: "feature.chamfer",
+            topologyAnchorId: "anchor_start_edge",
+            label:
+              "Create chamfer feature feat_anchor_chamfer on topology anchor anchor_start_edge of body_anchor_edge"
+          })
+        ])
+      }
+    });
+
+    const filletAdapter = new CadOpsAgentAdapter();
+    const filletResponse = JSON.parse(
+      filletAdapter.executeJson(
+        JSON.stringify({
+          requestId: "agent_req_json_anchor_edge_fillet",
+          adapterVersion: "web-cad.agent-adapter.v1",
+          permissions: { allowCommit: true },
+          batch: {
+            version: "cadops.v1",
+            mode: "commit",
+            ops: [
+              {
+                op: "sketch.create",
+                id: "anchor_fillet_sketch",
+                name: "Anchor fillet profile",
+                plane: "XY"
+              },
+              {
+                op: "sketch.addRectangle",
+                sketchId: "anchor_fillet_sketch",
+                id: "anchor_fillet_rect",
+                center: [0, 0],
+                width: 4,
+                height: 2
+              },
+              {
+                op: "feature.extrude",
+                id: "feat_anchor_fillet_source",
+                bodyId: "body_anchor_fillet_source",
+                sketchId: "anchor_fillet_sketch",
+                entityId: "anchor_fillet_rect",
+                depth: 3
+              },
+              {
+                op: "topology.checkpoint.create",
+                checkpointId: "checkpoint_anchor_fillet",
+                bodyId: "body_anchor_fillet_source",
+                sourceFeatureId: "feat_anchor_fillet_source",
+                sourceIdentity: {
+                  algorithm: "partbench-source-v1",
+                  sha256:
+                    "9999999999999999999999999999999999999999999999999999999999999999"
+                },
+                status: "active"
+              },
+              {
+                op: "topology.anchor.create",
+                anchorId: "anchor_fillet_edge",
+                entityKind: "edge",
+                bodyId: "body_anchor_fillet_source",
+                checkpointId: "checkpoint_anchor_fillet",
+                checkpointEntityId: "checkpoint-local-fillet-edge",
+                sourceFeatureId: "feat_anchor_fillet_source",
+                stableId: "generated:edge:body_anchor_fillet_source:start:uMin"
+              },
+              {
+                op: "feature.fillet",
+                id: "feat_anchor_fillet",
+                bodyId: "body_anchor_fillet",
+                targetBodyId: "body_anchor_fillet_source",
+                topologyAnchorId: "anchor_fillet_edge",
+                radius: 0.15
+              }
+            ]
+          }
+        })
+      )
+    ) as {
+      readonly ok: boolean;
+      readonly createdFeatureIds?: readonly string[];
+      readonly createdBodyIds?: readonly string[];
+      readonly review?: { readonly operations?: readonly unknown[] };
+    };
+
+    expect(filletResponse).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_anchor_fillet_source", "feat_anchor_fillet"],
+      createdBodyIds: ["body_anchor_fillet_source", "body_anchor_fillet"],
+      review: {
+        operations: expect.arrayContaining([
+          expect.objectContaining({
+            op: "feature.fillet",
+            topologyAnchorId: "anchor_fillet_edge",
+            label:
+              "Create fillet feature feat_anchor_fillet on topology anchor anchor_fillet_edge of body_anchor_fillet_source"
+          })
+        ])
+      }
+    });
+  });
+
   it("returns generated body references through adapter queries", () => {
     const adapter = new CadOpsAgentAdapter();
 

@@ -202,6 +202,7 @@ export interface FeatureEdgeFinishForm {
   readonly name: string;
   readonly edgeStableId?: string;
   readonly namedReference?: string;
+  readonly topologyAnchorId?: string;
   readonly distance: number;
   readonly radius: number;
 }
@@ -823,14 +824,19 @@ export function buildFeatureChamferOp(
 ): FeatureChamferOp {
   const edgeStableId = normalizeOptionalId(form.edgeStableId ?? "");
   const namedReference = normalizeOptionalText(form.namedReference ?? "");
+  const topologyAnchorId = normalizeOptionalId(form.topologyAnchorId ?? "");
 
   return {
     op: "feature.chamfer",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
     targetBodyId: form.targetBodyId,
-    ...(edgeStableId ? { edgeStableId } : {}),
-    ...(namedReference ? { namedReference } : {}),
+    ...(topologyAnchorId
+      ? { topologyAnchorId }
+      : edgeStableId
+        ? { edgeStableId }
+        : {}),
+    ...(!topologyAnchorId && namedReference ? { namedReference } : {}),
     distance: form.distance,
     name: form.name.trim() || undefined
   };
@@ -841,14 +847,19 @@ export function buildFeatureFilletOp(
 ): FeatureFilletOp {
   const edgeStableId = normalizeOptionalId(form.edgeStableId ?? "");
   const namedReference = normalizeOptionalText(form.namedReference ?? "");
+  const topologyAnchorId = normalizeOptionalId(form.topologyAnchorId ?? "");
 
   return {
     op: "feature.fillet",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
     targetBodyId: form.targetBodyId,
-    ...(edgeStableId ? { edgeStableId } : {}),
-    ...(namedReference ? { namedReference } : {}),
+    ...(topologyAnchorId
+      ? { topologyAnchorId }
+      : edgeStableId
+        ? { edgeStableId }
+        : {}),
+    ...(!topologyAnchorId && namedReference ? { namedReference } : {}),
     radius: form.radius,
     name: form.name.trim() || undefined
   };

@@ -2416,9 +2416,10 @@ Use these decisions when drafting or implementing V13 tranches:
    source semantics do not prove them. Automatic anchor creation, command
    eligibility, UI repair affordances, and checkpoint payload generation remain
    later V13 work.
-9. **Implemented, first read-only slice: Command Eligibility For Topology
-   Anchors** - `reference.health` reports active topology anchors as
-   commandable for supported read-only reference operations, and stable
+9. **Implemented, first read-only, planar-face command, and edge-finish
+   command slices: Command Eligibility For Topology Anchors** -
+   `reference.health` reports active topology anchors as commandable for
+   supported read-only reference operations, and stable
    generated-reference-backed anchors can resolve through
    `selection.referenceCandidates` without exposing checkpoint-local topology
    IDs. Stable face, edge, and vertex anchors expose measure/select
@@ -2426,14 +2427,18 @@ Use these decisions when drafting or implementing V13 tranches:
    only. Stable active face anchors whose generated backing supports
    `feature.attachSketchPlane` can be consumed by `sketch.createOnFace`; the
    command stores the existing generated-face sketch attachment shape and
-   records `topologyAnchorId` in transaction history. Metadata-only anchors
-   remain health-only until a direct topology-anchor command target exists.
-   Missing, stale, replaced, ambiguous, deleted, unsupported, and repair-needed
-   anchors remain non-commandable with structured diagnostics. Chamfer/fillet,
-   downstream cut/add retargeting, automatic selection routing beyond stable
-   generated-reference backing, and named-reference repair to topology-anchor
-   targets remain later V13 work until command validators accept those
-   topology-anchor targets directly.
+   records `topologyAnchorId` in transaction history. Stable active edge
+   anchors whose generated backing supports `feature.chamfer` or
+   `feature.fillet` can be consumed by those edge-finish commands; committed
+   features store the resolved generated edge plus topology-anchor provenance
+   for transaction, health, dependency, import, export, and UI helper surfaces.
+   Metadata-only anchors remain health-only until a direct topology-anchor
+   command target exists. Missing, stale, replaced, ambiguous, deleted,
+   unsupported, and repair-needed anchors remain non-commandable with
+   structured diagnostics. Downstream cut/add retargeting, automatic selection
+   routing beyond stable generated-reference backing, named-reference repair to
+   topology-anchor targets, and direct topology-anchor command targets without
+   generated backing remain later V13 work.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint
