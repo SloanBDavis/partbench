@@ -1398,6 +1398,11 @@ export function App() {
     );
   const namedReferenceCandidatesByName =
     readNamedReferenceCandidatesByName(namedReferences);
+  const selectedNamedReference = selectedNamedReferenceName
+    ? namedReferences.find(
+        (reference) => reference.name === selectedNamedReferenceName
+      )
+    : undefined;
   const transactionHistory = readTransactionHistory();
   const parameters = readParameters();
   const sketchDimensionsBySketchId = readSketchDimensionsBySketchId(sketches);
@@ -1422,8 +1427,19 @@ export function App() {
           expectedKind: selectedGeneratedReferenceState.reference.kind
         }))
       : undefined;
+  const selectedNamedReferenceCandidates =
+    selectedNamedReference &&
+    selectedGeneratedReferenceState.status === "selected" &&
+    selectedGeneratedReferenceState.reference.bodyId ===
+      selectedNamedReference.bodyId &&
+    selectedGeneratedReferenceState.reference.stableId ===
+      selectedNamedReference.stableId
+      ? namedReferenceCandidatesByName.get(selectedNamedReference.name)
+      : undefined;
+  const selectedReferenceCandidates =
+    selectedNamedReferenceCandidates ?? selectedGeneratedReferenceCandidates;
   const selectedSelectionReferenceCandidates =
-    selectedGeneratedReferenceCandidates ?? selectedBodyReferenceCandidates;
+    selectedReferenceCandidates ?? selectedBodyReferenceCandidates;
   const modelingSelectionContext = createModelingSelectionContext({
     focusedSketchId,
     namedReferences,
@@ -1432,7 +1448,7 @@ export function App() {
     selectedBodyGeneratedReferences: selectedBodyGeneratedReferences.references,
     selectedBodyReferenceCandidates,
     selectedFeature,
-    selectedGeneratedReferenceCandidates,
+    selectedGeneratedReferenceCandidates: selectedReferenceCandidates,
     selectedGeneratedReferenceState,
     selectedId,
     selectedSketchContext,

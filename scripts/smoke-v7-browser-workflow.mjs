@@ -102,11 +102,15 @@ function parseSmokeOptions(args, env) {
   const requireV12Workflow = isTruthy(
     env.PARTBENCH_V12_BROWSER_WORKFLOW_REQUIRED
   );
+  const requireV13Workflow = isTruthy(
+    env.PARTBENCH_V13_BROWSER_WORKFLOW_REQUIRED
+  );
 
   let nextRequireGlbDownload = requireGlbDownload;
   let nextRequireDerivedMeshCache = requireDerivedMeshCache;
   let nextRequireV10Workflow = requireV10Workflow;
   let nextRequireV12Workflow = requireV12Workflow;
+  let nextRequireV13Workflow = requireV13Workflow;
 
   for (const arg of args) {
     if (arg === "--require-glb" || arg === "--require-glb-download") {
@@ -149,6 +153,16 @@ function parseSmokeOptions(args, env) {
       continue;
     }
 
+    if (arg === "--require-v13-workflow") {
+      nextRequireV13Workflow = true;
+      continue;
+    }
+
+    if (arg === "--no-require-v13-workflow") {
+      nextRequireV13Workflow = false;
+      continue;
+    }
+
     throw new Error(`Unknown option ${arg}`);
   }
 
@@ -156,7 +170,8 @@ function parseSmokeOptions(args, env) {
     requireGlbDownload: nextRequireGlbDownload,
     requireDerivedMeshCache: nextRequireDerivedMeshCache,
     requireV10Workflow: nextRequireV10Workflow,
-    requireV12Workflow: nextRequireV12Workflow
+    requireV12Workflow: nextRequireV12Workflow,
+    requireV13Workflow: nextRequireV13Workflow
   };
 }
 
@@ -222,7 +237,8 @@ async function runV7BrowserWorkflowSmoke(
     requireGlbDownload = false,
     requireDerivedMeshCache = false,
     requireV10Workflow = false,
-    requireV12Workflow = false
+    requireV12Workflow = false,
+    requireV13Workflow = false
   } = {}
 ) {
   const target = await client.send("Target.createTarget", {
@@ -237,6 +253,9 @@ async function runV7BrowserWorkflowSmoke(
   const consoleErrors = [];
   const v10C2ProjectJson = requireV10Workflow
     ? await createV10C2ReleaseSampleProjectJson()
+    : undefined;
+  const v13ProjectJson = requireV13Workflow
+    ? await createV13ReleaseSampleProjectJson()
     : undefined;
 
   client.on("Runtime.exceptionThrown", (params) => {
@@ -291,7 +310,9 @@ async function runV7BrowserWorkflowSmoke(
         requireGlbDownload,
         requireV10Workflow,
         requireV12Workflow,
+        requireV13Workflow,
         v10C2ProjectJson,
+        v13ProjectJson,
         timeoutMs
       })})`
     },
@@ -341,7 +362,8 @@ async function runV7BrowserWorkflowSmoke(
       requireDerivedMeshCache,
       requireGlbDownload,
       requireV10Workflow,
-      requireV12Workflow
+      requireV12Workflow,
+      requireV13Workflow
     }),
     consoleErrors,
     exceptions
@@ -361,6 +383,26 @@ async function createV10C2ReleaseSampleProjectJson() {
 
   if (!response.ok) {
     throw new Error("Could not build V10 C2 release sample project JSON.");
+  }
+
+  return cadCore.exportCadProjectJson(engine);
+}
+
+async function createV13ReleaseSampleProjectJson() {
+  register(loaderPath, import.meta.url);
+  const cadCorePath = pathToFileURL(
+    resolve(repoRoot, "packages/cad-core/src/index.ts")
+  );
+  const cadCore = await import(cadCorePath.href);
+  const engine = new cadCore.CadEngine();
+  const response = engine.executeBatch(
+    cadCore.createV13ReleaseSampleBatch(
+      "v13-topology-anchor-repair-command-chain"
+    )
+  );
+
+  if (!response.ok) {
+    throw new Error("Could not build V13 release sample project JSON.");
   }
 
   return cadCore.exportCadProjectJson(engine);
@@ -438,6 +480,8 @@ async function v7BrowserWorkflowSmoke({
   requireV10Workflow,
   requireV12Workflow,
   v10C2ProjectJson,
+  requireV13Workflow,
+  v13ProjectJson,
   timeoutMs
 }) {
   const ids = {
@@ -510,6 +554,17 @@ async function v7BrowserWorkflowSmoke({
     v12RepairStaleBodyName: "V12 smoke stale repair source",
     v12RepairStaleEntityId: "v12_smoke_stale_repair_rect",
     v12RepairStaleFeatureId: "v12_smoke_stale_repair_feature",
+    v13CutBodyId: "v13_cut_body",
+    v13CutBodyName: "V13 anchored cut",
+    v13CutFeatureId: "v13_cut_feature",
+    v13ProjectFileName: "v13-browser-fixture.json",
+    v13RepairBodyId: "v13_repair_body",
+    v13RepairBodyName: "V13 repair body",
+    v13RepairReferenceName: "V13 repair face",
+    v13RepairTopologyAnchorId: "v13_anchor_repair_face",
+    v13TargetBodyAnchorId: "v13_anchor_target_body",
+    v13TargetBodyId: "v13_target_body",
+    v13TargetBodyName: "V13 anchored target body",
     wcadFileName: "v8-browser-workflow-roundtrip.wcad",
     sketchId: "v7_smoke_sketch"
   };
@@ -1600,6 +1655,10 @@ async function v7BrowserWorkflowSmoke({
     );
   }
 
+  if (requireV13Workflow) {
+    await runV13TopologyIdentityBrowserWorkflowSmoke(v13ProjectJson);
+  }
+
   return { checks, ids, skipped };
 
   function pass(id, label, detail) {
@@ -1618,6 +1677,234 @@ async function v7BrowserWorkflowSmoke({
       status: "fail",
       ...(detail ? { detail } : {})
     });
+  }
+
+  async function runV13TopologyIdentityBrowserWorkflowSmoke(projectJson) {
+    if (!projectJson) {
+      fail(
+        "v13-project-json-import",
+        "V13 topology release fixture imports through Project/File",
+        "V13 release sample project JSON was not available."
+      );
+      return;
+    }
+
+    openDetailsBySummary(document.body, "Project/File");
+    let projectPanel = getSectionByAriaLabel("Project");
+    loadProjectJsonFileIntoInput(
+      projectPanel,
+      projectJson,
+      ids.v13ProjectFileName
+    );
+    await waitFor(
+      () =>
+        includesText(
+          getSectionByAriaLabel("Project"),
+          `Loaded ${ids.v13ProjectFileName}`
+        ) && includesText(getSectionByAriaLabel("Project"), "Ready to import"),
+      "loaded V13 topology browser fixture JSON"
+    );
+    projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Import JSON");
+    await waitFor(() => {
+      const project = getSectionByAriaLabel("Project");
+      const structure = getElementByAriaLabel("Model structure");
+      const ready =
+        includesText(project, "Imported web-cad.project.v18") &&
+        includesText(structure, ids.v13RepairBodyName) &&
+        includesText(structure, ids.v13RepairReferenceName) &&
+        includesText(structure, ids.v13TargetBodyName) &&
+        includesText(structure, ids.v13CutBodyName);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(project.textContent, 360)}`,
+            `structure=${compactText(structure.textContent, 360)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "imported V13 topology browser fixture JSON");
+    pass(
+      "v13-project-json-import",
+      "V13 topology release fixture imports through Project/File",
+      compactText(getElementByAriaLabel("Model structure").textContent, 420)
+    );
+
+    projectPanel = getSectionByAriaLabel("Project");
+    const topologyStatus = getElementByAriaLabel("Topology identity status");
+    const topologyStatusChecks = [
+      assertIncludes(topologyStatus, "Topology identity", "v13-topology-title"),
+      assertIncludes(topologyStatus, "2 checkpoints", "v13-checkpoint-count"),
+      assertIncludes(topologyStatus, "2 anchors", "v13-anchor-count"),
+      assertIncludes(topologyStatus, "partbench.wcad.v2", "v13-wcad-v2"),
+      assertIncludes(topologyStatus, "Use .wcad", "v13-json-warning")
+    ];
+
+    if (topologyStatusChecks.every(Boolean)) {
+      pass(
+        "v13-project-topology-status",
+        "Project/File reports compact V13 topology checkpoint and anchor status",
+        compactText(topologyStatus.textContent, 420)
+      );
+    }
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v13RepairReferenceName
+    );
+    await waitFor(
+      () => isTreePanelOpen(),
+      "V13 repaired named reference selection keeps preferred tree tab"
+    );
+    openSelectionPanel();
+    await waitForGeneratedReferenceCommandReady(
+      ids.v13RepairBodyId,
+      "V13 topology-repaired named reference is command-ready"
+    );
+    pass(
+      "v13-repaired-reference-command-ready",
+      "V13 repaired named reference resolves to a command-ready topology-anchored face",
+      getSelectionText()
+    );
+
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        includesText(
+          inspector,
+          "Topology anchor-backed target with checkpoint evidence."
+        ) &&
+        includesText(
+          modeling,
+          "Topology anchor-backed target with checkpoint evidence."
+        );
+
+      if (!ready) {
+        throw new Error(
+          [
+            `inspector=${compactText(inspector.textContent, 360)}`,
+            `modeling=${compactText(modeling.textContent, 300)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V13 topology-anchor provenance is visible");
+    pass(
+      "v13-repaired-reference-topology-provenance",
+      "Selection and Modeling show compact checkpoint-backed topology provenance",
+      getSelectionText()
+    );
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v13TargetBodyName
+    );
+    await waitFor(
+      () => isTreePanelOpen(),
+      "V13 topology target body selection keeps preferred tree tab"
+    );
+    openSelectionPanel();
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const modeling = getSectionByAriaLabel("Modeling context");
+      const ready =
+        isSelectionPanelOpen() &&
+        includesText(inspector, ids.v13TargetBodyId) &&
+        includesText(inspector, "Selection body consumed") &&
+        includesText(inspector, ids.v13CutFeatureId) &&
+        includesText(modeling, "Selection body consumed");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `selectionPanelOpen=${isSelectionPanelOpen() ? "true" : "false"}`,
+            `inspector=${compactText(inspector.textContent, 360)}`,
+            `modeling=${compactText(modeling.textContent, 260)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V13 target body consumed diagnostic after anchored downstream cut");
+    pass(
+      "v13-target-body-consumed-diagnostic",
+      "V13 topology-anchored target body remains selectable with structured consumed diagnostics",
+      getSelectionText()
+    );
+
+    const userVisibleTopologyText = [
+      getRenderedText(topologyStatus),
+      getRenderedText(getElementByAriaLabel("Inspector")),
+      getRenderedText(getSectionByAriaLabel("Modeling context"))
+    ].join(" ");
+    const privateLeak = findPrivateTopologyUiLeak(userVisibleTopologyText);
+    if (privateLeak) {
+      fail(
+        "v13-no-private-topology-ui-leak",
+        "Topology UI avoids private renderer, kernel, and checkpoint-local ids",
+        privateLeak
+      );
+    } else {
+      pass(
+        "v13-no-private-topology-ui-leak",
+        "Topology UI avoids private renderer, kernel, and checkpoint-local ids",
+        compactText(userVisibleTopologyText, 420)
+      );
+    }
+
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v13CutBodyName
+    );
+    await waitFor(
+      () =>
+        includesText(getElementByAriaLabel("Inspector"), ids.v13CutBodyId) ||
+        includesText(
+          getSectionByAriaLabel("Modeling context"),
+          ids.v13CutBodyName
+        ),
+      "V13 anchored cut result body is selectable"
+    );
+
+    openDetailsBySummary(document.body, "Project/File");
+    projectPanel = getSectionByAriaLabel("Project");
+    clickButton(projectPanel, "Export JSON");
+    await waitFor(() => {
+      const projectJsonPreview = getProjectJsonEditorValue(projectPanel);
+      const ready =
+        includesText(projectPanel, "Import draft") &&
+        projectJsonPreview.includes("web-cad.project.v18") &&
+        projectJsonPreview.includes(ids.v13TargetBodyAnchorId) &&
+        projectJsonPreview.includes(ids.v13RepairTopologyAnchorId) &&
+        projectJsonPreview.includes(ids.v13CutFeatureId);
+
+      if (!ready) {
+        throw new Error(
+          [
+            `project=${compactText(projectPanel.textContent, 420)}`,
+            `json=${projectJsonPreview.trim().slice(0, 240)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V13 exported topology source JSON preview");
+    assertV13ExportedProjectJsonIncludes(
+      getProjectJsonEditorValue(projectPanel)
+    );
+    pass(
+      "v13-downstream-anchor-cut-export",
+      "V13 downstream cut keeps its topology-anchor target through Project/File JSON export",
+      "web-cad.project.v18"
+    );
   }
 
   async function runV10EditRepairWorkflowSmoke() {
@@ -3954,6 +4241,114 @@ async function v7BrowserWorkflowSmoke({
     }
   }
 
+  function assertV13ExportedProjectJsonIncludes(projectJson) {
+    let project;
+
+    try {
+      project = JSON.parse(projectJson);
+    } catch (error) {
+      fail(
+        "v13-downstream-anchor-cut-export",
+        "V13 exported project JSON parses",
+        error instanceof Error ? error.message : "Unknown JSON parse error."
+      );
+      return;
+    }
+
+    const topology = project.document?.topologyIdentity;
+    const anchors = Array.isArray(topology?.anchors) ? topology.anchors : [];
+    const checkpoints = Array.isArray(topology?.checkpoints)
+      ? topology.checkpoints
+      : [];
+    const features = Array.isArray(project.document?.features)
+      ? project.document.features
+      : [];
+    const namedReferences = Array.isArray(project.document?.namedReferences)
+      ? project.document.namedReferences
+      : [];
+    const missing = [];
+
+    if (project.schemaVersion !== "web-cad.project.v18") {
+      missing.push("schemaVersion:web-cad.project.v18");
+    }
+
+    if (topology?.schemaVersion !== "web-cad.project.v18") {
+      missing.push("topologyIdentity.schemaVersion:web-cad.project.v18");
+    }
+
+    if (checkpoints.length !== 2) {
+      missing.push("topologyIdentity.checkpoints:2");
+    }
+
+    if (anchors.length !== 2) {
+      missing.push("topologyIdentity.anchors:2");
+    }
+
+    if (
+      !anchors.some(
+        (anchor) =>
+          anchor.anchorId === ids.v13RepairTopologyAnchorId &&
+          anchor.entityKind === "face" &&
+          anchor.bodyId === ids.v13RepairBodyId &&
+          anchor.state === "active"
+      )
+    ) {
+      missing.push(ids.v13RepairTopologyAnchorId);
+    }
+
+    if (
+      !anchors.some(
+        (anchor) =>
+          anchor.anchorId === ids.v13TargetBodyAnchorId &&
+          anchor.entityKind === "body" &&
+          anchor.bodyId === ids.v13TargetBodyId &&
+          anchor.state === "active"
+      )
+    ) {
+      missing.push(ids.v13TargetBodyAnchorId);
+    }
+
+    if (
+      !namedReferences.some(
+        (reference) =>
+          reference.name === ids.v13RepairReferenceName &&
+          reference.topologyAnchorId === ids.v13RepairTopologyAnchorId &&
+          reference.stableId === `generated:face:${ids.v13RepairBodyId}:endCap`
+      )
+    ) {
+      missing.push(`${ids.v13RepairReferenceName}:topologyAnchorId`);
+    }
+
+    if (
+      !features.some(
+        (feature) =>
+          feature.id === ids.v13CutFeatureId &&
+          feature.operationMode === "cut" &&
+          feature.targetBodyId === ids.v13TargetBodyId &&
+          feature.targetTopologyAnchorId === ids.v13TargetBodyAnchorId &&
+          feature.bodyId === ids.v13CutBodyId
+      )
+    ) {
+      missing.push(`${ids.v13CutFeatureId}:targetTopologyAnchorId`);
+    }
+
+    if (missing.length > 0) {
+      fail(
+        "v13-downstream-anchor-cut-export",
+        "V13 downstream cut keeps its topology-anchor target through Project/File JSON export",
+        `Missing ${missing.join(", ")}`
+      );
+    }
+  }
+
+  function findPrivateTopologyUiLeak(text) {
+    const match = normalize(text).match(
+      /\b(?:checkpointEntityId|checkpoint-local|rendererId|renderer id|meshId|mesh id|occtId|occt id|gpuId|gpu id|selection-buffer|selectionBufferId|pixelId|pixel id|opfsPath|opfs path|fileHandle|file handle|viewport state)\b/i
+    );
+
+    return match ? `Private UI token leaked: ${match[0]}` : "";
+  }
+
   async function waitFor(predicate, label) {
     const deadline = Date.now() + timeoutMs;
     let lastError;
@@ -4622,6 +5017,10 @@ async function v7BrowserWorkflowSmoke({
 
   function getVisibleTextSnapshot() {
     return normalize(document.body.textContent).slice(0, 1000);
+  }
+
+  function getRenderedText(element) {
+    return normalize(element.innerText ?? element.textContent);
   }
 }
 

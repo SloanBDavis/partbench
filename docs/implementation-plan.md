@@ -2481,12 +2481,19 @@ Use these decisions when drafting or implementing V13 tranches:
     `pnpm smoke:v13-release-samples`: it covers V18 checkpoint and anchor
     source records, named-reference repair to a topology face anchor,
     downstream cut through a topology body anchor, JSON round-trip behavior,
-    and exact/split/deleted/low-confidence topology matching. Browser-level
-    result-topology selection, explicit repair, and downstream command smokes
-    remain later Tranche K work. This first K slice does not exercise
-    checkpoint payload byte generation or `.wcad` v2 checkpoint-payload
-    round-trips; it verifies JSON source round-trips for the V18 topology
-    identity records.
+    and exact/split/deleted/low-confidence topology matching. The first
+    browser release sample is implemented as `pnpm smoke:v13-browser-workflow`:
+    it imports the V13 topology fixture through Project/File JSON, verifies the
+    compact topology identity status, selects the repaired named face as a
+    command-ready checkpoint-backed reference, selects the topology-anchored
+    target body and verifies its consumed diagnostic after the downstream cut,
+    asserts visible topology UI does not leak private renderer, kernel, or
+    checkpoint-local ids, and exports JSON again to prove the downstream cut
+    keeps its `targetTopologyAnchorId`. Full interactive
+    result-topology creation and manual repair chains remain later Tranche K
+    hardening. This K slice does not exercise checkpoint payload byte
+    generation or `.wcad` v2 checkpoint-payload round-trips; it verifies JSON
+    source round-trips for the V18 topology identity records.
 
 ### V13 Scope Guardrails
 

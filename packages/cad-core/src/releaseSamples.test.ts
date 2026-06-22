@@ -411,7 +411,8 @@ describe("V13 release sample fixtures", () => {
             commandable: true,
             target: expect.objectContaining({
               topologyAnchorId:
-                fixture.expectedTopology.repairedTopologyAnchorId
+                fixture.expectedTopology.repairedTopologyAnchorId,
+              checkpointId: "v13_checkpoint_repair_body"
             })
           })
         ]

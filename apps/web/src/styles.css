@@ -3566,12 +3566,12 @@ button.dimension-status-row {
   }
 
   .viewport-frame-with-status .viewport-contextual-slot {
-    bottom: 80px;
+    bottom: 104px;
   }
 
   .viewport-contextual-command-surface {
     width: min(100%, 360px);
-    max-height: min(150px, 30dvh);
+    max-height: min(132px, 26dvh);
   }
   .model-browser-sections {
     grid-template-columns: 1fr;

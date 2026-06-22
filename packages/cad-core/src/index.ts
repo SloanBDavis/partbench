@@ -12474,13 +12474,20 @@ function createSelectionReferenceCandidates(
     };
   }
 
+  const namedTopologyAnchor = entry.topologyAnchorId
+    ? document.topologyIdentity?.anchors.find(
+        (candidate) => candidate.anchorId === entry.topologyAnchorId
+      )
+    : undefined;
+
   return createSingleSelectionReferenceCandidate({
     source: "namedReferenceSelection",
     selection,
     body,
     reference: entry.reference,
     requiredOperation,
-    topologyAnchorId: entry.topologyAnchorId
+    topologyAnchorId: entry.topologyAnchorId,
+    checkpointId: namedTopologyAnchor?.checkpointId
   });
 }
 
