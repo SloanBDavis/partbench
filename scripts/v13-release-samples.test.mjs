@@ -7,8 +7,8 @@ import {
 } from "./v13-release-samples.mjs";
 
 describe("V13 topology identity smoke runner", () => {
-  it("verifies deterministic topology checkpoint, repair, command, and match chains", () => {
-    const result = runV13ReleaseSampleSmoke(cadCore);
+  it("verifies deterministic topology checkpoint, repair, command, match, and package chains", async () => {
+    const result = await runV13ReleaseSampleSmoke(cadCore);
 
     expect(result).toMatchObject({
       ok: true,
@@ -19,7 +19,7 @@ describe("V13 topology identity smoke runner", () => {
       referenceCheckCount: 5,
       commandCheckCount: 2,
       matchCheckCount: 9,
-      roundTripCheckCount: 2
+      roundTripCheckCount: 17
     });
     expect(result.samples.map((sample) => sample.id)).toEqual([
       "v13-topology-anchor-repair-command-chain"
@@ -31,15 +31,15 @@ describe("V13 topology identity smoke runner", () => {
       [
         "V13 topology identity smoke passed",
         "samples: 1 passed, 0 failed, 1 total",
-        "checks: 4 topology, 5 reference, 2 command, 9 match, 2 round-trip",
-        "- pass v13-topology-anchor-repair-command-chain | topology 4 | reference 5 | command 2 | match 9 | round-trips 2"
+        "checks: 4 topology, 5 reference, 2 command, 9 match, 17 round-trip",
+        "- pass v13-topology-anchor-repair-command-chain | topology 4 | reference 5 | command 2 | match 9 | round-trips 17"
       ].join("\n")
     );
   });
 
-  it("reports fixture expectation failures in the V13 result", () => {
+  it("reports fixture expectation failures in the V13 result", async () => {
     const [fixture] = cadCore.listV13ReleaseSampleFixtures();
-    const result = runV13ReleaseSampleSmoke(cadCore, {
+    const result = await runV13ReleaseSampleSmoke(cadCore, {
       fixtures: [
         {
           ...fixture,
@@ -65,8 +65,8 @@ describe("V13 topology identity smoke runner", () => {
     );
   });
 
-  it("fails empty fixture sets and guards private identifier checks precisely", () => {
-    const result = runV13ReleaseSampleSmoke(cadCore, { fixtures: [] });
+  it("fails empty fixture sets and guards private identifier checks precisely", async () => {
+    const result = await runV13ReleaseSampleSmoke(cadCore, { fixtures: [] });
 
     expect(result).toMatchObject({
       ok: false,

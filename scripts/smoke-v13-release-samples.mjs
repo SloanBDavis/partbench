@@ -26,7 +26,7 @@ derived/session boundary separation. Use --json for structured output.`);
   register(loaderPath, import.meta.url);
 
   const cadCore = await import(cadCorePath.href);
-  const result = runV13ReleaseSampleSmoke(cadCore);
+  const result = await runV13ReleaseSampleSmoke(cadCore);
 
   if (args.has("--json")) {
     console.log(JSON.stringify(result, null, 2));

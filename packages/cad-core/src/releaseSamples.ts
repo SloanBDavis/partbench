@@ -6,6 +6,7 @@ import type {
   CadExportReadinessStatus,
   CadFeatureEditabilityStatus,
   CadFeatureReferenceChangeCategory,
+  CadBodyExactTopologySnapshot,
   CadGeneratedEntityKind,
   CadOp,
   CadRebuildPlanStatus,
@@ -18,8 +19,12 @@ import type {
   CadTopologyMatchConfidence,
   CadTopologyMatchSnapshotInput,
   DocumentUnits,
-  NamedReferenceName
+  NamedReferenceName,
+  WcadTopologyCheckpointKernelMetadata,
+  WcadTopologyCheckpointToleranceMetadata
 } from "@web-cad/cad-protocol";
+
+import { encodeCanonicalCbor } from "./canonicalCbor";
 
 export type V7ReleaseSampleId =
   | "v7-rectangle-extrude-reference"
@@ -1777,6 +1782,18 @@ export interface V13ReleaseSampleFixture {
   readonly ops: readonly CadOp[];
 }
 
+export interface V13ReleaseSampleCheckpointPayloadInput {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly sourceFeatureId?: string;
+  readonly units?: DocumentUnits;
+  readonly kernel: WcadTopologyCheckpointKernelMetadata;
+  readonly tolerance: WcadTopologyCheckpointToleranceMetadata;
+  readonly brepBytes: Uint8Array;
+  readonly topologyBytes: Uint8Array;
+  readonly signatureBytes: Uint8Array;
+}
+
 const V13_REPAIR_BODY = "v13_repair_body";
 const V13_REPAIR_START_FACE = `generated:face:${V13_REPAIR_BODY}:startCap`;
 const V13_REPAIR_END_FACE = `generated:face:${V13_REPAIR_BODY}:endCap`;
@@ -2061,6 +2078,63 @@ export function createV13ReleaseSampleBatch(id: V13ReleaseSampleId): CadBatch {
   };
 }
 
+export function createV13ReleaseSampleCheckpointPayloads(
+  id: V13ReleaseSampleId
+): readonly V13ReleaseSampleCheckpointPayloadInput[] {
+  const fixture = getV13ReleaseSampleFixture(id);
+  const checkpointOps = fixture.ops.filter(
+    (op): op is Extract<CadOp, { readonly op: "topology.checkpoint.create" }> =>
+      op.op === "topology.checkpoint.create"
+  );
+  const anchorOps = fixture.ops.filter(
+    (op): op is Extract<CadOp, { readonly op: "topology.anchor.create" }> =>
+      op.op === "topology.anchor.create"
+  );
+
+  return checkpointOps.map((checkpoint) => {
+    const topologySnapshot = createV13ReleaseSampleCheckpointTopologySnapshot({
+      checkpointId: checkpoint.checkpointId,
+      bodyId: checkpoint.bodyId,
+      anchors: anchorOps.filter(
+        (anchor) => anchor.checkpointId === checkpoint.checkpointId
+      )
+    });
+    const signaturePayload = {
+      checkpointId: checkpoint.checkpointId,
+      signatureAlgorithm: topologySnapshot.signatureAlgorithm,
+      signature: topologySnapshot.signature,
+      entityCount: topologySnapshot.entityCount,
+      entities: topologySnapshot.entities.map((entity) => ({
+        localId: entity.localId,
+        kind: entity.kind,
+        signature: entity.signature
+      }))
+    };
+
+    return {
+      checkpointId: checkpoint.checkpointId,
+      bodyId: checkpoint.bodyId,
+      ...(checkpoint.sourceFeatureId
+        ? { sourceFeatureId: checkpoint.sourceFeatureId }
+        : {}),
+      units: fixture.units,
+      kernel: {
+        boundary: "geometry-kernel",
+        snapshotAlgorithm: "partbench-derived-topology-snapshot-v1"
+      },
+      tolerance: {
+        linearTolerance: 0.001,
+        angularToleranceDegrees: 0.01
+      },
+      brepBytes: new TextEncoder().encode(
+        `partbench-v13-release-fixture-brep:${fixture.id}:${checkpoint.checkpointId}`
+      ),
+      topologyBytes: encodeCanonicalCbor(topologySnapshot),
+      signatureBytes: encodeCanonicalCbor(signaturePayload)
+    };
+  });
+}
+
 function createV13TopologyMatchSnapshot({
   checkpointId,
   bodyId,
@@ -2112,5 +2186,53 @@ function createV13TopologyMatchSnapshot({
       signature: `${checkpointId}:signature`,
       diagnostics: []
     }
+  };
+}
+
+function createV13ReleaseSampleCheckpointTopologySnapshot({
+  checkpointId,
+  bodyId,
+  anchors
+}: {
+  readonly checkpointId: string;
+  readonly bodyId: BodyId;
+  readonly anchors: readonly Extract<
+    CadOp,
+    { readonly op: "topology.anchor.create" }
+  >[];
+}): CadBodyExactTopologySnapshot {
+  const entities = anchors.map((anchor) => ({
+    localId: anchor.checkpointEntityId,
+    kind: anchor.entityKind,
+    source: "kernel-derived" as const,
+    signature:
+      anchor.signatureHash ??
+      `partbench-v13-release-fixture-signature:${checkpointId}:${anchor.checkpointEntityId}`
+  }));
+  const entityCounts = {
+    solidCount: 0,
+    faceCount: entities.filter((entity) => entity.kind === "face").length,
+    wireCount: 0,
+    edgeCount: entities.filter((entity) => entity.kind === "edge").length,
+    vertexCount: entities.filter((entity) => entity.kind === "vertex").length,
+    bodyCount: entities.filter((entity) => entity.kind === "body").length,
+    loopCount: 0,
+    coedgeCount: 0,
+    axisCount: entities.filter((entity) => entity.kind === "axis").length
+  };
+
+  return {
+    source: "kernel-derived",
+    status: "ready",
+    entityCounts,
+    entityCount: entities.length,
+    entities,
+    unsupportedEntityKinds: [],
+    adjacencyAvailable: false,
+    signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+    signature: `partbench-v13-release-fixture-topology:${bodyId}:${checkpointId}:${entities
+      .map((entity) => `${entity.kind}:${entity.localId}:${entity.signature}`)
+      .join("|")}`,
+    diagnostics: []
   };
 }

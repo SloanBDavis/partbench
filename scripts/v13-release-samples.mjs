@@ -4,10 +4,10 @@ export const V13_RELEASE_BOUNDARY_LEAK_PATTERN =
 const V13_RELEASE_SOURCE_BOUNDARY_LEAK_PATTERN =
   /\b(?:rendererId|renderId|meshId|occtId|occtShape|cacheKey|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|fileSystemHandle|opfsPath|localPath|absolutePath|gpuId|gpuBuffer|gpuBufferId|exportArtifactId|pixelId|viewportState|topologyIndex)\b/i;
 
-export function runV13ReleaseSampleSmoke(cadCore, options = {}) {
+export async function runV13ReleaseSampleSmoke(cadCore, options = {}) {
   const fixtures = options.fixtures ?? cadCore.listV13ReleaseSampleFixtures();
-  const samples = fixtures.map((fixture) =>
-    evaluateV13Fixture(cadCore, fixture)
+  const samples = await Promise.all(
+    fixtures.map((fixture) => evaluateV13Fixture(cadCore, fixture))
   );
   const failedCount = samples.filter(
     (sample) => sample.status === "fail"
@@ -116,7 +116,7 @@ function createReleaseGateInvariantFailures(samples) {
   return failures;
 }
 
-function evaluateV13Fixture(cadCore, fixture) {
+async function evaluateV13Fixture(cadCore, fixture) {
   const failures = [];
   const engine = new cadCore.CadEngine();
   const batch = cadCore.createV13ReleaseSampleBatch(fixture.id);
@@ -164,6 +164,12 @@ function evaluateV13Fixture(cadCore, fixture) {
   }
 
   if (restoredEngine) {
+    roundTripCheckCount += await verifyWcadV2CheckpointRoundTrip(
+      cadCore,
+      restoredEngine,
+      fixture,
+      failures
+    );
     topologyCheckCount += verifyTopologyReadiness(
       restoredEngine,
       fixture,
@@ -196,6 +202,127 @@ function evaluateV13Fixture(cadCore, fixture) {
     matchCheckCount,
     roundTripCheckCount
   });
+}
+
+async function verifyWcadV2CheckpointRoundTrip(
+  cadCore,
+  engine,
+  fixture,
+  failures
+) {
+  let checks = 0;
+
+  try {
+    const project = cadCore.exportCadProject(engine);
+    const checkpointPayloads = cadCore.createV13ReleaseSampleCheckpointPayloads(
+      fixture.id
+    );
+    const exported = await cadCore.exportCadProjectToWcad(project, {
+      createdAt: "2026-06-21T00:00:00.000Z",
+      modifiedAt: "2026-06-21T00:00:00.000Z",
+      topologyCheckpoints: checkpointPayloads
+    });
+    const read = await cadCore.readCadProjectWcad(exported.bytes);
+
+    checkEqual(
+      failures,
+      "wcad.packageVersion",
+      "partbench.wcad.v2",
+      exported.manifest.packageVersion
+    );
+    checkEqual(
+      failures,
+      "wcad.checkpointPayloadCount",
+      fixture.expectedTopology.checkpointCount,
+      exported.checkpointPayloads?.length ?? 0
+    );
+    checkEqual(
+      failures,
+      "wcad.sourceIdentity",
+      exported.manifest.sourceIdentity.sha256,
+      exported.sourceIdentity.sha256
+    );
+    checkNoBoundaryLeaks(
+      failures,
+      "wcad v2 manifest",
+      JSON.stringify(exported.manifest)
+    );
+    checks += 3;
+
+    if (!read.ok) {
+      failures.push(
+        `wcad read: expected ok, got ${JSON.stringify(read.issues)}`
+      );
+      return checks;
+    }
+
+    checkEqual(
+      failures,
+      "wcad.read.packageVersion",
+      "partbench.wcad.v2",
+      read.manifest.packageVersion
+    );
+    checkEqual(
+      failures,
+      "wcad.read.checkpointPayloadCount",
+      fixture.expectedTopology.checkpointCount,
+      read.checkpointPayloads?.length ?? 0
+    );
+    checkEqual(
+      failures,
+      "wcad.read.project.schemaVersion",
+      cadCore.CAD_PROJECT_FORMAT_VERSION_V18,
+      read.project.schemaVersion
+    );
+    checkEqual(
+      failures,
+      "wcad.read.sourceIdentity",
+      read.manifest.sourceIdentity.sha256,
+      read.sourceIdentity.sha256
+    );
+    checkNoSourceBoundaryLeaks(
+      failures,
+      "wcad read project",
+      JSON.stringify(read.project)
+    );
+    checks += 4;
+
+    for (const expected of checkpointPayloads) {
+      const actual = read.checkpointPayloads?.find(
+        (payload) => payload.checkpointId === expected.checkpointId
+      );
+
+      checkEqual(
+        failures,
+        `wcad.${expected.checkpointId}.bodyId`,
+        expected.bodyId,
+        actual?.bodyId
+      );
+      checkEqual(
+        failures,
+        `wcad.${expected.checkpointId}.brepBytes`,
+        bytesToHex(expected.brepBytes),
+        bytesToHex(actual?.brepBytes)
+      );
+      checkEqual(
+        failures,
+        `wcad.${expected.checkpointId}.topologyBytes`,
+        bytesToHex(expected.topologyBytes),
+        bytesToHex(actual?.topologyBytes)
+      );
+      checkEqual(
+        failures,
+        `wcad.${expected.checkpointId}.signatureBytes`,
+        bytesToHex(expected.signatureBytes),
+        bytesToHex(actual?.signatureBytes)
+      );
+      checks += 4;
+    }
+  } catch (error) {
+    failures.push(`wcad v2 checkpoint round-trip threw: ${formatError(error)}`);
+  }
+
+  return checks;
 }
 
 function verifyTopologyReadiness(engine, fixture, failures) {
@@ -449,6 +576,14 @@ function checkNoSourceBoundaryLeaks(failures, label, text) {
   if (V13_RELEASE_SOURCE_BOUNDARY_LEAK_PATTERN.test(text)) {
     failures.push(`${label}: leaked renderer/kernel/browser/cache identifier`);
   }
+}
+
+function bytesToHex(bytes) {
+  if (!bytes) {
+    return undefined;
+  }
+
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function finalizeSampleResult(sample) {
