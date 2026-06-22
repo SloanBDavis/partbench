@@ -2426,6 +2426,7 @@ export function App() {
       body: selectedBody,
       disabled: commandPending,
       namedReferences,
+      selectionReferenceCandidates: selectedSelectionReferenceCandidates,
       selectedGeneratedReferenceState,
       onContinueInModeling: (modelingAction) => {
         setCommandNotice(

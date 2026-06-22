@@ -90,6 +90,23 @@ describe("generated reference UI helpers", () => {
       faceStableId: "generated:face:body_1:startCap"
     });
     expect(
+      buildSketchOnFaceForm(
+        "body_1",
+        startCap,
+        {
+          id: "sketch_anchor_1",
+          name: "Anchor face sketch"
+        },
+        "anchor_face_1"
+      )
+    ).toEqual({
+      id: "sketch_anchor_1",
+      name: "Anchor face sketch",
+      bodyId: "body_1",
+      faceStableId: "generated:face:body_1:startCap",
+      topologyAnchorId: "anchor_face_1"
+    });
+    expect(
       buildSketchOnFaceForm("body_1", circularSide, {
         id: "",
         name: "Circular sketch"

@@ -335,6 +335,44 @@ describe("viewport contextual commands", () => {
     });
   });
 
+  it("routes topology-anchor-backed face sketches through the shared reference contract", () => {
+    const face = createFace();
+    const candidates = createSelectionReferenceCandidates(face, {
+      source: "topologyAnchorSelection",
+      topologyAnchorId: "anchor_face_1",
+      checkpointId: "checkpoint_1"
+    });
+    const surface = createViewportContextualCommandSurface({
+      modelingActions: createGeneratedReferenceActions(face, candidates),
+      selectionDisplay: createSelectionDisplay({
+        selectionKind: "generatedReference",
+        commandOperations: candidates.candidates[0].commandOperations
+      }),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectionReferenceCandidates: candidates
+    });
+    const onCreateSketchOnFace = vi.fn();
+
+    const routed = runViewportContextualCommandAction({
+      action: actionById(surface.actions, "sketch.createOnFace"),
+      selectedGeneratedReferenceState: createSelectedReferenceState(face),
+      selectionReferenceCandidates: candidates,
+      onCreateSketchOnFace
+    });
+
+    expect(routed).toBe(true);
+    expect(onCreateSketchOnFace).toHaveBeenCalledWith({
+      id: "",
+      name: "Start cap sketch",
+      bodyId: "body_rect",
+      faceStableId: "generated:face:body_rect:startCap",
+      topologyAnchorId: "anchor_face_1"
+    });
+    expect(JSON.stringify(onCreateSketchOnFace.mock.calls)).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("does not route disabled command actions", () => {
     const onCreateSketchOnFace = vi.fn();
     const routed = runViewportContextualCommandAction({
@@ -645,6 +683,8 @@ function createSelectionReferenceCandidates(
     readonly selection?: SelectionReferenceCandidatesQueryResponse["selection"];
     readonly source?: SelectionReferenceCandidatesQueryResponse["candidates"][number]["source"];
     readonly status?: SelectionReferenceCandidatesQueryResponse["status"];
+    readonly topologyAnchorId?: string;
+    readonly checkpointId?: string;
   } = {}
 ): SelectionReferenceCandidatesQueryResponse {
   const status = overrides.status ?? "resolved";
@@ -689,7 +729,13 @@ function createSelectionReferenceCandidates(
           type: "generatedReference",
           bodyId: reference.bodyId,
           stableId: reference.stableId,
-          kind: reference.kind
+          kind: reference.kind,
+          ...(overrides.topologyAnchorId
+            ? { topologyAnchorId: overrides.topologyAnchorId }
+            : {}),
+          ...(overrides.checkpointId
+            ? { checkpointId: overrides.checkpointId }
+            : {})
         },
         reference,
         commandable: overrides.commandable ?? true,

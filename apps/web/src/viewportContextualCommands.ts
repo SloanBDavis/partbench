@@ -136,7 +136,8 @@ export function createViewportContextualCommandSurface({
 }
 
 export function createViewportContextualSketchOnFaceForm(
-  selectedGeneratedReferenceState: GeneratedReferenceSelectionState
+  selectedGeneratedReferenceState: GeneratedReferenceSelectionState,
+  selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse
 ): SketchCreateOnFaceForm | undefined {
   if (
     selectedGeneratedReferenceState.status !== "selected" ||
@@ -146,11 +147,21 @@ export function createViewportContextualSketchOnFaceForm(
   }
 
   const face = selectedGeneratedReferenceState.reference;
+  const topologyAnchorId = findSelectedTopologyAnchorIdForOperation(
+    face,
+    "feature.attachSketchPlane",
+    selectionReferenceCandidates
+  );
 
-  return buildSketchOnFaceForm(face.bodyId, face, {
-    id: "",
-    name: createSketchOnFaceDefaultName(face)
-  });
+  return buildSketchOnFaceForm(
+    face.bodyId,
+    face,
+    {
+      id: "",
+      name: createSketchOnFaceDefaultName(face)
+    },
+    topologyAnchorId
+  );
 }
 
 export function createViewportContextualEdgeFinishForm({
@@ -219,7 +230,8 @@ export function runViewportContextualCommandAction({
 
   if (action.id === "sketch.createOnFace") {
     const form = createViewportContextualSketchOnFaceForm(
-      selectedGeneratedReferenceState
+      selectedGeneratedReferenceState,
+      selectionReferenceCandidates
     );
 
     if (!form) {
@@ -249,6 +261,26 @@ export function runViewportContextualCommandAction({
   }
 
   return false;
+}
+
+function findSelectedTopologyAnchorIdForOperation(
+  reference: CadGeneratedReference,
+  operation: CadSelectionReferenceOperation,
+  selectionReferenceCandidates:
+    | SelectionReferenceCandidatesQueryResponse
+    | undefined
+): string | undefined {
+  const candidate = selectionReferenceCandidates?.candidates.find(
+    (entry) =>
+      entry.commandable &&
+      entry.commandOperations.includes(operation) &&
+      entry.target.bodyId === reference.bodyId &&
+      entry.target.stableId === reference.stableId &&
+      entry.target.kind === reference.kind &&
+      entry.target.topologyAnchorId !== undefined
+  );
+
+  return candidate?.target.topologyAnchorId;
 }
 
 function createActionsFromModeling(

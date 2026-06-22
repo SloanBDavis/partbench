@@ -2463,8 +2463,10 @@ Use these decisions when drafting or implementing V13 tranches:
     debug/interchange payload warnings. Selection/Inspector and Modeling
     reference-status surfaces now show compact topology-anchor/checkpoint
     provenance from `selection.referenceCandidates` without making React a
-    topology authority. Viewport contextual-action and browser repair/command
-    workflow integration remain later Tranche J work.
+    topology authority. Viewport contextual create-sketch actions now preserve
+    topology-anchor-backed face targets from the shared reference query when
+    routing to `sketch.createOnFace`. Viewport repair actions and broader
+    browser repair/command workflow integration remain later Tranche J work.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and

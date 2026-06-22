@@ -121,6 +121,7 @@ export interface SketchCreateOnFaceForm {
   readonly name: string;
   readonly bodyId: string;
   readonly faceStableId: string;
+  readonly topologyAnchorId?: string;
 }
 
 export interface ParameterCreateForm {
@@ -408,6 +409,17 @@ export function buildCreateSketchOp(form: SketchCreateForm): SketchCreateOp {
 export function buildCreateSketchOnFaceOp(
   form: SketchCreateOnFaceForm
 ): SketchCreateOnFaceOp {
+  const topologyAnchorId = normalizeOptionalId(form.topologyAnchorId ?? "");
+
+  if (topologyAnchorId) {
+    return {
+      op: "sketch.createOnFace",
+      id: normalizeOptionalId(form.id),
+      name: form.name.trim(),
+      topologyAnchorId
+    };
+  }
+
   return {
     op: "sketch.createOnFace",
     id: normalizeOptionalId(form.id),

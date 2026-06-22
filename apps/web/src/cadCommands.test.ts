@@ -264,6 +264,20 @@ describe("cad command builders", () => {
       topologyAnchorId: "anchor_face_1"
     });
     expect(
+      buildCreateSketchOnFaceOp({
+        id: "sketch_anchor_1",
+        name: " Anchor face sketch ",
+        bodyId: "body_1",
+        faceStableId: "generated:face:body_1:endCap",
+        topologyAnchorId: " anchor_face_1 "
+      })
+    ).toEqual({
+      op: "sketch.createOnFace",
+      id: "sketch_anchor_1",
+      name: "Anchor face sketch",
+      topologyAnchorId: "anchor_face_1"
+    });
+    expect(
       buildUpdateSketchEntityOp("sketch_1", {
         id: "rect_1",
         kind: "rectangle",

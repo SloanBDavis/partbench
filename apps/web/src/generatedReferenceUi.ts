@@ -86,7 +86,8 @@ export function createSketchOnFaceDefaultName(
 export function buildSketchOnFaceForm(
   bodyId: string,
   face: CadGeneratedFaceReference,
-  draft: SketchOnFaceDraft
+  draft: SketchOnFaceDraft,
+  topologyAnchorId?: string
 ): SketchCreateOnFaceForm | undefined {
   const name = draft.name.trim();
 
@@ -98,7 +99,8 @@ export function buildSketchOnFaceForm(
     id: draft.id,
     name,
     bodyId,
-    faceStableId: face.stableId
+    faceStableId: face.stableId,
+    ...(topologyAnchorId ? { topologyAnchorId } : {})
   };
 }
 
