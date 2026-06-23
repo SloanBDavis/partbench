@@ -309,6 +309,7 @@ describe("V13 release sample fixtures", () => {
         expect.arrayContaining([
           "topology-checkpoint",
           "topology-anchor",
+          "topology-anchor-repair",
           "topology-match",
           "reference-health",
           "named-reference-repair",
@@ -379,10 +380,39 @@ describe("V13 release sample fixtures", () => {
             anchorId: fixture.expectedTopology.downstreamTargetTopologyAnchorId,
             entityKind: "body",
             state: "active"
+          }),
+          expect.objectContaining({
+            anchorId: fixture.expectedTopology.manualRepairAnchorId,
+            entityKind: "face",
+            state: "active"
           })
         ])
       );
       assertNoPublicTopologyIds(JSON.stringify(readiness));
+
+      const topologyIdentity = restored.getDocument().topologyIdentity;
+      expect(topologyIdentity).toMatchObject({
+        repairs: [
+          expect.objectContaining({
+            repairId: fixture.expectedTopology.manualRepairId,
+            anchorId: fixture.expectedTopology.manualRepairAnchorId,
+            replacementCheckpointId:
+              fixture.expectedTopology.manualRepairReplacementCheckpointId,
+            confidence: "high"
+          })
+        ],
+        anchors: expect.arrayContaining([
+          expect.objectContaining({
+            anchorId: fixture.expectedTopology.manualRepairAnchorId,
+            checkpointId:
+              fixture.expectedTopology.manualRepairReplacementCheckpointId,
+            state: "active"
+          })
+        ])
+      });
+      expect(topologyIdentity?.repairs).toHaveLength(
+        fixture.expectedTopology.repairCount
+      );
 
       const namedReferences = readNamedReferences(restored);
       expect(namedReferences.references).toEqual(

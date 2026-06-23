@@ -185,6 +185,11 @@ async function evaluateV13Fixture(cadCore, fixture) {
       fixture,
       failures
     );
+    commandCheckCount += verifyTopologyAnchorRepair(
+      restoredEngine,
+      fixture,
+      failures
+    );
     matchCheckCount += verifyTopologyMatching(
       restoredEngine,
       fixture,
@@ -358,12 +363,18 @@ function verifyTopologyReadiness(engine, fixture, failures) {
       readiness.anchors.map((anchor) => anchor.anchorId),
       fixture.expectedTopology.downstreamTargetTopologyAnchorId
     );
+    checkIncludes(
+      failures,
+      "topology.anchors",
+      readiness.anchors.map((anchor) => anchor.anchorId),
+      fixture.expectedTopology.manualRepairAnchorId
+    );
     checkNoBoundaryLeaks(
       failures,
       "topology readiness",
       JSON.stringify(readiness)
     );
-    checks += 4;
+    checks += 5;
   }
 
   return checks;
@@ -473,6 +484,66 @@ function verifyTopologyAnchorCommand(engine, fixture, failures) {
     );
     checks += 2;
   }
+
+  return checks;
+}
+
+function verifyTopologyAnchorRepair(engine, fixture, failures) {
+  const topologyIdentity = engine.getDocument().topologyIdentity;
+  const repairs = topologyIdentity?.repairs ?? [];
+  const anchors = topologyIdentity?.anchors ?? [];
+  const repair = repairs.find(
+    (candidate) =>
+      candidate.repairId === fixture.expectedTopology.manualRepairId
+  );
+  const anchor = anchors.find(
+    (candidate) =>
+      candidate.anchorId === fixture.expectedTopology.manualRepairAnchorId
+  );
+  let checks = 0;
+
+  checkEqual(
+    failures,
+    "topology.repairCount",
+    fixture.expectedTopology.repairCount,
+    repairs.length
+  );
+  checkEqual(
+    failures,
+    "topology.repair.anchorId",
+    fixture.expectedTopology.manualRepairAnchorId,
+    repair?.anchorId
+  );
+  checkEqual(
+    failures,
+    "topology.repair.replacementCheckpointId",
+    fixture.expectedTopology.manualRepairReplacementCheckpointId,
+    repair?.replacementCheckpointId
+  );
+  checkEqual(
+    failures,
+    "topology.repair.confidence",
+    "high",
+    repair?.confidence
+  );
+  checkEqual(
+    failures,
+    "topology.repairedAnchor.checkpointId",
+    fixture.expectedTopology.manualRepairReplacementCheckpointId,
+    anchor?.checkpointId
+  );
+  checkEqual(
+    failures,
+    "topology.repairedAnchor.state",
+    "active",
+    anchor?.state
+  );
+  checkNoSourceBoundaryLeaks(
+    failures,
+    "topology identity source",
+    JSON.stringify(topologyIdentity)
+  );
+  checks += 6;
 
   return checks;
 }

@@ -1746,6 +1746,7 @@ export type V13ReleaseSampleId = "v13-topology-anchor-repair-command-chain";
 export type V13ReleaseSampleWorkflowTag =
   | "topology-checkpoint"
   | "topology-anchor"
+  | "topology-anchor-repair"
   | "topology-match"
   | "reference-health"
   | "named-reference-repair"
@@ -1756,8 +1757,12 @@ export type V13ReleaseSampleWorkflowTag =
 export interface V13ReleaseSampleTopologyExpectation {
   readonly checkpointCount: number;
   readonly anchorCount: number;
+  readonly repairCount: number;
   readonly repairedReferenceName: NamedReferenceName;
   readonly repairedTopologyAnchorId: string;
+  readonly manualRepairAnchorId: string;
+  readonly manualRepairId: string;
+  readonly manualRepairReplacementCheckpointId: string;
   readonly downstreamFeatureId: string;
   readonly downstreamTargetTopologyAnchorId: string;
 }
@@ -1798,7 +1803,10 @@ const V13_REPAIR_BODY = "v13_repair_body";
 const V13_REPAIR_START_FACE = `generated:face:${V13_REPAIR_BODY}:startCap`;
 const V13_REPAIR_END_FACE = `generated:face:${V13_REPAIR_BODY}:endCap`;
 const V13_REPAIR_FACE_ANCHOR = "v13_anchor_repair_face";
+const V13_MANUAL_REPAIR_FACE_ANCHOR = "v13_anchor_manual_repair_face";
+const V13_MANUAL_REPAIR_ID = "v13_repair_manual_face_anchor";
 const V13_REPAIR_CHECKPOINT = "v13_checkpoint_repair_body";
+const V13_REPAIR_REBUILT_CHECKPOINT = "v13_checkpoint_repair_body_rebuilt";
 
 const V13_TARGET_BODY = "v13_target_body";
 const V13_TARGET_BODY_ANCHOR = "v13_anchor_target_body";
@@ -1810,11 +1818,12 @@ export const V13_RELEASE_SAMPLE_FIXTURES = [
     id: "v13-topology-anchor-repair-command-chain",
     title: "V13 topology anchor repair and command chain sample",
     description:
-      "Two authored rectangle bodies with explicit topology checkpoints and anchors, a named-reference repair to a face anchor, a downstream cut through a body anchor, and deterministic topology matching fixtures.",
+      "Two authored rectangle bodies with explicit topology checkpoints and anchors, a named-reference repair to a face anchor, an explicit topology-anchor repair record, a downstream cut through a body anchor, and deterministic topology matching fixtures.",
     units: "mm",
     workflowTags: [
       "topology-checkpoint",
       "topology-anchor",
+      "topology-anchor-repair",
       "topology-match",
       "reference-health",
       "named-reference-repair",
@@ -1823,10 +1832,14 @@ export const V13_RELEASE_SAMPLE_FIXTURES = [
       "source-boundary"
     ],
     expectedTopology: {
-      checkpointCount: 2,
-      anchorCount: 2,
+      checkpointCount: 3,
+      anchorCount: 3,
+      repairCount: 1,
       repairedReferenceName: "V13 repair face",
       repairedTopologyAnchorId: V13_REPAIR_FACE_ANCHOR,
+      manualRepairAnchorId: V13_MANUAL_REPAIR_FACE_ANCHOR,
+      manualRepairId: V13_MANUAL_REPAIR_ID,
+      manualRepairReplacementCheckpointId: V13_REPAIR_REBUILT_CHECKPOINT,
       downstreamFeatureId: "v13_cut_feature",
       downstreamTargetTopologyAnchorId: V13_TARGET_BODY_ANCHOR
     },
@@ -1974,6 +1987,52 @@ export const V13_RELEASE_SAMPLE_FIXTURES = [
         topologyAnchorId: V13_REPAIR_FACE_ANCHOR
       },
       {
+        op: "topology.anchor.create",
+        anchorId: V13_MANUAL_REPAIR_FACE_ANCHOR,
+        entityKind: "face",
+        bodyId: V13_REPAIR_BODY,
+        checkpointId: V13_REPAIR_CHECKPOINT,
+        checkpointEntityId: "v13_repair_checkpoint_face_start",
+        stableId: V13_REPAIR_START_FACE,
+        sourceFeatureId: "v13_repair_extrude",
+        sourceSemanticRole: "start cap",
+        signatureHash: "v13_manual_repair_face_signature_old"
+      },
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: V13_REPAIR_REBUILT_CHECKPOINT,
+        bodyId: V13_REPAIR_BODY,
+        sourceFeatureId: "v13_repair_extrude",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.repair",
+        repairId: V13_MANUAL_REPAIR_ID,
+        anchorId: V13_MANUAL_REPAIR_FACE_ANCHOR,
+        replacementCheckpointId: V13_REPAIR_REBUILT_CHECKPOINT,
+        replacementCheckpointEntityId:
+          "v13_repair_checkpoint_face_start_rebuilt",
+        confidence: "high",
+        evidence: [
+          {
+            kind: "sourceLineage",
+            confidence: "high",
+            message:
+              "Manual repair selects the rebuilt checkpoint face with matching source lineage."
+          },
+          {
+            kind: "sourceSemanticRole",
+            confidence: "high",
+            message: "Both topology entities represent the rectangle start cap."
+          }
+        ]
+      },
+      {
         op: "sketch.create",
         id: "v13_target_sketch",
         name: "V13 target profile",
@@ -2090,14 +2149,46 @@ export function createV13ReleaseSampleCheckpointPayloads(
     (op): op is Extract<CadOp, { readonly op: "topology.anchor.create" }> =>
       op.op === "topology.anchor.create"
   );
+  const repairOps = fixture.ops.filter(
+    (op): op is Extract<CadOp, { readonly op: "topology.anchor.repair" }> =>
+      op.op === "topology.anchor.repair"
+  );
 
   return checkpointOps.map((checkpoint) => {
     const topologySnapshot = createV13ReleaseSampleCheckpointTopologySnapshot({
       checkpointId: checkpoint.checkpointId,
       bodyId: checkpoint.bodyId,
-      anchors: anchorOps.filter(
-        (anchor) => anchor.checkpointId === checkpoint.checkpointId
-      )
+      entities: [
+        ...anchorOps
+          .filter((anchor) => anchor.checkpointId === checkpoint.checkpointId)
+          .map((anchor) => ({
+            localId: anchor.checkpointEntityId,
+            kind: anchor.entityKind,
+            signature:
+              anchor.signatureHash ??
+              `partbench-v13-release-fixture-signature:${checkpoint.checkpointId}:${anchor.checkpointEntityId}`
+          })),
+        ...repairOps
+          .filter(
+            (repair) =>
+              repair.replacementCheckpointId === checkpoint.checkpointId
+          )
+          .flatMap((repair) => {
+            const anchor = anchorOps.find(
+              (candidate) => candidate.anchorId === repair.anchorId
+            );
+
+            return anchor
+              ? [
+                  {
+                    localId: repair.replacementCheckpointEntityId,
+                    kind: anchor.entityKind,
+                    signature: `partbench-v13-release-fixture-repaired-signature:${checkpoint.checkpointId}:${repair.replacementCheckpointEntityId}`
+                  }
+                ]
+              : [];
+          })
+      ]
     });
     const signaturePayload = {
       checkpointId: checkpoint.checkpointId,
@@ -2192,22 +2283,21 @@ function createV13TopologyMatchSnapshot({
 function createV13ReleaseSampleCheckpointTopologySnapshot({
   checkpointId,
   bodyId,
-  anchors
+  entities: sourceEntities
 }: {
   readonly checkpointId: string;
   readonly bodyId: BodyId;
-  readonly anchors: readonly Extract<
-    CadOp,
-    { readonly op: "topology.anchor.create" }
-  >[];
+  readonly entities: readonly {
+    readonly localId: string;
+    readonly kind: CadTopologyMatchSnapshotInput["topologySnapshot"]["entities"][number]["kind"];
+    readonly signature: string;
+  }[];
 }): CadBodyExactTopologySnapshot {
-  const entities = anchors.map((anchor) => ({
-    localId: anchor.checkpointEntityId,
-    kind: anchor.entityKind,
+  const entities = sourceEntities.map((entity) => ({
+    localId: entity.localId,
+    kind: entity.kind,
     source: "kernel-derived" as const,
-    signature:
-      anchor.signatureHash ??
-      `partbench-v13-release-fixture-signature:${checkpointId}:${anchor.checkpointEntityId}`
+    signature: entity.signature
   }));
   const entityCounts = {
     solidCount: 0,

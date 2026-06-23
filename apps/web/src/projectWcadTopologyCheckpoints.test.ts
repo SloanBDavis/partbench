@@ -292,7 +292,15 @@ describe("projectWcadTopologyCheckpoints", () => {
     if (!read.ok) {
       throw new Error(read.issues[0]?.message);
     }
-    expect(read.checkpointPayloads).toHaveLength(2);
+    expect(
+      read.checkpointPayloads?.map((payload) => payload.checkpointId)
+    ).toEqual(
+      expect.arrayContaining([
+        "v13_checkpoint_repair_body",
+        "v13_checkpoint_repair_body_rebuilt",
+        "v13_checkpoint_target_body"
+      ])
+    );
     expect(JSON.stringify(exported.manifest)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
     );

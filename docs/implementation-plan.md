@@ -2502,10 +2502,11 @@ Use these decisions when drafting or implementing V13 tranches:
     implemented as `v13-topology-anchor-repair-command-chain` plus
     `pnpm smoke:v13-release-samples`: it covers V18 checkpoint and anchor
     source records, named-reference repair to a topology face anchor,
-    downstream cut through a topology body anchor, JSON round-trip behavior,
-    `partbench.wcad.v2` caller-supplied checkpoint payload round-trip
-    behavior, and exact/split/deleted/low-confidence topology matching. The
-    first
+    explicit `topology.anchor.repair` source-record retargeting to a rebuilt
+    checkpoint entity, downstream cut through a topology body anchor, JSON
+    round-trip behavior, `partbench.wcad.v2` caller-supplied checkpoint
+    payload round-trip behavior, and exact/split/deleted/low-confidence
+    topology matching. The first
     browser release sample is implemented as `pnpm smoke:v13-browser-workflow`:
     it imports the V13 topology fixture through Project/File JSON, verifies the
     compact topology identity status, selects the repaired named face as a
