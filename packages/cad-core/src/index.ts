@@ -155,6 +155,7 @@ import {
 } from "./transactionHistory";
 import {
   createBodyGeneratedReferences,
+  type GeneratedReferencesDocument,
   type GeneratedReferenceValidationError,
   resolveGeneratedReference,
   validateGeneratedReference
@@ -11804,6 +11805,7 @@ function resolveActiveTopologyAnchorTarget(
 ): {
   readonly bodyId: BodyId;
   readonly stableId?: string;
+  readonly sourceSemanticRole?: string;
   readonly topologyAnchorId: string;
   readonly checkpointId: string;
 } {
@@ -11886,10 +11888,26 @@ function resolveActiveTopologyAnchorTarget(
   return {
     bodyId: anchor.bodyId,
     ...(anchor.stableId ? { stableId: anchor.stableId } : {}),
+    ...(anchor.sourceSemanticRole
+      ? { sourceSemanticRole: anchor.sourceSemanticRole }
+      : {}),
     topologyAnchorId: anchor.anchorId,
     checkpointId: anchor.checkpointId
   };
 }
+
+type TopologyAnchorStableIdResolution =
+  | {
+      readonly status: "resolved";
+      readonly stableId: string;
+    }
+  | {
+      readonly status: "missing";
+    }
+  | {
+      readonly status: "ambiguous";
+      readonly stableIds: readonly string[];
+    };
 
 function resolveActiveTopologyAnchorStableTarget(
   state: MutableDocumentState,
@@ -11911,26 +11929,145 @@ function resolveActiveTopologyAnchorStableTarget(
     pathField
   );
 
-  if (!target.stableId) {
+  const stableResolution = target.stableId
+    ? { status: "resolved" as const, stableId: target.stableId }
+    : resolveTopologyAnchorStableIdFromSourceRole({
+        document: state,
+        ownerPartId: DEFAULT_PART_ID,
+        bodyId: target.bodyId,
+        entityKind: expectedKind,
+        sourceSemanticRole: target.sourceSemanticRole
+      });
+
+  if (stableResolution.status === "ambiguous") {
     throwValidationError({
       code: "INVALID_TOPOLOGY_ANCHOR",
-      message: `Topology anchor ${target.topologyAnchorId} does not have a stable generated ${expectedKind} backing.`,
+      message: `Topology anchor ${target.topologyAnchorId} source-semantic ${expectedKind} role is ambiguous.`,
       opIndex,
       bodyId: target.bodyId,
       topologyAnchorId: target.topologyAnchorId,
       checkpointId: target.checkpointId,
       path: operationPath(opIndex, pathField),
-      expected: `stable generated ${expectedKind} backing`,
-      received: "missing stableId"
+      expected: `one source-semantic generated ${expectedKind} backing`,
+      received: stableResolution.stableIds.join(", ")
+    });
+  }
+
+  if (stableResolution.status !== "resolved") {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message: `Topology anchor ${target.topologyAnchorId} does not have a stable generated ${expectedKind} backing or source-semantic ${expectedKind} role.`,
+      opIndex,
+      bodyId: target.bodyId,
+      topologyAnchorId: target.topologyAnchorId,
+      checkpointId: target.checkpointId,
+      path: operationPath(opIndex, pathField),
+      expected: `stable generated ${expectedKind} backing or source-semantic ${expectedKind} role`,
+      received: target.sourceSemanticRole
+        ? `unmapped sourceSemanticRole: ${target.sourceSemanticRole}`
+        : "missing stableId"
     });
   }
 
   return {
     bodyId: target.bodyId,
-    stableId: target.stableId,
+    stableId: stableResolution.stableId,
     topologyAnchorId: target.topologyAnchorId,
     checkpointId: target.checkpointId
   };
+}
+
+function resolveTopologyAnchorStableIdFromSourceRole(options: {
+  readonly document: GeneratedReferencesDocument;
+  readonly ownerPartId: PartId;
+  readonly bodyId: BodyId;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly sourceSemanticRole?: string;
+}): TopologyAnchorStableIdResolution {
+  if (!options.sourceSemanticRole) {
+    return { status: "missing" };
+  }
+
+  const references = createBodyGeneratedReferences(
+    options.document,
+    options.bodyId,
+    options.ownerPartId
+  );
+
+  if (!references) {
+    return { status: "missing" };
+  }
+
+  const roleKey = normalizeTopologySemanticRole(options.sourceSemanticRole);
+  const candidates = [
+    references.body,
+    ...references.faces,
+    ...references.edges,
+    ...references.vertices,
+    ...references.axes
+  ].filter(
+    (reference) =>
+      reference.kind === options.entityKind &&
+      createGeneratedReferenceRoleAliases(reference).some(
+        (alias) => normalizeTopologySemanticRole(alias) === roleKey
+      )
+  );
+
+  if (candidates.length === 1) {
+    return {
+      status: "resolved",
+      stableId: candidates[0]!.stableId
+    };
+  }
+
+  if (candidates.length > 1) {
+    return {
+      status: "ambiguous",
+      stableIds: candidates.map((candidate) => candidate.stableId)
+    };
+  }
+
+  return { status: "missing" };
+}
+
+function createGeneratedReferenceRoleAliases(
+  reference: CadGeneratedReference
+): readonly string[] {
+  const roleReference = reference as CadGeneratedReference & {
+    readonly role?: string;
+  };
+
+  if (!roleReference.role) {
+    return [];
+  }
+
+  const role = roleReference.role;
+  const humanRole = humanizeGeneratedReferenceRole(role);
+  const aliases = [role, humanRole];
+
+  if (reference.kind === "face") {
+    aliases.push(`${humanRole} face`);
+    if (role.startsWith("side:")) {
+      const sideRole = humanizeGeneratedReferenceRole(role.slice(5));
+      aliases.push(`${sideRole} side`, `${sideRole} side face`);
+    }
+  } else if (reference.kind === "edge") {
+    aliases.push(`${humanRole} edge`);
+  } else if (reference.kind === "vertex") {
+    aliases.push(`${humanRole} vertex`);
+  } else if (reference.kind === "axis") {
+    aliases.push(`${humanRole} axis`);
+  }
+
+  return aliases;
+}
+
+function humanizeGeneratedReferenceRole(role: string): string {
+  return role.replace(/:/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function normalizeTopologySemanticRole(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function resolveSketchAttachmentFaceTarget(
@@ -12672,24 +12809,6 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     return { status: selectionStatus, candidates: [], issues };
   }
 
-  if (!anchor.stableId) {
-    const issues = [
-      createSelectionIssue(
-        "UNSUPPORTED_SELECTION_TARGET",
-        "unsupported",
-        `Topology anchor ${anchor.anchorId} does not have a stable generated-reference backing yet.`,
-        {
-          bodyId: anchor.bodyId,
-          topologyAnchorId: anchor.anchorId,
-          checkpointId: anchor.checkpointId,
-          expected: "stable generated reference backing"
-        }
-      )
-    ];
-
-    return { status: "unsupported", candidates: [], issues };
-  }
-
   const body = options.structure.bodies.find(
     (candidate) => candidate.id === anchor.bodyId
   );
@@ -12712,6 +12831,43 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     return { status: "missing", candidates: [], issues };
   }
 
+  const stableResolution = anchor.stableId
+    ? { status: "resolved" as const, stableId: anchor.stableId }
+    : resolveTopologyAnchorStableIdFromSourceRole({
+        document: options.document,
+        ownerPartId: body.partId,
+        bodyId: anchor.bodyId,
+        entityKind: anchor.entityKind,
+        sourceSemanticRole: anchor.sourceSemanticRole
+      });
+
+  if (stableResolution.status !== "resolved") {
+    const issues = [
+      createSelectionIssue(
+        "UNSUPPORTED_SELECTION_TARGET",
+        "unsupported",
+        stableResolution.status === "ambiguous"
+          ? `Topology anchor ${anchor.anchorId} source-semantic role matches multiple generated references.`
+          : `Topology anchor ${anchor.anchorId} does not have stable generated-reference backing or a supported source-semantic role.`,
+        {
+          bodyId: anchor.bodyId,
+          topologyAnchorId: anchor.anchorId,
+          checkpointId: anchor.checkpointId,
+          expected:
+            "stable generated reference backing or source-semantic generated reference role",
+          received:
+            stableResolution.status === "ambiguous"
+              ? stableResolution.stableIds.join(", ")
+              : (anchor.sourceSemanticRole ?? "missing stableId")
+        }
+      )
+    ];
+
+    return { status: "unsupported", candidates: [], issues };
+  }
+
+  const stableId = stableResolution.stableId;
+
   const references = createBodyGeneratedReferences(
     options.document,
     body.id,
@@ -12721,11 +12877,7 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
   if (!references) {
     const issues = [
       ...createConsumedSelectionIssues(body),
-      createBodyReferenceUnavailableIssue(
-        options.document,
-        body,
-        anchor.stableId
-      )
+      createBodyReferenceUnavailableIssue(options.document, body, stableId)
     ];
 
     return {
@@ -12735,17 +12887,17 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
     };
   }
 
-  const resolution = resolveGeneratedReference(references, anchor.stableId);
+  const resolution = resolveGeneratedReference(references, stableId);
 
   if (!resolution) {
     const issues = [
       createSelectionIssue(
         "STALE_SELECTION_REFERENCE",
         "stale",
-        `Topology anchor ${anchor.anchorId} stable generated reference is no longer available on ${anchor.bodyId}: ${anchor.stableId}`,
+        `Topology anchor ${anchor.anchorId} stable generated reference is no longer available on ${anchor.bodyId}: ${stableId}`,
         {
           bodyId: anchor.bodyId,
-          stableId: anchor.stableId,
+          stableId,
           topologyAnchorId: anchor.anchorId,
           checkpointId: anchor.checkpointId
         }
@@ -12765,7 +12917,7 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
             `Topology anchor ${anchor.anchorId} resolved as ${resolution.kind}, not ${anchor.entityKind}.`,
             {
               bodyId: anchor.bodyId,
-              stableId: anchor.stableId,
+              stableId,
               topologyAnchorId: anchor.anchorId,
               checkpointId: anchor.checkpointId,
               expected: anchor.entityKind,
@@ -12801,7 +12953,9 @@ function createTopologyAnchorGeneratedReferenceCommandOperations(
       (operation): operation is CadGeneratedReferenceEligibleOperation =>
         operation === "feature.attachSketchPlane" ||
         operation === "feature.chamfer" ||
-        operation === "feature.fillet"
+        operation === "feature.fillet" ||
+        operation === "feature.measureReference" ||
+        operation === "feature.selectReference"
     ),
     ...anchorOperations
   ];

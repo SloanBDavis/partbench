@@ -2463,14 +2463,22 @@ Use these decisions when drafting or implementing V13 tranches:
    supported read-only reference operations, and stable
    generated-reference-backed anchors can resolve through
    `selection.referenceCandidates` without exposing checkpoint-local topology
-   IDs. Stable face, edge, and vertex anchors expose measure/select
-   eligibility; active stable body or axis anchors expose select eligibility
-   only. Stable active face anchors whose generated backing supports
-   `feature.attachSketchPlane` can be consumed by `sketch.createOnFace`; the
-   command stores the existing generated-face sketch attachment shape and
-   records `topologyAnchorId` in transaction history. Stable active edge
-   anchors whose generated backing supports `feature.chamfer` or
-   `feature.fillet` can be consumed by those edge-finish commands; committed
+   IDs. Source-role-backed face/edge anchors can also resolve through
+   `selection.referenceCandidates` when their `sourceSemanticRole` maps
+   unambiguously to an existing generated reference on the same body. Stable
+   face, edge, and vertex anchors expose measure/select eligibility; active
+   stable body or axis anchors expose select eligibility only. Stable active
+   face anchors whose generated backing supports `feature.attachSketchPlane`
+   can be consumed by `sketch.createOnFace`; the command stores the existing
+   generated-face sketch attachment shape and records `topologyAnchorId` in
+   transaction history. Active face anchors without a persisted `stableId` use
+   the same path when their `sourceSemanticRole` resolves to a supported
+   generated face; arbitrary exact-only face anchors remain command-ineligible
+   until a validator can prove a sketch plane from checkpoint topology. Stable
+   active edge anchors whose generated backing supports `feature.chamfer` or
+   `feature.fillet` can be consumed by those edge-finish commands; active edge
+   anchors without a persisted `stableId` use the same path when their
+   `sourceSemanticRole` resolves to a supported generated edge. Committed
    features store the resolved generated edge plus topology-anchor provenance
    for transaction, health, dependency, import, export, and UI helper surfaces.
    Existing named generated references can be explicitly repaired to stable
@@ -2487,9 +2495,8 @@ Use these decisions when drafting or implementing V13 tranches:
    helper, generated-reference signature, and topology source-identity surfaces.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
-   Automatic selection routing beyond stable generated-reference backing and
-   direct face/edge topology-anchor command targets without generated backing
-   remain later V13 work.
+   Direct face/edge topology-anchor command targets that cannot map to current
+   source-semantic generated references remain later V13 work.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint

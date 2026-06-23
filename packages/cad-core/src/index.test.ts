@@ -398,6 +398,7 @@ function createTopologyEdgeAnchorEngine(
       | "missing"
       | "unsupported"
       | "failed";
+    readonly sourceSemanticRole?: string;
     readonly anchorState?:
       | "active"
       | "replaced"
@@ -453,7 +454,7 @@ function createTopologyEdgeAnchorEngine(
             : options.stableId.length > 0
               ? { stableId: options.stableId }
               : {}),
-          sourceSemanticRole: "start uMin edge",
+          sourceSemanticRole: options.sourceSemanticRole ?? "start uMin edge",
           signatureHash: "edge_signature_1",
           state: options.anchorState ?? "active",
           diagnostics: []
@@ -31867,7 +31868,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
-  it("blocks topology anchor selection candidates when anchor health is not active or generated backing is missing", () => {
+  it("derives topology anchor selection candidates from source-semantic roles when stable backing is not stored", () => {
     const engine = createTopologyAnchorEngine();
     const replaced = engine.executeQuery({
       version: "cadops.v1",
@@ -31892,11 +31893,16 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       anchorId: "anchor_no_stable_id"
     };
     delete (missingStableIdAnchor as { stableId?: string }).stableId;
+    const unknownRoleAnchor = {
+      ...missingStableIdAnchor,
+      anchorId: "anchor_unknown_role",
+      sourceSemanticRole: "unmapped exact topology face"
+    };
     const missingStableIdEngine = new CadEngine({
       ...document,
       topologyIdentity: {
         ...topologyIdentity,
-        anchors: [missingStableIdAnchor]
+        anchors: [missingStableIdAnchor, unknownRoleAnchor]
       }
     });
     const missingStableId = missingStableIdEngine.executeQuery({
@@ -31906,6 +31912,16 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         selection: {
           type: "topologyAnchor",
           anchorId: "anchor_no_stable_id"
+        }
+      }
+    });
+    const unknownRole = missingStableIdEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "selection.referenceCandidates",
+        selection: {
+          type: "topologyAnchor",
+          anchorId: "anchor_unknown_role"
         }
       }
     });
@@ -31927,13 +31943,33 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(missingStableId).toMatchObject({
       ok: true,
       query: "selection.referenceCandidates",
+      status: "resolved",
+      candidateCount: 1,
+      candidates: [
+        expect.objectContaining({
+          source: "topologyAnchorSelection",
+          commandable: true,
+          target: expect.objectContaining({
+            bodyId: "body_rect_1",
+            stableId: "generated:face:body_rect_1:endCap",
+            topologyAnchorId: "anchor_no_stable_id",
+            checkpointId: "checkpoint_1"
+          })
+        })
+      ],
+      issueCount: 0
+    });
+    expect(unknownRole).toMatchObject({
+      ok: true,
+      query: "selection.referenceCandidates",
       status: "unsupported",
       candidateCount: 0,
       issues: [
         expect.objectContaining({
           code: "UNSUPPORTED_SELECTION_TARGET",
-          topologyAnchorId: "anchor_no_stable_id",
-          checkpointId: "checkpoint_1"
+          topologyAnchorId: "anchor_unknown_role",
+          checkpointId: "checkpoint_1",
+          received: "unmapped exact topology face"
         })
       ]
     });
@@ -31981,6 +32017,52 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       topologyAnchorId: "anchor_face_1"
     });
     expect(JSON.stringify(result.transaction)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+
+    const roleBackedEngine = createTopologyAnchorEngine();
+    const roleBackedDocument = roleBackedEngine.getDocument();
+    const roleBackedTopology = roleBackedDocument.topologyIdentity;
+
+    if (!roleBackedTopology) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const roleBackedAnchor = {
+      ...roleBackedTopology.anchors[0]!,
+      anchorId: "anchor_face_role_backed"
+    };
+    delete (roleBackedAnchor as { stableId?: string }).stableId;
+    const roleBackedFaceEngine = new CadEngine({
+      ...roleBackedDocument,
+      topologyIdentity: {
+        ...roleBackedTopology,
+        anchors: [roleBackedAnchor]
+      }
+    });
+    const roleBackedResult = roleBackedFaceEngine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_role_backed_face",
+      name: "Role-backed face sketch",
+      topologyAnchorId: "anchor_face_role_backed"
+    });
+
+    expect(
+      roleBackedResult.document.sketches.get("sketch_role_backed_face")
+    ).toMatchObject({
+      id: "sketch_role_backed_face",
+      attachment: {
+        kind: "generatedFace",
+        bodyId: "body_rect_1",
+        faceStableId: "generated:face:body_rect_1:endCap",
+        faceRole: "endCap"
+      }
+    });
+    expect(roleBackedResult.transaction.ops[0]).toMatchObject({
+      op: "sketch.createOnFace",
+      topologyAnchorId: "anchor_face_role_backed"
+    });
+    expect(JSON.stringify(roleBackedResult.transaction)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
   });
@@ -32328,10 +32410,39 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       op: "feature.fillet",
       topologyAnchorId: "anchor_edge_1"
     });
+
+    const roleBackedChamferEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_edge_role_backed",
+      stableId: ""
+    });
+    const roleBackedChamferResult = roleBackedChamferEngine.apply({
+      op: "feature.chamfer",
+      id: "feat_role_backed_chamfer",
+      bodyId: "body_role_backed_chamfer",
+      targetBodyId: "body_rect_1",
+      topologyAnchorId: "anchor_edge_role_backed",
+      distance: 0.2
+    });
+
+    expect(
+      getChamferFeature(roleBackedChamferEngine, "feat_role_backed_chamfer")
+    ).toMatchObject({
+      kind: "chamfer",
+      targetBodyId: "body_rect_1",
+      edgeStableId: "generated:edge:body_rect_1:start:uMin",
+      topologyAnchorId: "anchor_edge_role_backed",
+      distance: 0.2,
+      bodyId: "body_role_backed_chamfer"
+    });
+    expect(roleBackedChamferResult.transaction.ops[0]).toMatchObject({
+      op: "feature.chamfer",
+      topologyAnchorId: "anchor_edge_role_backed"
+    });
     expect(
       JSON.stringify({
         chamferTransaction: chamferResult.transaction,
-        filletTransaction: filletResult.transaction
+        filletTransaction: filletResult.transaction,
+        roleBackedChamferTransaction: roleBackedChamferResult.transaction
       })
     ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
@@ -32930,11 +33041,12 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       }
     });
 
-    const missingStableEngine = createTopologyEdgeAnchorEngine({
-      stableId: ""
+    const unmappedRoleEngine = createTopologyEdgeAnchorEngine({
+      stableId: "",
+      sourceSemanticRole: "unmapped exact topology edge"
     });
     expect(
-      missingStableEngine.executeBatch({
+      unmappedRoleEngine.executeBatch({
         version: "cadops.v1",
         mode: "commit",
         ops: [
@@ -32953,8 +33065,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         topologyAnchorId: "anchor_edge_1",
         checkpointId: "checkpoint_1",
         path: "$.ops[0].topologyAnchorId",
-        expected: "stable generated edge backing",
-        received: "missing stableId"
+        expected: "stable generated edge backing or source-semantic edge role",
+        received: "unmapped sourceSemanticRole: unmapped exact topology edge"
       }
     });
 
@@ -33150,7 +33262,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
 
     const missingStableIdAnchor = {
       ...topologyIdentity.anchors[0]!,
-      anchorId: "anchor_no_stable_id"
+      anchorId: "anchor_no_stable_id",
+      sourceSemanticRole: "unmapped exact topology face"
     };
     delete (missingStableIdAnchor as { stableId?: string }).stableId;
     const missingStableIdEngine = new CadEngine({
@@ -33179,8 +33292,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         topologyAnchorId: "anchor_no_stable_id",
         checkpointId: "checkpoint_1",
         path: "$.ops[0].topologyAnchorId",
-        expected: "stable generated face backing",
-        received: "missing stableId"
+        expected: "stable generated face backing or source-semantic face role",
+        received: "unmapped sourceSemanticRole: unmapped exact topology face"
       }
     });
 
@@ -33244,6 +33357,65 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       error: {
         code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
         topologyAnchorId: "anchor_circular_side",
+        checkpointId: "checkpoint_circle_1",
+        stableId: "generated:face:body_circle_1:side:circular",
+        path: "$.ops[0].topologyAnchorId",
+        expected: "feature.attachSketchPlane"
+      }
+    });
+
+    const circularRoleBackedFaceAnchorEngine = new CadEngine({
+      ...circleDocument,
+      topologyIdentity: {
+        ...createEmptyTopologyIdentitySourceSnapshot(),
+        checkpoints: [
+          {
+            checkpointId: "checkpoint_circle_1",
+            bodyId: "body_circle_1",
+            sourceFeatureId: "feat_circle_1",
+            sourceIdentity: circleSourceIdentity,
+            packageVersion: "partbench.wcad.v2" as const,
+            projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+            brepEntryPath: circlePaths.brep,
+            topologyEntryPath: circlePaths.topology,
+            signatureEntryPath: circlePaths.signature,
+            status: "active" as const,
+            diagnostics: []
+          }
+        ],
+        anchors: [
+          {
+            anchorId: "anchor_circular_side_role_backed",
+            entityKind: "face" as const,
+            bodyId: "body_circle_1",
+            checkpointId: "checkpoint_circle_1",
+            checkpointEntityId: "checkpoint-local-circle-side",
+            sourceFeatureId: "feat_circle_1",
+            sourceSemanticRole: "circular side",
+            signatureHash: "circle_side_signature",
+            state: "active" as const,
+            diagnostics: []
+          }
+        ]
+      }
+    });
+    expect(
+      circularRoleBackedFaceAnchorEngine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "sketch.createOnFace",
+            name: "Circular role-backed wall sketch",
+            topologyAnchorId: "anchor_circular_side_role_backed"
+          }
+        ]
+      })
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GENERATED_REFERENCE_OPERATION_NOT_ELIGIBLE",
+        topologyAnchorId: "anchor_circular_side_role_backed",
         checkpointId: "checkpoint_circle_1",
         stableId: "generated:face:body_circle_1:side:circular",
         path: "$.ops[0].topologyAnchorId",
