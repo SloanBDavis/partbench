@@ -130,6 +130,110 @@ describe("Inspector", () => {
     );
   });
 
+  it("renders a compact selected-reference stable topology action without private checkpoint ids", () => {
+    const face = createFace();
+    const faceCandidates = createSelectionReferenceCandidates(face);
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, createEdge()),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_rect",
+          stableId: face.stableId,
+          kind: "face"
+        },
+        selectionReferenceCandidates: faceCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onCreateTopologyAnchor: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Stable topology reference");
+    expect(markup).toContain("Create stable reference");
+    expect(markup).toContain(
+      "Creates a saved topology reference for this selected entity."
+    );
+    expect(markup).not.toMatch(
+      /checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
+  it("shows selected topology-anchor-backed references as already stable", () => {
+    const face = createFace();
+    const faceCandidates = createSelectionReferenceCandidates(face, {
+      topologyAnchorId: "anchor_rect_start_face",
+      checkpointId: "checkpoint_rect"
+    });
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, createEdge()),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_rect",
+          stableId: face.stableId,
+          kind: "face",
+          topologyAnchorId: "anchor_rect_start_face"
+        },
+        selectionReferenceCandidates: faceCandidates,
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onCreateTopologyAnchor: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Stable reference active");
+    expect(markup).toContain(">Stable</button>");
+    expect(markup).not.toContain("Create stable reference");
+    expect(markup).not.toMatch(
+      /checkpointEntityId|checkpoint-local|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
   it("renders structured candidate diagnostics for consumed selected references", () => {
     const face = createFace();
     const edge = createEdge();

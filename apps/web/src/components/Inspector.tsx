@@ -135,6 +135,7 @@ export function Inspector({
   onCreateEdgeFinish,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onCreateTopologyAnchor,
   onRepairNamedReference,
   onInspectNamedReference,
   onSelectGeneratedReference,
@@ -191,6 +192,9 @@ export function Inspector({
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onCreateTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
   readonly onRepairNamedReference: (
@@ -250,6 +254,7 @@ export function Inspector({
         onCreateEdgeFinish,
         onDeleteNamedReference,
         onNameGeneratedReference,
+        onCreateTopologyAnchor,
         onRepairNamedReference,
         onInspectNamedReference,
         onSelectGeneratedReference,
@@ -324,6 +329,9 @@ function renderInspectorSelection(input: {
     name: string,
     target: SelectedGeneratedReference
   ) => void;
+  readonly onCreateTopologyAnchor?: (
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
@@ -368,6 +376,7 @@ function renderInspectorSelection(input: {
         onCreateEdgeFinish={input.onCreateEdgeFinish}
         onDeleteNamedReference={input.onDeleteNamedReference}
         onNameGeneratedReference={input.onNameGeneratedReference}
+        onCreateTopologyAnchor={input.onCreateTopologyAnchor}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
         namedReferences={input.namedReferences}
         namedReferenceHealthByName={input.namedReferenceHealthByName}
@@ -466,6 +475,7 @@ function BodyInspector({
   onCreateEdgeFinish,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onCreateTopologyAnchor,
   onRepairNamedReference,
   onSelectGeneratedReference,
   onDeleteFeature,
@@ -516,6 +526,9 @@ function BodyInspector({
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onCreateTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
   readonly onRepairNamedReference: (
@@ -665,6 +678,7 @@ function BodyInspector({
           onCreateSketchOnFace={onCreateSketchOnFace}
           onDeleteNamedReference={onDeleteNamedReference}
           onNameGeneratedReference={onNameGeneratedReference}
+          onCreateTopologyAnchor={onCreateTopologyAnchor}
           onRepairNamedReference={onRepairNamedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
           references={generatedReferences}
@@ -1089,6 +1103,7 @@ function GeneratedReferencesPanel({
   onCreateSketchOnFace,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onCreateTopologyAnchor,
   onRepairNamedReference,
   onSelectGeneratedReference,
   references,
@@ -1120,6 +1135,9 @@ function GeneratedReferencesPanel({
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onCreateTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
   readonly onRepairNamedReference: (
@@ -1356,6 +1374,7 @@ function GeneratedReferencesPanel({
             namedReferenceHealthByName={namedReferenceHealthByName}
             onDeleteNamedReference={onDeleteNamedReference}
             onNameGeneratedReference={onNameGeneratedReference}
+            onCreateTopologyAnchor={onCreateTopologyAnchor}
             onRepairNamedReference={onRepairNamedReference}
             repairReference={namedReferences.find(
               (reference) => reference.name === selectedNamedReferenceName
@@ -1544,6 +1563,24 @@ function hasSelectionReferenceOperation(
   );
 }
 
+function getSelectedTopologyAnchorId(
+  selection: SelectedGeneratedReference,
+  response: SelectionReferenceCandidatesQueryResponse | undefined
+): string | undefined {
+  return (
+    selection.topologyAnchorId ??
+    response?.candidates
+      .map((candidate) => candidate.target.topologyAnchorId)
+      .find((anchorId): anchorId is string => anchorId !== undefined)
+  );
+}
+
+function isTopologyAnchorCreatableReferenceKind(
+  kind: CadGeneratedReference["kind"]
+): boolean {
+  return kind === "body" || kind === "face" || kind === "edge";
+}
+
 function shouldOpenGeneratedReferenceGroup(
   groupKind: CadGeneratedReference["kind"],
   selectedKind: CadGeneratedReference["kind"] | undefined
@@ -1727,6 +1764,7 @@ function SelectedGeneratedReferencePanel({
   namedReferenceHealthByName,
   onDeleteNamedReference,
   onNameGeneratedReference,
+  onCreateTopologyAnchor,
   onRepairNamedReference,
   repairReference,
   selectionReferenceCandidates,
@@ -1742,6 +1780,9 @@ function SelectedGeneratedReferencePanel({
   readonly onDeleteNamedReference: (name: string) => void;
   readonly onNameGeneratedReference: (
     name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly onCreateTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
   readonly onRepairNamedReference: (
@@ -1773,6 +1814,18 @@ function SelectedGeneratedReferencePanel({
       state.status === "selected" ? state.selection : undefined,
     selectionReferenceCandidates
   });
+  const topologyAnchorId =
+    state.status === "selected"
+      ? getSelectedTopologyAnchorId(
+          state.selection,
+          selectionReferenceCandidates
+        )
+      : undefined;
+  const canCreateTopologyAnchor =
+    state.status === "selected" &&
+    onCreateTopologyAnchor !== undefined &&
+    topologyAnchorId === undefined &&
+    isTopologyAnchorCreatableReferenceKind(state.reference.kind);
 
   if (state.status === "none") {
     return null;
@@ -1809,6 +1862,37 @@ function SelectedGeneratedReferencePanel({
           <SelectionReferenceContractPanel
             response={selectionReferenceCandidates}
           />
+          {onCreateTopologyAnchor && (
+            <div className="named-reference-repair">
+              <div>
+                <strong>Stable topology reference</strong>
+                <small>
+                  {topologyAnchorId
+                    ? "Stable reference active"
+                    : canCreateTopologyAnchor
+                      ? "Creates a saved topology reference for this selected entity."
+                      : "Stable references are available for body, face, and edge selections."}
+                </small>
+              </div>
+              {topologyAnchorId ? (
+                <button type="button" disabled>
+                  Stable
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={disabled || !canCreateTopologyAnchor}
+                  onClick={() => {
+                    if (state.status === "selected") {
+                      onCreateTopologyAnchor(state.selection);
+                    }
+                  }}
+                >
+                  Create stable reference
+                </button>
+              )}
+            </div>
+          )}
           {state.reference.eligibilityNotes &&
             state.reference.eligibilityNotes.length > 0 && (
               <small>{state.reference.eligibilityNotes.join(" ")}</small>

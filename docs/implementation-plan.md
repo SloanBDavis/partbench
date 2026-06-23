@@ -2413,11 +2413,13 @@ Use these decisions when drafting or implementing V13 tranches:
    `topology.anchorCreationPlan` query is also implemented: cad-core, agents,
    and MCP can ask for proposed checkpoint/anchor CADOps for one exact-bound,
    unambiguous generated reference, and callers can then dry-run or commit the
-   returned batch through the normal command layer. UI repair affordances are
-   handled by the later Tranche J product-integration slices; automatic or
-   silent checkpoint/anchor source-record creation during ordinary app
-   save/open and broader direct topology-anchor command targets remain later
-   V13 work.
+   returned batch through the normal command layer. The web app now exposes an
+   explicit selected-reference action that prepares source-owned exact topology
+   evidence, asks cad-core for this plan, dry-runs the proposed batch, commits
+   it through CADOps, and then lets ordinary `.wcad` save persist the existing
+   checkpoint payload as package v2. Automatic or silent checkpoint/anchor
+   source-record creation during ordinary app save/open and broader direct
+   topology-anchor command targets remain later V13 work.
    Generated-reference-backed command eligibility and named-reference repair are
    implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
@@ -2484,8 +2486,11 @@ Use these decisions when drafting or implementing V13 tranches:
     preserve topology-anchor-backed replacement targets from
     `selection.referenceCandidates` in Inspector, Modeling, and viewport
     contextual surfaces, so `reference.repairName` receives the semantic
-    topology anchor. Broader browser repair/command workflow hardening remains
-    later Tranche J work.
+    topology anchor. The selected-reference Inspector now exposes a compact
+    "Create stable reference" action for body/face/edge generated references;
+    it commits only the cad-core planned CADOps after an explicit user gesture
+    and does not make normal save/open mint anchors silently. Broader browser
+    repair/command workflow hardening remains later Tranche J work.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and

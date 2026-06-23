@@ -10,6 +10,7 @@ import type { GeometryKernelExactTopologyCheckpointPayload } from "@web-cad/geom
 import { describe, expect, it, vi } from "vitest";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
+  createProjectTopologyAnchorCreationPlanForGeneratedReference,
   createProjectWcadTopologyCheckpointPayloadInputs,
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
@@ -118,6 +119,157 @@ describe("projectWcadTopologyCheckpoints", () => {
     expect(runtime.exactTopologyCheckpointPayload).not.toHaveBeenCalled();
     expect(exported.manifest.packageVersion).toBe("partbench.wcad.v1");
     expect(exported.checkpointPayloads).toBeUndefined();
+  });
+
+  it("plans explicit selected-reference topology anchors and persists them through normal WCAD save", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+    const target = {
+      bodyId: "body_plain_1",
+      stableId: "generated:face:body_plain_1:endCap",
+      kind: "face" as const
+    };
+    const planned =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: structure.features,
+        sketches: readSketches(engine),
+        runtime,
+        target
+      });
+
+    expect(planned.ok).toBe(true);
+    if (!planned.ok) {
+      throw new Error(planned.message);
+    }
+    expect(engine.getDocument().topologyIdentity).toBeUndefined();
+    expect(planned.plan).toMatchObject({
+      status: "ready",
+      createsCheckpoint: true,
+      createsAnchor: true,
+      opCount: 2,
+      mutatesSource: false
+    });
+    expect(planned.plan.candidate).toMatchObject({
+      stableId: target.stableId,
+      kind: "face",
+      status: "bound",
+      confidence: "exact"
+    });
+
+    const dryRun = engine.executeBatch({
+      ...planned.plan.proposedBatch,
+      mode: "dryRun"
+    });
+    expect(dryRun.ok).toBe(true);
+    expect(engine.getDocument().topologyIdentity).toBeUndefined();
+
+    const commit = engine.executeBatch(planned.plan.proposedBatch);
+    expect(commit.ok).toBe(true);
+    const topologyIdentity = engine.getDocument().topologyIdentity;
+    expect(topologyIdentity?.checkpoints).toHaveLength(1);
+    expect(topologyIdentity?.anchors).toEqual([
+      expect.objectContaining({
+        bodyId: target.bodyId,
+        entityKind: "face",
+        stableId: target.stableId,
+        state: "active"
+      })
+    ]);
+
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(exported.checkpointPayloads).toHaveLength(1);
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error(read.issues[0]?.message);
+    }
+    expect(read.project.document.topologyIdentity?.anchors).toEqual([
+      expect.objectContaining({
+        stableId: target.stableId,
+        checkpointEntityId: topologyIdentity?.anchors[0]?.checkpointEntityId
+      })
+    ]);
+    expect(JSON.stringify(planned)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath|checkpoint-local-face/i
+    );
+  });
+
+  it("returns structured diagnostics and does not mutate when selected reference evidence is ambiguous", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const runtime = createCheckpointRuntime({
+      duplicateEndCapFace: true
+    });
+    const planned =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: readProjectStructure(engine).features,
+        sketches: readSketches(engine),
+        runtime,
+        target: {
+          bodyId: "body_plain_1",
+          stableId: "generated:face:body_plain_1:endCap",
+          kind: "face"
+        }
+      });
+
+    expect(planned).toMatchObject({
+      ok: false,
+      status: "ambiguous"
+    });
+    if (planned.ok) {
+      throw new Error("Expected ambiguous topology anchor plan.");
+    }
+    expect(planned.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TOPOLOGY_MATCH_AMBIGUOUS",
+          severity: "warning"
+        })
+      ])
+    );
+    expect(engine.getDocument().topologyIdentity).toBeUndefined();
+  });
+
+  it("returns structured diagnostics and does not mutate unsupported selected topology anchor targets", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const planned =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: readProjectStructure(engine).features,
+        sketches: readSketches(engine),
+        runtime: createCheckpointRuntime(),
+        target: {
+          bodyId: "body_plain_1",
+          stableId: "generated:vertex:body_plain_1:start:uMin:vMin",
+          kind: "vertex"
+        }
+      });
+
+    expect(planned).toMatchObject({
+      ok: false,
+      status: "unsupported"
+    });
+    if (planned.ok) {
+      throw new Error("Expected unsupported topology anchor plan.");
+    }
+    expect(planned.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "TOPOLOGY_MATCH_UNSUPPORTED",
+          severity: "warning"
+        })
+      ])
+    );
+    expect(engine.getDocument().topologyIdentity).toBeUndefined();
   });
 
   it("exports V13 source-owned checkpoint anchor ids instead of generated snapshot-local ids", async () => {
@@ -352,16 +504,16 @@ function readSketches(engine: CadEngine): readonly SketchSnapshot[] {
   }));
 }
 
-function createCheckpointRuntime(): Pick<
-  DerivedGeometryRuntime,
-  "exactTopologyCheckpointPayload"
-> {
+function createCheckpointRuntime(
+  options: { readonly duplicateEndCapFace?: boolean } = {}
+): Pick<DerivedGeometryRuntime, "exactTopologyCheckpointPayload"> {
   return {
     exactTopologyCheckpointPayload: vi.fn(async (input) => ({
       checkpointPayload: createCheckpointPayloadFixture(
         input.checkpointId,
         input.bodyId,
-        input.source.kind === "extrude" ? input.source.depth : 1
+        input.source.kind === "extrude" ? input.source.depth : 1,
+        options
       ),
       metrics: {
         objectId: input.bodyId,
@@ -375,7 +527,8 @@ function createCheckpointRuntime(): Pick<
 function createCheckpointPayloadFixture(
   checkpointId: string,
   bodyId: string,
-  depth: number
+  depth: number,
+  options: { readonly duplicateEndCapFace?: boolean } = {}
 ): GeometryKernelExactTopologyCheckpointPayload {
   const brepBytes = new TextEncoder().encode(
     `CASCADE Topology checkpoint fixture ${checkpointId}`
@@ -402,6 +555,15 @@ function createCheckpointPayloadFixture(
       }
     }
   ];
+  const topologyEntities = options.duplicateEndCapFace
+    ? [
+        ...entities,
+        {
+          ...entities[1],
+          localId: "checkpoint-local-face-duplicate"
+        }
+      ]
+    : entities;
   const topologySnapshot = {
     sourceKind: "extrude" as const,
     source: "kernel-derived" as const,
@@ -417,8 +579,8 @@ function createCheckpointPayloadFixture(
       coedgeCount: 0,
       axisCount: 0
     },
-    entityCount: entities.length,
-    entities,
+    entityCount: topologyEntities.length,
+    entities: topologyEntities,
     unsupportedEntityKinds: ["loop", "coedge", "axis"] as const,
     adjacencyAvailable: false,
     signatureAlgorithm: "partbench-derived-topology-snapshot-v1" as const,

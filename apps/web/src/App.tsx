@@ -247,6 +247,7 @@ import {
   type WcadFilePickerTargetLike
 } from "./projectWcadWorkflow";
 import {
+  createProjectTopologyAnchorCreationPlanForGeneratedReference,
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
@@ -2357,6 +2358,77 @@ export function App() {
     );
   }
 
+  async function createStableTopologyReference(
+    target: SelectedGeneratedReference
+  ) {
+    setCommandPending(true);
+    setCommandError(undefined);
+    setCommandNotice(undefined);
+
+    let plan: Awaited<
+      ReturnType<
+        typeof createProjectTopologyAnchorCreationPlanForGeneratedReference
+      >
+    >;
+
+    try {
+      plan = await createProjectTopologyAnchorCreationPlanForGeneratedReference(
+        {
+          engine,
+          features: projectStructure.features,
+          sketches,
+          generatedFacesByKey,
+          runtime: getDerivedGeometryRuntime(),
+          target
+        }
+      );
+
+      if (!plan.ok) {
+        setCommandError(plan.message);
+        return;
+      }
+
+      if (plan.plan.status === "alreadyExists") {
+        setSelectedGeneratedReference({
+          ...target,
+          ...(plan.plan.anchorId
+            ? { topologyAnchorId: plan.plan.anchorId }
+            : {})
+        });
+        setCommandNotice("Stable topology reference already exists.");
+        return;
+      }
+
+      const dryRun = await commandExecutor.executeBatch(
+        buildBatch("dryRun", plan.plan.ops, WEB_UI_ACTOR)
+      );
+
+      if (!dryRun.ok) {
+        setCommandError(dryRun.error.message);
+        return;
+      }
+    } catch (error) {
+      setCommandError(
+        error instanceof Error
+          ? error.message
+          : "Could not create stable topology reference."
+      );
+      return;
+    } finally {
+      setCommandPending(false);
+    }
+
+    const response = await commitOps(plan.plan.ops, () => target.bodyId);
+
+    if (response?.ok) {
+      setSelectedGeneratedReference({
+        ...target,
+        ...(plan.plan.anchorId ? { topologyAnchorId: plan.plan.anchorId } : {})
+      });
+      setCommandNotice("Created stable topology reference.");
+    }
+  }
+
   async function repairNamedReference(
     name: string,
     target: SelectedGeneratedReference
@@ -3289,6 +3361,9 @@ export function App() {
               onDeleteNamedReference={(name) => void deleteNamedReference(name)}
               onNameGeneratedReference={(name, target) =>
                 void nameGeneratedReference(name, target)
+              }
+              onCreateTopologyAnchor={(target) =>
+                void createStableTopologyReference(target)
               }
               onRepairNamedReference={(name, target) =>
                 void repairNamedReference(name, target)
