@@ -31,6 +31,7 @@ describe("mcp stdio server", () => {
           { name: "cad.project_topology_identity_readiness" },
           { name: "cad.topology_match_snapshots" },
           { name: "cad.topology_anchor_creation_plan" },
+          { name: "cad.topology_anchor_repair_plan" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },

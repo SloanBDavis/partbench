@@ -2413,11 +2413,17 @@ Use these decisions when drafting or implementing V13 tranches:
    `topology.anchorCreationPlan` query is also implemented: cad-core, agents,
    and MCP can ask for proposed checkpoint/anchor CADOps for one exact-bound,
    unambiguous generated reference, and callers can then dry-run or commit the
-   returned batch through the normal command layer. The web app now exposes an
+   returned batch through the normal command layer. The non-mutating
+   `topology.anchorRepairPlan` query is implemented as the matching repair
+   planner: cad-core, agents, and MCP can ask for a proposed
+   `topology.anchor.repair` batch for one existing anchor and one replacement
+   checkpoint only when caller-supplied exact topology evidence proves a
+   kind-compatible, unambiguous replacement entity. The web app now exposes an
    explicit selected-reference action that prepares source-owned exact topology
-   evidence, asks cad-core for this plan, dry-runs the proposed batch, commits
-   it through CADOps, and then lets ordinary `.wcad` save persist the existing
-   checkpoint payload as package v2. Automatic or silent checkpoint/anchor
+   evidence, asks cad-core for the creation plan, dry-runs the proposed batch,
+   commits it through CADOps, and then lets ordinary `.wcad` save persist the
+   existing checkpoint payload as package v2. A broader interactive repair UI
+   remains later V13 product hardening. Automatic or silent checkpoint/anchor
    source-record creation during ordinary app save/open and broader direct
    topology-anchor command targets remain later V13 work.
    Generated-reference-backed command eligibility and named-reference repair are

@@ -4,7 +4,10 @@ import {
   createEmptyTopologyIdentitySourceSnapshot,
   createWcadV2CheckpointEntryPaths
 } from "@web-cad/cad-core";
-import type { CadTopologyMatchResult } from "@web-cad/cad-protocol";
+import type {
+  CadBodyDerivedExactMetadataSnapshot,
+  CadTopologyMatchResult
+} from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import {
   CadOpsAgentAdapter,
@@ -81,6 +84,86 @@ function createTopologyAnchorEngine(): CadEngine {
       ]
     }
   });
+}
+
+function createTopologyAnchorRepairEngine(): CadEngine {
+  const engine = createTopologyAnchorEngine();
+  const document = engine.getDocument();
+  const topologyIdentity = document.topologyIdentity;
+  const paths = createWcadV2CheckpointEntryPaths("checkpoint_2");
+
+  if (!topologyIdentity) {
+    throw new Error("Expected topology identity fixture.");
+  }
+
+  return new CadEngine({
+    ...document,
+    topologyIdentity: {
+      ...topologyIdentity,
+      checkpoints: [
+        ...topologyIdentity.checkpoints,
+        {
+          checkpointId: "checkpoint_2",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          sourceIdentity: {
+            algorithm: "partbench-source-v1",
+            sha256:
+              "2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          packageVersion: "partbench.wcad.v2",
+          projectSchemaVersion: CAD_PROJECT_FORMAT_VERSION_V18,
+          brepEntryPath: paths.brep,
+          topologyEntryPath: paths.topology,
+          signatureEntryPath: paths.signature,
+          status: "active",
+          diagnostics: []
+        }
+      ]
+    }
+  });
+}
+
+function createRepairPlanExactMetadata(): CadBodyDerivedExactMetadataSnapshot {
+  return {
+    bodyId: "body_rect_1",
+    sourceIdentitySignature: "agent-test-source-signature",
+    status: "ready",
+    metadata: {
+      source: "kernel-derived",
+      confidence: "kernel-derived",
+      topologySnapshot: {
+        source: "kernel-derived",
+        status: "ready",
+        entityCounts: {
+          bodyCount: 0,
+          solidCount: 0,
+          faceCount: 1,
+          loopCount: 0,
+          wireCount: 0,
+          coedgeCount: 0,
+          edgeCount: 0,
+          vertexCount: 0,
+          axisCount: 0
+        },
+        entityCount: 1,
+        entities: [
+          {
+            localId: "snapshot-local:face:repaired",
+            kind: "face",
+            source: "kernel-derived",
+            signature: "face_signature_1"
+          }
+        ],
+        unsupportedEntityKinds: [],
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        signature: "agent-test-topology-signature",
+        diagnostics: []
+      },
+      diagnostics: []
+    }
+  };
 }
 
 function createTopologyAnchorMatchResult(): CadTopologyMatchResult {
@@ -3050,6 +3133,40 @@ describe("agent-adapter", () => {
       createsAnchor: false,
       opCount: 0,
       ops: [],
+      mutatesSource: false
+    });
+  });
+
+  it("passes topology anchor repair planning through the adapter", () => {
+    const adapter = new CadOpsAgentAdapter(createTopologyAnchorRepairEngine());
+    const response = adapter.query({
+      requestId: "agent_topology_anchor_repair_plan",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "topology.anchorRepairPlan",
+          anchorId: "anchor_face_1",
+          replacementCheckpointId: "checkpoint_2",
+          repairId: "repair_agent_1",
+          derivedExactMetadata: createRepairPlanExactMetadata()
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_anchor_repair_plan",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "topology.anchorRepairPlan",
+      status: "ready",
+      anchorId: "anchor_face_1",
+      bodyId: "body_rect_1",
+      replacementCheckpointId: "checkpoint_2",
+      replacementCheckpointEntityId: "snapshot-local:face:repaired",
+      repairId: "repair_agent_1",
+      createsRepair: true,
+      opCount: 1,
       mutatesSource: false
     });
   });

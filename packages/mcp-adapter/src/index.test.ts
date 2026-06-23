@@ -1,4 +1,7 @@
-import type { CadTopologyMatchResult } from "@web-cad/cad-protocol";
+import type {
+  CadBodyDerivedExactMetadataSnapshot,
+  CadTopologyMatchResult
+} from "@web-cad/cad-protocol";
 import { describe, expect, it } from "vitest";
 import { CadMcpServer, createCadMcpServer } from "./index";
 
@@ -26,6 +29,48 @@ function createTopologyAnchorMatchResult(): CadTopologyMatchResult {
   };
 }
 
+function createRepairPlanExactMetadata(): CadBodyDerivedExactMetadataSnapshot {
+  return {
+    bodyId: "body_rect_1",
+    sourceIdentitySignature: "mcp-test-source-signature",
+    status: "ready",
+    metadata: {
+      source: "kernel-derived",
+      confidence: "kernel-derived",
+      topologySnapshot: {
+        source: "kernel-derived",
+        status: "ready",
+        entityCounts: {
+          bodyCount: 0,
+          solidCount: 0,
+          faceCount: 1,
+          loopCount: 0,
+          wireCount: 0,
+          coedgeCount: 0,
+          edgeCount: 0,
+          vertexCount: 0,
+          axisCount: 0
+        },
+        entityCount: 1,
+        entities: [
+          {
+            localId: "snapshot-local:face:repaired",
+            kind: "face",
+            source: "kernel-derived",
+            signature: "face_signature_1"
+          }
+        ],
+        unsupportedEntityKinds: [],
+        adjacencyAvailable: false,
+        signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+        signature: "mcp-test-topology-signature",
+        diagnostics: []
+      },
+      diagnostics: []
+    }
+  };
+}
+
 describe("mcp-adapter", () => {
   it("lists only the supported CAD tools", () => {
     const server = createCadMcpServer();
@@ -44,6 +89,7 @@ describe("mcp-adapter", () => {
       "cad.project_topology_identity_readiness",
       "cad.topology_match_snapshots",
       "cad.topology_anchor_creation_plan",
+      "cad.topology_anchor_repair_plan",
       "cad.project_export_readiness",
       "cad.project_export_exact",
       "cad.project_package_readiness",
@@ -1599,6 +1645,114 @@ describe("mcp-adapter", () => {
         createsAnchor: false,
         opCount: 0,
         ops: [],
+        mutatesSource: false
+      }
+    });
+  });
+
+  it("passes topology anchor repair planning through cad.topology_anchor_repair_plan", () => {
+    const server = new CadMcpServer();
+    const setup = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_topology_anchor_repair_setup",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_1",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_1",
+              id: "rect_1",
+              center: [0, 0],
+              width: 2,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_rect_1",
+              bodyId: "body_rect_1",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              depth: 1
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_1",
+              bodyId: "body_rect_1",
+              sourceFeatureId: "feat_rect_1",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "1111111111111111111111111111111111111111111111111111111111111111"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_face_1",
+              entityKind: "face",
+              bodyId: "body_rect_1",
+              checkpointId: "checkpoint_1",
+              checkpointEntityId: "checkpoint-local-face-1",
+              stableId: "generated:face:body_rect_1:endCap",
+              sourceSemanticRole: "end cap",
+              signatureHash: "face_signature_1"
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_2",
+              bodyId: "body_rect_1",
+              sourceFeatureId: "feat_rect_1",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "2222222222222222222222222222222222222222222222222222222222222222"
+              },
+              status: "active"
+            }
+          ]
+        }
+      }
+    });
+    expect(setup).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: { ok: true }
+    });
+    const result = server.callTool({
+      name: "cad.topology_anchor_repair_plan",
+      requestId: "mcp_req_topology_anchor_repair_plan",
+      arguments: {
+        anchorId: "anchor_face_1",
+        replacementCheckpointId: "checkpoint_2",
+        repairId: "repair_mcp_1",
+        derivedExactMetadata: createRepairPlanExactMetadata()
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.topology_anchor_repair_plan",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_topology_anchor_repair_plan",
+        query: "topology.anchorRepairPlan",
+        status: "ready",
+        anchorId: "anchor_face_1",
+        bodyId: "body_rect_1",
+        replacementCheckpointId: "checkpoint_2",
+        replacementCheckpointEntityId: "snapshot-local:face:repaired",
+        repairId: "repair_mcp_1",
+        createsRepair: true,
+        opCount: 1,
         mutatesSource: false
       }
     });
@@ -4976,6 +5130,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_topology_identity_readiness" },
           { name: "cad.topology_match_snapshots" },
           { name: "cad.topology_anchor_creation_plan" },
+          { name: "cad.topology_anchor_repair_plan" },
           { name: "cad.project_export_readiness" },
           { name: "cad.project_export_exact" },
           { name: "cad.project_package_readiness" },

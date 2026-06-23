@@ -49,6 +49,7 @@ import type {
   SketchEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
+  TopologyAnchorRepairPlanQueryResponse,
   TopologyMatchSnapshotsQueryResponse,
   WcadManifestV1,
   WcadManifestV2,
@@ -404,6 +405,19 @@ describe("cad-protocol", () => {
       version: "cadops.v1",
       query: { query: "project.topologyIdentityReadiness" }
     };
+    const repairPlanRequest: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorRepairPlan",
+        anchorId: "anchor_1",
+        replacementCheckpointId: "checkpoint_2",
+        derivedExactMetadata: {
+          bodyId: "body_1",
+          sourceIdentitySignature: "source-signature",
+          status: "ready"
+        }
+      }
+    };
     const states: readonly CadTopologyIdentityState[] = [
       "active",
       "replaced",
@@ -550,8 +564,62 @@ describe("cad-protocol", () => {
         }
       ]
     };
+    const repairPlan: TopologyAnchorRepairPlanQueryResponse = {
+      ok: true,
+      query: "topology.anchorRepairPlan",
+      cadOpsVersion: "cadops.v1",
+      status: "ready",
+      anchorId: "anchor_1",
+      bodyId: "body_1",
+      entityKind: "face",
+      previousCheckpointId: "checkpoint_1",
+      previousCheckpointEntityId: "checkpoint-local:face:1",
+      replacementCheckpointId: "checkpoint_2",
+      replacementCheckpointEntityId: "checkpoint-local:face:2",
+      repairId: "repair_1",
+      confidence: "high",
+      evidence: [
+        {
+          kind: "sourceSemanticRole",
+          confidence: "high",
+          message: "Semantic role matches."
+        }
+      ],
+      createsRepair: true,
+      opCount: 1,
+      ops: [
+        {
+          op: "topology.anchor.repair",
+          repairId: "repair_1",
+          anchorId: "anchor_1",
+          replacementCheckpointId: "checkpoint_2",
+          replacementCheckpointEntityId: "checkpoint-local:face:2",
+          confidence: "high"
+        }
+      ],
+      proposedBatch: {
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [
+          {
+            op: "topology.anchor.repair",
+            repairId: "repair_1",
+            anchorId: "anchor_1",
+            replacementCheckpointId: "checkpoint_2",
+            replacementCheckpointEntityId: "checkpoint-local:face:2",
+            confidence: "high"
+          }
+        ]
+      },
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote: "Authoritative document source only.",
+      derivedBoundaryNote: "Private renderer/kernel/browser IDs excluded.",
+      mutatesSource: false
+    };
 
     expect(request.query.query).toBe("project.topologyIdentityReadiness");
+    expect(repairPlanRequest.query.query).toBe("topology.anchorRepairPlan");
     expect(states).toContain("consumed");
     expect(states).toContain("failed");
     expect(response.contractVersion).toBe(
@@ -561,6 +629,8 @@ describe("cad-protocol", () => {
     expect(response.plannedPackageVersion).toBe("partbench.wcad.v2");
     expect(response.anchors[0]?.entityKind).toBe("face");
     expect(response.checkpoints[0]).not.toHaveProperty("brepEntryPath");
+    expect(repairPlan.createsRepair).toBe(true);
+    expect(repairPlan.proposedBatch.ops[0]?.op).toBe("topology.anchor.repair");
   });
 
   it("types V18 topology source and WCAD v2 checkpoint package contracts", () => {

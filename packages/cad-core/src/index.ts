@@ -164,6 +164,7 @@ import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import { createTopologyAnchorCreationPlan } from "./topologyAnchorCreationPlan";
+import { createTopologyAnchorRepairPlan } from "./topologyAnchorRepairPlan";
 import { createFeatureEditabilityResponse } from "./featureEditability";
 import {
   createProjectDependencyGraph,
@@ -1764,6 +1765,28 @@ export class CadEngine {
           derivedExactMetadata: request.query.derivedExactMetadata,
           bodyExists: (candidateBodyId) =>
             structure.bodies.some((body) => body.id === candidateBodyId)
+        });
+
+        if (!plan.ok) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: plan.error
+          };
+        }
+
+        return plan.response;
+      }
+
+      case "topology.anchorRepairPlan": {
+        const plan = createTopologyAnchorRepairPlan({
+          cadOpsVersion: request.version,
+          document: this.#document,
+          anchorId: request.query.anchorId,
+          replacementCheckpointId: request.query.replacementCheckpointId,
+          repairId: request.query.repairId,
+          derivedExactMetadata: request.query.derivedExactMetadata
         });
 
         if (!plan.ok) {
@@ -5596,6 +5619,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.topologyIdentityReadiness":
     case "topology.matchSnapshots":
     case "topology.anchorCreationPlan":
+    case "topology.anchorRepairPlan":
     case "project.exportReadiness":
     case "project.exportExact":
     case "project.packageReadiness":
@@ -5665,6 +5689,13 @@ function isCadQuery(value: unknown): boolean {
         (value.anchorId === undefined || typeof value.anchorId === "string") &&
         (value.derivedExactMetadata === undefined ||
           isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+      );
+    case "topology.anchorRepairPlan":
+      return (
+        typeof value.anchorId === "string" &&
+        typeof value.replacementCheckpointId === "string" &&
+        (value.repairId === undefined || typeof value.repairId === "string") &&
+        isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata)
       );
     case "project.exportExact":
       return isProjectExactExportQuery(value);

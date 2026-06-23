@@ -40,6 +40,7 @@ export type CadMcpToolName =
   | "cad.project_topology_identity_readiness"
   | "cad.topology_match_snapshots"
   | "cad.topology_anchor_creation_plan"
+  | "cad.topology_anchor_repair_plan"
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
@@ -203,6 +204,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.topology_anchor_creation_plan") {
       return this.#callTopologyAnchorCreationPlan(request);
+    }
+
+    if (request.name === "cad.topology_anchor_repair_plan") {
+      return this.#callTopologyAnchorRepairPlan(request);
     }
 
     if (request.name === "cad.project_export_readiness") {
@@ -665,6 +670,36 @@ export class CadMcpServer {
             stableId: request.arguments.stableId,
             checkpointId: request.arguments.checkpointId,
             anchorId: request.arguments.anchorId,
+            derivedExactMetadata: request.arguments.derivedExactMetadata
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callTopologyAnchorRepairPlan(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isTopologyAnchorRepairPlanArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.topology_anchor_repair_plan expects arguments shaped as { anchorId: string, replacementCheckpointId: string, derivedExactMetadata: object, repairId?: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "topology.anchorRepairPlan",
+            anchorId: request.arguments.anchorId,
+            replacementCheckpointId: request.arguments.replacementCheckpointId,
+            repairId: request.arguments.repairId,
             derivedExactMetadata: request.arguments.derivedExactMetadata
           }
         }
@@ -1574,6 +1609,35 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.topology_anchor_repair_plan",
+    description:
+      "Returns a non-mutating V13 plan for repairing one topology anchor to one exact replacement checkpoint entity.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["anchorId", "replacementCheckpointId", "derivedExactMetadata"],
+      properties: {
+        anchorId: {
+          type: "string",
+          description: "Existing topology anchor source id to repair."
+        },
+        replacementCheckpointId: {
+          type: "string",
+          description: "Existing replacement checkpoint source id."
+        },
+        repairId: {
+          type: "string",
+          description: "Optional repair id for the proposed repair command."
+        },
+        derivedExactMetadata: {
+          type: "object",
+          description:
+            "Exact derived topology metadata used as read-only replacement entity evidence."
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_export_readiness",
     description:
       "Returns read-only export readiness for current source bodies, exact STEP status, and Mesh/GLB visualization status.",
@@ -2310,6 +2374,32 @@ function isTopologyAnchorCreationPlanArguments(value: unknown): value is {
       (typeof value.anchorId === "string" && value.anchorId !== "")) &&
     (value.derivedExactMetadata === undefined ||
       isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+  );
+}
+
+function isTopologyAnchorRepairPlanArguments(value: unknown): value is {
+  readonly anchorId: string;
+  readonly replacementCheckpointId: string;
+  readonly repairId?: string;
+  readonly derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot;
+} {
+  return (
+    isRecord(value) &&
+    Object.keys(value).every((key) =>
+      [
+        "anchorId",
+        "replacementCheckpointId",
+        "repairId",
+        "derivedExactMetadata"
+      ].includes(key)
+    ) &&
+    typeof value.anchorId === "string" &&
+    value.anchorId !== "" &&
+    typeof value.replacementCheckpointId === "string" &&
+    value.replacementCheckpointId !== "" &&
+    (value.repairId === undefined ||
+      (typeof value.repairId === "string" && value.repairId !== "")) &&
+    isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata)
   );
 }
 

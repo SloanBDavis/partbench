@@ -1161,6 +1161,7 @@ export type CadQueryKind =
   | "project.topologyIdentityReadiness"
   | "topology.matchSnapshots"
   | "topology.anchorCreationPlan"
+  | "topology.anchorRepairPlan"
   | "project.exportReadiness"
   | "project.exportExact"
   | "project.packageReadiness"
@@ -1199,6 +1200,7 @@ export type CadQuery =
   | ProjectTopologyIdentityReadinessQuery
   | TopologyMatchSnapshotsQuery
   | TopologyAnchorCreationPlanQuery
+  | TopologyAnchorRepairPlanQuery
   | ProjectExportReadinessQuery
   | ProjectExactExportQuery
   | ProjectPackageReadinessQuery
@@ -1293,6 +1295,14 @@ export interface TopologyAnchorCreationPlanQuery {
   readonly checkpointId?: string;
   readonly anchorId?: string;
   readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
+}
+
+export interface TopologyAnchorRepairPlanQuery {
+  readonly query: "topology.anchorRepairPlan";
+  readonly anchorId: string;
+  readonly replacementCheckpointId: string;
+  readonly derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot;
+  readonly repairId?: string;
 }
 
 export interface ProjectExportReadinessQuery {
@@ -4893,6 +4903,7 @@ export type CadQueryResponse =
   | ProjectTopologyIdentityReadinessQueryResponse
   | TopologyMatchSnapshotsQueryResponse
   | TopologyAnchorCreationPlanQueryResponse
+  | TopologyAnchorRepairPlanQueryResponse
   | ProjectExportReadinessQueryResponse
   | ProjectExactExportQueryResponse
   | ProjectPackageReadinessQueryResponse
@@ -5123,6 +5134,39 @@ export interface TopologyAnchorCreationPlanQueryResponse {
   readonly candidate?: CadTopologyGeneratedReferenceCandidate;
   readonly createsCheckpoint: boolean;
   readonly createsAnchor: boolean;
+  readonly opCount: number;
+  readonly ops: readonly CadOp[];
+  readonly proposedBatch: CadBatch;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
+}
+
+export type CadTopologyAnchorRepairPlanStatus =
+  | "ready"
+  | "alreadyCurrent"
+  | "missing"
+  | "unsupported"
+  | "ambiguous";
+
+export interface TopologyAnchorRepairPlanQueryResponse {
+  readonly ok: true;
+  readonly query: "topology.anchorRepairPlan";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadTopologyAnchorRepairPlanStatus;
+  readonly anchorId: string;
+  readonly bodyId?: BodyId;
+  readonly entityKind?: CadTopologyAnchorEntityKind;
+  readonly previousCheckpointId?: string;
+  readonly previousCheckpointEntityId?: string;
+  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointEntityId?: string;
+  readonly repairId?: string;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly createsRepair: boolean;
   readonly opCount: number;
   readonly ops: readonly CadOp[];
   readonly proposedBatch: CadBatch;
