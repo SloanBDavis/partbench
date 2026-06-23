@@ -427,6 +427,9 @@ describe("projectWcadTopologyCheckpoints", () => {
         })
       ])
     });
+    if (repair.ok) {
+      throw new Error("Expected ambiguous repair plan.");
+    }
     expect(JSON.stringify(engine.getDocument())).toBe(beforeRepairJson);
   });
 

@@ -103,6 +103,7 @@ import {
   formatVolume
 } from "../sceneObjectDisplay";
 import { formatExtrudeOperationMode } from "../structurePanelUi";
+import type { TopologyRepairCandidatePreviewState } from "../topologyRepairCandidatesUi";
 import { DimensionFields, TextField, TransformFields } from "./FormFields";
 
 export function Inspector({
@@ -137,6 +138,7 @@ export function Inspector({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   onInspectNamedReference,
   onSelectGeneratedReference,
@@ -146,7 +148,8 @@ export function Inspector({
   onUpdateRevolve,
   onUpdateHole,
   onUpdateChamfer,
-  onUpdateFillet
+  onUpdateFillet,
+  topologyRepairPreview
 }: {
   readonly disabled?: boolean;
   readonly body?: CadBodySnapshot;
@@ -201,6 +204,9 @@ export function Inspector({
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onPreviewTopologyAnchorRepair?: (
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
@@ -225,6 +231,7 @@ export function Inspector({
   ) => void;
   readonly onUpdateChamfer: (featureId: string, distance: number) => void;
   readonly onUpdateFillet: (featureId: string, radius: number) => void;
+  readonly topologyRepairPreview?: TopologyRepairCandidatePreviewState;
 }) {
   return (
     <aside className="inspector" aria-label="Inspector">
@@ -260,6 +267,7 @@ export function Inspector({
         onNameGeneratedReference,
         onCreateTopologyAnchor,
         onRepairTopologyAnchor,
+        onPreviewTopologyAnchorRepair,
         onRepairNamedReference,
         onInspectNamedReference,
         onSelectGeneratedReference,
@@ -270,6 +278,7 @@ export function Inspector({
         onUpdateHole,
         onUpdateChamfer,
         onUpdateFillet,
+        topologyRepairPreview,
         units
       })}
       <NamedReferencesPanel
@@ -340,6 +349,9 @@ function renderInspectorSelection(input: {
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onPreviewTopologyAnchorRepair?: (
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
@@ -364,6 +376,7 @@ function renderInspectorSelection(input: {
   ) => void;
   readonly onUpdateChamfer: (featureId: string, distance: number) => void;
   readonly onUpdateFillet: (featureId: string, radius: number) => void;
+  readonly topologyRepairPreview?: TopologyRepairCandidatePreviewState;
 }) {
   if (input.body) {
     return (
@@ -386,6 +399,7 @@ function renderInspectorSelection(input: {
         onNameGeneratedReference={input.onNameGeneratedReference}
         onCreateTopologyAnchor={input.onCreateTopologyAnchor}
         onRepairTopologyAnchor={input.onRepairTopologyAnchor}
+        onPreviewTopologyAnchorRepair={input.onPreviewTopologyAnchorRepair}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
         namedReferences={input.namedReferences}
         namedReferenceHealthByName={input.namedReferenceHealthByName}
@@ -400,6 +414,7 @@ function renderInspectorSelection(input: {
         onUpdateFillet={input.onUpdateFillet}
         onRepairNamedReference={input.onRepairNamedReference}
         selectedGeneratedReference={input.selectedGeneratedReference}
+        topologyRepairPreview={input.topologyRepairPreview}
         units={input.units}
       />
     );
@@ -486,6 +501,7 @@ function BodyInspector({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   onSelectGeneratedReference,
   onDeleteFeature,
@@ -499,6 +515,7 @@ function BodyInspector({
   referenceCandidatesByStableId,
   selectionReferenceCandidates,
   topology,
+  topologyRepairPreview,
   topologyExactMetadataStatus,
   topologyError,
   units
@@ -544,6 +561,9 @@ function BodyInspector({
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onPreviewTopologyAnchorRepair?: (
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
@@ -568,6 +588,7 @@ function BodyInspector({
   readonly onUpdateFillet: (featureId: string, radius: number) => void;
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly selectedNamedReferenceName?: string;
+  readonly topologyRepairPreview?: TopologyRepairCandidatePreviewState;
   readonly units: DocumentUnits;
 }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -693,6 +714,7 @@ function BodyInspector({
           onNameGeneratedReference={onNameGeneratedReference}
           onCreateTopologyAnchor={onCreateTopologyAnchor}
           onRepairTopologyAnchor={onRepairTopologyAnchor}
+          onPreviewTopologyAnchorRepair={onPreviewTopologyAnchorRepair}
           onRepairNamedReference={onRepairNamedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
           references={generatedReferences}
@@ -700,6 +722,7 @@ function BodyInspector({
           selectedGeneratedReference={selectedGeneratedReference}
           selectedNamedReferenceName={selectedNamedReferenceName}
           selectionReferenceCandidates={selectionReferenceCandidates}
+          topologyRepairPreview={topologyRepairPreview}
           units={units}
         />
       )}
@@ -1119,6 +1142,7 @@ function GeneratedReferencesPanel({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   onSelectGeneratedReference,
   references,
@@ -1126,6 +1150,7 @@ function GeneratedReferencesPanel({
   selectedGeneratedReference,
   selectedNamedReferenceName,
   selectionReferenceCandidates,
+  topologyRepairPreview,
   units
 }: {
   readonly body: CadBodySnapshot;
@@ -1158,6 +1183,9 @@ function GeneratedReferencesPanel({
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onPreviewTopologyAnchorRepair?: (
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
@@ -1173,6 +1201,7 @@ function GeneratedReferencesPanel({
   readonly selectedGeneratedReference?: SelectedGeneratedReference;
   readonly selectedNamedReferenceName?: string;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
+  readonly topologyRepairPreview?: TopologyRepairCandidatePreviewState;
   readonly units: DocumentUnits;
 }) {
   const faces = references?.faces ?? [];
@@ -1394,12 +1423,14 @@ function GeneratedReferencesPanel({
             onNameGeneratedReference={onNameGeneratedReference}
             onCreateTopologyAnchor={onCreateTopologyAnchor}
             onRepairTopologyAnchor={onRepairTopologyAnchor}
+            onPreviewTopologyAnchorRepair={onPreviewTopologyAnchorRepair}
             onRepairNamedReference={onRepairNamedReference}
             repairReference={namedReferences.find(
               (reference) => reference.name === selectedNamedReferenceName
             )}
             selectionReferenceCandidates={selectionReferenceCandidates}
             state={selectedReferenceState}
+            topologyRepairPreview={topologyRepairPreview}
             units={units}
           />
           {canShowEdgeFinishEditor && (
@@ -1785,10 +1816,12 @@ function SelectedGeneratedReferencePanel({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   repairReference,
   selectionReferenceCandidates,
   state,
+  topologyRepairPreview,
   units
 }: {
   readonly disabled: boolean;
@@ -1808,6 +1841,9 @@ function SelectedGeneratedReferencePanel({
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onPreviewTopologyAnchorRepair?: (
+    target: SelectedGeneratedReference
+  ) => void;
   readonly onRepairNamedReference: (
     name: string,
     target: SelectedGeneratedReference
@@ -1815,6 +1851,7 @@ function SelectedGeneratedReferencePanel({
   readonly repairReference?: NamedGeneratedReferenceEntry;
   readonly selectionReferenceCandidates?: SelectionReferenceCandidatesQueryResponse;
   readonly state: GeneratedReferenceSelectionState;
+  readonly topologyRepairPreview?: TopologyRepairCandidatePreviewState;
   readonly units: DocumentUnits;
 }) {
   const [name, setName] = useState(
@@ -1898,27 +1935,50 @@ function SelectedGeneratedReferencePanel({
                 </small>
               </div>
               {topologyAnchorId ? (
-                <div className="button-row compact">
-                  <button type="button" disabled>
-                    Stable
-                  </button>
-                  {onRepairTopologyAnchor && (
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => {
-                        if (state.status === "selected") {
-                          onRepairTopologyAnchor({
-                            ...state.selection,
-                            topologyAnchorId
-                          });
-                        }
-                      }}
-                    >
-                      Repair stable reference
+                <>
+                  <div className="button-row compact">
+                    <button type="button" disabled>
+                      Stable
                     </button>
-                  )}
-                </div>
+                    {onPreviewTopologyAnchorRepair && (
+                      <button
+                        type="button"
+                        disabled={disabled || topologyRepairPreview?.pending}
+                        onClick={() => {
+                          if (state.status === "selected") {
+                            onPreviewTopologyAnchorRepair({
+                              ...state.selection,
+                              topologyAnchorId
+                            });
+                          }
+                        }}
+                      >
+                        {topologyRepairPreview?.pending
+                          ? "Checking..."
+                          : "Check repair candidates"}
+                      </button>
+                    )}
+                    {onRepairTopologyAnchor && (
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          if (state.status === "selected") {
+                            onRepairTopologyAnchor({
+                              ...state.selection,
+                              topologyAnchorId
+                            });
+                          }
+                        }}
+                      >
+                        Repair stable reference
+                      </button>
+                    )}
+                  </div>
+                  <TopologyRepairCandidatePreviewPanel
+                    preview={topologyRepairPreview}
+                  />
+                </>
               ) : (
                 <button
                   type="button"
@@ -1944,7 +2004,7 @@ function SelectedGeneratedReferencePanel({
           />
           <div className="named-reference-editor">
             <label>
-              Name this reference
+              Reference name
               <input
                 type="text"
                 value={name}
@@ -1958,50 +2018,21 @@ function SelectedGeneratedReferencePanel({
               onClick={() => {
                 if (state.status === "selected") {
                   onNameGeneratedReference(normalizedName, state.selection);
+                  setName("");
                 }
               }}
             >
-              Save name
+              Name reference
             </button>
           </div>
-          {!nameStatus.available && (
-            <p className="error-text">{nameStatus.message}</p>
+          {nameStatus.message && !nameStatus.available && (
+            <small>{nameStatus.message}</small>
           )}
-          {repairState.status !== "none" && (
-            <div className="named-reference-repair">
-              <div>
-                <strong>Repair {repairState.reference.name}</strong>
-                <small>
-                  {formatNamedReferenceRepairHealthStatus(
-                    repairState.healthStatus
-                  )}
-                </small>
-                <small>{repairState.message}</small>
-                {repairState.diagnostics[0] && (
-                  <small className="error-text inline">
-                    {repairState.diagnostics[0].code
-                      ? `${repairState.diagnostics[0].code}: `
-                      : ""}
-                    {repairState.diagnostics[0].message}
-                  </small>
-                )}
-              </div>
-              {repairState.status === "ready" && (
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => {
-                    onRepairNamedReference(
-                      repairState.reference.name,
-                      repairState.target
-                    );
-                  }}
-                >
-                  Repair name
-                </button>
-              )}
-            </div>
-          )}
+          <NamedReferenceRepairPanel
+            disabled={disabled}
+            onRepairNamedReference={onRepairNamedReference}
+            repairState={repairState}
+          />
           {namedReferences.length > 0 && (
             <div className="named-reference-matches">
               <strong>Names for this reference</strong>
@@ -2024,9 +2055,104 @@ function SelectedGeneratedReferencePanel({
               </ul>
             </div>
           )}
+          <details className="advanced-options compact reference-id-details">
+            <summary>Stable ID</summary>
+            <code>{state.reference.stableId}</code>
+          </details>
         </>
       )}
     </section>
+  );
+}
+
+function NamedReferenceRepairPanel({
+  disabled,
+  onRepairNamedReference,
+  repairState
+}: {
+  readonly disabled: boolean;
+  readonly onRepairNamedReference: (
+    name: string,
+    target: SelectedGeneratedReference
+  ) => void;
+  readonly repairState: ReturnType<typeof createNamedReferenceRepairUiState>;
+}) {
+  if (repairState.status === "none") {
+    return null;
+  }
+
+  return (
+    <div className="named-reference-repair">
+      <div>
+        <strong>Repair {repairState.reference.name}</strong>
+        <small>
+          {formatNamedReferenceRepairHealthStatus(repairState.healthStatus)}
+        </small>
+        <small>{repairState.message}</small>
+        {repairState.diagnostics[0] && (
+          <small className="error-text inline">
+            {repairState.diagnostics[0].code
+              ? `${repairState.diagnostics[0].code}: `
+              : ""}
+            {repairState.diagnostics[0].message}
+          </small>
+        )}
+      </div>
+      {repairState.status === "ready" && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            onRepairNamedReference(
+              repairState.reference.name,
+              repairState.target
+            );
+          }}
+        >
+          Repair name
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TopologyRepairCandidatePreviewPanel({
+  preview
+}: {
+  readonly preview?: TopologyRepairCandidatePreviewState;
+}) {
+  if (!preview) {
+    return null;
+  }
+
+  if (preview.pending) {
+    return <small>Checking repair candidates...</small>;
+  }
+
+  if (preview.error && !preview.preview) {
+    return <p className="error-text">{preview.error}</p>;
+  }
+
+  if (!preview.preview) {
+    return null;
+  }
+
+  return (
+    <div className="repair-candidate-preview">
+      <small>{preview.preview.summary}</small>
+      {preview.error && <p className="error-text">{preview.error}</p>}
+      {preview.preview.rows.length > 0 && (
+        <ul>
+          {preview.preview.rows.map((row, index) => (
+            <li
+              key={`${row.entityKind}-${row.state}-${row.confidence}-${row.action}-${index}`}
+            >
+              {row.entityKind} · {row.state} · {row.confidence} · {row.action}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

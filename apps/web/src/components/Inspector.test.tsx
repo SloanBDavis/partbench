@@ -289,6 +289,90 @@ describe("Inspector", () => {
     );
   });
 
+  it("renders read-only topology repair candidates without private ids", () => {
+    const face = createFace();
+    const faceCandidates = createSelectionReferenceCandidates(face, {
+      topologyAnchorId: "anchor_rect_start_face",
+      checkpointId: "checkpoint_rect"
+    });
+    const markup = renderToStaticMarkup(
+      createElement(Inspector, {
+        body: createBody(),
+        disabled: false,
+        feature: createFeature(),
+        generatedReferences: createGeneratedReferences(face, createEdge()),
+        namedReferences: [],
+        referenceCandidatesByStableId: new Map([
+          [face.stableId, faceCandidates]
+        ]),
+        selectedGeneratedReference: {
+          bodyId: "body_rect",
+          stableId: face.stableId,
+          kind: "face",
+          topologyAnchorId: "anchor_rect_start_face"
+        },
+        selectionReferenceCandidates: faceCandidates,
+        topologyRepairPreview: {
+          key: "body_rect\u0000generated:face:body_rect:startCap\u0000face\u0000anchor_rect_start_face",
+          pending: false,
+          preview: {
+            summary: "2 candidates · Ambiguous · manual choice required",
+            candidateCount: 2,
+            rows: [
+              {
+                entityKind: "Face",
+                state: "Ambiguous",
+                confidence: "Exact confidence",
+                action: "Manual repair plan"
+              },
+              {
+                entityKind: "Face",
+                state: "Split",
+                confidence: "High confidence",
+                action: "Manual repair plan"
+              }
+            ]
+          }
+        },
+        units: "mm",
+        onApplyDimensions: () => undefined,
+        onApplyName: () => undefined,
+        onApplyTransform: () => undefined,
+        onCreateSketchOnFace: () => undefined,
+        onCreateEdgeFinish: () => undefined,
+        onDeleteNamedReference: () => undefined,
+        onNameGeneratedReference: () => undefined,
+        onCreateTopologyAnchor: () => undefined,
+        onRepairTopologyAnchor: () => undefined,
+        onPreviewTopologyAnchorRepair: () => undefined,
+        onRepairNamedReference: () => undefined,
+        onInspectNamedReference: () => undefined,
+        onSelectGeneratedReference: () => undefined,
+        onDelete: () => undefined,
+        onDeleteFeature: () => undefined,
+        onUpdateExtrude: () => undefined,
+        onUpdateRevolve: () => undefined,
+        onUpdateHole: () => undefined,
+        onUpdateChamfer: () => undefined,
+        onUpdateFillet: () => undefined
+      })
+    );
+
+    expect(markup).toContain("Check repair candidates");
+    expect(markup).toContain(
+      "2 candidates · Ambiguous · manual choice required"
+    );
+    expect(markup).toContain(
+      "Face · Ambiguous · Exact confidence · Manual repair plan"
+    );
+    expect(markup).toContain(
+      "Face · Split · High confidence · Manual repair plan"
+    );
+    expect(markup).not.toMatch(
+      /candidateId|anchor_rect_start_face|checkpoint_rect|checkpointEntityId|checkpoint-local|proposedBatch|ops|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
   it("renders structured candidate diagnostics for consumed selected references", () => {
     const face = createFace();
     const edge = createEdge();

@@ -2508,13 +2508,18 @@ Use these decisions when drafting or implementing V13 tranches:
     topology evidence, asks cad-core for `topology.anchorRepairPlan` with
     explicit replacement-checkpoint creation, dry-runs the proposed batch, and
     commits only through CADOps. React does not choose replacement topology
-    entities or expose checkpoint-local ids. The V13 browser workflow smoke now
+    entities or expose checkpoint-local ids. The selected-reference Inspector
+    can also preview sanitized repair-candidate summaries from that plan path:
+    counts, entity kinds, states, confidence, and manual action labels are
+    visible, while candidate IDs, checkpoint-local entity IDs, ops, and proposed
+    batches remain hidden and no retargeting occurs. The V13 browser workflow smoke now
     exercises those actions on an imported V18 fixture, verifies the topology
     identity status advances through explicit stable-reference creation and
     replacement-checkpoint repair, and proves the user-created stable reference
     and repair payloads persist
     through `.wcad` v2 package bytes. Broader split/merge/manual repair
-    candidate picking remains later Tranche K hardening.
+    candidate choice and candidate-apply commands remain later Tranche K
+    hardening.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
     eligibility, split/merge/delete/ambiguous/low-confidence fixture cases, and

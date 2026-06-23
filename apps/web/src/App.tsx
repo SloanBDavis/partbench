@@ -253,6 +253,11 @@ import {
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
 import {
+  createTopologyRepairCandidatePreview,
+  createTopologyRepairPreviewKey,
+  type TopologyRepairCandidatePreviewState
+} from "./topologyRepairCandidatesUi";
+import {
   clearProjectOpfsCache as clearProjectOpfsCacheStorage,
   createInitialProjectOpfsCacheStatus,
   readProjectOpfsCacheStatus,
@@ -1103,6 +1108,9 @@ export function App() {
   const [selectedGeneratedReference, setSelectedGeneratedReference] = useState<
     SelectedGeneratedReference | undefined
   >();
+  const [topologyRepairPreview, setTopologyRepairPreview] = useState<
+    TopologyRepairCandidatePreviewState | undefined
+  >();
   const [selectedNamedReferenceName, setSelectedNamedReferenceName] = useState<
     string | undefined
   >();
@@ -1393,6 +1401,14 @@ export function App() {
       setSelectedNamedReferenceName(undefined);
     }
   }, [namedReferences, selectedNamedReferenceName]);
+  useEffect(() => {
+    setTopologyRepairPreview(undefined);
+  }, [
+    selectedGeneratedReference?.bodyId,
+    selectedGeneratedReference?.stableId,
+    selectedGeneratedReference?.kind,
+    selectedGeneratedReference?.topologyAnchorId
+  ]);
   const selectedBodyReferenceCandidates = selectedBody
     ? readSelectionReferenceCandidates({
         type: "body",
@@ -2489,7 +2505,48 @@ export function App() {
         ...target,
         ...(plan.plan.anchorId ? { topologyAnchorId: plan.plan.anchorId } : {})
       });
+      setTopologyRepairPreview(undefined);
       setCommandNotice("Repaired stable topology reference.");
+    }
+  }
+
+  async function previewStableTopologyRepair(
+    target: SelectedGeneratedReference
+  ) {
+    const key = createTopologyRepairPreviewKey(target);
+
+    setTopologyRepairPreview({ key, pending: true });
+
+    try {
+      const result =
+        await createProjectTopologyAnchorRepairPlanForGeneratedReference({
+          engine,
+          features: projectStructure.features,
+          sketches,
+          generatedFacesByKey,
+          runtime: getDerivedGeometryRuntime(),
+          target
+        });
+      const plan = result.ok ? result.plan : result.plan;
+
+      setTopologyRepairPreview({
+        key,
+        pending: false,
+        preview: createTopologyRepairCandidatePreview({
+          status: result.ok ? result.plan.status : result.status,
+          repairCandidates: plan?.repairCandidates ?? []
+        }),
+        ...(result.ok ? {} : { error: result.message })
+      });
+    } catch (error) {
+      setTopologyRepairPreview({
+        key,
+        pending: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not check stable topology repair candidates."
+      });
     }
   }
 
@@ -3432,6 +3489,9 @@ export function App() {
               onRepairTopologyAnchor={(target) =>
                 void repairStableTopologyReference(target)
               }
+              onPreviewTopologyAnchorRepair={(target) =>
+                void previewStableTopologyRepair(target)
+              }
               onRepairNamedReference={(name, target) =>
                 void repairNamedReference(name, target)
               }
@@ -3456,6 +3516,7 @@ export function App() {
               onUpdateFillet={(featureId, radius) =>
                 void updateAuthoredFillet(featureId, radius)
               }
+              topologyRepairPreview={topologyRepairPreview}
             />
           </div>
         </aside>
