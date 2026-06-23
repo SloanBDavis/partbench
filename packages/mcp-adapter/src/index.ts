@@ -39,6 +39,7 @@ export type CadMcpToolName =
   | "cad.project_rebuild_plan"
   | "cad.project_topology_identity_readiness"
   | "cad.topology_match_snapshots"
+  | "cad.topology_anchor_creation_plan"
   | "cad.project_export_readiness"
   | "cad.project_export_exact"
   | "cad.project_package_readiness"
@@ -198,6 +199,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.topology_match_snapshots") {
       return this.#callTopologyMatchSnapshots(request);
+    }
+
+    if (request.name === "cad.topology_anchor_creation_plan") {
+      return this.#callTopologyAnchorCreationPlan(request);
     }
 
     if (request.name === "cad.project_export_readiness") {
@@ -630,6 +635,37 @@ export class CadMcpServer {
             query: "topology.matchSnapshots",
             previous: request.arguments.previous,
             candidates: request.arguments.candidates
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callTopologyAnchorCreationPlan(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isTopologyAnchorCreationPlanArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.topology_anchor_creation_plan expects arguments shaped as { bodyId: string, stableId: string, checkpointId?: string, anchorId?: string, derivedExactMetadata?: object }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "topology.anchorCreationPlan",
+            bodyId: request.arguments.bodyId,
+            stableId: request.arguments.stableId,
+            checkpointId: request.arguments.checkpointId,
+            anchorId: request.arguments.anchorId,
+            derivedExactMetadata: request.arguments.derivedExactMetadata
           }
         }
       })
@@ -1503,6 +1539,41 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     }
   },
   {
+    name: "cad.topology_anchor_creation_plan",
+    description:
+      "Returns a non-mutating V13 plan for creating topology checkpoint and anchor CADOps from one exact-bound generated reference.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["bodyId", "stableId"],
+      properties: {
+        bodyId: {
+          type: "string",
+          description: "Body containing the generated reference candidate."
+        },
+        stableId: {
+          type: "string",
+          description:
+            "Generated reference stable id to promote into a topology anchor plan."
+        },
+        checkpointId: {
+          type: "string",
+          description:
+            "Optional checkpoint id to reuse or create if no matching source record exists."
+        },
+        anchorId: {
+          type: "string",
+          description: "Optional anchor id for the proposed anchor command."
+        },
+        derivedExactMetadata: {
+          type: "object",
+          description:
+            "Optional exact derived topology metadata used as read-only binding evidence."
+        }
+      }
+    }
+  },
+  {
     name: "cad.project_export_readiness",
     description:
       "Returns read-only export readiness for current source bodies, exact STEP status, and Mesh/GLB visualization status.",
@@ -2206,6 +2277,37 @@ function isBodyTopologyIdentityToolArguments(value: unknown): value is {
     value.bodyId !== "" &&
     (value.checkpointId === undefined ||
       (typeof value.checkpointId === "string" && value.checkpointId !== "")) &&
+    (value.derivedExactMetadata === undefined ||
+      isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
+  );
+}
+
+function isTopologyAnchorCreationPlanArguments(value: unknown): value is {
+  readonly bodyId: string;
+  readonly stableId: string;
+  readonly checkpointId?: string;
+  readonly anchorId?: string;
+  readonly derivedExactMetadata?: CadBodyDerivedExactMetadataSnapshot;
+} {
+  return (
+    isRecord(value) &&
+    Object.keys(value).every((key) =>
+      [
+        "bodyId",
+        "stableId",
+        "checkpointId",
+        "anchorId",
+        "derivedExactMetadata"
+      ].includes(key)
+    ) &&
+    typeof value.bodyId === "string" &&
+    value.bodyId !== "" &&
+    typeof value.stableId === "string" &&
+    value.stableId !== "" &&
+    (value.checkpointId === undefined ||
+      (typeof value.checkpointId === "string" && value.checkpointId !== "")) &&
+    (value.anchorId === undefined ||
+      (typeof value.anchorId === "string" && value.anchorId !== "")) &&
     (value.derivedExactMetadata === undefined ||
       isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
   );

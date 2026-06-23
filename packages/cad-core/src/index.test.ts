@@ -14693,6 +14693,269 @@ describe("cad-core", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
+  it("plans topology checkpoint and anchor CADOps for an exact-bound generated reference without mutating source", () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_1",
+        id: "tool_rect_1",
+        center: [1, 0],
+        width: 2,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_cut_1",
+        bodyId: "body_cut_1",
+        sketchId: "sketch_1",
+        entityId: "tool_rect_1",
+        depth: 3,
+        operationMode: "cut",
+        targetBodyId: "body_rect_1"
+      }
+    ]);
+
+    const stableId = "generated:face:body_cut_1:side:uMin";
+    const seed = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: "body_cut_1" }
+    });
+
+    if (!seed.ok || seed.query !== "body.topologyIdentity") {
+      throw new Error("Expected body topology identity seed response.");
+    }
+
+    const candidate = seed.candidates.find(
+      (entry) => entry.stableId === stableId
+    );
+    const derivedExactMetadata = createExactMetadataSnapshot({
+      bodyId: "body_cut_1",
+      sourceIdentitySignature: readBodyTopologySourceSignature(
+        engine,
+        "body_cut_1"
+      ),
+      includeTopologySnapshot: true,
+      topologySnapshotStatus: "ready",
+      topologyEntities: [
+        {
+          localId: "snapshot-local:face:cut-wall-u-min",
+          kind: "face",
+          source: "kernel-derived",
+          signature: candidate?.geometrySignature ?? ""
+        }
+      ]
+    });
+    const beforeJson = exportCadProjectJson(engine);
+    const plan = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCreationPlan",
+        bodyId: "body_cut_1",
+        stableId,
+        derivedExactMetadata
+      }
+    });
+
+    expect(plan).toMatchObject({
+      ok: true,
+      query: "topology.anchorCreationPlan",
+      cadOpsVersion: "cadops.v1",
+      status: "ready",
+      bodyId: "body_cut_1",
+      stableId,
+      sourceFeatureId: "feat_cut_1",
+      createsCheckpoint: true,
+      createsAnchor: true,
+      opCount: 2,
+      mutatesSource: false,
+      candidate: expect.objectContaining({
+        stableId,
+        kind: "face",
+        checkpointEntityId: "snapshot-local:face:cut-wall-u-min",
+        status: "bound",
+        confidence: "exact"
+      }),
+      ops: [
+        expect.objectContaining({
+          op: "topology.checkpoint.create",
+          bodyId: "body_cut_1",
+          sourceFeatureId: "feat_cut_1",
+          sourceIdentity: expect.objectContaining({
+            algorithm: "partbench-source-v1",
+            sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+          }),
+          status: "active"
+        }),
+        expect.objectContaining({
+          op: "topology.anchor.create",
+          entityKind: "face",
+          bodyId: "body_cut_1",
+          checkpointEntityId: "snapshot-local:face:cut-wall-u-min",
+          stableId,
+          sourceFeatureId: "feat_cut_1",
+          sourceSemanticRole: "side:uMin"
+        })
+      ]
+    });
+
+    if (!plan.ok || plan.query !== "topology.anchorCreationPlan") {
+      throw new Error("Expected topology anchor creation plan response.");
+    }
+
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(JSON.stringify(plan)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
+
+    expect(
+      engine.executeBatch({
+        ...plan.proposedBatch,
+        mode: "dryRun"
+      })
+    ).toMatchObject({ ok: true });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    expect(engine.executeBatch(plan.proposedBatch)).toMatchObject({
+      ok: true
+    });
+    expect(engine.getDocument().topologyIdentity).toMatchObject({
+      checkpoints: [
+        expect.objectContaining({
+          bodyId: "body_cut_1",
+          sourceFeatureId: "feat_cut_1",
+          status: "active"
+        })
+      ],
+      anchors: [
+        expect.objectContaining({
+          entityKind: "face",
+          bodyId: "body_cut_1",
+          stableId,
+          checkpointEntityId: "snapshot-local:face:cut-wall-u-min",
+          state: "active"
+        })
+      ]
+    });
+    expect(exportCadProject(engine).schemaVersion).toBe(
+      CAD_PROJECT_FORMAT_VERSION_V18
+    );
+
+    const idempotentPlan = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCreationPlan",
+        bodyId: "body_cut_1",
+        stableId,
+        derivedExactMetadata
+      }
+    });
+
+    expect(idempotentPlan).toMatchObject({
+      ok: true,
+      query: "topology.anchorCreationPlan",
+      status: "alreadyExists",
+      createsCheckpoint: false,
+      createsAnchor: false,
+      opCount: 0,
+      ops: [],
+      mutatesSource: false
+    });
+  });
+
+  it("does not plan topology anchor source commands without exact generated-reference evidence", () => {
+    const engine = createRectangleExtrudeEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const plan = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCreationPlan",
+        bodyId: "body_rect_1",
+        stableId: "generated:face:body_rect_1:endCap"
+      }
+    });
+
+    expect(plan).toMatchObject({
+      ok: true,
+      query: "topology.anchorCreationPlan",
+      status: "missing",
+      createsCheckpoint: false,
+      createsAnchor: false,
+      opCount: 0,
+      ops: [],
+      mutatesSource: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_LOW_CONFIDENCE" })
+      ])
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("does not plan topology anchor source commands for ambiguous exact matches", () => {
+    const engine = createRectangleExtrudeEngine();
+    const stableId = "generated:face:body_rect_1:endCap";
+    const seed = engine.executeQuery({
+      version: "cadops.v1",
+      query: { query: "body.topologyIdentity", bodyId: "body_rect_1" }
+    });
+
+    if (!seed.ok || seed.query !== "body.topologyIdentity") {
+      throw new Error("Expected body topology identity seed response.");
+    }
+
+    const candidate = seed.candidates.find(
+      (entry) => entry.stableId === stableId
+    );
+    const beforeJson = exportCadProjectJson(engine);
+    const plan = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCreationPlan",
+        bodyId: "body_rect_1",
+        stableId,
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_rect_1",
+          sourceIdentitySignature: readBodyTopologySourceSignature(
+            engine,
+            "body_rect_1"
+          ),
+          includeTopologySnapshot: true,
+          topologySnapshotStatus: "ready",
+          topologyEntities: [
+            {
+              localId: "snapshot-local:face:1",
+              kind: "face",
+              source: "kernel-derived",
+              signature: candidate?.geometrySignature ?? ""
+            },
+            {
+              localId: "snapshot-local:face:2",
+              kind: "face",
+              source: "kernel-derived",
+              signature: candidate?.geometrySignature ?? ""
+            }
+          ]
+        })
+      }
+    });
+
+    expect(plan).toMatchObject({
+      ok: true,
+      query: "topology.anchorCreationPlan",
+      status: "ambiguous",
+      createsCheckpoint: false,
+      createsAnchor: false,
+      opCount: 0,
+      ops: [],
+      mutatesSource: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_MATCH_AMBIGUOUS" })
+      ])
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("does not invent generated topology candidates for edge finishing result bodies", () => {
     const chamferEngine = createRectangleChamferEngine();
     const filletEngine = createRectangleFilletEngine();

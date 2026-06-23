@@ -2409,10 +2409,15 @@ Use these decisions when drafting or implementing V13 tranches:
    repair records and retargets the anchor to a replacement checkpoint entity.
    These commands support dry-run/commit through CADOps, emit semantic diffs,
    participate in undo/redo and transaction-history summaries, and preserve
-   source-boundary validation. UI repair affordances are handled by the later
-   Tranche J product-integration slices; automatic checkpoint source-record
-   creation during ordinary app save/open and broader direct topology-anchor
-   command targets remain later V13 work.
+   source-boundary validation. The non-mutating
+   `topology.anchorCreationPlan` query is also implemented: cad-core, agents,
+   and MCP can ask for proposed checkpoint/anchor CADOps for one exact-bound,
+   unambiguous generated reference, and callers can then dry-run or commit the
+   returned batch through the normal command layer. UI repair affordances are
+   handled by the later Tranche J product-integration slices; automatic or
+   silent checkpoint/anchor source-record creation during ordinary app
+   save/open and broader direct topology-anchor command targets remain later
+   V13 work.
    Generated-reference-backed command eligibility and named-reference repair are
    implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
@@ -2424,9 +2429,9 @@ Use these decisions when drafting or implementing V13 tranches:
    faces/edges/axes can bind to exact snapshot entities by deterministic
    semantic signatures. Chamfer and fillet result bodies remain status-only;
    the query does not invent generated face/edge candidates where current
-   source semantics do not prove them. Automatic anchor creation, command
-   eligibility, UI repair affordances, and automatic checkpoint source-record
-   creation during ordinary app save/open remain later V13 work.
+   source semantics do not prove them. Silent/automatic anchor creation,
+   command eligibility, UI repair affordances, and automatic checkpoint
+   source-record creation during ordinary app save/open remain later V13 work.
 9. **Implemented, first read-only, planar-face command, edge-finish command,
    named-reference repair, and downstream body-target command slices: Command
    Eligibility For Topology Anchors** -

@@ -3023,6 +3023,37 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes topology anchor creation planning through the adapter", () => {
+    const adapter = new CadOpsAgentAdapter(createTopologyAnchorEngine());
+    const response = adapter.query({
+      requestId: "agent_topology_anchor_plan",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "topology.anchorCreationPlan",
+          bodyId: "body_rect_1",
+          stableId: "generated:face:body_rect_1:endCap"
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_anchor_plan",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "topology.anchorCreationPlan",
+      status: "alreadyExists",
+      bodyId: "body_rect_1",
+      stableId: "generated:face:body_rect_1:endCap",
+      createsCheckpoint: false,
+      createsAnchor: false,
+      opCount: 0,
+      ops: [],
+      mutatesSource: false
+    });
+  });
+
   it("passes topology match context through reference health adapter queries", () => {
     const adapter = new CadOpsAgentAdapter(createTopologyAnchorEngine());
     const response = executeCadOpsAgentQueryRequest(adapter.getEngine(), {

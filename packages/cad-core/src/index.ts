@@ -163,6 +163,7 @@ import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
+import { createTopologyAnchorCreationPlan } from "./topologyAnchorCreationPlan";
 import { createFeatureEditabilityResponse } from "./featureEditability";
 import {
   createProjectDependencyGraph,
@@ -1743,6 +1744,38 @@ export class CadEngine {
         }
 
         return topologyIdentity.response;
+      }
+
+      case "topology.anchorCreationPlan": {
+        const { bodyId, stableId } = request.query;
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const plan = createTopologyAnchorCreationPlan({
+          cadOpsVersion: request.version,
+          document: this.#document,
+          bodyId,
+          stableId,
+          units: this.#document.units,
+          ownerPartId: DEFAULT_PART_ID,
+          checkpointId: request.query.checkpointId,
+          anchorId: request.query.anchorId,
+          derivedExactMetadata: request.query.derivedExactMetadata,
+          bodyExists: (candidateBodyId) =>
+            structure.bodies.some((body) => body.id === candidateBodyId)
+        });
+
+        if (!plan.ok) {
+          return {
+            ok: false,
+            query: request.query.query,
+            cadOpsVersion: request.version,
+            error: plan.error
+          };
+        }
+
+        return plan.response;
       }
 
       case "body.measurements": {
@@ -5562,6 +5595,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.rebuildPlan":
     case "project.topologyIdentityReadiness":
     case "topology.matchSnapshots":
+    case "topology.anchorCreationPlan":
     case "project.exportReadiness":
     case "project.exportExact":
     case "project.packageReadiness":
@@ -5621,6 +5655,16 @@ function isCadQuery(value: unknown): boolean {
         isCadTopologyMatchSnapshotInput(value.previous) &&
         Array.isArray(value.candidates) &&
         value.candidates.every(isCadTopologyMatchSnapshotInput)
+      );
+    case "topology.anchorCreationPlan":
+      return (
+        typeof value.bodyId === "string" &&
+        typeof value.stableId === "string" &&
+        (value.checkpointId === undefined ||
+          typeof value.checkpointId === "string") &&
+        (value.anchorId === undefined || typeof value.anchorId === "string") &&
+        (value.derivedExactMetadata === undefined ||
+          isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata))
       );
     case "project.exportExact":
       return isProjectExactExportQuery(value);
