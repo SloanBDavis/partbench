@@ -1303,6 +1303,7 @@ export interface TopologyAnchorRepairPlanQuery {
   readonly replacementCheckpointId?: string;
   readonly createReplacementCheckpoint?: boolean;
   readonly derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot;
+  readonly selectedRepairCandidateId?: string;
   readonly repairId?: string;
 }
 

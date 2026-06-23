@@ -1733,6 +1733,7 @@ describe("mcp-adapter", () => {
       arguments: {
         anchorId: "anchor_face_1",
         replacementCheckpointId: "checkpoint_2",
+        selectedRepairCandidateId: "topology_repair_candidate_passthrough",
         repairId: "repair_mcp_1",
         derivedExactMetadata: createRepairPlanExactMetadata()
       }

@@ -1787,6 +1787,7 @@ export class CadEngine {
           replacementCheckpointId: request.query.replacementCheckpointId,
           createReplacementCheckpoint:
             request.query.createReplacementCheckpoint,
+          selectedRepairCandidateId: request.query.selectedRepairCandidateId,
           repairId: request.query.repairId,
           derivedExactMetadata: request.query.derivedExactMetadata
         });
@@ -5701,6 +5702,8 @@ function isCadQuery(value: unknown): boolean {
           typeof value.createReplacementCheckpoint === "boolean") &&
         (typeof value.replacementCheckpointId === "string" ||
           value.createReplacementCheckpoint === true) &&
+        (value.selectedRepairCandidateId === undefined ||
+          typeof value.selectedRepairCandidateId === "string") &&
         (value.repairId === undefined || typeof value.repairId === "string") &&
         isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata)
       );

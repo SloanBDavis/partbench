@@ -34017,6 +34017,125 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(exportCadProjectJson(engine)).toBe(beforeJson);
   });
 
+  it("plans topology anchor repairs from an explicitly selected repair candidate", () => {
+    const engine = createTopologyCheckpointEngine({
+      includeReplacementCheckpoint: true
+    });
+    engine.apply({
+      op: "topology.anchor.create",
+      anchorId: "anchor_face_1",
+      entityKind: "face",
+      bodyId: "body_rect_1",
+      checkpointId: "checkpoint_1",
+      checkpointEntityId: "checkpoint-local-face-1",
+      stableId: "generated:face:body_rect_1:endCap",
+      sourceSemanticRole: "end cap",
+      signatureHash: "face_signature_1"
+    });
+    const beforeJson = exportCadProjectJson(engine);
+    const derivedExactMetadata = createExactMetadataSnapshot({
+      bodyId: "body_rect_1",
+      sourceIdentitySignature: readBodyTopologySourceSignature(
+        engine,
+        "body_rect_1"
+      ),
+      includeTopologySnapshot: true,
+      topologySnapshotStatus: "ready",
+      topologyEntities: [
+        {
+          localId: "snapshot-local:face:a",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face_signature_1"
+        },
+        {
+          localId: "snapshot-local:face:b",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face_signature_1"
+        }
+      ]
+    });
+    const ambiguous = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorRepairPlan",
+        anchorId: "anchor_face_1",
+        replacementCheckpointId: "checkpoint_2",
+        derivedExactMetadata
+      }
+    });
+
+    expect(ambiguous).toMatchObject({
+      ok: true,
+      query: "topology.anchorRepairPlan",
+      status: "ambiguous",
+      repairCandidateCount: 2,
+      createsRepair: false,
+      opCount: 0
+    });
+    if (!ambiguous.ok || ambiguous.query !== "topology.anchorRepairPlan") {
+      throw new Error("Expected topology anchor repair plan response.");
+    }
+    const selectedCandidate = ambiguous.repairCandidates[0];
+    if (!selectedCandidate) {
+      throw new Error("Expected ambiguous repair candidate.");
+    }
+    const selected = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorRepairPlan",
+        anchorId: "anchor_face_1",
+        replacementCheckpointId: "checkpoint_2",
+        selectedRepairCandidateId: selectedCandidate.candidateId,
+        derivedExactMetadata
+      }
+    });
+    const invalidSelected = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorRepairPlan",
+        anchorId: "anchor_face_1",
+        replacementCheckpointId: "checkpoint_2",
+        selectedRepairCandidateId: "topology_repair_candidate_not_available",
+        derivedExactMetadata
+      }
+    });
+
+    expect(selected).toMatchObject({
+      ok: true,
+      query: "topology.anchorRepairPlan",
+      status: "ready",
+      replacementCheckpointEntityId:
+        selectedCandidate.candidateCheckpointEvidence?.checkpointEntityId,
+      confidence: selectedCandidate.confidence,
+      repairCandidateCount: 2,
+      createsRepair: true,
+      opCount: 1,
+      ops: [
+        expect.objectContaining({
+          op: "topology.anchor.repair",
+          replacementCheckpointEntityId:
+            selectedCandidate.candidateCheckpointEvidence?.checkpointEntityId
+        })
+      ],
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_REPAIR_COMMANDS_READY" })
+      ])
+    });
+    expect(invalidSelected).toMatchObject({
+      ok: true,
+      query: "topology.anchorRepairPlan",
+      status: "ambiguous",
+      createsRepair: false,
+      opCount: 0,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: "TOPOLOGY_REPAIR_COMMANDS_DEFERRED" })
+      ])
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
   it("does not plan topology anchor repairs for missing or already-current targets", () => {
     const engine = createTopologyCheckpointEngine({
       includeReplacementCheckpoint: true

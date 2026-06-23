@@ -2422,8 +2422,12 @@ Use these decisions when drafting or implementing V13 tranches:
    checkpoint only when caller-supplied exact topology evidence proves a
    kind-compatible, unambiguous replacement entity; ambiguous and low-confidence
    single-anchor evidence returns structured repair candidates without proposed
-   mutation ops. Broad split/merge/ambiguous repair-candidate discovery remains
-   on `topology.matchSnapshots`, which reports opaque candidate IDs and
+   mutation ops unless the caller supplies one opaque
+   `selectedRepairCandidateId` from that same plan. A selected-candidate repair
+   plan can then return normal checkpoint/repair CADOps while keeping
+   checkpoint-local entity IDs as evidence, not public stable references. Broad
+   split/merge/ambiguous repair-candidate discovery remains on
+   `topology.matchSnapshots`, which reports opaque candidate IDs and
    checkpoint-local evidence but no command ops.
    The web app now exposes an
    explicit selected-reference action that prepares source-owned exact topology
