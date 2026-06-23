@@ -685,7 +685,7 @@ export class CadMcpServer {
     if (!isTopologyAnchorRepairPlanArguments(request.arguments)) {
       return createInvalidArgumentsResult(
         request.name,
-        "cad.topology_anchor_repair_plan expects arguments shaped as { anchorId: string, replacementCheckpointId: string, derivedExactMetadata: object, repairId?: string }."
+        "cad.topology_anchor_repair_plan expects arguments shaped as { anchorId: string, derivedExactMetadata: object, replacementCheckpointId?: string, createReplacementCheckpoint?: boolean, repairId?: string }, with either replacementCheckpointId or createReplacementCheckpoint=true."
       );
     }
 
@@ -699,6 +699,8 @@ export class CadMcpServer {
             query: "topology.anchorRepairPlan",
             anchorId: request.arguments.anchorId,
             replacementCheckpointId: request.arguments.replacementCheckpointId,
+            createReplacementCheckpoint:
+              request.arguments.createReplacementCheckpoint,
             repairId: request.arguments.repairId,
             derivedExactMetadata: request.arguments.derivedExactMetadata
           }
@@ -1615,7 +1617,7 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["anchorId", "replacementCheckpointId", "derivedExactMetadata"],
+      required: ["anchorId", "derivedExactMetadata"],
       properties: {
         anchorId: {
           type: "string",
@@ -1623,7 +1625,13 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         },
         replacementCheckpointId: {
           type: "string",
-          description: "Existing replacement checkpoint source id."
+          description:
+            "Existing replacement checkpoint source id. Required unless createReplacementCheckpoint is true."
+        },
+        createReplacementCheckpoint: {
+          type: "boolean",
+          description:
+            "When true, cad-core may include a replacement topology.checkpoint.create op before the repair op."
         },
         repairId: {
           type: "string",
@@ -2379,7 +2387,8 @@ function isTopologyAnchorCreationPlanArguments(value: unknown): value is {
 
 function isTopologyAnchorRepairPlanArguments(value: unknown): value is {
   readonly anchorId: string;
-  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointId?: string;
+  readonly createReplacementCheckpoint?: boolean;
   readonly repairId?: string;
   readonly derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot;
 } {
@@ -2389,14 +2398,20 @@ function isTopologyAnchorRepairPlanArguments(value: unknown): value is {
       [
         "anchorId",
         "replacementCheckpointId",
+        "createReplacementCheckpoint",
         "repairId",
         "derivedExactMetadata"
       ].includes(key)
     ) &&
     typeof value.anchorId === "string" &&
     value.anchorId !== "" &&
-    typeof value.replacementCheckpointId === "string" &&
-    value.replacementCheckpointId !== "" &&
+    (value.replacementCheckpointId === undefined ||
+      (typeof value.replacementCheckpointId === "string" &&
+        value.replacementCheckpointId !== "")) &&
+    (value.createReplacementCheckpoint === undefined ||
+      typeof value.createReplacementCheckpoint === "boolean") &&
+    (typeof value.replacementCheckpointId === "string" ||
+      value.createReplacementCheckpoint === true) &&
     (value.repairId === undefined ||
       (typeof value.repairId === "string" && value.repairId !== "")) &&
     isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata)

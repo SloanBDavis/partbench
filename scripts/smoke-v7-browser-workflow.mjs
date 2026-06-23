@@ -1738,8 +1738,8 @@ async function v7BrowserWorkflowSmoke({
     const topologyStatus = getElementByAriaLabel("Topology identity status");
     const topologyStatusChecks = [
       assertIncludes(topologyStatus, "Topology identity", "v13-topology-title"),
-      assertIncludes(topologyStatus, "2 checkpoints", "v13-checkpoint-count"),
-      assertIncludes(topologyStatus, "2 anchors", "v13-anchor-count"),
+      assertIncludes(topologyStatus, "3 checkpoints", "v13-checkpoint-count"),
+      assertIncludes(topologyStatus, "3 anchors", "v13-anchor-count"),
       assertIncludes(topologyStatus, "partbench.wcad.v2", "v13-wcad-v2"),
       assertIncludes(topologyStatus, "Use .wcad", "v13-json-warning")
     ];
@@ -2022,7 +2022,7 @@ async function v7BrowserWorkflowSmoke({
       const status = getElementByAriaLabel("Topology identity status");
       const ready =
         includesText(document.body, "Created stable topology reference.") &&
-        includesText(status, "3 anchors");
+        includesText(status, "4 anchors");
 
       if (!ready) {
         throw new Error(
@@ -2041,12 +2041,54 @@ async function v7BrowserWorkflowSmoke({
       selectedLabel
     );
 
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const button = getButtonByText(inspector, "Repair stable reference");
+      const ready =
+        includesText(inspector, "Stable reference active") &&
+        button &&
+        !button.disabled;
+
+      if (!ready) {
+        throw new Error(compactText(inspector.textContent, 520));
+      }
+
+      return true;
+    }, "V13 stable topology repair action available");
+    clickButton(getElementByAriaLabel("Inspector"), "Repair stable reference");
+    await waitFor(() => {
+      const status = getElementByAriaLabel("Topology identity status");
+      const ready =
+        includesText(document.body, "Repaired stable topology reference.") &&
+        includesText(status, "4 checkpoints") &&
+        includesText(status, "4 anchors");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `status=${compactText(status.textContent, 420)}`,
+            `page=${compactText(document.body.textContent, 420)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V13 stable topology repair action committed");
+    pass(
+      "v13-stable-reference-repair-action",
+      "Inspector repairs a stable topology reference through a cad-core plan and explicit CADOps commit",
+      getRenderedText(getElementByAriaLabel("Topology identity status"))
+    );
+
     openDetailsBySummary(document.body, "Project/File");
     const projectPanelForSave = getSectionByAriaLabel("Project");
     await waitFor(() => {
       const status = getElementByAriaLabel("Topology identity status");
 
-      if (!includesText(status, "3 anchors")) {
+      if (
+        !includesText(status, "4 checkpoints") ||
+        !includesText(status, "4 anchors")
+      ) {
         throw new Error(compactText(status.textContent, 420));
       }
 
@@ -4471,6 +4513,7 @@ async function v7BrowserWorkflowSmoke({
     const checkpoints = Array.isArray(topology?.checkpoints)
       ? topology.checkpoints
       : [];
+    const repairs = Array.isArray(topology?.repairs) ? topology.repairs : [];
     const features = Array.isArray(project.document?.features)
       ? project.document.features
       : [];
@@ -4487,12 +4530,12 @@ async function v7BrowserWorkflowSmoke({
       missing.push("topologyIdentity.schemaVersion:web-cad.project.v18");
     }
 
-    if (checkpoints.length !== 2) {
-      missing.push("topologyIdentity.checkpoints:2");
+    if (checkpoints.length !== 4) {
+      missing.push("topologyIdentity.checkpoints:4");
     }
 
-    if (anchors.length !== 3) {
-      missing.push("topologyIdentity.anchors:3");
+    if (anchors.length !== 4) {
+      missing.push("topologyIdentity.anchors:4");
     }
 
     if (
@@ -4525,11 +4568,25 @@ async function v7BrowserWorkflowSmoke({
           anchor.entityKind === "face" &&
           anchor.bodyId === ids.v13RepairBodyId &&
           anchor.stableId === ids.v13ExplicitStableFaceId &&
-          anchor.checkpointId === "v13_checkpoint_repair_body" &&
+          typeof anchor.checkpointId === "string" &&
+          anchor.checkpointId.startsWith("topology_checkpoint_repair_") &&
           anchor.state === "active"
       )
     ) {
       missing.push(`${ids.v13ExplicitStableFaceId}:topologyAnchor`);
+    }
+
+    if (
+      !repairs.some(
+        (repair) =>
+          typeof repair.replacementCheckpointId === "string" &&
+          repair.replacementCheckpointId.startsWith(
+            "topology_checkpoint_repair_"
+          ) &&
+          repair.confidence === "exact"
+      )
+    ) {
+      missing.push(`${ids.v13ExplicitStableFaceId}:topologyRepair`);
     }
 
     if (

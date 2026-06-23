@@ -3596,6 +3596,7 @@ function isTopologyAnchorRepairPlanQueryShape(value: unknown): boolean {
     "query",
     "anchorId",
     "replacementCheckpointId",
+    "createReplacementCheckpoint",
     "repairId",
     "derivedExactMetadata"
   ];
@@ -3605,7 +3606,12 @@ function isTopologyAnchorRepairPlanQueryShape(value: unknown): boolean {
     value.query === "topology.anchorRepairPlan" &&
     Object.keys(value).every((key) => allowedKeys.includes(key)) &&
     typeof value.anchorId === "string" &&
-    typeof value.replacementCheckpointId === "string" &&
+    (value.replacementCheckpointId === undefined ||
+      typeof value.replacementCheckpointId === "string") &&
+    (value.createReplacementCheckpoint === undefined ||
+      typeof value.createReplacementCheckpoint === "boolean") &&
+    (typeof value.replacementCheckpointId === "string" ||
+      value.createReplacementCheckpoint === true) &&
     (value.repairId === undefined || typeof value.repairId === "string") &&
     isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata)
   );

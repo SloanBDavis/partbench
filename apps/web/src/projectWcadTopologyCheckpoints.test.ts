@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DerivedGeometryRuntime } from "./derivedGeometryRuntime";
 import {
   createProjectTopologyAnchorCreationPlanForGeneratedReference,
+  createProjectTopologyAnchorRepairPlanForGeneratedReference,
   createProjectWcadTopologyCheckpointPayloadInputs,
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
@@ -270,6 +271,163 @@ describe("projectWcadTopologyCheckpoints", () => {
       ])
     );
     expect(engine.getDocument().topologyIdentity).toBeUndefined();
+  });
+
+  it("plans selected stable topology reference repairs through cad-core CADOps", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+    const target = {
+      bodyId: "body_plain_1",
+      stableId: "generated:face:body_plain_1:endCap",
+      kind: "face" as const
+    };
+    const creation =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: structure.features,
+        sketches: readSketches(engine),
+        runtime,
+        target
+      });
+
+    expect(creation.ok).toBe(true);
+    if (!creation.ok) {
+      throw new Error(creation.message);
+    }
+    expect(engine.executeBatch(creation.plan.proposedBatch)).toMatchObject({
+      ok: true
+    });
+
+    const anchorId =
+      engine.getDocument().topologyIdentity?.anchors[0]?.anchorId;
+    if (!anchorId) {
+      throw new Error("Expected created topology anchor.");
+    }
+    const beforeRepairJson = JSON.stringify(engine.getDocument());
+    const repair =
+      await createProjectTopologyAnchorRepairPlanForGeneratedReference({
+        engine,
+        features: readProjectStructure(engine).features,
+        sketches: readSketches(engine),
+        runtime,
+        target: {
+          ...target,
+          topologyAnchorId: anchorId
+        }
+      });
+
+    if (!repair.ok) {
+      throw new Error(repair.message);
+    }
+    expect(repair.ok).toBe(true);
+    expect(repair.plan).toMatchObject({
+      query: "topology.anchorRepairPlan",
+      status: "ready",
+      createsCheckpoint: true,
+      createsRepair: true,
+      opCount: 2,
+      ops: [
+        expect.objectContaining({
+          op: "topology.checkpoint.create",
+          bodyId: target.bodyId
+        }),
+        expect.objectContaining({
+          op: "topology.anchor.repair",
+          anchorId
+        })
+      ]
+    });
+    expect(JSON.stringify(engine.getDocument())).toBe(beforeRepairJson);
+    expect(
+      engine.executeBatch({ ...repair.plan.proposedBatch, mode: "dryRun" })
+    ).toMatchObject({ ok: true });
+    expect(JSON.stringify(engine.getDocument())).toBe(beforeRepairJson);
+    expect(engine.executeBatch(repair.plan.proposedBatch)).toMatchObject({
+      ok: true
+    });
+    expect(engine.getDocument().topologyIdentity).toMatchObject({
+      checkpoints: [
+        expect.objectContaining({
+          checkpointId: creation.plan.checkpointId
+        }),
+        expect.objectContaining({
+          checkpointId: repair.plan.replacementCheckpointId
+        })
+      ],
+      anchors: [
+        expect.objectContaining({
+          anchorId,
+          checkpointId: repair.plan.replacementCheckpointId
+        })
+      ],
+      repairs: [
+        expect.objectContaining({
+          anchorId,
+          replacementCheckpointId: repair.plan.replacementCheckpointId
+        })
+      ]
+    });
+    expect(JSON.stringify(repair)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath|checkpoint-local-face/i
+    );
+  });
+
+  it("returns structured diagnostics and does not mutate ambiguous stable reference repairs", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+    const target = {
+      bodyId: "body_plain_1",
+      stableId: "generated:face:body_plain_1:endCap",
+      kind: "face" as const
+    };
+    const creation =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: structure.features,
+        sketches: readSketches(engine),
+        runtime,
+        target
+      });
+
+    expect(creation.ok).toBe(true);
+    if (!creation.ok) {
+      throw new Error(creation.message);
+    }
+    expect(engine.executeBatch(creation.plan.proposedBatch)).toMatchObject({
+      ok: true
+    });
+
+    const anchorId =
+      engine.getDocument().topologyIdentity?.anchors[0]?.anchorId;
+    if (!anchorId) {
+      throw new Error("Expected created topology anchor.");
+    }
+    const beforeRepairJson = JSON.stringify(engine.getDocument());
+    const repair =
+      await createProjectTopologyAnchorRepairPlanForGeneratedReference({
+        engine,
+        features: readProjectStructure(engine).features,
+        sketches: readSketches(engine),
+        runtime: createCheckpointRuntime({ duplicateEndCapFace: true }),
+        target: {
+          ...target,
+          topologyAnchorId: anchorId
+        }
+      });
+
+    expect(repair).toMatchObject({
+      ok: false,
+      status: "ambiguous",
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: "TOPOLOGY_MATCH_AMBIGUOUS",
+          severity: "warning"
+        })
+      ])
+    });
+    expect(JSON.stringify(engine.getDocument())).toBe(beforeRepairJson);
   });
 
   it("exports V13 source-owned checkpoint anchor ids instead of generated snapshot-local ids", async () => {

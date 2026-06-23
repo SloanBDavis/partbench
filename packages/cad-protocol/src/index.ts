@@ -1300,7 +1300,8 @@ export interface TopologyAnchorCreationPlanQuery {
 export interface TopologyAnchorRepairPlanQuery {
   readonly query: "topology.anchorRepairPlan";
   readonly anchorId: string;
-  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointId?: string;
+  readonly createReplacementCheckpoint?: boolean;
   readonly derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot;
   readonly repairId?: string;
 }
@@ -5161,11 +5162,12 @@ export interface TopologyAnchorRepairPlanQueryResponse {
   readonly entityKind?: CadTopologyAnchorEntityKind;
   readonly previousCheckpointId?: string;
   readonly previousCheckpointEntityId?: string;
-  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointId?: string;
   readonly replacementCheckpointEntityId?: string;
   readonly repairId?: string;
   readonly confidence: CadTopologyMatchConfidence;
   readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly createsCheckpoint: boolean;
   readonly createsRepair: boolean;
   readonly opCount: number;
   readonly ops: readonly CadOp[];

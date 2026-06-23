@@ -22,6 +22,7 @@ import type {
   CadTopologyEntityKind,
   CadTopologyIdentityDiagnostic,
   TopologyAnchorCreationPlanQueryResponse,
+  TopologyAnchorRepairPlanQueryResponse,
   WcadTopologyCheckpointSignaturePayload,
   WcadPackageValidationIssue
 } from "@web-cad/cad-protocol";
@@ -68,6 +69,19 @@ export interface ProjectTopologyAnchorCreationPlanInput extends Omit<
   readonly target: Pick<CadGeneratedReference, "bodyId" | "kind" | "stableId">;
 }
 
+export interface ProjectTopologyAnchorRepairPlanInput extends Omit<
+  ProjectWcadTopologyCheckpointPayloadInput,
+  "document"
+> {
+  readonly engine: CadEngine;
+  readonly target: Pick<
+    CadGeneratedReference,
+    "bodyId" | "kind" | "stableId"
+  > & {
+    readonly topologyAnchorId?: string;
+  };
+}
+
 export type ProjectTopologyAnchorCreationPlanResult =
   | {
       readonly ok: true;
@@ -79,6 +93,19 @@ export type ProjectTopologyAnchorCreationPlanResult =
       readonly message: string;
       readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
       readonly plan?: TopologyAnchorCreationPlanQueryResponse;
+    };
+
+export type ProjectTopologyAnchorRepairPlanResult =
+  | {
+      readonly ok: true;
+      readonly plan: TopologyAnchorRepairPlanQueryResponse;
+    }
+  | {
+      readonly ok: false;
+      readonly status: TopologyAnchorRepairPlanQueryResponse["status"];
+      readonly message: string;
+      readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+      readonly plan?: TopologyAnchorRepairPlanQueryResponse;
     };
 
 export class ProjectWcadTopologyCheckpointPayloadError extends Error {
@@ -311,6 +338,227 @@ export async function createProjectTopologyAnchorCreationPlanForGeneratedReferen
 
   if (plan.status !== "ready" && plan.status !== "alreadyExists") {
     return createTopologyPlanFailure(plan.status, plan.diagnostics, plan);
+  }
+
+  return { ok: true, plan };
+}
+
+export async function createProjectTopologyAnchorRepairPlanForGeneratedReference({
+  engine,
+  features,
+  sketches,
+  generatedFacesByKey = new Map(),
+  runtime,
+  target
+}: ProjectTopologyAnchorRepairPlanInput): Promise<ProjectTopologyAnchorRepairPlanResult> {
+  if (!target.topologyAnchorId) {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_REPAIR_COMMANDS_DEFERRED",
+      "warning",
+      "Stable topology reference repair requires a selected topology anchor.",
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "selected generated reference with topology anchor",
+        received: target.stableId
+      }
+    );
+
+    return createTopologyRepairPlanFailure("unsupported", [diagnostic]);
+  }
+
+  const creationEvidence =
+    await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+      engine,
+      features,
+      sketches,
+      generatedFacesByKey,
+      runtime,
+      target
+    });
+
+  if (!creationEvidence.ok) {
+    return createTopologyRepairPlanFailure(
+      mapTopologyPlanStatusToRepairStatus(creationEvidence.status),
+      creationEvidence.diagnostics
+    );
+  }
+
+  const document = engine.getDocument();
+  const sourceIdentitySignature = readBodySourceIdentitySignature(
+    engine,
+    target.bodyId
+  );
+  const source = createCheckpointExactSourcesByBodyId(
+    features,
+    sketches,
+    generatedFacesByKey,
+    document.namedReferences
+  ).get(target.bodyId);
+
+  if (!sourceIdentitySignature || !source) {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_MATCH_UNSUPPORTED",
+      "warning",
+      `Body ${target.bodyId} does not have supported exact topology source evidence for stable reference repair.`,
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "supported exact topology source and source identity",
+        received: target.bodyId
+      }
+    );
+
+    return createTopologyRepairPlanFailure("unsupported", [diagnostic]);
+  }
+
+  const placementError = getSourcePlacementError(source);
+
+  if (placementError) {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_MATCH_UNSUPPORTED",
+      "warning",
+      `Body ${target.bodyId} cannot repair a stable reference yet: ${placementError}`,
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "resolved source placement",
+        received: placementError
+      }
+    );
+
+    return createTopologyRepairPlanFailure("unsupported", [diagnostic]);
+  }
+
+  let topologySnapshot: CadBodyExactTopologySnapshot;
+  try {
+    const result = await runtime.exactTopologyCheckpointPayload({
+      ...createExactMetadataRuntimeInput(source),
+      checkpointId: createPreviewCheckpointId(target.bodyId, target.stableId),
+      bodyId: target.bodyId
+    });
+    topologySnapshot = createCadTopologySnapshotPayload(
+      result.checkpointPayload.topologySnapshot
+    );
+  } catch (error) {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
+      "warning",
+      error instanceof Error
+        ? error.message
+        : "Exact topology checkpoint payload generation failed.",
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "derived exact topology snapshot",
+        received: "unavailable"
+      }
+    );
+
+    return createTopologyRepairPlanFailure("missing", [diagnostic]);
+  }
+
+  const identity = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "body.topologyIdentity",
+      bodyId: target.bodyId
+    }
+  });
+
+  if (!identity.ok || identity.query !== "body.topologyIdentity") {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+      "warning",
+      identity.ok
+        ? `Body ${target.bodyId} topology identity query returned ${identity.query}.`
+        : identity.error.message,
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "body.topologyIdentity response",
+        received: identity.ok ? identity.query : identity.error.code
+      }
+    );
+
+    return createTopologyRepairPlanFailure("missing", [diagnostic]);
+  }
+
+  const candidate = identity.candidates.find(
+    (entry) => entry.stableId === target.stableId
+  );
+
+  if (!candidate) {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+      "warning",
+      `Generated reference ${target.stableId} is not available on ${target.bodyId}.`,
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "available generated reference",
+        received: target.stableId
+      }
+    );
+
+    return createTopologyRepairPlanFailure("missing", [diagnostic]);
+  }
+
+  const normalized = normalizeTopologySnapshotForGeneratedReference({
+    topologySnapshot,
+    source,
+    target,
+    candidate
+  });
+
+  if (!normalized.ok) {
+    return createTopologyRepairPlanFailure(
+      mapTopologyPlanStatusToRepairStatus(normalized.status),
+      [...candidate.diagnostics, ...normalized.diagnostics]
+    );
+  }
+
+  const derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot = {
+    bodyId: target.bodyId,
+    sourceIdentitySignature,
+    status: "ready",
+    metadata: {
+      source: "kernel-derived",
+      confidence: "kernel-derived",
+      topologySnapshot: normalized.topologySnapshot,
+      diagnostics: normalized.topologySnapshot.diagnostics
+    }
+  };
+  const plan = engine.executeQuery({
+    version: "cadops.v1",
+    query: {
+      query: "topology.anchorRepairPlan",
+      anchorId: target.topologyAnchorId,
+      createReplacementCheckpoint: true,
+      derivedExactMetadata
+    }
+  });
+
+  if (!plan.ok || plan.query !== "topology.anchorRepairPlan") {
+    const diagnostic = createTopologyPlanDiagnostic(
+      "TOPOLOGY_REPAIR_COMMANDS_DEFERRED",
+      "warning",
+      plan.ok
+        ? `Topology anchor repair plan returned ${plan.query}.`
+        : plan.error.message,
+      {
+        bodyId: target.bodyId,
+        entityKind: target.kind,
+        expected: "topology.anchorRepairPlan response",
+        received: plan.ok ? plan.query : plan.error.code
+      }
+    );
+
+    return createTopologyRepairPlanFailure("unsupported", [diagnostic]);
+  }
+
+  if (plan.status !== "ready" && plan.status !== "alreadyCurrent") {
+    return createTopologyRepairPlanFailure(plan.status, plan.diagnostics, plan);
   }
 
   return { ok: true, plan };
@@ -942,6 +1190,38 @@ function createTopologyPlanFailure(
     diagnostics,
     ...(plan ? { plan } : {})
   };
+}
+
+function createTopologyRepairPlanFailure(
+  status: TopologyAnchorRepairPlanQueryResponse["status"],
+  diagnostics: readonly CadTopologyIdentityDiagnostic[],
+  plan?: TopologyAnchorRepairPlanQueryResponse
+): ProjectTopologyAnchorRepairPlanResult {
+  return {
+    ok: false,
+    status,
+    message:
+      diagnostics[0]?.message ??
+      "Stable topology reference repair is unavailable for this selection.",
+    diagnostics,
+    ...(plan ? { plan } : {})
+  };
+}
+
+function mapTopologyPlanStatusToRepairStatus(
+  status: TopologyAnchorCreationPlanQueryResponse["status"]
+): TopologyAnchorRepairPlanQueryResponse["status"] {
+  switch (status) {
+    case "alreadyExists":
+    case "ready":
+      return "ready";
+    case "ambiguous":
+      return "ambiguous";
+    case "unsupported":
+      return "unsupported";
+    case "missing":
+      return "missing";
+  }
 }
 
 function createTopologyPlanDiagnostic(

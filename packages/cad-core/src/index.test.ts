@@ -33547,6 +33547,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       replacementCheckpointEntityId: "snapshot-local:face:repaired",
       repairId: "repair_plan_1",
       confidence: "exact",
+      createsCheckpoint: false,
       createsRepair: true,
       opCount: 1,
       mutatesSource: false,
@@ -33607,6 +33608,115 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ]
     });
+  });
+
+  it("plans topology anchor repairs with explicit replacement checkpoint creation", () => {
+    const engine = createTopologyCheckpointEngine();
+    engine.apply({
+      op: "topology.anchor.create",
+      anchorId: "anchor_face_1",
+      entityKind: "face",
+      bodyId: "body_rect_1",
+      checkpointId: "checkpoint_1",
+      checkpointEntityId: "checkpoint-local-face-1",
+      stableId: "generated:face:body_rect_1:endCap",
+      sourceSemanticRole: "end cap",
+      signatureHash: "face_signature_1"
+    });
+    const beforeJson = exportCadProjectJson(engine);
+    const plan = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorRepairPlan",
+        anchorId: "anchor_face_1",
+        createReplacementCheckpoint: true,
+        derivedExactMetadata: createExactMetadataSnapshot({
+          bodyId: "body_rect_1",
+          sourceIdentitySignature: readBodyTopologySourceSignature(
+            engine,
+            "body_rect_1"
+          ),
+          includeTopologySnapshot: true,
+          topologySnapshotStatus: "ready",
+          topologyEntities: [
+            {
+              localId: "snapshot-local:face:repaired",
+              kind: "face",
+              source: "kernel-derived",
+              signature: "face_signature_1"
+            }
+          ]
+        })
+      }
+    });
+
+    expect(plan).toMatchObject({
+      ok: true,
+      query: "topology.anchorRepairPlan",
+      status: "ready",
+      anchorId: "anchor_face_1",
+      bodyId: "body_rect_1",
+      previousCheckpointId: "checkpoint_1",
+      replacementCheckpointEntityId: "snapshot-local:face:repaired",
+      confidence: "exact",
+      createsCheckpoint: true,
+      createsRepair: true,
+      opCount: 2,
+      mutatesSource: false,
+      ops: [
+        expect.objectContaining({
+          op: "topology.checkpoint.create",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          status: "active"
+        }),
+        expect.objectContaining({
+          op: "topology.anchor.repair",
+          anchorId: "anchor_face_1",
+          replacementCheckpointEntityId: "snapshot-local:face:repaired",
+          confidence: "exact"
+        })
+      ]
+    });
+    if (!plan.ok || plan.query !== "topology.anchorRepairPlan") {
+      throw new Error("Expected topology anchor repair plan response.");
+    }
+    expect(plan.replacementCheckpointId).toMatch(
+      /^topology_checkpoint_repair_body_rect_1_anchor_face_1_[a-f0-9]{16}$/
+    );
+    expect(plan.ops[0]).toMatchObject({
+      checkpointId: plan.replacementCheckpointId
+    });
+    expect(plan.ops[1]).toMatchObject({
+      replacementCheckpointId: plan.replacementCheckpointId
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(
+      engine.executeBatch({ ...plan.proposedBatch, mode: "dryRun" })
+    ).toMatchObject({ ok: true });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+    expect(engine.executeBatch(plan.proposedBatch)).toMatchObject({
+      ok: true
+    });
+    expect(engine.getDocument().topologyIdentity).toMatchObject({
+      checkpoints: [
+        expect.objectContaining({ checkpointId: "checkpoint_1" }),
+        expect.objectContaining({
+          checkpointId: plan.replacementCheckpointId,
+          status: "active"
+        })
+      ],
+      anchors: [
+        expect.objectContaining({
+          anchorId: "anchor_face_1",
+          checkpointId: plan.replacementCheckpointId,
+          checkpointEntityId: "snapshot-local:face:repaired"
+        })
+      ]
+    });
+    expect(JSON.stringify(plan)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|opfsPath|fileHandle/i
+    );
   });
 
   it("does not plan topology anchor repairs without a replacement entity match", () => {

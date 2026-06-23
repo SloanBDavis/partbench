@@ -10,8 +10,10 @@ import type {
   CadTopologyMatchEvidence,
   DocumentUnits,
   TopologyAnchorRepairOp,
-  TopologyAnchorRepairPlanQueryResponse
+  TopologyAnchorRepairPlanQueryResponse,
+  TopologyCheckpointCreateOp
 } from "@web-cad/cad-protocol";
+import { WCAD_SOURCE_IDENTITY_ALGORITHM } from "@web-cad/cad-protocol";
 
 import { sha256Hex } from "./sha256";
 
@@ -22,7 +24,8 @@ export interface CreateTopologyAnchorRepairPlanOptions {
     readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
   };
   readonly anchorId: string;
-  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointId?: string;
+  readonly createReplacementCheckpoint?: boolean;
   readonly derivedExactMetadata: CadBodyDerivedExactMetadataSnapshot;
   readonly repairId?: string;
 }
@@ -93,22 +96,32 @@ export function createTopologyAnchorRepairPlan(
     });
   }
 
+  const replacementCheckpointId =
+    options.replacementCheckpointId ??
+    createPlannedReplacementCheckpointId({
+      anchorId: anchor.anchorId,
+      bodyId: anchor.bodyId,
+      sourceIdentitySignature:
+        options.derivedExactMetadata.sourceIdentitySignature
+    });
   const replacementCheckpoint = topologyIdentity.checkpoints.find(
-    (checkpoint) => checkpoint.checkpointId === options.replacementCheckpointId
+    (checkpoint) => checkpoint.checkpointId === replacementCheckpointId
   );
+  const createsReplacementCheckpoint =
+    !replacementCheckpoint && options.createReplacementCheckpoint === true;
 
-  if (!replacementCheckpoint) {
+  if (!replacementCheckpoint && !createsReplacementCheckpoint) {
     diagnostics.push(
       createDiagnostic(
         "TOPOLOGY_SOURCE_CONTRACT_INVALID",
         "warning",
-        `Replacement topology checkpoint ${options.replacementCheckpointId} does not exist.`,
+        `Replacement topology checkpoint ${replacementCheckpointId} does not exist.`,
         {
           bodyId: anchor.bodyId,
           anchorId: anchor.anchorId,
-          checkpointId: options.replacementCheckpointId,
+          checkpointId: replacementCheckpointId,
           expected: "existing replacement checkpoint",
-          received: options.replacementCheckpointId
+          received: replacementCheckpointId
         }
       )
     );
@@ -119,9 +132,11 @@ export function createTopologyAnchorRepairPlan(
     });
   }
 
-  diagnostics.push(...replacementCheckpoint.diagnostics);
+  if (replacementCheckpoint) {
+    diagnostics.push(...replacementCheckpoint.diagnostics);
+  }
 
-  if (replacementCheckpoint.status !== "active") {
+  if (replacementCheckpoint && replacementCheckpoint.status !== "active") {
     diagnostics.push(
       createDiagnostic(
         "TOPOLOGY_REPAIR_COMMANDS_DEFERRED",
@@ -143,7 +158,7 @@ export function createTopologyAnchorRepairPlan(
     });
   }
 
-  if (replacementCheckpoint.bodyId !== anchor.bodyId) {
+  if (replacementCheckpoint && replacementCheckpoint.bodyId !== anchor.bodyId) {
     diagnostics.push(
       createDiagnostic(
         "TOPOLOGY_SOURCE_CONTRACT_INVALID",
@@ -172,19 +187,21 @@ export function createTopologyAnchorRepairPlan(
     options.derivedExactMetadata.bodyId !== anchor.bodyId ||
     options.derivedExactMetadata.status !== "ready" ||
     !topologySnapshot ||
-    topologySnapshot.status !== "ready"
+    (topologySnapshot.status !== "ready" &&
+      topologySnapshot.status !== "partial")
   ) {
     diagnostics.push(
       createDiagnostic(
         "TOPOLOGY_SNAPSHOT_EXTRACTION_DEFERRED",
         "warning",
-        `Replacement topology checkpoint ${replacementCheckpoint.checkpointId} does not have ready exact topology snapshot evidence.`,
+        `Replacement topology checkpoint ${replacementCheckpointId} does not have ready exact topology snapshot evidence.`,
         {
           bodyId: anchor.bodyId,
           anchorId: anchor.anchorId,
-          checkpointId: replacementCheckpoint.checkpointId,
-          expected: "ready exact topology snapshot for anchor body",
-          received: options.derivedExactMetadata.status
+          checkpointId: replacementCheckpointId,
+          expected: "ready or partial exact topology snapshot for anchor body",
+          received:
+            topologySnapshot?.status ?? options.derivedExactMetadata.status
         }
       )
     );
@@ -210,18 +227,18 @@ export function createTopologyAnchorRepairPlan(
   }
 
   if (
-    anchor.checkpointId === replacementCheckpoint.checkpointId &&
+    anchor.checkpointId === replacementCheckpointId &&
     anchor.checkpointEntityId === replacementEntity.entity.localId
   ) {
     diagnostics.push(
       createDiagnostic(
         "TOPOLOGY_REPAIR_COMMANDS_READY",
         "info",
-        `Topology anchor ${anchor.anchorId} already points at ${replacementCheckpoint.checkpointId}.`,
+        `Topology anchor ${anchor.anchorId} already points at ${replacementCheckpointId}.`,
         {
           bodyId: anchor.bodyId,
           anchorId: anchor.anchorId,
-          checkpointId: replacementCheckpoint.checkpointId,
+          checkpointId: replacementCheckpointId,
           received: replacementEntity.entity.localId
         }
       )
@@ -229,6 +246,7 @@ export function createTopologyAnchorRepairPlan(
     return createResponse(options, {
       status: "alreadyCurrent",
       anchor,
+      replacementCheckpointId,
       replacementCheckpointEntityId: replacementEntity.entity.localId,
       confidence: "exact",
       evidence: replacementEntity.evidence,
@@ -240,14 +258,46 @@ export function createTopologyAnchorRepairPlan(
     options.repairId ??
     createPlannedRepairId({
       anchorId: anchor.anchorId,
-      replacementCheckpointId: replacementCheckpoint.checkpointId,
+      replacementCheckpointId,
       replacementCheckpointEntityId: replacementEntity.entity.localId
     });
+  const checkpointOp: TopologyCheckpointCreateOp | undefined =
+    createsReplacementCheckpoint
+      ? {
+          op: "topology.checkpoint.create",
+          checkpointId: replacementCheckpointId,
+          bodyId: anchor.bodyId,
+          ...(anchor.sourceFeatureId
+            ? { sourceFeatureId: anchor.sourceFeatureId }
+            : {}),
+          sourceIdentity: createPlannedReplacementCheckpointSourceIdentity({
+            anchorId: anchor.anchorId,
+            bodyId: anchor.bodyId,
+            replacementCheckpointId,
+            sourceIdentitySignature:
+              options.derivedExactMetadata.sourceIdentitySignature,
+            topologySnapshotSignature: topologySnapshot.signature
+          }),
+          status: "active",
+          diagnostics: [
+            createDiagnostic(
+              "TOPOLOGY_CHECKPOINT_PERSISTENCE_READY",
+              "info",
+              `Replacement topology checkpoint source record can be created for ${anchor.bodyId}.`,
+              {
+                bodyId: anchor.bodyId,
+                anchorId: anchor.anchorId,
+                checkpointId: replacementCheckpointId
+              }
+            )
+          ]
+        }
+      : undefined;
   const repairOp: TopologyAnchorRepairOp = {
     op: "topology.anchor.repair",
     repairId,
     anchorId: anchor.anchorId,
-    replacementCheckpointId: replacementCheckpoint.checkpointId,
+    replacementCheckpointId,
     replacementCheckpointEntityId: replacementEntity.entity.localId,
     confidence: replacementEntity.confidence,
     evidence: replacementEntity.evidence
@@ -257,11 +307,11 @@ export function createTopologyAnchorRepairPlan(
     createDiagnostic(
       "TOPOLOGY_REPAIR_COMMANDS_READY",
       "info",
-      `Topology anchor ${anchor.anchorId} can be repaired to ${replacementCheckpoint.checkpointId}.`,
+      `Topology anchor ${anchor.anchorId} can be repaired to ${replacementCheckpointId}.`,
       {
         bodyId: anchor.bodyId,
         anchorId: anchor.anchorId,
-        checkpointId: replacementCheckpoint.checkpointId,
+        checkpointId: replacementCheckpointId,
         received: replacementEntity.entity.localId
       }
     )
@@ -274,7 +324,8 @@ export function createTopologyAnchorRepairPlan(
     repairId,
     confidence: replacementEntity.confidence,
     evidence: replacementEntity.evidence,
-    ops: [repairOp],
+    replacementCheckpointId,
+    ops: checkpointOp ? [checkpointOp, repairOp] : [repairOp],
     diagnostics
   });
 }
@@ -440,6 +491,7 @@ function createResponse(
   input: {
     readonly status: TopologyAnchorRepairPlanQueryResponse["status"];
     readonly anchor?: CadTopologyIdentitySourceSnapshot["anchors"][number];
+    readonly replacementCheckpointId?: string;
     readonly replacementCheckpointEntityId?: string;
     readonly repairId?: string;
     readonly confidence?: TopologyAnchorRepairPlanQueryResponse["confidence"];
@@ -473,13 +525,21 @@ function createResponse(
       ...(input.anchor?.checkpointEntityId
         ? { previousCheckpointEntityId: input.anchor.checkpointEntityId }
         : {}),
-      replacementCheckpointId: options.replacementCheckpointId,
+      ...((input.replacementCheckpointId ?? options.replacementCheckpointId)
+        ? {
+            replacementCheckpointId:
+              input.replacementCheckpointId ?? options.replacementCheckpointId
+          }
+        : {}),
       ...(input.replacementCheckpointEntityId
         ? { replacementCheckpointEntityId: input.replacementCheckpointEntityId }
         : {}),
       ...(input.repairId ? { repairId: input.repairId } : {}),
       confidence: input.confidence ?? "none",
       evidence: input.evidence ?? [],
+      createsCheckpoint: ops.some(
+        (op) => op.op === "topology.checkpoint.create"
+      ),
       createsRepair: ops.some((op) => op.op === "topology.anchor.repair"),
       opCount: ops.length,
       ops,
@@ -490,6 +550,46 @@ function createResponse(
       derivedBoundaryNote: DERIVED_BOUNDARY_NOTE,
       mutatesSource: false
     }
+  };
+}
+
+function createPlannedReplacementCheckpointId(input: {
+  readonly anchorId: string;
+  readonly bodyId: string;
+  readonly sourceIdentitySignature: string;
+}): string {
+  const bodySegment = sanitizeIdSegment(input.bodyId);
+  const anchorSegment = sanitizeIdSegment(input.anchorId);
+  const hashSegment = sha256Hex(
+    new TextEncoder().encode(
+      `repair-checkpoint:${input.bodyId}:${input.anchorId}:${input.sourceIdentitySignature}`
+    )
+  ).slice(0, 16);
+
+  return `topology_checkpoint_repair_${bodySegment}_${anchorSegment}_${hashSegment}`;
+}
+
+function createPlannedReplacementCheckpointSourceIdentity(input: {
+  readonly anchorId: string;
+  readonly bodyId: string;
+  readonly replacementCheckpointId: string;
+  readonly sourceIdentitySignature: string;
+  readonly topologySnapshotSignature: string;
+}) {
+  const bytes = new TextEncoder().encode(
+    JSON.stringify({
+      contract: "partbench.v13.topology-anchor-repair-plan",
+      anchorId: input.anchorId,
+      bodyId: input.bodyId,
+      replacementCheckpointId: input.replacementCheckpointId,
+      sourceIdentitySignature: input.sourceIdentitySignature,
+      topologySnapshotSignature: input.topologySnapshotSignature
+    })
+  );
+
+  return {
+    algorithm: WCAD_SOURCE_IDENTITY_ALGORITHM,
+    sha256: sha256Hex(bytes)
   };
 }
 

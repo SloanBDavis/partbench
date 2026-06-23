@@ -585,6 +585,7 @@ describe("cad-protocol", () => {
           message: "Semantic role matches."
         }
       ],
+      createsCheckpoint: false,
       createsRepair: true,
       opCount: 1,
       ops: [

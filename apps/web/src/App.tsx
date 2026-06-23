@@ -248,6 +248,7 @@ import {
 } from "./projectWcadWorkflow";
 import {
   createProjectTopologyAnchorCreationPlanForGeneratedReference,
+  createProjectTopologyAnchorRepairPlanForGeneratedReference,
   exportProjectWcadWithTopologyCheckpoints,
   isProjectWcadTopologyCheckpointPayloadError
 } from "./projectWcadTopologyCheckpoints";
@@ -2429,6 +2430,69 @@ export function App() {
     }
   }
 
+  async function repairStableTopologyReference(
+    target: SelectedGeneratedReference
+  ) {
+    setCommandPending(true);
+    setCommandError(undefined);
+    setCommandNotice(undefined);
+
+    let plan: Awaited<
+      ReturnType<
+        typeof createProjectTopologyAnchorRepairPlanForGeneratedReference
+      >
+    >;
+
+    try {
+      plan = await createProjectTopologyAnchorRepairPlanForGeneratedReference({
+        engine,
+        features: projectStructure.features,
+        sketches,
+        generatedFacesByKey,
+        runtime: getDerivedGeometryRuntime(),
+        target
+      });
+
+      if (!plan.ok) {
+        setCommandError(plan.message);
+        return;
+      }
+
+      if (plan.plan.status === "alreadyCurrent") {
+        setCommandNotice("Stable topology reference is already current.");
+        return;
+      }
+
+      const dryRun = await commandExecutor.executeBatch(
+        buildBatch("dryRun", plan.plan.ops, WEB_UI_ACTOR)
+      );
+
+      if (!dryRun.ok) {
+        setCommandError(dryRun.error.message);
+        return;
+      }
+    } catch (error) {
+      setCommandError(
+        error instanceof Error
+          ? error.message
+          : "Could not repair stable topology reference."
+      );
+      return;
+    } finally {
+      setCommandPending(false);
+    }
+
+    const response = await commitOps(plan.plan.ops, () => target.bodyId);
+
+    if (response?.ok) {
+      setSelectedGeneratedReference({
+        ...target,
+        ...(plan.plan.anchorId ? { topologyAnchorId: plan.plan.anchorId } : {})
+      });
+      setCommandNotice("Repaired stable topology reference.");
+    }
+  }
+
   async function repairNamedReference(
     name: string,
     target: SelectedGeneratedReference
@@ -3364,6 +3428,9 @@ export function App() {
               }
               onCreateTopologyAnchor={(target) =>
                 void createStableTopologyReference(target)
+              }
+              onRepairTopologyAnchor={(target) =>
+                void repairStableTopologyReference(target)
               }
               onRepairNamedReference={(name, target) =>
                 void repairNamedReference(name, target)

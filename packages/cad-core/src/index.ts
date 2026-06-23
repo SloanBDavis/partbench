@@ -1785,6 +1785,8 @@ export class CadEngine {
           document: this.#document,
           anchorId: request.query.anchorId,
           replacementCheckpointId: request.query.replacementCheckpointId,
+          createReplacementCheckpoint:
+            request.query.createReplacementCheckpoint,
           repairId: request.query.repairId,
           derivedExactMetadata: request.query.derivedExactMetadata
         });
@@ -5693,7 +5695,12 @@ function isCadQuery(value: unknown): boolean {
     case "topology.anchorRepairPlan":
       return (
         typeof value.anchorId === "string" &&
-        typeof value.replacementCheckpointId === "string" &&
+        (value.replacementCheckpointId === undefined ||
+          typeof value.replacementCheckpointId === "string") &&
+        (value.createReplacementCheckpoint === undefined ||
+          typeof value.createReplacementCheckpoint === "boolean") &&
+        (typeof value.replacementCheckpointId === "string" ||
+          value.createReplacementCheckpoint === true) &&
         (value.repairId === undefined || typeof value.repairId === "string") &&
         isCadBodyDerivedExactMetadataSnapshot(value.derivedExactMetadata)
       );
