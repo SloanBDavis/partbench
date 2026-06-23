@@ -2447,7 +2447,8 @@ export function App() {
   }
 
   async function repairStableTopologyReference(
-    target: SelectedGeneratedReference
+    target: SelectedGeneratedReference,
+    selectedRepairCandidateId?: string
   ) {
     setCommandPending(true);
     setCommandError(undefined);
@@ -2466,7 +2467,10 @@ export function App() {
         sketches,
         generatedFacesByKey,
         runtime: getDerivedGeometryRuntime(),
-        target
+        target: {
+          ...target,
+          ...(selectedRepairCandidateId ? { selectedRepairCandidateId } : {})
+        }
       });
 
       if (!plan.ok) {
@@ -3488,6 +3492,9 @@ export function App() {
               }
               onRepairTopologyAnchor={(target) =>
                 void repairStableTopologyReference(target)
+              }
+              onRepairTopologyAnchorCandidate={(target, candidateId) =>
+                void repairStableTopologyReference(target, candidateId)
               }
               onPreviewTopologyAnchorRepair={(target) =>
                 void previewStableTopologyRepair(target)

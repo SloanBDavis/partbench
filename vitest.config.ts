@@ -5,6 +5,7 @@ export default defineConfig({
     globals: false,
     include: [
       "src/**/*.test.ts",
+      "src/**/*.test.tsx",
       "packages/*/src/**/*.test.ts",
       "scripts/**/*.test.mjs"
     ]

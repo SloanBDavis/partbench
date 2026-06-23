@@ -79,6 +79,7 @@ export interface ProjectTopologyAnchorRepairPlanInput extends Omit<
     "bodyId" | "kind" | "stableId"
   > & {
     readonly topologyAnchorId?: string;
+    readonly selectedRepairCandidateId?: string;
   };
 }
 
@@ -535,6 +536,7 @@ export async function createProjectTopologyAnchorRepairPlanForGeneratedReference
       query: "topology.anchorRepairPlan",
       anchorId: target.topologyAnchorId,
       createReplacementCheckpoint: true,
+      selectedRepairCandidateId: target.selectedRepairCandidateId,
       derivedExactMetadata
     }
   });

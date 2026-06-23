@@ -320,16 +320,20 @@ describe("Inspector", () => {
             candidateCount: 2,
             rows: [
               {
+                candidateId: "topology_repair_candidate_a",
                 entityKind: "Face",
                 state: "Ambiguous",
                 confidence: "Exact confidence",
-                action: "Manual repair plan"
+                action: "Manual repair plan",
+                repairable: true
               },
               {
+                candidateId: "topology_repair_candidate_b",
                 entityKind: "Face",
                 state: "Split",
                 confidence: "High confidence",
-                action: "Manual repair plan"
+                action: "Manual repair plan",
+                repairable: true
               }
             ]
           }
@@ -344,6 +348,7 @@ describe("Inspector", () => {
         onNameGeneratedReference: () => undefined,
         onCreateTopologyAnchor: () => undefined,
         onRepairTopologyAnchor: () => undefined,
+        onRepairTopologyAnchorCandidate: () => undefined,
         onPreviewTopologyAnchorRepair: () => undefined,
         onRepairNamedReference: () => undefined,
         onInspectNamedReference: () => undefined,
@@ -363,13 +368,14 @@ describe("Inspector", () => {
       "2 candidates · Ambiguous · manual choice required"
     );
     expect(markup).toContain(
-      "Face · Ambiguous · Exact confidence · Manual repair plan"
+      "Candidate 1: Face · Ambiguous · Exact confidence · Manual repair plan"
     );
     expect(markup).toContain(
-      "Face · Split · High confidence · Manual repair plan"
+      "Candidate 2: Face · Split · High confidence · Manual repair plan"
     );
+    expect(markup).toContain("Repair selected candidate");
     expect(markup).not.toMatch(
-      /candidateId|anchor_rect_start_face|checkpoint_rect|checkpointEntityId|checkpoint-local|proposedBatch|ops|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+      /topology_repair_candidate_|candidateId|anchor_rect_start_face|checkpoint_rect|checkpointEntityId|checkpoint-local|proposedBatch|ops|rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
     );
   });
 

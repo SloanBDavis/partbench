@@ -433,6 +433,69 @@ describe("projectWcadTopologyCheckpoints", () => {
     expect(JSON.stringify(engine.getDocument())).toBe(beforeRepairJson);
   });
 
+  it("forwards selected repair candidate ids to cad-core repair planning", async () => {
+    const engine = createRectangleExtrudeEngine();
+    const runtime = createCheckpointRuntime();
+    const structure = readProjectStructure(engine);
+    const target = {
+      bodyId: "body_plain_1",
+      stableId: "generated:face:body_plain_1:endCap",
+      kind: "face" as const
+    };
+    const creation =
+      await createProjectTopologyAnchorCreationPlanForGeneratedReference({
+        engine,
+        features: structure.features,
+        sketches: readSketches(engine),
+        runtime,
+        target
+      });
+
+    expect(creation.ok).toBe(true);
+    if (!creation.ok) {
+      throw new Error(creation.message);
+    }
+    expect(engine.executeBatch(creation.plan.proposedBatch)).toMatchObject({
+      ok: true
+    });
+
+    const anchorId =
+      engine.getDocument().topologyIdentity?.anchors[0]?.anchorId;
+    if (!anchorId) {
+      throw new Error("Expected created topology anchor.");
+    }
+
+    const selectedRepairCandidateId = "topology_repair_candidate_manual_choice";
+    const beforeRepairJson = JSON.stringify(engine.getDocument());
+    const executeQuery = vi.spyOn(engine, "executeQuery");
+
+    await createProjectTopologyAnchorRepairPlanForGeneratedReference({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime,
+      target: {
+        ...target,
+        topologyAnchorId: anchorId,
+        selectedRepairCandidateId
+      }
+    });
+
+    expect(
+      executeQuery.mock.calls
+        .map(([request]) => request.query)
+        .filter((query) => query.query === "topology.anchorRepairPlan")
+    ).toEqual([
+      expect.objectContaining({
+        query: "topology.anchorRepairPlan",
+        anchorId,
+        createReplacementCheckpoint: true,
+        selectedRepairCandidateId
+      })
+    ]);
+    expect(JSON.stringify(engine.getDocument())).toBe(beforeRepairJson);
+  });
+
   it("exports V13 source-owned checkpoint anchor ids instead of generated snapshot-local ids", async () => {
     const engine = new CadEngine();
     const response = engine.executeBatch(

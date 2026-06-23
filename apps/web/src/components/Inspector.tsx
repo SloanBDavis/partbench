@@ -138,6 +138,7 @@ export function Inspector({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onRepairTopologyAnchorCandidate,
   onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   onInspectNamedReference,
@@ -204,6 +205,10 @@ export function Inspector({
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onRepairTopologyAnchorCandidate?: (
+    target: SelectedGeneratedReference,
+    candidateId: string
+  ) => void;
   readonly onPreviewTopologyAnchorRepair?: (
     target: SelectedGeneratedReference
   ) => void;
@@ -267,6 +272,7 @@ export function Inspector({
         onNameGeneratedReference,
         onCreateTopologyAnchor,
         onRepairTopologyAnchor,
+        onRepairTopologyAnchorCandidate,
         onPreviewTopologyAnchorRepair,
         onRepairNamedReference,
         onInspectNamedReference,
@@ -349,6 +355,10 @@ function renderInspectorSelection(input: {
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
   ) => void;
+  readonly onRepairTopologyAnchorCandidate?: (
+    target: SelectedGeneratedReference,
+    candidateId: string
+  ) => void;
   readonly onPreviewTopologyAnchorRepair?: (
     target: SelectedGeneratedReference
   ) => void;
@@ -399,6 +409,7 @@ function renderInspectorSelection(input: {
         onNameGeneratedReference={input.onNameGeneratedReference}
         onCreateTopologyAnchor={input.onCreateTopologyAnchor}
         onRepairTopologyAnchor={input.onRepairTopologyAnchor}
+        onRepairTopologyAnchorCandidate={input.onRepairTopologyAnchorCandidate}
         onPreviewTopologyAnchorRepair={input.onPreviewTopologyAnchorRepair}
         onSelectGeneratedReference={input.onSelectGeneratedReference}
         namedReferences={input.namedReferences}
@@ -501,6 +512,7 @@ function BodyInspector({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onRepairTopologyAnchorCandidate,
   onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   onSelectGeneratedReference,
@@ -560,6 +572,10 @@ function BodyInspector({
   ) => void;
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
+  ) => void;
+  readonly onRepairTopologyAnchorCandidate?: (
+    target: SelectedGeneratedReference,
+    candidateId: string
   ) => void;
   readonly onPreviewTopologyAnchorRepair?: (
     target: SelectedGeneratedReference
@@ -714,6 +730,7 @@ function BodyInspector({
           onNameGeneratedReference={onNameGeneratedReference}
           onCreateTopologyAnchor={onCreateTopologyAnchor}
           onRepairTopologyAnchor={onRepairTopologyAnchor}
+          onRepairTopologyAnchorCandidate={onRepairTopologyAnchorCandidate}
           onPreviewTopologyAnchorRepair={onPreviewTopologyAnchorRepair}
           onRepairNamedReference={onRepairNamedReference}
           onSelectGeneratedReference={onSelectGeneratedReference}
@@ -1142,6 +1159,7 @@ function GeneratedReferencesPanel({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onRepairTopologyAnchorCandidate,
   onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   onSelectGeneratedReference,
@@ -1182,6 +1200,10 @@ function GeneratedReferencesPanel({
   ) => void;
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
+  ) => void;
+  readonly onRepairTopologyAnchorCandidate?: (
+    target: SelectedGeneratedReference,
+    candidateId: string
   ) => void;
   readonly onPreviewTopologyAnchorRepair?: (
     target: SelectedGeneratedReference
@@ -1423,6 +1445,7 @@ function GeneratedReferencesPanel({
             onNameGeneratedReference={onNameGeneratedReference}
             onCreateTopologyAnchor={onCreateTopologyAnchor}
             onRepairTopologyAnchor={onRepairTopologyAnchor}
+            onRepairTopologyAnchorCandidate={onRepairTopologyAnchorCandidate}
             onPreviewTopologyAnchorRepair={onPreviewTopologyAnchorRepair}
             onRepairNamedReference={onRepairNamedReference}
             repairReference={namedReferences.find(
@@ -1816,6 +1839,7 @@ function SelectedGeneratedReferencePanel({
   onNameGeneratedReference,
   onCreateTopologyAnchor,
   onRepairTopologyAnchor,
+  onRepairTopologyAnchorCandidate,
   onPreviewTopologyAnchorRepair,
   onRepairNamedReference,
   repairReference,
@@ -1840,6 +1864,10 @@ function SelectedGeneratedReferencePanel({
   ) => void;
   readonly onRepairTopologyAnchor?: (
     target: SelectedGeneratedReference
+  ) => void;
+  readonly onRepairTopologyAnchorCandidate?: (
+    target: SelectedGeneratedReference,
+    candidateId: string
   ) => void;
   readonly onPreviewTopologyAnchorRepair?: (
     target: SelectedGeneratedReference
@@ -1976,6 +2004,22 @@ function SelectedGeneratedReferencePanel({
                     )}
                   </div>
                   <TopologyRepairCandidatePreviewPanel
+                    disabled={disabled}
+                    onRepairCandidate={
+                      onRepairTopologyAnchorCandidate
+                        ? (candidateId) => {
+                            if (state.status === "selected") {
+                              onRepairTopologyAnchorCandidate(
+                                {
+                                  ...state.selection,
+                                  topologyAnchorId
+                                },
+                                candidateId
+                              );
+                            }
+                          }
+                        : undefined
+                    }
                     preview={topologyRepairPreview}
                   />
                 </>
@@ -2117,10 +2161,18 @@ function NamedReferenceRepairPanel({
 }
 
 function TopologyRepairCandidatePreviewPanel({
+  disabled,
+  onRepairCandidate,
   preview
 }: {
+  readonly disabled: boolean;
+  readonly onRepairCandidate?: (candidateId: string) => void;
   readonly preview?: TopologyRepairCandidatePreviewState;
 }) {
+  const [selectedCandidateId, setSelectedCandidateId] = useState<
+    string | undefined
+  >(undefined);
+
   if (!preview) {
     return null;
   }
@@ -2137,20 +2189,53 @@ function TopologyRepairCandidatePreviewPanel({
     return null;
   }
 
+  const selectedRowIndex = Math.max(
+    0,
+    selectedCandidateId
+      ? preview.preview.rows.findIndex(
+          (row) => row.candidateId === selectedCandidateId
+        )
+      : 0
+  );
+  const selectedRow = preview.preview.rows[selectedRowIndex];
+  const canRepairSelected = Boolean(
+    selectedRow?.repairable && onRepairCandidate
+  );
+
   return (
     <div className="repair-candidate-preview">
       <small>{preview.preview.summary}</small>
       {preview.error && <p className="error-text">{preview.error}</p>}
       {preview.preview.rows.length > 0 && (
-        <ul>
+        <ul className="reference-list compact">
           {preview.preview.rows.map((row, index) => (
-            <li
-              key={`${row.entityKind}-${row.state}-${row.confidence}-${row.action}-${index}`}
-            >
-              {row.entityKind} · {row.state} · {row.confidence} · {row.action}
+            <li key={`${row.entityKind}-${row.state}-${index}`}>
+              <label>
+                <input
+                  type="radio"
+                  checked={index === selectedRowIndex}
+                  disabled={disabled}
+                  onChange={() => setSelectedCandidateId(row.candidateId)}
+                />
+                Candidate {index + 1}: {row.entityKind} · {row.state} ·{" "}
+                {row.confidence} · {row.action}
+              </label>
             </li>
           ))}
         </ul>
+      )}
+      {preview.preview.rows.length > 0 && onRepairCandidate && (
+        <button
+          type="button"
+          disabled={disabled || !canRepairSelected || !selectedRow}
+          onClick={() => {
+            if (selectedRow) {
+              onRepairCandidate(selectedRow.candidateId);
+            }
+          }}
+        >
+          Repair selected candidate
+        </button>
       )}
     </div>
   );

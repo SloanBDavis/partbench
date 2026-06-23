@@ -2055,7 +2055,53 @@ async function v7BrowserWorkflowSmoke({
 
       return true;
     }, "V13 stable topology repair action available");
-    clickButton(getElementByAriaLabel("Inspector"), "Repair stable reference");
+    clickButton(getElementByAriaLabel("Inspector"), "Check repair candidates");
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const preview = inspector.querySelector(".repair-candidate-preview");
+      const previewText = preview ? getRenderedText(preview) : "";
+      const normalizedPreviewText = normalize(previewText).toLowerCase();
+      const privateLeak = findPrivateTopologyUiLeak(previewText);
+      const button = getButtonByText(inspector, "Repair selected candidate");
+      const ready =
+        normalizedPreviewText.includes(
+          normalize(
+            "1 candidate · Ready · manual choice required"
+          ).toLowerCase()
+        ) &&
+        normalizedPreviewText.includes(
+          normalize(
+            "Candidate 1: Face · Replaced · Exact confidence · Manual repair plan"
+          ).toLowerCase()
+        ) &&
+        button &&
+        !button.disabled &&
+        !includesText(document.body, "Repaired stable topology reference.") &&
+        !privateLeak;
+
+      if (!ready) {
+        throw new Error(
+          [
+            `preview=${compactText(previewText, 420)}`,
+            privateLeak,
+            `page=${compactText(document.body.textContent, 420)}`
+          ]
+            .filter(Boolean)
+            .join("; ")
+        );
+      }
+
+      return true;
+    }, "V13 stable topology repair candidate preview available");
+    pass(
+      "v13-stable-reference-repair-candidate-preview",
+      "Inspector previews manual stable topology repair candidates without committing or leaking private topology ids",
+      getRenderedText(getElementByAriaLabel("Inspector"))
+    );
+    clickButton(
+      getElementByAriaLabel("Inspector"),
+      "Repair selected candidate"
+    );
     await waitFor(() => {
       const status = getElementByAriaLabel("Topology identity status");
       const ready =

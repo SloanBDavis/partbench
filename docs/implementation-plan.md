@@ -2432,7 +2432,11 @@ Use these decisions when drafting or implementing V13 tranches:
    The web app now exposes an
    explicit selected-reference action that prepares source-owned exact topology
    evidence, asks cad-core for the creation plan, dry-runs the proposed batch,
-   commits it through CADOps, and then lets ordinary `.wcad` save persist the
+   commits it through CADOps, previews sanitized selected-anchor repair
+   candidates, and can pass a user-chosen opaque `selectedRepairCandidateId`
+   back into a fresh cad-core repair plan without exposing checkpoint-local
+   entity IDs or candidate IDs as public CAD references. Ordinary `.wcad` save
+   then persists the
    existing checkpoint payload as package v2. A broader interactive repair UI
    remains later V13 product hardening. Automatic or silent checkpoint/anchor
    source-record creation during ordinary app save/open and broader direct
@@ -2547,12 +2551,13 @@ Use these decisions when drafting or implementing V13 tranches:
     clicks the explicit Inspector "Create stable reference" action for an
     unanchored generated face, verifies the anchor count and `.wcad` v2 package
     bytes after that user gesture, clicks the explicit Inspector "Repair stable
-    reference" action for the selected topology anchor, verifies replacement
-    checkpoint creation, asserts visible topology UI does not leak private
-    renderer, kernel, or checkpoint-local ids, and exports JSON again to prove
-    the downstream cut keeps its `targetTopologyAnchorId` and the user-created
-    topology anchor survives. Split/merge manual repair candidate picking
-    remains later Tranche K hardening. The geometry boundary can now generate
+    candidate preview for the selected topology anchor, clicks the explicit
+    "Repair selected candidate" action, verifies replacement checkpoint
+    creation, asserts visible topology UI does not leak private renderer,
+    kernel, or checkpoint-local ids, and exports JSON again to prove the
+    downstream cut keeps its `targetTopologyAnchorId` and the user-created
+    topology anchor survives. Broader split/merge manual repair workflows remain
+    later Tranche K hardening. The geometry boundary can now generate
     real native B-rep checkpoint payload bytes for supported exact body sources,
     and the browser smoke proves the app save workflow attaches generated
     payload bytes for existing V18 checkpoint source records.

@@ -103,6 +103,7 @@ export const V13_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v13-repaired-reference-command-ready",
   "v13-repaired-reference-topology-provenance",
   "v13-explicit-stable-reference-action",
+  "v13-stable-reference-repair-candidate-preview",
   "v13-stable-reference-repair-action",
   "v13-explicit-stable-reference-wcad",
   "v13-target-body-consumed-diagnostic",

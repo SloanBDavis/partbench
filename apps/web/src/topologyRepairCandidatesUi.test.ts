@@ -28,20 +28,33 @@ describe("topologyRepairCandidatesUi", () => {
       candidateCount: 2,
       rows: [
         {
+          candidateId: "topology_repair_candidate_private",
           entityKind: "Face",
           state: "Ambiguous",
           confidence: "Exact confidence",
-          action: "Manual repair plan"
+          action: "Manual repair plan",
+          repairable: true
         },
         {
+          candidateId: "topology_repair_candidate_private",
           entityKind: "Face",
           state: "Split",
           confidence: "High confidence",
-          action: "Manual repair plan"
+          action: "Manual repair plan",
+          repairable: true
         }
       ]
     });
-    expect(JSON.stringify(preview)).not.toMatch(
+    const visibleRows = preview.rows.map((row) =>
+      createVisibleCandidateRow(row)
+    );
+
+    expect(visibleRows).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ candidateId: expect.any(String) })
+      ])
+    );
+    expect(JSON.stringify(visibleRows)).not.toMatch(
       /candidateId|anchor_|stableId|checkpoint_|checkpoint-local|checkpointEntityId|proposedBatch|ops|rendererId|meshId|occtId|gpuId|selectionBufferId|fileHandle|opfsPath|localPath/i
     );
   });
@@ -61,10 +74,12 @@ describe("topologyRepairCandidatesUi", () => {
     expect(preview.summary).toBe("1 candidate · Missing · not repairable");
     expect(preview.rows).toEqual([
       {
+        candidateId: "topology_repair_candidate_private",
         entityKind: "Face",
         state: "Deleted",
         confidence: "No confidence",
-        action: "Not repairable"
+        action: "Not repairable",
+        repairable: false
       }
     ]);
   });
@@ -80,6 +95,22 @@ describe("topologyRepairCandidatesUi", () => {
     ).toBe("body_1\u0000generated:face:body_1:endCap\u0000face\u0000anchor_1");
   });
 });
+
+function createVisibleCandidateRow(row: {
+  readonly entityKind: string;
+  readonly state: string;
+  readonly confidence: string;
+  readonly action: string;
+  readonly repairable: boolean;
+}) {
+  return {
+    entityKind: row.entityKind,
+    state: row.state,
+    confidence: row.confidence,
+    action: row.action,
+    repairable: row.repairable
+  };
+}
 
 function createCandidate(
   overrides: Pick<

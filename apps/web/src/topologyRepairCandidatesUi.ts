@@ -18,10 +18,12 @@ export interface TopologyRepairCandidatePreview {
 }
 
 export interface TopologyRepairCandidatePreviewRow {
+  readonly candidateId: string;
   readonly entityKind: string;
   readonly state: string;
   readonly confidence: string;
   readonly action: string;
+  readonly repairable: boolean;
 }
 
 export interface TopologyRepairCandidatePreviewState {
@@ -68,10 +70,12 @@ function createTopologyRepairCandidatePreviewRow(
   candidate: CadTopologyRepairCandidate
 ): TopologyRepairCandidatePreviewRow {
   return {
+    candidateId: candidate.candidateId,
     entityKind: formatEntityKind(candidate.entityKind),
     state: formatCandidateState(candidate.state),
     confidence: `${formatConfidence(candidate.confidence)} confidence`,
-    action: formatRecommendedAction(candidate.recommendedAction)
+    action: formatRecommendedAction(candidate.recommendedAction),
+    repairable: candidate.recommendedAction === "manual-repair-plan"
   };
 }
 
