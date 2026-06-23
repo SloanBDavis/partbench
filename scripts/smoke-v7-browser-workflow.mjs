@@ -562,6 +562,7 @@ async function v7BrowserWorkflowSmoke({
     v13RepairBodyName: "V13 repair body",
     v13RepairReferenceName: "V13 repair face",
     v13RepairTopologyAnchorId: "v13_anchor_repair_face",
+    v13ExplicitStableFaceId: "generated:face:v13_repair_body:side:uMin",
     v13TargetBodyAnchorId: "v13_anchor_target_body",
     v13TargetBodyId: "v13_target_body",
     v13TargetBodyName: "V13 anchored target body",
@@ -1876,6 +1877,8 @@ async function v7BrowserWorkflowSmoke({
       getSelectionText()
     );
 
+    await runV13ExplicitStableReferenceActionSmoke();
+
     openTreePanel();
     clickButtonContaining(
       getElementByAriaLabel("Model structure"),
@@ -1980,6 +1983,139 @@ async function v7BrowserWorkflowSmoke({
       "V13 downstream cut keeps its topology-anchor target through Project/File JSON export",
       "web-cad.project.v18"
     );
+  }
+
+  async function runV13ExplicitStableReferenceActionSmoke() {
+    openTreePanel();
+    clickButtonContaining(
+      getElementByAriaLabel("Model structure"),
+      ids.v13RepairBodyName
+    );
+    openSelectionPanel();
+    await waitForBodyCommandReady(
+      ids.v13RepairBodyId,
+      "V13 repair body selected before explicit stable-reference action"
+    );
+    const selectedLabel = await selectGeneratedReferenceByStableId(
+      ids.v13ExplicitStableFaceId
+    );
+    await waitFor(() => {
+      const inspector = getElementByAriaLabel("Inspector");
+      const button = getButtonByText(inspector, "Create stable reference");
+      const ready =
+        includesText(inspector, "Stable topology reference") &&
+        includesText(
+          inspector,
+          "Creates a saved topology reference for this selected entity."
+        ) &&
+        button &&
+        !button.disabled;
+
+      if (!ready) {
+        throw new Error(compactText(inspector.textContent, 520));
+      }
+
+      return true;
+    }, "V13 explicit stable-reference action available");
+    clickButton(getElementByAriaLabel("Inspector"), "Create stable reference");
+    await waitFor(() => {
+      const status = getElementByAriaLabel("Topology identity status");
+      const ready =
+        includesText(document.body, "Created stable topology reference.") &&
+        includesText(status, "3 anchors");
+
+      if (!ready) {
+        throw new Error(
+          [
+            `status=${compactText(status.textContent, 420)}`,
+            `page=${compactText(document.body.textContent, 420)}`
+          ].join("; ")
+        );
+      }
+
+      return true;
+    }, "V13 explicit stable-reference action committed");
+    pass(
+      "v13-explicit-stable-reference-action",
+      "Inspector creates a stable topology reference only after an explicit user action",
+      selectedLabel
+    );
+
+    openDetailsBySummary(document.body, "Project/File");
+    const projectPanelForSave = getSectionByAriaLabel("Project");
+    await waitFor(() => {
+      const status = getElementByAriaLabel("Topology identity status");
+
+      if (!includesText(status, "3 anchors")) {
+        throw new Error(compactText(status.textContent, 420));
+      }
+
+      return true;
+    }, "V13 topology identity status reflects explicit anchor creation");
+
+    const explicitDownloadCapture = createDownloadCapture();
+    explicitDownloadCapture.install();
+
+    try {
+      clickButton(projectPanelForSave, "Save As");
+      await waitFor(
+        () => {
+          if (explicitDownloadCapture.blobs.length === 0) {
+            throw new Error(
+              "No V13 explicit stable-reference .wcad blob download was captured."
+            );
+          }
+
+          if (!includesText(projectPanelForSave, "Downloaded .wcad package")) {
+            throw new Error(compactText(projectPanelForSave.textContent, 520));
+          }
+
+          return true;
+        },
+        "downloaded V13 explicit stable-reference .wcad package through fallback Save As",
+        Math.max(timeoutMs, 60_000)
+      );
+      const explicitWcadBytes = await explicitDownloadCapture.readFirstBytes();
+      const explicitWcadText = decodeBytesForSearch(explicitWcadBytes);
+      const ready =
+        explicitWcadText.includes('"packageVersion": "partbench.wcad.v2"') &&
+        explicitWcadText.includes(ids.v13ExplicitStableFaceId) &&
+        explicitWcadText.includes(
+          "checkpoints/v13_checkpoint_repair_body.brep"
+        ) &&
+        explicitWcadText.includes(
+          "checkpoints/v13_checkpoint_repair_body.topology.cbor"
+        ) &&
+        explicitWcadText.includes(
+          "checkpoints/v13_checkpoint_repair_body.signature.cbor"
+        ) &&
+        explicitWcadText.includes("CASCADE Topology");
+
+      if (ready) {
+        pass(
+          "v13-explicit-stable-reference-wcad",
+          "Explicitly created stable topology references persist through Save As .wcad",
+          `${explicitWcadBytes.byteLength} bytes`
+        );
+      } else {
+        fail(
+          "v13-explicit-stable-reference-wcad",
+          "Explicitly created stable topology references persist through Save As .wcad",
+          compactText(explicitWcadText, 520)
+        );
+      }
+    } catch (error) {
+      fail(
+        "v13-explicit-stable-reference-wcad",
+        "Explicitly created stable topology references persist through Save As .wcad",
+        [
+          error instanceof Error ? error.message : String(error),
+          compactText(projectPanelForSave.textContent, 520)
+        ].join("; ")
+      );
+    } finally {
+      explicitDownloadCapture.restore();
+    }
   }
 
   async function runV10EditRepairWorkflowSmoke() {
@@ -4355,8 +4491,8 @@ async function v7BrowserWorkflowSmoke({
       missing.push("topologyIdentity.checkpoints:2");
     }
 
-    if (anchors.length !== 2) {
-      missing.push("topologyIdentity.anchors:2");
+    if (anchors.length !== 3) {
+      missing.push("topologyIdentity.anchors:3");
     }
 
     if (
@@ -4381,6 +4517,19 @@ async function v7BrowserWorkflowSmoke({
       )
     ) {
       missing.push(ids.v13TargetBodyAnchorId);
+    }
+
+    if (
+      !anchors.some(
+        (anchor) =>
+          anchor.entityKind === "face" &&
+          anchor.bodyId === ids.v13RepairBodyId &&
+          anchor.stableId === ids.v13ExplicitStableFaceId &&
+          anchor.checkpointId === "v13_checkpoint_repair_body" &&
+          anchor.state === "active"
+      )
+    ) {
+      missing.push(`${ids.v13ExplicitStableFaceId}:topologyAnchor`);
     }
 
     if (

@@ -102,6 +102,8 @@ export const V13_BROWSER_WORKFLOW_CHECK_IDS = Object.freeze([
   "v13-wcad-save-as-checkpoint-payloads",
   "v13-repaired-reference-command-ready",
   "v13-repaired-reference-topology-provenance",
+  "v13-explicit-stable-reference-action",
+  "v13-explicit-stable-reference-wcad",
   "v13-target-body-consumed-diagnostic",
   "v13-downstream-anchor-cut-export",
   "v13-no-private-topology-ui-leak"
