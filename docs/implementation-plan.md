@@ -2518,8 +2518,8 @@ Use these decisions when drafting or implementing V13 tranches:
     explicit `topology.anchor.repair` source-record retargeting to a rebuilt
     checkpoint entity, downstream cut through a topology body anchor, JSON
     round-trip behavior, `partbench.wcad.v2` caller-supplied checkpoint
-    payload round-trip behavior, and exact/split/deleted/low-confidence
-    topology matching. The first
+    payload round-trip behavior, and exact/split/merged/ambiguous/deleted/
+    low-confidence topology matching. The first
     browser release sample is implemented as `pnpm smoke:v13-browser-workflow`:
     it imports the V13 topology fixture through Project/File JSON, verifies the
     compact topology identity status, selects the repaired named face as a

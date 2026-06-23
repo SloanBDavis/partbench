@@ -1866,6 +1866,26 @@ export const V13_RELEASE_SAMPLE_FIXTURES = [
           localId: "v13_match_vertex_low",
           kind: "vertex",
           signature: "v13:vertex:low"
+        },
+        {
+          localId: "v13_match_face_merged_a",
+          kind: "face",
+          signature: "v13:face:merged"
+        },
+        {
+          localId: "v13_match_face_merged_b",
+          kind: "face",
+          signature: "v13:face:merged"
+        },
+        {
+          localId: "v13_match_edge_ambiguous_a",
+          kind: "edge",
+          signature: "v13:edge:ambiguous"
+        },
+        {
+          localId: "v13_match_edge_ambiguous_b",
+          kind: "edge",
+          signature: "v13:edge:ambiguous"
         }
       ]
     }),
@@ -1895,6 +1915,21 @@ export const V13_RELEASE_SAMPLE_FIXTURES = [
             localId: "v13_match_vertex_low_new",
             kind: "vertex",
             signature: "v13:vertex:other"
+          },
+          {
+            localId: "v13_match_face_merged_new",
+            kind: "face",
+            signature: "v13:face:merged"
+          },
+          {
+            localId: "v13_match_edge_ambiguous_new_a",
+            kind: "edge",
+            signature: "v13:edge:ambiguous"
+          },
+          {
+            localId: "v13_match_edge_ambiguous_new_b",
+            kind: "edge",
+            signature: "v13:edge:ambiguous"
           }
         ]
       })
@@ -1919,6 +1954,26 @@ export const V13_RELEASE_SAMPLE_FIXTURES = [
         previousCheckpointEntityId: "v13_match_vertex_low",
         expectedState: "repair-needed",
         expectedConfidence: "low"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_face_merged_a",
+        expectedState: "merged",
+        expectedConfidence: "exact"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_face_merged_b",
+        expectedState: "merged",
+        expectedConfidence: "exact"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_edge_ambiguous_a",
+        expectedState: "ambiguous",
+        expectedConfidence: "high"
+      },
+      {
+        previousCheckpointEntityId: "v13_match_edge_ambiguous_b",
+        expectedState: "ambiguous",
+        expectedConfidence: "high"
       }
     ],
     knownLimitations: [

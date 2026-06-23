@@ -18,7 +18,7 @@ describe("V13 topology identity smoke runner", () => {
       topologyCheckCount: 5,
       referenceCheckCount: 5,
       commandCheckCount: 8,
-      matchCheckCount: 9,
+      matchCheckCount: 17,
       roundTripCheckCount: 21
     });
     expect(result.samples.map((sample) => sample.id)).toEqual([
@@ -31,8 +31,8 @@ describe("V13 topology identity smoke runner", () => {
       [
         "V13 topology identity smoke passed",
         "samples: 1 passed, 0 failed, 1 total",
-        "checks: 5 topology, 5 reference, 8 command, 9 match, 21 round-trip",
-        "- pass v13-topology-anchor-repair-command-chain | topology 5 | reference 5 | command 8 | match 9 | round-trips 21"
+        "checks: 5 topology, 5 reference, 8 command, 17 match, 21 round-trip",
+        "- pass v13-topology-anchor-repair-command-chain | topology 5 | reference 5 | command 8 | match 17 | round-trips 21"
       ].join("\n")
     );
   });
