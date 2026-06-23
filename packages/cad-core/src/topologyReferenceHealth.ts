@@ -3,6 +3,7 @@ import type {
   CadFeatureEditDiagnosticCode,
   CadFeatureReferenceChangeCategory,
   CadFeatureReferenceChangeSummary,
+  CadGeneratedReference,
   CadGeneratedEntityKind,
   CadReferenceHealthDiagnostic,
   CadReferenceHealthDiagnosticCode,
@@ -16,15 +17,23 @@ import type {
   CadTopologyIdentitySourceSnapshot,
   CadTopologyIdentityState,
   CadTopologyMatchResult,
-  FeatureId
+  FeatureId,
+  PartId
 } from "@web-cad/cad-protocol";
 
+import type { GeneratedReferencesDocument } from "./generatedReferences";
+import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
+
 export interface TopologyReferenceHealthInput {
+  readonly document?: GeneratedReferencesDocument;
+  readonly ownerPartId?: PartId;
   readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
   readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export function createTopologyAnchorReferenceHealthEntries({
+  document,
+  ownerPartId,
   topologyIdentity,
   topologyMatchResults = []
 }: TopologyReferenceHealthInput): readonly CadReferenceHealthEntry[] {
@@ -44,7 +53,17 @@ export function createTopologyAnchorReferenceHealthEntries({
     createTopologyAnchorReferenceHealth({
       anchor,
       checkpoint: checkpointsById.get(anchor.checkpointId),
-      match: matchesByAnchorId.get(anchor.anchorId)
+      match: matchesByAnchorId.get(anchor.anchorId),
+      generatedReference:
+        !anchor.stableId && document && ownerPartId
+          ? resolveTopologyAnchorGeneratedReferenceFromSourceRole({
+              document,
+              ownerPartId,
+              bodyId: anchor.bodyId,
+              entityKind: anchor.entityKind,
+              sourceSemanticRole: anchor.sourceSemanticRole
+            })
+          : undefined
     })
   );
 }
@@ -101,13 +120,22 @@ export function createTopologyAnchorReferenceChangesForBody({
 function createTopologyAnchorReferenceHealth({
   anchor,
   checkpoint,
-  match
+  match,
+  generatedReference
 }: {
   readonly anchor: CadTopologyAnchorSourceRecord;
   readonly checkpoint?: CadTopologyCheckpointSourceRecord;
   readonly match?: CadTopologyMatchResult;
+  readonly generatedReference?: ReturnType<
+    typeof resolveTopologyAnchorGeneratedReferenceFromSourceRole
+  >;
 }): CadReferenceHealthEntry {
   const status = createTopologyAnchorStatus(anchor, checkpoint, match);
+  const resolvedReference =
+    generatedReference?.status === "resolved"
+      ? generatedReference.reference
+      : undefined;
+  const stableId = anchor.stableId ?? resolvedReference?.stableId;
   const diagnostics = createTopologyAnchorDiagnostics(
     anchor,
     checkpoint,
@@ -115,7 +143,8 @@ function createTopologyAnchorReferenceHealth({
   );
   const commandOperations = createTopologyAnchorCommandOperations(
     anchor,
-    status
+    status,
+    resolvedReference
   );
 
   return {
@@ -125,7 +154,7 @@ function createTopologyAnchorReferenceHealth({
     commandOperations,
     label: anchor.sourceSemanticRole ?? anchor.stableId ?? anchor.anchorId,
     bodyId: anchor.bodyId,
-    ...(anchor.stableId ? { stableId: anchor.stableId } : {}),
+    ...(stableId ? { stableId } : {}),
     kind: generatedKindFromAnchorKind(anchor.entityKind),
     topologyAnchorId: anchor.anchorId,
     topologyEntityKind: anchor.entityKind,
@@ -139,7 +168,7 @@ function createTopologyAnchorReferenceHealth({
       sketchEntityIds: [],
       featureIds: anchor.sourceFeatureId ? [anchor.sourceFeatureId] : [],
       bodyIds: [anchor.bodyId],
-      generatedReferenceStableIds: anchor.stableId ? [anchor.stableId] : [],
+      generatedReferenceStableIds: stableId ? [stableId] : [],
       namedReferenceNames: [],
       topologyAnchorIds: [anchor.anchorId],
       checkpointIds: [anchor.checkpointId]
@@ -151,9 +180,22 @@ function createTopologyAnchorReferenceHealth({
 
 function createTopologyAnchorCommandOperations(
   anchor: CadTopologyAnchorSourceRecord,
-  status: CadReferenceHealthStatus
+  status: CadReferenceHealthStatus,
+  generatedReference?: CadGeneratedReference
 ): readonly CadSelectionReferenceOperation[] {
-  if (status !== "active" || !anchor.stableId) {
+  if (status !== "active") {
+    return [];
+  }
+
+  if (generatedReference) {
+    return generatedReference.eligibleOperations.filter(
+      (operation) =>
+        operation === "feature.measureReference" ||
+        operation === "feature.selectReference"
+    ) as readonly CadSelectionReferenceOperation[];
+  }
+
+  if (!anchor.stableId) {
     return [];
   }
 

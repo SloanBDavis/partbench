@@ -155,11 +155,11 @@ import {
 } from "./transactionHistory";
 import {
   createBodyGeneratedReferences,
-  type GeneratedReferencesDocument,
   type GeneratedReferenceValidationError,
   resolveGeneratedReference,
   validateGeneratedReference
 } from "./generatedReferences";
+import { resolveTopologyAnchorGeneratedReferenceFromSourceRole } from "./topologyAnchorGeneratedReferenceResolution";
 import { createBodyMeasurements } from "./bodyMeasurements";
 import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
@@ -11896,19 +11896,6 @@ function resolveActiveTopologyAnchorTarget(
   };
 }
 
-type TopologyAnchorStableIdResolution =
-  | {
-      readonly status: "resolved";
-      readonly stableId: string;
-    }
-  | {
-      readonly status: "missing";
-    }
-  | {
-      readonly status: "ambiguous";
-      readonly stableIds: readonly string[];
-    };
-
 function resolveActiveTopologyAnchorStableTarget(
   state: MutableDocumentState,
   topologyAnchorId: string,
@@ -11931,7 +11918,7 @@ function resolveActiveTopologyAnchorStableTarget(
 
   const stableResolution = target.stableId
     ? { status: "resolved" as const, stableId: target.stableId }
-    : resolveTopologyAnchorStableIdFromSourceRole({
+    : resolveTopologyAnchorGeneratedReferenceFromSourceRole({
         document: state,
         ownerPartId: DEFAULT_PART_ID,
         bodyId: target.bodyId,
@@ -11975,99 +11962,6 @@ function resolveActiveTopologyAnchorStableTarget(
     topologyAnchorId: target.topologyAnchorId,
     checkpointId: target.checkpointId
   };
-}
-
-function resolveTopologyAnchorStableIdFromSourceRole(options: {
-  readonly document: GeneratedReferencesDocument;
-  readonly ownerPartId: PartId;
-  readonly bodyId: BodyId;
-  readonly entityKind: CadTopologyAnchorEntityKind;
-  readonly sourceSemanticRole?: string;
-}): TopologyAnchorStableIdResolution {
-  if (!options.sourceSemanticRole) {
-    return { status: "missing" };
-  }
-
-  const references = createBodyGeneratedReferences(
-    options.document,
-    options.bodyId,
-    options.ownerPartId
-  );
-
-  if (!references) {
-    return { status: "missing" };
-  }
-
-  const roleKey = normalizeTopologySemanticRole(options.sourceSemanticRole);
-  const candidates = [
-    references.body,
-    ...references.faces,
-    ...references.edges,
-    ...references.vertices,
-    ...references.axes
-  ].filter(
-    (reference) =>
-      reference.kind === options.entityKind &&
-      createGeneratedReferenceRoleAliases(reference).some(
-        (alias) => normalizeTopologySemanticRole(alias) === roleKey
-      )
-  );
-
-  if (candidates.length === 1) {
-    return {
-      status: "resolved",
-      stableId: candidates[0]!.stableId
-    };
-  }
-
-  if (candidates.length > 1) {
-    return {
-      status: "ambiguous",
-      stableIds: candidates.map((candidate) => candidate.stableId)
-    };
-  }
-
-  return { status: "missing" };
-}
-
-function createGeneratedReferenceRoleAliases(
-  reference: CadGeneratedReference
-): readonly string[] {
-  const roleReference = reference as CadGeneratedReference & {
-    readonly role?: string;
-  };
-
-  if (!roleReference.role) {
-    return [];
-  }
-
-  const role = roleReference.role;
-  const humanRole = humanizeGeneratedReferenceRole(role);
-  const aliases = [role, humanRole];
-
-  if (reference.kind === "face") {
-    aliases.push(`${humanRole} face`);
-    if (role.startsWith("side:")) {
-      const sideRole = humanizeGeneratedReferenceRole(role.slice(5));
-      aliases.push(`${sideRole} side`, `${sideRole} side face`);
-    }
-  } else if (reference.kind === "edge") {
-    aliases.push(`${humanRole} edge`);
-  } else if (reference.kind === "vertex") {
-    aliases.push(`${humanRole} vertex`);
-  } else if (reference.kind === "axis") {
-    aliases.push(`${humanRole} axis`);
-  }
-
-  return aliases;
-}
-
-function humanizeGeneratedReferenceRole(role: string): string {
-  return role.replace(/:/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
-}
-
-function normalizeTopologySemanticRole(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function resolveSketchAttachmentFaceTarget(
@@ -12833,7 +12727,7 @@ function createTopologyAnchorSelectionReferenceCandidate(options: {
 
   const stableResolution = anchor.stableId
     ? { status: "resolved" as const, stableId: anchor.stableId }
-    : resolveTopologyAnchorStableIdFromSourceRole({
+    : resolveTopologyAnchorGeneratedReferenceFromSourceRole({
         document: options.document,
         ownerPartId: body.partId,
         bodyId: anchor.bodyId,

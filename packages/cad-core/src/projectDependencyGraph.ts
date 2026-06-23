@@ -522,6 +522,8 @@ function createAllReferenceHealthEntries(
 
   entries.push(
     ...createTopologyAnchorReferenceHealthEntries({
+      document: options.document,
+      ownerPartId: options.ownerPartId,
       topologyIdentity: options.document.topologyIdentity,
       topologyMatchResults: options.topologyMatchResults
     })

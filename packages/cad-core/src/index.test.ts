@@ -31740,6 +31740,17 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       throw new Error("Expected topology identity fixture.");
     }
 
+    const roleBackedFaceAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      anchorId: "anchor_face_role_backed"
+    };
+    delete (roleBackedFaceAnchor as { stableId?: string }).stableId;
+    const unknownRoleFaceAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      anchorId: "anchor_face_unknown_role",
+      sourceSemanticRole: "unmapped exact topology face"
+    };
+    delete (unknownRoleFaceAnchor as { stableId?: string }).stableId;
     const axisAnchor = {
       ...topologyIdentity.anchors[0]!,
       anchorId: "anchor_axis_1",
@@ -31752,14 +31763,58 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ...document,
       topologyIdentity: {
         ...topologyIdentity,
-        anchors: [axisAnchor]
+        anchors: [roleBackedFaceAnchor, unknownRoleFaceAnchor, axisAnchor]
       }
+    });
+    const roleBackedFaceHealth = readReferenceHealth(axisAnchorEngine, {
+      type: "topologyAnchor",
+      anchorId: "anchor_face_role_backed"
+    });
+    const unknownRoleFaceHealth = readReferenceHealth(axisAnchorEngine, {
+      type: "topologyAnchor",
+      anchorId: "anchor_face_unknown_role"
     });
     const referenceHealth = readReferenceHealth(axisAnchorEngine, {
       type: "topologyAnchor",
       anchorId: "anchor_axis_1"
     });
 
+    expect(roleBackedFaceHealth).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          status: "active",
+          commandable: true,
+          commandOperations: [
+            "feature.measureReference",
+            "feature.selectReference"
+          ],
+          stableId: "generated:face:body_rect_1:endCap",
+          topologyAnchorId: "anchor_face_role_backed",
+          topologyEntityKind: "face",
+          dependencies: expect.objectContaining({
+            generatedReferenceStableIds: ["generated:face:body_rect_1:endCap"]
+          })
+        })
+      ]
+    });
+    expect(unknownRoleFaceHealth).toMatchObject({
+      status: "active",
+      referenceHealth: [
+        expect.objectContaining({
+          source: "topologyAnchor",
+          status: "active",
+          commandable: false,
+          commandOperations: [],
+          topologyAnchorId: "anchor_face_unknown_role",
+          topologyEntityKind: "face",
+          dependencies: expect.objectContaining({
+            generatedReferenceStableIds: []
+          })
+        })
+      ]
+    });
     expect(referenceHealth).toMatchObject({
       status: "active",
       referenceHealth: [
@@ -31773,7 +31828,13 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ]
     });
-    expect(JSON.stringify(referenceHealth)).not.toMatch(
+    expect(
+      JSON.stringify({
+        roleBackedFaceHealth,
+        unknownRoleFaceHealth,
+        referenceHealth
+      })
+    ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
   });
