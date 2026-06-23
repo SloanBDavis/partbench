@@ -31166,6 +31166,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       status: "active",
       candidateSnapshotCount: 1,
       resultCount: 2,
+      repairCandidateCount: 0,
+      repairCandidates: [],
       mutatesSource: false
     });
     expect(response.matchResults).toEqual(
@@ -31295,6 +31297,119 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         expect.objectContaining({ code: "TOPOLOGY_MATCH_KIND_MISMATCH" })
       ])
     });
+    expect(response.repairCandidateCount).toBe(11);
+    expect(response.repairCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target: expect.objectContaining({ type: "topologyMatch" }),
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointId: "checkpoint_old",
+            checkpointEntityId: "axis_deleted",
+            idScope: "checkpoint-local",
+            publicStableId: false
+          }),
+          state: "deleted",
+          confidence: "none",
+          canAutoRetarget: false,
+          recommendedAction: "not-repairable"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_split"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointId: "checkpoint_new",
+            checkpointEntityId: "edge_split_new_a",
+            idScope: "checkpoint-local",
+            publicStableId: false
+          }),
+          state: "split",
+          canAutoRetarget: false,
+          recommendedAction: "manual-repair-plan"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_split"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_split_new_b"
+          }),
+          state: "split"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_merge_a"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_merge_new"
+          }),
+          state: "merged",
+          recommendedAction: "manual-repair-plan"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_merge_b"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_merge_new"
+          }),
+          state: "merged"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_ambiguous"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_amb_a"
+          }),
+          state: "ambiguous"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_ambiguous"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_amb_b"
+          }),
+          state: "ambiguous"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "vertex_low"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "vertex_low_new"
+          }),
+          state: "repair-needed",
+          recommendedAction: "inspect"
+        }),
+        expect.objectContaining({
+          previousCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "edge_kind"
+          }),
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "face_kind_new"
+          }),
+          state: "repair-needed",
+          recommendedAction: "inspect"
+        })
+      ])
+    );
+    for (const candidate of response.repairCandidates) {
+      expect(candidate.candidateId).toMatch(
+        /^topology_repair_candidate_[a-f0-9]{16}$/
+      );
+      expect(candidate).not.toHaveProperty("ops");
+      expect(candidate).not.toHaveProperty("proposedBatch");
+      expect(candidate.canAutoRetarget).toBe(false);
+    }
+    const candidateIds = response.repairCandidates.map(
+      (candidate) => candidate.candidateId
+    );
+    expect(candidateIds).toHaveLength(new Set(candidateIds).size);
+    expect(JSON.stringify(response.repairCandidates)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex/i
+    );
   });
 
   it("threads topology anchor matches through reference health, rebuild plan, dependency graph, and feature editability", () => {
@@ -33547,6 +33662,26 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       replacementCheckpointEntityId: "snapshot-local:face:repaired",
       repairId: "repair_plan_1",
       confidence: "exact",
+      repairCandidateCount: 1,
+      repairCandidates: [
+        expect.objectContaining({
+          candidateId: expect.stringMatching(
+            /^topology_repair_candidate_[a-f0-9]{16}$/
+          ),
+          anchorId: "anchor_face_1",
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointId: "checkpoint_2",
+            checkpointEntityId: "snapshot-local:face:repaired",
+            idScope: "checkpoint-local",
+            publicStableId: false
+          }),
+          entityKind: "face",
+          state: "replaced",
+          confidence: "exact",
+          canAutoRetarget: false,
+          recommendedAction: "manual-repair-plan"
+        })
+      ],
       createsCheckpoint: false,
       createsRepair: true,
       opCount: 1,
@@ -33659,6 +33794,25 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       previousCheckpointId: "checkpoint_1",
       replacementCheckpointEntityId: "snapshot-local:face:repaired",
       confidence: "exact",
+      repairCandidateCount: 1,
+      repairCandidates: [
+        expect.objectContaining({
+          candidateId: expect.stringMatching(
+            /^topology_repair_candidate_[a-f0-9]{16}$/
+          ),
+          anchorId: "anchor_face_1",
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "snapshot-local:face:repaired",
+            idScope: "checkpoint-local",
+            publicStableId: false
+          }),
+          entityKind: "face",
+          state: "replaced",
+          confidence: "exact",
+          canAutoRetarget: false,
+          recommendedAction: "manual-repair-plan"
+        })
+      ],
       createsCheckpoint: true,
       createsRepair: true,
       opCount: 2,
@@ -33796,6 +33950,26 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ok: true,
       query: "topology.anchorRepairPlan",
       status: "missing",
+      repairCandidateCount: 1,
+      repairCandidates: [
+        expect.objectContaining({
+          candidateId: expect.stringMatching(
+            /^topology_repair_candidate_[a-f0-9]{16}$/
+          ),
+          anchorId: "anchor_face_1",
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointId: "checkpoint_2",
+            checkpointEntityId: "snapshot-local:face:other",
+            idScope: "checkpoint-local",
+            publicStableId: false
+          }),
+          entityKind: "face",
+          state: "repair-needed",
+          confidence: "low",
+          canAutoRetarget: false,
+          recommendedAction: "manual-repair-plan"
+        })
+      ],
       createsRepair: false,
       opCount: 0,
       ops: [],
@@ -33807,6 +33981,32 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ok: true,
       query: "topology.anchorRepairPlan",
       status: "ambiguous",
+      repairCandidateCount: 2,
+      repairCandidates: [
+        expect.objectContaining({
+          candidateId: expect.stringMatching(
+            /^topology_repair_candidate_[a-f0-9]{16}$/
+          ),
+          anchorId: "anchor_face_1",
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointId: "checkpoint_2",
+            checkpointEntityId: "snapshot-local:face:a",
+            idScope: "checkpoint-local",
+            publicStableId: false
+          }),
+          entityKind: "face",
+          state: "ambiguous",
+          confidence: "exact",
+          canAutoRetarget: false,
+          recommendedAction: "manual-repair-plan"
+        }),
+        expect.objectContaining({
+          candidateCheckpointEvidence: expect.objectContaining({
+            checkpointEntityId: "snapshot-local:face:b"
+          }),
+          state: "ambiguous"
+        })
+      ],
       createsRepair: false,
       opCount: 0,
       ops: [],

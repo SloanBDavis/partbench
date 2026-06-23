@@ -1,17 +1,22 @@
 import type {
   CadBodyExactTopologyEntityDescriptor,
   CadOpsVersion,
+  CadTopologyAnchorEntityKind,
   CadTopologyEntityKind,
   CadTopologyIdentityDiagnostic,
   CadTopologyIdentityDiagnosticCode,
   CadTopologyIdentityState,
   CadTopologyMatchConfidence,
   CadTopologyMatchEvidence,
+  CadTopologyMatchResult,
+  CadTopologyRepairCandidate,
   CadTopologyMatchSnapshotInput,
   CadTopologySnapshotDescriptor,
   TopologyMatchSnapshotsQuery,
   TopologyMatchSnapshotsQueryResponse
 } from "@web-cad/cad-protocol";
+
+import { sha256Hex } from "./sha256";
 
 interface TopologyMatchInput {
   readonly cadOpsVersion: CadOpsVersion;
@@ -34,6 +39,10 @@ interface ScoredCandidate {
   readonly evidence: readonly CadTopologyMatchEvidence[];
 }
 
+type MatchResultWithCandidates = CadTopologyMatchResult & {
+  readonly repairCandidates: readonly CadTopologyRepairCandidate[];
+};
+
 const SOURCE_BOUNDARY_NOTE =
   "Topology matching uses caller-provided exact topology snapshots, checkpoint ids, source identity, body ids, and source feature ids only.";
 const DERIVED_BOUNDARY_NOTE =
@@ -54,7 +63,7 @@ export function createTopologyMatchSnapshotsResponse({
     previousEntities.map((entity) => ({ snapshot: query.previous, entity }))
   );
   const candidateSignatureCounts = createSignatureCounts(candidateEntities);
-  const matchResults = previousEntities.map((entity) =>
+  const matches = previousEntities.map((entity) =>
     matchEntity({
       previous: { snapshot: query.previous, entity },
       candidates: candidateEntities,
@@ -64,6 +73,13 @@ export function createTopologyMatchSnapshotsResponse({
         candidateSignatureCounts.get(signatureKey(entity)) ?? 0
     })
   );
+  const matchResults = matches.map((match) => {
+    const { repairCandidates: _repairCandidates, ...result } = match;
+    void _repairCandidates;
+
+    return result;
+  });
+  const repairCandidates = matches.flatMap((result) => result.repairCandidates);
   const diagnostics = matchResults.flatMap((result) => result.diagnostics);
 
   return {
@@ -76,6 +92,8 @@ export function createTopologyMatchSnapshotsResponse({
     candidateSnapshots: query.candidates.map(createSnapshotDescriptor),
     resultCount: matchResults.length,
     matchResults,
+    repairCandidateCount: repairCandidates.length,
+    repairCandidates,
     diagnosticCount: diagnostics.length,
     diagnostics,
     sourceBoundaryNote: SOURCE_BOUNDARY_NOTE,
@@ -138,13 +156,45 @@ function matchEntity({
                 "Topology entity matched by exact kind and geometry signature.",
                 previous.entity.kind
               )
-            ]
+            ],
+      repairCandidates:
+        state === "merged"
+          ? compactRepairCandidates([
+              createMatchRepairCandidate({
+                previous,
+                candidate,
+                state,
+                confidence: "exact",
+                confidenceScore: 1,
+                evidence,
+                diagnostics: [
+                  createDiagnostic(
+                    "TOPOLOGY_MATCH_MERGED",
+                    "warning",
+                    "Multiple previous topology entities share this exact signature and now map to one candidate.",
+                    previous.entity.kind
+                  )
+                ],
+                recommendedAction: "manual-repair-plan"
+              })
+            ])
+          : []
     });
   }
 
   if (exactCandidates.length > 1) {
     const state = previousSignatureCount === 1 ? "split" : "ambiguous";
     const candidate = exactCandidates[0];
+    const diagnostics = [
+      createDiagnostic(
+        state === "split" ? "TOPOLOGY_MATCH_SPLIT" : "TOPOLOGY_MATCH_AMBIGUOUS",
+        "warning",
+        state === "split"
+          ? "One previous topology entity has multiple exact-signature candidates."
+          : "Multiple exact-signature candidates are indistinguishable.",
+        previous.entity.kind
+      )
+    ];
 
     return createMatchResult({
       previous,
@@ -153,18 +203,21 @@ function matchEntity({
       confidence: "high",
       confidenceScore: 0.92,
       evidence: createEvidence(previous, candidate, true),
-      diagnostics: [
-        createDiagnostic(
-          state === "split"
-            ? "TOPOLOGY_MATCH_SPLIT"
-            : "TOPOLOGY_MATCH_AMBIGUOUS",
-          "warning",
-          state === "split"
-            ? "One previous topology entity has multiple exact-signature candidates."
-            : "Multiple exact-signature candidates are indistinguishable.",
-          previous.entity.kind
+      diagnostics,
+      repairCandidates: compactRepairCandidates(
+        exactCandidates.map((candidate) =>
+          createMatchRepairCandidate({
+            previous,
+            candidate,
+            state,
+            confidence: "high",
+            confidenceScore: 0.92,
+            evidence: createEvidence(previous, candidate, true),
+            diagnostics,
+            recommendedAction: "manual-repair-plan"
+          })
         )
-      ]
+      )
     });
   }
 
@@ -197,7 +250,38 @@ function matchEntity({
           String(previous.entity.kind),
           String(candidate.entity.kind)
         )
-      ]
+      ],
+      repairCandidates: compactRepairCandidates([
+        createMatchRepairCandidate({
+          previous,
+          candidate,
+          state: "repair-needed",
+          confidence: "low",
+          confidenceScore: 0.2,
+          evidence: [
+            {
+              kind: "geometrySignature",
+              confidence: "high",
+              weight: 0.2,
+              message:
+                "Geometry signature matched a candidate with a different topology kind.",
+              previousValue: previous.entity.signature,
+              candidateValue: candidate.entity.signature
+            }
+          ],
+          diagnostics: [
+            createDiagnostic(
+              "TOPOLOGY_MATCH_KIND_MISMATCH",
+              "warning",
+              "Topology entity signature matched a different entity kind; explicit repair is required.",
+              previous.entity.kind,
+              String(previous.entity.kind),
+              String(candidate.entity.kind)
+            )
+          ],
+          recommendedAction: "inspect"
+        })
+      ])
     });
   }
 
@@ -220,6 +304,14 @@ function matchEntity({
     const ties = scored.filter((candidate) => candidate.score === best.score);
 
     if (ties.length > 1) {
+      const diagnostics = [
+        createDiagnostic(
+          "TOPOLOGY_MATCH_AMBIGUOUS",
+          "warning",
+          "Multiple same-kind topology candidates have identical match confidence.",
+          previous.entity.kind
+        )
+      ];
       return createMatchResult({
         previous,
         candidate: best.candidate,
@@ -227,19 +319,38 @@ function matchEntity({
         confidence: best.confidence,
         confidenceScore: best.score,
         evidence: best.evidence,
-        diagnostics: [
-          createDiagnostic(
-            "TOPOLOGY_MATCH_AMBIGUOUS",
-            "warning",
-            "Multiple same-kind topology candidates have identical match confidence.",
-            previous.entity.kind
+        diagnostics,
+        repairCandidates: compactRepairCandidates(
+          ties.map((tie) =>
+            createMatchRepairCandidate({
+              previous,
+              candidate: tie.candidate,
+              state: "ambiguous",
+              confidence: tie.confidence,
+              confidenceScore: tie.score,
+              evidence: tie.evidence,
+              diagnostics,
+              recommendedAction: "manual-repair-plan"
+            })
           )
-        ]
+        )
       });
     }
 
     const state: CadTopologyIdentityState =
       best.score >= 0.7 ? "replaced" : "repair-needed";
+    const diagnostics = [
+      createDiagnostic(
+        best.score >= 0.7
+          ? "TOPOLOGY_MATCH_REPLACED"
+          : "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+        best.score >= 0.7 ? "info" : "warning",
+        best.score >= 0.7
+          ? "Topology entity has a high-confidence replacement candidate."
+          : "Topology entity has only a low-confidence repair candidate.",
+        previous.entity.kind
+      )
+    ];
 
     return createMatchResult({
       previous,
@@ -248,35 +359,49 @@ function matchEntity({
       confidence: best.confidence,
       confidenceScore: best.score,
       evidence: best.evidence,
-      diagnostics: [
-        createDiagnostic(
-          best.score >= 0.7
-            ? "TOPOLOGY_MATCH_REPLACED"
-            : "TOPOLOGY_MATCH_LOW_CONFIDENCE",
-          best.score >= 0.7 ? "info" : "warning",
-          best.score >= 0.7
-            ? "Topology entity has a high-confidence replacement candidate."
-            : "Topology entity has only a low-confidence repair candidate.",
-          previous.entity.kind
-        )
-      ]
+      diagnostics,
+      repairCandidates: compactRepairCandidates([
+        createMatchRepairCandidate({
+          previous,
+          candidate: best.candidate,
+          state,
+          confidence: best.confidence,
+          confidenceScore: best.score,
+          evidence: best.evidence,
+          diagnostics,
+          recommendedAction:
+            state === "replaced" ? "manual-repair-plan" : "inspect"
+        })
+      ])
     });
   }
 
+  const diagnostics = [
+    createDiagnostic(
+      "TOPOLOGY_MATCH_DELETED",
+      "warning",
+      "Topology entity has no viable candidate in the provided snapshots.",
+      previous.entity.kind
+    )
+  ];
   return createMatchResult({
     previous,
     state: "deleted",
     confidence: "none",
     confidenceScore: 0,
     evidence: [],
-    diagnostics: [
-      createDiagnostic(
-        "TOPOLOGY_MATCH_DELETED",
-        "warning",
-        "Topology entity has no viable candidate in the provided snapshots.",
-        previous.entity.kind
-      )
-    ]
+    diagnostics,
+    repairCandidates: compactRepairCandidates([
+      createMatchRepairCandidate({
+        previous,
+        state: "deleted",
+        confidence: "none",
+        confidenceScore: 0,
+        evidence: [],
+        diagnostics,
+        recommendedAction: "not-repairable"
+      })
+    ])
   });
 }
 
@@ -391,6 +516,111 @@ function roundEvidenceNumber(value: number): number {
   return Number(value.toFixed(9));
 }
 
+function createMatchRepairCandidate({
+  previous,
+  candidate,
+  state,
+  confidence,
+  confidenceScore,
+  evidence,
+  diagnostics,
+  recommendedAction
+}: {
+  readonly previous: MatchEntity;
+  readonly candidate?: MatchEntity;
+  readonly state: CadTopologyRepairCandidate["state"];
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly confidenceScore: number;
+  readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly recommendedAction: CadTopologyRepairCandidate["recommendedAction"];
+}): CadTopologyRepairCandidate | undefined {
+  if (!isRepairCandidateEntityKind(previous.entity.kind)) {
+    return undefined;
+  }
+
+  return {
+    candidateId: createRepairCandidateId({
+      previous,
+      candidate,
+      state
+    }),
+    target: {
+      type: "topologyMatch",
+      ...(previous.snapshot.checkpointId
+        ? { previousCheckpointId: previous.snapshot.checkpointId }
+        : {}),
+      ...(previous.snapshot.snapshotId
+        ? { previousSnapshotId: previous.snapshot.snapshotId }
+        : {}),
+      entityKind: previous.entity.kind
+    },
+    previousCheckpointEvidence: {
+      ...(previous.snapshot.checkpointId
+        ? { checkpointId: previous.snapshot.checkpointId }
+        : {}),
+      checkpointEntityId: previous.entity.localId,
+      idScope: "checkpoint-local",
+      publicStableId: false
+    },
+    ...(candidate
+      ? {
+          candidateCheckpointEvidence: {
+            ...(candidate.snapshot.checkpointId
+              ? { checkpointId: candidate.snapshot.checkpointId }
+              : {}),
+            checkpointEntityId: candidate.entity.localId,
+            idScope: "checkpoint-local",
+            publicStableId: false
+          } as const
+        }
+      : {}),
+    entityKind: previous.entity.kind,
+    state,
+    confidence,
+    confidenceScore,
+    canAutoRetarget: false,
+    recommendedAction,
+    evidence,
+    diagnostics
+  };
+}
+
+function compactRepairCandidates(
+  candidates: readonly (CadTopologyRepairCandidate | undefined)[]
+): readonly CadTopologyRepairCandidate[] {
+  return candidates.filter(
+    (candidate): candidate is CadTopologyRepairCandidate => Boolean(candidate)
+  );
+}
+
+function createRepairCandidateId({
+  previous,
+  candidate,
+  state
+}: {
+  readonly previous: MatchEntity;
+  readonly candidate?: MatchEntity;
+  readonly state: CadTopologyRepairCandidate["state"];
+}): string {
+  const hashSegment = sha256Hex(
+    new TextEncoder().encode(
+      [
+        "topology-match-repair-candidate",
+        previous.snapshot.checkpointId ?? previous.snapshot.snapshotId ?? "",
+        previous.entity.localId,
+        candidate?.snapshot.checkpointId ??
+          candidate?.snapshot.snapshotId ??
+          "",
+        candidate?.entity.localId ?? "",
+        state
+      ].join(":")
+    )
+  ).slice(0, 16);
+
+  return `topology_repair_candidate_${hashSegment}`;
+}
+
 function createMatchResult({
   previous,
   candidate,
@@ -398,7 +628,8 @@ function createMatchResult({
   confidence,
   confidenceScore,
   evidence,
-  diagnostics
+  diagnostics,
+  repairCandidates = []
 }: {
   readonly previous: MatchEntity;
   readonly candidate?: MatchEntity;
@@ -407,7 +638,8 @@ function createMatchResult({
   readonly confidenceScore: number;
   readonly evidence: readonly CadTopologyMatchEvidence[];
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
-}) {
+  readonly repairCandidates?: readonly CadTopologyRepairCandidate[];
+}): MatchResultWithCandidates {
   return {
     ...(previous.snapshot.checkpointId
       ? { previousCheckpointId: previous.snapshot.checkpointId }
@@ -426,7 +658,8 @@ function createMatchResult({
     evidenceCount: evidence.length,
     evidence,
     diagnosticCount: diagnostics.length,
-    diagnostics
+    diagnostics,
+    repairCandidates
   };
 }
 
@@ -474,6 +707,18 @@ function isMatchableEntity(
   entity: CadBodyExactTopologyEntityDescriptor
 ): entity is MatchableTopologyEntity {
   return entity.kind !== "solid";
+}
+
+function isRepairCandidateEntityKind(
+  kind: CadTopologyEntityKind
+): kind is CadTopologyAnchorEntityKind {
+  return (
+    kind === "body" ||
+    kind === "face" ||
+    kind === "edge" ||
+    kind === "vertex" ||
+    kind === "axis"
+  );
 }
 
 function confidenceFromScore(score: number): CadTopologyMatchConfidence {

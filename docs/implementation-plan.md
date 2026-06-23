@@ -2383,9 +2383,11 @@ Use these decisions when drafting or implementing V13 tranches:
    performs non-mutating snapshot-to-snapshot matching with source lineage,
    signature, checkpoint source identity, confidence, evidence, and structured
    diagnostics for active/replaced/split/merged/deleted/ambiguous/
-   repair-needed/kind-mismatch states. Agent and MCP wrappers pass through the
-   same cad-core query. Richer geometry/adjacency scoring waits for richer
-   checkpoint descriptors.
+   repair-needed/kind-mismatch states. It also reports structured,
+   non-commandable repair candidates with opaque candidate IDs and explicit
+   checkpoint-local evidence, but no proposed mutation ops. Agent and MCP
+   wrappers pass through the same cad-core query. Richer geometry/adjacency
+   scoring waits for richer checkpoint descriptors.
 6. **Implemented: Reference Health And Rebuild Integration, First Slice** -
    existing reference, dependency, rebuild, and editability query surfaces now
    consume V18 topology anchor records plus caller-supplied
@@ -2418,7 +2420,12 @@ Use these decisions when drafting or implementing V13 tranches:
    planner: cad-core, agents, and MCP can ask for a proposed
    `topology.anchor.repair` batch for one existing anchor and one replacement
    checkpoint only when caller-supplied exact topology evidence proves a
-   kind-compatible, unambiguous replacement entity. The web app now exposes an
+   kind-compatible, unambiguous replacement entity; ambiguous and low-confidence
+   single-anchor evidence returns structured repair candidates without proposed
+   mutation ops. Broad split/merge/ambiguous repair-candidate discovery remains
+   on `topology.matchSnapshots`, which reports opaque candidate IDs and
+   checkpoint-local evidence but no command ops.
+   The web app now exposes an
    explicit selected-reference action that prepares source-owned exact topology
    evidence, asks cad-core for the creation plan, dry-runs the proposed batch,
    commits it through CADOps, and then lets ordinary `.wcad` save persist the
@@ -2519,7 +2526,10 @@ Use these decisions when drafting or implementing V13 tranches:
     checkpoint entity, downstream cut through a topology body anchor, JSON
     round-trip behavior, `partbench.wcad.v2` caller-supplied checkpoint
     payload round-trip behavior, and exact/split/merged/ambiguous/deleted/
-    low-confidence topology matching. The first
+    low-confidence topology matching. Repair planning now reports structured
+    replacement candidates for ambiguous or low-confidence anchor repair
+    evidence while leaving interactive candidate-choice UI for later Tranche K.
+    The first
     browser release sample is implemented as `pnpm smoke:v13-browser-workflow`:
     it imports the V13 topology fixture through Project/File JSON, verifies the
     compact topology identity status, selects the repaired named face as a

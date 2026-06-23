@@ -477,6 +477,7 @@ describe("cad-protocol", () => {
       diagnostics: []
     };
     const repair: CadTopologyRepairCandidate = {
+      candidateId: "topology_repair_candidate_1",
       anchorId: "anchor_1",
       target: {
         type: "generatedReference",
@@ -484,9 +485,17 @@ describe("cad-protocol", () => {
         stableId: "face:endCap",
         kind: "face"
       },
+      candidateCheckpointEvidence: {
+        checkpointId: "checkpoint_2",
+        checkpointEntityId: "checkpoint-local:face:2",
+        idScope: "checkpoint-local",
+        publicStableId: false
+      },
       entityKind: "face",
       state: "repair-needed",
       confidence: "medium",
+      canAutoRetarget: false,
+      recommendedAction: "manual-repair-plan",
       evidence: match.evidence,
       diagnostics: []
     };
@@ -585,6 +594,8 @@ describe("cad-protocol", () => {
           message: "Semantic role matches."
         }
       ],
+      repairCandidateCount: 1,
+      repairCandidates: [repair],
       createsCheckpoint: false,
       createsRepair: true,
       opCount: 1,
@@ -878,6 +889,8 @@ describe("cad-protocol", () => {
           ]
         }
       ],
+      repairCandidateCount: 0,
+      repairCandidates: [],
       diagnosticCount: 1,
       diagnostics: [
         {

@@ -7,7 +7,9 @@ import type {
   CadQueryError,
   CadTopologyIdentityDiagnostic,
   CadTopologyIdentitySourceSnapshot,
+  CadTopologyMatchConfidence,
   CadTopologyMatchEvidence,
+  CadTopologyRepairCandidate,
   DocumentUnits,
   TopologyAnchorRepairOp,
   TopologyAnchorRepairPlanQueryResponse,
@@ -214,6 +216,7 @@ export function createTopologyAnchorRepairPlan(
 
   const replacementEntity = findReplacementEntity({
     anchor,
+    replacementCheckpointId,
     entities: topologySnapshot.entities,
     diagnostics
   });
@@ -222,6 +225,8 @@ export function createTopologyAnchorRepairPlan(
     return createResponse(options, {
       status: replacementEntity.status,
       anchor,
+      replacementCheckpointId,
+      candidates: replacementEntity.candidates,
       diagnostics
     });
   }
@@ -250,6 +255,7 @@ export function createTopologyAnchorRepairPlan(
       replacementCheckpointEntityId: replacementEntity.entity.localId,
       confidence: "exact",
       evidence: replacementEntity.evidence,
+      candidates: replacementEntity.candidates,
       diagnostics
     });
   }
@@ -324,6 +330,7 @@ export function createTopologyAnchorRepairPlan(
     repairId,
     confidence: replacementEntity.confidence,
     evidence: replacementEntity.evidence,
+    candidates: replacementEntity.candidates,
     replacementCheckpointId,
     ops: checkpointOp ? [checkpointOp, repairOp] : [repairOp],
     diagnostics
@@ -332,6 +339,7 @@ export function createTopologyAnchorRepairPlan(
 
 function findReplacementEntity(input: {
   readonly anchor: CadTopologyIdentitySourceSnapshot["anchors"][number];
+  readonly replacementCheckpointId: string;
   readonly entities: readonly CadBodyExactTopologyEntityDescriptor[];
   readonly diagnostics: CadTopologyIdentityDiagnostic[];
 }):
@@ -340,8 +348,12 @@ function findReplacementEntity(input: {
       readonly entity: CadBodyExactTopologyEntityDescriptor;
       readonly confidence: "exact" | "high";
       readonly evidence: readonly CadTopologyMatchEvidence[];
+      readonly candidates: readonly CadTopologyRepairCandidate[];
     }
-  | { readonly status: "missing" | "unsupported" | "ambiguous" } {
+  | {
+      readonly status: "missing" | "unsupported" | "ambiguous";
+      readonly candidates: readonly CadTopologyRepairCandidate[];
+    } {
   const sameKind = input.entities.filter(
     (entity) => entity.kind === input.anchor.entityKind
   );
@@ -361,7 +373,7 @@ function findReplacementEntity(input: {
         }
       )
     );
-    return { status: "missing" };
+    return { status: "missing", candidates: [] };
   }
 
   const signatureMatches = input.anchor.signatureHash
@@ -384,6 +396,25 @@ function findReplacementEntity(input: {
           previousValue: input.anchor.signatureHash,
           candidateValue: signatureMatches[0]!.signature
         }
+      ],
+      candidates: [
+        createRepairCandidate({
+          anchor: input.anchor,
+          replacementCheckpointId: input.replacementCheckpointId,
+          entity: signatureMatches[0]!,
+          state: "replaced",
+          confidence: "exact",
+          evidence: [
+            {
+              kind: "geometrySignature",
+              confidence: "exact",
+              message:
+                "Replacement checkpoint entity matches the existing topology anchor signature.",
+              previousValue: input.anchor.signatureHash,
+              candidateValue: signatureMatches[0]!.signature
+            }
+          ]
+        })
       ]
     };
   }
@@ -403,7 +434,41 @@ function findReplacementEntity(input: {
         }
       )
     );
-    return { status: "ambiguous" };
+    return {
+      status: "ambiguous",
+      candidates: signatureMatches.map((entity) =>
+        createRepairCandidate({
+          anchor: input.anchor,
+          replacementCheckpointId: input.replacementCheckpointId,
+          entity,
+          state: "ambiguous",
+          confidence: "exact",
+          evidence: [
+            {
+              kind: "geometrySignature",
+              confidence: "exact",
+              message:
+                "Replacement checkpoint entity matches the existing topology anchor signature, but the match is not unique.",
+              previousValue: input.anchor.signatureHash,
+              candidateValue: entity.signature
+            }
+          ],
+          diagnostics: [
+            createDiagnostic(
+              "TOPOLOGY_MATCH_AMBIGUOUS",
+              "warning",
+              "Multiple exact replacement candidates require explicit user choice.",
+              {
+                bodyId: input.anchor.bodyId,
+                anchorId: input.anchor.anchorId,
+                checkpointId: input.anchor.checkpointId,
+                entityKind: input.anchor.entityKind
+              }
+            )
+          ]
+        })
+      )
+    };
   }
 
   const semanticMatches =
@@ -446,7 +511,17 @@ function findReplacementEntity(input: {
       status: "ready",
       entity: semanticMatches[0]!,
       confidence: "high",
-      evidence
+      evidence,
+      candidates: [
+        createRepairCandidate({
+          anchor: input.anchor,
+          replacementCheckpointId: input.replacementCheckpointId,
+          entity: semanticMatches[0]!,
+          state: "replaced",
+          confidence: "high",
+          evidence
+        })
+      ]
     };
   }
 
@@ -465,7 +540,32 @@ function findReplacementEntity(input: {
         }
       )
     );
-    return { status: "ambiguous" };
+    return {
+      status: "ambiguous",
+      candidates: semanticMatches.map((entity) =>
+        createRepairCandidate({
+          anchor: input.anchor,
+          replacementCheckpointId: input.replacementCheckpointId,
+          entity,
+          state: "ambiguous",
+          confidence: "high",
+          evidence: createSemanticRepairEvidence(input.anchor, entity),
+          diagnostics: [
+            createDiagnostic(
+              "TOPOLOGY_MATCH_AMBIGUOUS",
+              "warning",
+              "Multiple semantic replacement candidates require explicit user choice.",
+              {
+                bodyId: input.anchor.bodyId,
+                anchorId: input.anchor.anchorId,
+                checkpointId: input.anchor.checkpointId,
+                entityKind: input.anchor.entityKind
+              }
+            )
+          ]
+        })
+      )
+    };
   }
 
   input.diagnostics.push(
@@ -483,7 +583,151 @@ function findReplacementEntity(input: {
     )
   );
 
-  return { status: "missing" };
+  return {
+    status: "missing",
+    candidates: sameKind.map((entity) =>
+      createRepairCandidate({
+        anchor: input.anchor,
+        replacementCheckpointId: input.replacementCheckpointId,
+        entity,
+        state: "repair-needed",
+        confidence: "low",
+        evidence: [
+          {
+            kind: "entityKind",
+            confidence: "medium",
+            message:
+              "Replacement checkpoint entity has the same topology kind but no high-confidence signature or semantic match.",
+            previousValue: input.anchor.entityKind,
+            candidateValue: entity.kind
+          }
+        ],
+        diagnostics: [
+          createDiagnostic(
+            "TOPOLOGY_MATCH_LOW_CONFIDENCE",
+            "warning",
+            "Low-confidence repair candidate requires explicit review before retargeting.",
+            {
+              bodyId: input.anchor.bodyId,
+              anchorId: input.anchor.anchorId,
+              checkpointId: input.anchor.checkpointId,
+              entityKind: input.anchor.entityKind
+            }
+          )
+        ]
+      })
+    )
+  };
+}
+
+function createRepairCandidate({
+  anchor,
+  replacementCheckpointId,
+  entity,
+  state,
+  confidence,
+  evidence,
+  diagnostics = []
+}: {
+  readonly anchor: CadTopologyIdentitySourceSnapshot["anchors"][number];
+  readonly replacementCheckpointId: string;
+  readonly entity: CadBodyExactTopologyEntityDescriptor;
+  readonly state: CadTopologyRepairCandidate["state"];
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly diagnostics?: readonly CadTopologyIdentityDiagnostic[];
+}): CadTopologyRepairCandidate {
+  return {
+    candidateId: createRepairCandidateId({
+      anchorId: anchor.anchorId,
+      replacementCheckpointId,
+      replacementCheckpointEntityId: entity.localId,
+      state
+    }),
+    anchorId: anchor.anchorId,
+    target: {
+      type: "topologyAnchor",
+      anchorId: anchor.anchorId
+    },
+    ...(anchor.checkpointEntityId
+      ? {
+          previousCheckpointEvidence: {
+            checkpointId: anchor.checkpointId,
+            checkpointEntityId: anchor.checkpointEntityId,
+            idScope: "checkpoint-local",
+            publicStableId: false
+          } as const
+        }
+      : {}),
+    candidateCheckpointEvidence: {
+      checkpointId: replacementCheckpointId,
+      checkpointEntityId: entity.localId,
+      idScope: "checkpoint-local",
+      publicStableId: false
+    },
+    entityKind: anchor.entityKind,
+    state,
+    confidence,
+    canAutoRetarget: false,
+    recommendedAction: "manual-repair-plan",
+    evidence,
+    diagnostics
+  };
+}
+
+function createRepairCandidateId(input: {
+  readonly anchorId: string;
+  readonly replacementCheckpointId: string;
+  readonly replacementCheckpointEntityId: string;
+  readonly state: CadTopologyRepairCandidate["state"];
+}): string {
+  const hashSegment = sha256Hex(
+    new TextEncoder().encode(
+      [
+        "topology-repair-candidate",
+        input.anchorId,
+        input.replacementCheckpointId,
+        input.replacementCheckpointEntityId,
+        input.state
+      ].join(":")
+    )
+  ).slice(0, 16);
+
+  return `topology_repair_candidate_${hashSegment}`;
+}
+
+function createSemanticRepairEvidence(
+  anchor: CadTopologyIdentitySourceSnapshot["anchors"][number],
+  entity: CadBodyExactTopologyEntityDescriptor
+): readonly CadTopologyMatchEvidence[] {
+  const evidence: CadTopologyMatchEvidence[] = [];
+
+  if (anchor.stableId && entity.signature.includes(anchor.stableId)) {
+    evidence.push({
+      kind: "sourceLineage",
+      confidence: "high",
+      message:
+        "Replacement checkpoint entity signature carries the existing generated reference stable id.",
+      previousValue: anchor.stableId,
+      candidateValue: entity.signature
+    });
+  }
+
+  if (
+    anchor.sourceSemanticRole &&
+    entity.signature.includes(anchor.sourceSemanticRole)
+  ) {
+    evidence.push({
+      kind: "sourceSemanticRole",
+      confidence: "high",
+      message:
+        "Replacement checkpoint entity signature carries the existing source semantic role.",
+      previousValue: anchor.sourceSemanticRole,
+      candidateValue: entity.signature
+    });
+  }
+
+  return evidence;
 }
 
 function createResponse(
@@ -496,6 +740,7 @@ function createResponse(
     readonly repairId?: string;
     readonly confidence?: TopologyAnchorRepairPlanQueryResponse["confidence"];
     readonly evidence?: readonly CadTopologyMatchEvidence[];
+    readonly candidates?: readonly CadTopologyRepairCandidate[];
     readonly ops?: readonly CadOp[];
     readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
   }
@@ -537,6 +782,8 @@ function createResponse(
       ...(input.repairId ? { repairId: input.repairId } : {}),
       confidence: input.confidence ?? "none",
       evidence: input.evidence ?? [],
+      repairCandidateCount: input.candidates?.length ?? 0,
+      repairCandidates: input.candidates ?? [],
       createsCheckpoint: ops.some(
         (op) => op.op === "topology.checkpoint.create"
       ),

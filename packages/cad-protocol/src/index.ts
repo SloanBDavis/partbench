@@ -3269,18 +3269,39 @@ export type CadTopologyRepairCandidateTarget =
       readonly bodyId: BodyId;
       readonly stableId: string;
       readonly kind: CadTopologyAnchorEntityKind;
+    }
+  | {
+      readonly type: "topologyMatch";
+      readonly previousCheckpointId?: string;
+      readonly previousSnapshotId?: string;
+      readonly entityKind: CadTopologyAnchorEntityKind;
     };
 
+export interface CadTopologyRepairCheckpointEvidence {
+  readonly checkpointId?: string;
+  readonly checkpointEntityId: string;
+  readonly idScope: "checkpoint-local";
+  readonly publicStableId: false;
+}
+
 export interface CadTopologyRepairCandidate {
-  readonly anchorId: string;
+  readonly candidateId: string;
+  readonly anchorId?: string;
   readonly target: CadTopologyRepairCandidateTarget;
+  readonly previousCheckpointEvidence?: CadTopologyRepairCheckpointEvidence;
+  readonly candidateCheckpointEvidence?: CadTopologyRepairCheckpointEvidence;
   readonly entityKind: CadTopologyAnchorEntityKind;
   readonly state: Extract<
     CadTopologyIdentityState,
-    "replaced" | "split" | "merged" | "ambiguous" | "repair-needed"
+    "replaced" | "split" | "merged" | "ambiguous" | "repair-needed" | "deleted"
   >;
   readonly confidence: CadTopologyMatchConfidence;
   readonly confidenceScore?: number;
+  readonly canAutoRetarget: false;
+  readonly recommendedAction:
+    | "inspect"
+    | "manual-repair-plan"
+    | "not-repairable";
   readonly evidence: readonly CadTopologyMatchEvidence[];
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
 }
@@ -5108,6 +5129,8 @@ export interface TopologyMatchSnapshotsQueryResponse {
   readonly candidateSnapshots: readonly CadTopologySnapshotDescriptor[];
   readonly resultCount: number;
   readonly matchResults: readonly CadTopologyMatchResult[];
+  readonly repairCandidateCount: number;
+  readonly repairCandidates: readonly CadTopologyRepairCandidate[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
   readonly sourceBoundaryNote: string;
@@ -5167,6 +5190,8 @@ export interface TopologyAnchorRepairPlanQueryResponse {
   readonly repairId?: string;
   readonly confidence: CadTopologyMatchConfidence;
   readonly evidence: readonly CadTopologyMatchEvidence[];
+  readonly repairCandidateCount: number;
+  readonly repairCandidates: readonly CadTopologyRepairCandidate[];
   readonly createsCheckpoint: boolean;
   readonly createsRepair: boolean;
   readonly opCount: number;

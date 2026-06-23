@@ -2471,6 +2471,8 @@ function toAgentQueryResponse(
       candidateSnapshots: response.candidateSnapshots,
       resultCount: response.resultCount,
       matchResults: response.matchResults,
+      repairCandidateCount: response.repairCandidateCount,
+      repairCandidates: response.repairCandidates,
       diagnosticCount: response.diagnosticCount,
       diagnostics: response.diagnostics,
       sourceBoundaryNote: response.sourceBoundaryNote,

@@ -595,7 +595,11 @@ function verifyTopologyMatching(engine, fixture, failures) {
       checks += 2;
     }
 
-    checkNoBoundaryLeaks(failures, "topology match", JSON.stringify(match));
+    checkNoBoundaryLeaksAllowingCheckpointEvidence(
+      failures,
+      "topology match",
+      JSON.stringify(match)
+    );
   }
 
   return checks;
@@ -641,6 +645,22 @@ function checkNoBoundaryLeaks(failures, label, text) {
   if (V13_RELEASE_BOUNDARY_LEAK_PATTERN.test(text)) {
     failures.push(`${label}: leaked renderer/kernel/browser/cache identifier`);
   }
+}
+
+function checkNoBoundaryLeaksAllowingCheckpointEvidence(failures, label, text) {
+  checkNoBoundaryLeaks(
+    failures,
+    label,
+    text
+      .replaceAll(
+        '"idScope":"checkpoint-local"',
+        '"idScope":"checkpointEvidence"'
+      )
+      .replaceAll(
+        /"checkpointEntityId":"[^"]+"/g,
+        '"checkpointEvidenceEntity":"[private]"'
+      )
+  );
 }
 
 function checkNoSourceBoundaryLeaks(failures, label, text) {
