@@ -2525,7 +2525,12 @@ Use these decisions when drafting or implementing V13 tranches:
     topology identity status advances through explicit stable-reference creation
     and replacement-checkpoint repair, and proves the user-created stable
     reference and repair payloads persist through `.wcad` v2 package bytes.
-    Broader split/merge manual repair workflows remain later Tranche K
+    Cad-core, agent-adapter, and MCP now also expose
+    `topology.anchorRepairCandidates`, a non-mutating query that groups
+    split/merge/ambiguous/deleted/repair-needed match repair evidence by
+    current topology anchors, keeps unscoped snapshot candidates separate, and
+    marks grouped candidate IDs as match-preview IDs rather than repair-plan
+    selection IDs. Broad project-level repair review UI remains later Tranche K
     hardening.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
@@ -2541,8 +2546,10 @@ Use these decisions when drafting or implementing V13 tranches:
     low-confidence topology matching. Repair planning now reports structured
     replacement candidates for ambiguous or low-confidence anchor repair
     evidence, and the first selected-anchor browser workflow can preview and
-    apply one candidate through a fresh cad-core repair plan. Broader split/merge
-    repair workflows remain later Tranche K.
+    apply one candidate through a fresh cad-core repair plan. Anchor-scoped
+    split/merge/ambiguous repair candidate grouping is implemented through
+    `topology.anchorRepairCandidates`; broad project-level repair review UI
+    remains later Tranche K.
     The first
     browser release sample is implemented as `pnpm smoke:v13-browser-workflow`:
     it imports the V13 topology fixture through Project/File JSON, verifies the
@@ -2552,13 +2559,12 @@ Use these decisions when drafting or implementing V13 tranches:
     clicks the explicit Inspector "Create stable reference" action for an
     unanchored generated face, verifies the anchor count and `.wcad` v2 package
     bytes after that user gesture, clicks the explicit Inspector "Repair stable
-    candidate preview for the selected topology anchor, clicks the explicit
-    "Repair selected candidate" action, verifies replacement checkpoint
-    creation, asserts visible topology UI does not leak private renderer,
-    kernel, or checkpoint-local ids, and exports JSON again to prove the
-    downstream cut keeps its `targetTopologyAnchorId` and the user-created
-    topology anchor survives. Broader split/merge manual repair workflows remain
-    later Tranche K hardening. The geometry boundary can now generate
+    reference" action, previews a manual repair candidate for the selected
+    topology anchor, clicks the explicit "Repair selected candidate" action,
+    verifies replacement checkpoint creation, asserts visible topology UI does
+    not leak private renderer, kernel, or checkpoint-local ids, and exports JSON
+    again to prove the downstream cut keeps its `targetTopologyAnchorId` and the
+    user-created topology anchor survives. The geometry boundary can now generate
     real native B-rep checkpoint payload bytes for supported exact body sources,
     and the browser smoke proves the app save workflow attaches generated
     payload bytes for existing V18 checkpoint source records.

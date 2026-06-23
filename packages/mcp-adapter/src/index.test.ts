@@ -88,6 +88,7 @@ describe("mcp-adapter", () => {
       "cad.project_rebuild_plan",
       "cad.project_topology_identity_readiness",
       "cad.topology_match_snapshots",
+      "cad.topology_anchor_repair_candidates",
       "cad.topology_anchor_creation_plan",
       "cad.topology_anchor_repair_plan",
       "cad.project_export_readiness",
@@ -1584,6 +1585,164 @@ describe("mcp-adapter", () => {
             candidateCheckpointEntityId: "face_new"
           })
         ]
+      }
+    });
+  });
+
+  it("passes topology anchor repair candidate grouping through cad.topology_anchor_repair_candidates", () => {
+    const server = new CadMcpServer();
+    const setup = server.callTool({
+      name: "cad.batch",
+      requestId: "mcp_req_topology_anchor_repair_candidates_setup",
+      arguments: {
+        allowCommit: true,
+        batch: {
+          version: "cadops.v1",
+          mode: "commit",
+          ops: [
+            {
+              op: "sketch.create",
+              id: "sketch_1",
+              name: "Profile",
+              plane: "XY"
+            },
+            {
+              op: "sketch.addRectangle",
+              sketchId: "sketch_1",
+              id: "rect_1",
+              center: [0, 0],
+              width: 2,
+              height: 2
+            },
+            {
+              op: "feature.extrude",
+              id: "feat_rect_1",
+              bodyId: "body_rect_1",
+              sketchId: "sketch_1",
+              entityId: "rect_1",
+              depth: 1
+            },
+            {
+              op: "topology.checkpoint.create",
+              checkpointId: "checkpoint_1",
+              bodyId: "body_rect_1",
+              sourceFeatureId: "feat_rect_1",
+              sourceIdentity: {
+                algorithm: "partbench-source-v1",
+                sha256:
+                  "1111111111111111111111111111111111111111111111111111111111111111"
+              },
+              status: "active"
+            },
+            {
+              op: "topology.anchor.create",
+              anchorId: "anchor_face_1",
+              entityKind: "face",
+              bodyId: "body_rect_1",
+              checkpointId: "checkpoint_1",
+              checkpointEntityId: "checkpoint-local-face-1",
+              stableId: "generated:face:body_rect_1:endCap",
+              sourceSemanticRole: "end cap",
+              signatureHash: "face_signature_1"
+            }
+          ]
+        }
+      }
+    });
+    const topologySnapshot = {
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "checkpoint-local-face-1",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face_signature_1"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "snapshot-signature",
+      diagnostics: []
+    };
+    expect(setup).toMatchObject({
+      toolName: "cad.batch",
+      isError: false,
+      structuredContent: { ok: true }
+    });
+
+    const result = server.callTool({
+      name: "cad.topology_anchor_repair_candidates",
+      requestId: "mcp_req_topology_anchor_repair_candidates",
+      arguments: {
+        previous: {
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          topologySnapshot
+        },
+        candidates: [
+          {
+            checkpointId: "checkpoint_2",
+            bodyId: "body_rect_1",
+            topologySnapshot: {
+              ...topologySnapshot,
+              entityCounts: {
+                ...topologySnapshot.entityCounts,
+                faceCount: 2
+              },
+              entityCount: 2,
+              entities: [
+                {
+                  localId: "snapshot-local:face:a",
+                  kind: "face",
+                  source: "kernel-derived",
+                  signature: "face_signature_1"
+                },
+                {
+                  localId: "snapshot-local:face:b",
+                  kind: "face",
+                  source: "kernel-derived",
+                  signature: "face_signature_1"
+                }
+              ]
+            }
+          }
+        ],
+        anchorIds: ["anchor_face_1"]
+      }
+    });
+
+    expect(result).toMatchObject({
+      toolName: "cad.topology_anchor_repair_candidates",
+      isError: false,
+      structuredContent: {
+        ok: true,
+        requestId: "mcp_req_topology_anchor_repair_candidates",
+        query: "topology.anchorRepairCandidates",
+        status: "split",
+        anchorGroupCount: 1,
+        anchorGroups: [
+          expect.objectContaining({
+            anchorId: "anchor_face_1",
+            target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+            candidateIdScope: "topology-match-preview",
+            repairCandidateCount: 2
+          })
+        ],
+        mutatesSource: false
       }
     });
   });
@@ -5138,6 +5297,7 @@ describe("mcp-adapter", () => {
           { name: "cad.project_rebuild_plan" },
           { name: "cad.project_topology_identity_readiness" },
           { name: "cad.topology_match_snapshots" },
+          { name: "cad.topology_anchor_repair_candidates" },
           { name: "cad.topology_anchor_creation_plan" },
           { name: "cad.topology_anchor_repair_plan" },
           { name: "cad.project_export_readiness" },

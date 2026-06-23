@@ -39,6 +39,7 @@ export type CadMcpToolName =
   | "cad.project_rebuild_plan"
   | "cad.project_topology_identity_readiness"
   | "cad.topology_match_snapshots"
+  | "cad.topology_anchor_repair_candidates"
   | "cad.topology_anchor_creation_plan"
   | "cad.topology_anchor_repair_plan"
   | "cad.project_export_readiness"
@@ -200,6 +201,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.topology_match_snapshots") {
       return this.#callTopologyMatchSnapshots(request);
+    }
+
+    if (request.name === "cad.topology_anchor_repair_candidates") {
+      return this.#callTopologyAnchorRepairCandidates(request);
     }
 
     if (request.name === "cad.topology_anchor_creation_plan") {
@@ -640,6 +645,35 @@ export class CadMcpServer {
             query: "topology.matchSnapshots",
             previous: request.arguments.previous,
             candidates: request.arguments.candidates
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callTopologyAnchorRepairCandidates(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isTopologyAnchorRepairCandidatesArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.topology_anchor_repair_candidates requires previous and candidates snapshot inputs plus optional anchorIds."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "topology.anchorRepairCandidates",
+            previous: request.arguments.previous,
+            candidates: request.arguments.candidates,
+            anchorIds: request.arguments.anchorIds
           }
         }
       })
@@ -1573,6 +1607,29 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         candidates: {
           type: "array",
           items: { type: "object" }
+        }
+      }
+    }
+  },
+  {
+    name: "cad.topology_anchor_repair_candidates",
+    description:
+      "Groups V13 topology match repair candidates by current topology anchors without mutating source; repair commits still go through topology.anchorRepairPlan/topology.anchor.repair.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["previous", "candidates"],
+      properties: {
+        previous: { type: "object" },
+        candidates: {
+          type: "array",
+          items: { type: "object" }
+        },
+        anchorIds: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional list of topology anchor ids to group; omitted means all current anchors that match the previous snapshot evidence."
         }
       }
     }
@@ -3041,6 +3098,22 @@ function isTopologyMatchSnapshotsArguments(value: unknown): value is {
     isTopologyMatchSnapshotInputShape(value.previous) &&
     Array.isArray(value.candidates) &&
     value.candidates.every(isTopologyMatchSnapshotInputShape)
+  );
+}
+
+function isTopologyAnchorRepairCandidatesArguments(value: unknown): value is {
+  readonly previous: CadTopologyMatchSnapshotInput;
+  readonly candidates: readonly CadTopologyMatchSnapshotInput[];
+  readonly anchorIds?: readonly string[];
+} {
+  return (
+    isRecord(value) &&
+    isTopologyMatchSnapshotInputShape(value.previous) &&
+    Array.isArray(value.candidates) &&
+    value.candidates.every(isTopologyMatchSnapshotInputShape) &&
+    (value.anchorIds === undefined ||
+      (Array.isArray(value.anchorIds) &&
+        value.anchorIds.every((anchorId) => typeof anchorId === "string")))
   );
 }
 

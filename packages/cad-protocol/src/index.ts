@@ -1160,6 +1160,7 @@ export type CadQueryKind =
   | "project.rebuildPlan"
   | "project.topologyIdentityReadiness"
   | "topology.matchSnapshots"
+  | "topology.anchorRepairCandidates"
   | "topology.anchorCreationPlan"
   | "topology.anchorRepairPlan"
   | "project.exportReadiness"
@@ -1199,6 +1200,7 @@ export type CadQuery =
   | ProjectRebuildPlanQuery
   | ProjectTopologyIdentityReadinessQuery
   | TopologyMatchSnapshotsQuery
+  | TopologyAnchorRepairCandidatesQuery
   | TopologyAnchorCreationPlanQuery
   | TopologyAnchorRepairPlanQuery
   | ProjectExportReadinessQuery
@@ -1286,6 +1288,13 @@ export interface TopologyMatchSnapshotsQuery {
   readonly query: "topology.matchSnapshots";
   readonly previous: CadTopologyMatchSnapshotInput;
   readonly candidates: readonly CadTopologyMatchSnapshotInput[];
+}
+
+export interface TopologyAnchorRepairCandidatesQuery {
+  readonly query: "topology.anchorRepairCandidates";
+  readonly previous: CadTopologyMatchSnapshotInput;
+  readonly candidates: readonly CadTopologyMatchSnapshotInput[];
+  readonly anchorIds?: readonly string[];
 }
 
 export interface TopologyAnchorCreationPlanQuery {
@@ -4926,6 +4935,7 @@ export type CadQueryResponse =
   | ProjectRebuildPlanQueryResponse
   | ProjectTopologyIdentityReadinessQueryResponse
   | TopologyMatchSnapshotsQueryResponse
+  | TopologyAnchorRepairCandidatesQueryResponse
   | TopologyAnchorCreationPlanQueryResponse
   | TopologyAnchorRepairPlanQueryResponse
   | ProjectExportReadinessQueryResponse
@@ -5133,6 +5143,52 @@ export interface TopologyMatchSnapshotsQueryResponse {
   readonly matchResults: readonly CadTopologyMatchResult[];
   readonly repairCandidateCount: number;
   readonly repairCandidates: readonly CadTopologyRepairCandidate[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
+}
+
+export interface CadTopologyAnchorRepairCandidateGroup {
+  readonly anchorId: string;
+  readonly target: Extract<
+    CadTopologyRepairCandidateTarget,
+    { readonly type: "topologyAnchor" }
+  >;
+  readonly bodyId: BodyId;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly state: CadTopologyIdentityState;
+  readonly confidence: CadTopologyMatchConfidence;
+  readonly confidenceScore?: number;
+  readonly previousCheckpointId?: string;
+  readonly previousCheckpointEntityId?: string;
+  readonly candidateCheckpointId?: string;
+  readonly candidateCheckpointEntityId?: string;
+  readonly repairPlanQuery: "topology.anchorRepairPlan";
+  readonly candidateIdScope: "topology-match-preview";
+  readonly repairCandidateCount: number;
+  readonly repairCandidates: readonly CadTopologyRepairCandidate[];
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+}
+
+export interface TopologyAnchorRepairCandidatesQueryResponse {
+  readonly ok: true;
+  readonly query: "topology.anchorRepairCandidates";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadTopologyIdentityState;
+  readonly anchorFilterCount: number;
+  readonly anchorIds: readonly string[];
+  readonly previousSnapshot: CadTopologySnapshotDescriptor;
+  readonly candidateSnapshotCount: number;
+  readonly candidateSnapshots: readonly CadTopologySnapshotDescriptor[];
+  readonly matchResultCount: number;
+  readonly matchResults: readonly CadTopologyMatchResult[];
+  readonly anchorGroupCount: number;
+  readonly anchorGroups: readonly CadTopologyAnchorRepairCandidateGroup[];
+  readonly unscopedRepairCandidateCount: number;
+  readonly unscopedRepairCandidates: readonly CadTopologyRepairCandidate[];
   readonly diagnosticCount: number;
   readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
   readonly sourceBoundaryNote: string;

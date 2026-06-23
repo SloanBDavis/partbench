@@ -49,6 +49,7 @@ import type {
   SketchEditReadinessQueryResponse,
   SketchEvaluationQueryResponse,
   SketchSolverStatusQueryResponse,
+  TopologyAnchorRepairCandidatesQueryResponse,
   TopologyAnchorRepairPlanQueryResponse,
   TopologyMatchSnapshotsQueryResponse,
   WcadManifestV1,
@@ -908,6 +909,167 @@ describe("cad-protocol", () => {
     expect(request.query.query).toBe("topology.matchSnapshots");
     expect(response.matchResults[0]?.previousCheckpointEntityId).toBe(
       "checkpoint-local:face:1"
+    );
+    expect(response.mutatesSource).toBe(false);
+  });
+
+  it("types anchor-scoped topology repair candidate query responses", () => {
+    const topologySnapshot: CadBodyExactTopologySnapshot = {
+      source: "kernel-derived",
+      status: "ready",
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "checkpoint-local:face:1",
+          kind: "face",
+          source: "kernel-derived",
+          signature: "face-signature"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+      signature: "snapshot-signature",
+      diagnostics: []
+    };
+    const request: CadQueryRequest = {
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorRepairCandidates",
+        anchorIds: ["anchor_1"],
+        previous: {
+          checkpointId: "checkpoint_old",
+          bodyId: "body_1",
+          topologySnapshot
+        },
+        candidates: [
+          {
+            checkpointId: "checkpoint_new",
+            bodyId: "body_1",
+            topologySnapshot
+          }
+        ]
+      }
+    };
+    const repairCandidate: CadTopologyRepairCandidate = {
+      candidateId: "topology_repair_candidate_preview",
+      target: {
+        type: "topologyMatch",
+        previousCheckpointId: "checkpoint_old",
+        entityKind: "face"
+      },
+      previousCheckpointEvidence: {
+        checkpointId: "checkpoint_old",
+        checkpointEntityId: "checkpoint-local:face:1",
+        idScope: "checkpoint-local",
+        publicStableId: false
+      },
+      candidateCheckpointEvidence: {
+        checkpointId: "checkpoint_new",
+        checkpointEntityId: "checkpoint-local:face:2",
+        idScope: "checkpoint-local",
+        publicStableId: false
+      },
+      entityKind: "face",
+      state: "split",
+      confidence: "high",
+      confidenceScore: 0.92,
+      canAutoRetarget: false,
+      recommendedAction: "manual-repair-plan",
+      evidence: [],
+      diagnostics: []
+    };
+    const response: TopologyAnchorRepairCandidatesQueryResponse = {
+      ok: true,
+      query: "topology.anchorRepairCandidates",
+      cadOpsVersion: "cadops.v1",
+      status: "split",
+      anchorFilterCount: 1,
+      anchorIds: ["anchor_1"],
+      previousSnapshot: {
+        checkpointId: "checkpoint_old",
+        bodyId: "body_1",
+        entityKinds: ["face"],
+        entityCount: 1,
+        status: "active",
+        diagnostics: []
+      },
+      candidateSnapshotCount: 1,
+      candidateSnapshots: [
+        {
+          checkpointId: "checkpoint_new",
+          bodyId: "body_1",
+          entityKinds: ["face"],
+          entityCount: 1,
+          status: "active",
+          diagnostics: []
+        }
+      ],
+      matchResultCount: 1,
+      matchResults: [
+        {
+          previousCheckpointId: "checkpoint_old",
+          candidateCheckpointId: "checkpoint_new",
+          previousCheckpointEntityId: "checkpoint-local:face:1",
+          candidateCheckpointEntityId: "checkpoint-local:face:2",
+          entityKind: "face",
+          state: "split",
+          confidence: "high",
+          confidenceScore: 0.92,
+          evidenceCount: 0,
+          evidence: [],
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      anchorGroupCount: 1,
+      anchorGroups: [
+        {
+          anchorId: "anchor_1",
+          target: { type: "topologyAnchor", anchorId: "anchor_1" },
+          bodyId: "body_1",
+          entityKind: "face",
+          state: "split",
+          confidence: "high",
+          confidenceScore: 0.92,
+          previousCheckpointId: "checkpoint_old",
+          previousCheckpointEntityId: "checkpoint-local:face:1",
+          candidateCheckpointId: "checkpoint_new",
+          candidateCheckpointEntityId: "checkpoint-local:face:2",
+          repairPlanQuery: "topology.anchorRepairPlan",
+          candidateIdScope: "topology-match-preview",
+          repairCandidateCount: 1,
+          repairCandidates: [repairCandidate],
+          diagnosticCount: 0,
+          diagnostics: []
+        }
+      ],
+      unscopedRepairCandidateCount: 0,
+      unscopedRepairCandidates: [],
+      diagnosticCount: 0,
+      diagnostics: [],
+      sourceBoundaryNote: "Authoritative anchors plus snapshot input only.",
+      derivedBoundaryNote: "Private renderer IDs excluded.",
+      mutatesSource: false
+    };
+
+    expect(request.query.query).toBe("topology.anchorRepairCandidates");
+    expect(response.anchorGroups[0]?.candidateIdScope).toBe(
+      "topology-match-preview"
+    );
+    expect(response.anchorGroups[0]?.repairPlanQuery).toBe(
+      "topology.anchorRepairPlan"
     );
     expect(response.mutatesSource).toBe(false);
   });

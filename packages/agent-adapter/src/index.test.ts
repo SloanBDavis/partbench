@@ -3114,6 +3114,102 @@ describe("agent-adapter", () => {
     });
   });
 
+  it("passes topology anchor repair candidate grouping through the adapter", () => {
+    const adapter = new CadOpsAgentAdapter(createTopologyAnchorEngine());
+    const topologySnapshot = {
+      source: "kernel-derived" as const,
+      status: "ready" as const,
+      entityCounts: {
+        bodyCount: 0,
+        solidCount: 0,
+        faceCount: 1,
+        wireCount: 0,
+        edgeCount: 0,
+        vertexCount: 0,
+        loopCount: 0,
+        coedgeCount: 0,
+        axisCount: 0
+      },
+      entityCount: 1,
+      entities: [
+        {
+          localId: "checkpoint-local-face-1",
+          kind: "face" as const,
+          source: "kernel-derived" as const,
+          signature: "face_signature_1"
+        }
+      ],
+      unsupportedEntityKinds: [],
+      adjacencyAvailable: true,
+      signatureAlgorithm: "partbench-derived-topology-snapshot-v1" as const,
+      signature: "snapshot-signature",
+      diagnostics: []
+    };
+    const response = adapter.query({
+      requestId: "agent_topology_anchor_repair_candidates",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "topology.anchorRepairCandidates",
+          previous: {
+            checkpointId: "checkpoint_1",
+            bodyId: "body_rect_1",
+            topologySnapshot
+          },
+          candidates: [
+            {
+              checkpointId: "checkpoint_2",
+              bodyId: "body_rect_1",
+              topologySnapshot: {
+                ...topologySnapshot,
+                entityCounts: {
+                  ...topologySnapshot.entityCounts,
+                  faceCount: 2
+                },
+                entityCount: 2,
+                entities: [
+                  {
+                    localId: "snapshot-local:face:a",
+                    kind: "face" as const,
+                    source: "kernel-derived" as const,
+                    signature: "face_signature_1"
+                  },
+                  {
+                    localId: "snapshot-local:face:b",
+                    kind: "face" as const,
+                    source: "kernel-derived" as const,
+                    signature: "face_signature_1"
+                  }
+                ]
+              }
+            }
+          ],
+          anchorIds: ["anchor_face_1"]
+        }
+      }
+    });
+
+    expect(response).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_anchor_repair_candidates",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "topology.anchorRepairCandidates",
+      status: "split",
+      anchorGroupCount: 1,
+      anchorGroups: [
+        expect.objectContaining({
+          anchorId: "anchor_face_1",
+          target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+          state: "split",
+          candidateIdScope: "topology-match-preview",
+          repairCandidateCount: 2
+        })
+      ],
+      mutatesSource: false
+    });
+  });
+
   it("passes topology anchor creation planning through the adapter", () => {
     const adapter = new CadOpsAgentAdapter(createTopologyAnchorEngine());
     const response = adapter.query({

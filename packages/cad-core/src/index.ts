@@ -164,6 +164,7 @@ import { createBodyTopology } from "./bodyTopology";
 import { createBodyTopologyIdentity } from "./bodyTopologyIdentity";
 import { createGeneratedReferenceMeasurements } from "./generatedReferenceMeasurements";
 import { createTopologyAnchorCreationPlan } from "./topologyAnchorCreationPlan";
+import { createTopologyAnchorRepairCandidatesResponse } from "./topologyAnchorRepairCandidates";
 import { createTopologyAnchorRepairPlan } from "./topologyAnchorRepairPlan";
 import { createFeatureEditabilityResponse } from "./featureEditability";
 import {
@@ -1361,6 +1362,14 @@ export class CadEngine {
         return createTopologyMatchSnapshotsResponse({
           cadOpsVersion: request.version,
           query: request.query
+        });
+      }
+
+      case "topology.anchorRepairCandidates": {
+        return createTopologyAnchorRepairCandidatesResponse({
+          cadOpsVersion: request.version,
+          query: request.query,
+          topologyIdentity: this.#document.topologyIdentity
         });
       }
 
@@ -5621,6 +5630,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.rebuildPlan":
     case "project.topologyIdentityReadiness":
     case "topology.matchSnapshots":
+    case "topology.anchorRepairCandidates":
     case "topology.anchorCreationPlan":
     case "topology.anchorRepairPlan":
     case "project.exportReadiness":
@@ -5682,6 +5692,15 @@ function isCadQuery(value: unknown): boolean {
         isCadTopologyMatchSnapshotInput(value.previous) &&
         Array.isArray(value.candidates) &&
         value.candidates.every(isCadTopologyMatchSnapshotInput)
+      );
+    case "topology.anchorRepairCandidates":
+      return (
+        isCadTopologyMatchSnapshotInput(value.previous) &&
+        Array.isArray(value.candidates) &&
+        value.candidates.every(isCadTopologyMatchSnapshotInput) &&
+        (value.anchorIds === undefined ||
+          (Array.isArray(value.anchorIds) &&
+            value.anchorIds.every((anchorId) => typeof anchorId === "string")))
       );
     case "topology.anchorCreationPlan":
       return (
