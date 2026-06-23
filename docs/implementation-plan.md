@@ -2437,10 +2437,11 @@ Use these decisions when drafting or implementing V13 tranches:
    back into a fresh cad-core repair plan without exposing checkpoint-local
    entity IDs or candidate IDs as public CAD references. Ordinary `.wcad` save
    then persists the
-   existing checkpoint payload as package v2. A broader interactive repair UI
-   remains later V13 product hardening. Automatic or silent checkpoint/anchor
-   source-record creation during ordinary app save/open and broader direct
-   topology-anchor command targets remain later V13 work.
+   existing checkpoint payload as package v2. Broader split/merge repair
+   workflows and arbitrary-entity repair UI remain later V13 product hardening.
+   Automatic or silent checkpoint/anchor source-record creation during ordinary
+   app save/open and broader direct topology-anchor command targets remain later
+   V13 work.
    Generated-reference-backed command eligibility and named-reference repair are
    implemented separately through the Tranche I command eligibility slice.
 8. **Implemented, first query slice: Apply Identity To Existing Result Feature
@@ -2520,13 +2521,13 @@ Use these decisions when drafting or implementing V13 tranches:
     can also preview sanitized repair-candidate summaries from that plan path:
     counts, entity kinds, states, confidence, and manual action labels are
     visible, while candidate IDs, checkpoint-local entity IDs, ops, and proposed
-    batches remain hidden and no retargeting occurs. The V13 browser workflow smoke now
-    exercises those actions on an imported V18 fixture, verifies the topology
-    identity status advances through explicit stable-reference creation and
-    replacement-checkpoint repair, and proves the user-created stable reference
-    and repair payloads persist
-    through `.wcad` v2 package bytes. Broader split/merge/manual repair
-    candidate choice and candidate-apply commands remain later Tranche K
+    batches remain hidden. Choosing a candidate asks cad-core for a fresh repair
+    plan and still retargets only through CADOps. The V13 browser workflow smoke
+    now exercises those actions on an imported V18 fixture, verifies the
+    topology identity status advances through explicit stable-reference creation
+    and replacement-checkpoint repair, and proves the user-created stable
+    reference and repair payloads persist through `.wcad` v2 package bytes.
+    Broader split/merge manual repair workflows remain later Tranche K
     hardening.
 11. **Release Samples, Stress Fixtures, And Hardening** - deterministic and
     browser smokes for checkpoint save/open, rebuild, match, repair, command
@@ -2541,7 +2542,9 @@ Use these decisions when drafting or implementing V13 tranches:
     payload round-trip behavior, and exact/split/merged/ambiguous/deleted/
     low-confidence topology matching. Repair planning now reports structured
     replacement candidates for ambiguous or low-confidence anchor repair
-    evidence while leaving interactive candidate-choice UI for later Tranche K.
+    evidence, and the first selected-anchor browser workflow can preview and
+    apply one candidate through a fresh cad-core repair plan. Broader split/merge
+    repair workflows remain later Tranche K.
     The first
     browser release sample is implemented as `pnpm smoke:v13-browser-workflow`:
     it imports the V13 topology fixture through Project/File JSON, verifies the
