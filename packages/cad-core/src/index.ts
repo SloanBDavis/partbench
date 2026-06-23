@@ -11325,34 +11325,13 @@ function validateExtrudeTarget(
     });
   }
 
-  const target = resolveActiveTopologyAnchorStableTarget(
+  const target = resolveActiveTopologyAnchorTarget(
     state,
     targetTopologyAnchorId,
     "body",
     opIndex,
     "targetTopologyAnchorId"
   );
-
-  const validation = validateGeneratedReference({
-    document: state,
-    ownerPartId: DEFAULT_PART_ID,
-    bodyId: target.bodyId,
-    stableId: target.stableId,
-    bodyExists: (bodyId) => documentBodyExists(state, bodyId),
-    expectedKind: "body",
-    requiredOperation: "feature.selectReference"
-  });
-
-  if (!validation.ok) {
-    throwGeneratedReferenceValidationError(
-      validation.error,
-      opIndex,
-      "targetTopologyAnchorId",
-      undefined,
-      target.topologyAnchorId,
-      target.checkpointId
-    );
-  }
 
   return {
     targetBodyId: validateExtrudeTargetBodyId(
@@ -11797,7 +11776,7 @@ function validateSketchAttachmentFace(
   return result.reference as CadGeneratedFaceReference;
 }
 
-function resolveActiveTopologyAnchorStableTarget(
+function resolveActiveTopologyAnchorTarget(
   state: MutableDocumentState,
   topologyAnchorId: string,
   expectedKind: CadTopologyAnchorEntityKind,
@@ -11805,7 +11784,7 @@ function resolveActiveTopologyAnchorStableTarget(
   pathField: string = "topologyAnchorId"
 ): {
   readonly bodyId: BodyId;
-  readonly stableId: string;
+  readonly stableId?: string;
   readonly topologyAnchorId: string;
   readonly checkpointId: string;
 } {
@@ -11885,14 +11864,42 @@ function resolveActiveTopologyAnchorStableTarget(
     });
   }
 
-  if (!anchor.stableId) {
+  return {
+    bodyId: anchor.bodyId,
+    ...(anchor.stableId ? { stableId: anchor.stableId } : {}),
+    topologyAnchorId: anchor.anchorId,
+    checkpointId: anchor.checkpointId
+  };
+}
+
+function resolveActiveTopologyAnchorStableTarget(
+  state: MutableDocumentState,
+  topologyAnchorId: string,
+  expectedKind: CadTopologyAnchorEntityKind,
+  opIndex?: number,
+  pathField: string = "topologyAnchorId"
+): {
+  readonly bodyId: BodyId;
+  readonly stableId: string;
+  readonly topologyAnchorId: string;
+  readonly checkpointId: string;
+} {
+  const target = resolveActiveTopologyAnchorTarget(
+    state,
+    topologyAnchorId,
+    expectedKind,
+    opIndex,
+    pathField
+  );
+
+  if (!target.stableId) {
     throwValidationError({
       code: "INVALID_TOPOLOGY_ANCHOR",
-      message: `Topology anchor ${anchor.anchorId} does not have a stable generated ${expectedKind} backing.`,
+      message: `Topology anchor ${target.topologyAnchorId} does not have a stable generated ${expectedKind} backing.`,
       opIndex,
-      bodyId: anchor.bodyId,
-      topologyAnchorId: anchor.anchorId,
-      checkpointId: anchor.checkpointId,
+      bodyId: target.bodyId,
+      topologyAnchorId: target.topologyAnchorId,
+      checkpointId: target.checkpointId,
       path: operationPath(opIndex, pathField),
       expected: `stable generated ${expectedKind} backing`,
       received: "missing stableId"
@@ -11900,10 +11907,10 @@ function resolveActiveTopologyAnchorStableTarget(
   }
 
   return {
-    bodyId: anchor.bodyId,
-    stableId: anchor.stableId,
-    topologyAnchorId: anchor.anchorId,
-    checkpointId: anchor.checkpointId
+    bodyId: target.bodyId,
+    stableId: target.stableId,
+    topologyAnchorId: target.topologyAnchorId,
+    checkpointId: target.checkpointId
   };
 }
 

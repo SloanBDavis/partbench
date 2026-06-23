@@ -1466,7 +1466,7 @@ describe("mcp-adapter", () => {
         requestId: "mcp_req_topology_identity_readiness",
         query: "project.topologyIdentityReadiness",
         contractVersion: "partbench.topology-identity.v1",
-        status: "deferred",
+        status: "supported",
         currentDocumentSchemaVersion: "web-cad.project.v16",
         plannedProjectSchemaVersion: "web-cad.project.v18",
         currentPackageVersion: "partbench.wcad.v1",
@@ -1483,11 +1483,19 @@ describe("mcp-adapter", () => {
           expect.objectContaining({
             capability: "snapshotExtraction",
             status: "supported"
+          }),
+          expect.objectContaining({
+            capability: "commandEligibility",
+            status: "supported"
           })
         ]),
         diagnostics: expect.arrayContaining([
           expect.objectContaining({
             code: "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED",
+            status: "supported"
+          }),
+          expect.objectContaining({
+            code: "TOPOLOGY_COMMAND_ELIGIBILITY_READY",
             status: "supported"
           })
         ])

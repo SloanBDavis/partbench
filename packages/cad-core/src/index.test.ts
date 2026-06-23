@@ -30911,7 +30911,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ok: true,
       query: "project.topologyIdentityReadiness",
       contractVersion: "partbench.topology-identity.v1",
-      status: "deferred",
+      status: "supported",
       currentDocumentSchemaVersion: CURRENT_CAD_PROJECT_FORMAT_VERSION,
       plannedProjectSchemaVersion: "web-cad.project.v18",
       currentPackageVersion: "partbench.wcad.v1",
@@ -30965,6 +30965,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
           available: true
         }),
         expect.objectContaining({
+          capability: "commandEligibility",
+          status: "supported",
+          available: true
+        }),
+        expect.objectContaining({
           capability: "v18SourceContract",
           status: "supported",
           available: true
@@ -30990,6 +30995,10 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         }),
         expect.objectContaining({
           code: "TOPOLOGY_SOURCE_CONTRACT_READY",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_READY",
           status: "supported"
         }),
         expect.objectContaining({
@@ -32174,7 +32183,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const cutEngine = createTopologyEdgeAnchorEngine({
       anchorId: "anchor_body_1",
       entityKind: "body",
-      stableId: "generated:body:body_rect_1"
+      stableId: ""
     });
     const beforeJson = exportCadProjectJson(cutEngine);
     const cutOps = [
@@ -32309,6 +32318,11 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         })
       ])
     );
+    expect(exportedProject.document.topologyIdentity?.anchors).toEqual([
+      expect.not.objectContaining({
+        stableId: expect.any(String)
+      })
+    ]);
     expect(
       JSON.stringify({
         cutTransaction: cutResult.transaction,
@@ -32322,7 +32336,7 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     const addEngine = createTopologyEdgeAnchorEngine({
       anchorId: "anchor_body_1",
       entityKind: "body",
-      stableId: "generated:body:body_rect_1"
+      stableId: ""
     });
     addEngine.applyBatch([
       {
@@ -32493,14 +32507,15 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       }
     });
 
-    const missingStableEngine = createTopologyEdgeAnchorEngine({
+    const inactiveAnchorEngine = createTopologyEdgeAnchorEngine({
       anchorId: "anchor_body_1",
       entityKind: "body",
-      stableId: ""
+      stableId: "",
+      anchorState: "stale"
     });
-    missingStableEngine.applyBatch(baseOps);
+    inactiveAnchorEngine.applyBatch(baseOps);
     expect(
-      missingStableEngine.executeBatch({
+      inactiveAnchorEngine.executeBatch({
         version: "cadops.v1",
         mode: "commit",
         ops: [
@@ -32521,8 +32536,8 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         topologyAnchorId: "anchor_body_1",
         checkpointId: "checkpoint_1",
         path: "$.ops[0].targetTopologyAnchorId",
-        expected: "stable generated body backing",
-        received: "missing stableId"
+        expected: "active topology anchor and checkpoint",
+        received: "anchor:stale, checkpoint:active"
       }
     });
 

@@ -100,9 +100,9 @@ export function createProjectTopologyIdentityReadiness({
     createCapability(
       "commandEligibility",
       "Topology-anchor command eligibility",
-      "deferred",
-      "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
-      "Command eligibility for arbitrary topology anchors remains deferred until command validators and geometry runtime paths explicitly accept topology-anchor targets."
+      "supported",
+      "TOPOLOGY_COMMAND_ELIGIBILITY_READY",
+      "Generated-reference-backed topology anchors can participate in supported reference commands, and direct active body anchors can target feature.extrude add/cut. Direct face/edge topology-anchor validators without generated backing remain deferred."
     ),
     createCapability(
       "v18SourceContract",

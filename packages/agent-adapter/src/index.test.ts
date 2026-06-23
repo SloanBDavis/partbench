@@ -2987,7 +2987,7 @@ describe("agent-adapter", () => {
       cadOpsVersion: "cadops.v1",
       query: "project.topologyIdentityReadiness",
       contractVersion: "partbench.topology-identity.v1",
-      status: "deferred",
+      status: "supported",
       currentDocumentSchemaVersion: "web-cad.project.v16",
       plannedProjectSchemaVersion: "web-cad.project.v18",
       currentPackageVersion: "partbench.wcad.v1",
@@ -3009,11 +3009,19 @@ describe("agent-adapter", () => {
         expect.objectContaining({
           capability: "matchingEngine",
           status: "supported"
+        }),
+        expect.objectContaining({
+          capability: "commandEligibility",
+          status: "supported"
         })
       ]),
       diagnostics: expect.arrayContaining([
         expect.objectContaining({
           code: "TOPOLOGY_PUBLIC_ID_BOUNDARY_ENFORCED",
+          status: "supported"
+        }),
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_READY",
           status: "supported"
         })
       ])

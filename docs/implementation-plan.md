@@ -2478,20 +2478,18 @@ Use these decisions when drafting or implementing V13 tranches:
    references store the resolved generated target plus topology-anchor
    provenance for semantic diffs, transaction history, reference health,
    dependency graph, import/export, agent, MCP, and app helper surfaces.
-   Stable active body anchors whose generated backing proves a command-ready
-   generated body reference can now be used as `targetTopologyAnchorId` for
-   `feature.extrude` add/cut. Cad-core resolves the anchor to the existing
-   generated `targetBodyId`, reuses the current conservative add/cut target
-   validator, and stores the resolved `targetBodyId` plus topology-anchor
-   provenance for transaction history, project structure, health, dependency
-   graph, import/export, agent, MCP, app helper, generated-reference signature,
-   and topology source-identity surfaces. Metadata-only anchors remain
-   health-only until a direct topology-anchor command target exists. Missing,
-   stale, replaced, ambiguous, deleted, unsupported, consumed, and
+   Stable active body anchors can now be used as `targetTopologyAnchorId` for
+   `feature.extrude` add/cut even when they do not have generated-reference
+   backing. Cad-core resolves the anchor to the existing document body, reuses
+   the current conservative add/cut target validator, and stores the resolved
+   `targetBodyId` plus topology-anchor provenance for transaction history,
+   project structure, health, dependency graph, import/export, agent, MCP, app
+   helper, generated-reference signature, and topology source-identity surfaces.
+   Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Automatic selection routing beyond stable generated-reference backing and
-   direct topology-anchor command targets without generated backing remain later
-   V13 work.
+   direct face/edge topology-anchor command targets without generated backing
+   remain later V13 work.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint
