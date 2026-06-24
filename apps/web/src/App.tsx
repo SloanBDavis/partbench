@@ -953,6 +953,8 @@ function createModelingSelectionContext({
     return {
       selectionKind: "generatedReference",
       reference: selectedGeneratedReferenceState.reference,
+      topologyAnchorId:
+        selectedGeneratedReferenceState.selection.topologyAnchorId,
       body: selectedBody,
       feature: selectedFeature,
       namedReferences,

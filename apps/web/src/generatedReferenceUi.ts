@@ -5,6 +5,7 @@ import type {
   CadGeneratedFaceReference,
   CadGeneratedReference,
   CadQueryError,
+  CadTopologyAnchorCommandProof,
   DocumentUnits,
   GeneratedReferenceMeasurement,
   NamedGeneratedReferenceEntry,
@@ -87,7 +88,8 @@ export function buildSketchOnFaceForm(
   bodyId: string,
   face: CadGeneratedFaceReference,
   draft: SketchOnFaceDraft,
-  topologyAnchorId?: string
+  topologyAnchorId?: string,
+  topologyAnchorProof?: CadTopologyAnchorCommandProof
 ): SketchCreateOnFaceForm | undefined {
   const name = draft.name.trim();
 
@@ -100,7 +102,8 @@ export function buildSketchOnFaceForm(
     name,
     bodyId,
     faceStableId: face.stableId,
-    ...(topologyAnchorId ? { topologyAnchorId } : {})
+    ...(topologyAnchorId ? { topologyAnchorId } : {}),
+    ...(topologyAnchorProof ? { topologyAnchorProof } : {})
   };
 }
 

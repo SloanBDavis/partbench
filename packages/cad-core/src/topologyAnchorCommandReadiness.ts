@@ -474,6 +474,10 @@ function createCommandOperations(
 function createProofCommandOperations(
   proof: CadTopologyAnchorCommandProof
 ): readonly CadSelectionReferenceOperation[] {
+  if (proof.entityKind === "body") {
+    return ["feature.extrudeCutTarget", "feature.extrudeAddTarget"];
+  }
+
   if (proof.kind === "axisAlignedPlanarFace") {
     return ["feature.attachSketchPlane"];
   }

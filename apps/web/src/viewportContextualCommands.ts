@@ -172,11 +172,13 @@ export function createViewportContextualSketchOnFaceForm(
   }
 
   const face = selectedGeneratedReferenceState.reference;
-  const topologyAnchorId = findSelectedTopologyAnchorIdForOperation(
-    face,
-    "feature.attachSketchPlane",
-    selectionReferenceCandidates
-  );
+  const topologyAnchorId =
+    selectedGeneratedReferenceState.selection.topologyAnchorId ??
+    findSelectedTopologyAnchorIdForOperation(
+      face,
+      "feature.attachSketchPlane",
+      selectionReferenceCandidates
+    );
 
   return buildSketchOnFaceForm(
     face.bodyId,
@@ -575,6 +577,9 @@ function actionIdFromOperation(
   operation: CadSelectionReferenceOperation
 ): ViewportContextualCommandActionId {
   switch (operation) {
+    case "feature.extrudeCutTarget":
+    case "feature.extrudeAddTarget":
+      return "body.references.inspect";
     case "feature.attachSketchPlane":
       return "sketch.createOnFace";
     case "feature.chamfer":

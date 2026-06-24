@@ -3285,6 +3285,77 @@ describe("agent-adapter", () => {
     expect(JSON.stringify(response)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
     );
+
+    const targetReadiness = adapter.query({
+      requestId: "agent_topology_command_target_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: {
+        version: "cadops.v1",
+        query: {
+          query: "topology.commandTargetReadiness",
+          target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+          desiredOperation: "feature.attachSketchPlane",
+          snapshot: {
+            checkpointId: "checkpoint_1",
+            bodyId: "body_rect_1",
+            sourceFeatureId: "feat_rect_1",
+            topologySnapshot: {
+              source: "kernel-derived",
+              status: "ready",
+              entityCounts: {
+                bodyCount: 0,
+                solidCount: 0,
+                faceCount: 1,
+                wireCount: 0,
+                edgeCount: 0,
+                vertexCount: 0,
+                loopCount: 0,
+                coedgeCount: 0,
+                axisCount: 0
+              },
+              entityCount: 1,
+              entities: [
+                {
+                  localId: "checkpoint-local-face-1",
+                  kind: "face",
+                  source: "kernel-derived",
+                  signature: "face_signature_1",
+                  bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+                }
+              ],
+              unsupportedEntityKinds: [],
+              adjacencyAvailable: true,
+              signatureAlgorithm: "partbench-derived-topology-snapshot-v1",
+              signature: "snapshot-signature",
+              diagnostics: []
+            }
+          }
+        }
+      }
+    });
+
+    expect(targetReadiness).toMatchObject({
+      ok: true,
+      requestId: "agent_topology_command_target_readiness",
+      adapterVersion: "web-cad.agent-adapter.v1",
+      query: "topology.commandTargetReadiness",
+      status: "ready",
+      commandable: true,
+      supportedOperations: [
+        "feature.attachSketchPlane",
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      anchorReadiness: expect.objectContaining({
+        query: "topology.anchorCommandReadiness",
+        status: "ready"
+      }),
+      mutatesSource: false,
+      exposesPrivateIds: false
+    });
+    expect(JSON.stringify(targetReadiness)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
   });
 
   it("passes topology anchor creation planning through the adapter", () => {

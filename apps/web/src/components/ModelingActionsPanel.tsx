@@ -2402,6 +2402,7 @@ function GeneratedReferenceWorkbench({
           face={context.reference}
           onCreateSketchOnFace={onCreateSketchOnFace}
           onSelectSketch={onSelectSketch}
+          topologyAnchorId={context.topologyAnchorId}
         />
       )}
       {context.reference.kind === "edge" && hasEdgeFinishActions && (
@@ -2422,13 +2423,15 @@ function FaceReferenceWorkbench({
   disabled,
   face,
   onCreateSketchOnFace,
-  onSelectSketch
+  onSelectSketch,
+  topologyAnchorId
 }: {
   readonly actions: readonly ModelingActionDescriptor[];
   readonly disabled: boolean;
   readonly face: CadGeneratedFaceReference;
   readonly onCreateSketchOnFace?: (form: SketchCreateOnFaceForm) => void;
   readonly onSelectSketch?: (sketchId: string, entityId?: string) => void;
+  readonly topologyAnchorId?: string;
 }) {
   const action = actions.find(
     (candidate) => candidate.id === "sketch.createOnFace"
@@ -2437,7 +2440,12 @@ function FaceReferenceWorkbench({
     id: "",
     name: createSketchOnFaceDefaultName(face)
   }));
-  const sketchForm = buildSketchOnFaceForm(face.bodyId, face, form);
+  const sketchForm = buildSketchOnFaceForm(
+    face.bodyId,
+    face,
+    form,
+    topologyAnchorId
+  );
 
   return (
     <section className="workbench-card">

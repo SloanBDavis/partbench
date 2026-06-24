@@ -155,9 +155,10 @@ stable result topology is not persisted and does not require
 The current exported JSON shape is:
 
 ```ts
-ProjectV16OrV17 {
+ProjectV16OrV17OrV18 {
   schemaVersion: "web-cad.project.v16"
                | "web-cad.project.v17"
+               | "web-cad.project.v18"
   document: {
     units: "mm" | "cm" | "m" | "in"
     objects: SceneObject[]
@@ -167,6 +168,7 @@ ProjectV16OrV17 {
     parameters: CadParameter[]
     sketchDimensions: SketchDimension[]
     sketchConstraints: SketchConstraint[]
+    topologyIdentity?: CadTopologyIdentitySourceSnapshot
     nextObjectNumber: number
     nextSketchNumber: number
     nextSketchEntityNumber: number
@@ -384,7 +386,7 @@ Sketch {
   id: string
   name: string
   plane: "XY" | "XZ" | "YZ"
-  attachment?: SketchGeneratedFaceAttachment
+  attachment?: SketchGeneratedFaceAttachment | SketchTopologyAnchorFaceAttachment
   entities: SketchEntity[]
 }
 
@@ -402,6 +404,15 @@ SketchGeneratedFaceAttachment {
     | "side:uMax"
     | "side:vMin"
     | "side:vMax"
+}
+
+SketchTopologyAnchorFaceAttachment {
+  kind: "topologyAnchorFace"
+  bodyId: string
+  topologyAnchorId: string
+  checkpointId: string
+  planarAxis: "x" | "y" | "z"
+  planarCoordinate: number
 }
 
 SketchEntity =
@@ -424,17 +435,19 @@ SketchEntity =
 
 Sketch names must be non-empty after trimming. Sketch coordinates must be
 finite numbers. Rectangle width/height and circle radius must be positive finite
-numbers. Sketches created with `sketch.createOnFace` may store attachment
-metadata pointing at an eligible generated planar face reference from an
-authored sketch-extrude body. That attachment is source-of-truth sketch
-placement metadata. The generated reference objects themselves remain derived
-and are not persisted. Sketches do not yet include a general solver, source-level
-coordinate remapping for attached faces, or automatic profile recognition. The
-viewport and derived geometry pipeline may derive a frame from the current
-generated face reference so attached sketches render on the referenced face and
-existing `feature.extrude` bodies sourced from those sketches can be displayed
-from that face. Those frames and meshes are rebuildable view/cache data and are
-not saved.
+numbers. Sketches created with `sketch.createOnFace` may store source-of-truth
+attachment metadata. A `generatedFace` attachment points at an eligible
+generated planar face reference from an authored sketch-extrude body. A
+`topologyAnchorFace` attachment points at a validated topology face anchor and
+checkpoint plus replayable planar proof. The generated reference objects
+themselves, checkpoint-local topology entity IDs, raw OCCT handles, mesh IDs,
+renderer IDs, selection-buffer IDs, viewport state, and derived frames are not
+persisted as sketch placement authority. The viewport and derived geometry
+pipeline may derive a frame from the current generated face or topology-anchor
+proof so attached sketches render on the referenced face and existing
+`feature.extrude` bodies sourced from those sketches can be displayed from
+that face. Those frames and meshes are rebuildable view/cache data and are not
+saved.
 
 Document parameters, sketch dimensions, and sketch constraints are
 source-of-truth V13 document data:
@@ -706,13 +719,17 @@ depth must be positive and finite. Extrude side can be `positive`, `negative`,
 or `symmetric` relative to the sketch-plane normal. Extrude operation mode
 defaults to `newBody` when omitted, and current exports include an explicit
 `operationMode` for authored extrudes. `newBody` records must not include
-`targetBodyId`. Boolean operation modes are supported only for narrow
-source-modeled slices. `cut` supports a rectangle sketch-extrude tool cutting
-one active authored rectangle or circle `newBody` target body. `add` supports a
-rectangle sketch-extrude tool fusing with one active authored rectangle
-`newBody` target body in the authoritative command model. Boolean records
-require an existing authored `targetBodyId` and reject primitive-derived,
-consumed, circle-tool, circle-target add, or otherwise unsupported targets.
+`targetBodyId`. Boolean operation modes are supported only for scoped
+source-modeled slices. `cut` supports rectangle and circle sketch-extrude tools
+cutting one active authored rectangle or circle `newBody` target body where
+current validators and the geometry runtime support that source combination.
+`add` supports rectangle tools fusing with one active authored rectangle
+`newBody` target body, and V12 source/query slices also describe supported
+circle-tool add result references where command admission and runtime support
+are present. Boolean records require an existing authored `targetBodyId` and
+reject primitive-derived, consumed, unsupported target/tool profile
+combinations, circle-target add where not explicitly supported, or otherwise
+unsupported targets.
 Boolean result bodies for the supported add/cut slices are rebuilt as derived
 geometry through the OCCT geometry-worker path where the app/runtime has that
 path enabled. Exact B-rep checkpoints and generated topology maps are not
@@ -870,6 +887,7 @@ web-cad.project.v14
 web-cad.project.v15
 web-cad.project.v16
 web-cad.project.v17
+web-cad.project.v18
 ```
 
 Schema V1 projects migrate into the current in-memory model with unchanged units,
@@ -1228,23 +1246,29 @@ rectangle/circle newBody extrudes keep their existing source-derived extents.
 The snapshots are query inputs only; they are not written to project JSON and
 do not make mesh bounds or OCCT topology IDs authoritative.
 
-`sketch.createOnFace` is the first command that consumes generated references.
-It accepts either a body ID plus generated face stable ID, or a named reference
-that resolves to a generated reference. Both paths resolve through the same
-semantic generated-reference model, require the reference to be a face, and
-require eligibility for `feature.attachSketchPlane`. It currently supports only
-generated planar faces from authored sketch-extrude bodies. Circular side faces,
-edges, vertices, bodies, missing/stale references, missing/stale named
-references, and primitive-derived bodies fail with structured validation errors.
-The created sketch stores only the resolved attachment metadata needed to
-round-trip its authored placement; it does not persist generated topology,
-named-reference lookup results, or exact B-rep data.
+`sketch.createOnFace` is the first command that consumes generated and
+topology-backed face references. It accepts either a body ID plus generated
+face stable ID, a named reference that resolves to a generated reference, or a
+topology anchor plus sanitized topology-anchor proof. Generated-reference paths
+resolve through the same semantic generated-reference model, require the
+reference to be a face, and require eligibility for
+`feature.attachSketchPlane`. The topology-anchor path validates the active
+anchor/checkpoint/body boundary and planar proof before storing a
+`topologyAnchorFace` sketch attachment. Generated planar faces from authored
+sketch-extrude bodies and validated axis-aligned planar topology-anchor faces
+are supported. Circular side faces, non-planar faces, unsupported exact-only
+faces, edges, vertices, bodies, missing/stale references, missing/stale named
+references, missing/stale topology anchors, and primitive-derived bodies fail
+with structured validation errors. The created sketch stores only the resolved
+attachment metadata needed to round-trip its authored placement; it does not
+persist generated topology, named-reference lookup results, checkpoint-local
+entity IDs, raw OCCT handles, or exact B-rep payloads.
 
 ## Future Format Version Triggers
 
 Do not introduce another format version just because query shapes changed. A
 new project format is justified when the saved source-of-truth model gains data
-that cannot be faithfully represented by the current `web-cad.project.v17`
+that cannot be faithfully represented by the current `web-cad.project.v18`
 document shape.
 
 V6 introduced `web-cad.project.v14` when `feature.revolve` added the first
@@ -1488,12 +1512,14 @@ features and rejecting chamfer/fillet features because they are a V16 source
 shape. Schema V16 is migrated by preserving authored chamfer/fillet features
 and rejecting V11 advanced sketch solver constraints because they are a V17
 source shape. Schema V17 is loaded with V11 advanced sketch solver constraints
-intact. Current imports reject
+intact. Schema V18 is loaded with V13 topology identity source records intact,
+including topology identity settings, checkpoint metadata, topology anchors,
+and repair records, subject to explicit validation. Current imports reject
 inconsistent or unsupported extrude operation-mode contracts, such as `newBody`
 with `targetBodyId`, `add`/`cut` without `targetBodyId`, boolean features
-targeting missing, primitive-derived, or consumed bodies, circle-tool booleans,
-circle-target add, and records outside the currently supported
-rectangle-tool/active-target contracts.
+targeting missing, primitive-derived, or consumed bodies, unsupported
+target/tool profile combinations, circle-target add where not explicitly
+supported, and records outside the currently supported active-target contracts.
 Current imports also reject unsupported revolve records, including add/cut
 operation modes, missing or zero-length sketch-line axes, unsupported profile
 entities, and angles that are not positive finite values less than or equal to
@@ -1583,7 +1609,7 @@ authoritative checkpoint source from a `.wcad` package.
 
 ## V14 Topology-Backed Downstream Modeling Storage Decision
 
-The planned V14 topology-backed downstream modeling release should reuse the
+The active V14 topology-backed downstream modeling release should reuse the
 V13 storage foundation wherever possible:
 
 - `web-cad.project.v18` topology identity source records;
@@ -1597,6 +1623,20 @@ diagnostic, command-readiness response, or derived topology snapshot changes.
 A new schema after V18 is justified only if V14 adds new source-of-truth
 command target or rebuild records that cannot be represented by current V18
 records and transaction history.
+
+V14 Tranche A is query-only. `topology.commandTargetReadiness` and its
+`feature.extrudeCutTarget` / `feature.extrudeAddTarget` readiness operation
+vocabulary do not add source-of-truth data, do not mint topology anchors or
+checkpoints, and do not change `web-cad.project.v18` or
+`partbench.wcad.v2`.
+
+V14 Slice B reuses the same storage foundation for topology-backed sketch
+attachment. `topologyAnchorFace` sketch attachments persist public
+topology-anchor/checkpoint IDs plus validated planar axis/coordinate proof
+inside the existing project source; `.wcad` save/open preserves them through
+`web-cad.project.v18` and `partbench.wcad.v2` without storing raw kernel,
+renderer, checkpoint-local, GPU, viewport, file, local path, OPFS, or export
+artifact IDs.
 
 Do not confuse the V14 release with `web-cad.project.v14`; that schema
 identifier already means authored revolve feature source records from an older
@@ -1743,11 +1783,12 @@ Likely rebuildable cache files are:
 - geometry diagnostics
 
 The current JSON format is the source-of-truth interchange/debug format for the
-current V16/V17 document model. It is not the final storage backend and does
-not imply OPFS or File System Access API behavior. If V13 adds authoritative
-B-rep checkpoint payloads that JSON cannot carry losslessly, JSON export/import
-must report that boundary explicitly rather than silently dropping checkpoint
-source and claiming topology anchors are healthy.
+current V16/V17/V18 document model. It is not the final storage backend and
+does not imply OPFS or File System Access API behavior. V18 topology identity
+source records can appear in JSON, but authoritative B-rep checkpoint payloads
+live in `.wcad` package v2. JSON export/import must report that checkpoint
+payload boundary explicitly rather than silently dropping checkpoint source and
+claiming topology anchors are healthy.
 
 JSON export/import remains the deliberate debuggable interchange path. `.wcad`
 is now the runtime project-file workflow for current supported projects, using

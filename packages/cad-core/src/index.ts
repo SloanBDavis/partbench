@@ -215,6 +215,7 @@ import {
 import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentityReadiness";
 import { createTopologyMatchSnapshotsResponse } from "./topologyMatching";
 import { createTopologyAnchorCommandReadinessResponse } from "./topologyAnchorCommandReadiness";
+import { createTopologyCommandTargetReadinessResponse } from "./topologyCommandTargetReadiness";
 import {
   collectWcadV2CheckpointSourceEntries,
   createEmptyTopologyIdentitySourceSnapshot,
@@ -1401,6 +1402,51 @@ export class CadEngine {
               context.bodyId
             ),
           selectionResult
+        });
+      }
+
+      case "topology.commandTargetReadiness": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const selectionResult = createSelectionReferenceCandidates(
+          this.#document,
+          structure,
+          this.#history.map((entry) => entry.transaction),
+          request.query.target,
+          request.query.desiredOperation,
+          request.query.topologyMatchResults
+        );
+        const anchorReadiness =
+          request.query.target.type === "topologyAnchor" &&
+          request.query.snapshot
+            ? createTopologyAnchorCommandReadinessResponse({
+                cadOpsVersion: request.version,
+                query: {
+                  query: "topology.anchorCommandReadiness",
+                  anchorId: request.query.target.anchorId,
+                  snapshot: request.query.snapshot,
+                  ...(request.query.desiredOperation
+                    ? { requiredOperation: request.query.desiredOperation }
+                    : {})
+                },
+                topologyIdentity: this.#document.topologyIdentity,
+                resolveProofCommandOperations: (proof, context) =>
+                  createTopologyAnchorProofCommandOperations(
+                    this.#document,
+                    proof,
+                    context.bodyId
+                  ),
+                selectionResult
+              })
+            : undefined;
+
+        return createTopologyCommandTargetReadinessResponse({
+          cadOpsVersion: request.version,
+          query: request.query,
+          selectionResult,
+          ...(anchorReadiness ? { anchorReadiness } : {})
         });
       }
 
@@ -5664,6 +5710,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "topology.matchSnapshots":
     case "topology.anchorRepairCandidates":
     case "topology.anchorCommandReadiness":
+    case "topology.commandTargetReadiness":
     case "topology.anchorCreationPlan":
     case "topology.anchorRepairPlan":
     case "project.exportReadiness":
@@ -5741,6 +5788,15 @@ function isCadQuery(value: unknown): boolean {
         isCadTopologyMatchSnapshotInput(value.snapshot) &&
         (value.requiredOperation === undefined ||
           isCadSelectionReferenceOperation(value.requiredOperation))
+      );
+    case "topology.commandTargetReadiness":
+      return (
+        isCadSelectionReferenceInput(value.target) &&
+        (value.desiredOperation === undefined ||
+          isCadSelectionReferenceOperation(value.desiredOperation)) &&
+        (value.snapshot === undefined ||
+          isCadTopologyMatchSnapshotInput(value.snapshot)) &&
+        isOptionalTopologyMatchResults(value.topologyMatchResults)
       );
     case "topology.anchorCreationPlan":
       return (
@@ -6219,6 +6275,8 @@ function isCadSelectionReferenceOperation(
 ): value is CadSelectionReferenceOperation {
   return (
     value === "reference.nameGenerated" ||
+    value === "feature.extrudeCutTarget" ||
+    value === "feature.extrudeAddTarget" ||
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
@@ -15445,6 +15503,8 @@ interface CadProjectStructureSnapshot {
 
 const SUMMARY_REFERENCE_OPERATIONS = [
   "reference.nameGenerated",
+  "feature.extrudeCutTarget",
+  "feature.extrudeAddTarget",
   "feature.attachSketchPlane",
   "feature.chamfer",
   "feature.fillet",

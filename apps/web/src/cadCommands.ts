@@ -4,6 +4,7 @@ import type {
   CadBatchMode,
   CadOp,
   CadParameterSnapshot,
+  CadTopologyAnchorCommandProof,
   CurrentSketchConstraintKind,
   DocumentUnitUpdateMode,
   DocumentUnits,
@@ -122,6 +123,7 @@ export interface SketchCreateOnFaceForm {
   readonly bodyId: string;
   readonly faceStableId: string;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
 export interface ParameterCreateForm {
@@ -416,7 +418,10 @@ export function buildCreateSketchOnFaceOp(
       op: "sketch.createOnFace",
       id: normalizeOptionalId(form.id),
       name: form.name.trim(),
-      topologyAnchorId
+      topologyAnchorId,
+      ...(form.topologyAnchorProof
+        ? { topologyAnchorProof: form.topologyAnchorProof }
+        : {})
     };
   }
 

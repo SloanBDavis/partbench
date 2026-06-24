@@ -41,6 +41,7 @@ export type CadMcpToolName =
   | "cad.topology_match_snapshots"
   | "cad.topology_anchor_repair_candidates"
   | "cad.topology_anchor_command_readiness"
+  | "cad.topology_command_target_readiness"
   | "cad.topology_anchor_creation_plan"
   | "cad.topology_anchor_repair_plan"
   | "cad.project_export_readiness"
@@ -210,6 +211,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.topology_anchor_command_readiness") {
       return this.#callTopologyAnchorCommandReadiness(request);
+    }
+
+    if (request.name === "cad.topology_command_target_readiness") {
+      return this.#callTopologyCommandTargetReadiness(request);
     }
 
     if (request.name === "cad.topology_anchor_creation_plan") {
@@ -708,6 +713,36 @@ export class CadMcpServer {
             anchorId: request.arguments.anchorId,
             snapshot: request.arguments.snapshot,
             requiredOperation: request.arguments.requiredOperation
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callTopologyCommandTargetReadiness(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isTopologyCommandTargetReadinessArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.topology_command_target_readiness expects { target: selection target, desiredOperation?: string, snapshot?: object, topologyMatchResults?: array }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "topology.commandTargetReadiness",
+            target: request.arguments.target,
+            desiredOperation: request.arguments.desiredOperation,
+            snapshot: request.arguments.snapshot,
+            topologyMatchResults: request.arguments.topologyMatchResults
           }
         }
       })
@@ -1689,7 +1724,80 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
         requiredOperation: {
           type: "string",
           description:
-            "Optional operation that must be command-ready, such as feature.attachSketchPlane, feature.chamfer, feature.fillet, feature.measureReference, or feature.selectReference."
+            "Optional operation that must be command-ready, such as feature.attachSketchPlane, feature.extrudeCutTarget, feature.extrudeAddTarget, feature.chamfer, feature.fillet, feature.measureReference, or feature.selectReference."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.topology_command_target_readiness",
+    description:
+      "Reports V14 topology-backed command target readiness for a body, generated reference, named reference, or topology anchor using cad-core selection/reference/topology evidence.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["target"],
+      properties: {
+        target: {
+          oneOf: [
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "bodyId"],
+              properties: {
+                type: { const: "body" },
+                bodyId: { type: "string" }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "bodyId", "stableId"],
+              properties: {
+                type: { const: "generatedReference" },
+                bodyId: { type: "string" },
+                stableId: { type: "string" },
+                expectedKind: {
+                  type: "string",
+                  enum: ["body", "face", "edge", "vertex", "axis"]
+                }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "name"],
+              properties: {
+                type: { const: "namedReference" },
+                name: { type: "string" }
+              }
+            },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["type", "anchorId"],
+              properties: {
+                type: { const: "topologyAnchor" },
+                anchorId: { type: "string" }
+              }
+            }
+          ]
+        },
+        desiredOperation: {
+          type: "string",
+          description:
+            "Optional operation filter, such as feature.attachSketchPlane, feature.extrudeCutTarget, feature.extrudeAddTarget, feature.chamfer, feature.fillet, feature.measureReference, feature.selectReference, or reference.nameGenerated."
+        },
+        snapshot: {
+          type: "object",
+          description:
+            "Optional exact topology snapshot evidence used when the target is a topology anchor."
+        },
+        topologyMatchResults: {
+          type: "array",
+          description:
+            "Optional topology match results used as read-only reference-health evidence.",
+          items: { type: "object" }
         }
       }
     }
@@ -2918,6 +3026,8 @@ function isCadSelectionReferenceOperation(
 ): value is CadSelectionReferenceOperation {
   return (
     value === "reference.nameGenerated" ||
+    value === "feature.extrudeCutTarget" ||
+    value === "feature.extrudeAddTarget" ||
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||
@@ -3189,6 +3299,31 @@ function isTopologyAnchorCommandReadinessArguments(value: unknown): value is {
     isTopologyMatchSnapshotInputShape(value.snapshot) &&
     (value.requiredOperation === undefined ||
       isCadSelectionReferenceOperation(value.requiredOperation))
+  );
+}
+
+function isTopologyCommandTargetReadinessArguments(value: unknown): value is {
+  readonly target: CadSelectionReferenceInput;
+  readonly desiredOperation?: CadSelectionReferenceOperation;
+  readonly snapshot?: CadTopologyMatchSnapshotInput;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
+} {
+  return (
+    isRecord(value) &&
+    Object.keys(value).every((key) =>
+      [
+        "target",
+        "desiredOperation",
+        "snapshot",
+        "topologyMatchResults"
+      ].includes(key)
+    ) &&
+    isCadSelectionReferenceInput(value.target) &&
+    (value.desiredOperation === undefined ||
+      isCadSelectionReferenceOperation(value.desiredOperation)) &&
+    (value.snapshot === undefined ||
+      isTopologyMatchSnapshotInputShape(value.snapshot)) &&
+    isOptionalTopologyMatchResults(value.topologyMatchResults)
   );
 }
 

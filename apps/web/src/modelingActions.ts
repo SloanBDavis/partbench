@@ -166,6 +166,7 @@ export type ModelingSelectionContext =
   | {
       readonly selectionKind: "generatedReference";
       readonly reference: CadGeneratedReference;
+      readonly topologyAnchorId?: string;
       readonly body?: CadBodySnapshot;
       readonly feature?: CadFeatureSummary;
       readonly namedReferences?: readonly NamedGeneratedReferenceEntry[];

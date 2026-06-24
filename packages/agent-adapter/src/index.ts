@@ -51,6 +51,7 @@ import type {
   ProjectRebuildPlanQueryResponse,
   ProjectTopologyIdentityReadinessQueryResponse,
   TopologyAnchorCommandReadinessQueryResponse,
+  TopologyCommandTargetReadinessQueryResponse,
   TopologyAnchorRepairCandidatesQueryResponse,
   TopologyAnchorCreationPlanQueryResponse,
   TopologyAnchorRepairPlanQueryResponse,
@@ -348,6 +349,7 @@ export type CadOpsAgentQueryResponse =
   | CadOpsAgentTopologyMatchSnapshotsQueryResponse
   | CadOpsAgentTopologyAnchorRepairCandidatesQueryResponse
   | CadOpsAgentTopologyAnchorCommandReadinessQueryResponse
+  | CadOpsAgentTopologyCommandTargetReadinessQueryResponse
   | CadOpsAgentTopologyAnchorCreationPlanQueryResponse
   | CadOpsAgentTopologyAnchorRepairPlanQueryResponse
   | CadOpsAgentProjectExportReadinessQueryResponse
@@ -522,6 +524,15 @@ export interface CadOpsAgentTopologyAnchorRepairCandidatesQueryResponse extends 
 
 export interface CadOpsAgentTopologyAnchorCommandReadinessQueryResponse extends Omit<
   TopologyAnchorCommandReadinessQueryResponse,
+  "ok"
+> {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly adapterVersion: AgentAdapterVersion;
+}
+
+export interface CadOpsAgentTopologyCommandTargetReadinessQueryResponse extends Omit<
+  TopologyCommandTargetReadinessQueryResponse,
   "ok"
 > {
   readonly ok: true;
@@ -842,6 +853,7 @@ export interface CadOpsAgentQueryErrorResponse {
     | "topology.matchSnapshots"
     | "topology.anchorRepairCandidates"
     | "topology.anchorCommandReadiness"
+    | "topology.commandTargetReadiness"
     | "topology.anchorCreationPlan"
     | "topology.anchorRepairPlan"
     | "project.exportReadiness"
@@ -2521,6 +2533,14 @@ function toAgentQueryResponse(
     };
   }
 
+  if (response.query === "topology.commandTargetReadiness") {
+    return {
+      requestId: request.requestId,
+      adapterVersion: request.adapterVersion,
+      ...response
+    };
+  }
+
   if (response.query === "topology.anchorCreationPlan") {
     return {
       requestId: request.requestId,
@@ -3332,6 +3352,8 @@ function isCadQueryRequest(value: unknown): value is CadQueryRequest {
         isTopologyAnchorRepairCandidatesQueryShape(value.query)) ||
       (value.query.query === "topology.anchorCommandReadiness" &&
         isTopologyAnchorCommandReadinessQueryShape(value.query)) ||
+      (value.query.query === "topology.commandTargetReadiness" &&
+        isTopologyCommandTargetReadinessQueryShape(value.query)) ||
       (value.query.query === "topology.anchorCreationPlan" &&
         isTopologyAnchorCreationPlanQueryShape(value.query)) ||
       (value.query.query === "topology.anchorRepairPlan" &&
@@ -3626,6 +3648,28 @@ function isTopologyAnchorCommandReadinessQueryShape(value: unknown): boolean {
   );
 }
 
+function isTopologyCommandTargetReadinessQueryShape(value: unknown): boolean {
+  const allowedKeys = [
+    "query",
+    "target",
+    "desiredOperation",
+    "snapshot",
+    "topologyMatchResults"
+  ];
+
+  return (
+    isRecord(value) &&
+    value.query === "topology.commandTargetReadiness" &&
+    Object.keys(value).every((key) => allowedKeys.includes(key)) &&
+    isCadSelectionReferenceInput(value.target) &&
+    (value.desiredOperation === undefined ||
+      isCadSelectionReferenceOperation(value.desiredOperation)) &&
+    (value.snapshot === undefined ||
+      isTopologyMatchSnapshotInputShape(value.snapshot)) &&
+    isOptionalTopologyMatchResults(value.topologyMatchResults)
+  );
+}
+
 function isTopologyMatchSnapshotInputShape(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -3847,6 +3891,8 @@ function isCadSelectionReferenceOperation(
 ): value is CadSelectionReferenceOperation {
   return (
     value === "reference.nameGenerated" ||
+    value === "feature.extrudeCutTarget" ||
+    value === "feature.extrudeAddTarget" ||
     value === "feature.attachSketchPlane" ||
     value === "feature.chamfer" ||
     value === "feature.fillet" ||

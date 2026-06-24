@@ -4993,6 +4993,8 @@ describe("cad-core", () => {
       },
       operationCounts: {
         "reference.nameGenerated": 27,
+        "feature.extrudeCutTarget": 0,
+        "feature.extrudeAddTarget": 0,
         "feature.attachSketchPlane": 6,
         "feature.chamfer": 12,
         "feature.fillet": 12,
@@ -32412,6 +32414,310 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
     expect(
       JSON.stringify({ unsupportedFace, wrongBody, missingEntity })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
+  });
+
+  it("reports V14 topology command target readiness from selection and anchor proof", () => {
+    const engine = createTopologyAnchorEngine();
+    const beforeJson = exportCadProjectJson(engine);
+    const faceReadiness = engine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+        desiredOperation: "feature.attachSketchPlane",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-face-1",
+              kind: "face",
+              signature: "face_signature_1",
+              bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+            }
+          ]
+        })
+      }
+    });
+    const edgeEngine = createTopologyEdgeAnchorEngine({
+      stableId: "",
+      sourceSemanticRole: "unmapped exact topology edge"
+    });
+    const edgeReadiness = edgeEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_edge_1" },
+        desiredOperation: "feature.chamfer",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-edge-1",
+              kind: "edge",
+              signature: "edge_signature_1",
+              bounds: { min: [-2, -1, 0], max: [-2, 1, 0] }
+            }
+          ]
+        })
+      }
+    });
+    const bodyAnchorEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: "",
+      sourceSemanticRole: ""
+    });
+    const bodyReadiness = bodyAnchorEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_body_1" },
+        desiredOperation: "feature.extrudeCutTarget"
+      }
+    });
+
+    expect(faceReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+      desiredOperation: "feature.attachSketchPlane",
+      status: "ready",
+      selectionStatus: "resolved",
+      commandable: true,
+      promotionRequired: false,
+      checkpointEvidenceRequired: false,
+      repairRequired: false,
+      supportedOperations: [
+        "feature.attachSketchPlane",
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      operationSummaries: [
+        expect.objectContaining({
+          operation: "feature.attachSketchPlane",
+          status: "ready",
+          commandable: true,
+          source: "selection.referenceCandidates"
+        }),
+        expect.objectContaining({
+          operation: "feature.measureReference",
+          status: "ready",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.selectReference",
+          status: "ready",
+          commandable: true
+        })
+      ],
+      anchorReadiness: expect.objectContaining({
+        query: "topology.anchorCommandReadiness",
+        status: "ready",
+        proof: expect.objectContaining({
+          kind: "axisAlignedPlanarFace",
+          exposesCheckpointLocalIds: false
+        })
+      }),
+      mutatesSource: false,
+      exposesCheckpointLocalIds: false,
+      exposesPrivateIds: false,
+      requiresProjectSchemaMigration: false,
+      requiresPackageVersionMigration: false
+    });
+    expect(edgeReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "ready",
+      commandable: true,
+      supportedOperations: ["feature.chamfer", "feature.fillet"],
+      operationSummaries: [
+        expect.objectContaining({
+          operation: "feature.chamfer",
+          source: "topology.anchorCommandReadiness",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.fillet",
+          source: "topology.anchorCommandReadiness",
+          commandable: true
+        })
+      ],
+      proof: expect.objectContaining({
+        kind: "axisAlignedLinearEdge",
+        exposesCheckpointLocalIds: false
+      })
+    });
+    expect(bodyReadiness).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "ready",
+      commandable: true,
+      supportedOperations: expect.arrayContaining([
+        "feature.extrudeCutTarget",
+        "feature.extrudeAddTarget"
+      ]),
+      operationSummaries: expect.arrayContaining([
+        expect.objectContaining({
+          operation: "feature.extrudeCutTarget",
+          source: "selection.referenceCandidates",
+          commandable: true
+        }),
+        expect.objectContaining({
+          operation: "feature.extrudeAddTarget",
+          source: "selection.referenceCandidates",
+          commandable: true
+        })
+      ])
+    });
+    expect(
+      JSON.stringify({ faceReadiness, edgeReadiness, bodyReadiness })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+  });
+
+  it("reports V14 promotion, checkpoint evidence, and repair requirements without mutating source", () => {
+    const exactFaceDocument = createTopologyAnchorEngine().getDocument();
+    const topologyIdentity = exactFaceDocument.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const exactAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      sourceSemanticRole: "unmapped exact topology face"
+    };
+    delete (exactAnchor as { stableId?: string }).stableId;
+    const exactAnchorEngine = new CadEngine({
+      ...exactFaceDocument,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [exactAnchor]
+      }
+    });
+    const beforeExactJson = exportCadProjectJson(exactAnchorEngine);
+    const needsEvidence = exactAnchorEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+        desiredOperation: "feature.attachSketchPlane"
+      }
+    });
+    const needsRepair = createTopologyAnchorEngine().executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+        desiredOperation: "feature.attachSketchPlane",
+        topologyMatchResults: [createTopologyAnchorMatchResult("repair-needed")]
+      }
+    });
+    const cutEngine = createTopologyEdgeAnchorEngine({
+      anchorId: "anchor_body_1",
+      entityKind: "body",
+      stableId: ""
+    });
+    cutEngine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut",
+        id: "rect_anchor_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_anchor_cut",
+        bodyId: "body_anchor_cut",
+        sketchId: "sketch_anchor_cut",
+        entityId: "rect_anchor_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_1"
+      }
+    ]);
+    const beforeCutJson = exportCadProjectJson(cutEngine);
+    const needsPromotion = cutEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.commandTargetReadiness",
+        target: { type: "body", bodyId: "body_anchor_cut" },
+        desiredOperation: "feature.extrudeCutTarget"
+      }
+    });
+
+    expect(needsEvidence).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "needs-checkpoint-evidence",
+      commandable: false,
+      checkpointEvidenceRequired: true,
+      promotionRequired: false,
+      repairRequired: false,
+      operationSummaries: [
+        expect.objectContaining({
+          operation: "feature.attachSketchPlane",
+          status: "needs-checkpoint-evidence",
+          commandable: false,
+          requiresCheckpointEvidence: true
+        })
+      ]
+    });
+    expect(needsRepair).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "needs-repair",
+      commandable: false,
+      repairRequired: true,
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
+          anchorId: "anchor_face_1"
+        })
+      ]
+    });
+    expect(needsPromotion).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "needs-promotion",
+      commandable: false,
+      promotionRequired: true,
+      checkpointEvidenceRequired: false,
+      repairRequired: false,
+      issues: [
+        expect.objectContaining({
+          code: "NON_COMMANDABLE_SELECTION_TARGET",
+          bodyId: "body_anchor_cut"
+        })
+      ],
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_ANCHOR_PERSISTENCE_DEFERRED",
+          bodyId: "body_anchor_cut"
+        })
+      ]
+    });
+    expect(exportCadProjectJson(exactAnchorEngine)).toBe(beforeExactJson);
+    expect(exportCadProjectJson(cutEngine)).toBe(beforeCutJson);
+    expect(
+      JSON.stringify({ needsEvidence, needsRepair, needsPromotion })
     ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
     );

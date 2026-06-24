@@ -2,6 +2,7 @@ import {
   CadEngine,
   createV13ReleaseSampleBatch,
   exportCadProjectWcad,
+  importCadProjectWcad,
   readCadProjectWcad,
   type CadFeatureSummary,
   type SketchSnapshot
@@ -102,6 +103,70 @@ describe("projectWcadTopologyCheckpoints", () => {
     expect(read.checkpointPayloads).toHaveLength(1);
     expect(JSON.stringify(exported.manifest)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath/i
+    );
+  });
+
+  it("preserves topology-anchor face sketch attachments through WCAD save and open", async () => {
+    const engine = createRectangleCheckpointEngine();
+
+    engine.apply({
+      op: "sketch.createOnFace",
+      id: "sketch_anchor_face_1",
+      name: "Anchor face sketch",
+      topologyAnchorId: "anchor_rect_1_end_face",
+      topologyAnchorProof: {
+        kind: "axisAlignedPlanarFace",
+        entityKind: "face",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        planarAxis: "z",
+        planarCoordinate: 3,
+        bounds: { min: [0, 0, 3], max: [2, 1, 3] }
+      }
+    });
+
+    const exported = await exportProjectWcadWithTopologyCheckpoints({
+      engine,
+      features: readProjectStructure(engine).features,
+      sketches: readSketches(engine),
+      runtime: createCheckpointRuntime()
+    });
+    const read = await readCadProjectWcad(exported.bytes);
+
+    expect(exported.manifest.packageVersion).toBe("partbench.wcad.v2");
+    expect(read.ok).toBe(true);
+    if (!read.ok) {
+      throw new Error(read.issues[0]?.message);
+    }
+    expect(read.project.document.sketches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "sketch_anchor_face_1",
+          attachment: {
+            kind: "topologyAnchorFace",
+            bodyId: "body_rect_1",
+            topologyAnchorId: "anchor_rect_1_end_face",
+            checkpointId: "checkpoint_rect_1",
+            planarAxis: "z",
+            planarCoordinate: 3
+          }
+        })
+      ])
+    );
+
+    const opened = await importCadProjectWcad(exported.bytes);
+    expect(
+      opened.getDocument().sketches.get("sketch_anchor_face_1")?.attachment
+    ).toEqual({
+      kind: "topologyAnchorFace",
+      bodyId: "body_rect_1",
+      topologyAnchorId: "anchor_rect_1_end_face",
+      checkpointId: "checkpoint_rect_1",
+      planarAxis: "z",
+      planarCoordinate: 3
+    });
+    expect(JSON.stringify({ exported, read })).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|selectionBufferId|triangleIndex|faceIndex|edgeIndex|vertexIndex|fileHandle|opfsPath|localPath|checkpoint-local/i
     );
   });
 

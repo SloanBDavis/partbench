@@ -10,7 +10,7 @@ Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
 stable boolean topology and result references release record, `docs/v13.md` for
 the completed general topology identity and B-rep checkpoint foundation release
-record, `docs/v14.md` for the planned topology-backed downstream modeling
+record, `docs/v14.md` for the active topology-backed downstream modeling
 release contract, `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
@@ -55,10 +55,14 @@ These constraints remain active:
     V12 is complete as the stable boolean topology and result references
     release. V13 is complete as the general topology identity, B-rep checkpoint,
     topology anchor, matching, repair, and checkpoint-backed commandability
-    foundation. V14 is the planned topology-backed downstream modeling release:
-    it should turn supported V13 topology anchors into real downstream command
-    targets for chained single-part modeling without weakening source/derived
-    boundaries. Completed V8, V9, V10, V11, V12, and V13
+    foundation. V14 is active as the topology-backed downstream modeling
+    release: it turns supported V13 topology anchors into real downstream
+    command targets for chained single-part modeling without weakening
+    source/derived boundaries. V14 Tranche A is implemented as the
+    non-mutating topology-backed command-target readiness contract/query slice,
+    and V14 Slice B is implemented as the topology-backed sketch attachment
+    product path.
+    Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
     for a maintenance or regression-fix tranche.
@@ -2704,7 +2708,7 @@ compete with it.
 
 ## V14 Topology-Backed Downstream Modeling
 
-V14 is planned in `docs/v14.md`. It is the release that should turn the V13
+V14 is active in `docs/v14.md`. It is the release that should turn the V13
 topology identity foundation into normal downstream single-part modeling
 behavior.
 
@@ -2762,6 +2766,15 @@ Use these rules when drafting or implementing V14 tranches:
   references.
 - Low-confidence or ambiguous topology matches require explicit repair or a
   blocked diagnostic; they must not silently retarget commands.
+- Passive selection, hover, inspection, measurement, project load, and ordinary
+  save/open must not mint topology anchors or checkpoints.
+- Readiness queries may report that a target needs promotion or repair before a
+  modeling command can consume it.
+- Explicit user or agent modeling commands may commit proven
+  checkpoint/anchor/repair CADOps plus the modeling command through the normal
+  command layer, but only when cad-core proves the target unambiguously.
+- UI affordances must come from a verified cad-core support matrix, not from
+  the visible body shape.
 
 ### V14 Planned Pillars
 
@@ -2770,16 +2783,30 @@ The planned pillars are:
 1. **Topology-backed command target readiness** - shared protocol/core query
    behavior for asking which topology-backed body, face, edge, generated
    reference, or named reference can be used by which command, and why blocked
-   targets are blocked.
+   targets are blocked. Tranche A is implemented as
+   `topology.commandTargetReadiness`, with structured readiness states,
+   supported operation summaries, `feature.extrudeCutTarget` /
+   `feature.extrudeAddTarget` body-target operation vocabulary, optional
+   topology-anchor snapshot proof, needs-promotion / needs-checkpoint-evidence
+   / needs-repair flags, and thin agent/MCP pass-through. It is query-only and
+   does not mint anchors, repair references, mutate source, change
+   `web-cad.project.v18`, or change `.wcad` package layout.
 2. **Sketch-on-result-face workflow** - supported planar topology-anchor faces
    on result bodies can host replayable attached sketches without storing raw
-   kernel or renderer IDs.
+   kernel or renderer IDs. Slice B is implemented: selected topology-anchor
+   backed generated faces route through the app create-sketch flow, exact-only
+   planar anchors can commit `topologyAnchorFace` attachments through CADOps
+   when supplied with public checkpoint proof, and `.wcad` save/open preserves
+   those attachments through the existing V18/v2 storage foundation.
 3. **Chained cut/add on result bodies** - `feature.extrude` cut/add can target
    supported active topology-backed result bodies with coherent body lifecycle,
    dependency graph, reference health, and semantic diffs.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
-   prove the target.
+   prove the target. V14 must make at least one real result-edge class
+   command-ready, with axis-aligned linear edges on V14-supported result bodies
+   as the minimum expected class unless implementation evidence updates the
+   release doc.
 5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
    explicit repair flows keep topology-backed references honest and query
    surfaces consistent.
@@ -2826,6 +2853,11 @@ production WebGPU, hosted collaboration, natural-language command entry,
 parameter expressions, proprietary CAD import/export, or broad new solid
 feature families. Those releases should build on V14 once single-part
 topology-backed downstream modeling is solid.
+
+The mandatory downstream boolean support matrix is maintained in
+`docs/v14.md`. Implementation prompts should keep it current as cad-core
+evidence proves which rectangle/circle target, tool-profile, and operation-mode
+combinations are command-ready.
 
 ## Definition of Done
 

@@ -2195,6 +2195,14 @@ describe("cad-protocol", () => {
       },
       {
         version: "cadops.v1",
+        query: {
+          query: "topology.commandTargetReadiness",
+          target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+          desiredOperation: "feature.attachSketchPlane"
+        }
+      },
+      {
+        version: "cadops.v1",
         query: { query: "transaction.history" }
       }
     ];
@@ -2228,6 +2236,7 @@ describe("cad-protocol", () => {
       "reference.listNamed",
       "reference.resolveNamed",
       "selection.referenceCandidates",
+      "topology.commandTargetReadiness",
       "transaction.history"
     ]);
   });
@@ -2680,6 +2689,8 @@ describe("cad-protocol", () => {
         },
         operationCounts: {
           "reference.nameGenerated": 1,
+          "feature.extrudeCutTarget": 0,
+          "feature.extrudeAddTarget": 0,
           "feature.attachSketchPlane": 0,
           "feature.chamfer": 0,
           "feature.fillet": 0,
@@ -4021,6 +4032,88 @@ describe("cad-protocol", () => {
           })
         }
       ]
+    });
+  });
+
+  it("types V14 topology command target readiness responses", () => {
+    const response: CadQueryResponse = {
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      cadOpsVersion: "cadops.v1",
+      target: { type: "topologyAnchor", anchorId: "anchor_face_1" },
+      desiredOperation: "feature.attachSketchPlane",
+      status: "needs-checkpoint-evidence",
+      selectionStatus: "unsupported",
+      commandable: false,
+      promotionRequired: false,
+      checkpointEvidenceRequired: true,
+      repairRequired: false,
+      supportedOperationCount: 0,
+      supportedOperations: [],
+      operationSummaryCount: 1,
+      operationSummaries: [
+        {
+          operation: "feature.attachSketchPlane",
+          status: "needs-checkpoint-evidence",
+          commandable: false,
+          source: "selection.referenceCandidates",
+          requiresPromotion: false,
+          requiresCheckpointEvidence: true,
+          requiresRepair: false
+        }
+      ],
+      candidateCount: 0,
+      candidates: [],
+      issueCount: 1,
+      issues: [
+        {
+          code: "UNSUPPORTED_SELECTION_TARGET",
+          status: "unsupported",
+          message:
+            "Topology anchor needs checkpoint evidence before it can drive the requested command.",
+          topologyAnchorId: "anchor_face_1",
+          expected: "checkpoint snapshot proof",
+          received: "missing snapshot"
+        }
+      ],
+      diagnosticCount: 1,
+      diagnostics: [
+        {
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_DEFERRED",
+          status: "deferred",
+          severity: "warning",
+          message: "Topology-backed command target needs checkpoint evidence.",
+          anchorId: "anchor_face_1",
+          expected: "feature.attachSketchPlane",
+          received: "missing snapshot"
+        }
+      ],
+      sourceBoundaryNote:
+        "Topology-backed command target readiness is derived from authoritative cad-core state.",
+      derivedBoundaryNote:
+        "Private renderer, mesh, OCCT, checkpoint-local, and file-system ids are not public command targets.",
+      mutatesSource: false,
+      exposesCheckpointLocalIds: false,
+      exposesPrivateIds: false,
+      requiresProjectSchemaMigration: false,
+      requiresPackageVersionMigration: false
+    };
+
+    expect(response).toMatchObject({
+      ok: true,
+      query: "topology.commandTargetReadiness",
+      status: "needs-checkpoint-evidence",
+      commandable: false,
+      checkpointEvidenceRequired: true,
+      operationSummaries: [
+        expect.objectContaining({
+          operation: "feature.attachSketchPlane",
+          commandable: false
+        })
+      ],
+      mutatesSource: false,
+      exposesPrivateIds: false,
+      requiresProjectSchemaMigration: false
     });
   });
 

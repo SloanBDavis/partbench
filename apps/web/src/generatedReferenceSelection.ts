@@ -223,6 +223,10 @@ export function formatSelectionReferenceOperationLabel(
   switch (operation) {
     case "reference.nameGenerated":
       return "Name reference";
+    case "feature.extrudeCutTarget":
+      return "Use as cut target";
+    case "feature.extrudeAddTarget":
+      return "Use as add target";
     case "feature.attachSketchPlane":
       return "Create sketch on face";
     case "feature.chamfer":

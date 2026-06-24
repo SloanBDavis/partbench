@@ -1272,8 +1272,24 @@ function GeneratedReferencesPanel({
       selectionReferenceCandidates,
       "feature.fillet"
     );
+  const selectedFaceTopologyAnchorId =
+    selectedFace &&
+    selectedReferenceState.status === "selected" &&
+    selectedReferenceState.reference.kind === "face" &&
+    selectedReferenceState.reference.bodyId === selectedFace.bodyId &&
+    selectedReferenceState.reference.stableId === selectedFace.stableId
+      ? getSelectedTopologyAnchorId(
+          selectedReferenceState.selection,
+          selectionReferenceCandidates
+        )
+      : undefined;
   const sketchOnFaceForm = selectedFace
-    ? buildSketchOnFaceForm(bodyId, selectedFace, draft)
+    ? buildSketchOnFaceForm(
+        bodyId,
+        selectedFace,
+        draft,
+        selectedFaceTopologyAnchorId
+      )
     : undefined;
   const selectedFaceContractStatus = getSelectionReferenceOperationStatus(
     selectedFace

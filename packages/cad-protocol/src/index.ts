@@ -1165,6 +1165,7 @@ export type CadQueryKind =
   | "topology.matchSnapshots"
   | "topology.anchorRepairCandidates"
   | "topology.anchorCommandReadiness"
+  | "topology.commandTargetReadiness"
   | "topology.anchorCreationPlan"
   | "topology.anchorRepairPlan"
   | "project.exportReadiness"
@@ -1206,6 +1207,7 @@ export type CadQuery =
   | TopologyMatchSnapshotsQuery
   | TopologyAnchorRepairCandidatesQuery
   | TopologyAnchorCommandReadinessQuery
+  | TopologyCommandTargetReadinessQuery
   | TopologyAnchorCreationPlanQuery
   | TopologyAnchorRepairPlanQuery
   | ProjectExportReadinessQuery
@@ -1307,6 +1309,16 @@ export interface TopologyAnchorCommandReadinessQuery {
   readonly anchorId: string;
   readonly snapshot: CadTopologyMatchSnapshotInput;
   readonly requiredOperation?: CadSelectionReferenceOperation;
+}
+
+export type CadTopologyCommandTargetInput = CadSelectionReferenceInput;
+
+export interface TopologyCommandTargetReadinessQuery {
+  readonly query: "topology.commandTargetReadiness";
+  readonly target: CadTopologyCommandTargetInput;
+  readonly desiredOperation?: CadSelectionReferenceOperation;
+  readonly snapshot?: CadTopologyMatchSnapshotInput;
+  readonly topologyMatchResults?: readonly CadTopologyMatchResult[];
 }
 
 export interface TopologyAnchorCreationPlanQuery {
@@ -3876,6 +3888,8 @@ export interface CadViewportTwoTargetMeasurementState {
 
 export type CadSelectionReferenceOperation =
   | CadGeneratedReferenceEligibleOperation
+  | "feature.extrudeCutTarget"
+  | "feature.extrudeAddTarget"
   | "reference.nameGenerated";
 
 export type CadSelectionReferenceStatus =
@@ -5038,6 +5052,7 @@ export type CadQueryResponse =
   | TopologyMatchSnapshotsQueryResponse
   | TopologyAnchorRepairCandidatesQueryResponse
   | TopologyAnchorCommandReadinessQueryResponse
+  | TopologyCommandTargetReadinessQueryResponse
   | TopologyAnchorCreationPlanQueryResponse
   | TopologyAnchorRepairPlanQueryResponse
   | ProjectExportReadinessQueryResponse
@@ -5349,6 +5364,67 @@ export interface TopologyAnchorCommandReadinessQueryResponse {
   readonly derivedBoundaryNote: string;
   readonly mutatesSource: false;
   readonly exposesCheckpointLocalIds: false;
+}
+
+export type CadTopologyCommandTargetReadinessStatus =
+  | "ready"
+  | "needs-promotion"
+  | "needs-checkpoint-evidence"
+  | "needs-repair"
+  | "blocked"
+  | "missing"
+  | "stale"
+  | "ambiguous"
+  | "consumed"
+  | "unsupported"
+  | "non-commandable";
+
+export type CadTopologyCommandTargetOperationSource =
+  | "selection.referenceCandidates"
+  | "topology.anchorCommandReadiness";
+
+export interface CadTopologyCommandTargetOperationSummary {
+  readonly operation: CadSelectionReferenceOperation;
+  readonly status: CadTopologyCommandTargetReadinessStatus;
+  readonly commandable: boolean;
+  readonly source: CadTopologyCommandTargetOperationSource;
+  readonly target?: CadSelectionReferenceCommandTarget;
+  readonly requiresPromotion: boolean;
+  readonly requiresCheckpointEvidence: boolean;
+  readonly requiresRepair: boolean;
+}
+
+export interface TopologyCommandTargetReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "topology.commandTargetReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly target: CadTopologyCommandTargetInput;
+  readonly desiredOperation?: CadSelectionReferenceOperation;
+  readonly status: CadTopologyCommandTargetReadinessStatus;
+  readonly selectionStatus: CadSelectionReferenceStatus;
+  readonly commandable: boolean;
+  readonly promotionRequired: boolean;
+  readonly checkpointEvidenceRequired: boolean;
+  readonly repairRequired: boolean;
+  readonly supportedOperationCount: number;
+  readonly supportedOperations: readonly CadSelectionReferenceOperation[];
+  readonly operationSummaryCount: number;
+  readonly operationSummaries: readonly CadTopologyCommandTargetOperationSummary[];
+  readonly candidateCount: number;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issueCount: number;
+  readonly issues: readonly CadSelectionReferenceIssue[];
+  readonly anchorReadiness?: TopologyAnchorCommandReadinessQueryResponse;
+  readonly proof?: CadTopologyAnchorCommandProof;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
+  readonly exposesCheckpointLocalIds: false;
+  readonly exposesPrivateIds: false;
+  readonly requiresProjectSchemaMigration: false;
+  readonly requiresPackageVersionMigration: false;
 }
 
 export type CadTopologyAnchorCreationPlanStatus =

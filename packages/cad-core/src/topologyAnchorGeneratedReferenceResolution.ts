@@ -31,10 +31,6 @@ export function resolveTopologyAnchorGeneratedReferenceFromSourceRole(options: {
   readonly entityKind: CadTopologyAnchorEntityKind;
   readonly sourceSemanticRole?: string;
 }): TopologyAnchorGeneratedReferenceResolution {
-  if (!options.sourceSemanticRole) {
-    return { status: "missing" };
-  }
-
   const references = createBodyGeneratedReferences(
     options.document,
     options.bodyId,
@@ -42,6 +38,18 @@ export function resolveTopologyAnchorGeneratedReferenceFromSourceRole(options: {
   );
 
   if (!references) {
+    return { status: "missing" };
+  }
+
+  if (!options.sourceSemanticRole) {
+    if (options.entityKind === "body") {
+      return {
+        status: "resolved",
+        stableId: references.body.stableId,
+        reference: references.body
+      };
+    }
+
     return { status: "missing" };
   }
 

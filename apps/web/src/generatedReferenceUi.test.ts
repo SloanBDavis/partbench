@@ -97,14 +97,32 @@ describe("generated reference UI helpers", () => {
           id: "sketch_anchor_1",
           name: "Anchor face sketch"
         },
-        "anchor_face_1"
+        "anchor_face_1",
+        {
+          kind: "axisAlignedPlanarFace",
+          entityKind: "face",
+          evidenceSource: "checkpointSnapshot",
+          exposesCheckpointLocalIds: false,
+          planarAxis: "z",
+          planarCoordinate: 1,
+          bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+        }
       )
     ).toEqual({
       id: "sketch_anchor_1",
       name: "Anchor face sketch",
       bodyId: "body_1",
       faceStableId: "generated:face:body_1:startCap",
-      topologyAnchorId: "anchor_face_1"
+      topologyAnchorId: "anchor_face_1",
+      topologyAnchorProof: {
+        kind: "axisAlignedPlanarFace",
+        entityKind: "face",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        planarAxis: "z",
+        planarCoordinate: 1,
+        bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+      }
     });
     expect(
       buildSketchOnFaceForm("body_1", circularSide, {

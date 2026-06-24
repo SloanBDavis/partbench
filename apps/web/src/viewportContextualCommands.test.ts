@@ -375,6 +375,44 @@ describe("viewport contextual commands", () => {
     );
   });
 
+  it("routes selected topology-anchor face sketches after stable reference creation", () => {
+    const face = createFace();
+    const state = createSelectedReferenceState(face) as Extract<
+      GeneratedReferenceSelectionState,
+      { readonly status: "selected" }
+    >;
+    const onCreateSketchOnFace = vi.fn();
+
+    const routed = runViewportContextualCommandAction({
+      action: {
+        id: "sketch.createOnFace",
+        label: "Create sketch",
+        route: "command",
+        disabled: false
+      },
+      selectedGeneratedReferenceState: {
+        ...state,
+        selection: {
+          ...state.selection,
+          topologyAnchorId: "anchor_selected_face"
+        }
+      },
+      onCreateSketchOnFace
+    });
+
+    expect(routed).toBe(true);
+    expect(onCreateSketchOnFace).toHaveBeenCalledWith({
+      id: "",
+      name: "Start cap sketch",
+      bodyId: "body_rect",
+      faceStableId: "generated:face:body_rect:startCap",
+      topologyAnchorId: "anchor_selected_face"
+    });
+    expect(JSON.stringify(onCreateSketchOnFace.mock.calls)).not.toMatch(
+      /checkpoint-local|checkpointEntityId|rendererId|meshId|occtId|gpuId|selectionBufferId|pixelId|opfsPath|fileHandle/i
+    );
+  });
+
   it("routes query-proven topology-anchor named-reference repairs from viewport context", () => {
     const face = createFace();
     const candidates = createSelectionReferenceCandidates(face, {

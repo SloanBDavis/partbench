@@ -269,13 +269,31 @@ describe("cad command builders", () => {
         name: " Anchor face sketch ",
         bodyId: "body_1",
         faceStableId: "generated:face:body_1:endCap",
-        topologyAnchorId: " anchor_face_1 "
+        topologyAnchorId: " anchor_face_1 ",
+        topologyAnchorProof: {
+          kind: "axisAlignedPlanarFace",
+          entityKind: "face",
+          evidenceSource: "checkpointSnapshot",
+          exposesCheckpointLocalIds: false,
+          planarAxis: "z",
+          planarCoordinate: 1,
+          bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+        }
       })
     ).toEqual({
       op: "sketch.createOnFace",
       id: "sketch_anchor_1",
       name: "Anchor face sketch",
-      topologyAnchorId: "anchor_face_1"
+      topologyAnchorId: "anchor_face_1",
+      topologyAnchorProof: {
+        kind: "axisAlignedPlanarFace",
+        entityKind: "face",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        planarAxis: "z",
+        planarCoordinate: 1,
+        bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+      }
     });
     expect(
       buildUpdateSketchEntityOp("sketch_1", {
