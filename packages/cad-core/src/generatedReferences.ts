@@ -484,7 +484,7 @@ function createAddExtrudeBodyGeneratedReferences(
   if (
     !isBooleanToolProfile(feature, profile) ||
     !feature.targetBodyId ||
-    !isSupportedBooleanAddTarget(document, feature.targetBodyId)
+    !isSupportedBooleanAddTarget(document, feature)
   ) {
     return undefined;
   }
@@ -553,7 +553,7 @@ function createCutExtrudeBodyGeneratedReferences(
   if (
     !isBooleanToolProfile(feature, profile) ||
     !feature.targetBodyId ||
-    !isSupportedBooleanCutTarget(document, feature.targetBodyId)
+    !isSupportedBooleanCutTarget(document, feature)
   ) {
     return undefined;
   }
@@ -629,33 +629,78 @@ function isBooleanToolProfile(
 
 function isSupportedBooleanAddTarget(
   document: GeneratedReferencesDocument,
-  targetBodyId: BodyId
+  feature: GeneratedReferencesExtrudeFeature
 ): boolean {
   const targetFeature = [...document.features.values()].find(
-    (candidate) => candidate.bodyId === targetBodyId
+    (candidate) => candidate.bodyId === feature.targetBodyId
+  );
+  const targetProfileKind = resolveBooleanTargetProfileKind(
+    document,
+    targetFeature,
+    feature.targetTopologyAnchorId
   );
 
-  return (
-    targetFeature?.kind === "extrude" &&
-    targetFeature.operationMode === "newBody" &&
-    targetFeature.profileKind === "rectangle"
-  );
+  return targetProfileKind === "rectangle";
 }
 
 function isSupportedBooleanCutTarget(
   document: GeneratedReferencesDocument,
-  targetBodyId: BodyId
+  feature: GeneratedReferencesExtrudeFeature
 ): boolean {
   const targetFeature = [...document.features.values()].find(
-    (candidate) => candidate.bodyId === targetBodyId
+    (candidate) => candidate.bodyId === feature.targetBodyId
+  );
+  const targetProfileKind = resolveBooleanTargetProfileKind(
+    document,
+    targetFeature,
+    feature.targetTopologyAnchorId
   );
 
-  return (
-    targetFeature?.kind === "extrude" &&
-    targetFeature.operationMode === "newBody" &&
-    (targetFeature.profileKind === "rectangle" ||
-      targetFeature.profileKind === "circle")
-  );
+  return targetProfileKind === "rectangle" || targetProfileKind === "circle";
+}
+
+function resolveBooleanTargetProfileKind(
+  document: GeneratedReferencesDocument,
+  targetFeature: GeneratedReferencesFeature | undefined,
+  targetTopologyAnchorId?: string
+): FeatureExtrudeProfileKind | undefined {
+  if (targetFeature?.kind !== "extrude") {
+    return undefined;
+  }
+
+  if (targetFeature.operationMode === "newBody") {
+    return targetFeature.profileKind;
+  }
+
+  if (targetTopologyAnchorId === undefined) {
+    return undefined;
+  }
+
+  let current: GeneratedReferencesExtrudeFeature | undefined = targetFeature;
+  const visitedFeatureIds = new Set<FeatureId>();
+
+  while (current && !visitedFeatureIds.has(current.id)) {
+    visitedFeatureIds.add(current.id);
+
+    if (current.operationMode === "newBody") {
+      return current.profileKind;
+    }
+
+    if (
+      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
+      current.targetBodyId === undefined
+    ) {
+      return undefined;
+    }
+
+    const targetBodyId: BodyId = current.targetBodyId;
+    const parent: GeneratedReferencesFeature | undefined = [
+      ...document.features.values()
+    ].find((candidate) => candidate.bodyId === targetBodyId);
+    current = parent?.kind === "extrude" ? parent : undefined;
+  }
+
+  return undefined;
 }
 
 function createRevolveBodyGeneratedReferences(

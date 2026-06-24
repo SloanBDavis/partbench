@@ -27,6 +27,7 @@ import type {
 export interface BooleanTargetBodyOption {
   readonly bodyId: string;
   readonly featureId: string;
+  readonly targetTopologyAnchorId?: string;
   readonly profileKind: "rectangle" | "circle";
   readonly label: string;
   readonly detail: string;
@@ -57,9 +58,17 @@ export function getPreferredBooleanTargetBodyId(
   targetBodies: readonly BooleanTargetBodyOption[],
   preferredBodyId: string | undefined
 ): string | undefined {
+  return getPreferredBooleanTargetBodyOption(targetBodies, preferredBodyId)
+    ?.bodyId;
+}
+
+export function getPreferredBooleanTargetBodyOption(
+  targetBodies: readonly BooleanTargetBodyOption[],
+  preferredBodyId: string | undefined
+): BooleanTargetBodyOption | undefined {
   return (
-    targetBodies.find((body) => body.bodyId === preferredBodyId)?.bodyId ??
-    targetBodies[0]?.bodyId
+    targetBodies.find((body) => body.bodyId === preferredBodyId) ??
+    targetBodies[0]
   );
 }
 
@@ -94,7 +103,7 @@ export function getAttachedSketchBooleanTargetHint(
     return undefined;
   }
 
-  return "This sketch is attached to a result body face. Cut/Add can target active source bodies only, so this sketch can create a new body for now.";
+  return "This sketch is attached to a result body face that is not ready for Cut/Add. Create a new body or choose an eligible target.";
 }
 
 export interface RevolveAxisOption {
@@ -1279,28 +1288,41 @@ function createBooleanTargetBodyOptions(
         ): candidate is Extract<CadFeatureSummary, { kind: "extrude" }> =>
           candidate.kind === "extrude" && candidate.id === body.featureId
       );
+      const targetProfileKind = feature
+        ? resolveBooleanTargetProfileKind(features, feature)
+        : undefined;
 
       if (
         !feature ||
-        feature.operationMode !== "newBody" ||
-        !isSupportedTargetProfileKind(operationMode, feature.profileKind)
+        targetProfileKind === undefined ||
+        !isSupportedTargetProfileKind(operationMode, targetProfileKind)
       ) {
         return [];
       }
+
+      const isTopologyResultTarget = feature.operationMode !== "newBody";
+      const targetTopologyAnchorId = isTopologyResultTarget
+        ? feature.targetTopologyAnchorId
+        : undefined;
 
       return [
         {
           bodyId: body.id,
           featureId: feature.id,
-          profileKind: feature.profileKind,
+          ...(targetTopologyAnchorId ? { targetTopologyAnchorId } : {}),
+          profileKind: targetProfileKind,
           label:
             body.name ??
-            `${formatProfileKind(feature.profileKind)} target ${index + 1} / ${
-              feature.depth
-            } mm`,
-          detail: `${formatProfileKind(feature.profileKind)} new body / ${
-            feature.depth
-          } mm / ${feature.side} / ${body.id}`
+            `${formatProfileKind(targetProfileKind)} ${
+              isTopologyResultTarget ? "result" : "target"
+            } ${index + 1} / ${feature.depth} mm`,
+          detail: isTopologyResultTarget
+            ? `${formatProfileKind(targetProfileKind)} topology result / ${
+                feature.operationMode
+              } / ${body.id}`
+            : `${formatProfileKind(targetProfileKind)} new body / ${
+                feature.depth
+              } mm / ${feature.side} / ${body.id}`
         }
       ];
     });
@@ -1320,6 +1342,49 @@ function createBooleanTargetBodyOptions(
 
     return 0;
   });
+}
+
+function resolveBooleanTargetProfileKind(
+  features: readonly CadFeatureSummary[],
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }>
+): Extract<CadFeatureSummary, { kind: "extrude" }>["profileKind"] | undefined {
+  if (feature.operationMode === "newBody") {
+    return feature.profileKind;
+  }
+
+  if (!feature.targetTopologyAnchorId) {
+    return undefined;
+  }
+
+  let current: Extract<CadFeatureSummary, { kind: "extrude" }> | undefined =
+    feature;
+  const visitedFeatureIds = new Set<string>();
+
+  while (current && !visitedFeatureIds.has(current.id)) {
+    visitedFeatureIds.add(current.id);
+
+    if (current.operationMode === "newBody") {
+      return current.profileKind;
+    }
+
+    if (
+      current.targetTopologyAnchorId !== feature.targetTopologyAnchorId ||
+      !current.targetBodyId
+    ) {
+      return undefined;
+    }
+
+    const targetBodyId = current.targetBodyId;
+    const parent = features.find(
+      (
+        candidate
+      ): candidate is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+        candidate.kind === "extrude" && candidate.bodyId === targetBodyId
+    );
+    current = parent;
+  }
+
+  return undefined;
 }
 
 export function getAddOperationStatus(
@@ -1345,7 +1410,8 @@ export function getAddOperationStatus(
   if (addTargets.length === 0) {
     return {
       available: false,
-      message: "Create an active rectangle new body before using Add to body."
+      message:
+        "Create an active rectangle source body or topology-backed result body before using Add to body."
     };
   }
 
@@ -1381,7 +1447,7 @@ export function getCutOperationStatus(
     return {
       available: false,
       message:
-        "Create an active rectangle or circle new body before using Cut body."
+        "Create an active rectangle, circle, or topology-backed result body before using Cut body."
     };
   }
 

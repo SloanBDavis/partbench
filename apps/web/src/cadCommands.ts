@@ -789,8 +789,11 @@ export function buildFeatureExtrudeOp(
     op: "feature.extrude",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
-    ...(targetBodyId ? { targetBodyId } : {}),
-    ...(targetTopologyAnchorId ? { targetTopologyAnchorId } : {}),
+    ...(targetTopologyAnchorId
+      ? { targetTopologyAnchorId }
+      : targetBodyId
+        ? { targetBodyId }
+        : {}),
     name: form.name.trim() || undefined,
     sketchId,
     entityId,

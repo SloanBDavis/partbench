@@ -337,7 +337,9 @@ function createAuthoredExtrudeHealth(
           featureId: feature.id,
           bodyId: feature.targetBodyId
         });
-      } else if (!isSupportedBooleanTarget(feature, targetFeature)) {
+      } else if (
+        !isSupportedBooleanTarget(feature, targetFeature, document.features)
+      ) {
         issues.push({
           code: "UNSUPPORTED_BODY_REFERENCES",
           message: getUnsupportedBooleanFeatureMessage(feature.operationMode),
@@ -345,8 +347,8 @@ function createAuthoredExtrudeHealth(
           bodyId: feature.targetBodyId,
           expected:
             feature.operationMode === "add"
-              ? "rectangle newBody target"
-              : "rectangle or circle newBody target",
+              ? "active rectangle source body or topology-backed result body"
+              : "active rectangle/circle source body or topology-backed result body",
           received: describeFeatureForHealth(targetFeature)
         });
       }
@@ -1736,21 +1738,72 @@ function isSupportedAddTargetProfileKind(
 
 function isSupportedBooleanTarget(
   feature: GeneratedReferencesExtrudeFeature,
-  targetFeature: ProjectHealthFeature
+  targetFeature: ProjectHealthFeature,
+  features: ReadonlyMap<FeatureId, ProjectHealthFeature>
 ): boolean {
-  if (
-    targetFeature.kind !== "extrude" ||
-    feature.profileKind !== "rectangle" ||
-    targetFeature.operationMode !== "newBody"
-  ) {
+  if (feature.profileKind !== "rectangle") {
+    return false;
+  }
+
+  const targetProfileKind = resolveBooleanTargetProfileKind(
+    targetFeature,
+    features,
+    feature.targetTopologyAnchorId
+  );
+
+  if (targetProfileKind === undefined) {
     return false;
   }
 
   if (feature.operationMode === "add") {
-    return isSupportedAddTargetProfileKind(targetFeature.profileKind);
+    return isSupportedAddTargetProfileKind(targetProfileKind);
   }
 
-  return isSupportedCutTargetProfileKind(targetFeature.profileKind);
+  return isSupportedCutTargetProfileKind(targetProfileKind);
+}
+
+function resolveBooleanTargetProfileKind(
+  targetFeature: ProjectHealthFeature,
+  features: ReadonlyMap<FeatureId, ProjectHealthFeature>,
+  targetTopologyAnchorId?: string
+): FeatureExtrudeProfileKind | undefined {
+  if (targetFeature.kind !== "extrude") {
+    return undefined;
+  }
+
+  if (targetFeature.operationMode === "newBody") {
+    return targetFeature.profileKind;
+  }
+
+  if (targetTopologyAnchorId === undefined) {
+    return undefined;
+  }
+
+  let current: GeneratedReferencesExtrudeFeature | undefined = targetFeature;
+  const visitedFeatureIds = new Set<FeatureId>();
+
+  while (current && !visitedFeatureIds.has(current.id)) {
+    visitedFeatureIds.add(current.id);
+
+    if (current.operationMode === "newBody") {
+      return current.profileKind;
+    }
+
+    if (
+      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
+      current.targetBodyId === undefined
+    ) {
+      return undefined;
+    }
+
+    const targetBodyId: BodyId = current.targetBodyId;
+    const parent: ProjectHealthFeature | undefined = [
+      ...features.values()
+    ].find((candidate) => candidate.bodyId === targetBodyId);
+    current = parent?.kind === "extrude" ? parent : undefined;
+  }
+
+  return undefined;
 }
 
 function isSupportedHoleTargetFeature(feature: ProjectHealthFeature): boolean {
@@ -1791,10 +1844,10 @@ function getUnsupportedBooleanFeatureMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add features currently require a rectangle source and an active rectangle newBody target body.";
+    return "Add features currently require a rectangle source and an active rectangle source or topology-backed result target body.";
   }
 
-  return "Cut features currently require a rectangle source and an active rectangle or circle newBody target body.";
+  return "Cut features currently require a rectangle source and an active rectangle, circle, or topology-backed result target body.";
 }
 
 function statusFromIssues(

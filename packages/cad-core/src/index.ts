@@ -4892,6 +4892,7 @@ function applyOperation(
         operationMode,
         profileKind,
         target.targetBodyId,
+        target.targetTopologyAnchorId,
         opIndex
       );
       const feature: ExtrudeFeature = {
@@ -8910,6 +8911,7 @@ function updateSketchEntityAndDependents(
       feature.operationMode,
       feature.profileKind,
       feature.targetBodyId,
+      feature.targetTopologyAnchorId,
       opIndex,
       feature.id
     );
@@ -8936,6 +8938,7 @@ function updateSketchEntityAndDependents(
         feature.operationMode,
         feature.profileKind,
         feature.targetBodyId,
+        feature.targetTopologyAnchorId,
         opIndex,
         feature.id
       );
@@ -9584,6 +9587,7 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
       feature.operationMode,
       feature.profileKind,
       feature.targetBodyId,
+      feature.targetTopologyAnchorId,
       opIndex,
       feature.id
     );
@@ -11927,16 +11931,45 @@ function validateExtrudeTarget(
     opIndex,
     "targetTopologyAnchorId"
   );
+  const activeBodyId = resolveActiveTopologyAnchorBodyTargetId(state, target);
 
   return {
     targetBodyId: validateExtrudeTargetBodyId(
       state,
       operationMode,
-      target.bodyId,
+      activeBodyId,
       opIndex
     ),
     targetTopologyAnchorId: target.topologyAnchorId
   };
+}
+
+function resolveActiveTopologyAnchorBodyTargetId(
+  state: MutableDocumentState,
+  target: { readonly bodyId: BodyId; readonly topologyAnchorId: string }
+): BodyId {
+  let activeBodyId = target.bodyId;
+  const visitedBodyIds = new Set<BodyId>();
+
+  while (!visitedBodyIds.has(activeBodyId)) {
+    visitedBodyIds.add(activeBodyId);
+    const consumingFeature = findConsumingFeatureByTargetBodyId(
+      state.features,
+      activeBodyId
+    );
+
+    if (
+      consumingFeature?.kind !== "extrude" ||
+      !isConsumingExtrudeOperationMode(consumingFeature.operationMode) ||
+      consumingFeature.targetTopologyAnchorId !== target.topologyAnchorId
+    ) {
+      return activeBodyId;
+    }
+
+    activeBodyId = consumingFeature.bodyId;
+  }
+
+  return activeBodyId;
 }
 
 function validateExtrudeTargetBodyId(
@@ -12004,6 +12037,7 @@ function assertSupportedExtrudeOperation(
   operationMode: FeatureExtrudeOperationMode,
   profileKind: FeatureExtrudeProfileKind,
   targetBodyId: BodyId | undefined,
+  targetTopologyAnchorId?: string,
   opIndex?: number,
   ignoreConsumingFeatureId?: FeatureId
 ): void {
@@ -12021,14 +12055,18 @@ function assertSupportedExtrudeOperation(
   const hasBlockingConsumingFeature =
     consumingFeature !== undefined &&
     consumingFeature.id !== ignoreConsumingFeatureId;
+  const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
+    state.features,
+    targetFeature,
+    targetTopologyAnchorId
+  );
 
   if (
     operationMode === "cut" &&
     targetBodyId &&
-    targetFeature?.kind === "extrude" &&
     isSupportedBooleanToolProfileKind(profileKind) &&
-    isSupportedCutTargetProfileKind(targetFeature.profileKind) &&
-    targetFeature.operationMode === "newBody" &&
+    targetProfileKind !== undefined &&
+    isSupportedCutTargetProfileKind(targetProfileKind) &&
     !hasBlockingConsumingFeature
   ) {
     return;
@@ -12037,10 +12075,9 @@ function assertSupportedExtrudeOperation(
   if (
     operationMode === "add" &&
     targetBodyId &&
-    targetFeature?.kind === "extrude" &&
     isSupportedBooleanToolProfileKind(profileKind) &&
-    isSupportedAddTargetProfileKind(targetFeature.profileKind) &&
-    targetFeature.operationMode === "newBody" &&
+    targetProfileKind !== undefined &&
+    isSupportedAddTargetProfileKind(targetProfileKind) &&
     !hasBlockingConsumingFeature
   ) {
     return;
@@ -12048,12 +12085,12 @@ function assertSupportedExtrudeOperation(
 
   const expected =
     operationMode === "add"
-      ? "add with rectangle/circle source and active rectangle newBody target"
-      : "cut with rectangle/circle source and active rectangle/circle newBody target";
+      ? "add with rectangle/circle source and active rectangle source or topology-backed result target"
+      : "cut with rectangle/circle source and active rectangle/circle source or topology-backed result target";
   const message =
     operationMode === "add"
-      ? "Add extrudes currently support rectangle or circle tools fusing with one active rectangle newBody target body."
-      : "Cut extrudes currently support rectangle or circle tools cutting one active rectangle or circle newBody target body.";
+      ? "Add extrudes currently support rectangle or circle tools fusing with one active rectangle source or topology-backed result target body."
+      : "Cut extrudes currently support rectangle or circle tools cutting one active rectangle, circle, or topology-backed result target body.";
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
@@ -12066,10 +12103,12 @@ function assertSupportedExtrudeOperation(
       operationMode,
       profileKind,
       targetBodyId,
+      targetTopologyAnchorId,
       targetProfileKind:
-        targetFeature?.kind === "extrude"
+        targetProfileKind ??
+        (targetFeature?.kind === "extrude"
           ? targetFeature.profileKind
-          : undefined,
+          : undefined),
       targetOperationMode:
         targetFeature?.kind === "extrude"
           ? targetFeature.operationMode
@@ -12080,6 +12119,50 @@ function assertSupportedExtrudeOperation(
         : undefined
     })
   });
+}
+
+function resolveSupportedBooleanTargetProfileKind(
+  features: ReadonlyMap<FeatureId, Feature>,
+  targetFeature: Feature | undefined,
+  targetTopologyAnchorId?: string
+): FeatureExtrudeProfileKind | undefined {
+  if (targetFeature?.kind !== "extrude") {
+    return undefined;
+  }
+
+  if (targetFeature.operationMode === "newBody") {
+    return targetFeature.profileKind;
+  }
+
+  if (
+    targetTopologyAnchorId === undefined ||
+    !isConsumingExtrudeOperationMode(targetFeature.operationMode)
+  ) {
+    return undefined;
+  }
+
+  let current: ExtrudeFeature | undefined = targetFeature;
+  const visitedFeatureIds = new Set<FeatureId>();
+
+  while (current && !visitedFeatureIds.has(current.id)) {
+    visitedFeatureIds.add(current.id);
+
+    if (current.operationMode === "newBody") {
+      return current.profileKind;
+    }
+
+    if (
+      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
+      current.targetBodyId === undefined
+    ) {
+      return undefined;
+    }
+
+    const parent = findFeatureByBodyId(features, current.targetBodyId);
+    current = parent?.kind === "extrude" ? parent : undefined;
+  }
+
+  return undefined;
 }
 
 function validateBoxDimensions(
@@ -17689,7 +17772,10 @@ function createProjectState(project: CadProject): {
   };
 
   try {
-    historyState = createTransactionEntries(normalizedProject.history);
+    historyState = createTransactionEntries(
+      normalizedProject.history,
+      createHistoryReplayInitialDocument(normalizedProject)
+    );
   } catch (error) {
     throwProjectTransactionHistoryError("$.history", error);
   }
@@ -17726,6 +17812,38 @@ function createProjectState(project: CadProject): {
     history: historyState.entries,
     redoStack: [...redoEntriesInApplyOrder.entries].reverse()
   };
+}
+
+function createHistoryReplayInitialDocument(project: CadProject): CadDocument {
+  if (
+    project.document.topologyIdentity === undefined ||
+    project.history.some(transactionHasTopologyIdentityMutation)
+  ) {
+    return createCadDocument();
+  }
+
+  return createCadDocument(
+    [],
+    DEFAULT_DOCUMENT_UNITS,
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    project.document.topologyIdentity
+  );
+}
+
+function transactionHasTopologyIdentityMutation(
+  transaction: Transaction
+): boolean {
+  return transaction.ops.some(
+    (op) =>
+      op.op === "topology.checkpoint.create" ||
+      op.op === "topology.anchor.create" ||
+      op.op === "topology.anchor.repair"
+  );
 }
 
 function createTransactionEntries(
@@ -21673,7 +21791,11 @@ function validateFeatureTargetBodyReferences(
     if (
       feature.kind === "extrude" &&
       (!isExtrudeFeatureSnapshot(target) ||
-        !isSupportedBooleanExtrudeCombination(feature, target))
+        !isSupportedBooleanExtrudeCombination(
+          featuresByBodyId,
+          feature,
+          target
+        ))
     ) {
       addProjectIssue(
         issues,
@@ -21742,37 +21864,87 @@ function isExtrudeFeatureSnapshot(
 }
 
 function isSupportedBooleanExtrudeCombination(
+  featuresByBodyId: ReadonlyMap<
+    BodyId,
+    FeatureSnapshot & { readonly path: string }
+  >,
   feature: ExtrudeFeatureSnapshot,
   target: ExtrudeFeatureSnapshot
 ): boolean {
-  if (
-    !isSupportedBooleanToolProfileKind(feature.profileKind) ||
-    target.operationMode !== "newBody"
-  ) {
+  if (!isSupportedBooleanToolProfileKind(feature.profileKind)) {
     return false;
   }
 
   const operationMode = feature.operationMode ?? "newBody";
+  const targetProfileKind = resolveImportBooleanTargetProfileKind(
+    featuresByBodyId,
+    target,
+    feature.targetTopologyAnchorId
+  );
+
+  if (targetProfileKind === undefined) {
+    return false;
+  }
 
   if (operationMode === "add") {
-    return isSupportedAddTargetProfileKind(target.profileKind);
+    return isSupportedAddTargetProfileKind(targetProfileKind);
   }
 
   if (operationMode === "cut") {
-    return isSupportedCutTargetProfileKind(target.profileKind);
+    return isSupportedCutTargetProfileKind(targetProfileKind);
   }
 
   return false;
+}
+
+function resolveImportBooleanTargetProfileKind(
+  featuresByBodyId: ReadonlyMap<
+    BodyId,
+    FeatureSnapshot & { readonly path: string }
+  >,
+  target: ExtrudeFeatureSnapshot,
+  targetTopologyAnchorId?: string
+): FeatureExtrudeProfileKind | undefined {
+  if ((target.operationMode ?? "newBody") === "newBody") {
+    return target.profileKind;
+  }
+
+  if (targetTopologyAnchorId === undefined) {
+    return undefined;
+  }
+
+  let current: ExtrudeFeatureSnapshot | undefined = target;
+  const visitedFeatureIds = new Set<FeatureId>();
+
+  while (current && !visitedFeatureIds.has(current.id)) {
+    visitedFeatureIds.add(current.id);
+
+    if ((current.operationMode ?? "newBody") === "newBody") {
+      return current.profileKind;
+    }
+
+    if (
+      current.targetTopologyAnchorId !== targetTopologyAnchorId ||
+      current.targetBodyId === undefined
+    ) {
+      return undefined;
+    }
+
+    const parent = featuresByBodyId.get(current.targetBodyId);
+    current = parent && isExtrudeFeatureSnapshot(parent) ? parent : undefined;
+  }
+
+  return undefined;
 }
 
 function getUnsupportedBooleanExtrudeMessage(
   operationMode: FeatureExtrudeOperationMode
 ): string {
   if (operationMode === "add") {
-    return "Add extrudes currently support rectangle tools fusing with one active rectangle newBody target body.";
+    return "Add extrudes currently support rectangle tools fusing with one active rectangle source or topology-backed result target body.";
   }
 
-  return "Cut extrudes currently support rectangle tools cutting one active rectangle or circle newBody target body.";
+  return "Cut extrudes currently support rectangle tools cutting one active rectangle, circle, or topology-backed result target body.";
 }
 
 function formatTargetConsumingFeatureForIssue(

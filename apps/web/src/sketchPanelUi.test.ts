@@ -48,6 +48,7 @@ import {
   getInitialSketchExtrudeOperationMode,
   getRevolveOperationStatus,
   getPreferredBooleanTargetBodyId,
+  getPreferredBooleanTargetBodyOption,
   getParameterDimensionUsageCount,
   getSketchConstraintKindLabel,
   getSketchConstraintStatusDisplay,
@@ -1031,6 +1032,37 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
+  it("offers active topology-backed boolean result bodies as cut targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut", {
+        targetTopologyAnchorId: "anchor_body_rect"
+      }),
+      createExtrudeFeature(
+        "feat_unanchored_cut",
+        "body_unanchored_cut",
+        "rectangle",
+        "cut"
+      )
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect", "feat_cut"),
+      createBody("body_cut", "feat_cut"),
+      createBody("body_unanchored_cut", "feat_unanchored_cut")
+    ];
+
+    expect(createCutTargetBodyOptions(bodies, features, "body_cut")).toEqual([
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_rect",
+        profileKind: "rectangle",
+        label: "Rectangle result 1 / 1 mm",
+        detail: "Rectangle topology result / cut / body_cut"
+      }
+    ]);
+  });
+
   it("defaults attached sketch extrudes to cut when the attached body is an eligible target", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
@@ -1079,7 +1111,7 @@ describe("sketch panel UI helpers", () => {
     );
   });
 
-  it("keeps attached result sketches as new body when chained boolean targets are unsupported", () => {
+  it("defaults attached result sketches to cut when the result body is topology-backed", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
       kind: "rectangle",
@@ -1106,14 +1138,28 @@ describe("sketch panel UI helpers", () => {
         profileKind: "rectangle" as const,
         label: "Other target",
         detail: "Rectangle new body / 1 / positive"
+      },
+      {
+        bodyId: "body_boolean_result",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_rect",
+        profileKind: "rectangle" as const,
+        label: "Result target",
+        detail: "Rectangle topology result / cut / body_boolean_result"
       }
     ];
 
     expect(
       getInitialSketchExtrudeOperationMode(sketch, rectangle, targets)
-    ).toBe("newBody");
+    ).toBe("cut");
+    expect(
+      getPreferredBooleanTargetBodyOption(targets, sketch.attachment?.bodyId)
+    ).toMatchObject({
+      bodyId: "body_boolean_result",
+      targetTopologyAnchorId: "anchor_body_rect"
+    });
     expect(getAttachedSketchBooleanTargetHint(sketch, rectangle, targets)).toBe(
-      "This sketch is attached to a result body face. Cut/Add can target active source bodies only, so this sketch can create a new body for now."
+      undefined
     );
   });
 
@@ -1189,7 +1235,7 @@ describe("sketch panel UI helpers", () => {
     expect(getCutOperationStatus(rectangle, [])).toEqual({
       available: false,
       message:
-        "Create an active rectangle or circle new body before using Cut body."
+        "Create an active rectangle, circle, or topology-backed result body before using Cut body."
     });
     expect(getCutOperationStatus(rectangle, targets)).toEqual({
       available: true,
@@ -1317,7 +1363,8 @@ describe("sketch panel UI helpers", () => {
     });
     expect(getAddOperationStatus(rectangle, [])).toEqual({
       available: false,
-      message: "Create an active rectangle new body before using Add to body."
+      message:
+        "Create an active rectangle source body or topology-backed result body before using Add to body."
     });
     expect(getAddOperationStatus(rectangle, targets)).toEqual({
       available: true,
@@ -1520,7 +1567,8 @@ function createExtrudeFeature(
   id: string,
   bodyId: string,
   profileKind: "rectangle" | "circle",
-  operationMode: "newBody" | "add" | "cut"
+  operationMode: "newBody" | "add" | "cut",
+  options: { readonly targetTopologyAnchorId?: string } = {}
 ): Extract<CadFeatureSummary, { kind: "extrude" }> {
   return {
     id,
@@ -1536,10 +1584,16 @@ function createExtrudeFeature(
     ...(operationMode === "add" || operationMode === "cut"
       ? { targetBodyId: "body_rect" }
       : {}),
+    ...(options.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: options.targetTopologyAnchorId }
+      : {}),
     source: {
       type: "sketchEntity",
       sketchId: "sketch_1",
-      entityId: profileKind === "rectangle" ? "rect_1" : "circle_1"
+      entityId: profileKind === "rectangle" ? "rect_1" : "circle_1",
+      ...(options.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: options.targetTopologyAnchorId }
+        : {})
     }
   };
 }

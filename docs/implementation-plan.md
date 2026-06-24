@@ -2507,6 +2507,13 @@ Use these decisions when drafting or implementing V13 tranches:
    `targetBodyId` plus topology-anchor provenance for transaction history,
    project structure, health, dependency graph, import/export, agent, MCP, app
    helper, generated-reference signature, and topology source-identity surfaces.
+   Active body anchors also resolve forward through prior add/cut extrudes
+   that consumed the same topology anchor, so supported result bodies can be
+   chained as the next add/cut target while preserving the public anchor proof
+   and resolved target body source boundary. The Sketch panel can surface those
+   topology-backed result bodies as normal target choices and submit
+   anchor-backed CADOps; unanchored result bodies, holes, cylinder side-wall
+   cuts, and edge finishing remain outside this implemented slice.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Direct face/edge topology-anchor command targets that cannot map to current

@@ -877,6 +877,7 @@ describe("cad command builders", () => {
       buildFeatureExtrudeOp("sketch_1", "rect_1", {
         id: "feat_anchor_cut",
         bodyId: "body_anchor_cut",
+        targetBodyId: "body_active_result",
         targetTopologyAnchorId: " anchor_body_1 ",
         name: "Anchor cut",
         depth: 1,

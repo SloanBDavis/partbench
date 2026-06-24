@@ -33887,6 +33887,188 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     });
   });
 
+  it("chains cut extrudes through active topology-backed result bodies", () => {
+    const engine = createRectangleExtrudeEngine();
+    engine.applyBatch([
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_1",
+        bodyId: "body_rect_1",
+        sourceFeatureId: "feat_rect_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_1",
+        entityKind: "body",
+        bodyId: "body_rect_1",
+        checkpointId: "checkpoint_1",
+        checkpointEntityId: "checkpoint-local-body-1",
+        sourceFeatureId: "feat_rect_1",
+        stableId: "generated:body:body_rect_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "body_signature_1"
+      }
+    ]);
+    const beforeJson = exportCadProjectJson(engine);
+    const chainOps = [
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut",
+        name: "First cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut",
+        id: "rect_anchor_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_first_cut",
+        bodyId: "body_first_cut",
+        sketchId: "sketch_anchor_cut",
+        entityId: "rect_anchor_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_1"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut_2",
+        name: "Second cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut_2",
+        id: "rect_anchor_cut_2",
+        center: [0, 0],
+        width: 0.5,
+        height: 0.5
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_second_cut",
+        bodyId: "body_second_cut",
+        sketchId: "sketch_anchor_cut_2",
+        entityId: "rect_anchor_cut_2",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_1"
+      }
+    ] as const;
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: chainOps
+      })
+    ).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_first_cut", "feat_second_cut"],
+      createdBodyIds: ["body_first_cut", "body_second_cut"]
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    const result = engine.applyBatch(chainOps);
+    const featureDiff = result.transaction.diff.features;
+    expect(featureDiff).toBeDefined();
+    expect(featureDiff?.created).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "feat_first_cut" }),
+        expect.objectContaining({ id: "feat_second_cut" })
+      ])
+    );
+    expect(featureDiff?.bodiesCreated).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "body_first_cut" }),
+        expect.objectContaining({ id: "body_second_cut" })
+      ])
+    );
+    expect(getExtrudeFeature(engine, "feat_first_cut")).toMatchObject({
+      operationMode: "cut",
+      targetBodyId: "body_rect_1",
+      targetTopologyAnchorId: "anchor_body_1",
+      bodyId: "body_first_cut"
+    });
+    expect(getExtrudeFeature(engine, "feat_second_cut")).toMatchObject({
+      operationMode: "cut",
+      targetBodyId: "body_first_cut",
+      targetTopologyAnchorId: "anchor_body_1",
+      bodyId: "body_second_cut"
+    });
+
+    const structure = readProjectStructure(engine);
+    expect(structure.bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_rect_1",
+          consumedByFeatureId: "feat_first_cut"
+        }),
+        expect.objectContaining({
+          id: "body_first_cut",
+          consumedByFeatureId: "feat_second_cut"
+        })
+      ])
+    );
+    expect(
+      structure.bodies.find((body) => body.id === "body_second_cut")
+    ).not.toHaveProperty("consumedByFeatureId");
+
+    const health = readProjectHealth(engine);
+    expect(health.authoredExtrudes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_second_cut",
+          operationMode: "cut",
+          targetBodyId: "body_first_cut",
+          targetTopologyAnchorId: "anchor_body_1",
+          status: "healthy"
+        })
+      ])
+    );
+    const graph = readProjectDependencyGraph(engine);
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "targets",
+          sourceFeatureId: "feat_second_cut",
+          bodyId: "body_first_cut"
+        }),
+        expect.objectContaining({
+          kind: "sources",
+          sourceFeatureId: "feat_second_cut",
+          topologyAnchorId: "anchor_body_1"
+        })
+      ])
+    );
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    expect(getExtrudeFeature(restored, "feat_second_cut")).toMatchObject({
+      targetBodyId: "body_first_cut",
+      targetTopologyAnchorId: "anchor_body_1"
+    });
+    expect(
+      JSON.stringify({
+        transaction: result.transaction,
+        structure,
+        graph
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+  });
+
   it("rejects topology body anchors that cannot prove extrude targets", () => {
     const engine = createTopologyEdgeAnchorEngine({
       anchorId: "anchor_body_1",
@@ -34051,65 +34233,6 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
         path: "$.ops[0].targetTopologyAnchorId",
         expected: "active topology anchor and checkpoint",
         received: "anchor:stale, checkpoint:active"
-      }
-    });
-
-    const consumedEngine = createTopologyEdgeAnchorEngine({
-      anchorId: "anchor_body_1",
-      entityKind: "body",
-      stableId: "generated:body:body_rect_1"
-    });
-    consumedEngine.applyBatch([
-      ...baseOps,
-      {
-        op: "feature.extrude",
-        id: "feat_first_cut",
-        bodyId: "body_first_cut",
-        sketchId: "sketch_anchor_cut",
-        entityId: "rect_anchor_cut",
-        depth: 1,
-        operationMode: "cut",
-        targetTopologyAnchorId: "anchor_body_1"
-      },
-      {
-        op: "sketch.create",
-        id: "sketch_anchor_cut_2",
-        name: "Second cut",
-        plane: "XY"
-      },
-      {
-        op: "sketch.addRectangle",
-        sketchId: "sketch_anchor_cut_2",
-        id: "rect_anchor_cut_2",
-        center: [0, 0],
-        width: 0.5,
-        height: 0.5
-      }
-    ]);
-    expect(
-      consumedEngine.executeBatch({
-        version: "cadops.v1",
-        mode: "commit",
-        ops: [
-          {
-            op: "feature.extrude",
-            sketchId: "sketch_anchor_cut_2",
-            entityId: "rect_anchor_cut_2",
-            depth: 1,
-            operationMode: "cut",
-            targetTopologyAnchorId: "anchor_body_1"
-          }
-        ]
-      })
-    ).toMatchObject({
-      ok: false,
-      error: {
-        code: "UNSUPPORTED_FEATURE_OPERATION",
-        bodyId: "body_rect_1",
-        path: "$.ops[0].operationMode",
-        received: expect.stringContaining(
-          '"targetConsumedByFeatureId":"feat_first_cut"'
-        )
       }
     });
 

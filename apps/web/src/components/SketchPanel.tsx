@@ -54,7 +54,7 @@ import {
   getDefaultSketchPointTargetRole,
   getExtrudeSideForOperationMode,
   getInitialSketchExtrudeOperationMode,
-  getPreferredBooleanTargetBodyId,
+  getPreferredBooleanTargetBodyOption,
   getRevolveOperationStatus,
   createParameterBindingOptions,
   formatSketchEvaluationIssue,
@@ -234,9 +234,9 @@ function createInitialExtrudeFormForSelection(
     entity,
     cutTargetBodies
   );
-  const targetBodyId =
+  const targetBody =
     operationMode === "cut"
-      ? getPreferredBooleanTargetBodyId(
+      ? getPreferredBooleanTargetBodyOption(
           cutTargetBodies,
           sketch.attachment?.bodyId
         )
@@ -250,7 +250,14 @@ function createInitialExtrudeFormForSelection(
       operationMode,
       defaultExtrudeForm.side
     ),
-    ...(targetBodyId ? { targetBodyId } : {})
+    ...(targetBody
+      ? {
+          targetBodyId: targetBody.bodyId,
+          ...(targetBody.targetTopologyAnchorId
+            ? { targetTopologyAnchorId: targetBody.targetTopologyAnchorId }
+            : {})
+        }
+      : {})
   };
 }
 
@@ -1798,28 +1805,25 @@ export function SketchPanel({
                                   onChange={(event) => {
                                     const operationMode = event.currentTarget
                                       .value as FeatureExtrudeForm["operationMode"];
+                                    const targetBodies =
+                                      operationMode === "add"
+                                        ? addTargetBodies
+                                        : operationMode === "cut"
+                                          ? cutTargetBodies
+                                          : [];
+                                    const selectedTarget =
+                                      targetBodies.find(
+                                        (body) =>
+                                          body.bodyId ===
+                                          extrudeForm.targetBodyId
+                                      ) ?? targetBodies[0];
 
                                     setExtrudeForm({
                                       ...extrudeForm,
                                       operationMode,
-                                      targetBodyId:
-                                        operationMode === "add"
-                                          ? addTargetBodies.some(
-                                              (body) =>
-                                                body.bodyId ===
-                                                extrudeForm.targetBodyId
-                                            )
-                                            ? extrudeForm.targetBodyId
-                                            : addTargetBodies[0]?.bodyId
-                                          : operationMode === "cut"
-                                            ? cutTargetBodies.some(
-                                                (body) =>
-                                                  body.bodyId ===
-                                                  extrudeForm.targetBodyId
-                                              )
-                                              ? extrudeForm.targetBodyId
-                                              : cutTargetBodies[0]?.bodyId
-                                            : undefined
+                                      targetBodyId: selectedTarget?.bodyId,
+                                      targetTopologyAnchorId:
+                                        selectedTarget?.targetTopologyAnchorId
                                     });
                                   }}
                                 >
@@ -1839,12 +1843,21 @@ export function SketchPanel({
                                   <select
                                     value={extrudeForm.targetBodyId ?? ""}
                                     disabled={disabled || !canCreateBoolean}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                      const targetBodyId =
+                                        event.currentTarget.value;
+                                      const selectedTarget =
+                                        activeTargetBodies.find(
+                                          (body) => body.bodyId === targetBodyId
+                                        );
+
                                       setExtrudeForm({
                                         ...extrudeForm,
-                                        targetBodyId: event.currentTarget.value
-                                      })
-                                    }
+                                        targetBodyId,
+                                        targetTopologyAnchorId:
+                                          selectedTarget?.targetTopologyAnchorId
+                                      });
+                                    }}
                                   >
                                     {activeTargetBodies.map((body) => (
                                       <option
