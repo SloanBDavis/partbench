@@ -9,6 +9,8 @@ import type {
 import type { RenderTriangleMesh } from "@web-cad/renderer";
 import {
   createDerivedGeometryErrorDetails,
+  type DerivedGeometryBooleanExtrudeInputSource,
+  type DerivedGeometryBooleanExtrudePrimitiveInputSource,
   type DerivedGeometryErrorDetails,
   type DerivedGeometryMetrics,
   type DerivedGeometryResult,
@@ -73,7 +75,9 @@ export interface DerivedBooleanExtrudeGeometrySource {
   readonly id: string;
   readonly kind: "extrudeBoolean";
   readonly operation: "add" | "cut";
-  readonly target: DerivedExtrudeGeometrySource;
+  readonly target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
   readonly tool: DerivedExtrudeGeometrySource;
   readonly placementError?: string;
 }
@@ -610,20 +614,8 @@ function deriveSourceMesh(
     return runtime.booleanExtrudes({
       id: source.id,
       operation: source.operation,
-      target: {
-        sketchPlane: source.target.sketchPlane,
-        profile: source.target.profile,
-        depth: source.target.depth,
-        side: source.target.side,
-        placementFrame: source.target.placementFrame
-      },
-      tool: {
-        sketchPlane: source.tool.sketchPlane,
-        profile: source.tool.profile,
-        depth: source.tool.depth,
-        side: source.tool.side,
-        placementFrame: source.tool.placementFrame
-      }
+      target: createBooleanRuntimeSource(source.target),
+      tool: createPrimitiveBooleanRuntimeSource(source.tool)
     });
   }
 
@@ -766,6 +758,33 @@ export function applySketchPlanePlacement(
   };
 }
 
+function createBooleanRuntimeSource(
+  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+): DerivedGeometryBooleanExtrudeInputSource {
+  if (source.kind === "extrudeBoolean") {
+    return {
+      kind: "booleanExtrudes",
+      operation: source.operation,
+      target: createBooleanRuntimeSource(source.target),
+      tool: createPrimitiveBooleanRuntimeSource(source.tool)
+    };
+  }
+
+  return createPrimitiveBooleanRuntimeSource(source);
+}
+
+function createPrimitiveBooleanRuntimeSource(
+  source: DerivedExtrudeGeometrySource
+): DerivedGeometryBooleanExtrudePrimitiveInputSource {
+  return {
+    sketchPlane: source.sketchPlane,
+    profile: source.profile,
+    depth: source.depth,
+    side: source.side,
+    placementFrame: source.placementFrame
+  };
+}
+
 export function transformExtrudeMeshToPlacement(
   mesh: RenderTriangleMesh,
   sketchPlane: DerivedExtrudeGeometrySource["sketchPlane"],
@@ -836,26 +855,33 @@ function isSupportedBooleanExtrudeSource(
 function getUnsupportedBooleanSourceMessage(
   source: DerivedBooleanExtrudeGeometrySource
 ): string | undefined {
+  const targetProfileKind = getBooleanSourceProfileKind(source.target);
+
   if (source.tool.profile.kind !== "rectangle") {
     return "Boolean display currently supports rectangle tool extrudes only.";
   }
 
-  if (
-    source.operation === "add" &&
-    source.target.profile.kind !== "rectangle"
-  ) {
+  if (source.operation === "add" && targetProfileKind !== "rectangle") {
     return "Boolean add display currently supports rectangle target extrudes only.";
   }
 
   if (
     source.operation === "cut" &&
-    source.target.profile.kind !== "rectangle" &&
-    source.target.profile.kind !== "circle"
+    targetProfileKind !== "rectangle" &&
+    targetProfileKind !== "circle"
   ) {
     return "Boolean cut display currently supports rectangle or circle target extrudes only.";
   }
 
   return undefined;
+}
+
+function getBooleanSourceProfileKind(
+  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+): DerivedExtrudeGeometrySource["profile"]["kind"] {
+  return source.kind === "extrudeBoolean"
+    ? getBooleanSourceProfileKind(source.target)
+    : source.profile.kind;
 }
 
 function isSupportedHoleSource(source: DerivedHoleGeometrySource): boolean {

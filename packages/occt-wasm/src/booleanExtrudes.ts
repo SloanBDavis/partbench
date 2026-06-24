@@ -26,12 +26,23 @@ export type OcctExtrudeProfile =
   | OcctRectangleExtrudeProfile
   | OcctCircleExtrudeProfile;
 
-export interface OcctBooleanExtrudeSource {
+export type OcctBooleanExtrudeSource =
+  | OcctBooleanExtrudePrimitiveSource
+  | OcctBooleanExtrudeResultSource;
+
+export interface OcctBooleanExtrudePrimitiveSource {
   readonly sketchPlane: OcctSketchPlane;
   readonly profile: OcctExtrudeProfile;
   readonly depth: number;
   readonly side?: OcctExtrudeSide;
   readonly placementFrame?: OcctBooleanExtrudePlacementFrame;
+}
+
+export interface OcctBooleanExtrudeResultSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: OcctBooleanOperation;
+  readonly target: OcctBooleanExtrudeSource;
+  readonly tool: OcctBooleanExtrudePrimitiveSource;
 }
 
 export interface OcctBooleanExtrudePlacementFrame {
@@ -43,7 +54,7 @@ export interface OcctBooleanExtrudePlacementFrame {
 export interface OcctBooleanExtrudeInput {
   readonly operation: OcctBooleanOperation;
   readonly target: OcctBooleanExtrudeSource;
-  readonly tool: OcctBooleanExtrudeSource;
+  readonly tool: OcctBooleanExtrudePrimitiveSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }
@@ -129,6 +140,30 @@ export function makeBooleanExtrudeShape(
   source: OcctBooleanExtrudeSource
 ):
   | InstanceType<typeof oc.BRepPrimAPI_MakeBox_5>
+  | InstanceType<typeof oc.BRepPrimAPI_MakeCylinder_3>
+  | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
+  | InstanceType<typeof oc.BRepAlgoAPI_Cut_3> {
+  if (isOcctBooleanExtrudeResultSource(source)) {
+    return makeBooleanExtrudeResultShape(oc, source);
+  }
+
+  return makePrimitiveBooleanExtrudeShape(oc, source);
+}
+
+function isOcctBooleanExtrudeResultSource(
+  source: OcctBooleanExtrudeSource
+): source is OcctBooleanExtrudeResultSource {
+  return (
+    "kind" in source &&
+    (source as { readonly kind?: unknown }).kind === "booleanExtrudes"
+  );
+}
+
+function makePrimitiveBooleanExtrudeShape(
+  oc: OpenCascadeInstance,
+  source: OcctBooleanExtrudePrimitiveSource
+):
+  | InstanceType<typeof oc.BRepPrimAPI_MakeBox_5>
   | InstanceType<typeof oc.BRepPrimAPI_MakeCylinder_3> {
   switch (source.profile.kind) {
     case "rectangle":
@@ -138,9 +173,46 @@ export function makeBooleanExtrudeShape(
   }
 }
 
+function makeBooleanExtrudeResultShape(
+  oc: OpenCascadeInstance,
+  source: OcctBooleanExtrudeResultSource
+):
+  | InstanceType<typeof oc.BRepAlgoAPI_Fuse_3>
+  | InstanceType<typeof oc.BRepAlgoAPI_Cut_3> {
+  const targetShape = makeBooleanExtrudeShape(oc, source.target);
+  const toolShape = makePrimitiveBooleanExtrudeShape(oc, source.tool);
+  const range = new oc.Message_ProgressRange_1();
+
+  try {
+    const operation =
+      source.operation === "add"
+        ? new oc.BRepAlgoAPI_Fuse_3(
+            targetShape.Shape(),
+            toolShape.Shape(),
+            range
+          )
+        : new oc.BRepAlgoAPI_Cut_3(
+            targetShape.Shape(),
+            toolShape.Shape(),
+            range
+          );
+
+    if (operation.HasErrors()) {
+      operation.delete();
+      throw new Error(`Open CASCADE boolean ${source.operation} failed.`);
+    }
+
+    return operation;
+  } finally {
+    range.delete();
+    targetShape.delete();
+    toolShape.delete();
+  }
+}
+
 function makeRectangleExtrudeBox(
   oc: OpenCascadeInstance,
-  source: OcctBooleanExtrudeSource
+  source: OcctBooleanExtrudePrimitiveSource
 ): InstanceType<typeof oc.BRepPrimAPI_MakeBox_5> {
   if (source.profile.kind !== "rectangle") {
     throw new Error(
@@ -172,7 +244,7 @@ function makeRectangleExtrudeBox(
 
 function makeCircleExtrudeCylinder(
   oc: OpenCascadeInstance,
-  source: OcctBooleanExtrudeSource
+  source: OcctBooleanExtrudePrimitiveSource
 ): InstanceType<typeof oc.BRepPrimAPI_MakeCylinder_3> {
   if (source.profile.kind !== "circle") {
     throw new Error(
@@ -201,7 +273,7 @@ function makeCircleExtrudeCylinder(
   }
 }
 
-function getExtrudeNormalRange(source: OcctBooleanExtrudeSource): {
+function getExtrudeNormalRange(source: OcctBooleanExtrudePrimitiveSource): {
   readonly normalMin: number;
   readonly normalMax: number;
 } {
@@ -213,7 +285,9 @@ function getExtrudeNormalRange(source: OcctBooleanExtrudeSource): {
   return { normalMin, normalMax };
 }
 
-function getExtrudeFrame(source: OcctBooleanExtrudeSource): ExtrudeFrame {
+function getExtrudeFrame(
+  source: OcctBooleanExtrudePrimitiveSource
+): ExtrudeFrame {
   if (source.placementFrame) {
     const uAxis = normalizeVec3(source.placementFrame.uAxis);
     const vAxis = normalizeVec3(source.placementFrame.vAxis);

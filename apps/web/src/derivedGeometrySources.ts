@@ -118,39 +118,19 @@ export function createExtrudeDerivedGeometrySources(
   )[] = [];
 
   for (const feature of extrudeFeatures) {
-    if (feature.operationMode === "add" || feature.operationMode === "cut") {
-      const targetFeature = feature.targetBodyId
-        ? featuresByBodyId.get(feature.targetBodyId)
-        : undefined;
-      const target = targetFeature
-        ? createExtrudeSourceForFeature(
-            targetFeature,
-            sketches,
-            generatedFacesByKey
-          )
-        : undefined;
-      const tool = createExtrudeSourceForFeature(
-        feature,
-        sketches,
-        generatedFacesByKey
-      );
-
-      sources.push({
-        id: feature.bodyId,
-        kind: "extrudeBoolean",
-        operation: feature.operationMode,
-        ...(target && tool
-          ? { target, tool }
-          : {
-              target: target ?? createUnavailableExtrudeSource(feature.bodyId),
-              tool: tool ?? createUnavailableExtrudeSource(feature.bodyId)
-            }),
-        ...createBooleanPlacementError(feature, target, tool)
-      });
+    if (consumedBodyIds.has(feature.bodyId)) {
       continue;
     }
 
-    if (consumedBodyIds.has(feature.bodyId)) {
+    if (feature.operationMode === "add" || feature.operationMode === "cut") {
+      sources.push(
+        createBooleanSourceForFeature(
+          feature,
+          featuresByBodyId,
+          sketches,
+          generatedFacesByKey
+        )
+      );
       continue;
     }
 
@@ -166,6 +146,68 @@ export function createExtrudeDerivedGeometrySources(
   }
 
   return sources;
+}
+
+function createBooleanSourceForFeature(
+  feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
+  featuresByBodyId: ReadonlyMap<
+    string,
+    Extract<CadFeatureSummary, { kind: "extrude" }>
+  >,
+  sketches: readonly SketchSnapshot[],
+  generatedFacesByKey: ReadonlyMap<string, CadGeneratedFaceReference>,
+  visitedFeatureIds: ReadonlySet<string> = new Set()
+): DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource {
+  if (feature.operationMode !== "add" && feature.operationMode !== "cut") {
+    return (
+      createExtrudeSourceForFeature(feature, sketches, generatedFacesByKey) ??
+      createUnavailableExtrudeSource(feature.bodyId)
+    );
+  }
+
+  if (visitedFeatureIds.has(feature.id)) {
+    return {
+      id: feature.bodyId,
+      kind: "extrudeBoolean",
+      operation: feature.operationMode,
+      target: createUnavailableExtrudeSource(feature.bodyId),
+      tool: createUnavailableExtrudeSource(feature.bodyId),
+      placementError: `Boolean feature ${feature.id} cannot be displayed because its target chain is cyclic.`
+    };
+  }
+
+  const nextVisitedFeatureIds = new Set(visitedFeatureIds);
+  nextVisitedFeatureIds.add(feature.id);
+  const targetFeature = feature.targetBodyId
+    ? featuresByBodyId.get(feature.targetBodyId)
+    : undefined;
+  const target = targetFeature
+    ? createBooleanSourceForFeature(
+        targetFeature,
+        featuresByBodyId,
+        sketches,
+        generatedFacesByKey,
+        nextVisitedFeatureIds
+      )
+    : undefined;
+  const tool = createExtrudeSourceForFeature(
+    feature,
+    sketches,
+    generatedFacesByKey
+  );
+
+  return {
+    id: feature.bodyId,
+    kind: "extrudeBoolean",
+    operation: feature.operationMode,
+    ...(target && tool
+      ? { target, tool }
+      : {
+          target: target ?? createUnavailableExtrudeSource(feature.bodyId),
+          tool: tool ?? createUnavailableExtrudeSource(feature.bodyId)
+        }),
+    ...createBooleanPlacementError(feature, target, tool)
+  };
 }
 
 export function createRevolveDerivedGeometrySources(
@@ -511,7 +553,10 @@ function createConsumedBodyIds(
 
 function createBooleanPlacementError(
   feature: Extract<CadFeatureSummary, { kind: "extrude" }>,
-  target: DerivedExtrudeGeometrySource | undefined,
+  target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource
+    | undefined,
   tool: DerivedExtrudeGeometrySource | undefined
 ): { readonly placementError?: string } {
   if (!target || !tool) {

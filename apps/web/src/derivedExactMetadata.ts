@@ -16,6 +16,8 @@ import type {
 import { createDerivedGeometryCacheKey } from "./derivedGeometry";
 import {
   createDerivedGeometryErrorDetails,
+  type DerivedGeometryBooleanExtrudeInputSource,
+  type DerivedGeometryBooleanExtrudePrimitiveInputSource,
   type DerivedExactBodyMetadata,
   type DerivedExactMetadataMetrics,
   type DerivedExactMetadataResult,
@@ -496,25 +498,36 @@ export function createExactMetadataRuntimeInput(
     source: {
       kind: "booleanExtrudes",
       operation: source.operation,
-      target: {
-        sketchPlane: source.target.sketchPlane,
-        profile: source.target.profile,
-        depth: source.target.depth,
-        side: source.target.side,
-        ...(source.target.placementFrame
-          ? { placementFrame: source.target.placementFrame }
-          : {})
-      },
-      tool: {
-        sketchPlane: source.tool.sketchPlane,
-        profile: source.tool.profile,
-        depth: source.tool.depth,
-        side: source.tool.side,
-        ...(source.tool.placementFrame
-          ? { placementFrame: source.tool.placementFrame }
-          : {})
-      }
+      target: createExactMetadataBooleanRuntimeSource(source.target),
+      tool: createExactMetadataPrimitiveBooleanRuntimeSource(source.tool)
     }
+  };
+}
+
+function createExactMetadataBooleanRuntimeSource(
+  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+): DerivedGeometryBooleanExtrudeInputSource {
+  if (source.kind === "extrudeBoolean") {
+    return {
+      kind: "booleanExtrudes",
+      operation: source.operation,
+      target: createExactMetadataBooleanRuntimeSource(source.target),
+      tool: createExactMetadataPrimitiveBooleanRuntimeSource(source.tool)
+    };
+  }
+
+  return createExactMetadataPrimitiveBooleanRuntimeSource(source);
+}
+
+function createExactMetadataPrimitiveBooleanRuntimeSource(
+  source: DerivedExtrudeGeometrySource
+): DerivedGeometryBooleanExtrudePrimitiveInputSource {
+  return {
+    sketchPlane: source.sketchPlane,
+    profile: source.profile,
+    depth: source.depth,
+    side: source.side,
+    ...(source.placementFrame ? { placementFrame: source.placementFrame } : {})
   };
 }
 
@@ -657,22 +670,29 @@ function getUnsupportedExactMetadataSourceMessage(
     return "Exact metadata currently supports rectangle tool boolean extrudes only.";
   }
 
-  if (
-    source.operation === "add" &&
-    source.target.profile.kind !== "rectangle"
-  ) {
+  const targetProfileKind = getExactBooleanSourceProfileKind(source.target);
+
+  if (source.operation === "add" && targetProfileKind !== "rectangle") {
     return "Exact metadata for add currently supports rectangle target extrudes only.";
   }
 
   if (
     source.operation === "cut" &&
-    source.target.profile.kind !== "rectangle" &&
-    source.target.profile.kind !== "circle"
+    targetProfileKind !== "rectangle" &&
+    targetProfileKind !== "circle"
   ) {
     return "Exact metadata for cut currently supports rectangle or circle target extrudes only.";
   }
 
   return undefined;
+}
+
+function getExactBooleanSourceProfileKind(
+  source: DerivedExtrudeGeometrySource | DerivedBooleanExtrudeGeometrySource
+): DerivedExtrudeGeometrySource["profile"]["kind"] {
+  return source.kind === "extrudeBoolean"
+    ? getExactBooleanSourceProfileKind(source.target)
+    : source.profile.kind;
 }
 
 function parseGeneratedRectangleEdgeStableId(

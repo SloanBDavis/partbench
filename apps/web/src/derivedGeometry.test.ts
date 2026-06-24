@@ -27,6 +27,7 @@ import {
 import type {
   DerivedGeometryBoxInput,
   DerivedGeometryBooleanExtrudeInput,
+  DerivedGeometryBooleanExtrudePrimitiveInputSource,
   DerivedGeometryConeInput,
   DerivedGeometryCylinderInput,
   DerivedGeometryEdgeFinishInput,
@@ -912,6 +913,147 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives chained cut sources from active boolean result targets", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_cut_1",
+        name: "Cut 1",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_1",
+        id: "rect_cut_1",
+        center: [-0.5, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_cut_2",
+        name: "Cut 2",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_2",
+        id: "rect_cut_2",
+        center: [0.5, 0],
+        width: 1,
+        height: 1
+      }
+    ]);
+
+    const baseFeature = getProjectStructureFeatures(engine).find(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+        feature.kind === "extrude" && feature.bodyId === "body_rect_1"
+    );
+
+    if (!baseFeature) {
+      throw new Error("Expected base extrude feature.");
+    }
+
+    const cut1Feature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+      ...baseFeature,
+      id: "feat_cut_1",
+      bodyId: "body_cut_1",
+      sketchId: "sketch_cut_1",
+      entityId: "rect_cut_1",
+      depth: 1,
+      operationMode: "cut",
+      targetBodyId: "body_rect_1",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_cut_1",
+        entityId: "rect_cut_1"
+      }
+    };
+    const cut2Feature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+      ...baseFeature,
+      id: "feat_cut_2",
+      bodyId: "body_cut_2",
+      sketchId: "sketch_cut_2",
+      entityId: "rect_cut_2",
+      depth: 1,
+      operationMode: "cut",
+      targetBodyId: "body_cut_1",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_cut_2",
+        entityId: "rect_cut_2"
+      }
+    };
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      [baseFeature, cut1Feature, cut2Feature]
+    );
+    const cutSource = sources.find(
+      (source): source is DerivedBooleanExtrudeGeometrySource =>
+        source.kind === "extrudeBoolean"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_cut_2"]);
+    expect(cutSource).toMatchObject({
+      id: "body_cut_2",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+      },
+      tool: { id: "body_cut_2", profile: { kind: "rectangle" } }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_cut_2",
+        operation: "cut",
+        target: expect.objectContaining({
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: expect.objectContaining({
+            depth: 3,
+            profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            depth: 1,
+            profile: expect.objectContaining({ kind: "rectangle" })
+          })
+        }),
+        tool: expect.objectContaining({
+          depth: 1,
+          profile: expect.objectContaining({ kind: "rectangle" })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_cut_2",
+        objectKind: "extrudeBoolean",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("derives attached-face rectangle cuts with inward tool direction", async () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -1152,7 +1294,7 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
       createDerivedGeometryCacheKey(editedSource)
     );
-    expect(editedSource.target.profile).toMatchObject({
+    expect(getPrimitiveBooleanTarget(editedSource).profile).toMatchObject({
       kind: "rectangle",
       width: 8
     });
@@ -1160,13 +1302,13 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input &&
-      input.target.profile.kind === "rectangle" &&
-      input.target.profile.width === 4
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "rectangle" && target.profile.width === 4
         ? first.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -1259,7 +1401,7 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
       createDerivedGeometryCacheKey(editedSource)
     );
-    expect(editedSource.target.profile).toMatchObject({
+    expect(getPrimitiveBooleanTarget(editedSource).profile).toMatchObject({
       kind: "rectangle",
       center: [2, 3]
     });
@@ -1267,13 +1409,14 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input &&
-      input.target.profile.kind === "rectangle" &&
-      input.target.profile.center[0] === 0
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "rectangle" &&
+        target.profile.center[0] === 0
         ? first.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -1383,7 +1526,7 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
       createDerivedGeometryCacheKey(editedSource)
     );
-    expect(editedSource.target.profile).toMatchObject({
+    expect(getPrimitiveBooleanTarget(editedSource).profile).toMatchObject({
       kind: "rectangle",
       center: [4, 6]
     });
@@ -1391,13 +1534,14 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input &&
-      input.target.profile.kind === "rectangle" &&
-      input.target.profile.center[0] === 0
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "rectangle" &&
+        target.profile.center[0] === 0
         ? first.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -1523,7 +1667,7 @@ describe("derivedGeometry", () => {
     expect(createDerivedGeometryCacheKey(initialSource)).not.toBe(
       createDerivedGeometryCacheKey(editedSource)
     );
-    expect(editedSource.target.profile).toMatchObject({
+    expect(getPrimitiveBooleanTarget(editedSource).profile).toMatchObject({
       kind: "rectangle",
       center: [-1, 1]
     });
@@ -1531,13 +1675,14 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input &&
-      input.target.profile.kind === "rectangle" &&
-      input.target.profile.center[0] === 0
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "rectangle" &&
+        target.profile.center[0] === 0
         ? first.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -2675,13 +2820,15 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input && input.target.profile.kind === "rectangle"
-        ? input.target.profile.width === 4
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "rectangle"
+        ? target.profile.width === 4
           ? first.promise
           : second.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -2696,7 +2843,7 @@ describe("derivedGeometry", () => {
     const editedSource: DerivedBooleanExtrudeGeometrySource = {
       ...initialSource,
       target: {
-        ...initialSource.target,
+        ...getPrimitiveBooleanTarget(initialSource),
         profile: {
           kind: "rectangle",
           center: [0, 0],
@@ -2710,11 +2857,13 @@ describe("derivedGeometry", () => {
     service.reconcile([editedSource]);
 
     expect(
-      runtime.inputs.map((input) =>
-        "target" in input && input.target.profile.kind === "rectangle"
-          ? input.target.profile.width
-          : null
-      )
+      runtime.inputs.map((input) => {
+        const target = getRuntimePrimitiveTarget(input);
+
+        return target?.profile.kind === "rectangle"
+          ? target.profile.width
+          : null;
+      })
     ).toEqual([4, 8]);
 
     first.resolve(createResult("body_cut_1", createMesh("stale_cut")));
@@ -2746,13 +2895,15 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input && input.target.profile.kind === "rectangle"
-        ? input.target.profile.width === 4
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "rectangle"
+        ? target.profile.width === 4
           ? first.promise
           : second.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -2767,7 +2918,7 @@ describe("derivedGeometry", () => {
     const editedSource: DerivedBooleanExtrudeGeometrySource = {
       ...initialSource,
       target: {
-        ...initialSource.target,
+        ...getPrimitiveBooleanTarget(initialSource),
         profile: {
           kind: "rectangle",
           center: [0, 0],
@@ -2781,11 +2932,13 @@ describe("derivedGeometry", () => {
     service.reconcile([editedSource]);
 
     expect(
-      runtime.inputs.map((input) =>
-        "target" in input && input.target.profile.kind === "rectangle"
-          ? input.target.profile.width
-          : null
-      )
+      runtime.inputs.map((input) => {
+        const target = getRuntimePrimitiveTarget(input);
+
+        return target?.profile.kind === "rectangle"
+          ? target.profile.width
+          : null;
+      })
     ).toEqual([4, 8]);
 
     first.resolve(createResult("body_add_1", createMesh("stale_add")));
@@ -2892,13 +3045,15 @@ describe("derivedGeometry", () => {
     const first = createDeferred<DerivedGeometryResult>();
     const second = createDeferred<DerivedGeometryResult>();
     const snapshots: DerivedGeometrySnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      "target" in input && input.target.profile.kind === "circle"
-        ? input.target.profile.radius === 2
+    const runtime = createRuntime((input) => {
+      const target = getRuntimePrimitiveTarget(input);
+
+      return target?.profile.kind === "circle"
+        ? target.profile.radius === 2
           ? first.promise
           : second.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedGeometryService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -2913,7 +3068,7 @@ describe("derivedGeometry", () => {
     const editedSource: DerivedBooleanExtrudeGeometrySource = {
       ...initialSource,
       target: {
-        ...initialSource.target,
+        ...getPrimitiveBooleanTarget(initialSource),
         profile: {
           kind: "circle",
           center: [0, 0],
@@ -2926,11 +3081,11 @@ describe("derivedGeometry", () => {
     service.reconcile([editedSource]);
 
     expect(
-      runtime.inputs.map((input) =>
-        "target" in input && input.target.profile.kind === "circle"
-          ? input.target.profile.radius
-          : null
-      )
+      runtime.inputs.map((input) => {
+        const target = getRuntimePrimitiveTarget(input);
+
+        return target?.profile.kind === "circle" ? target.profile.radius : null;
+      })
     ).toEqual([2, 3]);
 
     first.resolve(
@@ -4036,6 +4191,26 @@ function getProjectStructureFeatures(
   }
 
   return response.features;
+}
+
+function getPrimitiveBooleanTarget(
+  source: DerivedBooleanExtrudeGeometrySource
+): DerivedExtrudeGeometrySource {
+  if (source.target.kind === "extrudeBoolean") {
+    throw new Error("Expected primitive boolean target source.");
+  }
+
+  return source.target;
+}
+
+function getRuntimePrimitiveTarget(
+  input: RuntimeInput
+): DerivedGeometryBooleanExtrudePrimitiveInputSource | undefined {
+  if (!("target" in input)) {
+    return undefined;
+  }
+
+  return "profile" in input.target ? input.target : undefined;
 }
 
 function createRuntime(

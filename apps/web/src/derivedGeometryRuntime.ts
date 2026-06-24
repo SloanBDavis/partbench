@@ -90,7 +90,11 @@ export interface DerivedGeometryExtrudePlacementFrame {
   readonly vAxis: readonly [number, number, number];
 }
 
-export interface DerivedGeometryBooleanExtrudeInputSource {
+export type DerivedGeometryBooleanExtrudeInputSource =
+  | DerivedGeometryBooleanExtrudePrimitiveInputSource
+  | DerivedGeometryBooleanExtrudeResultInputSource;
+
+export interface DerivedGeometryBooleanExtrudePrimitiveInputSource {
   readonly sketchPlane: "XY" | "XZ" | "YZ";
   readonly profile: DerivedGeometryExtrudeInput["profile"];
   readonly depth: number;
@@ -98,16 +102,23 @@ export interface DerivedGeometryBooleanExtrudeInputSource {
   readonly placementFrame?: DerivedGeometryExtrudePlacementFrame;
 }
 
+export interface DerivedGeometryBooleanExtrudeResultInputSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: "add" | "cut";
+  readonly target: DerivedGeometryBooleanExtrudeInputSource;
+  readonly tool: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+}
+
 export interface DerivedGeometryBooleanExtrudeInput {
   readonly id: string;
   readonly operation: "add" | "cut";
   readonly target: DerivedGeometryBooleanExtrudeInputSource;
-  readonly tool: DerivedGeometryBooleanExtrudeInputSource;
+  readonly tool: DerivedGeometryBooleanExtrudePrimitiveInputSource;
 }
 
 export interface DerivedGeometryHoleInput {
   readonly id: string;
-  readonly target: DerivedGeometryBooleanExtrudeInputSource;
+  readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
   readonly tool: {
     readonly sketchPlane: "XY" | "XZ" | "YZ";
     readonly circle: {
@@ -126,14 +137,14 @@ export type DerivedGeometryEdgeFinishInput =
   | {
       readonly id: string;
       readonly operation: "chamfer";
-      readonly target: DerivedGeometryBooleanExtrudeInputSource;
+      readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
       readonly edgeStableId: string;
       readonly distance: number;
     }
   | {
       readonly id: string;
       readonly operation: "fillet";
-      readonly target: DerivedGeometryBooleanExtrudeInputSource;
+      readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
       readonly edgeStableId: string;
       readonly radius: number;
     };
@@ -157,7 +168,7 @@ export interface DerivedExactMetadataInput {
         readonly kind: "booleanExtrudes";
         readonly operation: "add" | "cut";
         readonly target: DerivedGeometryBooleanExtrudeInputSource;
-        readonly tool: DerivedGeometryBooleanExtrudeInputSource;
+        readonly tool: DerivedGeometryBooleanExtrudePrimitiveInputSource;
       }
     | {
         readonly kind: "revolve";
@@ -169,13 +180,13 @@ export interface DerivedExactMetadataInput {
       }
     | {
         readonly kind: "hole";
-        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
         readonly tool: DerivedGeometryHoleInput["tool"];
       }
     | {
         readonly kind: "edgeFinish";
         readonly operation: "chamfer";
-        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
         readonly edgeStableId: string;
         readonly distance: number;
         readonly radius?: never;
@@ -183,7 +194,7 @@ export interface DerivedExactMetadataInput {
     | {
         readonly kind: "edgeFinish";
         readonly operation: "fillet";
-        readonly target: DerivedGeometryBooleanExtrudeInputSource;
+        readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
         readonly edgeStableId: string;
         readonly radius: number;
         readonly distance?: never;

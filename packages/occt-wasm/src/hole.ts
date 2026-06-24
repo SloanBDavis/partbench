@@ -1,8 +1,8 @@
 import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
+  type OcctBooleanExtrudePrimitiveSource,
   type OcctBooleanExtrudePlacementFrame,
-  type OcctBooleanExtrudeSource,
   type OcctSketchPlane
 } from "./booleanExtrudes";
 import {
@@ -30,14 +30,14 @@ export interface OcctHoleToolSource {
 }
 
 export interface OcctHoleInput {
-  readonly target: OcctBooleanExtrudeSource;
+  readonly target: OcctBooleanExtrudePrimitiveSource;
   readonly tool: OcctHoleToolSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }
 
 export interface OcctHoleResultShapeInput {
-  readonly target: OcctBooleanExtrudeSource;
+  readonly target: OcctBooleanExtrudePrimitiveSource;
   readonly tool: OcctHoleToolSource;
 }
 

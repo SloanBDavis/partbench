@@ -947,6 +947,96 @@ describe("geometry-kernel facade", () => {
     OCCT_WASM_TEST_TIMEOUT_MS
   );
 
+  it("passes nested boolean target sources to injected boolean factories", async () => {
+    const unusedFactory = async () => {
+      throw new Error("Unexpected mesh factory call.");
+    };
+    let captured:
+      | Parameters<GeometryKernelMeshFactories["createBooleanExtrudeMesh"]>[0]
+      | undefined;
+    const factories: GeometryKernelMeshFactories = {
+      createBoxMesh: unusedFactory,
+      createCylinderMesh: unusedFactory,
+      createSphereMesh: unusedFactory,
+      createConeMesh: unusedFactory,
+      createTorusMesh: unusedFactory,
+      createBooleanExtrudeMesh: async (input) => {
+        captured = input;
+
+        return {
+          primitive: "boolean",
+          positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+          indices: new Uint32Array([0, 1, 2]),
+          vertexCount: 3,
+          triangleCount: 1,
+          faceCount: 1
+        };
+      }
+    };
+
+    const response = await executeGeometryKernelRequestWithMeshFactory(
+      factories,
+      {
+        id: "geometry_req_nested_boolean_cut",
+        version: "geometry-kernel.v1",
+        op: "geometry.booleanExtrudes",
+        operation: "cut",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 4,
+              height: 4
+            },
+            depth: 4
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [-0.5, 0],
+              width: 1,
+              height: 1
+            },
+            depth: 4
+          }
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0.5, 0],
+            width: 1,
+            height: 1
+          },
+          depth: 4
+        }
+      }
+    );
+
+    expect(response.ok).toBe(true);
+    expect(captured).toMatchObject({
+      operation: "cut",
+      target: {
+        kind: "booleanExtrudes",
+        operation: "cut",
+        target: {
+          profile: { kind: "rectangle", width: 4 }
+        },
+        tool: {
+          profile: { kind: "rectangle", width: 1 }
+        }
+      },
+      tool: {
+        profile: { kind: "rectangle", width: 1 }
+      }
+    });
+  });
+
   it(
     "runs a circle-target cut by rectangle tool feasibility request",
     async () => {

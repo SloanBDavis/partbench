@@ -1,4 +1,5 @@
 import type {
+  BooleanExtrudePrimitiveSource,
   BooleanExtrudeSource,
   BooleanExtrudesRequest,
   EdgeFinishRequest,
@@ -461,7 +462,7 @@ export function createExtrudeBooleanWorkerRequest(input: {
   readonly payloadId?: string;
   readonly operation: GeometryKernelBooleanOperation;
   readonly target: BooleanExtrudeSource;
-  readonly tool: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudePrimitiveSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
 }): GeometryWorkerRequest<BooleanExtrudesRequest> {
@@ -486,7 +487,7 @@ export function createExtrudeBooleanWorkerRequest(input: {
 export function createHoleWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
-  readonly target: BooleanExtrudeSource;
+  readonly target: BooleanExtrudePrimitiveSource;
   readonly tool: HoleToolSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;

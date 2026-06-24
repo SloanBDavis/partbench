@@ -1,14 +1,14 @@
 import type { OpenCascadeInstance } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
-  type OcctBooleanExtrudeSource
+  type OcctBooleanExtrudePrimitiveSource
 } from "./booleanExtrudes";
 import type { OcctLoader } from "./tessellateBox";
 
 export type OcctStepExportUnit = "mm" | "cm" | "m" | "in";
 export type OcctStepExportSchema = "AP242DIS";
 
-export interface OcctStepExportBodySource extends OcctBooleanExtrudeSource {
+export interface OcctStepExportBodySource extends OcctBooleanExtrudePrimitiveSource {
   readonly bodyId: string;
   readonly bodyName?: string;
 }

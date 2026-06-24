@@ -17,6 +17,8 @@ import {
 import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryResponseTransferables,
+  type BooleanExtrudePrimitiveSource,
+  type BooleanExtrudeResultSource,
   type BooleanExtrudesRequest,
   type BooleanExtrudeSource,
   type BoxGeometryDimensions,
@@ -98,6 +100,8 @@ type BrowserOcctPrimitive = Exclude<
 >;
 
 export type {
+  BooleanExtrudePrimitiveSource,
+  BooleanExtrudeResultSource,
   BooleanExtrudesRequest,
   BooleanExtrudeSource,
   BoxGeometryDimensions,

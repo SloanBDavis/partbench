@@ -130,12 +130,23 @@ export interface RevolveGeometryAxis {
   readonly end: readonly [number, number];
 }
 
-export interface BooleanExtrudeSource {
+export type BooleanExtrudeSource =
+  | BooleanExtrudePrimitiveSource
+  | BooleanExtrudeResultSource;
+
+export interface BooleanExtrudePrimitiveSource {
   readonly sketchPlane: GeometryKernelSketchPlane;
   readonly profile: ExtrudeGeometryProfile;
   readonly depth: number;
   readonly side?: GeometryKernelExtrudeSide;
   readonly placementFrame?: BooleanExtrudePlacementFrame;
+}
+
+export interface BooleanExtrudeResultSource {
+  readonly kind: "booleanExtrudes";
+  readonly operation: GeometryKernelBooleanOperation;
+  readonly target: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudePrimitiveSource;
 }
 
 export interface BooleanExtrudePlacementFrame {
@@ -217,7 +228,7 @@ export interface BooleanExtrudesRequest {
   readonly op: "geometry.booleanExtrudes";
   readonly operation: GeometryKernelBooleanOperation;
   readonly target: BooleanExtrudeSource;
-  readonly tool: BooleanExtrudeSource;
+  readonly tool: BooleanExtrudePrimitiveSource;
   readonly tessellation?: TessellationOptions;
 }
 
@@ -234,7 +245,7 @@ export interface HoleRequest {
   readonly id: string;
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.hole";
-  readonly target: BooleanExtrudeSource;
+  readonly target: BooleanExtrudePrimitiveSource;
   readonly tool: HoleToolSource;
   readonly tessellation?: TessellationOptions;
 }
@@ -248,7 +259,7 @@ export interface ChamferEdgeFinishRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.edgeFinish";
   readonly operation: "chamfer";
-  readonly target: BooleanExtrudeSource;
+  readonly target: BooleanExtrudePrimitiveSource;
   readonly edgeStableId: string;
   readonly distance: number;
   readonly radius?: never;
@@ -260,7 +271,7 @@ export interface FilletEdgeFinishRequest {
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.edgeFinish";
   readonly operation: "fillet";
-  readonly target: BooleanExtrudeSource;
+  readonly target: BooleanExtrudePrimitiveSource;
   readonly edgeStableId: string;
   readonly radius: number;
   readonly distance?: never;
@@ -274,15 +285,12 @@ export type ExactBodyMetadataSource =
   | ExactHoleMetadataSource
   | ExactEdgeFinishMetadataSource;
 
-export interface ExactExtrudeMetadataSource extends BooleanExtrudeSource {
+export interface ExactExtrudeMetadataSource extends BooleanExtrudePrimitiveSource {
   readonly kind: "extrude";
 }
 
-export interface ExactBooleanExtrudesMetadataSource {
+export interface ExactBooleanExtrudesMetadataSource extends BooleanExtrudeResultSource {
   readonly kind: "booleanExtrudes";
-  readonly operation: GeometryKernelBooleanOperation;
-  readonly target: BooleanExtrudeSource;
-  readonly tool: BooleanExtrudeSource;
 }
 
 export interface ExactRevolveMetadataSource {
@@ -296,7 +304,7 @@ export interface ExactRevolveMetadataSource {
 
 export interface ExactHoleMetadataSource {
   readonly kind: "hole";
-  readonly target: BooleanExtrudeSource;
+  readonly target: BooleanExtrudePrimitiveSource;
   readonly tool: HoleToolSource;
 }
 
@@ -304,7 +312,7 @@ export type ExactEdgeFinishMetadataSource =
   | {
       readonly kind: "edgeFinish";
       readonly operation: "chamfer";
-      readonly target: BooleanExtrudeSource;
+      readonly target: BooleanExtrudePrimitiveSource;
       readonly edgeStableId: string;
       readonly distance: number;
       readonly radius?: never;
@@ -312,7 +320,7 @@ export type ExactEdgeFinishMetadataSource =
   | {
       readonly kind: "edgeFinish";
       readonly operation: "fillet";
-      readonly target: BooleanExtrudeSource;
+      readonly target: BooleanExtrudePrimitiveSource;
       readonly edgeStableId: string;
       readonly radius: number;
       readonly distance?: never;
@@ -341,7 +349,7 @@ export interface ExactTopologyCheckpointPayloadRequest {
   readonly source: ExactBodyMetadataSource;
 }
 
-export interface ExactStepExportBodySource extends BooleanExtrudeSource {
+export interface ExactStepExportBodySource extends BooleanExtrudePrimitiveSource {
   readonly bodyId: string;
   readonly bodyName?: string;
 }
@@ -1039,7 +1047,7 @@ function validateRequest(
 
     if (
       !isValidBooleanExtrudeSource(request.target) ||
-      !isValidBooleanExtrudeSource(request.tool)
+      !isValidBooleanExtrudePrimitiveSource(request.tool)
     ) {
       return {
         code: "INVALID_DIMENSIONS",
@@ -1057,7 +1065,7 @@ function validateRequest(
     }
   } else if (request.op === "geometry.hole") {
     if (
-      !isValidBooleanExtrudeSource(request.target) ||
+      !isValidBooleanExtrudePrimitiveSource(request.target) ||
       !isValidHoleToolSource(request.tool)
     ) {
       return {
@@ -1630,7 +1638,9 @@ function isValidRevolveAxis(axis: RevolveGeometryAxis): boolean {
   );
 }
 
-function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
+function isValidBooleanExtrudePrimitiveSource(
+  source: BooleanExtrudePrimitiveSource
+): boolean {
   return (
     isSketchPlane(source.sketchPlane) &&
     isPositiveFiniteNumber(source.depth) &&
@@ -1639,6 +1649,19 @@ function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
     (source.placementFrame === undefined ||
       isValidBooleanExtrudePlacementFrame(source.placementFrame))
   );
+}
+
+function isValidBooleanExtrudeSource(source: BooleanExtrudeSource): boolean {
+  if (isBooleanExtrudeResultSource(source)) {
+    return (
+      isBooleanOperation(source.operation) &&
+      isValidBooleanExtrudeSource(source.target) &&
+      isValidBooleanExtrudePrimitiveSource(source.tool) &&
+      isSupportedBooleanExtrudeSourcePair(source)
+    );
+  }
+
+  return isValidBooleanExtrudePrimitiveSource(source);
 }
 
 function isValidHoleToolSource(source: HoleToolSource): boolean {
@@ -1731,7 +1754,7 @@ function isEdgeFinishAmountTooLarge(
 }
 
 function getRectangleEdgeFinishMaximumAmount(
-  target: BooleanExtrudeSource,
+  target: BooleanExtrudePrimitiveSource,
   role: GeometryKernelRectangleEdgeRole
 ): number {
   if (target.profile.kind !== "rectangle") {
@@ -1761,7 +1784,7 @@ function validateEdgeFinishRequest(
   request: EdgeFinishRequest
 ): GeometryKernelError | undefined {
   if (
-    !isValidBooleanExtrudeSource(request.target) ||
+    !isValidBooleanExtrudePrimitiveSource(request.target) ||
     !isValidEdgeFinishOperation(request.operation) ||
     !isValidEdgeFinishAmount(request)
   ) {
@@ -1830,7 +1853,7 @@ function validateExactBodyMetadataSource(
 
     return isBooleanOperation(source.operation) &&
       isValidBooleanExtrudeSource(source.target) &&
-      isValidBooleanExtrudeSource(source.tool) &&
+      isValidBooleanExtrudePrimitiveSource(source.tool) &&
       isSupportedBooleanExtrudeProfilePair(request)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();
@@ -1849,7 +1872,7 @@ function validateExactBodyMetadataSource(
   }
 
   if (source.kind === "hole") {
-    return isValidBooleanExtrudeSource(source.target) &&
+    return isValidBooleanExtrudePrimitiveSource(source.target) &&
       isValidHoleToolSource(source.tool)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();
@@ -2299,17 +2322,53 @@ function isInvalidMesh(mesh: GeometryKernelMeshResult): boolean {
 function isSupportedBooleanExtrudeProfilePair(
   request: BooleanExtrudesRequest
 ): boolean {
-  const targetProfile = request.target.profile.kind;
-  const toolProfile = request.tool.profile.kind;
+  return isSupportedBooleanExtrudeProfileKinds(
+    request.operation,
+    getBooleanExtrudeSourceProfileKind(request.target),
+    getBooleanExtrudeSourceProfileKind(request.tool)
+  );
+}
 
+function isSupportedBooleanExtrudeSourcePair(
+  source: BooleanExtrudeResultSource
+): boolean {
+  return isSupportedBooleanExtrudeProfileKinds(
+    source.operation,
+    getBooleanExtrudeSourceProfileKind(source.target),
+    source.tool.profile.kind
+  );
+}
+
+function isSupportedBooleanExtrudeProfileKinds(
+  operation: GeometryKernelBooleanOperation,
+  targetProfile: GeometryKernelExtrudeProfileKind,
+  toolProfile: GeometryKernelExtrudeProfileKind
+): boolean {
   if (targetProfile === "rectangle" && toolProfile === "rectangle") {
     return true;
   }
 
   return (
-    request.operation === "cut" &&
+    operation === "cut" &&
     targetProfile === "circle" &&
     toolProfile === "rectangle"
+  );
+}
+
+function getBooleanExtrudeSourceProfileKind(
+  source: BooleanExtrudeSource
+): GeometryKernelExtrudeProfileKind {
+  return isBooleanExtrudeResultSource(source)
+    ? getBooleanExtrudeSourceProfileKind(source.target)
+    : source.profile.kind;
+}
+
+function isBooleanExtrudeResultSource(
+  source: BooleanExtrudeSource
+): source is BooleanExtrudeResultSource {
+  return (
+    "kind" in source &&
+    (source as { readonly kind?: unknown }).kind === "booleanExtrudes"
   );
 }
 

@@ -17,6 +17,8 @@ import {
   executeGeometryKernelRequestWithMeshFactory,
   getGeometryKernelExactExportCapabilities,
   getGeometryResponseTransferables,
+  type BooleanExtrudePrimitiveSource,
+  type BooleanExtrudeResultSource,
   type BooleanExtrudeSource,
   type BooleanExtrudesRequest,
   type BoxGeometryDimensions,
@@ -107,6 +109,8 @@ import {
 } from "./kernel";
 
 export type {
+  BooleanExtrudePrimitiveSource,
+  BooleanExtrudeResultSource,
   BooleanExtrudeSource,
   BooleanExtrudesRequest,
   BoxGeometryDimensions,

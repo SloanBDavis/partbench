@@ -6,7 +6,7 @@ import type {
 } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
-  type OcctBooleanExtrudeSource
+  type OcctBooleanExtrudePrimitiveSource
 } from "./booleanExtrudes";
 import {
   readTriangulatedShape,
@@ -50,7 +50,7 @@ export interface OcctFilletEdgeFinishInput extends OcctEdgeFinishInputBase {
 }
 
 interface OcctEdgeFinishInputBase {
-  readonly target: OcctBooleanExtrudeSource;
+  readonly target: OcctBooleanExtrudePrimitiveSource;
   readonly edgeStableId: string;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;
@@ -345,7 +345,7 @@ function readVertexPoint(
 }
 
 function createExpectedEdgeEndpoints(
-  source: OcctBooleanExtrudeSource,
+  source: OcctBooleanExtrudePrimitiveSource,
   role: OcctRectangleEdgeRole
 ): EdgeEndpoints {
   if (source.profile.kind !== "rectangle") {
@@ -431,7 +431,7 @@ function isEdgeFinishAmountTooLarge(
 }
 
 function getRectangleEdgeFinishMaximumAmount(
-  target: OcctBooleanExtrudeSource,
+  target: OcctBooleanExtrudePrimitiveSource,
   role: OcctRectangleEdgeRole
 ): number {
   if (target.profile.kind !== "rectangle") {
@@ -456,7 +456,9 @@ function getRectangleEdgeFinishMaximumAmount(
     : Math.min(profileHeight, depth) / 2;
 }
 
-function getEdgeMatchTolerance(source: OcctBooleanExtrudeSource): number {
+function getEdgeMatchTolerance(
+  source: OcctBooleanExtrudePrimitiveSource
+): number {
   if (source.profile.kind !== "rectangle") {
     return 1e-7;
   }
@@ -467,7 +469,9 @@ function getEdgeMatchTolerance(source: OcctBooleanExtrudeSource): number {
   );
 }
 
-function getExtrudeFrame(source: OcctBooleanExtrudeSource): ExtrudeFrame {
+function getExtrudeFrame(
+  source: OcctBooleanExtrudePrimitiveSource
+): ExtrudeFrame {
   if (source.placementFrame) {
     const uAxis = normalizeVec3(source.placementFrame.uAxis);
     const vAxis = normalizeVec3(source.placementFrame.vAxis);
@@ -529,7 +533,7 @@ function mapFramePoint(
 
 function getNormalRange(
   depth: number,
-  side: OcctBooleanExtrudeSource["side"]
+  side: OcctBooleanExtrudePrimitiveSource["side"]
 ): readonly [number, number] {
   switch (side) {
     case "negative":

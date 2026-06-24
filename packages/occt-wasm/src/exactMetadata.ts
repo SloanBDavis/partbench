@@ -1,8 +1,8 @@
 import type { OpenCascadeInstance, TopoDS_Shape } from "opencascade.js";
 import {
   makeBooleanExtrudeShape,
-  type OcctBooleanExtrudeInput,
-  type OcctBooleanExtrudeSource
+  type OcctBooleanExtrudePrimitiveSource,
+  type OcctBooleanExtrudeResultSource
 } from "./booleanExtrudes";
 import {
   makeRevolveProfileShape,
@@ -28,15 +28,12 @@ export type OcctExactBodyMetadataSource =
   | OcctExactHoleMetadataSource
   | OcctExactEdgeFinishMetadataSource;
 
-export interface OcctExactExtrudeMetadataSource extends OcctBooleanExtrudeSource {
+export interface OcctExactExtrudeMetadataSource extends OcctBooleanExtrudePrimitiveSource {
   readonly kind: "extrude";
 }
 
-export interface OcctExactBooleanExtrudesMetadataSource {
+export interface OcctExactBooleanExtrudesMetadataSource extends OcctBooleanExtrudeResultSource {
   readonly kind: "booleanExtrudes";
-  readonly operation: OcctBooleanExtrudeInput["operation"];
-  readonly target: OcctBooleanExtrudeSource;
-  readonly tool: OcctBooleanExtrudeSource;
 }
 
 export interface OcctExactRevolveMetadataSource {
@@ -50,7 +47,7 @@ export interface OcctExactRevolveMetadataSource {
 
 export interface OcctExactHoleMetadataSource {
   readonly kind: "hole";
-  readonly target: OcctBooleanExtrudeSource;
+  readonly target: OcctBooleanExtrudePrimitiveSource;
   readonly tool: OcctHoleToolSource;
 }
 

@@ -34,6 +34,7 @@ import { createDerivedGeometrySourcesFromDocument } from "./derivedGeometrySourc
 import type {
   DerivedExactMetadataInput,
   DerivedExactMetadataResult,
+  DerivedGeometryBooleanExtrudePrimitiveInputSource,
   DerivedGeometryRuntime
 } from "./derivedGeometryRuntime";
 import { createGeneratedFaceReferenceKey } from "./sketchDisplayFrames";
@@ -699,8 +700,21 @@ describe("derivedExactMetadata", () => {
       target: createCircleExtrudeSource("body_circle_target"),
       tool: createExtrudeSource("body_tool")
     };
+    const chainedCutSource: DerivedBooleanExtrudeGeometrySource = {
+      id: "body_cut_2",
+      kind: "extrudeBoolean",
+      operation: "cut",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createExtrudeSource("body_target"),
+        tool: createExtrudeSource("body_tool_1")
+      },
+      tool: createExtrudeSource("body_tool_2")
+    };
 
-    service.reconcile([addSource, cutSource]);
+    service.reconcile([addSource, cutSource, chainedCutSource]);
 
     expect(runtime.exactInputs.map((input) => input.source)).toMatchObject([
       {
@@ -713,6 +727,17 @@ describe("derivedExactMetadata", () => {
         kind: "booleanExtrudes",
         operation: "cut",
         target: { profile: { kind: "circle" } },
+        tool: { profile: { kind: "rectangle" } }
+      },
+      {
+        kind: "booleanExtrudes",
+        operation: "cut",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: { profile: { kind: "rectangle" } },
+          tool: { profile: { kind: "rectangle" } }
+        },
         tool: { profile: { kind: "rectangle" } }
       }
     ]);
@@ -1089,7 +1114,7 @@ describe("derivedExactMetadata", () => {
     const editedSource: DerivedBooleanExtrudeGeometrySource = {
       ...initialSource,
       target: {
-        ...initialSource.target,
+        ...getPrimitiveBooleanTarget(initialSource),
         profile: {
           kind: "rectangle",
           center: [2, 3],
@@ -1101,13 +1126,15 @@ describe("derivedExactMetadata", () => {
     const first = createDeferred<DerivedExactMetadataResult>();
     const second = createDeferred<DerivedExactMetadataResult>();
     const snapshots: DerivedExactMetadataSnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      input.source.kind === "booleanExtrudes" &&
-      input.source.target.profile.kind === "rectangle" &&
-      input.source.target.profile.width === 4
+    const runtime = createRuntime((input) => {
+      const target = getExactRuntimePrimitiveTarget(input);
+
+      return input.source.kind === "booleanExtrudes" &&
+        target?.profile.kind === "rectangle" &&
+        target.profile.width === 4
         ? first.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedExactMetadataService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -1201,13 +1228,15 @@ describe("derivedExactMetadata", () => {
     const first = createDeferred<DerivedExactMetadataResult>();
     const second = createDeferred<DerivedExactMetadataResult>();
     const snapshots: DerivedExactMetadataSnapshot[] = [];
-    const runtime = createRuntime((input) =>
-      input.source.kind === "hole" &&
-      input.source.target.profile.kind === "rectangle" &&
-      input.source.target.profile.width === 6
+    const runtime = createRuntime((input) => {
+      const target = getExactRuntimePrimitiveTarget(input);
+
+      return input.source.kind === "hole" &&
+        target?.profile.kind === "rectangle" &&
+        target.profile.width === 6
         ? first.promise
-        : second.promise
-    );
+        : second.promise;
+    });
     const service = new DerivedExactMetadataService({
       runtime,
       onChange: (snapshot) => snapshots.push(snapshot)
@@ -1576,6 +1605,26 @@ function readBodyTopologySignature(engine: CadEngine, bodyId: string): string {
   }
 
   return response.topology.sourceIdentity.signature;
+}
+
+function getPrimitiveBooleanTarget(
+  source: DerivedBooleanExtrudeGeometrySource
+): DerivedExtrudeGeometrySource {
+  if (source.target.kind === "extrudeBoolean") {
+    throw new Error("Expected primitive boolean target source.");
+  }
+
+  return source.target;
+}
+
+function getExactRuntimePrimitiveTarget(
+  input: DerivedExactMetadataInput
+): DerivedGeometryBooleanExtrudePrimitiveInputSource | undefined {
+  if (!("target" in input.source)) {
+    return undefined;
+  }
+
+  return "profile" in input.source.target ? input.source.target : undefined;
 }
 
 function createRuntime(

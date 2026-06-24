@@ -300,6 +300,57 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "creates a chained rectangle boolean cut through Open CASCADE WASM",
+    async () => {
+      const mesh = await createOcctBooleanExtrudeMesh({
+        operation: "cut",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 4,
+              height: 4
+            },
+            depth: 4
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [-0.5, 0],
+              width: 1,
+              height: 1
+            },
+            depth: 4
+          }
+        },
+        tool: {
+          sketchPlane: "XY",
+          profile: {
+            kind: "rectangle",
+            center: [0.5, 0],
+            width: 1,
+            height: 1
+          },
+          depth: 4
+        }
+      });
+
+      expect(mesh.primitive).toBe("boolean");
+      expect(mesh.faceCount).toBeGreaterThan(0);
+      expect(mesh.vertexCount).toBeGreaterThan(0);
+      expect(mesh.triangleCount).toBeGreaterThan(0);
+      expect(mesh.positions).toHaveLength(mesh.vertexCount * 3);
+      expect(mesh.indices).toHaveLength(mesh.triangleCount * 3);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "creates rectangle chamfer and fillet meshes through Open CASCADE WASM",
     async () => {
       const target = {
