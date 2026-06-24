@@ -20,22 +20,25 @@ first authored non-extrude feature source records for `feature.revolve`.
 Schema V15 added source-of-truth circular hole feature records for
 `feature.hole`. Schema V16 added command-first source-of-truth edge-finishing
 feature records for `feature.chamfer` and `feature.fillet`. Current exports use
-`web-cad.project.v16` unless V11 advanced sketch solver source records are
-present; in that case exports use `web-cad.project.v17`. The loader still
-accepts V1 through V17 projects through explicit validation/migration. The
+the lowest schema required by source truth: `web-cad.project.v16` for ordinary
+current feature source, `web-cad.project.v17` when V11 advanced sketch solver
+source records are present, and `web-cad.project.v18` when V13 topology
+identity source records are present. The loader still accepts V1 through V18
+projects through explicit validation/migration. The
 `web-cad.project.*` names are retained as compatibility schema identifiers
 after the Partbench product rename; changing them would require a deliberate
 project-format migration. V8 completed the first native package release:
 `.wcad` package v1, File System Access local workflow, OPFS-derived cache, and
 exact STEP export for supported bodies. V11 Tranche C introduces
 `web-cad.project.v17` for saved advanced sketch constraint source records:
-tangent, concentric, equal length, equal radius, angle, and symmetry. This
-document continues to define the project-format and source/derived rules that
-storage and solver work must preserve. V13 planning reserves
-`web-cad.project.v18` and `partbench.wcad.v2` for the general topology
-identity and B-rep checkpoint foundation if implementation persists topology
-anchors, explicit repair records, checkpoint metadata, or authoritative
-checkpoint payload entries.
+tangent, concentric, equal length, equal radius, angle, and symmetry. V13
+introduced `web-cad.project.v18` and `partbench.wcad.v2` for topology
+identity source records, B-rep checkpoint metadata, explicit repair records,
+and authoritative checkpoint payload entries. V14 planning should reuse that
+storage foundation where possible and introduce another schema only for new
+source-of-truth data that V18 cannot represent. This document continues to
+define the project-format and source/derived rules that storage, solver, and
+topology-backed downstream modeling work must preserve.
 
 ## Current Format
 
@@ -59,6 +62,7 @@ schemaVersion: web-cad.project.v14
 schemaVersion: web-cad.project.v15
 schemaVersion: web-cad.project.v16
 schemaVersion: web-cad.project.v17
+schemaVersion: web-cad.project.v18
 ```
 
 It is produced by:
@@ -772,7 +776,7 @@ the generated body is rebuilt as derived geometry. Primitive-derived
 compatibility features are not deletable through `feature.delete` or editable
 through `feature.updateExtrude`.
 
-## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16/V17 Storage Decision
+## Project Schema V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16/V17/V18 Storage Decision
 
 The derived V2 part/feature/body bridge did not require a format change because
 it is rebuilt from scene objects. Sketches are different: they are authored CAD
@@ -990,6 +994,9 @@ The current source of truth is:
   distance/radius, and body ID
 - authored feature body IDs
 - named generated reference names and targets
+- topology identity settings, checkpoint metadata, topology anchors, topology
+  repair records, and authoritative checkpoint payload references where V18
+  source records are present
 - `document.nextFeatureNumber`
 - `document.nextBodyNumber`
 - committed transaction history
@@ -1013,7 +1020,9 @@ summaries include the source sketch/entity, profile kind, same-sketch axis line,
 angle, operation mode, and authored body ID. Hole, chamfer, and fillet summaries
 include their target-consuming source inputs and authored result body IDs.
 
-The `project.structure` query returns the current V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16/V17 compatibility bridge:
+The `project.structure` query returns the current
+V2/V3/V4/V5/V6/V7/V8/V9/V10/V11/V12/V13/V14/V15/V16/V17/V18 compatibility
+bridge:
 
 - one derived default part, `part:default`;
 - one primitive feature per scene object, `feature:<objectId>`;
@@ -1272,21 +1281,18 @@ Likely triggers:
 - a command-log representation that cannot be preserved with current transaction
   history.
 
-When any future source records become real source data, the next format should
-be explicit:
+When source records beyond the current V18 topology identity model become real
+source data, the next format must be explicit rather than silently changing an
+existing schema:
 
 ```text
-schemaVersion: web-cad.project.v18
+schemaVersion: web-cad.project.v19
 ```
 
 `web-cad.project.v17` is already used for V11 advanced sketch constraint source
-records. If another future release adds source-of-truth data after V17, the
-next format should be `web-cad.project.v18` and should include a migration from
-older accepted versions, not silent shape guessing. Current
-`web-cad.project.v17` preserves V1-V16 import compatibility and adds only the
-currently implemented advanced sketch constraint source records beyond V16. It
-does not persist B-rep checkpoints, OCCT topology IDs, exact metadata query
-results, generated-reference query output, or tessellated mesh caches.
+records. `web-cad.project.v18` is already used for V13 topology identity source
+records. Any future schema after V18 should include a migration from older
+accepted versions, not silent shape guessing.
 
 V3 Phase A introduced `web-cad.project.v7` when parameters and sketch dimensions
 became persisted source-of-truth data. V3 Phase B introduced
@@ -1528,27 +1534,21 @@ tranche explicitly adds new source-of-truth data.
 
 Do not confuse the V12 release with `web-cad.project.v12`; that schema
 identifier already means persisted parallel-line sketch constraints from an
-older release. If a V12 implementation tranche adds source-of-truth topology
-anchor records, manual topology repair records, or persistent exact B-rep
-checkpoint source data, the next document schema should be
-`web-cad.project.v18`.
-
-The `.wcad` package version remains `partbench.wcad.v1` unless V12 changes the
-package layout. A future `web-cad.project.v18` document can be stored inside the
-existing `document.cbor` entry if only document source fields change. A package
-layout change should be reserved for authoritative new package entries, such as
-source B-rep checkpoints, not for derived topology query output.
+older release. V12 did not add source-of-truth topology anchor records, manual
+topology repair records, or persistent exact B-rep checkpoint source data.
+Those records were introduced later by V13 through `web-cad.project.v18` and
+`.wcad` package v2.
 
 ## V13 General Topology Identity Storage Decision
 
-The planned V13 general topology identity release should introduce
-`web-cad.project.v18` only when it persists new source truth such as topology
-anchor records, checkpoint metadata records, explicit topology repair records,
-or exact checkpoint payload references. Query-only topology readiness, derived
+The completed V13 general topology identity release introduced
+`web-cad.project.v18` for new source truth such as topology anchor records,
+checkpoint metadata records, explicit topology repair records, and exact
+checkpoint payload references. Query-only topology readiness, derived
 signatures, transient topology snapshots, and OPFS cache entries remain derived
-and do not justify V18 by themselves.
+and do not justify a new schema by themselves.
 
-V13 Tranche C implements the contract for that storage boundary. The typed
+V13 Tranche C implemented the contract for that storage boundary. The typed
 V18 source block contains topology identity settings, checkpoint metadata,
 topology anchor records, and explicit repair records. Ordinary projects still
 export as V16 or V17 until topology identity source records are actually
@@ -1559,13 +1559,12 @@ identifier already means persisted perpendicular-line sketch constraints from
 an older release. The next saved-project schema after V17 is
 `web-cad.project.v18`.
 
-If V13 persists authoritative B-rep checkpoint payloads, that is a native
-package layout change and should introduce `partbench.wcad.v2`. The V2 package
-should keep `manifest.json`, `document.cbor`, and `commands.cbor`, then add
-manifest-listed checkpoint entries such as B-rep payloads, topology snapshots,
-and signature records with content hashes, byte lengths, kernel/checkpoint
-versions, units, tolerance metadata, source identity, and structured corruption
-or incompatibility diagnostics.
+V13 introduced `partbench.wcad.v2` for authoritative B-rep checkpoint payloads.
+The V2 package keeps `manifest.json`, `document.cbor`, and `commands.cbor`,
+then adds manifest-listed checkpoint entries such as B-rep payloads, topology
+snapshots, and signature records with content hashes, byte lengths,
+kernel/checkpoint versions, units, tolerance metadata, source identity, and
+structured corruption or incompatibility diagnostics.
 
 V13 Tranche C types the `.wcad` v2 manifest and checkpoint entry contract,
 including checkpoint B-rep, topology, and signature payload paths under
@@ -1581,6 +1580,29 @@ auto-create checkpoint source records.
 OPFS may cache unpacked checkpoint data or matcher acceleration structures, but
 OPFS remains rebuildable browser-private cache. Clearing OPFS must not remove
 authoritative checkpoint source from a `.wcad` package.
+
+## V14 Topology-Backed Downstream Modeling Storage Decision
+
+The planned V14 topology-backed downstream modeling release should reuse the
+V13 storage foundation wherever possible:
+
+- `web-cad.project.v18` topology identity source records;
+- topology anchors, checkpoint metadata, topology repair records, and topology
+  identity settings;
+- `partbench.wcad.v2` checkpoint payload preservation;
+- command history and semantic diffs.
+
+V14 should not introduce a new project schema because a query result,
+diagnostic, command-readiness response, or derived topology snapshot changes.
+A new schema after V18 is justified only if V14 adds new source-of-truth
+command target or rebuild records that cannot be represented by current V18
+records and transaction history.
+
+Do not confuse the V14 release with `web-cad.project.v14`; that schema
+identifier already means authored revolve feature source records from an older
+release. If V14 requires new source truth beyond V18, the next schema must be a
+new explicit identifier after `web-cad.project.v18`, with validation and
+migration documented at implementation time.
 
 ## V8 Native Package Direction
 

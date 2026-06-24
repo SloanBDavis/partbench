@@ -13,7 +13,8 @@ The current implementation source of truth is:
 
 - `docs/implementation-plan.md`
 - `docs/v12.md` — completed V12 stable boolean topology and result references release record
-- `docs/v13.md` — planned V13 general topology identity and B-rep checkpoint foundation release record
+- `docs/v13.md` — completed V13 general topology identity and B-rep checkpoint foundation release record
+- `docs/v14.md` — planned V14 topology-backed downstream modeling release contract
 
 Do not attempt to build the entire architecture at once. Implement only the milestone requested by the user.
 

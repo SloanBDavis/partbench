@@ -4,13 +4,14 @@ This document is the current implementation source of truth. It translates the
 long-term architecture in `docs/architecture.md` into the repo state and the
 active implementation roadmap.
 
-Last updated: 2026-06-21.
+Last updated: 2026-06-24.
 
 Use this document for day-to-day implementation decisions. Use
 `docs/architecture.md` for long-term design, `docs/v12.md` for the completed
 stable boolean topology and result references release record, `docs/v13.md` for
-the planned general topology identity and B-rep checkpoint foundation release
-record, `docs/native-format.md` for project-format direction, and
+the completed general topology identity and B-rep checkpoint foundation release
+record, `docs/v14.md` for the planned topology-backed downstream modeling
+release contract, `docs/native-format.md` for project-format direction, and
 `docs/occt-wasm-size.md` for OCCT/WASM load-size findings. V7, V8, V9, V10,
 and V11 are completed historical releases whose details are now condensed in
 this plan instead of maintained as separate release documents.
@@ -52,9 +53,12 @@ These constraints remain active:
     WebGPU, assemblies, STEP import, or hosted collaboration without explicit
     approval. V11 is complete as the explicit sketch solver expansion scope.
     V12 is complete as the stable boolean topology and result references
-    release. V13 is the planned implementation scope for general topology
-    identity, B-rep checkpoints, topology anchors, matching, repair, and
-    checkpoint-backed commandability. Completed V8, V9, V10, V11, and V12
+    release. V13 is complete as the general topology identity, B-rep checkpoint,
+    topology anchor, matching, repair, and checkpoint-backed commandability
+    foundation. V14 is the planned topology-backed downstream modeling release:
+    it should turn supported V13 topology anchors into real downstream command
+    targets for chained single-part modeling without weakening source/derived
+    boundaries. Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
     for a maintenance or regression-fix tranche.
@@ -2697,6 +2701,131 @@ V13 should not implement broad new solid feature families, STEP import,
 assemblies, production WebGPU, hosted collaboration, natural-language command
 entry, or parameter expressions. Those releases should build on V13 rather than
 compete with it.
+
+## V14 Topology-Backed Downstream Modeling
+
+V14 is planned in `docs/v14.md`. It is the release that should turn the V13
+topology identity foundation into normal downstream single-part modeling
+behavior.
+
+V13 made arbitrary exact topology identifiable, checkpointed, matchable,
+repairable, measurable, and partly command-ready. V14 should make supported
+active result bodies useful as downstream command targets.
+
+The release center is:
+
+```text
+V13 topology anchor/checkpoint evidence ->
+cad-core command-readiness proof ->
+topology-backed sketch attachment / cut-add / edge finish ->
+rebuild and reference-health consistency ->
+compact user-facing CAD workflow
+```
+
+### V14 Release Outcomes
+
+V14 is complete only if supported users can keep modeling after an operation
+creates a result body:
+
+- create a rectangle or circle body;
+- create a sketch on a supported face;
+- cut or add to create a result body;
+- select a supported face on that result body;
+- create another sketch there;
+- cut or add again;
+- chamfer or fillet eligible result edges where validators and runtime
+  execution prove the target;
+- edit upstream supported features and either rebuild cleanly or receive
+  precise repair/blocked diagnostics;
+- save/open through `.wcad` without losing required topology identity.
+
+### V14 Architecture Rules
+
+Use these rules when drafting or implementing V14 tranches:
+
+- V14 is a topology-backed commandability and downstream-modeling release, not
+  a renderer, assembly, import, or broad new-feature release.
+- CADOps remains the mutation path for every committed CAD edit.
+- `cad-core` owns commandability, validation, source mutation, reference
+  health, rebuild planning, semantic diffs, topology health, and diagnostics.
+- geometry-worker/OCCT may provide exact execution and topology evidence only
+  through isolated geometry boundaries.
+- React and the renderer may route selections and display command affordances,
+  but must not infer commandability from visual geometry.
+- UI, agents, and MCP must consume the same cad-core command/query contracts.
+- Healthy topology identity and command eligibility remain separate concepts:
+  a stable reference may be nameable or measurable while still blocked for a
+  particular modeling command.
+- Renderer IDs, mesh IDs, OCCT handles, checkpoint-local topology IDs, GPU IDs,
+  selection-buffer values, viewport pixels, OPFS paths, file handles, local
+  paths, and export artifact IDs must never become public stable CAD
+  references.
+- Low-confidence or ambiguous topology matches require explicit repair or a
+  blocked diagnostic; they must not silently retarget commands.
+
+### V14 Planned Pillars
+
+The planned pillars are:
+
+1. **Topology-backed command target readiness** - shared protocol/core query
+   behavior for asking which topology-backed body, face, edge, generated
+   reference, or named reference can be used by which command, and why blocked
+   targets are blocked.
+2. **Sketch-on-result-face workflow** - supported planar topology-anchor faces
+   on result bodies can host replayable attached sketches without storing raw
+   kernel or renderer IDs.
+3. **Chained cut/add on result bodies** - `feature.extrude` cut/add can target
+   supported active topology-backed result bodies with coherent body lifecycle,
+   dependency graph, reference health, and semantic diffs.
+4. **Topology-backed edge finishing** - eligible result-body edge anchors can
+   drive chamfer and fillet where cad-core validators and geometry execution
+   prove the target.
+5. **Rebuild and repair hardening** - upstream edits, undo/redo, save/open, and
+   explicit repair flows keep topology-backed references honest and query
+   surfaces consistent.
+6. **Product UI cleanup for commandability** - user-facing surfaces explain
+   available actions and repair needs without mentioning internal tranche or
+   milestone names.
+7. **Long release smokes** - deterministic and browser workflows prove chained
+   modeling, result-edge finishing where supported, upstream edit/rebuild,
+   `.wcad` persistence, no private-ID leakage, and no console errors.
+
+### V14 Storage Position
+
+V14 should reuse the V13 storage foundation wherever possible:
+
+- `web-cad.project.v18` topology identity source records;
+- `partbench.wcad.v2` checkpoint payload preservation;
+- topology anchors, checkpoint metadata, topology repair records, and topology
+  identity settings;
+- transaction history and semantic diffs.
+
+Do not introduce a new schema because a query result, diagnostic,
+command-readiness response, or derived topology snapshot changes. A schema
+after V18 is justified only if V14 adds new source-of-truth command target or
+rebuild records that cannot be represented by existing V18 topology identity
+records and transaction history. If that happens, update
+`docs/native-format.md` with the exact new source record, validation, and
+migration decision before implementing it.
+
+### V14 Scope Guardrails
+
+Do not combine these in one V14 tranche unless explicitly approved:
+
+- topology-backed downstream commands and STEP import;
+- topology-backed downstream commands and assemblies;
+- topology-backed downstream commands and production WebGPU/selection-buffer
+  replacement;
+- topology-backed downstream commands and broad new solid feature families such
+  as shell, sweep, loft, pattern, mirror, or direct edit;
+- command target enablement and silent low-confidence topology retargeting;
+- product UI cleanup and unrelated storage/import/export feature expansion.
+
+V14 should not implement STEP import, imported-body healing, assemblies,
+production WebGPU, hosted collaboration, natural-language command entry,
+parameter expressions, proprietary CAD import/export, or broad new solid
+feature families. Those releases should build on V14 once single-part
+topology-backed downstream modeling is solid.
 
 ## Definition of Done
 

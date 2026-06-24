@@ -10,6 +10,7 @@ The current implementation source of truth is:
 - `docs/implementation-plan.md`
 - `docs/v12.md`
 - `docs/v13.md`
+- `docs/v14.md`
 - `AGENTS.md`
 
 When architecture and implementation-plan conflict, follow the implementation plan for the current milestone.
@@ -924,8 +925,9 @@ The local MCP server should bind to `127.0.0.1`, require a per-session token, en
 
 This section is historical initial-build guidance. The implementation has now
 progressed through the completed V10 editable feature history, V11 sketch
-solver, and V12 stable boolean topology releases, with V13 general topology
-identity and B-rep checkpoint planning in `docs/v13.md`; follow
+solver, V12 stable boolean topology, and V13 general topology identity
+releases, with V14 topology-backed downstream modeling planning in
+`docs/v14.md`; follow
 `docs/implementation-plan.md` for the current implementation source of truth.
 
 The first implementation should not start with a full CAD UI. It should start with the command engine, WASM kernel bridge, and renderer skeleton.
