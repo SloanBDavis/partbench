@@ -350,8 +350,8 @@ These constraints remain active:
     B-rep checkpoints, WebGPU, STEP import, assemblies, broad new modeling
     commands, or a new saved-project schema unless a tranche explicitly adds new
     source-of-truth topology anchor data.
-37. V13 is planned in `docs/v13.md` as the general topology identity and B-rep
-    checkpoint foundation release. Its center is one shared subsystem for exact
+37. V13 is completed in `docs/v13.md` as the general topology identity and
+    B-rep checkpoint foundation release. Its center is one shared subsystem for exact
     topology snapshots, checkpoint package payloads, stable public topology
     anchors, matching confidence/evidence, explicit repair records, reference
     health integration, and command eligibility. V13 is allowed to introduce
@@ -718,10 +718,9 @@ Current limitations:
   future selection-buffer work, but the visible C4 product correction keeps the
   viewport unobstructed and moves current-selection detail into the left
   `Selection` tab.
-- There is not yet authoritative B-rep topology persisted in the document model.
-  V13 is planned to decide and implement the first checkpoint/anchor source
-  records and package payload rules where they are needed for real topology
-  identity.
+- V13 now persists the first authoritative topology identity source records:
+  checkpoint metadata, topology anchors, repair records, and `.wcad` v2
+  checkpoint payload entries where needed for real topology identity.
 - `body.measurements` remains source-derived/source-analytic for simple
   supported shapes and references. V6 exact mass-property health is surfaced
   through derived exact metadata snapshots on `body.topology`, `project.extents`,
@@ -730,7 +729,8 @@ Current limitations:
   general booleans, STEP import, production WebGPU, assemblies, hosted
   collaboration, production MCP auth, and natural-language command entry remain
   unimplemented unless scoped into a later release. Broad exact topology naming
-  is now the planned V13 foundation rather than an unowned future item.
+  now has the V13 checkpoint/anchor/matching/repair foundation instead of being
+  an unowned future item.
   V8 made `.wcad` the app-level project workflow: File System Access browsers
   can open/save/save-as through app-only handles, and other browsers use
   upload/download fallback. File handles are not written into cad-core, JSON,
@@ -2271,7 +2271,7 @@ Do not combine these in one V12 tranche unless explicitly approved:
 
 ## V13 General Topology Identity And B-Rep Checkpoint Foundation
 
-V13 is planned in `docs/v13.md`. It is the release that turns arbitrary exact
+V13 is completed in `docs/v13.md`. It is the release that turns arbitrary exact
 topology from a deferred risk into a first-class subsystem:
 
 ```text
@@ -2342,7 +2342,7 @@ Use these decisions when drafting or implementing V13 tranches:
   stable enough to name or measure but still invalid for sketch-on-face or
   edge-finish commands.
 
-### V13 Proposed Tranche Sequence
+### V13 Implemented Tranche Sequence
 
 1. **Implemented: Topology Identity Protocol And Vocabulary** - typed
    protocol/core shapes for topology snapshots, anchors, checkpoint metadata,
