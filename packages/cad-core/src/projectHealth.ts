@@ -43,7 +43,8 @@ import type {
   SketchEntityId,
   SketchEntitySnapshot,
   SketchId,
-  SketchPlane
+  SketchPlane,
+  CadTopologyIdentitySourceSnapshot
 } from "@web-cad/cad-protocol";
 
 import { createBodyTopology } from "./bodyTopology";
@@ -85,6 +86,7 @@ export interface ProjectHealthDocument extends GeneratedReferencesDocument {
     NamedReferenceName,
     NamedGeneratedReferenceSnapshot
   >;
+  readonly topologyIdentity?: CadTopologyIdentitySourceSnapshot;
 }
 
 export interface ProjectHealthSketch extends GeneratedReferencesSketch {
@@ -559,7 +561,7 @@ function createAuthoredHoleHealth(
       });
     }
 
-    if (sketch.attachment) {
+    if (sketch.attachment?.kind === "generatedFace") {
       const validation = validateGeneratedReference({
         document,
         ownerPartId: options.ownerPartId,
@@ -578,6 +580,38 @@ function createAuthoredHoleHealth(
             stableId: sketch.attachment.faceStableId
           })
         );
+      }
+    } else if (sketch.attachment?.kind === "topologyAnchorFace") {
+      const attachment = sketch.attachment;
+      const anchor = document.topologyIdentity?.anchors.find(
+        (candidate) => candidate.anchorId === attachment.topologyAnchorId
+      );
+      const checkpoint = document.topologyIdentity?.checkpoints.find(
+        (candidate) => candidate.checkpointId === attachment.checkpointId
+      );
+
+      if (
+        !anchor ||
+        !checkpoint ||
+        anchor.state !== "active" ||
+        checkpoint.status !== "active" ||
+        anchor.entityKind !== "face"
+      ) {
+        issues.push({
+          code: "ATTACHMENT_SOURCE_MISMATCH",
+          message: `Hole sketch ${sketch.id} topology anchor attachment does not resolve to an active face checkpoint.`,
+          featureId: feature.id,
+          bodyId: attachment.bodyId,
+          sketchId: sketch.id,
+          expected: "active face topology anchor and checkpoint",
+          received: [
+            attachment.topologyAnchorId,
+            anchor?.state ?? "missing-anchor",
+            attachment.checkpointId,
+            checkpoint?.status ?? "missing-checkpoint",
+            anchor?.entityKind ?? "missing-kind"
+          ].join(":")
+        });
       }
     }
   }
@@ -955,6 +989,58 @@ function createAttachedSketchHealth(
   attachment: SketchAttachmentSnapshot,
   options: ProjectHealthOptions
 ): CadAttachedSketchHealth {
+  if (attachment.kind === "topologyAnchorFace") {
+    const issues: CadDependencyHealthIssue[] = [];
+    const anchor = document.topologyIdentity?.anchors.find(
+      (candidate) => candidate.anchorId === attachment.topologyAnchorId
+    );
+    const checkpoint = document.topologyIdentity?.checkpoints.find(
+      (candidate) => candidate.checkpointId === attachment.checkpointId
+    );
+    const resolves =
+      Boolean(anchor) &&
+      Boolean(checkpoint) &&
+      anchor?.state === "active" &&
+      checkpoint?.status === "active" &&
+      anchor?.bodyId === attachment.bodyId &&
+      anchor?.checkpointId === attachment.checkpointId &&
+      anchor?.entityKind === "face";
+
+    if (!resolves) {
+      issues.push({
+        code: "ATTACHMENT_SOURCE_MISMATCH",
+        message: `Sketch attachment ${sketch.id} topology anchor does not resolve to an active face checkpoint.`,
+        sketchId: sketch.id,
+        bodyId: attachment.bodyId,
+        expected: "active face topology anchor and checkpoint",
+        received: [
+          attachment.topologyAnchorId,
+          anchor?.state ?? "missing-anchor",
+          attachment.checkpointId,
+          checkpoint?.status ?? "missing-checkpoint",
+          anchor?.entityKind ?? "missing-kind"
+        ].join(":")
+      });
+    }
+
+    return {
+      sketchId: sketch.id,
+      sketchName: sketch.name,
+      plane: sketch.plane,
+      attachmentKind: attachment.kind,
+      bodyId: attachment.bodyId,
+      topologyAnchorId: attachment.topologyAnchorId,
+      checkpointId: attachment.checkpointId,
+      planarAxis: attachment.planarAxis,
+      planarCoordinate: attachment.planarCoordinate,
+      status: statusFromIssues(issues),
+      resolves,
+      eligibleForSketchPlane: resolves,
+      resolvedKind: "face",
+      issues
+    };
+  }
+
   const issues: CadDependencyHealthIssue[] = [];
   const validation = validateGeneratedReference({
     document,
@@ -1024,6 +1110,7 @@ function createAttachedSketchHealth(
     sketchId: sketch.id,
     sketchName: sketch.name,
     plane: sketch.plane,
+    attachmentKind: attachment.kind,
     bodyId: attachment.bodyId,
     faceStableId: attachment.faceStableId,
     sourceFeatureId: attachment.sourceFeatureId,

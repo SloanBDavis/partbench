@@ -55,6 +55,15 @@ export function createSketchDisplayState(
       continue;
     }
 
+    if (attachment.kind === "topologyAnchorFace") {
+      frames.set(sketch.id, createTopologyAnchorFaceDisplayFrame(attachment));
+      statuses.set(sketch.id, {
+        kind: "attached",
+        message: `Displaying on stable topology face.`
+      });
+      continue;
+    }
+
     const face = generatedFacesByKey.get(
       createGeneratedFaceReferenceKey(
         attachment.bodyId,
@@ -88,6 +97,34 @@ export function createSketchDisplayState(
   }
 
   return { frames, statuses };
+}
+
+export function createTopologyAnchorFaceDisplayFrame(
+  attachment: Extract<
+    SketchSnapshot["attachment"],
+    { readonly kind: "topologyAnchorFace" }
+  >
+): SketchDisplayFrame {
+  switch (attachment.planarAxis) {
+    case "x":
+      return {
+        origin: [attachment.planarCoordinate, 0, 0],
+        uAxis: [0, 1, 0],
+        vAxis: [0, 0, 1]
+      };
+    case "y":
+      return {
+        origin: [0, attachment.planarCoordinate, 0],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 0, 1]
+      };
+    case "z":
+      return {
+        origin: [0, 0, attachment.planarCoordinate],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 1, 0]
+      };
+  }
 }
 
 export function createDefaultSketchDisplayFrame(

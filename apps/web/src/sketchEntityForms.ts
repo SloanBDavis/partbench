@@ -75,7 +75,7 @@ function getAttachmentSourceBounds(
   sketches: readonly SketchSnapshot[]
 ): { readonly width: number; readonly height: number } | undefined {
   const attachment = sketch.attachment;
-  if (!attachment) {
+  if (!attachment || attachment.kind !== "generatedFace") {
     return undefined;
   }
 

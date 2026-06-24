@@ -75,6 +75,7 @@ import type {
   CadSketchDimensionRef,
   CadSketchRef,
   CadTransactionStatus,
+  CadTopologyAnchorCommandProof,
   CadTopologyAnchorEntityKind,
   CadTopologyIdentitySourceSnapshot,
   CadTopologyMatchResult,
@@ -4501,13 +4502,12 @@ function applyOperation(
     }
 
     case "sketch.createOnFace": {
-      const face = validateSketchAttachmentFace(state, op, opIndex);
-      const target = resolveSketchAttachmentFaceTarget(state, op, opIndex);
+      const target = resolveSketchAttachmentTarget(state, op, opIndex);
       const sketch: Sketch = {
         id: op.id ?? createSketchId(),
         name: normalizeSketchName(op.name, opIndex, op.id),
-        plane: createSketchPlaneFromFaceReference(face, target.path, opIndex),
-        attachment: createSketchFaceAttachment(face),
+        plane: target.plane,
+        attachment: target.attachment,
         entities: new Map()
       };
 
@@ -10894,6 +10894,11 @@ function validateHoleSketchAttachment(
     return;
   }
 
+  if (sketch.attachment.kind === "topologyAnchorFace") {
+    validateTopologyAnchorFaceAttachment(state, sketch.attachment, opIndex);
+    return;
+  }
+
   const result = validateGeneratedReference({
     document: state,
     ownerPartId: DEFAULT_PART_ID,
@@ -10910,6 +10915,53 @@ function validateHoleSketchAttachment(
       opIndex,
       "faceStableId"
     );
+  }
+}
+
+function validateTopologyAnchorFaceAttachment(
+  state: MutableDocumentState,
+  attachment: Extract<
+    SketchAttachmentSnapshot,
+    { readonly kind: "topologyAnchorFace" }
+  >,
+  opIndex?: number
+): void {
+  const topologyIdentity = state.topologyIdentity;
+  const anchor = topologyIdentity?.anchors.find(
+    (candidate) => candidate.anchorId === attachment.topologyAnchorId
+  );
+  const checkpoint = topologyIdentity?.checkpoints.find(
+    (candidate) => candidate.checkpointId === attachment.checkpointId
+  );
+
+  if (
+    !topologyIdentity ||
+    !anchor ||
+    !checkpoint ||
+    anchor.state !== "active" ||
+    checkpoint.status !== "active" ||
+    anchor.entityKind !== "face" ||
+    anchor.bodyId !== attachment.bodyId ||
+    anchor.checkpointId !== attachment.checkpointId
+  ) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message:
+        "Sketch topology-anchor face attachment must resolve to an active face anchor and checkpoint.",
+      opIndex,
+      bodyId: attachment.bodyId,
+      topologyAnchorId: attachment.topologyAnchorId,
+      checkpointId: attachment.checkpointId,
+      path: operationPath(opIndex, "topologyAnchorId"),
+      expected: "active face topology anchor and checkpoint",
+      received: describeReceived({
+        anchorState: anchor?.state,
+        checkpointStatus: checkpoint?.status,
+        entityKind: anchor?.entityKind,
+        bodyId: anchor?.bodyId,
+        checkpointId: anchor?.checkpointId
+      })
+    });
   }
 }
 
@@ -11970,11 +12022,18 @@ function normalizeNamedReferenceName(
   });
 }
 
-function validateSketchAttachmentFace(
+function resolveSketchAttachmentTarget(
   state: MutableDocumentState,
   op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
   opIndex?: number
-): CadGeneratedFaceReference {
+): {
+  readonly plane: SketchPlane;
+  readonly attachment: SketchAttachmentSnapshot;
+} {
+  if (op.topologyAnchorProof !== undefined) {
+    return resolveTopologyAnchorSketchAttachmentTarget(state, op, opIndex);
+  }
+
   const target = resolveSketchAttachmentFaceTarget(state, op, opIndex);
   const result = validateGeneratedReference({
     document: state,
@@ -11997,7 +12056,84 @@ function validateSketchAttachmentFace(
     );
   }
 
-  return result.reference as CadGeneratedFaceReference;
+  const face = result.reference as CadGeneratedFaceReference;
+
+  return {
+    plane: createSketchPlaneFromFaceReference(face, target.path, opIndex),
+    attachment: createSketchFaceAttachment(face)
+  };
+}
+
+function resolveTopologyAnchorSketchAttachmentTarget(
+  state: MutableDocumentState,
+  op: Extract<CadOp, { readonly op: "sketch.createOnFace" }>,
+  opIndex?: number
+): {
+  readonly plane: SketchPlane;
+  readonly attachment: SketchAttachmentSnapshot;
+} {
+  if (op.topologyAnchorId === undefined) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message:
+        "sketch.createOnFace topologyAnchorProof requires topologyAnchorId.",
+      opIndex,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected: "topologyAnchorId with topologyAnchorProof",
+      received: "missing topologyAnchorId"
+    });
+  }
+
+  if (
+    op.bodyId !== undefined ||
+    op.faceStableId !== undefined ||
+    op.referenceName !== undefined
+  ) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message:
+        "sketch.createOnFace must use topologyAnchorProof only with topologyAnchorId.",
+      opIndex,
+      topologyAnchorId: op.topologyAnchorId,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected:
+        "topologyAnchorId and topologyAnchorProof without generated reference inputs",
+      received: "mixed topology anchor proof inputs"
+    });
+  }
+
+  const target = resolveActiveTopologyAnchorTarget(
+    state,
+    op.topologyAnchorId,
+    "face",
+    opIndex
+  );
+  const proofInput = op.topologyAnchorProof;
+  if (proofInput === undefined) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message:
+        "sketch.createOnFace topologyAnchorProof requires proof evidence.",
+      opIndex,
+      topologyAnchorId: op.topologyAnchorId,
+      path: operationPath(opIndex, "topologyAnchorProof"),
+      expected: "axisAlignedPlanarFace proof",
+      received: "missing topologyAnchorProof"
+    });
+  }
+  const proof = validateTopologyAnchorFaceProof(proofInput, opIndex);
+
+  return {
+    plane: sketchPlaneFromPlanarAxis(proof.planarAxis),
+    attachment: {
+      kind: "topologyAnchorFace",
+      bodyId: target.bodyId,
+      topologyAnchorId: target.topologyAnchorId,
+      checkpointId: target.checkpointId,
+      planarAxis: proof.planarAxis,
+      planarCoordinate: proof.planarCoordinate
+    }
+  };
 }
 
 function resolveActiveTopologyAnchorTarget(
@@ -13502,6 +13638,59 @@ function createSketchPlaneFromFaceReference(
     expected: "axis-aligned planar generated face reference",
     received: JSON.stringify(normal)
   });
+}
+
+function validateTopologyAnchorFaceProof(
+  proof: CadTopologyAnchorCommandProof,
+  opIndex?: number
+): CadTopologyAnchorCommandProof & {
+  readonly kind: "axisAlignedPlanarFace";
+  readonly entityKind: "face";
+  readonly planarAxis: "x" | "y" | "z";
+  readonly planarCoordinate: number;
+} {
+  if (
+    proof.kind === "axisAlignedPlanarFace" &&
+    proof.entityKind === "face" &&
+    proof.evidenceSource === "checkpointSnapshot" &&
+    proof.exposesCheckpointLocalIds === false &&
+    isPlanarAxis(proof.planarAxis) &&
+    typeof proof.planarCoordinate === "number" &&
+    Number.isFinite(proof.planarCoordinate)
+  ) {
+    return proof as CadTopologyAnchorCommandProof & {
+      readonly kind: "axisAlignedPlanarFace";
+      readonly entityKind: "face";
+      readonly planarAxis: "x" | "y" | "z";
+      readonly planarCoordinate: number;
+    };
+  }
+
+  throwValidationError({
+    code: "INVALID_TOPOLOGY_ANCHOR",
+    message:
+      "sketch.createOnFace topologyAnchorProof must be an axis-aligned planar face proof.",
+    opIndex,
+    path: operationPath(opIndex, "topologyAnchorProof"),
+    expected:
+      "axisAlignedPlanarFace proof with finite planar axis and coordinate",
+    received: describeReceived(proof)
+  });
+}
+
+function isPlanarAxis(value: unknown): value is "x" | "y" | "z" {
+  return value === "x" || value === "y" || value === "z";
+}
+
+function sketchPlaneFromPlanarAxis(axis: "x" | "y" | "z"): SketchPlane {
+  switch (axis) {
+    case "x":
+      return "YZ";
+    case "y":
+      return "XZ";
+    case "z":
+      return "XY";
+  }
 }
 
 function createSketchFaceAttachment(
@@ -18976,14 +19165,57 @@ function validateSketchAttachmentSnapshot(
 
   let valid = true;
 
-  if (value.kind !== "generatedFace") {
+  if (value.kind !== "generatedFace" && value.kind !== "topologyAnchorFace") {
     addProjectIssue(
       issues,
       "INVALID_SKETCH",
       `${path}.kind`,
-      "Sketch attachment kind must be generatedFace."
+      "Sketch attachment kind must be generatedFace or topologyAnchorFace."
     );
     valid = false;
+  }
+
+  if (value.kind === "topologyAnchorFace") {
+    for (const field of [
+      "bodyId",
+      "topologyAnchorId",
+      "checkpointId"
+    ] as const) {
+      if (typeof value[field] !== "string" || value[field].length === 0) {
+        addProjectIssue(
+          issues,
+          "INVALID_SKETCH",
+          `${path}.${field}`,
+          `Sketch attachment ${field} must be a non-empty string.`
+        );
+        valid = false;
+      }
+    }
+
+    if (!isPlanarAxis(value.planarAxis)) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.planarAxis`,
+        "Sketch topology anchor attachment planarAxis must be x, y, or z."
+      );
+      valid = false;
+    }
+
+    if (
+      typeof value.planarCoordinate !== "number" ||
+      !Number.isFinite(value.planarCoordinate)
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_SKETCH",
+        `${path}.planarCoordinate`,
+        "Sketch topology anchor attachment planarCoordinate must be finite."
+      );
+      valid = false;
+    }
+
+    return valid;
   }
 
   for (const field of [
@@ -21264,6 +21496,10 @@ function validateSketchAttachments(
   issues: CadProjectImportIssue[]
 ): void {
   for (const { path, attachment } of attachments) {
+    if (attachment.kind === "topologyAnchorFace") {
+      continue;
+    }
+
     const feature = featuresByBodyId.get(attachment.bodyId);
     const expectedStableId = `generated:face:${attachment.bodyId}:${attachment.faceRole}`;
 
@@ -23303,17 +23539,21 @@ function isCadOp(value: unknown): value is CadOp {
       typeof value.bodyId === "string" &&
       typeof value.faceStableId === "string" &&
       value.referenceName === undefined &&
-      value.topologyAnchorId === undefined;
+      value.topologyAnchorId === undefined &&
+      value.topologyAnchorProof === undefined;
     const hasNamedReference =
       typeof value.referenceName === "string" &&
       value.bodyId === undefined &&
       value.faceStableId === undefined &&
-      value.topologyAnchorId === undefined;
+      value.topologyAnchorId === undefined &&
+      value.topologyAnchorProof === undefined;
     const hasTopologyAnchor =
       typeof value.topologyAnchorId === "string" &&
       value.bodyId === undefined &&
       value.faceStableId === undefined &&
-      value.referenceName === undefined;
+      value.referenceName === undefined &&
+      (value.topologyAnchorProof === undefined ||
+        isTopologyAnchorFaceProofInput(value.topologyAnchorProof));
 
     return (
       isOptionalString(value.id) &&
@@ -24365,6 +24605,21 @@ function isSketchDimensionValueInput(value: Record<string, unknown>): boolean {
     : typeof value.parameterId === "string";
 }
 
+function isTopologyAnchorFaceProofInput(
+  value: unknown
+): value is CadTopologyAnchorCommandProof {
+  return (
+    isRecord(value) &&
+    value.kind === "axisAlignedPlanarFace" &&
+    value.entityKind === "face" &&
+    value.evidenceSource === "checkpointSnapshot" &&
+    value.exposesCheckpointLocalIds === false &&
+    isPlanarAxis(value.planarAxis) &&
+    typeof value.planarCoordinate === "number" &&
+    Number.isFinite(value.planarCoordinate)
+  );
+}
+
 function isExtrudeSide(value: unknown): value is FeatureExtrudeSide {
   return value === "positive" || value === "negative" || value === "symmetric";
 }
@@ -24451,7 +24706,7 @@ function isFeatureRevolveAxis(value: unknown): value is FeatureRevolveAxis {
 
 function isGeneratedExtrudeFaceRole(
   value: unknown
-): value is SketchAttachmentSnapshot["faceRole"] {
+): value is CadGeneratedExtrudeFaceRole {
   return (
     value === "startCap" ||
     value === "endCap" ||

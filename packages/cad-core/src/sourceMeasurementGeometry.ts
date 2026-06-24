@@ -32,17 +32,23 @@ export function createSourceMeasurementFrame(
   sketch: SourceMeasurementSketch,
   ownerPartId: PartId
 ): SourceMeasurementFrame | undefined {
-  if (!sketch.attachment) {
+  const attachment = sketch.attachment;
+
+  if (!attachment) {
     return createDefaultSourceMeasurementFrame(sketch.plane);
+  }
+
+  if (attachment.kind === "topologyAnchorFace") {
+    return createTopologyAnchorFaceMeasurementFrame(attachment);
   }
 
   const references = createBodyGeneratedReferences(
     document,
-    sketch.attachment.bodyId,
+    attachment.bodyId,
     ownerPartId
   );
   const face = references?.faces.find(
-    (candidate) => candidate.stableId === sketch.attachment?.faceStableId
+    (candidate) => candidate.stableId === attachment.faceStableId
   );
 
   if (!face || face.geometricSignature.surfaceType !== "plane") {
@@ -50,6 +56,34 @@ export function createSourceMeasurementFrame(
   }
 
   return createAttachedSourceMeasurementFrame(sketch, face);
+}
+
+function createTopologyAnchorFaceMeasurementFrame(
+  attachment: Extract<
+    SketchAttachmentSnapshot,
+    { readonly kind: "topologyAnchorFace" }
+  >
+): SourceMeasurementFrame {
+  switch (attachment.planarAxis) {
+    case "x":
+      return {
+        origin: [attachment.planarCoordinate, 0, 0],
+        uAxis: [0, 1, 0],
+        vAxis: [0, 0, 1]
+      };
+    case "y":
+      return {
+        origin: [0, attachment.planarCoordinate, 0],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 0, 1]
+      };
+    case "z":
+      return {
+        origin: [0, 0, attachment.planarCoordinate],
+        uAxis: [1, 0, 0],
+        vAxis: [0, 1, 0]
+      };
+  }
 }
 
 export function createDefaultSourceMeasurementFrame(

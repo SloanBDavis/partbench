@@ -188,8 +188,16 @@ export function createTopologyAnchorCommandReadinessResponse(args: {
   const commandOperations =
     proof === undefined
       ? []
-      : createCommandOperations(selectionResult.candidates);
-  const status = chooseStatus(proof, selectionResult.status);
+      : createCommandOperations([
+          ...createCommandOperations(selectionResult.candidates),
+          ...createProofCommandOperations(proof)
+        ]);
+  const status = chooseStatus({
+    proof,
+    selectionStatus: selectionResult.status,
+    commandOperations,
+    requiredOperation: args.query.requiredOperation
+  });
   const diagnostics =
     proof === undefined
       ? [
@@ -217,7 +225,7 @@ export function createTopologyAnchorCommandReadinessResponse(args: {
             status === "ready" ? "info" : "warning",
             status === "ready"
               ? `Topology anchor ${anchor.anchorId} has checkpoint evidence and selection-reference command readiness.`
-              : `Topology anchor ${anchor.anchorId} has checkpoint evidence but is not command-ready through selection.referenceCandidates.`,
+              : `Topology anchor ${anchor.anchorId} has checkpoint evidence but is not command-ready for the requested operation.`,
             {
               bodyId: anchor.bodyId,
               anchorId: anchor.anchorId,
@@ -239,7 +247,7 @@ export function createTopologyAnchorCommandReadinessResponse(args: {
     entityKind: anchor.entityKind,
     checkpointId: anchor.checkpointId,
     commandOperations,
-    selectionStatus: selectionResult.status,
+    selectionStatus: status === "ready" ? "resolved" : selectionResult.status,
     candidates: proof === undefined ? [] : selectionResult.candidates,
     issues: proof === undefined ? [] : selectionResult.issues,
     proof,
@@ -424,34 +432,60 @@ function createCommandProof(
 }
 
 function createCommandOperations(
+  operations: readonly CadSelectionReferenceOperation[]
+): readonly CadSelectionReferenceOperation[];
+function createCommandOperations(
   candidates: readonly CadSelectionReferenceCandidate[]
+): readonly CadSelectionReferenceOperation[];
+function createCommandOperations(
+  input:
+    | readonly CadSelectionReferenceOperation[]
+    | readonly CadSelectionReferenceCandidate[]
 ): readonly CadSelectionReferenceOperation[] {
-  return [
-    ...new Set(candidates.flatMap((candidate) => candidate.commandOperations))
-  ];
+  const operations = input.flatMap((item) =>
+    typeof item === "string" ? [item] : item.commandOperations
+  );
+
+  return [...new Set(operations)];
 }
 
-function chooseStatus(
-  proof: CadTopologyAnchorCommandProof | undefined,
-  selectionStatus: CadSelectionReferenceStatus
-): CadTopologyAnchorCommandReadinessStatus {
-  if (!proof) {
+function createProofCommandOperations(
+  proof: CadTopologyAnchorCommandProof
+): readonly CadSelectionReferenceOperation[] {
+  if (proof.kind === "axisAlignedPlanarFace") {
+    return ["feature.attachSketchPlane"];
+  }
+
+  return [];
+}
+
+function chooseStatus(input: {
+  readonly proof: CadTopologyAnchorCommandProof | undefined;
+  readonly selectionStatus: CadSelectionReferenceStatus;
+  readonly commandOperations: readonly CadSelectionReferenceOperation[];
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+}): CadTopologyAnchorCommandReadinessStatus {
+  if (!input.proof) {
     return "unsupported";
   }
 
-  if (selectionStatus === "resolved") {
+  if (
+    input.requiredOperation
+      ? input.commandOperations.includes(input.requiredOperation)
+      : input.commandOperations.length > 0
+  ) {
     return "ready";
   }
 
-  if (selectionStatus === "missing") {
+  if (input.selectionStatus === "missing") {
     return "missing";
   }
 
-  if (selectionStatus === "stale") {
+  if (input.selectionStatus === "stale") {
     return "stale";
   }
 
-  if (selectionStatus === "non-commandable") {
+  if (input.selectionStatus === "non-commandable") {
     return "non-commandable";
   }
 

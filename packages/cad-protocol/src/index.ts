@@ -422,6 +422,7 @@ export interface SketchCreateOnFaceOp {
   readonly faceStableId?: string;
   readonly referenceName?: NamedReferenceName;
   readonly topologyAnchorId?: string;
+  readonly topologyAnchorProof?: CadTopologyAnchorCommandProof;
 }
 
 export interface SketchRenameOp {
@@ -1741,7 +1742,9 @@ export type SketchConstraintEntry = SketchConstraintSnapshot & {
   readonly secondaryDirection?: Vec2;
 };
 
-export type SketchAttachmentSnapshot = SketchGeneratedFaceAttachmentSnapshot;
+export type SketchAttachmentSnapshot =
+  | SketchGeneratedFaceAttachmentSnapshot
+  | SketchTopologyAnchorFaceAttachmentSnapshot;
 
 export interface SketchGeneratedFaceAttachmentSnapshot {
   readonly kind: "generatedFace";
@@ -1751,6 +1754,15 @@ export interface SketchGeneratedFaceAttachmentSnapshot {
   readonly sourceSketchId: SketchId;
   readonly sourceSketchEntityId: SketchEntityId;
   readonly faceRole: CadGeneratedExtrudeFaceRole;
+}
+
+export interface SketchTopologyAnchorFaceAttachmentSnapshot {
+  readonly kind: "topologyAnchorFace";
+  readonly bodyId: BodyId;
+  readonly topologyAnchorId: string;
+  readonly checkpointId: string;
+  readonly planarAxis: "x" | "y" | "z";
+  readonly planarCoordinate: number;
 }
 
 export interface SketchSnapshot {
@@ -4157,12 +4169,17 @@ export interface CadAttachedSketchHealth {
   readonly sketchId: SketchId;
   readonly sketchName: string;
   readonly plane: SketchPlane;
+  readonly attachmentKind: SketchAttachmentSnapshot["kind"];
   readonly bodyId: BodyId;
-  readonly faceStableId: string;
-  readonly sourceFeatureId: FeatureId;
-  readonly sourceSketchId: SketchId;
-  readonly sourceSketchEntityId: SketchEntityId;
-  readonly faceRole: CadGeneratedExtrudeFaceRole;
+  readonly faceStableId?: string;
+  readonly sourceFeatureId?: FeatureId;
+  readonly sourceSketchId?: SketchId;
+  readonly sourceSketchEntityId?: SketchEntityId;
+  readonly faceRole?: CadGeneratedExtrudeFaceRole;
+  readonly topologyAnchorId?: string;
+  readonly checkpointId?: string;
+  readonly planarAxis?: "x" | "y" | "z";
+  readonly planarCoordinate?: number;
   readonly status: CadDependencyHealthStatus;
   readonly resolves: boolean;
   readonly eligibleForSketchPlane: boolean;

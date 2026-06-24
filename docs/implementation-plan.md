@@ -2509,9 +2509,17 @@ Use these decisions when drafting or implementing V13 tranches:
    `selection.referenceCandidates` topology-anchor commandability path used by
    UI, agents, and MCP. It returns sanitized proof, selection candidates,
    diagnostics, and `mutatesSource: false` without exposing checkpoint-local
-   entity IDs. It does not make arbitrary exact-only anchors command-ready by
-   itself; unsupported exact-only targets report partial/deferred readiness
-   until explicit topology-anchor target validators exist.
+   entity IDs. Exact-only axis-aligned planar face anchors can now expose
+   proof-backed `feature.attachSketchPlane` readiness through that query without
+   fabricating generated-reference candidates. `sketch.createOnFace` can consume
+   the sanitized proof for an active topology face anchor, validate the
+   anchor/checkpoint/body/entity and planar axis/coordinate, and store a
+   replayable `topologyAnchorFace` sketch attachment snapshot. Attached sketch
+   display, source measurement frames, project health, downstream feature
+   attachment validation, tree labels, and import/export validation consume
+   that attachment as source state. Non-axis-aligned faces, curved faces,
+   exact-only edge command targets, and arbitrary result topology still report
+   partial/deferred readiness until explicit validators exist.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint
@@ -2636,6 +2644,22 @@ Use these decisions when drafting or implementing V13 tranches:
     explicit repair flows: repair candidates are ranked with richer evidence,
     stay `canAutoRetarget: false`, and do not expand command eligibility or
     public stable CAD IDs.
+16. **Implemented: Exact Planar Face Topology-Anchor Sketch Attachment** -
+    `topology.anchorCommandReadiness` now treats validated axis-aligned planar
+    face proof as command-ready `feature.attachSketchPlane` evidence for active
+    exact-only topology face anchors without generated-reference backing.
+    `sketch.createOnFace` accepts the sanitized `topologyAnchorProof`, rejects
+    mixed generated/named-reference inputs, verifies the active
+    anchor/checkpoint/body/entity boundary plus planar axis/coordinate, and
+    persists a replayable `topologyAnchorFace` attachment snapshot. Cad-core
+    source measurement, project health, downstream feature validation,
+    import/export validation, and web sketch/tree display helpers understand
+    that source attachment shape. The path stores only public topology
+    anchor/checkpoint IDs plus planar proof; checkpoint-local entity IDs, raw
+    OCCT handles, renderer/mesh IDs, selection-buffer IDs, viewport state, OPFS
+    paths, file handles, and export artifacts remain outside public source and
+    command identities. Non-axis-aligned faces, curved faces, exact-only edge
+    validators, and broad arbitrary topology commandability remain deferred.
 
 ### V13 Scope Guardrails
 

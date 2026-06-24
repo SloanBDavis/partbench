@@ -32186,6 +32186,68 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       ]
     });
 
+    const exactFaceDocument = faceEngine.getDocument();
+    const topologyIdentity = exactFaceDocument.topologyIdentity;
+
+    if (!topologyIdentity) {
+      throw new Error("Expected topology identity fixture.");
+    }
+
+    const exactFaceAnchor = {
+      ...topologyIdentity.anchors[0]!,
+      anchorId: "anchor_exact_face",
+      sourceSemanticRole: "unmapped exact topology face"
+    };
+    delete (exactFaceAnchor as { stableId?: string }).stableId;
+    const exactFaceEngine = new CadEngine({
+      ...exactFaceDocument,
+      topologyIdentity: {
+        ...topologyIdentity,
+        anchors: [exactFaceAnchor]
+      }
+    });
+    const exactFaceReadiness = exactFaceEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_exact_face",
+        requiredOperation: "feature.attachSketchPlane",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-face-1",
+              kind: "face",
+              signature: "face_signature_1",
+              bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+            }
+          ]
+        })
+      }
+    });
+
+    expect(exactFaceReadiness).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "ready",
+      anchorId: "anchor_exact_face",
+      entityKind: "face",
+      selectionStatus: "resolved",
+      commandable: true,
+      candidateCount: 0,
+      commandOperations: ["feature.attachSketchPlane"],
+      proof: {
+        kind: "axisAlignedPlanarFace",
+        entityKind: "face",
+        planarAxis: "z",
+        planarCoordinate: 1,
+        exposesCheckpointLocalIds: false
+      },
+      exposesCheckpointLocalIds: false
+    });
+
     const edgeEngine = createTopologyEdgeAnchorEngine({
       stableId: "",
       sourceSemanticRole: "unmapped exact topology edge"
@@ -32239,7 +32301,9 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       exposesCheckpointLocalIds: false
     });
 
-    expect(JSON.stringify({ faceReadiness, edgeReadiness })).not.toMatch(
+    expect(
+      JSON.stringify({ faceReadiness, exactFaceReadiness, edgeReadiness })
+    ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
     );
   });
@@ -32645,6 +32709,105 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     expect(JSON.stringify(roleBackedResult.transaction)).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
     );
+
+    const exactOnlyAnchor = {
+      ...roleBackedTopology.anchors[0]!,
+      anchorId: "anchor_exact_face",
+      sourceSemanticRole: "unmapped exact topology face"
+    };
+    delete (exactOnlyAnchor as { stableId?: string }).stableId;
+    const exactOnlyEngine = new CadEngine({
+      ...roleBackedDocument,
+      topologyIdentity: {
+        ...roleBackedTopology,
+        anchors: [exactOnlyAnchor]
+      }
+    });
+    const exactOnlyOp = {
+      op: "sketch.createOnFace" as const,
+      id: "sketch_exact_topology_face",
+      name: "Exact topology face sketch",
+      topologyAnchorId: "anchor_exact_face",
+      topologyAnchorProof: {
+        kind: "axisAlignedPlanarFace",
+        entityKind: "face",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        planarAxis: "z",
+        planarCoordinate: 1
+      } as const
+    };
+    const exactOnlyDryRun = exactOnlyEngine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: [exactOnlyOp]
+    });
+
+    expect(exactOnlyDryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdSketchIds: ["sketch_exact_topology_face"]
+    });
+    expect(
+      exactOnlyEngine.getDocument().sketches.has("sketch_exact_topology_face")
+    ).toBe(false);
+
+    const exactOnlyResult = exactOnlyEngine.apply(exactOnlyOp);
+    expect(
+      exactOnlyResult.document.sketches.get("sketch_exact_topology_face")
+    ).toMatchObject({
+      id: "sketch_exact_topology_face",
+      plane: "XY",
+      attachment: {
+        kind: "topologyAnchorFace",
+        bodyId: "body_rect_1",
+        topologyAnchorId: "anchor_exact_face",
+        checkpointId: "checkpoint_1",
+        planarAxis: "z",
+        planarCoordinate: 1
+      }
+    });
+    expect(exactOnlyResult.transaction.ops[0]).toMatchObject({
+      op: "sketch.createOnFace",
+      topologyAnchorId: "anchor_exact_face",
+      topologyAnchorProof: expect.objectContaining({
+        kind: "axisAlignedPlanarFace",
+        exposesCheckpointLocalIds: false
+      })
+    });
+    expect(JSON.stringify(exactOnlyResult.transaction)).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
+
+    exactOnlyEngine.apply({
+      op: "sketch.addRectangle",
+      sketchId: "sketch_exact_topology_face",
+      id: "rect_exact_cut",
+      center: [0, 0],
+      width: 0.25,
+      height: 0.25
+    });
+    const exactCutResult = exactOnlyEngine.apply({
+      op: "feature.extrude",
+      id: "feat_exact_cut",
+      name: "Exact anchor cut",
+      sketchId: "sketch_exact_topology_face",
+      entityId: "rect_exact_cut",
+      depth: 0.25,
+      operationMode: "cut",
+      targetBodyId: "body_rect_1",
+      bodyId: "body_exact_cut"
+    });
+
+    expect(
+      exactCutResult.document.features.get("feat_exact_cut")
+    ).toMatchObject({
+      id: "feat_exact_cut",
+      kind: "extrude",
+      operationMode: "cut",
+      targetBodyId: "body_rect_1",
+      bodyId: "body_exact_cut"
+    });
   });
 
   it("repairs named references to active topology face anchors", () => {

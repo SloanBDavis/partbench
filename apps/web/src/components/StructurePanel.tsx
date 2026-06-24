@@ -1029,6 +1029,10 @@ function formatSketchDetail(sketch: SketchSnapshot): string {
   }`;
 
   if (sketch.attachment) {
+    if (sketch.attachment.kind === "topologyAnchorFace") {
+      return `${sketch.plane} · ${entityCount} · on stable face`;
+    }
+
     return `${sketch.plane} · ${entityCount} · on ${formatFaceRole(
       sketch.attachment.faceRole
     )}`;

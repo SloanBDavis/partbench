@@ -16,6 +16,7 @@ import {
 import {
   createAttachedSketchGeometryFrame,
   createGeneratedFaceReferenceKey,
+  createTopologyAnchorFaceDisplayFrame,
   type SketchDisplayFrame
 } from "./sketchDisplayFrames";
 
@@ -670,6 +671,12 @@ function createAttachedSketchFeaturePlacement(
 
   if (!attachment) {
     return {};
+  }
+
+  if (attachment.kind === "topologyAnchorFace") {
+    return {
+      placementFrame: createTopologyAnchorFaceDisplayFrame(attachment)
+    };
   }
 
   const face = generatedFacesByKey.get(

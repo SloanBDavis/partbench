@@ -141,6 +141,10 @@ export function formatGeneratedReferencesError(error: CadQueryError): string {
 export function formatSketchAttachmentLabel(
   attachment: SketchAttachmentSnapshot
 ): string {
+  if (attachment.kind === "topologyAnchorFace") {
+    return `stable topology face on ${attachment.bodyId}`;
+  }
+
   return `${attachment.faceRole} on ${attachment.bodyId}`;
 }
 
