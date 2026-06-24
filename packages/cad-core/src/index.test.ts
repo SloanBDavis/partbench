@@ -6152,7 +6152,7 @@ describe("cad-core", () => {
             "feature.selectReference"
           ],
           eligibilityNotes: [
-            "Circular side faces are not planar and are not eligible for sketch-plane attachment.",
+            "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows.",
             "Generated references are semantic first-slice references, not exact B-rep topology."
           ],
           geometricSignature: {
@@ -9154,6 +9154,99 @@ describe("cad-core", () => {
     expect(() => importCadProject(mislabeledV14)).toThrow(
       CadProjectImportError
     );
+  });
+
+  it("supports attached cap holes targeting authored circle extrude bodies", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_cap_hole",
+        name: "Cap hole",
+        bodyId: "body_circle_1",
+        faceStableId: "generated:face:body_circle_1:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_cap_hole",
+        id: "circle_cap_hole",
+        center: [0, 0],
+        radius: 0.35
+      }
+    ]);
+
+    const holeOp = {
+      op: "feature.hole" as const,
+      id: "feat_cap_hole",
+      bodyId: "body_cap_hole",
+      targetBodyId: "body_circle_1",
+      sketchId: "sketch_cap_hole",
+      circleEntityId: "circle_cap_hole",
+      depthMode: "throughAll" as const,
+      direction: "positive" as const
+    };
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: [holeOp]
+      })
+    ).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_cap_hole"],
+      createdBodyIds: ["body_cap_hole"]
+    });
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "commit",
+        ops: [holeOp]
+      })
+    ).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_cap_hole"],
+      createdBodyIds: ["body_cap_hole"]
+    });
+    expect(getHoleFeature(engine, "feat_cap_hole")).toMatchObject({
+      kind: "hole",
+      targetBodyId: "body_circle_1",
+      sketchId: "sketch_cap_hole",
+      circleEntityId: "circle_cap_hole",
+      depthMode: "throughAll",
+      direction: "positive"
+    });
+
+    expect(readProjectStructure(engine)).toMatchObject({
+      bodies: expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_circle_1",
+          consumedByFeatureId: "feat_cap_hole"
+        }),
+        expect.objectContaining({
+          id: "body_cap_hole",
+          featureId: "feat_cap_hole"
+        })
+      ])
+    });
+    expect(readProjectHealth(engine).authoredHoles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_cap_hole",
+          targetBodyId: "body_circle_1",
+          status: "healthy"
+        })
+      ])
+    );
+
+    const restored = importCadProjectJson(exportCadProjectJson(engine));
+    expect(getHoleFeature(restored, "feat_cap_hole")).toMatchObject({
+      kind: "hole",
+      targetBodyId: "body_circle_1",
+      bodyId: "body_cap_hole"
+    });
   });
 
   it("validates hole source and target inputs", () => {
@@ -34128,6 +34221,170 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       })
     ).not.toMatch(
       /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
+  });
+
+  it("creates holes through active topology-backed circle-origin result bodies", () => {
+    const engine = createCircleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_circle_1",
+        bodyId: "body_circle_1",
+        sourceFeatureId: "feat_circle_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_circle",
+        entityKind: "body",
+        bodyId: "body_circle_1",
+        checkpointId: "checkpoint_circle_1",
+        checkpointEntityId: "checkpoint-local-circle-body",
+        sourceFeatureId: "feat_circle_1",
+        stableId: "generated:body:body_circle_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "circle_body_signature"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_circle_cut",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_circle_cut",
+        id: "rect_circle_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_circle_cut",
+        bodyId: "body_circle_cut",
+        sketchId: "sketch_circle_cut",
+        entityId: "rect_circle_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_circle"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_circle_hole",
+        name: "Hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_circle_hole",
+        id: "circle_circle_hole",
+        center: [0.5, 0.25],
+        radius: 0.35
+      }
+    ]);
+
+    const beforeJson = exportCadProjectJson(engine);
+    const holeOps = [
+      {
+        op: "feature.hole",
+        id: "feat_circle_hole",
+        bodyId: "body_circle_hole",
+        sketchId: "sketch_circle_hole",
+        circleEntityId: "circle_circle_hole",
+        depthMode: "throughAll",
+        direction: "positive",
+        targetTopologyAnchorId: "anchor_body_circle"
+      }
+    ] as const;
+
+    expect(
+      engine.executeBatch({
+        version: "cadops.v1",
+        mode: "dryRun",
+        ops: holeOps
+      })
+    ).toMatchObject({
+      ok: true,
+      createdFeatureIds: ["feat_circle_hole"],
+      createdBodyIds: ["body_circle_hole"]
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    engine.applyBatch(holeOps);
+
+    expect(getHoleFeature(engine, "feat_circle_hole")).toMatchObject({
+      kind: "hole",
+      targetBodyId: "body_circle_cut",
+      targetTopologyAnchorId: "anchor_body_circle",
+      bodyId: "body_circle_hole"
+    });
+
+    const structure = readProjectStructure(engine);
+    expect(structure.bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_circle_1",
+          consumedByFeatureId: "feat_circle_cut"
+        }),
+        expect.objectContaining({
+          id: "body_circle_cut",
+          consumedByFeatureId: "feat_circle_hole"
+        }),
+        expect.objectContaining({
+          id: "body_circle_hole",
+          source: expect.objectContaining({
+            type: "sketchHoleFeature",
+            targetBodyId: "body_circle_cut",
+            targetTopologyAnchorId: "anchor_body_circle"
+          })
+        })
+      ])
+    );
+    expect(readProjectHealth(engine).authoredHoles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_circle_hole",
+          targetBodyId: "body_circle_cut",
+          targetTopologyAnchorId: "anchor_body_circle",
+          status: "healthy"
+        })
+      ])
+    );
+    expect(readProjectDependencyGraph(engine).edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "sources",
+          sourceFeatureId: "feat_circle_hole",
+          topologyAnchorId: "anchor_body_circle"
+        }),
+        expect.objectContaining({
+          kind: "targets",
+          sourceFeatureId: "feat_circle_hole",
+          bodyId: "body_circle_cut"
+        })
+      ])
+    );
+    expect(
+      readProjectStructure(importCadProjectJson(exportCadProjectJson(engine)))
+        .bodies
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_circle_hole",
+          source: expect.objectContaining({
+            targetBodyId: "body_circle_cut",
+            targetTopologyAnchorId: "anchor_body_circle"
+          })
+        })
+      ])
     );
   });
 

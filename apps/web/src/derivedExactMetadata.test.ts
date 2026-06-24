@@ -1381,6 +1381,44 @@ describe("derivedExactMetadata", () => {
     });
   });
 
+  it("builds exact metadata runtime input for holes with circle-origin boolean result targets", () => {
+    const source: DerivedHoleGeometrySource = {
+      id: "body_hole_1",
+      kind: "hole",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createCircleExtrudeSource("body_circle_1"),
+        tool: createExtrudeSource("body_cut_1")
+      },
+      tool: {
+        sketchPlane: "XY",
+        circle: { kind: "circle", center: [0.5, 0.25], radius: 0.4 },
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    };
+
+    expect(createExactMetadataRuntimeInput(source)).toMatchObject({
+      id: "body_hole_1",
+      source: {
+        kind: "hole",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: { profile: { kind: "circle" } },
+          tool: { profile: { kind: "rectangle" } }
+        },
+        tool: {
+          circle: { kind: "circle", radius: 0.4 },
+          depthMode: "throughAll",
+          direction: "positive"
+        }
+      }
+    });
+  });
+
   it("removes revolve exact metadata entries across feature delete and undo", async () => {
     const engine = createRevolvedRectangleEngine();
     const service = new DerivedExactMetadataService({

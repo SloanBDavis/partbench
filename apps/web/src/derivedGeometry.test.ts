@@ -2224,6 +2224,104 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives attached cap hole sources from active circle targets", async () => {
+    const engine = createExtrudedCircleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.createOnFace",
+        id: "sketch_cap_hole",
+        name: "Cap hole",
+        bodyId: "body_circle_1",
+        faceStableId: "generated:face:body_circle_1:endCap"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_cap_hole",
+        id: "circle_cap_hole",
+        center: [0, 0],
+        radius: 0.35
+      },
+      {
+        op: "feature.hole",
+        id: "feat_cap_hole",
+        bodyId: "body_cap_hole",
+        targetBodyId: "body_circle_1",
+        sketchId: "sketch_cap_hole",
+        circleEntityId: "circle_cap_hole",
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    ]);
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      getProjectStructureFeatures(engine),
+      getGeneratedFacesByKey(engine, ["body_circle_1"])
+    );
+    const holeSource = sources.find(
+      (source): source is DerivedHoleGeometrySource => source.kind === "hole"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_cap_hole"]);
+    expect(holeSource).toMatchObject({
+      id: "body_cap_hole",
+      kind: "hole",
+      target: { id: "body_circle_1", profile: { kind: "circle" } },
+      tool: {
+        sketchPlane: "XY",
+        circle: {
+          kind: "circle",
+          center: [0, 0],
+          radius: 0.35
+        },
+        placementFrame: {
+          origin: [0, 0, 4]
+        },
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_cap_hole",
+        target: expect.objectContaining({
+          depth: 4,
+          profile: expect.objectContaining({ kind: "circle" })
+        }),
+        tool: expect.objectContaining({
+          sketchPlane: "XY",
+          placementFrame: expect.objectContaining({
+            origin: [0, 0, 4]
+          }),
+          depthMode: "throughAll",
+          direction: "positive",
+          circle: expect.objectContaining({ radius: 0.35 })
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_cap_hole",
+        objectKind: "hole",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("derives hole sources from active topology-backed boolean result targets", async () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -2349,6 +2447,153 @@ describe("derivedGeometry", () => {
           operation: "cut",
           target: expect.objectContaining({
             profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          })
+        }),
+        tool: expect.objectContaining({
+          circle: expect.objectContaining({ radius: 0.4 }),
+          depthMode: "throughAll",
+          direction: "positive"
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_hole_1",
+        objectKind: "hole",
+        status: "ready"
+      }
+    ]);
+  });
+
+  it("derives hole sources from active topology-backed circle-origin result targets", async () => {
+    const engine = createExtrudedCircleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_cut_1",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_1",
+        id: "rect_cut_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_hole_1",
+        name: "Hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole_1",
+        id: "circle_hole_1",
+        center: [0.5, 0.25],
+        radius: 0.4
+      }
+    ]);
+
+    const baseFeature = getProjectStructureFeatures(engine).find(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+        feature.kind === "extrude" && feature.bodyId === "body_circle_1"
+    );
+
+    if (!baseFeature) {
+      throw new Error("Expected base circle extrude feature.");
+    }
+
+    const cutFeature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+      ...baseFeature,
+      id: "feat_cut_1",
+      bodyId: "body_cut_1",
+      sketchId: "sketch_cut_1",
+      entityId: "rect_cut_1",
+      profileKind: "rectangle",
+      depth: 1,
+      operationMode: "cut",
+      targetBodyId: "body_circle_1",
+      targetTopologyAnchorId: "anchor_body_circle",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_cut_1",
+        entityId: "rect_cut_1",
+        targetTopologyAnchorId: "anchor_body_circle"
+      }
+    };
+    const holeFeature: Extract<CadFeatureSummary, { kind: "hole" }> = {
+      id: "feat_hole_1",
+      kind: "hole",
+      partId: "part:default",
+      bodyId: "body_hole_1",
+      targetBodyId: "body_cut_1",
+      targetTopologyAnchorId: "anchor_body_circle",
+      sketchId: "sketch_hole_1",
+      circleEntityId: "circle_hole_1",
+      depthMode: "throughAll",
+      direction: "positive",
+      source: {
+        type: "sketchCircleHole",
+        sketchId: "sketch_hole_1",
+        circleEntityId: "circle_hole_1",
+        targetBodyId: "body_cut_1",
+        targetTopologyAnchorId: "anchor_body_circle"
+      }
+    };
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      [baseFeature, cutFeature, holeFeature]
+    );
+    const holeSource = sources.find(
+      (source): source is DerivedHoleGeometrySource => source.kind === "hole"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_hole_1"]);
+    expect(holeSource).toMatchObject({
+      id: "body_hole_1",
+      kind: "hole",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: { id: "body_circle_1", profile: { kind: "circle" } },
+        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+      },
+      tool: {
+        circle: { kind: "circle", center: [0.5, 0.25], radius: 0.4 },
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_hole_1",
+        target: expect.objectContaining({
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "circle" })
           }),
           tool: expect.objectContaining({
             profile: expect.objectContaining({ kind: "rectangle" })
@@ -4249,6 +4494,31 @@ function createExtrudedRectangleEngine(): CadEngine {
     sketchId: "sketch_1",
     entityId: "rect_1",
     depth: 3
+  });
+
+  return engine;
+}
+
+function createExtrudedCircleEngine(): CadEngine {
+  const engine = new CadEngine();
+
+  engine.applyBatch([
+    { op: "sketch.create", id: "sketch_1", name: "Profile", plane: "XY" },
+    {
+      op: "sketch.addCircle",
+      sketchId: "sketch_1",
+      id: "circle_1",
+      center: [0, 0],
+      radius: 2
+    }
+  ]);
+  engine.apply({
+    op: "feature.extrude",
+    id: "feat_circle_1",
+    bodyId: "body_circle_1",
+    sketchId: "sketch_1",
+    entityId: "circle_1",
+    depth: 4
   });
 
   return engine;

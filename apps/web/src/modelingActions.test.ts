@@ -307,7 +307,7 @@ describe("modeling action helpers", () => {
       role: "side:circular",
       eligibleOperations: ["feature.measureReference"],
       eligibilityNotes: [
-        "Circular side faces are not planar and are not eligible for sketch-plane attachment."
+        "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
       ]
     });
     const ineligibleActions = deriveModelingActions({
@@ -320,7 +320,7 @@ describe("modeling action helpers", () => {
     expect(actionById(ineligibleActions, "sketch.createOnFace")).toMatchObject({
       available: false,
       reason:
-        "Circular side faces are not planar and are not eligible for sketch-plane attachment."
+        "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
     });
   });
 

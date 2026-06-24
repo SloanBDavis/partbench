@@ -50,7 +50,7 @@ const circularSide = createFace({
   label: "Circular side face",
   eligibleOperations: ["feature.measureReference", "feature.selectReference"],
   eligibilityNotes: [
-    "Circular side faces are not planar and are not eligible for sketch-plane attachment."
+    "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
   ]
 });
 
@@ -70,10 +70,10 @@ describe("generated reference UI helpers", () => {
       "Planar face available for attached sketches"
     );
     expect(formatGeneratedFaceEligibility(circularSide)).toBe(
-      "Circular side faces are not planar and are not eligible for sketch-plane attachment."
+      "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
     );
     expect(formatSketchOnFaceAvailability(circularSide)).toBe(
-      "Circular side faces are not planar and are not eligible for sketch-plane attachment."
+      "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
     );
   });
 
@@ -217,7 +217,7 @@ describe("generated reference UI helpers", () => {
         createGeneratedReferenceActionStatuses(circularSide)[1]!
       )
     ).toBe(
-      "Unavailable: Circular side faces are not planar and are not eligible for sketch-plane attachment."
+      "Unavailable: Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows."
     );
     expect(createGeneratedReferenceActionStatuses(edge)).toEqual([
       {

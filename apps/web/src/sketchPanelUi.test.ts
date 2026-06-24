@@ -1235,6 +1235,31 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
+  it("offers active topology-backed circle-origin result bodies as hole targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_circle", "body_circle", "circle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut", {
+        targetBodyId: "body_circle",
+        targetTopologyAnchorId: "anchor_body_circle"
+      })
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_circle", "feat_circle", "feat_cut"),
+      createBody("body_cut", "feat_cut")
+    ];
+
+    expect(createHoleTargetBodyOptions(bodies, features, "body_cut")).toEqual([
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_circle",
+        profileKind: "circle",
+        label: "Circle result 1 / 1 mm",
+        detail: "Circle topology result / cut / body_cut"
+      }
+    ]);
+  });
+
   it("explains cut availability without requiring React state", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
@@ -1599,7 +1624,10 @@ function createExtrudeFeature(
   bodyId: string,
   profileKind: "rectangle" | "circle",
   operationMode: "newBody" | "add" | "cut",
-  options: { readonly targetTopologyAnchorId?: string } = {}
+  options: {
+    readonly targetBodyId?: string;
+    readonly targetTopologyAnchorId?: string;
+  } = {}
 ): Extract<CadFeatureSummary, { kind: "extrude" }> {
   return {
     id,
@@ -1613,7 +1641,7 @@ function createExtrudeFeature(
     side: "positive",
     operationMode,
     ...(operationMode === "add" || operationMode === "cut"
-      ? { targetBodyId: "body_rect" }
+      ? { targetBodyId: options.targetBodyId ?? "body_rect" }
       : {}),
     ...(options.targetTopologyAnchorId
       ? { targetTopologyAnchorId: options.targetTopologyAnchorId }

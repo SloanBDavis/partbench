@@ -55,7 +55,7 @@ const PLANAR_FACE_OPERATIONS = [
   "feature.selectReference"
 ] satisfies readonly CadGeneratedReferenceEligibleOperation[];
 const CIRCULAR_SIDE_FACE_NOTE =
-  "Circular side faces are not planar and are not eligible for sketch-plane attachment.";
+  "Curved side faces cannot host attached sketches. Use a planar cap or an existing XZ/YZ sketch for supported hole workflows.";
 
 export interface GeneratedReferencesDocument {
   readonly sketches: ReadonlyMap<SketchId, GeneratedReferencesSketch>;
