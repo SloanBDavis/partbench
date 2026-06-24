@@ -1204,6 +1204,37 @@ describe("sketch panel UI helpers", () => {
     ]);
   });
 
+  it("offers active topology-backed boolean result bodies as hole targets", () => {
+    const features: CadFeatureSummary[] = [
+      createExtrudeFeature("feat_rect", "body_rect", "rectangle", "newBody"),
+      createExtrudeFeature("feat_cut", "body_cut", "rectangle", "cut", {
+        targetTopologyAnchorId: "anchor_body_rect"
+      }),
+      createExtrudeFeature(
+        "feat_unanchored_cut",
+        "body_unanchored_cut",
+        "rectangle",
+        "cut"
+      )
+    ];
+    const bodies: CadBodySnapshot[] = [
+      createBody("body_rect", "feat_rect", "feat_cut"),
+      createBody("body_cut", "feat_cut"),
+      createBody("body_unanchored_cut", "feat_unanchored_cut")
+    ];
+
+    expect(createHoleTargetBodyOptions(bodies, features, "body_cut")).toEqual([
+      {
+        bodyId: "body_cut",
+        featureId: "feat_cut",
+        targetTopologyAnchorId: "anchor_body_rect",
+        profileKind: "rectangle",
+        label: "Rectangle result 1 / 1 mm",
+        detail: "Rectangle topology result / cut / body_cut"
+      }
+    ]);
+  });
+
   it("explains cut availability without requiring React state", () => {
     const rectangle: SketchSnapshot["entities"][number] = {
       id: "rect_1",
@@ -1319,7 +1350,7 @@ describe("sketch panel UI helpers", () => {
     ).toEqual({
       available: false,
       message:
-        "Create an active rectangle or circle new body before creating a hole."
+        "Create an eligible rectangle, circle, or stable result target before creating a hole."
     });
     expect(
       getHoleOperationStatus(circle, targets, {

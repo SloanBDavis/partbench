@@ -2905,10 +2905,7 @@ describe("cad-core", () => {
       }
     });
 
-    const history = engine.executeQuery({
-      version: "cadops.v1",
-      query: { query: "transaction.history" }
-    });
+    const history = readTransactionHistory(engine);
     expect(history).toMatchObject({
       ok: true,
       transactions: [
@@ -33885,6 +33882,253 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
       targetTopologyAnchorId: "anchor_body_1",
       bodyId: "body_anchor_add"
     });
+  });
+
+  it("creates holes through active topology-backed result bodies", async () => {
+    const engine = createRectangleExtrudeEngine();
+
+    engine.applyBatch([
+      {
+        op: "topology.checkpoint.create",
+        checkpointId: "checkpoint_1",
+        bodyId: "body_rect_1",
+        sourceFeatureId: "feat_rect_1",
+        sourceIdentity: {
+          algorithm: "partbench-source-v1",
+          sha256:
+            "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        status: "active"
+      },
+      {
+        op: "topology.anchor.create",
+        anchorId: "anchor_body_1",
+        entityKind: "body",
+        bodyId: "body_rect_1",
+        checkpointId: "checkpoint_1",
+        checkpointEntityId: "checkpoint-local-body-1",
+        sourceFeatureId: "feat_rect_1",
+        stableId: "generated:body:body_rect_1",
+        sourceSemanticRole: "source body",
+        signatureHash: "body_signature_1"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_cut",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_anchor_cut",
+        id: "rect_anchor_cut",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "feature.extrude",
+        id: "feat_anchor_cut",
+        bodyId: "body_anchor_cut",
+        sketchId: "sketch_anchor_cut",
+        entityId: "rect_anchor_cut",
+        depth: 1,
+        operationMode: "cut",
+        targetTopologyAnchorId: "anchor_body_1"
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_anchor_hole",
+        name: "Hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_anchor_hole",
+        id: "circle_anchor_hole",
+        center: [0.5, 0.25],
+        radius: 0.4
+      }
+    ]);
+
+    const beforeJson = exportCadProjectJson(engine);
+    const holeOps = [
+      {
+        op: "feature.hole",
+        id: "feat_anchor_hole",
+        bodyId: "body_anchor_hole",
+        sketchId: "sketch_anchor_hole",
+        circleEntityId: "circle_anchor_hole",
+        depthMode: "throughAll",
+        direction: "positive",
+        targetTopologyAnchorId: "anchor_body_1"
+      }
+    ] as const;
+    const dryRun = engine.executeBatch({
+      version: "cadops.v1",
+      mode: "dryRun",
+      ops: holeOps
+    });
+
+    expect(dryRun).toMatchObject({
+      ok: true,
+      mode: "dryRun",
+      createdFeatureIds: ["feat_anchor_hole"],
+      createdBodyIds: ["body_anchor_hole"]
+    });
+    expect(exportCadProjectJson(engine)).toBe(beforeJson);
+
+    const holeResult = engine.applyBatch(holeOps);
+
+    expect(getHoleFeature(engine, "feat_anchor_hole")).toMatchObject({
+      kind: "hole",
+      targetBodyId: "body_anchor_cut",
+      targetTopologyAnchorId: "anchor_body_1",
+      bodyId: "body_anchor_hole",
+      depthMode: "throughAll",
+      direction: "positive"
+    });
+    expect(holeResult.transaction.ops).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op: "feature.hole",
+          id: "feat_anchor_hole",
+          targetTopologyAnchorId: "anchor_body_1"
+        })
+      ])
+    );
+
+    const structure = readProjectStructure(engine);
+    const health = readProjectHealth(engine);
+    const graph = readProjectDependencyGraph(engine);
+    const history = readTransactionHistory(engine);
+    const exportedJson = exportCadProjectJson(engine);
+    const exportedProject = parseCadProjectJson(exportedJson);
+    const reopenedStructure = readProjectStructure(
+      importCadProjectJson(exportedJson)
+    );
+    const { checkpointPayload } = createV18CheckpointFixture();
+    const bodyTopologyPayload = createCheckpointTopologyPayload([
+      {
+        localId: "checkpoint-local-body-1",
+        kind: "body",
+        source: "kernel-derived",
+        signature: "body_signature_1",
+        bounds: {
+          min: [-2, -1, 0],
+          max: [2, 1, 3]
+        }
+      }
+    ]);
+    const bodyCheckpointPayload = {
+      ...checkpointPayload,
+      topologyBytes: encodeCanonicalCbor(bodyTopologyPayload),
+      signatureBytes: encodeCanonicalCbor(
+        createCheckpointSignaturePayload("checkpoint_1", bodyTopologyPayload)
+      )
+    };
+    const wcadExport = await exportCadProjectToWcad(exportCadProject(engine), {
+      topologyCheckpoints: [bodyCheckpointPayload]
+    });
+    const wcadStructure = readProjectStructure(
+      await importCadProjectWcad(wcadExport.bytes)
+    );
+
+    expect(structure.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_hole",
+          kind: "hole",
+          targetBodyId: "body_anchor_cut",
+          targetTopologyAnchorId: "anchor_body_1",
+          source: expect.objectContaining({
+            type: "sketchCircleHole",
+            targetBodyId: "body_anchor_cut",
+            targetTopologyAnchorId: "anchor_body_1"
+          })
+        })
+      ])
+    );
+    expect(health.authoredHoles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          featureId: "feat_anchor_hole",
+          targetBodyId: "body_anchor_cut",
+          targetTopologyAnchorId: "anchor_body_1",
+          status: "healthy"
+        })
+      ])
+    );
+    expect(graph.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "sources",
+          sourceFeatureId: "feat_anchor_hole",
+          topologyAnchorId: "anchor_body_1"
+        }),
+        expect.objectContaining({
+          kind: "targets",
+          sourceFeatureId: "feat_anchor_hole",
+          bodyId: "body_anchor_cut"
+        })
+      ])
+    );
+    expect(history).toMatchObject({ ok: true });
+    expect(history.transactions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ops: expect.arrayContaining([
+            expect.objectContaining({
+              op: "feature.hole",
+              featureId: "feat_anchor_hole",
+              targetTopologyAnchorId: "anchor_body_1"
+            })
+          ])
+        })
+      ])
+    );
+    expect(exportedProject.document.features).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "feat_anchor_hole",
+          targetBodyId: "body_anchor_cut",
+          targetTopologyAnchorId: "anchor_body_1"
+        })
+      ])
+    );
+    expect(reopenedStructure.bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_anchor_hole",
+          source: expect.objectContaining({
+            type: "sketchHoleFeature",
+            targetBodyId: "body_anchor_cut",
+            targetTopologyAnchorId: "anchor_body_1"
+          })
+        })
+      ])
+    );
+    expect(wcadStructure.bodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "body_anchor_hole",
+          source: expect.objectContaining({
+            type: "sketchHoleFeature",
+            targetBodyId: "body_anchor_cut",
+            targetTopologyAnchorId: "anchor_body_1"
+          })
+        })
+      ])
+    );
+    expect(
+      JSON.stringify({
+        holeTransaction: holeResult.transaction,
+        structure,
+        graph
+      })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId/i
+    );
   });
 
   it("chains cut extrudes through active topology-backed result bodies", () => {

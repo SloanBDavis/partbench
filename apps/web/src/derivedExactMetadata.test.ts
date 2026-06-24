@@ -109,10 +109,11 @@ describe("derivedExactMetadata", () => {
     );
 
     const holeSource = createHoleSource("body_hole_1");
+    const editedTarget = createExtrudeSource("body_rect_1");
     const editedTargetSource: DerivedHoleGeometrySource = {
       ...holeSource,
       target: {
-        ...holeSource.target,
+        ...editedTarget,
         profile: {
           kind: "rectangle",
           center: [1, 0],
@@ -1205,10 +1206,11 @@ describe("derivedExactMetadata", () => {
 
   it("ignores stale hole exact metadata after target and circle tool edits", async () => {
     const initialSource = createHoleSource("body_hole_1");
+    const editedTarget = createExtrudeSource("body_rect_1");
     const editedSource: DerivedHoleGeometrySource = {
       ...initialSource,
       target: {
-        ...initialSource.target,
+        ...editedTarget,
         profile: {
           kind: "rectangle",
           center: [0, 0],
@@ -1336,6 +1338,44 @@ describe("derivedExactMetadata", () => {
           origin: [0, 0, 3],
           uAxis: [1, 0, 0],
           vAxis: [0, 1, 0]
+        }
+      }
+    });
+  });
+
+  it("builds exact metadata runtime input for holes with boolean result targets", () => {
+    const source: DerivedHoleGeometrySource = {
+      id: "body_hole_1",
+      kind: "hole",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: createExtrudeSource("body_rect_1"),
+        tool: createExtrudeSource("body_cut_1")
+      },
+      tool: {
+        sketchPlane: "XY",
+        circle: { kind: "circle", center: [0.5, 0.25], radius: 0.4 },
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    };
+
+    expect(createExactMetadataRuntimeInput(source)).toMatchObject({
+      id: "body_hole_1",
+      source: {
+        kind: "hole",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: { profile: { kind: "rectangle" } },
+          tool: { profile: { kind: "rectangle" } }
+        },
+        tool: {
+          circle: { kind: "circle", radius: 0.4 },
+          depthMode: "throughAll",
+          direction: "positive"
         }
       }
     });

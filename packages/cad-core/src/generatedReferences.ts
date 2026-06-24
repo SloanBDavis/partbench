@@ -137,6 +137,7 @@ export interface GeneratedReferencesHoleFeature {
   readonly id: FeatureId;
   readonly kind: "hole";
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;
@@ -1894,6 +1895,7 @@ function createHoleGeneratedReferenceSignature(
   return {
     sourceKind: "hole",
     targetBodyId: feature.targetBodyId,
+    targetTopologyAnchorId: feature.targetTopologyAnchorId,
     profileKind: "circle",
     sketchPlane: sketch.plane,
     holeDepthMode: feature.depthMode,

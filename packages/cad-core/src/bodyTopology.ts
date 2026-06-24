@@ -876,6 +876,7 @@ function createHoleSourceIdentityInput(
     units,
     featureId: feature.id,
     targetBodyId: feature.targetBodyId,
+    targetTopologyAnchorId: feature.targetTopologyAnchorId,
     sourceSketchId: feature.sketchId,
     holeCircleEntityId: feature.circleEntityId,
     profileKind: "circle",

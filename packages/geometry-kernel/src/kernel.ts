@@ -245,7 +245,7 @@ export interface HoleRequest {
   readonly id: string;
   readonly version: GeometryKernelVersion;
   readonly op: "geometry.hole";
-  readonly target: BooleanExtrudePrimitiveSource;
+  readonly target: BooleanExtrudeSource;
   readonly tool: HoleToolSource;
   readonly tessellation?: TessellationOptions;
 }
@@ -304,7 +304,7 @@ export interface ExactRevolveMetadataSource {
 
 export interface ExactHoleMetadataSource {
   readonly kind: "hole";
-  readonly target: BooleanExtrudePrimitiveSource;
+  readonly target: BooleanExtrudeSource;
   readonly tool: HoleToolSource;
 }
 
@@ -1065,7 +1065,7 @@ function validateRequest(
     }
   } else if (request.op === "geometry.hole") {
     if (
-      !isValidBooleanExtrudePrimitiveSource(request.target) ||
+      !isValidBooleanExtrudeSource(request.target) ||
       !isValidHoleToolSource(request.tool)
     ) {
       return {
@@ -1872,7 +1872,7 @@ function validateExactBodyMetadataSource(
   }
 
   if (source.kind === "hole") {
-    return isValidBooleanExtrudePrimitiveSource(source.target) &&
+    return isValidBooleanExtrudeSource(source.target) &&
       isValidHoleToolSource(source.tool)
       ? undefined
       : createInvalidExactBodyMetadataSourceError();

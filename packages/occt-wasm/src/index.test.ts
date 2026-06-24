@@ -905,6 +905,60 @@ describe("occt-wasm", () => {
   );
 
   it(
+    "returns exact hole metadata for a boolean-result target through Open CASCADE WASM",
+    async () => {
+      const metadata = await createOcctExactBodyMetadata({
+        source: {
+          kind: "hole",
+          target: {
+            kind: "booleanExtrudes",
+            operation: "cut",
+            target: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [0, 0],
+                width: 6,
+                height: 4
+              },
+              depth: 4,
+              side: "positive"
+            },
+            tool: {
+              sketchPlane: "XY",
+              profile: {
+                kind: "rectangle",
+                center: [-1, 0],
+                width: 1,
+                height: 1
+              },
+              depth: 4
+            }
+          },
+          tool: {
+            sketchPlane: "XY",
+            circle: {
+              kind: "circle",
+              center: [1, 0],
+              radius: 0.4
+            },
+            depthMode: "throughAll",
+            direction: "positive"
+          }
+        }
+      });
+
+      expect(metadata.sourceKind).toBe("hole");
+      expect(metadata.volume).toBeGreaterThan(0);
+      expect(metadata.volume).toBeLessThan(92);
+      expect(metadata.topologyCounts.solidCount).toBe(1);
+      expect(metadata.measurementSource).toBe("kernel-derived");
+      expect(metadata.diagnostics).toEqual([]);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "returns exact edge-finish metadata through Open CASCADE WASM",
     async () => {
       const target = {

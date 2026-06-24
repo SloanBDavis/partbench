@@ -1431,7 +1431,7 @@ describe("cad-protocol", () => {
         op: "feature.hole",
         id: "feat_hole_1",
         bodyId: "body_hole_1",
-        targetBodyId: "body_target",
+        targetTopologyAnchorId: "anchor_body_target",
         name: "Mounting hole",
         sketchId: "sketch_1",
         circleEntityId: "circle_1",
@@ -3538,6 +3538,7 @@ describe("cad-protocol", () => {
       id: "feat_hole_1",
       kind: "hole",
       targetBodyId: "body_target",
+      targetTopologyAnchorId: "anchor_body_target",
       sketchId: "sketch_1",
       circleEntityId: "circle_1",
       depthMode: "blind",
@@ -3551,6 +3552,7 @@ describe("cad-protocol", () => {
       partId: "part:default",
       bodyId: snapshot.bodyId,
       targetBodyId: snapshot.targetBodyId,
+      targetTopologyAnchorId: snapshot.targetTopologyAnchorId,
       sketchId: snapshot.sketchId,
       circleEntityId: snapshot.circleEntityId,
       depthMode: snapshot.depthMode,
@@ -3560,7 +3562,8 @@ describe("cad-protocol", () => {
         type: "sketchCircleHole",
         sketchId: snapshot.sketchId,
         circleEntityId: snapshot.circleEntityId,
-        targetBodyId: snapshot.targetBodyId
+        targetBodyId: snapshot.targetBodyId,
+        targetTopologyAnchorId: snapshot.targetTopologyAnchorId
       }
     };
 
@@ -3569,6 +3572,7 @@ describe("cad-protocol", () => {
       kind: "hole",
       bodyId: "body_hole_1",
       targetBodyId: "body_target",
+      targetTopologyAnchorId: "anchor_body_target",
       depthMode: "blind"
     });
   });

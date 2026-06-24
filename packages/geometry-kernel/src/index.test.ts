@@ -1167,6 +1167,62 @@ describe("geometry-kernel facade", () => {
   );
 
   it(
+    "runs a boolean-result target hole feasibility request",
+    async () => {
+      const response = await executeGeometryKernelRequest({
+        id: "geometry_req_hole_boolean_result",
+        version: "geometry-kernel.v1",
+        op: "geometry.hole",
+        target: {
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [0, 0],
+              width: 6,
+              height: 4
+            },
+            depth: 4
+          },
+          tool: {
+            sketchPlane: "XY",
+            profile: {
+              kind: "rectangle",
+              center: [-1, 0],
+              width: 1,
+              height: 1
+            },
+            depth: 4
+          }
+        },
+        tool: {
+          sketchPlane: "XY",
+          circle: {
+            kind: "circle",
+            center: [1, 0],
+            radius: 0.4
+          },
+          depthMode: "throughAll",
+          direction: "positive"
+        }
+      });
+
+      expect(response.ok).toBe(true);
+
+      if (!response.ok) {
+        throw new Error("Expected boolean-result target hole to succeed.");
+      }
+
+      expect(response.mesh.primitive).toBe("hole");
+      expect(response.mesh.vertexCount).toBeGreaterThan(0);
+      expect(response.mesh.triangleCount).toBeGreaterThan(0);
+    },
+    OCCT_WASM_TEST_TIMEOUT_MS
+  );
+
+  it(
     "runs rectangle edge-finish chamfer and fillet feasibility requests",
     async () => {
       const target = {

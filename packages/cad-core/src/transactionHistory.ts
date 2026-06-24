@@ -569,17 +569,20 @@ function createOperationSummaries(
         const depthLabel =
           op.depthMode === "blind" ? `blind ${op.depth}` : "through all";
         const direction = op.direction ?? "positive";
+        const targetLabel =
+          op.targetBodyId ?? op.targetTopologyAnchorId ?? "target body";
 
         return createFeatureOperationSummary({
           op: op.op,
-          label: `Create ${depthLabel} ${direction} hole feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.circleEntityId} into ${op.targetBodyId}${
+          label: `Create ${depthLabel} ${direction} hole feature ${featureId ?? "with generated ID"} from ${op.sketchId}/${op.circleEntityId} into ${targetLabel}${
             bodyId ? ` -> body ${bodyId}` : ""
           }`,
           sketchId: op.sketchId,
           sketchEntityId: op.circleEntityId,
           featureId,
           bodyId,
-          targetBodyId: op.targetBodyId
+          targetBodyId: op.targetBodyId,
+          targetTopologyAnchorId: op.targetTopologyAnchorId
         });
       }
 

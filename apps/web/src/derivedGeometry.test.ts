@@ -2224,6 +2224,152 @@ describe("derivedGeometry", () => {
     ]);
   });
 
+  it("derives hole sources from active topology-backed boolean result targets", async () => {
+    const engine = createExtrudedRectangleEngine();
+
+    engine.applyBatch([
+      {
+        op: "sketch.create",
+        id: "sketch_cut_1",
+        name: "Cut",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addRectangle",
+        sketchId: "sketch_cut_1",
+        id: "rect_cut_1",
+        center: [0, 0],
+        width: 1,
+        height: 1
+      },
+      {
+        op: "sketch.create",
+        id: "sketch_hole_1",
+        name: "Hole",
+        plane: "XY"
+      },
+      {
+        op: "sketch.addCircle",
+        sketchId: "sketch_hole_1",
+        id: "circle_hole_1",
+        center: [0.5, 0.25],
+        radius: 0.4
+      }
+    ]);
+
+    const baseFeature = getProjectStructureFeatures(engine).find(
+      (feature): feature is Extract<CadFeatureSummary, { kind: "extrude" }> =>
+        feature.kind === "extrude" && feature.bodyId === "body_rect_1"
+    );
+
+    if (!baseFeature) {
+      throw new Error("Expected base extrude feature.");
+    }
+
+    const cutFeature: Extract<CadFeatureSummary, { kind: "extrude" }> = {
+      ...baseFeature,
+      id: "feat_cut_1",
+      bodyId: "body_cut_1",
+      sketchId: "sketch_cut_1",
+      entityId: "rect_cut_1",
+      depth: 1,
+      operationMode: "cut",
+      targetBodyId: "body_rect_1",
+      targetTopologyAnchorId: "anchor_body_rect",
+      source: {
+        type: "sketchEntity",
+        sketchId: "sketch_cut_1",
+        entityId: "rect_cut_1",
+        targetTopologyAnchorId: "anchor_body_rect"
+      }
+    };
+    const holeFeature: Extract<CadFeatureSummary, { kind: "hole" }> = {
+      id: "feat_hole_1",
+      kind: "hole",
+      partId: "part:default",
+      bodyId: "body_hole_1",
+      targetBodyId: "body_cut_1",
+      targetTopologyAnchorId: "anchor_body_rect",
+      sketchId: "sketch_hole_1",
+      circleEntityId: "circle_hole_1",
+      depthMode: "throughAll",
+      direction: "positive",
+      source: {
+        type: "sketchCircleHole",
+        sketchId: "sketch_hole_1",
+        circleEntityId: "circle_hole_1",
+        targetBodyId: "body_cut_1",
+        targetTopologyAnchorId: "anchor_body_rect"
+      }
+    };
+
+    const sources = createDerivedGeometrySourcesFromDocument(
+      engine.getDocument(),
+      [baseFeature, cutFeature, holeFeature]
+    );
+    const holeSource = sources.find(
+      (source): source is DerivedHoleGeometrySource => source.kind === "hole"
+    );
+
+    expect(sources.map((source) => source.id)).toEqual(["body_hole_1"]);
+    expect(holeSource).toMatchObject({
+      id: "body_hole_1",
+      kind: "hole",
+      target: {
+        id: "body_cut_1",
+        kind: "extrudeBoolean",
+        operation: "cut",
+        target: { id: "body_rect_1", profile: { kind: "rectangle" } },
+        tool: { id: "body_cut_1", profile: { kind: "rectangle" } }
+      },
+      tool: {
+        circle: { kind: "circle", center: [0.5, 0.25], radius: 0.4 },
+        depthMode: "throughAll",
+        direction: "positive"
+      }
+    });
+
+    const snapshots: DerivedGeometrySnapshot[] = [];
+    const runtime = createRuntime(async (input) =>
+      createResult(input.id, createMesh(input.id))
+    );
+    const service = new DerivedGeometryService({
+      runtime,
+      onChange: (snapshot) => snapshots.push(snapshot)
+    });
+
+    service.reconcile(sources);
+    await flushPromises();
+
+    expect(runtime.inputs).toEqual([
+      expect.objectContaining({
+        id: "body_hole_1",
+        target: expect.objectContaining({
+          kind: "booleanExtrudes",
+          operation: "cut",
+          target: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          }),
+          tool: expect.objectContaining({
+            profile: expect.objectContaining({ kind: "rectangle" })
+          })
+        }),
+        tool: expect.objectContaining({
+          circle: expect.objectContaining({ radius: 0.4 }),
+          depthMode: "throughAll",
+          direction: "positive"
+        })
+      })
+    ]);
+    expect(snapshots.at(-1)?.entries).toMatchObject([
+      {
+        objectId: "body_hole_1",
+        objectKind: "hole",
+        status: "ready"
+      }
+    ]);
+  });
+
   it("derives attached-sketch hole tool placement from generated face references", () => {
     const engine = createExtrudedRectangleEngine();
 
@@ -2283,10 +2429,11 @@ describe("derivedGeometry", () => {
   });
 
   it("updates hole source cache keys across tool profile, depth, direction, and target edits", () => {
+    const target = createExtrudeSource("body_rect_1");
     const source: DerivedHoleGeometrySource = {
       id: "body_hole_1",
       kind: "hole",
-      target: createExtrudeSource("body_rect_1"),
+      target,
       tool: {
         sketchPlane: "XY",
         circle: { kind: "circle", center: [0, 0], radius: 0.5 },
@@ -2327,7 +2474,7 @@ describe("derivedGeometry", () => {
       createDerivedGeometryCacheKey({
         ...source,
         target: {
-          ...source.target,
+          ...target,
           profile: {
             kind: "rectangle",
             center: [0, 0],

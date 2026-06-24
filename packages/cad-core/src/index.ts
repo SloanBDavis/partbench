@@ -113,6 +113,7 @@ import type {
   CadTopologyRepairSourceRecord,
   ExtrudeFeatureSnapshot,
   FeatureSnapshot,
+  HoleFeatureSnapshot,
   FeatureExtrudeOperationMode,
   FeatureHoleDepthMode,
   FeatureHoleDirection,
@@ -573,6 +574,7 @@ export interface HoleFeature {
   readonly kind: "hole";
   readonly name?: string;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;
@@ -4967,12 +4969,18 @@ function applyOperation(
       assertHoleCircleEntity(entity, opIndex, op.sketchId, op.circleEntityId);
       validateHoleSketchAttachment(state, sketch, opIndex);
 
-      const targetBodyId = validateHoleTargetBodyId(
+      const target = validateHoleTarget(
         state,
         op.targetBodyId,
+        op.targetTopologyAnchorId,
         opIndex
       );
-      assertSupportedHoleTarget(state, targetBodyId, opIndex);
+      assertSupportedHoleTarget(
+        state,
+        target.targetBodyId,
+        target.targetTopologyAnchorId,
+        opIndex
+      );
       const depthMode = validateHoleDepthMode(op.depthMode, opIndex);
       const depth = validateHoleDepth(depthMode, op.depth, opIndex);
       const direction = validateHoleDirection(op.direction, opIndex);
@@ -4980,7 +4988,8 @@ function applyOperation(
         id: op.id ?? createFeatureId(),
         kind: "hole",
         name: normalizeOptionalFeatureName(op.name, opIndex, op.id),
-        targetBodyId,
+        targetBodyId: target.targetBodyId,
+        targetTopologyAnchorId: target.targetTopologyAnchorId,
         sketchId: op.sketchId,
         circleEntityId: op.circleEntityId,
         depthMode,
@@ -9613,7 +9622,12 @@ function validateDirectConsumingFeatureForSourceExtrudeRebuild(
       feature.circleEntityId
     );
     validateHoleSketchAttachment(state, sketch, opIndex);
-    assertSupportedHoleTarget(state, feature.targetBodyId, opIndex);
+    assertSupportedHoleTarget(
+      state,
+      feature.targetBodyId,
+      feature.targetTopologyAnchorId,
+      opIndex
+    );
     return;
   }
 
@@ -9733,7 +9747,12 @@ function updateHoleFeature(
     "feature.updateHole",
     opIndex
   );
-  assertSupportedHoleTarget(state, feature.targetBodyId, opIndex);
+  assertSupportedHoleTarget(
+    state,
+    feature.targetBodyId,
+    feature.targetTopologyAnchorId,
+    opIndex
+  );
 
   if (
     op.depthMode === undefined &&
@@ -11036,18 +11055,63 @@ function validateTopologyAnchorFaceAttachment(
   }
 }
 
+function validateHoleTarget(
+  state: MutableDocumentState,
+  targetBodyId: BodyId | undefined,
+  targetTopologyAnchorId: string | undefined,
+  opIndex?: number
+): {
+  readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
+} {
+  if (targetBodyId !== undefined && targetTopologyAnchorId !== undefined) {
+    throwValidationError({
+      code: "INVALID_TOPOLOGY_ANCHOR",
+      message:
+        "feature.hole must use targetTopologyAnchorId without targetBodyId.",
+      opIndex,
+      bodyId: targetBodyId,
+      topologyAnchorId: targetTopologyAnchorId,
+      path: operationPath(opIndex, "targetTopologyAnchorId"),
+      expected: "targetTopologyAnchorId without targetBodyId",
+      received: "mixed target inputs"
+    });
+  }
+
+  if (targetTopologyAnchorId === undefined) {
+    return {
+      targetBodyId: validateHoleTargetBodyId(state, targetBodyId, opIndex)
+    };
+  }
+
+  const target = resolveActiveTopologyAnchorTarget(
+    state,
+    targetTopologyAnchorId,
+    "body",
+    opIndex,
+    "targetTopologyAnchorId"
+  );
+  const activeBodyId = resolveActiveTopologyAnchorBodyTargetId(state, target);
+
+  return {
+    targetBodyId: validateHoleTargetBodyId(state, activeBodyId, opIndex),
+    targetTopologyAnchorId: target.topologyAnchorId
+  };
+}
+
 function validateHoleTargetBodyId(
   state: MutableDocumentState,
-  targetBodyId: BodyId,
+  targetBodyId: BodyId | undefined,
   opIndex?: number
 ): BodyId {
   if (typeof targetBodyId !== "string" || targetBodyId.trim().length === 0) {
     throwValidationError({
       code: "TARGET_BODY_REQUIRED",
-      message: "feature.hole requires targetBodyId.",
+      message: "feature.hole requires targetBodyId or targetTopologyAnchorId.",
       opIndex,
       path: operationPath(opIndex, "targetBodyId"),
-      expected: "existing active authored target body id",
+      expected:
+        "existing active authored target body id or topology body anchor id",
       received: describeReceived(targetBodyId)
     });
   }
@@ -11102,33 +11166,38 @@ function validateHoleTargetBodyId(
 function assertSupportedHoleTarget(
   state: MutableDocumentState,
   targetBodyId: BodyId,
+  targetTopologyAnchorId?: string,
   opIndex?: number
 ): void {
   const targetFeature = findFeatureByBodyId(state.features, targetBodyId);
+  const targetProfileKind = resolveSupportedBooleanTargetProfileKind(
+    state.features,
+    targetFeature,
+    targetTopologyAnchorId
+  );
 
-  if (
-    targetFeature?.kind === "extrude" &&
-    targetFeature.operationMode === "newBody" &&
-    isSupportedCutTargetProfileKind(targetFeature.profileKind)
-  ) {
+  if (targetProfileKind && isSupportedCutTargetProfileKind(targetProfileKind)) {
     return;
   }
 
   throwValidationError({
     code: "UNSUPPORTED_FEATURE_OPERATION",
     message:
-      "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body.",
+      "Hole features currently support circular tools cutting one active rectangle, circle, or topology-backed result target body.",
     opIndex,
     bodyId: targetBodyId,
     path: operationPath(opIndex, "targetBodyId"),
-    expected: "active rectangle/circle newBody extrude target body",
+    expected:
+      "active rectangle/circle source or topology-backed result target body",
     received: describeReceived({
       targetBodyId,
-      targetFeatureKind: targetFeature?.kind,
+      targetTopologyAnchorId,
       targetProfileKind:
-        targetFeature?.kind === "extrude"
+        targetProfileKind ??
+        (targetFeature?.kind === "extrude"
           ? targetFeature.profileKind
-          : undefined,
+          : undefined),
+      targetFeatureKind: targetFeature?.kind,
       targetOperationMode:
         targetFeature?.kind === "extrude"
           ? targetFeature.operationMode
@@ -14312,6 +14381,9 @@ function featureRef(feature: Feature): CadFeatureRef {
       kind: "hole",
       bodyId: feature.bodyId,
       targetBodyId: feature.targetBodyId,
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {}),
       sketchId: feature.sketchId,
       circleEntityId: feature.circleEntityId,
       depthMode: feature.depthMode,
@@ -15411,6 +15483,9 @@ function createFeatureSnapshot(feature: Feature): FeatureSnapshot {
       kind: "hole",
       name: feature.name,
       targetBodyId: feature.targetBodyId,
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {}),
       sketchId: feature.sketchId,
       circleEntityId: feature.circleEntityId,
       depthMode: feature.depthMode,
@@ -15489,6 +15564,7 @@ function createFeatureFromSnapshot(snapshot: FeatureSnapshot): Feature {
       kind: "hole",
       name: snapshot.name,
       targetBodyId: snapshot.targetBodyId,
+      targetTopologyAnchorId: snapshot.targetTopologyAnchorId,
       sketchId: snapshot.sketchId,
       circleEntityId: snapshot.circleEntityId,
       depthMode: snapshot.depthMode,
@@ -16083,6 +16159,9 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
       partId: DEFAULT_PART_ID,
       bodyId: feature.bodyId,
       targetBodyId: feature.targetBodyId,
+      ...(feature.targetTopologyAnchorId
+        ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+        : {}),
       name: feature.name,
       sketchId: feature.sketchId,
       circleEntityId: feature.circleEntityId,
@@ -16093,7 +16172,10 @@ function createFeatureSummary(feature: Feature): CadFeatureSummary {
         type: "sketchCircleHole",
         sketchId: feature.sketchId,
         circleEntityId: feature.circleEntityId,
-        targetBodyId: feature.targetBodyId
+        targetBodyId: feature.targetBodyId,
+        ...(feature.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+          : {})
       }
     };
   }
@@ -16210,6 +16292,9 @@ function createFeatureBodySnapshot(
         type: "sketchHoleFeature",
         featureId: feature.id,
         targetBodyId: feature.targetBodyId,
+        ...(feature.targetTopologyAnchorId
+          ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+          : {}),
         sketchId: feature.sketchId,
         circleEntityId: feature.circleEntityId
       }
@@ -18207,6 +18292,7 @@ function featuresEqual(left: Feature, right: Feature): boolean {
       left.id === right.id &&
       left.name === right.name &&
       left.targetBodyId === right.targetBodyId &&
+      left.targetTopologyAnchorId === right.targetTopologyAnchorId &&
       left.sketchId === right.sketchId &&
       left.circleEntityId === right.circleEntityId &&
       left.depthMode === right.depthMode &&
@@ -21637,6 +21723,8 @@ function collectValidAuthoredFeatureByBodyId(
     value.kind === "hole" &&
     typeof value.id === "string" &&
     typeof value.targetBodyId === "string" &&
+    (value.targetTopologyAnchorId === undefined ||
+      typeof value.targetTopologyAnchorId === "string") &&
     typeof value.sketchId === "string" &&
     typeof value.circleEntityId === "string" &&
     (value.depthMode === "blind" || value.depthMode === "throughAll") &&
@@ -21652,6 +21740,7 @@ function collectValidAuthoredFeatureByBodyId(
       kind: "hole",
       name: typeof value.name === "string" ? value.name : undefined,
       targetBodyId: value.targetBodyId,
+      targetTopologyAnchorId: value.targetTopologyAnchorId,
       sketchId: value.sketchId,
       circleEntityId: value.circleEntityId,
       depthMode: value.depthMode,
@@ -21808,14 +21897,17 @@ function validateFeatureTargetBodyReferences(
     if (
       feature.kind === "hole" &&
       (!isExtrudeFeatureSnapshot(target) ||
-        target.operationMode !== "newBody" ||
-        !isSupportedCutTargetProfileKind(target.profileKind))
+        !isSupportedImportHoleTargetCombination(
+          featuresByBodyId,
+          feature,
+          target
+        ))
     ) {
       addProjectIssue(
         issues,
         "INVALID_FEATURE",
         `${feature.path}.targetBodyId`,
-        "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body."
+        "Hole features currently support circular tools cutting one active rectangle, circle, or topology-backed result target body."
       );
     }
 
@@ -21833,6 +21925,26 @@ function validateFeatureTargetBodyReferences(
       );
     }
   }
+}
+
+function isSupportedImportHoleTargetCombination(
+  featuresByBodyId: ReadonlyMap<
+    BodyId,
+    FeatureSnapshot & { readonly path: string }
+  >,
+  feature: HoleFeatureSnapshot,
+  target: ExtrudeFeatureSnapshot
+): boolean {
+  const targetProfileKind = resolveImportBooleanTargetProfileKind(
+    featuresByBodyId,
+    target,
+    feature.targetTopologyAnchorId
+  );
+
+  return (
+    targetProfileKind !== undefined &&
+    isSupportedCutTargetProfileKind(targetProfileKind)
+  );
 }
 
 function isImportTargetConsumingFeature(feature: FeatureSnapshot): boolean {
@@ -22826,6 +22938,20 @@ function validateHoleFeatureSnapshotFields(
       `${path}.targetBodyId`,
       "Hole feature targetBodyId must be a non-empty string."
     );
+  }
+
+  if (value.targetTopologyAnchorId !== undefined) {
+    if (
+      typeof value.targetTopologyAnchorId !== "string" ||
+      value.targetTopologyAnchorId === ""
+    ) {
+      addProjectIssue(
+        issues,
+        "INVALID_FEATURE",
+        `${path}.targetTopologyAnchorId`,
+        "Hole feature targetTopologyAnchorId must be a non-empty string when present."
+      );
+    }
   }
 
   if (typeof value.sketchId !== "string" || value.sketchId.length === 0) {
@@ -24223,7 +24349,8 @@ function isCadOp(value: unknown): value is CadOp {
       isOptionalString(value.id) &&
       isOptionalString(value.bodyId) &&
       isOptionalString(value.name) &&
-      typeof value.targetBodyId === "string" &&
+      isOptionalString(value.targetBodyId) &&
+      isOptionalString(value.targetTopologyAnchorId) &&
       typeof value.sketchId === "string" &&
       typeof value.circleEntityId === "string" &&
       isHoleDepthMode(value.depthMode) &&
@@ -24694,6 +24821,8 @@ function isCadFeatureRef(value: unknown): value is CadFeatureRef {
   if (value.kind === "hole") {
     return (
       typeof value.targetBodyId === "string" &&
+      (value.targetTopologyAnchorId === undefined ||
+        typeof value.targetTopologyAnchorId === "string") &&
       typeof value.sketchId === "string" &&
       typeof value.circleEntityId === "string" &&
       isHoleDepthMode(value.depthMode) &&

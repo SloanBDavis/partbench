@@ -967,6 +967,29 @@ describe("cad command builders", () => {
     });
 
     expect(
+      buildFeatureHoleOp("sketch_1", "circle_1", {
+        id: "feat_anchor_hole",
+        bodyId: "body_anchor_hole",
+        targetBodyId: "body_active_result",
+        targetTopologyAnchorId: " anchor_body_1 ",
+        name: " Anchor hole ",
+        depthMode: "throughAll",
+        depth: 12,
+        direction: "positive"
+      })
+    ).toEqual({
+      op: "feature.hole",
+      id: "feat_anchor_hole",
+      bodyId: "body_anchor_hole",
+      targetTopologyAnchorId: "anchor_body_1",
+      name: "Anchor hole",
+      sketchId: "sketch_1",
+      circleEntityId: "circle_1",
+      depthMode: "throughAll",
+      direction: "positive"
+    });
+
+    expect(
       buildFeatureChamferOp({
         id: "",
         bodyId: "",

@@ -157,7 +157,7 @@ describe("modeling action helpers", () => {
     expect(actionById(actions, "feature.hole")).toMatchObject({
       available: false,
       reason:
-        "Create an active rectangle or circle new body before creating a hole."
+        "Create an eligible rectangle, circle, or stable result target before creating a hole."
     });
   });
 

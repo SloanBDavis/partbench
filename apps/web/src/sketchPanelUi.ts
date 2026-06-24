@@ -1501,7 +1501,7 @@ export function getHoleOperationStatus(
     return {
       available: false,
       message:
-        "Create an active rectangle or circle new body before creating a hole."
+        "Create an eligible rectangle, circle, or stable result target before creating a hole."
     };
   }
 

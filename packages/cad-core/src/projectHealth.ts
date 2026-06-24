@@ -122,6 +122,7 @@ export interface ProjectHealthHoleFeature {
   readonly kind: "hole";
   readonly bodyId: BodyId;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;
@@ -636,14 +637,17 @@ function createAuthoredHoleHealth(
       featureId: feature.id,
       bodyId: feature.targetBodyId
     });
-  } else if (!isSupportedHoleTargetFeature(targetFeature)) {
+  } else if (
+    !isSupportedHoleTargetFeature(feature, targetFeature, document.features)
+  ) {
     issues.push({
       code: "UNSUPPORTED_BODY_REFERENCES",
       message:
-        "Hole features currently support circular tools cutting one active rectangle or circle newBody extrude target body.",
+        "Hole features currently support circular tools cutting one active rectangle, circle, or topology-backed result target body.",
       featureId: feature.id,
       bodyId: feature.targetBodyId,
-      expected: "active rectangle/circle newBody extrude target body",
+      expected:
+        "active rectangle/circle source or topology-backed result target body",
       received: describeFeatureForHealth(targetFeature)
     });
   } else {
@@ -706,6 +710,9 @@ function createAuthoredHoleHealth(
     featureId: feature.id,
     bodyId: feature.bodyId,
     targetBodyId: feature.targetBodyId,
+    ...(feature.targetTopologyAnchorId
+      ? { targetTopologyAnchorId: feature.targetTopologyAnchorId }
+      : {}),
     sketchId: feature.sketchId,
     circleEntityId: feature.circleEntityId,
     depthMode: feature.depthMode,
@@ -1806,8 +1813,21 @@ function resolveBooleanTargetProfileKind(
   return undefined;
 }
 
-function isSupportedHoleTargetFeature(feature: ProjectHealthFeature): boolean {
-  return isSupportedEdgeFinishTargetFeature(feature);
+function isSupportedHoleTargetFeature(
+  feature: ProjectHealthHoleFeature,
+  targetFeature: ProjectHealthFeature,
+  features: ReadonlyMap<FeatureId, ProjectHealthFeature>
+): boolean {
+  const targetProfileKind = resolveBooleanTargetProfileKind(
+    targetFeature,
+    features,
+    feature.targetTopologyAnchorId
+  );
+
+  return (
+    targetProfileKind !== undefined &&
+    isSupportedCutTargetProfileKind(targetProfileKind)
+  );
 }
 
 function isSupportedEdgeFinishTargetFeature(

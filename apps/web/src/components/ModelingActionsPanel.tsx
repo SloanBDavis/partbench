@@ -1898,11 +1898,16 @@ function HoleFeatureForm({
 }) {
   const [form, setForm] = useState<FeatureHoleForm>(() => ({
     ...defaultHoleForm,
-    targetBodyId: holeTargetBodies[0]?.bodyId ?? ""
+    targetBodyId: holeTargetBodies[0]?.bodyId ?? "",
+    targetTopologyAnchorId: holeTargetBodies[0]?.targetTopologyAnchorId
   }));
+  const selectedTarget =
+    holeTargetBodies.find((target) => target.bodyId === form.targetBodyId) ??
+    holeTargetBodies[0];
   const effectiveForm = {
     ...form,
-    targetBodyId: form.targetBodyId || holeTargetBodies[0]?.bodyId || ""
+    targetBodyId: form.targetBodyId || selectedTarget?.bodyId || "",
+    targetTopologyAnchorId: selectedTarget?.targetTopologyAnchorId
   };
   const status = getHoleOperationStatus(
     context.entity,
@@ -1919,9 +1924,17 @@ function HoleFeatureForm({
           <select
             value={effectiveForm.targetBodyId}
             disabled={disabled || holeTargetBodies.length === 0}
-            onChange={(event) =>
-              setForm({ ...form, targetBodyId: event.currentTarget.value })
-            }
+            onChange={(event) => {
+              const target = holeTargetBodies.find(
+                (option) => option.bodyId === event.currentTarget.value
+              );
+
+              setForm({
+                ...form,
+                targetBodyId: event.currentTarget.value,
+                targetTopologyAnchorId: target?.targetTopologyAnchorId
+              });
+            }}
           >
             {holeTargetBodies.map((body) => (
               <option key={body.bodyId} value={body.bodyId}>

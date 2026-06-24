@@ -193,6 +193,7 @@ export interface FeatureHoleForm {
   readonly id: string;
   readonly bodyId: string;
   readonly targetBodyId: string;
+  readonly targetTopologyAnchorId?: string;
   readonly name: string;
   readonly depthMode: FeatureHoleDepthMode;
   readonly depth: number;
@@ -830,11 +831,20 @@ export function buildFeatureHoleOp(
   circleEntityId: string,
   form: FeatureHoleForm
 ): FeatureHoleOp {
+  const targetBodyId = normalizeOptionalId(form.targetBodyId);
+  const targetTopologyAnchorId = normalizeOptionalId(
+    form.targetTopologyAnchorId ?? ""
+  );
+
   return {
     op: "feature.hole",
     id: normalizeOptionalId(form.id),
     bodyId: normalizeOptionalId(form.bodyId),
-    targetBodyId: form.targetBodyId,
+    ...(targetTopologyAnchorId
+      ? { targetTopologyAnchorId }
+      : targetBodyId
+        ? { targetBodyId }
+        : {}),
     name: form.name.trim() || undefined,
     sketchId,
     circleEntityId,

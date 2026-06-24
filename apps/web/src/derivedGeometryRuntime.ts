@@ -118,7 +118,7 @@ export interface DerivedGeometryBooleanExtrudeInput {
 
 export interface DerivedGeometryHoleInput {
   readonly id: string;
-  readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+  readonly target: DerivedGeometryBooleanExtrudeInputSource;
   readonly tool: {
     readonly sketchPlane: "XY" | "XZ" | "YZ";
     readonly circle: {
@@ -180,7 +180,7 @@ export interface DerivedExactMetadataInput {
       }
     | {
         readonly kind: "hole";
-        readonly target: DerivedGeometryBooleanExtrudePrimitiveInputSource;
+        readonly target: DerivedGeometryBooleanExtrudeInputSource;
         readonly tool: DerivedGeometryHoleInput["tool"];
       }
     | {

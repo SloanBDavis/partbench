@@ -260,9 +260,10 @@ export function createHoleDerivedGeometrySources(
     .map((feature) => {
       const targetFeature = extrudeFeaturesByBodyId.get(feature.targetBodyId);
       const target =
-        targetFeature?.operationMode === "newBody"
-          ? createExtrudeSourceForFeature(
+        targetFeature !== undefined
+          ? createBooleanSourceForFeature(
               targetFeature,
+              extrudeFeaturesByBodyId,
               sketches,
               generatedFacesByKey
             )
@@ -580,7 +581,10 @@ function createBooleanPlacementError(
 
 function createHolePlacementError(
   feature: Extract<CadFeatureSummary, { kind: "hole" }>,
-  target: DerivedExtrudeGeometrySource | undefined,
+  target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource
+    | undefined,
   toolResult: {
     readonly tool?: DerivedHoleGeometrySource["tool"];
     readonly placementError?: string;

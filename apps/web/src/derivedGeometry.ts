@@ -99,7 +99,9 @@ export interface DerivedRevolveGeometrySource {
 export interface DerivedHoleGeometrySource {
   readonly id: string;
   readonly kind: "hole";
-  readonly target: DerivedExtrudeGeometrySource;
+  readonly target:
+    | DerivedExtrudeGeometrySource
+    | DerivedBooleanExtrudeGeometrySource;
   readonly tool: {
     readonly sketchPlane: "XY" | "XZ" | "YZ";
     readonly circle: Extract<
@@ -632,13 +634,7 @@ function deriveSourceMesh(
 
     return runtime.hole({
       id: source.id,
-      target: {
-        sketchPlane: source.target.sketchPlane,
-        profile: source.target.profile,
-        depth: source.target.depth,
-        side: source.target.side,
-        placementFrame: source.target.placementFrame
-      },
+      target: createBooleanRuntimeSource(source.target),
       tool: {
         sketchPlane: source.tool.sketchPlane,
         circle: source.tool.circle,
@@ -892,8 +888,8 @@ function getUnsupportedHoleSourceMessage(
   source: DerivedHoleGeometrySource
 ): string | undefined {
   if (
-    source.target.profile.kind !== "rectangle" &&
-    source.target.profile.kind !== "circle"
+    getBooleanSourceProfileKind(source.target) !== "rectangle" &&
+    getBooleanSourceProfileKind(source.target) !== "circle"
   ) {
     return "Hole display currently supports rectangle or circle target extrudes only.";
   }

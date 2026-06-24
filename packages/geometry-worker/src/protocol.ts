@@ -487,7 +487,7 @@ export function createExtrudeBooleanWorkerRequest(input: {
 export function createHoleWorkerRequest(input: {
   readonly id: string;
   readonly payloadId?: string;
-  readonly target: BooleanExtrudePrimitiveSource;
+  readonly target: BooleanExtrudeSource;
   readonly tool: HoleToolSource;
   readonly linearDeflection?: number;
   readonly angularDeflection?: number;

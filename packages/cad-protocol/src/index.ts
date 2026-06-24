@@ -618,7 +618,8 @@ export interface FeatureHoleOp {
   readonly op: "feature.hole";
   readonly id?: FeatureId;
   readonly bodyId?: BodyId;
-  readonly targetBodyId: BodyId;
+  readonly targetBodyId?: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly name?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
@@ -802,6 +803,7 @@ export interface CadHoleFeatureRef {
   readonly kind: "hole";
   readonly bodyId: BodyId;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;
@@ -1821,6 +1823,7 @@ export interface HoleFeatureSnapshot {
   readonly kind: "hole";
   readonly name?: string;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;
@@ -2097,6 +2100,7 @@ export interface CadHoleFeatureSource {
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
 }
 
 export interface CadHoleFeatureSummary {
@@ -2105,6 +2109,7 @@ export interface CadHoleFeatureSummary {
   readonly partId: PartId;
   readonly bodyId: BodyId;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly name?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
@@ -3059,6 +3064,7 @@ export interface CadSketchHoleBodySource {
   readonly type: "sketchHoleFeature";
   readonly featureId: FeatureId;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
 }
@@ -4130,6 +4136,7 @@ export interface CadAuthoredHoleHealth {
   readonly featureId: FeatureId;
   readonly bodyId: BodyId;
   readonly targetBodyId: BodyId;
+  readonly targetTopologyAnchorId?: string;
   readonly sketchId: SketchId;
   readonly circleEntityId: SketchEntityId;
   readonly depthMode: FeatureHoleDepthMode;

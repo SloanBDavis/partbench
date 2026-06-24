@@ -438,15 +438,7 @@ export function createExactMetadataRuntimeInput(
       id: source.id,
       source: {
         kind: "hole",
-        target: {
-          sketchPlane: source.target.sketchPlane,
-          profile: source.target.profile,
-          depth: source.target.depth,
-          side: source.target.side,
-          ...(source.target.placementFrame
-            ? { placementFrame: source.target.placementFrame }
-            : {})
-        },
+        target: createExactMetadataBooleanRuntimeSource(source.target),
         tool: {
           sketchPlane: source.tool.sketchPlane,
           circle: source.tool.circle,
@@ -616,10 +608,9 @@ function getUnsupportedExactMetadataSourceMessage(
       return source.placementError;
     }
 
-    if (
-      source.target.profile.kind !== "rectangle" &&
-      source.target.profile.kind !== "circle"
-    ) {
+    const targetProfileKind = getExactBooleanSourceProfileKind(source.target);
+
+    if (targetProfileKind !== "rectangle" && targetProfileKind !== "circle") {
       return "Exact metadata for holes currently supports rectangle or circle target extrudes only.";
     }
 

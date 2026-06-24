@@ -61,7 +61,9 @@ These constraints remain active:
     source/derived boundaries. V14 Tranche A is implemented as the
     non-mutating topology-backed command-target readiness contract/query slice,
     and V14 Slice B is implemented as the topology-backed sketch attachment
-    product path.
+    product path. V14 chained target support is partially implemented for
+    topology-anchor `feature.extrude` add/cut targets and topology-anchor
+    `feature.hole` target bodies on supported active result bodies.
     Completed V8, V9, V10, V11, V12, and V13
     tranche records below remain historical release records and compatibility
     guardrails. Do not re-open those releases unless the user explicitly asks
@@ -2512,8 +2514,14 @@ Use these decisions when drafting or implementing V13 tranches:
    chained as the next add/cut target while preserving the public anchor proof
    and resolved target body source boundary. The Sketch panel can surface those
    topology-backed result bodies as normal target choices and submit
-   anchor-backed CADOps; unanchored result bodies, holes, cylinder side-wall
-   cuts, and edge finishing remain outside this implemented slice.
+   anchor-backed CADOps. `feature.hole` can also target supported active
+   topology-backed result bodies through `targetTopologyAnchorId`, preserving
+   the resolved public `targetBodyId` plus anchor proof through command
+   validation, project structure, health, dependency graph, generated-reference
+   signatures, topology source identity, import/export, app command helpers,
+   derived geometry, and exact metadata. Unanchored result bodies, cylinder
+   side-wall drilling, arbitrary profile recognition, broader circle-target add
+   behavior, and edge finishing remain outside this implemented slice.
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Direct face/edge topology-anchor command targets that cannot map to current
@@ -2807,7 +2815,10 @@ The planned pillars are:
    those attachments through the existing V18/v2 storage foundation.
 3. **Chained cut/add on result bodies** - `feature.extrude` cut/add can target
    supported active topology-backed result bodies with coherent body lifecycle,
-   dependency graph, reference health, and semantic diffs.
+   dependency graph, reference health, and semantic diffs. The current partial
+   implementation also lets `feature.hole` target supported active
+   topology-backed result bodies through the same public body-anchor proof path;
+   unsupported or unanchored result bodies remain blocked.
 4. **Topology-backed edge finishing** - eligible result-body edge anchors can
    drive chamfer and fillet where cad-core validators and geometry execution
    prove the target. V14 must make at least one real result-edge class
