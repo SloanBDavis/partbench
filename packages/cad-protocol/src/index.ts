@@ -1161,6 +1161,7 @@ export type CadQueryKind =
   | "project.topologyIdentityReadiness"
   | "topology.matchSnapshots"
   | "topology.anchorRepairCandidates"
+  | "topology.anchorCommandReadiness"
   | "topology.anchorCreationPlan"
   | "topology.anchorRepairPlan"
   | "project.exportReadiness"
@@ -1201,6 +1202,7 @@ export type CadQuery =
   | ProjectTopologyIdentityReadinessQuery
   | TopologyMatchSnapshotsQuery
   | TopologyAnchorRepairCandidatesQuery
+  | TopologyAnchorCommandReadinessQuery
   | TopologyAnchorCreationPlanQuery
   | TopologyAnchorRepairPlanQuery
   | ProjectExportReadinessQuery
@@ -1295,6 +1297,13 @@ export interface TopologyAnchorRepairCandidatesQuery {
   readonly previous: CadTopologyMatchSnapshotInput;
   readonly candidates: readonly CadTopologyMatchSnapshotInput[];
   readonly anchorIds?: readonly string[];
+}
+
+export interface TopologyAnchorCommandReadinessQuery {
+  readonly query: "topology.anchorCommandReadiness";
+  readonly anchorId: string;
+  readonly snapshot: CadTopologyMatchSnapshotInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
 }
 
 export interface TopologyAnchorCreationPlanQuery {
@@ -3124,7 +3133,11 @@ export type CadTopologyIdentityDiagnosticCode =
   | "TOPOLOGY_MATCH_LOW_CONFIDENCE"
   | "TOPOLOGY_MATCH_KIND_MISMATCH"
   | "TOPOLOGY_MATCH_UNSUPPORTED"
-  | "TOPOLOGY_MATCHING_ENGINE_READY";
+  | "TOPOLOGY_MATCHING_ENGINE_READY"
+  | "TOPOLOGY_ENTITY_MISSING"
+  | "TOPOLOGY_ENTITY_KIND_MISMATCH"
+  | "TOPOLOGY_SNAPSHOT_INVALID"
+  | "TOPOLOGY_COMMAND_NOT_ELIGIBLE";
 
 export type CadTopologyIdentityState =
   | "active"
@@ -4936,6 +4949,7 @@ export type CadQueryResponse =
   | ProjectTopologyIdentityReadinessQueryResponse
   | TopologyMatchSnapshotsQueryResponse
   | TopologyAnchorRepairCandidatesQueryResponse
+  | TopologyAnchorCommandReadinessQueryResponse
   | TopologyAnchorCreationPlanQueryResponse
   | TopologyAnchorRepairPlanQueryResponse
   | ProjectExportReadinessQueryResponse
@@ -5194,6 +5208,59 @@ export interface TopologyAnchorRepairCandidatesQueryResponse {
   readonly sourceBoundaryNote: string;
   readonly derivedBoundaryNote: string;
   readonly mutatesSource: false;
+}
+
+export type CadTopologyAnchorCommandReadinessStatus =
+  | "ready"
+  | "partial"
+  | "missing"
+  | "stale"
+  | "unsupported"
+  | "non-commandable";
+
+export type CadTopologyAnchorCommandProofKind =
+  | "checkpointEntityPresent"
+  | "axisAlignedPlanarFace"
+  | "axisAlignedLinearEdge"
+  | "pointVertex";
+
+export interface CadTopologyAnchorCommandProof {
+  readonly kind: CadTopologyAnchorCommandProofKind;
+  readonly entityKind: CadTopologyAnchorEntityKind;
+  readonly evidenceSource: "checkpointSnapshot";
+  readonly exposesCheckpointLocalIds: false;
+  readonly bounds?: CadTopologyEntityBounds;
+  readonly planarAxis?: "x" | "y" | "z";
+  readonly planarCoordinate?: number;
+  readonly linearAxis?: "x" | "y" | "z";
+  readonly length?: number;
+}
+
+export interface TopologyAnchorCommandReadinessQueryResponse {
+  readonly ok: true;
+  readonly query: "topology.anchorCommandReadiness";
+  readonly cadOpsVersion: CadOpsVersion;
+  readonly status: CadTopologyAnchorCommandReadinessStatus;
+  readonly anchorId: string;
+  readonly bodyId?: BodyId;
+  readonly entityKind?: CadTopologyAnchorEntityKind;
+  readonly checkpointId?: string;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+  readonly selectionStatus: CadSelectionReferenceStatus;
+  readonly commandable: boolean;
+  readonly commandOperationCount: number;
+  readonly commandOperations: readonly CadSelectionReferenceOperation[];
+  readonly candidateCount: number;
+  readonly candidates: readonly CadSelectionReferenceCandidate[];
+  readonly issueCount: number;
+  readonly issues: readonly CadSelectionReferenceIssue[];
+  readonly proof?: CadTopologyAnchorCommandProof;
+  readonly diagnosticCount: number;
+  readonly diagnostics: readonly CadTopologyIdentityDiagnostic[];
+  readonly sourceBoundaryNote: string;
+  readonly derivedBoundaryNote: string;
+  readonly mutatesSource: false;
+  readonly exposesCheckpointLocalIds: false;
 }
 
 export type CadTopologyAnchorCreationPlanStatus =

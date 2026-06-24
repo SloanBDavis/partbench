@@ -2496,7 +2496,16 @@ Use these decisions when drafting or implementing V13 tranches:
    Missing, stale, replaced, ambiguous, deleted, unsupported, consumed, and
    repair-needed anchors remain non-commandable with structured diagnostics.
    Direct face/edge topology-anchor command targets that cannot map to current
-   source-semantic generated references remain later V13 work.
+   source-semantic generated references now have query-only
+   `topology.anchorCommandReadiness` coverage. The query accepts checkpoint
+   topology snapshot evidence, verifies the anchor/checkpoint/body/entity
+   boundary, and delegates final operations to the same
+   `selection.referenceCandidates` topology-anchor commandability path used by
+   UI, agents, and MCP. It returns sanitized proof, selection candidates,
+   diagnostics, and `mutatesSource: false` without exposing checkpoint-local
+   entity IDs. It does not make arbitrary exact-only anchors command-ready by
+   itself; unsupported exact-only targets report partial/deferred readiness
+   until explicit topology-anchor target validators exist.
 10. **Product Integration And Topology Diagnostics** - compact Selection,
     Inspector, Modeling, viewport contextual action, and Project/File surfaces
     for topology health, matching evidence, repair candidates, checkpoint

@@ -40,6 +40,7 @@ export type CadMcpToolName =
   | "cad.project_topology_identity_readiness"
   | "cad.topology_match_snapshots"
   | "cad.topology_anchor_repair_candidates"
+  | "cad.topology_anchor_command_readiness"
   | "cad.topology_anchor_creation_plan"
   | "cad.topology_anchor_repair_plan"
   | "cad.project_export_readiness"
@@ -205,6 +206,10 @@ export class CadMcpServer {
 
     if (request.name === "cad.topology_anchor_repair_candidates") {
       return this.#callTopologyAnchorRepairCandidates(request);
+    }
+
+    if (request.name === "cad.topology_anchor_command_readiness") {
+      return this.#callTopologyAnchorCommandReadiness(request);
     }
 
     if (request.name === "cad.topology_anchor_creation_plan") {
@@ -674,6 +679,35 @@ export class CadMcpServer {
             previous: request.arguments.previous,
             candidates: request.arguments.candidates,
             anchorIds: request.arguments.anchorIds
+          }
+        }
+      })
+    );
+
+    return createToolResult(request.name, response, !response.ok);
+  }
+
+  #callTopologyAnchorCommandReadiness(
+    request: CadMcpToolCallRequest
+  ): CadMcpToolCallResult {
+    if (!isTopologyAnchorCommandReadinessArguments(request.arguments)) {
+      return createInvalidArgumentsResult(
+        request.name,
+        "cad.topology_anchor_command_readiness expects { anchorId: string, snapshot: object, requiredOperation?: string }."
+      );
+    }
+
+    const response = this.#adapter.query(
+      parseCadOpsAgentQueryRequest({
+        requestId: request.requestId ?? this.#createRequestId(),
+        adapterVersion: ADAPTER_VERSION,
+        query: {
+          version: "cadops.v1",
+          query: {
+            query: "topology.anchorCommandReadiness",
+            anchorId: request.arguments.anchorId,
+            snapshot: request.arguments.snapshot,
+            requiredOperation: request.arguments.requiredOperation
           }
         }
       })
@@ -1630,6 +1664,32 @@ const CAD_MCP_TOOLS: readonly McpToolDefinition[] = [
           items: { type: "string" },
           description:
             "Optional list of topology anchor ids to group; omitted means all current anchors that match the previous snapshot evidence."
+        }
+      }
+    }
+  },
+  {
+    name: "cad.topology_anchor_command_readiness",
+    description:
+      "Reports V13 topology-anchor command readiness from checkpoint snapshot evidence and the shared selection.referenceCandidates commandability path.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["anchorId", "snapshot"],
+      properties: {
+        anchorId: {
+          type: "string",
+          description: "Existing topology anchor source id to test."
+        },
+        snapshot: {
+          type: "object",
+          description:
+            "Caller-supplied exact topology snapshot evidence for the anchor checkpoint/body."
+        },
+        requiredOperation: {
+          type: "string",
+          description:
+            "Optional operation that must be command-ready, such as feature.attachSketchPlane, feature.chamfer, feature.fillet, feature.measureReference, or feature.selectReference."
         }
       }
     }
@@ -3114,6 +3174,21 @@ function isTopologyAnchorRepairCandidatesArguments(value: unknown): value is {
     (value.anchorIds === undefined ||
       (Array.isArray(value.anchorIds) &&
         value.anchorIds.every((anchorId) => typeof anchorId === "string")))
+  );
+}
+
+function isTopologyAnchorCommandReadinessArguments(value: unknown): value is {
+  readonly anchorId: string;
+  readonly snapshot: CadTopologyMatchSnapshotInput;
+  readonly requiredOperation?: CadSelectionReferenceOperation;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.anchorId === "string" &&
+    value.anchorId !== "" &&
+    isTopologyMatchSnapshotInputShape(value.snapshot) &&
+    (value.requiredOperation === undefined ||
+      isCadSelectionReferenceOperation(value.requiredOperation))
   );
 }
 

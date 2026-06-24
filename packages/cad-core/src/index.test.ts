@@ -31839,6 +31839,236 @@ describe("cad-core V3 parameters and sketch dimensions", () => {
     );
   });
 
+  it("reports topology anchor command readiness from checkpoint topology evidence without leaking local ids", () => {
+    const faceEngine = createTopologyAnchorEngine();
+    const faceReadiness = faceEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_face_1",
+        requiredOperation: "feature.attachSketchPlane",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-face-1",
+              kind: "face",
+              signature: "face_signature_1",
+              bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+            }
+          ]
+        })
+      }
+    });
+
+    expect(faceReadiness).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "ready",
+      anchorId: "anchor_face_1",
+      bodyId: "body_rect_1",
+      entityKind: "face",
+      checkpointId: "checkpoint_1",
+      selectionStatus: "resolved",
+      commandable: true,
+      candidateCount: 1,
+      commandOperations: [
+        "feature.attachSketchPlane",
+        "feature.measureReference",
+        "feature.selectReference"
+      ],
+      proof: {
+        kind: "axisAlignedPlanarFace",
+        entityKind: "face",
+        evidenceSource: "checkpointSnapshot",
+        exposesCheckpointLocalIds: false,
+        planarAxis: "z",
+        planarCoordinate: 1
+      },
+      exposesCheckpointLocalIds: false,
+      mutatesSource: false,
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_ELIGIBILITY_READY",
+          anchorId: "anchor_face_1"
+        })
+      ]
+    });
+
+    const edgeEngine = createTopologyEdgeAnchorEngine({
+      stableId: "",
+      sourceSemanticRole: "unmapped exact topology edge"
+    });
+    const edgeReadiness = edgeEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_edge_1",
+        requiredOperation: "feature.chamfer",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-edge-1",
+              kind: "edge",
+              signature: "edge_signature_1",
+              bounds: { min: [0, 0, 0], max: [1, 0, 0] }
+            }
+          ]
+        })
+      }
+    });
+
+    expect(edgeReadiness).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "partial",
+      anchorId: "anchor_edge_1",
+      entityKind: "edge",
+      selectionStatus: "unsupported",
+      commandable: false,
+      commandOperations: [],
+      issueCount: 1,
+      issues: [
+        expect.objectContaining({
+          code: "UNSUPPORTED_SELECTION_TARGET",
+          status: "unsupported",
+          topologyAnchorId: "anchor_edge_1"
+        })
+      ],
+      proof: {
+        kind: "axisAlignedLinearEdge",
+        entityKind: "edge",
+        exposesCheckpointLocalIds: false,
+        linearAxis: "x",
+        length: 1
+      },
+      exposesCheckpointLocalIds: false
+    });
+
+    expect(JSON.stringify({ faceReadiness, edgeReadiness })).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
+  });
+
+  it("blocks topology anchor command readiness when checkpoint evidence cannot prove the target", () => {
+    const faceEngine = createTopologyAnchorEngine();
+    const unsupportedFace = faceEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_face_1",
+        requiredOperation: "feature.attachSketchPlane",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-face-1",
+              kind: "face",
+              signature: "face_signature_1",
+              bounds: { min: [0, 0, 0], max: [1, 1, 1] }
+            }
+          ]
+        })
+      }
+    });
+    const wrongBody = faceEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_face_1",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_other",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "checkpoint-local-face-1",
+              kind: "face",
+              signature: "face_signature_1",
+              bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+            }
+          ]
+        })
+      }
+    });
+    const missingEntity = faceEngine.executeQuery({
+      version: "cadops.v1",
+      query: {
+        query: "topology.anchorCommandReadiness",
+        anchorId: "anchor_face_1",
+        snapshot: createTopologyMatchSnapshotInput({
+          checkpointId: "checkpoint_1",
+          bodyId: "body_rect_1",
+          sourceFeatureId: "feat_rect_1",
+          entities: [
+            {
+              localId: "other-face",
+              kind: "face",
+              signature: "face_signature_1",
+              bounds: { min: [0, 0, 1], max: [1, 1, 1] }
+            }
+          ]
+        })
+      }
+    });
+
+    expect(unsupportedFace).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "unsupported",
+      selectionStatus: "resolved",
+      commandable: false,
+      commandOperations: [],
+      candidateCount: 0,
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_COMMAND_NOT_ELIGIBLE",
+          expected: "feature.attachSketchPlane"
+        })
+      ]
+    });
+    expect(wrongBody).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "unsupported",
+      selectionStatus: "unsupported",
+      commandable: false,
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_SNAPSHOT_INVALID",
+          expected: "body_rect_1",
+          received: "body_other"
+        })
+      ]
+    });
+    expect(missingEntity).toMatchObject({
+      ok: true,
+      query: "topology.anchorCommandReadiness",
+      status: "missing",
+      selectionStatus: "missing",
+      commandable: false,
+      diagnostics: [
+        expect.objectContaining({
+          code: "TOPOLOGY_ENTITY_MISSING",
+          expected: "snapshot entity matching the topology anchor",
+          received: "missing"
+        })
+      ]
+    });
+    expect(
+      JSON.stringify({ unsupportedFace, wrongBody, missingEntity })
+    ).not.toMatch(
+      /rendererId|renderId|meshId|occtId|occtShape|gpuId|gpuBuffer|opfsPath|fileHandle|localPath|exportArtifactId|selectionBufferId|pixelId|triangleIndex|faceIndex|edgeIndex|vertexIndex|checkpointEntityId|checkpoint-local/i
+    );
+  });
+
   it("resolves stable active topology anchors through selection reference candidates", () => {
     const engine = createTopologyAnchorEngine();
     const beforeJson = exportCadProjectJson(engine);

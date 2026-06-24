@@ -212,6 +212,7 @@ import {
 } from "./projectPackageReadiness";
 import { createProjectTopologyIdentityReadiness } from "./projectTopologyIdentityReadiness";
 import { createTopologyMatchSnapshotsResponse } from "./topologyMatching";
+import { createTopologyAnchorCommandReadinessResponse } from "./topologyAnchorCommandReadiness";
 import {
   collectWcadV2CheckpointSourceEntries,
   createEmptyTopologyIdentitySourceSnapshot,
@@ -1371,6 +1372,27 @@ export class CadEngine {
           cadOpsVersion: request.version,
           query: request.query,
           topologyIdentity: this.#document.topologyIdentity
+        });
+      }
+
+      case "topology.anchorCommandReadiness": {
+        const structure = createProjectStructure(
+          this.#document,
+          this.#history.map((entry) => entry.transaction)
+        );
+        const selectionResult = createSelectionReferenceCandidates(
+          this.#document,
+          structure,
+          this.#history.map((entry) => entry.transaction),
+          { type: "topologyAnchor", anchorId: request.query.anchorId },
+          request.query.requiredOperation
+        );
+
+        return createTopologyAnchorCommandReadinessResponse({
+          cadOpsVersion: request.version,
+          query: request.query,
+          topologyIdentity: this.#document.topologyIdentity,
+          selectionResult
         });
       }
 
@@ -5632,6 +5654,7 @@ function isCadQueryKind(value: string): value is CadQueryKind {
     case "project.topologyIdentityReadiness":
     case "topology.matchSnapshots":
     case "topology.anchorRepairCandidates":
+    case "topology.anchorCommandReadiness":
     case "topology.anchorCreationPlan":
     case "topology.anchorRepairPlan":
     case "project.exportReadiness":
@@ -5702,6 +5725,13 @@ function isCadQuery(value: unknown): boolean {
         (value.anchorIds === undefined ||
           (Array.isArray(value.anchorIds) &&
             value.anchorIds.every((anchorId) => typeof anchorId === "string")))
+      );
+    case "topology.anchorCommandReadiness":
+      return (
+        typeof value.anchorId === "string" &&
+        isCadTopologyMatchSnapshotInput(value.snapshot) &&
+        (value.requiredOperation === undefined ||
+          isCadSelectionReferenceOperation(value.requiredOperation))
       );
     case "topology.anchorCreationPlan":
       return (
